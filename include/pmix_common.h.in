@@ -1323,6 +1323,12 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_DEVTYPE                    57
 #define PMIX_LOCTYPE                    58
 #define PMIX_COMPRESSED_BYTE_OBJECT     59
+#define PMIX_PROC_NSPACE                60
+#define PMIX_PROC_NAME                  61
+#define PMIX_PROC_STATS                 62
+#define PMIX_DISK_STATS                 63
+#define PMIX_NET_STATS                  64
+#define PMIX_NODE_STATS                 65
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1445,10 +1451,12 @@ static inline void* pmix_calloc(size_t n, size_t m)
 #define PMIX_CHECK_RESERVED_KEY(a) \
     (0 == strncmp((a), "pmix", 4))
 
-#define PMIX_LOAD_KEY(a, b)                                             \
-    do {                                                                \
-        memset((a), 0, PMIX_MAX_KEYLEN+1);                              \
-        pmix_strncpy((char*)(a), (const char*)(b), PMIX_MAX_KEYLEN);    \
+#define PMIX_LOAD_KEY(a, b)                                                 \
+    do {                                                                    \
+        memset((a), 0, PMIX_MAX_KEYLEN+1);                                  \
+        if (NULL != (b)) {                                                  \
+            pmix_strncpy((char*)(a), (const char*)(b), PMIX_MAX_KEYLEN);    \
+        }                                                                   \
     }while(0)
 
 /* define a convenience macro for loading nspaces */
@@ -1483,6 +1491,9 @@ static inline void* pmix_calloc(size_t n, size_t m)
 
 #define PMIX_NSPACE_INVALID(a) \
     (NULL == (a) || 0 == strlen((a)))
+
+#define PMIX_PROCID_INVALID(a)  \
+    (PMIX_NSPACE_INVALID((a)->nspace) || PMIX_RANK_INVALID == (a)->rank)
 
 /****    PMIX COORD    ****/
 /* define coordinate system views */
@@ -1858,22 +1869,7 @@ typedef struct {
     } while(0)
 
 
-/****    PMIX DATA BUFFER    ****/
-typedef struct pmix_data_buffer {
-    /** Start of my memory */
-    char *base_ptr;
-    /** Where the next data will be packed to (within the allocated
-        memory starting at base_ptr) */
-    char *pack_ptr;
-    /** Where the next data will be unpacked from (within the
-        allocated memory starting as base_ptr) */
-    char *unpack_ptr;
-    /** Number of bytes allocated (starting at base_ptr) */
-    size_t bytes_allocated;
-    /** Number of bytes used by the buffer (i.e., amount of data --
-        including overhead -- packed in the buffer) */
-    size_t bytes_used;
-} pmix_data_buffer_t;
+/****    PMIX DATA BUFFER MACROS   ****/
 #define PMIX_DATA_BUFFER_CREATE(m)                                          \
     do {                                                                    \
         (m) = (pmix_data_buffer_t*)pmix_calloc(1, sizeof(pmix_data_buffer_t));   \
@@ -2046,6 +2042,237 @@ typedef struct pmix_data_array {
  * will utilize the void* entry of the pmix_value_t to
  * hold the point to pmix_regattr_t */
 
+/****    PMIX DATA BUFFER    ****/
+typedef struct pmix_data_buffer {
+    /** Start of my memory */
+    char *base_ptr;
+    /** Where the next data will be packed to (within the allocated
+        memory starting at base_ptr) */
+    char *pack_ptr;
+    /** Where the next data will be unpacked from (within the
+        allocated memory starting as base_ptr) */
+    char *unpack_ptr;
+    /** Number of bytes allocated (starting at base_ptr) */
+    size_t bytes_allocated;
+    /** Number of bytes used by the buffer (i.e., amount of data --
+        including overhead -- packed in the buffer) */
+    size_t bytes_used;
+} pmix_data_buffer_t;
+
+/****   STATISTICS STRUCTURES  ****/
+typedef struct pmix_proc_stats {
+    /* process ident info */
+    char *node;
+    pmix_proc_t proc;
+    pid_t pid;
+    char *cmd;
+    /* process stats */
+    char state[2];
+    struct timeval time;
+    float percent_cpu;
+    int32_t priority;
+    uint16_t num_threads;
+    float pss;   /* in MBytes */
+    float vsize;  /* in MBytes */
+    float rss;  /* in MBytes */
+    float peak_vsize;  /* in MBytes */
+    uint16_t processor;
+    /* time at which sample was taken */
+    struct timeval sample_time;
+} pmix_proc_stats_t;
+#define PMIX_PROC_STATS_CREATE(m, n)                                            \
+    do {                                                                        \
+        (m) = (pmix_proc_stats_t*)pmix_calloc((n) , sizeof(pmix_proc_stats_t)); \
+    } while (0)
+
+#define PMIX_PROC_STATS_RELEASE(m)      \
+    do {                                \
+        PMIX_PROC_STATS_FREE((m), 1);   \
+    } while (0)
+
+#define PMIX_PROC_STATS_CONSTRUCT(m)                \
+    do {                                            \
+        memset((m), 0, sizeof(pmix_proc_stats_t));  \
+    } while (0)
+
+#define PMIX_PROC_STATS_DESTRUCT(m)     \
+    do {                                \
+        if (NULL != (m)->node) {        \
+            pmix_free((m)->node);       \
+            (m)->node = NULL;           \
+        }                               \
+        if (NULL != (m)->cmd) {         \
+            pmix_free((m)->cmd);        \
+            (m)->cmd = NULL;            \
+        }                               \
+    } while(0)
+
+#define PMIX_PROC_STATS_FREE(m, n)                  \
+    do {                                            \
+        size_t _k;                                  \
+        if (NULL != (m)) {                          \
+            for (_k=0; _k < (n); _k++) {            \
+                PMIX_PROC_STATS_DESTRUCT(&(m)[_k]); \
+            }                                       \
+            pmix_free((m));                         \
+        }                                           \
+    } while (0)
+
+typedef struct {
+    char *disk;
+    uint64_t num_reads_completed;
+    uint64_t num_reads_merged;
+    uint64_t num_sectors_read;
+    uint64_t milliseconds_reading;
+    uint64_t num_writes_completed;
+    uint64_t num_writes_merged;
+    uint64_t num_sectors_written;
+    uint64_t milliseconds_writing;
+    uint64_t num_ios_in_progress;
+    uint64_t milliseconds_io;
+    uint64_t weighted_milliseconds_io;
+} pmix_disk_stats_t;
+#define PMIX_DISK_STATS_CREATE(m, n)                                            \
+    do {                                                                        \
+        (m) = (pmix_disk_stats_t*)pmix_calloc((n) , sizeof(pmix_disk_stats_t)); \
+    } while (0)
+
+#define PMIX_DISK_STATS_RELEASE(m)      \
+    do {                                \
+        PMIX_DISK_STATS_FREE((m), 1);   \
+    } while (0)
+
+#define PMIX_DISK_STATS_CONSTRUCT(m)                \
+    do {                                            \
+        memset((m), 0, sizeof(pmix_disk_stats_t));  \
+    } while (0)
+
+#define PMIX_DISK_STATS_DESTRUCT(m)     \
+    do {                                \
+        if (NULL != (m)->disk) {        \
+            pmix_free((m)->disk);       \
+            (m)->disk = NULL;           \
+        }                               \
+    } while(0)
+
+#define PMIX_DISK_STATS_FREE(m, n)                  \
+    do {                                            \
+        size_t _k;                                  \
+        if (NULL != (m)) {                          \
+            for (_k=0; _k < (n); _k++) {            \
+                PMIX_DISK_STATS_DESTRUCT(&(m)[_k]); \
+            }                                       \
+            pmix_free((m));                         \
+        }                                           \
+    } while (0)
+
+typedef struct {
+    char *net_interface;
+    uint64_t num_bytes_recvd;
+    uint64_t num_packets_recvd;
+    uint64_t num_recv_errs;
+    uint64_t num_bytes_sent;
+    uint64_t num_packets_sent;
+    uint64_t num_send_errs;
+} pmix_net_stats_t;
+#define PMIX_NET_STATS_CREATE(m, n)                                             \
+    do {                                                                        \
+        (m) = (pmix_net_stats_t*)pmix_calloc((n) , sizeof(pmix_net_stats_t));   \
+    } while (0)
+
+#define PMIX_NET_STATS_RELEASE(m)       \
+    do {                                \
+        PMIX_NET_STATS_FREE((m), 1);    \
+    } while (0)
+
+#define PMIX_NET_STATS_CONSTRUCT(m)                 \
+    do {                                            \
+        memset((m), 0, sizeof(pmix_net_stats_t));   \
+    } while (0)
+
+#define PMIX_NET_STATS_DESTRUCT(m)          \
+    do {                                    \
+        if (NULL != (m)->net_interface) {   \
+            pmix_free((m)->net_interface);  \
+            (m)->net_interface = NULL;      \
+        }                                   \
+    } while(0)
+
+#define PMIX_NET_STATS_FREE(m, n)                   \
+    do {                                            \
+        size_t _k;                                  \
+        if (NULL != (m)) {                          \
+            for (_k=0; _k < (n); _k++) {            \
+                PMIX_NET_STATS_DESTRUCT(&(m)[_k]);  \
+            }                                       \
+            pmix_free((m));                         \
+        }                                           \
+    } while (0)
+
+typedef struct {
+    char *node;
+    /* node-level load averages */
+    float la;
+    float la5;
+    float la15;
+    /* memory usage */
+    float total_mem;  /* in MBytes */
+    float free_mem;  /* in MBytes */
+    float buffers;  /* in MBytes */
+    float cached;   /* in MBytes */
+    float swap_cached;  /* in MBytes */
+    float swap_total;   /* in MBytes */
+    float swap_free;    /* in MBytes */
+    float mapped;       /* in MBytes */
+    /* time at which sample was taken */
+    struct timeval sample_time;
+    /* array of disk stats, one per disk */
+    pmix_disk_stats_t *diskstats;
+    size_t ndiskstats;
+    /* array of net stats, one per interface */
+    pmix_net_stats_t *netstats;
+    size_t nnetstats;
+} pmix_node_stats_t;
+#define PMIX_NODE_STATS_CREATE(m, n)                                            \
+    do {                                                                        \
+        (m) = (pmix_node_stats_t*)pmix_calloc((n) , sizeof(pmix_node_stats_t)); \
+    } while (0)
+
+#define PMIX_NODE_STATS_RELEASE(m)      \
+    do {                                \
+        PMIX_NODE_STATS_FREE((m), 1);   \
+    } while (0)
+
+#define PMIX_NODE_STATS_CONSTRUCT(m)                \
+    do {                                            \
+        memset((m), 0, sizeof(pmix_node_stats_t));  \
+    } while (0)
+
+#define PMIX_NODE_STATS_DESTRUCT(m)                                 \
+    do {                                                            \
+        if (NULL != (m)->node) {                                    \
+            pmix_free((m)->node);                                   \
+            (m)->node = NULL;                                       \
+        }                                                           \
+        if (NULL != (m)->diskstats) {                               \
+            PMIX_DISK_STATS_FREE((m)->diskstats, (m)->ndiskstats);  \
+        }                                                           \
+        if (NULL != (m)->netstats) {                                \
+            PMIX_NET_STATS_FREE((m)->netstats, (m)->nnetstats);     \
+        }                                                           \
+    } while(0)
+
+#define PMIX_NET_STATS_FREE(m, n)                   \
+    do {                                            \
+        size_t _k;                                  \
+        if (NULL != (m)) {                          \
+            for (_k=0; _k < (n); _k++) {            \
+                PMIX_NET_STATS_DESTRUCT(&(m)[_k]);  \
+            }                                       \
+            pmix_free((m));                         \
+        }                                           \
+    } while (0)
+
 /****    PMIX VALUE STRUCT    ****/
 
 /* NOTE: operations can supply a collection of values under
@@ -2098,6 +2325,11 @@ typedef struct pmix_value {
         pmix_device_type_t devtype;
         pmix_device_distance_t *devdist;
         pmix_endpoint_t *endpoint;
+        pmix_data_buffer_t buf;
+        pmix_proc_stats_t *pstats;
+        pmix_disk_stats_t *dstats;
+        pmix_net_stats_t *netstats;
+        pmix_node_stats_t *ndstats;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
