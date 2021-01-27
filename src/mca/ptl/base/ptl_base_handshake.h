@@ -1,6 +1,7 @@
 /* -*- C -*-
  *
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -148,6 +149,7 @@ BEGIN_C_DECLS
     do {                                                                        \
         pmix_status_t r;                                                        \
         r = pmix_ptl_base_recv_blocking((s), (char*)(n), PMIX_MAX_NSLEN+1);     \
+        (n)[PMIX_MAX_NSLEN] = '\0';  /* ensure NULL termination */              \
         if (PMIX_SUCCESS != r) {                                                \
             return r;                                                           \
         }                                                                       \
