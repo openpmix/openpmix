@@ -16,6 +16,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -953,6 +954,9 @@ pmix_status_t pmix20_bfrop_unpack_proc(pmix_pointer_array_t *regtypes,
         m=1;
         tmp = NULL;
         if (PMIX_SUCCESS != (ret = pmix20_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+            if (NULL != tmp) {
+                free(tmp);
+            }
             return ret;
         }
         if (NULL == tmp) {
@@ -1003,6 +1007,9 @@ pmix_status_t pmix20_bfrop_unpack_app(pmix_pointer_array_t *regtypes,
             m=1;
             tmp = NULL;
             if (PMIX_SUCCESS != (ret = pmix20_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+                if (NULL != tmp) {
+                    free(tmp);
+                }
                 return ret;
             }
             if (NULL == tmp) {
@@ -1020,6 +1027,9 @@ pmix_status_t pmix20_bfrop_unpack_app(pmix_pointer_array_t *regtypes,
             m=1;
             tmp = NULL;
             if (PMIX_SUCCESS != (ret = pmix20_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+                if (NULL != tmp) {
+                    free(tmp);
+                }
                 return ret;
             }
             if (NULL == tmp) {
