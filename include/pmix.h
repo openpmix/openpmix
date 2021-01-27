@@ -38,6 +38,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1546,6 +1547,78 @@ PMIX_EXPORT bool PMIx_Data_decompress(uint8_t **outbytes,
                                       uint8_t *inbytes,
                                       size_t size);
 
+/**
+ * Unload a buffer into a byte object
+ *
+ * The unload function provides the caller with a pointer to the data
+ * payload within the buffer and the size of that payload. This allows
+ * the user to directly access the payload.
+ *
+ * @note This is a destructive operation. While the payload is
+ * undisturbed, the function will clear the buffer's pointers to the
+ * payload. Thus, the buffer and the payload are completely separated,
+ * leaving the caller free to the buffer.
+ *
+ * @param buffer A pointer to the buffer whose payload is to be
+ * unloaded.
+ *
+ * @param payload The address of a pmix_byte_object_t into which
+ * the buffer is to be unloaded
+ *
+ * @retval PMIX_SUCCESS The request was succesfully completed.
+ *
+ * @retval PMIX_ERROR(s) An appropriate error code indicating the
+ * problem will be returned. This should be handled appropriately by
+ * the caller.
+ *
+ * @code
+ * pmix_data_buffer_t *buffer;
+ * pmix_byte_object_t payload;
+ *
+ * status_code = PMIx_Data_unload(buffer, &payload);
+ * @endcode
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_unload(pmix_data_buffer_t *buffer,
+                                           pmix_byte_object_t *payload);
+
+/**
+ * Load a data payload into a buffer.
+ *
+ * The load function allows the caller to replace the payload in a
+ * buffer with one provided by the caller. If a payload already exists
+ * in the buffer, the function will "free" the existing data to
+ * release it, and then replace the data payload with the one provided
+ * by the caller.
+ *
+ * @note The buffer must be allocated in advance - failing to do so
+ * will cause the load function to return an error code.
+ *
+ * @note The caller is responsible for pre-packing the provided
+ * payload - the load function cannot convert to network byte order
+ * any data contained in the provided payload.
+ *
+ * @param buffer A pointer to the buffer into which the payload is to
+ * be loaded.
+ *
+ * @param payload A pointer to the pmix_byte_object_t .containing the
+ * desired payload
+ *
+ * @retval PMIX_SUCCESS The request was successfully completed
+ *
+ * @retval PMIX_ERROR(s) An appropriate error code indicating the
+ * problem will be returned. This should be handled appropriately by
+ * the caller.
+ *
+ * @code
+ * pmix_data_buffer_t *buffer;
+ * pmix_byte_object_t payload;
+ *
+ * PMIX_DATA_BUFFER_CREATE(buffer);
+ * status_code = PMIx_Data_load(buffer, &payload);
+ * @endcode
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_load(pmix_data_buffer_t *buffer,
+                                         pmix_byte_object_t *payload);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
