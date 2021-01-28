@@ -15,6 +15,7 @@
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -54,7 +55,8 @@ headers += \
         util/parse_options.h \
         util/context_fns.h \
         util/pmix_pty.h \
-        util/few.h
+        util/few.h \
+        util/string_copy.h
 
 sources += \
         util/alfg.c \
@@ -82,7 +84,8 @@ sources += \
         util/parse_options.c \
         util/context_fns.c \
         util/pmix_pty.c \
-        util/few.c
+        util/few.c \
+        util/string_copy.c
 
 libpmix_la_LIBADD += \
         util/keyval/libpmixutilkeyval.la
