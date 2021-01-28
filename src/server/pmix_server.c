@@ -1906,6 +1906,13 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     /* communicate our version */
     pmix_setenv("PMIX_VERSION", PMIX_VERSION, true, env);
 
+    /* pass any global contributions */
+    if (NULL != pmix_server_globals.genvars) {
+        for (n=0; NULL != pmix_server_globals.genvars[n]; n++) {
+            pmix_argv_append_nosize(env, pmix_server_globals.genvars[n]);
+        }
+    }
+
     return PMIX_SUCCESS;
 }
 
