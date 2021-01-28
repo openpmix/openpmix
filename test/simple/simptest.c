@@ -17,6 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -423,10 +424,11 @@ int main(int argc, char **argv)
 
 
     /* setup the server library and tell it to support tool connections */
-    ninfo = 2;
+    ninfo = 3;
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_SERVER_TOOL_SUPPORT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&info[1], PMIX_SERVER_SCHEDULER, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_SERVER_SHARE_TOPOLOGY, NULL, PMIX_BOOL);
     if (PMIX_SUCCESS != (rc = PMIx_server_init(&mymodule, info, ninfo))) {
         fprintf(stderr, "Init failed with error %s\n", PMIx_Error_string(rc));
         return rc;

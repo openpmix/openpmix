@@ -2,6 +2,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2017      Inria.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -180,6 +181,7 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
 #if HWLOC_API_VERSION >= 0x20000
     pmix_status_t rc;
 #endif
+    char *tmp;
 
     /* see if they want us to share the topology with our clients */
     for (n=0; n < ninfo; n++) {
@@ -408,6 +410,12 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     PMIX_VALUE_LOAD(kv->value, &shmemsize, PMIX_SIZE);
     pmix_list_append(&pmix_server_globals.gdata, &kv->super);
 
+    /* and add them to the global cache of envars as well */
+    pmix_setenv("PMIX_HWLOC_SHMEM_FILE", shmemfile, true, &pmix_server_globals.genvars);
+    pmix_asprintf(&tmp, "%"PRIsize_t, shmemaddr);
+    pmix_setenv("PMIX_HWLOC_SHMEM_ADDR", tmp, true, &pmix_server_globals.genvars);
+    pmix_asprintf(&tmp, "%"PRIsize_t, shmemsize);
+    pmix_setenv("PMIX_HWLOC_SHMEM_SIZE", tmp, true, &pmix_server_globals.genvars);
 #endif
 
     return PMIX_SUCCESS;
