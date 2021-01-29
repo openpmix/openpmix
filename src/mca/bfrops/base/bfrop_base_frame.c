@@ -70,7 +70,8 @@ static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
     pmix_bfrops_globals.initial_size = PMIX_BFROP_DEFAULT_INITIAL_SIZE;
     pmix_mca_base_var_register("pmix", "bfrops", "base", "initial_size",
                                "Initial size of a buffer",
-                               PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, 0,
+                               PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0,
+                               PMIX_MCA_BASE_VAR_FLAG_NONE,
                                PMIX_INFO_LVL_2,
                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &pmix_bfrops_globals.initial_size);
@@ -78,7 +79,8 @@ static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
     pmix_bfrops_globals.threshold_size = PMIX_BFROP_DEFAULT_THRESHOLD_SIZE;
     pmix_mca_base_var_register("pmix", "bfrops", "base", "threshold_size",
                                "Size at which we switch from extending a buffer by doubling to extending by a smaller value",
-                               PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, 0,
+                               PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0,
+                               PMIX_MCA_BASE_VAR_FLAG_NONE,
                                PMIX_INFO_LVL_2,
                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &pmix_bfrops_globals.threshold_size);
@@ -90,7 +92,8 @@ static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
 #endif
     pmix_mca_base_var_register("pmix", "bfrops", "base", "default_type",
                                "Default type for buffers",
-                               PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                               PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                               PMIX_MCA_BASE_VAR_FLAG_NONE,
                                PMIX_INFO_LVL_2,
                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &pmix_bfrops_globals.default_type);
@@ -127,7 +130,7 @@ static pmix_status_t pmix_bfrop_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, bfrops, "PMIx Buffer Operations",
                                 pmix_bfrop_register, pmix_bfrop_open, pmix_bfrop_close,
-                                mca_bfrops_base_static_components, 0);
+                                mca_bfrops_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 static void moddes(pmix_bfrops_base_active_module_t *p)
 {
