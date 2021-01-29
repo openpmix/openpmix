@@ -12,6 +12,7 @@
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -26,7 +27,8 @@ headers = simptest.h
 noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
                   test_pmix simptool simpdie simptimeout \
                   gwtest gwclient stability quietclient simpjctrl simpio simpsched \
-                  simpcoord simpcycle doubleget simpfabric get_put_example simpvni
+                  simpcoord simpcycle doubleget simpfabric get_put_example simpvni \
+                  hybrid
 
 simptest_SOURCES = \
         simptest.c
@@ -165,3 +167,10 @@ simpvni_SOURCES = \
 simpvni_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simpvni_LDADD = \
     $(top_builddir)/src/libpmix.la
+
+hybrid_SOURCES = \
+        hybrid.c
+hybrid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+hybrid_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
