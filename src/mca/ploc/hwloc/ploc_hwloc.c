@@ -180,8 +180,8 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     bool share = false;
 #if HWLOC_API_VERSION >= 0x20000
     pmix_status_t rc;
-#endif
     char *tmp;
+#endif
 
     /* see if they want us to share the topology with our clients */
     for (n=0; n < ninfo; n++) {
@@ -312,6 +312,14 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
         return PMIX_SUCCESS;
     }
 
+    /* get the size of the topology shared memory segment */
+    if (0 != hwloc_shmem_topology_get_length(pmix_globals.topology.topology, &shmemsize, 0)) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s hwloc topology shmem not available",
+                            PMIX_NAME_PRINT(&pmix_globals.myid));
+        return PMIX_SUCCESS;
+    }
+
     /* try and find a hole */
     if (PMIX_SUCCESS != (rc = find_hole(mca_ploc_hwloc_component.hole_kind,
                                         &shmemaddr, shmemsize))) {
@@ -378,8 +386,8 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     if (0 != (rc = hwloc_shmem_topology_write(pmix_globals.topology.topology, shmemfd, 0,
                                               (void*)shmemaddr, shmemsize, 0))) {
         pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
-                            "%s an error occurred while writing topology to %s",
-                            PMIX_NAME_PRINT(&pmix_globals.myid), shmemfile);
+                            "%s an error %d (%s) occurred while writing topology to %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), rc, strerror(errno), shmemfile);
         unlink(shmemfile);
         free(shmemfile);
         shmemfile = NULL;
@@ -1818,7 +1826,8 @@ static int parse_map_line(const char *line,
     return PMIX_SUCCESS;
 }
 
-#define ALIGN2MB (2*1024*1024UL)
+#define ALIGN2MB  (2*1024*1024UL)
+#define ALIGN64MB (64*1024*1024UL)
 
 static int use_hole(unsigned long holebegin,
                     unsigned long holesize,
@@ -1833,7 +1842,6 @@ static int use_hole(unsigned long holebegin,
     }
 
     /* try to align the middle of the hole on 64MB for POWER's 64k-page PMD */
-    #define ALIGN64MB (64*1024*1024UL)
     aligned = (middle + ALIGN64MB) & ~(ALIGN64MB-1);
     if (aligned + size <= holebegin + holesize) {
         *addrp = aligned;
