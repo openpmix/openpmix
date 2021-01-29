@@ -340,7 +340,7 @@ static void cycle_events(int sd, short args, void *cbdata)
     pmix_info_t *newinfo;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
-                        "%s progressing local event",
+                        "%s progressing local event foo",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* aggregate the results per RFC0018 - first search the
@@ -398,28 +398,28 @@ static void cycle_events(int sd, short args, void *cbdata)
     if (NULL != chain->opcbfunc) {
         chain->opcbfunc(PMIX_SUCCESS, chain->cbdata);
     }
-    
+
     /* if the caller indicates that the chain is completed,
      * or we completed the "last" event */
-    if (PMIX_EVENT_ACTION_COMPLETE == chain->status || chain->endchain) {
+    if (PMIX_EVENT_ACTION_COMPLETE == chain->status ||
+        PMIX_EVENT_ORDER_LAST_OVERALL == chain->evhdlr->precedence ||
+        chain->endchain) {
         if (PMIX_EVENT_ACTION_COMPLETE == chain->status) {
             chain->status = PMIX_SUCCESS;
         }
-        /* we still have to call their final callback */
-        if (NULL != chain->final_cbfunc) {
-            chain->final_cbfunc(chain->status, chain->final_cbdata);
-        }
-        /* maintain acctng */
-        PMIX_RELEASE(chain);
-        return;
+        goto complete;
     }
-
     item = NULL;
+
     /* see if we need to continue, starting with the single code events */
     if (1 == chain->evhdlr->ncodes) {
         /* the last handler was for a single code - see if there are
          * any others that match this event */
-        item = &chain->evhdlr->super;
+        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
+            item = pmix_list_get_begin(&pmix_globals.events.single_events);
+        } else {
+            item = &chain->evhdlr->super;
+        }
         while (pmix_list_get_end(&pmix_globals.events.single_events) != (item = pmix_list_get_next(item))) {
             nxt = (pmix_event_hdlr_t*)item;
             if (nxt->codes[0] == chain->status &&
@@ -457,7 +457,9 @@ static void cycle_events(int sd, short args, void *cbdata)
     if (NULL != chain->evhdlr->codes || NULL != item) {
         /* the last handler was for a multi-code event, or we exhausted
          * all the single code events */
-        if (NULL == item) {
+        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
+            item = pmix_list_get_begin(&pmix_globals.events.multi_events);
+        } else if (NULL == item) {
             /* if the last handler was multi-code, then start from that point */
             item = &chain->evhdlr->super;
         }
@@ -502,7 +504,9 @@ static void cycle_events(int sd, short args, void *cbdata)
 
     /* if they didn't want it to go to a default handler, then ignore them */
     if (!chain->nondefault) {
-        if (NULL == item) {
+        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
+            item = pmix_list_get_begin(&pmix_globals.events.default_events);
+        } else if (NULL == item) {
             item = &chain->evhdlr->super;
         }
         if (pmix_list_get_end(&pmix_globals.events.default_events) != (item = pmix_list_get_next(item))) {
@@ -616,6 +620,7 @@ static void cycle_events(int sd, short args, void *cbdata)
         }
     }
 
+complete:
     /* if we get here, there was nothing more to do, but
      * we still have to call their final callback */
     if (NULL != chain->final_cbfunc) {
@@ -712,7 +717,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             /* invoke the handler */
             chain->evhdlr = pmix_globals.events.first;
             pmix_output_verbose(8, pmix_client_globals.event_output,
-                                "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                "%s INVOKING FIRST %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
                                 __FILE__, __LINE__);
             goto invk;
         } else if (NULL != pmix_globals.events.first->codes) {
