@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -183,6 +184,8 @@ static pmix_status_t write_local(const pmix_proc_t *source,
         (void)ctime_r(&timestamp, tod);
         /* trim the newline */
         tod[strlen(tod)] = '\0';
+    } else {
+        strcpy(tod, "N/A");
     }
 
     if (NULL == data) {

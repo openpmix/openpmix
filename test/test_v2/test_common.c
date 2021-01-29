@@ -155,7 +155,6 @@ void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_
 {
     int i;
     uint32_t job_size;
-    //bool custom_rank_placement = false;
 
     /* set output to stdout by default */
     pmixt_outfile = stdout;
@@ -169,7 +168,6 @@ void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_
             if (NULL != argv[i]) {
                 params->np = strdup(argv[i]);
                 job_size = strtol(argv[i], NULL, 10);
-                //params->nprocs = job_size;
                 v_params->pmix_job_size = job_size;
                 v_params->pmix_univ_size = job_size;
                 if (-1 == params->ns_size) {
@@ -199,10 +197,6 @@ void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_
             if (NULL != argv[i]) {
                 //params->nservers = atoi(argv[i]);
                 v_params->pmix_num_nodes = atoi(argv[i]);
-            }
-            if (2 < v_params->pmix_num_nodes) {
-                fprintf(stderr, "Only support up to 2 servers\n");
-                exit(1);
             }
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
             PMIXT_VERBOSE_ON();
@@ -259,8 +253,7 @@ void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_
             TEST_VERBOSE(("rank_placement_string: %s", v_params->rank_placement_string));
         }
         else {
-            TEST_ERROR(("unrecognized option: %s", argv[i]));
-            exit(1);
+            TEST_ERROR_EXIT(("unrecognized option: %s", argv[i]));
         }
     }
 
