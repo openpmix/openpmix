@@ -5,6 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -269,7 +270,6 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
-
     return rc;
 }
 

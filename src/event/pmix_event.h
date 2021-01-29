@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,13 +33,15 @@
 
  BEGIN_C_DECLS
 
-#define PMIX_EVENT_ORDER_NONE       0x00
-#define PMIX_EVENT_ORDER_FIRST      0x01
-#define PMIX_EVENT_ORDER_LAST       0x02
-#define PMIX_EVENT_ORDER_BEFORE     0x04
-#define PMIX_EVENT_ORDER_AFTER      0x08
-#define PMIX_EVENT_ORDER_PREPEND    0x10
-#define PMIX_EVENT_ORDER_APPEND     0x20
+#define PMIX_EVENT_ORDER_NONE           0x00
+#define PMIX_EVENT_ORDER_FIRST          0x01
+#define PMIX_EVENT_ORDER_LAST           0x02
+#define PMIX_EVENT_ORDER_BEFORE         0x04
+#define PMIX_EVENT_ORDER_AFTER          0x08
+#define PMIX_EVENT_ORDER_PREPEND        0x10
+#define PMIX_EVENT_ORDER_APPEND         0x20
+#define PMIX_EVENT_ORDER_FIRST_OVERALL  0x40
+#define PMIX_EVENT_ORDER_LAST_OVERALL   0x80
 
 /* define an internal attribute for marking that the
  * server processed an event before passing it up
