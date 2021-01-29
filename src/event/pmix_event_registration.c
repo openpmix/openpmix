@@ -3,6 +3,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -485,9 +486,11 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
             if (0 == strncmp(cd->info[n].key, PMIX_EVENT_HDLR_FIRST, PMIX_MAX_KEYLEN)) {
                 /* flag if they asked to put this one first overall */
                 firstoverall = PMIX_INFO_TRUE(&cd->info[n]);
+                location = PMIX_EVENT_ORDER_FIRST_OVERALL;
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_HDLR_LAST, PMIX_MAX_KEYLEN)) {
                 /* flag if they asked to put this one last overall */
                 lastoverall = PMIX_INFO_TRUE(&cd->info[n]);
+                location = PMIX_EVENT_ORDER_LAST_OVERALL;
             } else if (0 == strncmp(cd->info[n].key, PMIX_EVENT_HDLR_PREPEND, PMIX_MAX_KEYLEN)) {
                 /* flag if they asked to prepend this handler */
                 if (PMIX_INFO_TRUE(&cd->info[n])) {
@@ -586,6 +589,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
         if (NULL != name) {
             evhdlr->name = strdup(name);
         }
+        evhdlr->precedence = location;
         index = pmix_globals.events.nhdlrs;
         evhdlr->index = index;
         ++pmix_globals.events.nhdlrs;
@@ -634,7 +638,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
         cd->list = NULL;
         cd->hdlr = evhdlr;
         cd->firstoverall = firstoverall;
-        goto addtolist;
+        goto tellserver;
     }
 
     /* get here if this isn't an overall first or last event - start
@@ -652,7 +656,9 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     evhdlr->index = index;
     ++pmix_globals.events.nhdlrs;
     evhdlr->precedence = location;
-    evhdlr->locator = locator;
+    if (NULL != locator) {
+        evhdlr->locator = strdup(locator);
+    }
     evhdlr->rng.range = range;
     if (NULL != parray && 0 < nprocs) {
         evhdlr->rng.nprocs = nprocs;
@@ -702,11 +708,9 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     cd->hdlr = evhdlr;
     cd->firstoverall = false;
 
-  addtolist:
     if (NULL != cd->list) {
         /* now add this event to the appropriate list - if the registration
          * subsequently fails, it will be removed */
-
         /* if the list is empty, or no location was specified, just put this on it */
         if (0 == pmix_list_get_size(cd->list) ||
             PMIX_EVENT_ORDER_NONE == location) {
@@ -763,7 +767,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
             } else {
                 pmix_list_append(cd->list, &evhdlr->super);
             }
-        } else {
+        } else if (NULL != locator) {
             /* find the named event */
             found = false;
             PMIX_LIST_FOREACH(ev, cd->list, pmix_event_hdlr_t) {
@@ -775,7 +779,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
                         /* put it before this handler */
                         pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
                    } else {
-                       /* put it after this handler */
+                      /* put it after this handler */
                         ev = (pmix_event_hdlr_t*)pmix_list_get_next(&ev->super);
                         if (NULL != ev) {
                             pmix_list_insert_pos(cd->list, &ev->super, &evhdlr->super);
@@ -786,6 +790,30 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
                    }
                    found = true;
                    break;
+                }
+            }
+            /* if the handler wasn't found, then it is still possible that the
+             * named handler is either FIRST_OVERALL or LAST_OVERALL. Check
+             * those two possibilities */
+            if (!found) {
+                if (NULL != pmix_globals.events.first &&
+                    0 == strcmp(pmix_globals.events.first->name, locator)) {
+                    /* if they asked to go AFTER this event, then we can oblige */
+                    if (PMIX_EVENT_ORDER_AFTER == location) {
+                        /* put this first on the list */
+                        pmix_list_prepend(cd->list, &evhdlr->super);
+                        found = true;
+                    }
+                    /* only other options would be BEFORE, and that isn't allowed */
+                } else if (NULL != pmix_globals.events.last &&
+                           0 == strcmp(pmix_globals.events.last->name, locator)) {
+                    /* if they asked to go BEFORE this event, then we can oblige */
+                    if (PMIX_EVENT_ORDER_BEFORE == location) {
+                        /* put this at the end of the list */
+                        pmix_list_append(cd->list, &evhdlr->super);
+                        found = true;
+                    }
+                    /* only other options would be AFTER, and that isn't allowed */
                 }
             }
             /* if the handler wasn't found, then we return an error. At some
@@ -804,6 +832,7 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
         }
     }
 
+  tellserver:
     /* tell the server about it, if necessary - any actions
      * will be deferred until after this event completes */
     if (PMIX_RANGE_PROC_LOCAL == range) {
