@@ -43,7 +43,7 @@ static int pmix_plog_register(pmix_mca_base_register_flag_t flags)
     (void)flags;
     pmix_mca_base_var_register("pmix", "plog", "base", "order",
                                "Comma-delimited, prioritized list of logging channels",
-                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
                                PMIX_INFO_LVL_2,
                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &order);
@@ -97,7 +97,7 @@ static pmix_status_t pmix_plog_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, plog, "PMIx Logging Operations",
                                 pmix_plog_register, pmix_plog_open, pmix_plog_close,
-                                mca_plog_base_static_components, 0);
+                                mca_plog_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 static void acon(pmix_plog_base_active_module_t *p)
 {

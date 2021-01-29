@@ -81,7 +81,7 @@ static pmix_status_t pmix_preg_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, preg, "PMIx Regex Operations",
                                 NULL, pmix_preg_open, pmix_preg_close,
-                                mca_preg_base_static_components, 0);
+                                mca_preg_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 PMIX_CLASS_INSTANCE(pmix_preg_base_active_module_t,
                     pmix_list_item_t,

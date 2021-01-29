@@ -77,7 +77,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     (void)flags;
     pmix_mca_base_var_register("pmix", "ptl", "base", "max_msg_size",
                                "Max size (in Mbytes) of a client/server msg",
-                               PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, 0,
+                               PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0,
+                               PMIX_MCA_BASE_VAR_FLAG_NONE,
                                PMIX_INFO_LVL_2,
                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &max_msg_size);
@@ -86,7 +87,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_include",
                                      "Comma-delimited list of devices and/or CIDR notation of TCP networks "
                                      "(e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with ptl_tcp_if_exclude.",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_2,
                                      PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                      &pmix_ptl_base.if_include);
@@ -97,7 +99,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                      "Comma-delimited list of devices and/or CIDR notation of TCP networks to NOT use "
                                      "-- all devices not matching these specifications will be used (e.g., \"eth0,192.168.0.0/16\"). "
                                      "If set to a non-default value, it is mutually exclusive with ptl_tcp_if_include.",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_2,
                                      PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                      &pmix_ptl_base.if_exclude);
@@ -115,7 +118,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv4_port",
                                      "IPv4 port to be used",
-                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.ipv4_port);
@@ -124,7 +128,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv6_port",
                                      "IPv6 port to be used",
-                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.ipv6_port);
@@ -133,7 +138,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "disable_ipv4_family",
                                      "Disable the IPv4 interfaces",
-                                     PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.disable_ipv4_family);
@@ -143,7 +149,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     pmix_ptl_base.disable_ipv6_family = true;
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "disable_ipv6_family",
                                      "Disable the IPv6 interfaces (default:disabled)",
-                                     PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.disable_ipv6_family);
@@ -152,7 +159,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "connection_wait_time",
                                      "Number of seconds to wait for the server connection file to appear",
-                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.wait_to_connect);
@@ -161,7 +169,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "max_retries",
                                      "Number of times to look for the connection file before quitting",
-                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.max_retries);
@@ -170,7 +179,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_wait_time",
                                      "Number of seconds to wait for the server reply to the handshake request",
-                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.handshake_wait_time);
@@ -179,7 +189,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_max_retries",
                                      "Number of times to retry the handshake request before giving up",
-                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_4,
                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                      &pmix_ptl_base.handshake_max_retries);
@@ -188,7 +199,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "report_uri",
                                      "Output URI [- => stdout, + => stderr, or filename]",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                     PMIX_MCA_BASE_VAR_FLAG_NONE,
                                      PMIX_INFO_LVL_2,
                                      PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                      &pmix_ptl_base.report_uri);
@@ -340,7 +352,7 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, ptl, "PMIx Transfer Layer",
                                 pmix_ptl_register, pmix_ptl_open, pmix_ptl_close,
-                                mca_ptl_base_static_components, 0);
+                                mca_ptl_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 /***   INSTANTIATE INTERNAL CLASSES   ***/
 static void scon(pmix_ptl_send_t *p)
