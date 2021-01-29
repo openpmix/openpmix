@@ -202,7 +202,6 @@ pmix_net_islocalhost(const struct sockaddr *addr)
             }
             return false;
         }
-        break;
 
     case AF_INET6:
         {
@@ -212,13 +211,11 @@ pmix_net_islocalhost(const struct sockaddr *addr)
             }
             return false;
         }
-        break;
 
     default:
         pmix_output(0, "unhandled sa_family %d passed to pmix_net_islocalhost",
                     addr->sa_family);
         return false;
-        break;
     }
 }
 
@@ -255,7 +252,6 @@ pmix_net_samenetwork(const struct sockaddr *addr1,
             }
             return false;
         }
-        break;
 
     case AF_INET6:
         {
@@ -287,7 +283,6 @@ pmix_net_samenetwork(const struct sockaddr *addr1,
             }
             return false;
         }
-        break;
 
     default:
         pmix_output(0, "unhandled sa_family %d passed to pmix_samenetwork",
@@ -397,11 +392,9 @@ pmix_net_get_port(const struct sockaddr *addr)
     switch (addr->sa_family) {
     case AF_INET:
         return ntohs(((struct sockaddr_in*) addr)->sin_port);
-        break;
 
     case AF_INET6:
         return ntohs(((struct sockaddr_in6*) addr)->sin6_port);
-        break;
     }
 
     return -1;

@@ -68,7 +68,8 @@ static int component_register(void)
 
     (void)pmix_mca_base_component_var_register(component, "hole_kind",
                                            "Kind of VM hole to identify - none, begin, biggest, libs, heap, stack (default=biggest)",
-                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                           PMIX_MCA_BASE_VAR_FLAG_NONE,
                                            PMIX_INFO_LVL_9,
                                            PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                            &vmhole);
@@ -91,14 +92,16 @@ static int component_register(void)
 
     (void)pmix_mca_base_component_var_register(component, "topo_file",
                                            "Topology file to use instead of discovering it (mostly for testing purposes)",
-                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                           PMIX_MCA_BASE_VAR_FLAG_NONE,
                                            PMIX_INFO_LVL_9,
                                            PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                            &mca_ploc_hwloc_component.topo_file);
 
     (void)pmix_mca_base_component_var_register(component, "test_cpuset",
                                            "Cpuset for testing purposes",
-                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                           PMIX_MCA_BASE_VAR_FLAG_NONE,
                                            PMIX_INFO_LVL_9,
                                            PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                            &mca_ploc_hwloc_component.testcpuset);
