@@ -113,7 +113,6 @@ pmix_ploc_module_t pmix_ploc_hwloc_module = {
 static bool topo_in_shmem = false;
 
 #if HWLOC_API_VERSION >= 0x20000
-static bool shmem_available = false;
 static size_t shmemsize = 0;
 static size_t shmemaddr;
 static char *shmemfile = NULL;
@@ -178,8 +177,8 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     size_t n;
     pmix_kval_t *kv;
     bool share = false;
-#if HWLOC_API_VERSION >= 0x20000
     pmix_status_t rc;
+#if HWLOC_API_VERSION >= 0x20000
     char *tmp;
 #endif
 
@@ -321,8 +320,8 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     }
 
     /* try and find a hole */
-    if (PMIX_SUCCESS != (rc = find_hole(mca_ploc_hwloc_component.hole_kind,
-                                        &shmemaddr, shmemsize))) {
+    if (PMIX_SUCCESS != find_hole(mca_ploc_hwloc_component.hole_kind,
+                                        &shmemaddr, shmemsize)) {
         /* we couldn't find a hole, so don't use the shmem support */
         if (4 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
             FILE *file = fopen("/proc/self/maps", "r");
@@ -346,9 +345,9 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
      * will automatically get cleaned up */
     pmix_asprintf(&shmemfile, "%s/hwloc.sm", pmix_server_globals.tmpdir);
     /* let's make sure we have enough space for the backing file */
-    if (PMIX_SUCCESS != (rc = enough_space(shmemfile, shmemsize,
+    if (PMIX_SUCCESS != enough_space(shmemfile, shmemsize,
                                            &amount_space_avail,
-                                           &space_available))) {
+                                           &space_available)) {
         pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
                             "%s an error occurred while determining "
                             "whether or not %s could be created for topo shmem.",
@@ -383,8 +382,8 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     /* ensure nobody inherits this fd */
     pmix_fd_set_cloexec(shmemfd);
     /* populate the shmem segment with the topology */
-    if (0 != (rc = hwloc_shmem_topology_write(pmix_globals.topology.topology, shmemfd, 0,
-                                              (void*)shmemaddr, shmemsize, 0))) {
+    if (0 != hwloc_shmem_topology_write(pmix_globals.topology.topology, shmemfd, 0,
+                                              (void*)shmemaddr, shmemsize, 0)) {
         pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
                             "%s an error %d (%s) occurred while writing topology to %s",
                             PMIX_NAME_PRINT(&pmix_globals.myid), rc, strerror(errno), shmemfile);
@@ -396,7 +395,6 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
         return PMIX_SUCCESS;
     }
     /* record that we did this so we know to clean it up */
-    shmem_available = true;
 
     /* add the requisite key-values to the global data to be
      * give to each client */
