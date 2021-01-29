@@ -172,6 +172,7 @@ test/simple/simpcycle
 test/simple/simpfabric
 test/simple/get_put_example
 test/simple/simpvni
+test/simple/hybrid
 
 test/sshot/daemon
 test/sshot/generate
