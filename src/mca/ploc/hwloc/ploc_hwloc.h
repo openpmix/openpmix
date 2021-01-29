@@ -63,7 +63,7 @@ typedef enum {
 
 typedef struct {
     pmix_ploc_base_component_t super;
-    int hole_kind;
+    pmix_hwloc_vm_hole_kind_t hole_kind;
     char *topo_file;
     char *testcpuset;
 } pmix_ploc_hwloc_component_t;

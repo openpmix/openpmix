@@ -59,14 +59,16 @@ static pmix_status_t syslog_register(void)
 
     (void) pmix_mca_base_component_var_register(&mca_plog_syslog_component.super.base, "console",
                                            "Write directly to system console if there is an error while sending to system logger",
-                                           PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
+                                           PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
+                                           PMIX_MCA_BASE_VAR_FLAG_NONE,
                                            PMIX_INFO_LVL_2,
                                            PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                            &mca_plog_syslog_component.console);
 
     (void) pmix_mca_base_component_var_register(&mca_plog_syslog_component.super.base, "level",
                                            "Default syslog logging level (err, alert, crit, emerg, warning, notice, info[default], or debug)",
-                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                           PMIX_MCA_BASE_VAR_FLAG_NONE,
                                            PMIX_INFO_LVL_2,
                                            PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                            &level);
@@ -94,7 +96,8 @@ static pmix_status_t syslog_register(void)
     (void) pmix_mca_base_component_var_register(&mca_plog_syslog_component.super.base, "facility",
                                            "Specify what type of program is logging the message "
                                            "(only \"auth\", \"priv\", \"daemon\", and \"user\" are supported)",
-                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                           PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                           PMIX_MCA_BASE_VAR_FLAG_NONE,
                                            PMIX_INFO_LVL_2,
                                            PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                            &facility);
