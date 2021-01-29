@@ -2,9 +2,6 @@
 
 #include <pmix.h>
 
-static volatile bool OMP_region_entered = false;
-static volatile bool MPI_region_entered = false;
-
 //<EG BEGIN ID="declare_model_cb">
 static void model_declared_cb(size_t evhdlr_registration_id,
                               pmix_status_t status, const pmix_proc_t *source,
@@ -44,7 +41,6 @@ static void parallel_region_OMP_cb(size_t evhdlr_registration_id,
     /* tell the event handler that we are only a partial step */
     cbfunc(PMIX_EVENT_PARTIAL_ACTION_TAKEN, NULL, 0, NULL, NULL, cbdata);
   }
-    OMP_region_entered = true;
 }
 //<EG END ID="omp_thread">
 
@@ -62,7 +58,6 @@ static void parallel_region_MPI_cb(size_t evhdlr_registration_id,
     /* do what we need MPI to do on entering a parallel region */
     cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
   }
-    MPI_region_entered = true;
 }
 //<EG END ID="mpi_thread">
 
@@ -109,10 +104,17 @@ static int mpi_handler() {
   return rc;
 }
 
+static void notify_complete(pmix_status_t status, void *cbdata)
+{
+    volatile bool *flag = (volatile bool*)cbdata;
+    *flag = true;
+}
+
 int main() {
   //<EG BEGIN ID="declare_model">
   pmix_proc_t myproc;
   pmix_info_t *info;
+    volatile bool wearedone = false;
 
   PMIX_INFO_CREATE(info, 4);
   PMIX_INFO_LOAD(&info[0], PMIX_PROGRAMMING_MODEL, "MPI", PMIX_STRING);
@@ -142,14 +144,17 @@ int main() {
   //<EG BEGIN ID="notify_event">
     PMIX_INFO_CREATE(info, 1);
     PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-  rc = PMIx_Notify_event(PMIX_OPENMP_PARALLEL_ENTERED, &myproc, PMIX_RANGE_PROC_LOCAL, info, 1, NULL, NULL);
+  rc = PMIx_Notify_event(PMIX_OPENMP_PARALLEL_ENTERED, &myproc, PMIX_RANGE_PROC_LOCAL, info, 1, notify_complete, (void*)&wearedone);
     if (rc < 0) {
         fprintf(stderr, "Failed to notify OpenMP region entered\n");
         goto fin;
     }
 
-    while (!OMP_region_entered || !MPI_region_entered) {
-        sleep(1);
+    while (!wearedone) {
+        struct timespec ts;
+        ts.tv_sec = 0;
+        ts.tv_nsec = 100000;
+        nanosleep(&ts, NULL);
     }
     fprintf(stderr, "Test completed\n");
 
