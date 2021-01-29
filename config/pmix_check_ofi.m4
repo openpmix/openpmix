@@ -112,7 +112,7 @@ AC_DEFUN([_PMIX_CHECK_OFI],[
            AS_IF([test ! -z "$with_ofi_libdir" && \
                          test "$with_ofi_libdir" != "yes"],
                  [pmix_ofi_libdir=$with_ofi_libdir],
-                 [if test ! -z "$with_ofi"; then
+                 [if test ! -z "$with_ofi" && test "$with_ofi" != "yes"; then
                      if test -d $with_ofi/lib; then
                          pmix_ofi_libdir=$with_ofi/lib
                      elif test -d $with_ofi/lib64; then
