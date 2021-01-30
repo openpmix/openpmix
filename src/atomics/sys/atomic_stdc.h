@@ -104,12 +104,12 @@ static inline void pmix_atomic_rmb (void)
 #define PMIX_ATOMIC_STDC_DEFINE_FETCH_OP(op, bits, type, operator)      \
     static inline type pmix_atomic_fetch_ ## op ##_## bits (pmix_atomic_ ## type *addr, type value) \
     {                                                                   \
-        return atomic_fetch_ ## op ## _explicit ((type *) addr, value, memory_order_relaxed); \
+        return atomic_fetch_ ## op ## _explicit (addr, value, memory_order_relaxed); \
     }                                                                   \
                                                                         \
     static inline type pmix_atomic_## op ## _fetch_ ## bits (pmix_atomic_ ## type *addr, type value) \
     {                                                                   \
-        return atomic_fetch_ ## op ## _explicit ((type *) addr, value, memory_order_relaxed) operator value; \
+        return atomic_fetch_ ## op ## _explicit (addr, value, memory_order_relaxed) operator value; \
     }
 
 PMIX_ATOMIC_STDC_DEFINE_FETCH_OP(add, 32, int32_t, +)
@@ -133,7 +133,7 @@ PMIX_ATOMIC_STDC_DEFINE_FETCH_OP(and, 64, int64_t, &)
 
 static inline int32_t pmix_atomic_fetch_min_32 (pmix_atomic_int32_t *addr, int32_t value)
 {
-    pmix_atomic_int32_t old = *addr;
+    int32_t old = *addr;
     do {
         if (old <= value) {
             break;
@@ -145,7 +145,7 @@ static inline int32_t pmix_atomic_fetch_min_32 (pmix_atomic_int32_t *addr, int32
 
 static inline int32_t pmix_atomic_fetch_max_32 (pmix_atomic_int32_t *addr, int32_t value)
 {
-    pmix_atomic_int32_t old = *addr;
+    int32_t old = *addr;
     do {
         if (old >= value) {
             break;
@@ -216,13 +216,13 @@ typedef atomic_flag pmix_atomic_lock_t;
 static inline void pmix_atomic_lock_init (pmix_atomic_lock_t *lock, bool value)
 {
     (void)value;
-    atomic_flag_clear ((volatile void *) lock);
+    atomic_flag_clear (lock);
 }
 
 
 static inline int pmix_atomic_trylock (pmix_atomic_lock_t *lock)
 {
-    return (int) atomic_flag_test_and_set ((volatile void *) lock);
+    return (int) atomic_flag_test_and_set (lock);
 }
 
 
@@ -235,7 +235,7 @@ static inline void pmix_atomic_lock(pmix_atomic_lock_t *lock)
 
 static inline void pmix_atomic_unlock (pmix_atomic_lock_t *lock)
 {
-    atomic_flag_clear ((volatile void *) lock);
+    atomic_flag_clear (lock);
 }
 
 
