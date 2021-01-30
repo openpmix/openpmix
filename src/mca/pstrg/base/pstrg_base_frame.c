@@ -5,6 +5,7 @@
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -87,7 +88,7 @@ static int pmix_pstrg_base_open(pmix_mca_base_open_flag_t flags)
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pstrg, "PMIx Storage Support",
                                 NULL,
                                 pmix_pstrg_base_open, pmix_pstrg_base_close,
-                                mca_pstrg_base_static_components, 0);
+                                mca_pstrg_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 PMIX_CLASS_INSTANCE(pmix_pstrg_active_module_t,
                     pmix_list_item_t,

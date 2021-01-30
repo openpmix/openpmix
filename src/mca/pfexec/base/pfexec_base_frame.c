@@ -16,6 +16,7 @@
  * Copyright (c) 2014-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -172,7 +173,7 @@ static int pmix_pfexec_register(pmix_mca_base_register_flag_t flags)
     pmix_pfexec_globals.timeout_before_sigkill = 1;
     pmix_mca_base_var_register("pmix", "pfexec", "base", "sigkill_timeout",
                                  "Time to wait for a process to die after issuing a kill signal to it",
-                               PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                               PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
                                PMIX_INFO_LVL_2,
                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &pmix_pfexec_globals.timeout_before_sigkill);
@@ -220,7 +221,7 @@ static int pmix_pfexec_base_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pfexec, "PMIx fork/exec Subsystem",
                                 pmix_pfexec_register, pmix_pfexec_base_open, pmix_pfexec_base_close,
-                                mca_pfexec_base_static_components, 0);
+                                mca_pfexec_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 
 /**** FRAMEWORK CLASS INSTANTIATIONS ****/

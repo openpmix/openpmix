@@ -15,6 +15,7 @@
  * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -72,4 +73,4 @@ static pmix_status_t pmix_psquash_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psquash, "PMIx Squash Operations",
                                 NULL, pmix_psquash_open, pmix_psquash_close,
-                                mca_psquash_base_static_components, 0);
+                                mca_psquash_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
