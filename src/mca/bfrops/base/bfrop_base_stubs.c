@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -114,6 +115,8 @@ static const char* basic_type_string(pmix_data_type_t type)
             return "PMIX_DATA_ARRAY";
         case PMIX_PROC_RANK:
             return "PMIX_PROC_RANK";
+        case PMIX_PROC_NSPACE:
+            return "PMIX_PROC_NSPACE";
         case PMIX_QUERY:
             return "PMIX_QUERY";
         case PMIX_COMPRESSED_STRING:
@@ -144,10 +147,13 @@ static const char* basic_type_string(pmix_data_type_t type)
             return "PMIX_TOPO";
         case PMIX_DEVTYPE:
             return "PMIX_DEVTYPE";
+         case PMIX_DATA_BUFFER:
+            return "PMIX_DATA_BUFFER";
         default:
             return "NOT INITIALIZED";
     }
 }
+
 PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type)
 {
     pmix_bfrops_base_active_module_t *active;
@@ -192,7 +198,6 @@ pmix_bfrops_module_t* pmix_bfrops_base_assign_module(const char *version)
     pmix_bfrops_module_t *mod;
     char **tmp=NULL;
     int i;
-
     if (!pmix_bfrops_globals.initialized) {
         return NULL;
     }

@@ -14,6 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,6 +32,8 @@
 #endif
 
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
+#include "src/util/printf.h"
 #include "src/mca/ploc/ploc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
@@ -2360,4 +2363,67 @@ pmix_status_t pmix_bfrops_base_print_locality(char **output, char *prefix,
     } else {
         return PMIX_SUCCESS;
     }
+}
+
+pmix_status_t pmix_bfrops_base_print_nspace(char **output, char *prefix,
+                                            pmix_nspace_t *src,
+                                            pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    if (PMIX_PROC_NSPACE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_PROC_NSPACE\tValue: %s",
+                   prefx, *src);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_dbuf(char **output, char *prefix,
+                                          pmix_data_buffer_t *src,
+                                          pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        pmix_asprintf(&prefx, " ");
+    }
+    else {
+        prefx = prefix;
+    }
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        pmix_asprintf(output, "%sData type: PMIX_DATA_BUFFER\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+    pmix_asprintf(output, "%sPMIX_DATA_BUFFER NumBytesUsed: %"PRIsize_t"", prefx, src->bytes_used);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
 }
