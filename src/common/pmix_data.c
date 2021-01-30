@@ -70,7 +70,6 @@
 
 static pmix_peer_t* find_peer(const pmix_proc_t *proc)
 {
-    pmix_status_t rc;
     pmix_peer_t *peer;
     pmix_proc_t wildcard;
     pmix_value_t *value;
@@ -100,7 +99,7 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
          * to retrieve it once */
         pmix_strncpy(wildcard.nspace, proc->nspace, PMIX_MAX_NSLEN);
         wildcard.rank = PMIX_RANK_WILDCARD;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&wildcard, PMIX_BFROPS_MODULE, NULL, 0, &value))) {
+        if (PMIX_SUCCESS != PMIx_Get(&wildcard, PMIX_BFROPS_MODULE, NULL, 0, &value)) {
             /* couldn't get it - nothing we can do */
             return NULL;
         }
@@ -141,7 +140,7 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
      * cached, so we will only have to retrieve it once */
     pmix_strncpy(wildcard.nspace, proc->nspace, PMIX_MAX_NSLEN);
     wildcard.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&wildcard, PMIX_BFROPS_MODULE, NULL, 0, &value))) {
+    if (PMIX_SUCCESS != PMIx_Get(&wildcard, PMIX_BFROPS_MODULE, NULL, 0, &value)) {
         /* couldn't get it - nothing we can do */
         return NULL;
     }

@@ -12,6 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -655,7 +656,6 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
             } else {
                 return PMIX_VALUE1_GREATER;
             }
-            break;
         case PMIX_STATUS:
             if (p->data.status == p1->data.status) {
                 rc = PMIX_EQUAL;
@@ -711,7 +711,6 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
             } else {
                 return PMIX_EQUAL;
             }
-            break;
         case PMIX_REGATTR:
             ret = memcmp(p->data.ptr, p1->data.ptr, sizeof(pmix_regattr_t));
             if (0 > ret) {
@@ -721,7 +720,6 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p,
             } else {
                 return PMIX_EQUAL;
             }
-            break;
 
         default:
             pmix_output(0, "COMPARE-PMIX-VALUE: UNSUPPORTED TYPE %d", (int)p->type);

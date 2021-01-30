@@ -18,6 +18,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -137,7 +138,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* initialize install dirs code */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework, 0))) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT))) {
         fprintf(stderr, "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
                 __FILE__, __LINE__, ret);
         return ret;
@@ -355,7 +356,7 @@ int pmix_rte_init(uint32_t type,
      * will be done by the individual init functions and at the
      * time of connection to that peer */
 
-    if( PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_psquash_base_framework, 0)) ) {
+    if( PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_psquash_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
         error = "pmix_psquash_base_open";
         goto return_error;
     }
@@ -372,7 +373,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the bfrops and select the active plugins */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_bfrops_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_bfrops_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
         error = "pmix_bfrops_base_open";
         goto return_error;
     }
@@ -382,7 +383,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open and select the compress framework */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pcompress_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pcompress_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
         error = "pmix_pcompress_base_open";
         goto return_error;
     }
@@ -392,7 +393,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the ptl and select the active plugins */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ptl_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ptl_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
         error = "pmix_ptl_base_open";
         goto return_error;
     }
@@ -411,7 +412,7 @@ int pmix_rte_init(uint32_t type,
         /* convert to an MCA param, but don't overwrite something already there */
         pmix_setenv("PMIX_MCA_psec", evar, false, &environ);
     }
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_psec_base_framework, 0))) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_psec_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT))) {
         error = "pmix_psec_base_open";
         goto return_error;
     }
@@ -421,7 +422,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the gds and select the active plugins */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_gds_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_gds_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
         error = "pmix_gds_base_open";
         goto return_error;
     }
@@ -431,13 +432,13 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* initialize pif framework */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pif_base_framework, 0))) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pif_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT))) {
         error = "pmix_pif_base_open";
         return ret;
     }
 
     /* open the preg and select the active plugins - must come after pcompress! */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_preg_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_preg_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
         error = "pmix_preg_base_open";
         goto return_error;
     }
@@ -447,7 +448,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the plog and select the active plugins */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_plog_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_plog_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
         error = "pmix_plog_base_open";
         goto return_error;
     }
@@ -457,7 +458,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the ploc and select the active plugins */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ploc_base_framework, 0)) ) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_ploc_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
         error = "pmix_ploc_base_open";
         goto return_error;
     }
@@ -467,7 +468,7 @@ int pmix_rte_init(uint32_t type,
     }
 
     /* open the pstrg framework */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT))) {
         error = "pmix_strg_base_open";
         goto return_error;
     }
