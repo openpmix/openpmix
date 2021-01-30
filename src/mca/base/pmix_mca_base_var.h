@@ -14,6 +14,7 @@
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -170,6 +171,7 @@ typedef enum {
 } pmix_mca_base_var_syn_flag_t;
 
 typedef enum {
+    PMIX_MCA_BASE_VAR_FLAG_NONE         = 0x0000,
     /** Variable is internal (hidden from *_info/MPIT) */
     PMIX_MCA_BASE_VAR_FLAG_INTERNAL     = 0x0001,
     /** Variable will always be the default value. Implies

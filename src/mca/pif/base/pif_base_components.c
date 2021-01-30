@@ -3,6 +3,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -36,7 +37,7 @@ static bool frameopen = false;
 PMIX_CLASS_INSTANCE(pmix_pif_t, pmix_list_item_t, pmix_pif_construct, NULL);
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pif, NULL, pmix_pif_base_register, pmix_pif_base_open, pmix_pif_base_close,
-                                mca_pif_base_static_components, 0);
+                                mca_pif_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 static int pmix_pif_base_register (pmix_mca_base_register_flag_t flags)
 {

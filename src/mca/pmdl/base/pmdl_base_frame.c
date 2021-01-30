@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -92,7 +93,7 @@ static pmix_status_t pmix_pmdl_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pmdl, "PMIx Network Operations",
                                 NULL, pmix_pmdl_open, pmix_pmdl_close,
-                                mca_pmdl_base_static_components, 0);
+                                mca_pmdl_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 PMIX_CLASS_INSTANCE(pmix_pmdl_base_active_module_t,
                     pmix_list_item_t,
