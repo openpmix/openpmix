@@ -158,8 +158,8 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
 #endif
     socklen_t crlen = sizeof (ucred);
 #endif
-    uid_t euid = (uid_t) -1;
-    gid_t egid = (gid_t) -1;
+    uid_t euid = -1;
+    gid_t egid = -1;
     char *ptr;
     size_t ln;
     bool takeus;

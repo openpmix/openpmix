@@ -170,7 +170,6 @@ typedef enum {
 } pmix_mca_base_var_syn_flag_t;
 
 typedef enum {
-    PMIX_MCA_BASE_VAR_FLAG_NONE         = 0x0000,
     /** Variable is internal (hidden from *_info/MPIT) */
     PMIX_MCA_BASE_VAR_FLAG_INTERNAL     = 0x0001,
     /** Variable will always be the default value. Implies
