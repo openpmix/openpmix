@@ -3,6 +3,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -158,8 +159,8 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
 #endif
     socklen_t crlen = sizeof (ucred);
 #endif
-    uid_t euid = -1;
-    gid_t egid = -1;
+    uid_t euid = (uid_t) -1;
+    gid_t egid = (gid_t) -1;
     char *ptr;
     size_t ln;
     bool takeus;

@@ -16,6 +16,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -281,14 +282,14 @@ int pmix_mca_base_var_init(void)
         /* register the envar-forwarding params */
         (void)pmix_mca_base_var_register ("pmix", "mca", "base", "env_list",
                                      "Set SHELL env variables",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_3,
-                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_env_list);
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+                                     PMIX_INFO_LVL_3, PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_env_list);
 
         pmix_mca_base_env_list_sep = PMIX_MCA_BASE_ENV_LIST_SEP_DEFAULT;
         (void)pmix_mca_base_var_register ("pmix", "mca", "base", "env_list_delimiter",
                                      "Set SHELL env variables delimiter. Default: semicolon ';'",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_3,
-                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_env_list_sep);
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+                                     PMIX_INFO_LVL_3, PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_env_list_sep);
 
         /* Set OMPI_MCA_pmix_mca_base_env_list variable, it might not be set before
          * if mca variable was taken from amca conf file. Need to set it
@@ -456,8 +457,8 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     tmp = pmix_mca_base_var_files;
     ret = pmix_mca_base_var_register ("pmix", "mca", "base", "param_files", "Path for MCA "
                                  "configuration files containing variable values",
-                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2,
-                                 PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_var_files);
+                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+                                 PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_var_files);
     free (tmp);
     if (PMIX_SUCCESS != ret) {
         return ret;
@@ -494,7 +495,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     pmix_mca_base_var_suppress_override_warning = false;
     ret = pmix_mca_base_var_register ("pmix", "mca", "base", "suppress_override_warning",
                                  "Suppress warnings when attempting to set an overridden value (default: false)",
-                                 PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0, PMIX_INFO_LVL_2,
+                                 PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
                                  PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &pmix_mca_base_var_suppress_override_warning);
     if (0 > ret) {
         return ret;
@@ -507,7 +508,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     pmix_mca_base_var_file_prefix = NULL;
     ret = pmix_mca_base_var_register ("pmix", "mca", "base", "param_file_prefix",
                                  "Aggregate MCA parameter file sets",
-                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_3,
+                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
                                  PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_var_file_prefix);
     if (0 > ret) {
         return ret;
@@ -516,7 +517,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     pmix_mca_base_envar_file_prefix = NULL;
     ret = pmix_mca_base_var_register ("pmix", "mca", "base", "envar_file_prefix",
                                  "Aggregate MCA parameter file set for env variables",
-                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_3,
+                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
                                  PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_envar_file_prefix);
     if (0 > ret) {
         return ret;
@@ -531,7 +532,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     tmp = pmix_mca_base_param_file_path;
     ret = pmix_mca_base_var_register ("pmix", "mca", "base", "param_file_path",
                                  "Aggregate MCA parameter Search path",
-                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_3,
+                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
                                  PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_param_file_path);
     free (tmp);
     if (0 > ret) {
@@ -541,7 +542,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     force_agg_path = NULL;
     ret = pmix_mca_base_var_register ("pmix", "mca", "base", "param_file_path_force",
                                  "Forced Aggregate MCA parameter Search path",
-                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_3,
+                                 PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
                                  PMIX_MCA_BASE_VAR_SCOPE_READONLY, &force_agg_path);
     if (0 > ret) {
         return ret;

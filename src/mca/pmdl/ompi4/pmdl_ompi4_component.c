@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -66,7 +67,8 @@ static pmix_status_t component_register(void)
     mca_pmdl_ompi4_component.incparms = "OMPI_*";
     (void)pmix_mca_base_component_var_register(component, "include_envars",
                                                "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                               PMIX_MCA_BASE_VAR_FLAG_NONE,
                                                PMIX_INFO_LVL_2,
                                                PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                                &mca_pmdl_ompi4_component.incparms);
@@ -77,7 +79,8 @@ static pmix_status_t component_register(void)
     mca_pmdl_ompi4_component.excparms = NULL;
     (void)pmix_mca_base_component_var_register(component, "exclude_envars",
                                                "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                               PMIX_MCA_BASE_VAR_FLAG_NONE,
                                                PMIX_INFO_LVL_2,
                                                PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                                &mca_pmdl_ompi4_component.excparms);
