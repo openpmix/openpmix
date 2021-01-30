@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -94,6 +95,6 @@ pmix_status_t component_close(void)
 static pmix_bfrops_module_t* assign_module(void)
 {
     pmix_output_verbose(10, pmix_bfrops_base_framework.framework_output,
-                        "bfrops:pmix4x assigning module");
+                        "bfrops:pmix4 assigning module");
     return &pmix_bfrops_pmix4_module;
 }

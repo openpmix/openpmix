@@ -15,6 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -702,6 +703,20 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes,
                 return PMIX_ERR_NOMEM;
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.endpoint, &m, PMIX_ENDPOINT, regtypes);
+            return ret;
+        case PMIX_PROC_NSPACE:
+            PMIX_PROC_CREATE(val->data.proc, 1);
+            if (NULL == val->data.proc) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &val->data.proc->nspace, &m, PMIX_PROC_NSPACE, regtypes);
+            return ret;
+        case PMIX_DATA_BUFFER:
+            PMIX_DATA_BUFFER_CREATE(val->data.ptr);
+            if (NULL == val->data.ptr) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.ptr, &m, PMIX_DATA_BUFFER, regtypes);
             return ret;
         default:
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &val->data, &m, val->type, regtypes);
@@ -1918,4 +1933,71 @@ pmix_status_t pmix_bfrops_base_unpack_locality(pmix_pointer_array_t *regtypes,
     PMIX_BFROPS_UNPACK_TYPE(ret, buffer,dest, num_vals, PMIX_UINT16, regtypes);
 
     return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_nspace(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer, void *dest,
+                                             int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_nspace_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+    char *p;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d nspace", *num_vals);
+
+    if (PMIX_PROC_NSPACE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    ptr = (pmix_nspace_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        m = 1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &p, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        PMIX_LOAD_NSPACE(ptr[i], p);
+        free(p);
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_dbuf(pmix_pointer_array_t *regtypes,
+                                           pmix_buffer_t *buffer, void *dest,
+                                           int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_data_buffer_t *ptr = (pmix_data_buffer_t*)dest;
+    int32_t i, m, n;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_DATA_BUFFER != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    n = *num_vals;
+    for (i=0; i < n; ++i) {
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].bytes_used, &m, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].bytes_used) {
+            ptr[i].base_ptr = malloc(ptr[i].bytes_used);
+            m = ptr[i].bytes_used;
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].base_ptr, &m, PMIX_BYTE, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
 }

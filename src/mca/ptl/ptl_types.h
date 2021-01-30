@@ -13,6 +13,7 @@
  * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -173,6 +174,8 @@ typedef struct {
 #define PMIX_PEER_IS_V20(p)            ((p)->proc_type.major == 2 && (p)->proc_type.minor == 0)
 #define PMIX_PEER_IS_V21(p)            ((p)->proc_type.major == 2 && (p)->proc_type.minor == 1)
 #define PMIX_PEER_IS_V3(p)             ((p)->proc_type.major == 3)
+#define PMIX_PEER_IS_V40(p)            ((p)->proc_type.major == 4 && (p)->proc_type.minor == 0)
+#define PMIX_PEER_IS_V41(p)            ((p)->proc_type.major == 4 && (p)->proc_type.minor == 1)
 
 
 #define PMIX_PEER_TRIPLET(p, a, b, c)               \
