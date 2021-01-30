@@ -382,8 +382,9 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     /* ensure nobody inherits this fd */
     pmix_fd_set_cloexec(shmemfd);
     /* populate the shmem segment with the topology */
-    if (0 != hwloc_shmem_topology_write(pmix_globals.topology.topology, shmemfd, 0,
-                                              (void*)shmemaddr, shmemsize, 0)) {
+    rc = hwloc_shmem_topology_write(pmix_globals.topology.topology, shmemfd, 0,
+                                    (void*)shmemaddr, shmemsize, 0);
+    if (0 != rc) {
         pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
                             "%s an error %d (%s) occurred while writing topology to %s",
                             PMIX_NAME_PRINT(&pmix_globals.myid), rc, strerror(errno), shmemfile);
