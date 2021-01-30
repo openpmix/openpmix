@@ -322,7 +322,7 @@ pmix_status_t pmix_server_initialize(void)
     gds_mode = pmix_gds_base_get_available_modules();
 
     /* open and initialize */
-    rc = pmix_mca_base_framework_open(&pmix_prm_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT);
+    rc = pmix_mca_base_framework_open(&pmix_prm_base_framework, 0);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -553,8 +553,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_client_globals.myserver->info = pmix_globals.mypeer->info;
 
     /* open the pmdl framework and select the active modules for this environment */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework,
-                                                    PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -564,8 +563,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
     /* open the psensor framework */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_psensor_base_framework,
-                                                    PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_psensor_base_framework, 0))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -575,8 +573,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
 
     /* open the ploc framework */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework,
-                                                    PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework, 0))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -622,8 +619,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     /* open the pnet framework and select the active modules for this environment
      * Do this after setting up the topology so the components can check to see
      * if they have any local assets */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
-                                                    PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }

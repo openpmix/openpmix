@@ -52,8 +52,7 @@ static int pmix_psensor_register(pmix_mca_base_register_flag_t flags)
     (void)flags;
     (void) pmix_mca_base_var_register("pmix", "psensor", "base", "use_separate_thread",
                                       "Use a separate thread for monitoring local procs",
-                                      PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE,
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, 0,
                                       PMIX_INFO_LVL_9,
                                       PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                       &use_separate_thread);
@@ -100,7 +99,7 @@ static int pmix_psensor_base_open(pmix_mca_base_open_flag_t flags)
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psensor, "PMIx Monitoring Sensors",
                                 pmix_psensor_register,
                                 pmix_psensor_base_open, pmix_psensor_base_close,
-                                mca_psensor_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+                                mca_psensor_base_static_components, 0);
 
 PMIX_CLASS_INSTANCE(pmix_psensor_active_module_t,
                     pmix_list_item_t,

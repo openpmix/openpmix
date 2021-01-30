@@ -63,7 +63,7 @@ int
 pmix_util_keyval_parse(const char *filename,
                        pmix_keyval_parse_fn_t callback)
 {
-    pmix_keyval_parse_state_t val;
+    int val;
     int ret = PMIX_SUCCESS;;
 
     keyval_filename = filename;
@@ -80,7 +80,7 @@ pmix_util_keyval_parse(const char *filename,
     pmix_util_keyval_yynewlines = 1;
     pmix_util_keyval_init_buffer(pmix_util_keyval_yyin);
     while (!pmix_util_keyval_parse_done) {
-        val = (pmix_keyval_parse_state_t) pmix_util_keyval_yylex();
+        val = pmix_util_keyval_yylex();
         switch (val) {
         case PMIX_UTIL_KEYVAL_PARSE_DONE:
             /* This will also set pmix_util_keyval_parse_done to true, so just
@@ -118,7 +118,7 @@ cleanup:
 
 static int parse_line(void)
 {
-    pmix_keyval_parse_state_t val;
+    int val;
 
     pmix_util_keyval_parse_lineno = pmix_util_keyval_yylineno;
 

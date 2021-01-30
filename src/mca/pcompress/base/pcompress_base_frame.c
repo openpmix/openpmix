@@ -80,7 +80,7 @@ static int pmix_compress_base_register(pmix_mca_base_register_flag_t flags)
     pmix_compress_base.compress_limit = 4096;
     (void) pmix_mca_base_var_register("pmix", "compress", "base", "limit",
                                       "Threshold beyond which data will be compressed",
-                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, 0, PMIX_INFO_LVL_3,
                                       PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_compress_base.compress_limit);
 
     return PMIX_SUCCESS;
@@ -110,5 +110,5 @@ static int pmix_compress_base_close(void)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pcompress, "PCOMPRESS MCA",
                                 pmix_compress_base_register, pmix_compress_base_open,
-                                pmix_compress_base_close, mca_pcompress_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+                                pmix_compress_base_close, mca_pcompress_base_static_components, 0);
 
