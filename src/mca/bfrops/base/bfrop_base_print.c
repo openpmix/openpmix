@@ -14,6 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,6 +32,8 @@
 #endif
 
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
+#include "src/util/printf.h"
 #include "src/mca/ploc/ploc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
@@ -2360,4 +2363,209 @@ pmix_status_t pmix_bfrops_base_print_locality(char **output, char *prefix,
     } else {
         return PMIX_SUCCESS;
     }
+}
+
+pmix_status_t pmix_bfrops_base_print_nspace(char **output, char *prefix,
+                                            pmix_nspace_t *src,
+                                            pmix_data_type_t type)
+{
+    char *prefx;
+    int ret;
+
+    if (PMIX_PROC_NSPACE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_PROC_NSPACE\tValue: %s",
+                   prefx, *src);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_pstats(char **output, char *prefix,
+                                            pmix_proc_stats_t *src,
+                                            pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        pmix_asprintf(&prefx, " ");
+    } else {
+        prefx = prefix;
+    }
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        pmix_asprintf(output, "%sData type: PMIX_PROC_STATS\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+    pmix_asprintf(output, "%sPMIX_PROC_STATS SAMPLED AT: %ld.%06ld\n%snode: %s proc: %s"
+                  " pid: %d cmd: %s state: %c pri: %d #threads: %d Processor: %d\n"
+                  "%s\ttime: %ld.%06ld cpu: %5.2f  PSS: %8.2f  VMsize: %8.2f PeakVMSize: %8.2f RSS: %8.2f\n",
+                  prefx, (long)src->sample_time.tv_sec, (long)src->sample_time.tv_usec,
+                  prefx, src->node, PMIX_NAME_PRINT(&src->proc), src->pid, src->cmd,
+                  src->state[0], src->priority, src->num_threads, src->processor,
+                  prefx, (long)src->time.tv_sec, (long)src->time.tv_usec,
+                  src->percent_cpu, src->pss, src->vsize, src->peak_vsize, src->rss);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_print_dkstats(char **output, char *prefix,
+                                             pmix_disk_stats_t *src,
+                                             pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        pmix_asprintf(&prefx, " ");
+    } else {
+        prefx = prefix;
+    }
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        pmix_asprintf(output, "%sData type: PMIX_DISK_STATS\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+    pmix_asprintf(output, "%sPMIX_DISK_STATS Disk: %s\n"
+                          "%sNumReadsCompleted: %"PRIx64" NumReadsMerged: %"PRIx64" NumSectorsRead: %"PRIx64" MillisecReading: %"PRIx64"\n"
+                          "%sNumWritesCompleted: %"PRIx64" NumWritesMerged: %"PRIx64" NumSectorsWrote: %"PRIx64" MillisecWriting: %"PRIx64"\n"
+                          "%sNumIOsInProgress: %"PRIx64" MillisecondsIO: %"PRIx64" WeightedMillisecsIO: %"PRIx64"\n",
+                          prefx, src->disk,
+                          prefx, src->num_reads_completed, src->num_reads_merged, src->num_sectors_read, src->milliseconds_reading,
+                          prefx, src->num_writes_completed, src->num_writes_merged, src->num_sectors_written, src->milliseconds_writing,
+                          prefx, src->num_ios_in_progress, src->milliseconds_io, src->weighted_milliseconds_io);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_print_netstats(char **output, char *prefix,
+                                              pmix_net_stats_t *src,
+                                              pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        pmix_asprintf(&prefx, " ");
+    } else {
+        prefx = prefix;
+    }
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        pmix_asprintf(output, "%sData type: PMIX_NET_STATS\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+    pmix_asprintf(output, "%sPMIX_NET_STATS Interface: %s\n"
+                  "%sNumBytesRecvd: %"PRIx64" NumPacketsRecv: %"PRIx64" NumRecvErrors: %"PRIx64"\n"
+                  "%sNumBytesSent: %"PRIx64" NumPacketsSent: %"PRIx64" NumSendErrors: %"PRIx64"\n",
+                  prefx, src->net_interface,
+                  prefx, src->num_bytes_recvd, src->num_packets_recvd, src->num_recv_errs,
+                  prefx, src->num_bytes_sent, src->num_packets_sent, src->num_send_errs);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_print_ndstats(char **output, char *prefix,
+                                             pmix_node_stats_t *src,
+                                             pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        pmix_asprintf(&prefx, " ");
+    }
+    else {
+        prefx = prefix;
+    }
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        pmix_asprintf(output, "%sData type: PMIX_NODE_STATS\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+    pmix_asprintf(output, "%sPMIX_NODE_STATS SAMPLED AT: %ld.%06ld\tNode: %s\n%sTotal Mem: %5.2f "
+                  "Free Mem: %5.2f Buffers: %5.2f Cached: %5.2f\n"
+                  "%sSwapCached: %5.2f SwapTotal: %5.2f SwapFree: %5.2f Mapped: %5.2f\n"
+                  "%s\tla: %5.2f\tla5: %5.2f\tla15: %5.2f\n",
+                  prefx, (long)src->sample_time.tv_sec, (long)src->sample_time.tv_usec, src->node,
+                  prefx, src->total_mem, src->free_mem, src->buffers, src->cached,
+                  prefx, src->swap_cached, src->swap_total, src->swap_free, src->mapped,
+                  prefx, src->la, src->la5, src->la15);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
+}
+pmix_status_t pmix_bfrops_base_print_dbuf(char **output, char *prefix,
+                                          pmix_data_buffer_t *src,
+                                          pmix_data_type_t type)
+{
+    char *prefx;
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        pmix_asprintf(&prefx, " ");
+    }
+    else {
+        prefx = prefix;
+    }
+
+    /* if src is NULL, just print data type and return */
+    if (NULL == src) {
+        pmix_asprintf(output, "%sData type: PMIX_DATA_BUFFER\tValue: NULL pointer", prefx);
+        if (prefx != prefix) {
+            free(prefx);
+        }
+        return PMIX_SUCCESS;
+    }
+    pmix_asprintf(output, "%sPMIX_DATA_BUFFER NumBytesUsed: %"PRIsize_t"", prefx, src->bytes_used);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+
+    return PMIX_SUCCESS;
 }
