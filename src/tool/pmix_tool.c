@@ -793,8 +793,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* open the pmdl framework and select the active modules for this environment
      * as we might need them if we are asking a server to launch something for us */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework,
-                                                    PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -954,8 +953,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     /* if we are acting as a server, then start listening */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* setup the fork/exec framework */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework,
-                                                        PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework, 0)) ) {
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_pfexec_base_select()) ) {
@@ -963,8 +961,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
 
         /* open the ploc framework */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework,
-                                                        PMIX_MCA_BASE_OPEN_DEFAULT))) {
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework, 0))) {
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_ploc_base_select())) {
@@ -979,8 +976,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
 
         /* open the pnet framework and select the active modules for this environment */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
-                                                        PMIX_MCA_BASE_OPEN_DEFAULT))) {
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {

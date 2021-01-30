@@ -35,22 +35,6 @@
 
 #include <stdio.h>
 
-enum pmix_keyval_parse_state_t {
-    PMIX_UTIL_KEYVAL_PARSE_DONE,
-    PMIX_UTIL_KEYVAL_PARSE_ERROR,
-
-    PMIX_UTIL_KEYVAL_PARSE_NEWLINE,
-    PMIX_UTIL_KEYVAL_PARSE_EQUAL,
-    PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD,
-    PMIX_UTIL_KEYVAL_PARSE_VALUE,
-    PMIX_UTIL_KEYVAL_PARSE_MCAVAR,
-    PMIX_UTIL_KEYVAL_PARSE_ENVVAR,
-    PMIX_UTIL_KEYVAL_PARSE_ENVEQL,
-
-    PMIX_UTIL_KEYVAL_PARSE_MAX
-};
-typedef enum pmix_keyval_parse_state_t pmix_keyval_parse_state_t;
-
 int pmix_util_keyval_yylex(void);
 int pmix_util_keyval_init_buffer(FILE *file);
 int pmix_util_keyval_yylex_destroy(void);
@@ -70,5 +54,21 @@ extern int pmix_util_keyval_yylineno;
 #define YY_MAIN 0
 #define YY_NO_UNPUT 1
 #define YY_SKIP_YYWRAP 1
+
+enum pmix_keyval_parse_state_t {
+    PMIX_UTIL_KEYVAL_PARSE_DONE,
+    PMIX_UTIL_KEYVAL_PARSE_ERROR,
+
+    PMIX_UTIL_KEYVAL_PARSE_NEWLINE,
+    PMIX_UTIL_KEYVAL_PARSE_EQUAL,
+    PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD,
+    PMIX_UTIL_KEYVAL_PARSE_VALUE,
+    PMIX_UTIL_KEYVAL_PARSE_MCAVAR,
+    PMIX_UTIL_KEYVAL_PARSE_ENVVAR,
+    PMIX_UTIL_KEYVAL_PARSE_ENVEQL,
+
+    PMIX_UTIL_KEYVAL_PARSE_MAX
+};
+typedef enum pmix_keyval_parse_state_t pmix_keyval_parse_state_t;
 
 #endif
