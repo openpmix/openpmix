@@ -228,13 +228,21 @@ typedef atomic_flag pmix_atomic_lock_t;
 static inline void pmix_atomic_lock_init (pmix_atomic_lock_t *lock, bool value)
 {
     (void)value;
+#ifdef PMIX_HAVE_CLANG_BUILTIN_ATOMIC_C11_FUNC
+    atomic_flag_clear (lock);
+#else
     atomic_flag_clear ((volatile void *) lock);
+#endif
 }
 
 
 static inline int pmix_atomic_trylock (pmix_atomic_lock_t *lock)
 {
+#ifdef PMIX_HAVE_CLANG_BUILTIN_ATOMIC_C11_FUNC
+    return (int) atomic_flag_test_and_set (lock);
+#else
     return (int) atomic_flag_test_and_set ((volatile void *) lock);
+#endif
 }
 
 
@@ -247,7 +255,11 @@ static inline void pmix_atomic_lock(pmix_atomic_lock_t *lock)
 
 static inline void pmix_atomic_unlock (pmix_atomic_lock_t *lock)
 {
+#ifdef PMIX_HAVE_CLANG_BUILTIN_ATOMIC_C11_FUNC
+    atomic_flag_clear (lock);
+#else
     atomic_flag_clear ((volatile void *) lock);
+#endif
 }
 
 
