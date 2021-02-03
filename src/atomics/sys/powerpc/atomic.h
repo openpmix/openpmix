@@ -108,7 +108,7 @@ void pmix_atomic_isync(void)
  *********************************************************************/
 #if PMIX_GCC_INLINE_ASSEMBLY
 
-#ifdef __xlC__
+#if defined(__xlC__) || defined(__ibmxl__) || defined(__IBMC__) || defined(__IBMCPP__)
 /* work-around bizzare xlc bug in which it sign-extends
    a pointer to a 32-bit signed integer */
 #define PMIX_ASM_ADDR(a) ((uintptr_t)a)
