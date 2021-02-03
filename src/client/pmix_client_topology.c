@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,9 +24,18 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/mca/ploc/ploc.h"
 
+static void _loadtp(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+
+    cb->pstatus = pmix_ploc.load_topology(cb->topo);
+    PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo)
 {
     pmix_status_t rc;
+    pmix_cb_t cb;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -35,7 +45,15 @@ PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo)
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    rc = pmix_ploc.load_topology(topo);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.topo = topo;
+    PMIX_THREADSHIFT(&cb, _loadtp);
+
+    /* wait for the result */
+    PMIX_WAIT_THREAD(&cb.lock);
+    rc = cb.pstatus;
+    PMIX_DESTRUCT(&cb);
+
     return rc;
 }
 
