@@ -345,7 +345,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_rank_t rank = PMIX_RANK_INVALID;
     pmix_rank_info_t *rinfo;
     pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
-    pmix_topology_t *topo = NULL;
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd;
     pmix_cb_t cb;
@@ -407,21 +406,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_RANK)) {
                 rank = info[n].value.data.rank;
                 rank_given = true;
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY2)) {
-                if (NULL != topo && pmix_globals.external_topology) {
-                    /* must have come from PMIX_TOPOLOGY entry */
-                    free(pmix_globals.topology.source);
-                }
-                topo = (pmix_topology_t*)info[n].value.data.ptr;
-                pmix_globals.topology.source = strdup(topo->source);
-                pmix_globals.topology.topology = topo->topology;
-                pmix_globals.external_topology = true;
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY)) {
-                if (NULL == topo) {  // prefer PMIX_TOPOLOGY2
-                    pmix_globals.topology.source = strdup("hwloc");
-                    pmix_globals.topology.topology = info[n].value.data.ptr;
-                    pmix_globals.external_topology = true;
-                }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SHARE_TOPOLOGY)) {
                 share_topo = true;
             }
@@ -636,12 +620,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     ++pmix_globals.init_cntr;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
-
-    /* save the topology internally in case our host wants it */
-    PMIX_LOAD_PROCID(&myproc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
-    value.type = PMIX_TOPO;
-    value.data.topo = &pmix_globals.topology;
-    rc = PMIx_Store_internal(&myproc, PMIX_TOPOLOGY2, &value);
 
     /* register a handler to catch/aggregate PMIX_EVENT_WAITING_FOR_NOTIFY
      * events prior to passing them to our host */

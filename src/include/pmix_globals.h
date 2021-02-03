@@ -457,6 +457,7 @@ typedef struct {
     bool copy;
     bool timer_running;
     pmix_fabric_t *fabric;
+    pmix_topology_t *topo;
 } pmix_cb_t;
 PMIX_CLASS_DECLARATION(pmix_cb_t);
 

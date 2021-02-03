@@ -118,6 +118,7 @@ int main(int argc, char **argv)
     char **peers;
     bool all_local, local;
     pmix_rank_t *locals = NULL;
+    pmix_topology_t topo;
 
     if (1 < argc) {
         if (0 == strcmp("-abort", argv[1])) {
@@ -181,6 +182,17 @@ int main(int argc, char **argv)
         pmix_output(0, "CREDENTIAL: %s", val->data.string);
         PMIX_VALUE_RELEASE(val);
     }
+
+    /* get our topology */
+    PMIX_TOPOLOGY_CONSTRUCT(&topo);
+    rc = PMIx_Load_topology(&topo);
+    if (PMIX_SUCCESS != rc) {
+        pmix_output(0, "Client ns %s rank %d: Failed to load topology: %s",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        exit(rc);
+    }
+    pmix_output(0, "Client ns %s rank %d: Topology source: %s",
+                myproc.nspace, myproc.rank, topo.source);
 
     /* register a handler specifically for when models declare */
     ninfo = 1;
