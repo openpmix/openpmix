@@ -172,7 +172,7 @@ AC_DEFUN([_PMIX_CHECK_COMPILER_VENDOR], [
 
     # IBM XL C/C++
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
-          [PMIX_IF_IFELSE([defined(__xlC__) || defined(__IBMC__) || defined(__IBMCPP__)],
+          [PMIX_IF_IFELSE([defined(__xlC__) || defined(__IBMC__) || defined(__IBMCPP__) || defined(__ibmxl__)],
                [pmix_check_compiler_vendor_result="ibm"],
                [PMIX_IF_IFELSE([defined(_AIX) && !defined(__GNUC__)],
                     [pmix_check_compiler_vendor_result="ibm"])])])
