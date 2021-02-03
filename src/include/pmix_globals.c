@@ -332,6 +332,7 @@ static void cbcon(pmix_cb_t *p)
     p->copy = false;
     p->timer_running = false;
     p->fabric = NULL;
+    p->topo = NULL;
 }
 static void cbdes(pmix_cb_t *p)
 {
