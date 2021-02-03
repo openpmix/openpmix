@@ -50,47 +50,54 @@ static void msgcbfunc(struct pmix_peer_t *peer,
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
     int32_t m;
     pmix_status_t rc, status;
-    size_t refid = 0;
+    size_t refid = SIZE_MAX;
+    size_t localid = SIZE_MAX;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
     /* unpack the return status */
     m=1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &status, &m, PMIX_STATUS);
-    if (NULL != cd->iofreq && PMIX_SUCCESS == rc && PMIX_SUCCESS == status) {
-        /* get the reference ID */
-        m=1;
-        PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &m, PMIX_SIZE);
-        /* store the remote reference id */
-        cd->iofreq->remote_id = refid;
-        if (NULL != cd->cbfunc.hdlrregcbfn) {
-            cd->cbfunc.hdlrregcbfn(PMIX_SUCCESS, cd->iofreq->local_id, cd->cbdata);
-        }
-    } else if (PMIX_SUCCESS != rc) {
+    if (PMIX_SUCCESS != rc) {
         status = rc;
+    }
+    if (NULL != cd->iofreq) {
+        pmix_output_verbose(2, pmix_client_globals.iof_output,
+                            "pmix:iof_register returned status %s",
+                            PMIx_Error_string(status));
+        /* this was a registration request */
+        if (PMIX_SUCCESS == status) {
+            /* get the reference ID */
+            m=1;
+            PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &m, PMIX_SIZE);
+            if (PMIX_SUCCESS != rc) {
+                status = rc;
+            } else {
+                /* store the remote reference id */
+                cd->iofreq->remote_id = refid;
+                localid = cd->iofreq->local_id;
+            }
+        }
+        if (NULL == cd->cbfunc.hdlrregcbfn) {
+            cd->status = status;
+            cd->iofreq->remote_id = refid;
+            PMIX_WAKEUP_THREAD(&cd->lock);
+        } else {
+            cd->cbfunc.hdlrregcbfn(status, localid, cd->cbdata);
+        }
+        return;
     }
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
-                        "pmix:iof_register/deregister returned status %s", PMIx_Error_string(status));
+                        "pmix:iof_deregister returned status %s",
+                        PMIx_Error_string(status));
 
-    if (NULL == cd->iofreq) {
-        /* this was a deregistration request */
-        if (NULL == cd->cbfunc.opcbfn) {
-            cd->status = status;
-            PMIX_WAKEUP_THREAD(&cd->lock);
-        } else {
-            cd->cbfunc.opcbfn(status, cd->cbdata);
-        }
-    } else if (PMIX_SUCCESS != status) {
-        pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->iofreq->local_id, NULL);
-        PMIX_RELEASE(cd->iofreq);
-    } else if (NULL == cd->cbfunc.hdlrregcbfn) {
+    /* this was a deregistration request */
+    if (NULL == cd->cbfunc.opcbfn) {
         cd->status = status;
-        cd->iofreq->remote_id = refid;
         PMIX_WAKEUP_THREAD(&cd->lock);
     } else {
-        cd->iofreq->remote_id = refid;
-        cd->cbfunc.hdlrregcbfn(PMIX_SUCCESS, cd->iofreq->local_id, cd->cbdata);
+        cd->cbfunc.opcbfn(status, cd->cbdata);
     }
 
     PMIX_RELEASE(cd);
