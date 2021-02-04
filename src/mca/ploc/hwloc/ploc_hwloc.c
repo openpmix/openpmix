@@ -571,7 +571,11 @@ tryxml:
             hwloc_topology_destroy(pmix_globals.topology.topology);
             return PMIX_ERR_NOT_SUPPORTED;
         }
+#ifdef HWLOC_VERSION
         pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
+#else
+        pmix_globals.topology.source = strdup("hwloc");
+#endif
         pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
                             "%s:%s discovery complete - source %s",
                             __FILE__, __func__, pmix_globals.topology.source);
