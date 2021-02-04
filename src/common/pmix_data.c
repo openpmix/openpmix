@@ -355,7 +355,45 @@ pmix_status_t PMIx_Data_load(pmix_data_buffer_t *buffer,
     /* set counts for size and space */
     buffer->bytes_allocated = buffer->bytes_used = payload->size;
 
+    /* protect the payload */
+    payload->bytes = NULL;
+    payload->size = 0;
+
     /* All done */
 
     return PMIX_SUCCESS;
+}
+
+pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
+                              const pmix_byte_object_t *payload)
+{
+    pmix_data_buffer_t src;
+    pmix_status_t rc;
+
+    /* check to see if the buffer has been initialized */
+    if (NULL == buffer) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* check if buffer already has payload - free it if so */
+    PMIX_DATA_BUFFER_DESTRUCT(buffer);
+    PMIX_DATA_BUFFER_CONSTRUCT(buffer);
+
+    /* if it's a NULL payload, we are done */
+    if (NULL == payload) {
+        return PMIX_SUCCESS;
+    }
+
+    /* setup the source */
+    src.base_ptr = payload->bytes;
+    src.pack_ptr = ((char*)src.base_ptr) + payload->size;
+    src.unpack_ptr = src.base_ptr;
+    src.bytes_allocated =src.bytes_used = payload->size;
+
+    /* execute a copy operation */
+    rc = PMIx_Data_copy_payload(buffer, &src);
+    /* do NOT destruct the source as that would release
+     * data in the payload */
+
+    return rc;
 }
