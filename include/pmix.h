@@ -1422,6 +1422,9 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unload(pmix_data_buffer_t *buffer,
  * payload - the load function cannot convert to network byte order
  * any data contained in the provided payload.
  *
+ * @note The "payload" object will be empty upon completion of
+ * this operation.
+ *
  * @param buffer A pointer to the buffer into which the payload is to
  * be loaded.
  *
@@ -1444,6 +1447,45 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unload(pmix_data_buffer_t *buffer,
  */
 PMIX_EXPORT pmix_status_t PMIx_Data_load(pmix_data_buffer_t *buffer,
                                          pmix_byte_object_t *payload);
+
+/**
+* Embed a data payload into a buffer.
+*
+* The embed function is identical in operation to PMIx_Data_load
+* except that it does NOT "clear" the payload upon completion.
+*
+* @note The buffer must be allocated in advance - failing to do so
+* will cause the function to return an error code.
+*
+* @note The caller is responsible for pre-packing the provided
+* payload - the load function cannot convert to network byte order
+* any data contained in the provided payload.
+*
+* @note The "payload" object is unaltered by this operation.
+*
+* @param buffer A pointer to the buffer into which the payload is to
+* be loaded.
+*
+* @param payload A pointer to the pmix_byte_object_t .containing the
+* desired payload
+*
+* @retval PMIX_SUCCESS The request was successfully completed
+*
+* @retval PMIX_ERROR(s) An appropriate error code indicating the
+* problem will be returned. This should be handled appropriately by
+* the caller.
+*
+* @code
+* pmix_data_buffer_t *buffer;
+* pmix_byte_object_t payload;
+*
+* PMIX_DATA_BUFFER_CREATE(buffer);
+* status_code = PMIx_Data_embed(buffer, &payload);
+* @endcode
+*/
+PMIX_EXPORT pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
+                                          const pmix_byte_object_t *payload);
+
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
