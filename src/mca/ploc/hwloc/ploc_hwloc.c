@@ -410,7 +410,11 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
         pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
                             "%s:%s shmem adopted", __FILE__, __func__);
         /* got it - we are done */
+#ifdef HWLOC_VERSION
         pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
+#else
+        pmix_globals.topology.source = strdup("hwloc");
+#endif
         /* record locally in case someone does a PMIx_Get to retrieve it */
         PMIX_KVAL_NEW(kv, PMIX_TOPOLOGY2);
         kv->value->type = PMIX_TOPO;
