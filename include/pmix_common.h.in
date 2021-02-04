@@ -333,7 +333,7 @@ typedef uint32_t pmix_rank_t;
 
 
 /* topology info */
-#define PMIX_TOPOLOGY2                      "pmix.topo2"            // (pmix_topology_t) pointer to a PMIx topology object
+#define PMIX_TOPOLOGY2                      "pmix.topo2"            // (pmix_topology_t*) pointer to a PMIx topology object
 #define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
 
 
@@ -1324,11 +1324,10 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_LOCTYPE                    58
 #define PMIX_COMPRESSED_BYTE_OBJECT     59
 #define PMIX_PROC_NSPACE                60
-#define PMIX_PROC_NAME                  61
-#define PMIX_PROC_STATS                 62
-#define PMIX_DISK_STATS                 63
-#define PMIX_NET_STATS                  64
-#define PMIX_NODE_STATS                 65
+#define PMIX_PROC_STATS                 61
+#define PMIX_DISK_STATS                 62
+#define PMIX_NET_STATS                  63
+#define PMIX_NODE_STATS                 64
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1764,7 +1763,7 @@ typedef struct pmix_byte_object {
 
 #define PMIX_BYTE_OBJECT_LOAD(b, d, s)      \
     do {                                    \
-        (b)->bytes = (d);                   \
+        (b)->bytes = (char*)(d);            \
         (d) = NULL;                         \
         (b)->size = (s);                    \
         (s) = 0;                            \
@@ -2401,6 +2400,9 @@ typedef struct pmix_value {
             (r) = pmix_value_xfer((v), (s));                    \
         }                                                       \
     } while(0)
+
+#define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
+    (r) = pmix_value_xfer((v), (s))
 
 #define PMIX_VALUE_GET_NUMBER(s, m, n, t)               \
     do {                                                \
