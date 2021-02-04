@@ -474,6 +474,7 @@ typedef struct {
     pmix_get_logic_t *lg;
     bool timer_running;
     pmix_fabric_t *fabric;
+    pmix_topology_t *topo;
 } pmix_cb_t;
 PMIX_CLASS_DECLARATION(pmix_cb_t);
 
