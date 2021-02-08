@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -647,6 +648,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
 
     peer = PMIX_NEW(pmix_peer_t);
     if (NULL == peer) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return PMIX_ERR_NOMEM;
     }
     pnd->peer = peer;
@@ -677,6 +679,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
              * is allowed */
             nptr = PMIX_NEW(pmix_namespace_t);
             if (NULL == nptr) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 return PMIX_ERR_NOMEM;
             }
             nptr->nspace = strdup(pnd->proc.nspace);
@@ -711,6 +714,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         if (NULL == nptr) {
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             PMIX_RELEASE(peer);
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             return PMIX_ERR_NOMEM;
         }
     }
@@ -720,7 +724,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
     if (NULL == peer->nptr->compat.bfrops) {
         PMIX_RELEASE(peer);
-        return PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_AVAILABLE);
+        return PMIX_ERR_NOT_AVAILABLE;
     }
     /* set the buffer type */
     peer->nptr->compat.type = pnd->buffer_type;
@@ -733,6 +738,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         foo = 1;
         PMIX_BFROPS_UNPACK(rc, peer, &buf, &pnd->ninfo, &foo, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(peer);
             PMIX_DESTRUCT(&buf);
             return rc;
@@ -747,6 +753,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         PMIX_INFO_CREATE(pnd->info, pnd->ninfo);
         PMIX_BFROPS_UNPACK(rc, peer, &buf, pnd->info, &foo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(peer);
             PMIX_DESTRUCT(&buf);
             return rc;

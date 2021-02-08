@@ -70,6 +70,12 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
     pmix_geometry_t *geometry;
     pmix_endpoint_t *endpoint;
     pmix_device_distance_t *devdist;
+    pmix_data_buffer_t *dbuf;
+    pmix_nspace_t *nspace;
+    pmix_proc_stats_t *pstats;
+    pmix_disk_stats_t *dkstats;
+    pmix_net_stats_t *netstats;
+    pmix_node_stats_t *ndstats;
 
     v->type = type;
     if (NULL == data) {
@@ -144,6 +150,11 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
             break;
         case PMIX_PROC_RANK:
             memcpy(&(v->data.rank), data, sizeof(pmix_rank_t));
+            break;
+        case PMIX_PROC_NSPACE:
+            nspace = (pmix_nspace_t*)data;
+            v->data.nspace = (pmix_nspace_t*)malloc(sizeof(pmix_nspace_t));
+            PMIX_LOAD_NSPACE(*(v->data.nspace), *nspace);
             break;
         case PMIX_PROC:
             PMIX_PROC_CREATE(v->data.proc, 1);
@@ -289,6 +300,43 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
                 PMIX_ERROR_LOG(rc);
             }
             break;
+        case PMIX_DATA_BUFFER:
+            dbuf = (pmix_data_buffer_t*)data;
+            PMIX_DATA_BUFFER_CREATE(v->data.dbuf);
+            rc = PMIx_Data_copy_payload(v->data.dbuf, dbuf);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        case PMIX_PROC_STATS:
+            pstats = (pmix_proc_stats_t*)data;
+            rc = pmix_bfrops_base_copy_pstats(&v->data.pstats, pstats, PMIX_PROC_STATS);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        case PMIX_DISK_STATS:
+            dkstats = (pmix_disk_stats_t*)data;
+            rc = pmix_bfrops_base_copy_dkstats(&v->data.dkstats, dkstats, PMIX_DISK_STATS);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        case PMIX_NET_STATS:
+            netstats = (pmix_net_stats_t*)data;
+            rc = pmix_bfrops_base_copy_netstats(&v->data.netstats, netstats, PMIX_NET_STATS);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        case PMIX_NODE_STATS:
+            ndstats = (pmix_node_stats_t*)data;
+            rc = pmix_bfrops_base_copy_ndstats(&v->data.ndstats, ndstats, PMIX_NODE_STATS);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+
         default:
             /* silence warnings */
             break;
@@ -400,6 +448,12 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
         case PMIX_PROC_RANK:
             memcpy(*data, &(kv->data.rank), sizeof(pmix_rank_t));
             *sz = sizeof(pmix_rank_t);
+            break;
+        case PMIX_PROC_NSPACE:
+            rc = pmix_bfrops_base_copy_nspace((pmix_nspace_t**)data, kv->data.nspace, PMIX_PROC_NSPACE);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_nspace_t);
+            }
             break;
         case PMIX_PROC:
             rc = pmix_bfrops_base_copy_proc((pmix_proc_t**)data, kv->data.proc, PMIX_PROC);
@@ -554,6 +608,36 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv,
             } else {
                 *data = NULL;
                 *sz = 0;
+            }
+            break;
+        case PMIX_DATA_BUFFER:
+            rc = pmix_bfrops_base_copy_dbuf((pmix_data_buffer_t**)data, kv->data.dbuf, PMIX_DATA_BUFFER);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_data_buffer_t);
+            }
+            break;
+        case PMIX_PROC_STATS:
+            rc = pmix_bfrops_base_copy_pstats((pmix_proc_stats_t**)data, kv->data.pstats, PMIX_PROC_STATS);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_proc_stats_t);
+            }
+            break;
+        case PMIX_DISK_STATS:
+            rc = pmix_bfrops_base_copy_dkstats((pmix_disk_stats_t**)data, kv->data.dkstats, PMIX_DISK_STATS);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_disk_stats_t);
+            }
+            break;
+        case PMIX_NET_STATS:
+            rc = pmix_bfrops_base_copy_netstats((pmix_net_stats_t**)data, kv->data.netstats, PMIX_NET_STATS);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_net_stats_t);
+            }
+            break;
+        case PMIX_NODE_STATS:
+            rc = pmix_bfrops_base_copy_ndstats((pmix_node_stats_t**)data, kv->data.ndstats, PMIX_NODE_STATS);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_node_stats_t);
             }
             break;
         default:
@@ -813,6 +897,8 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
     case PMIX_PROC_RANK:
         memcpy(&p->data.rank, &src->data.rank, sizeof(pmix_rank_t));
         break;
+    case PMIX_PROC_NSPACE:
+        return pmix_bfrops_base_copy_nspace(&p->data.nspace, src->data.nspace, PMIX_PROC_NSPACE);
     case PMIX_PROC:
         PMIX_PROC_CREATE(p->data.proc, 1);
         if (NULL == p->data.proc) {
@@ -904,6 +990,16 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p,
         return pmix_bfrops_base_copy_endpoint(&p->data.endpoint, src->data.endpoint, PMIX_ENDPOINT);
     case PMIX_REGATTR:
         return pmix_bfrops_base_copy_regattr((pmix_regattr_t**)&p->data.ptr, src->data.ptr, PMIX_REGATTR);
+    case PMIX_DATA_BUFFER:
+        return pmix_bfrops_base_copy_dbuf(&p->data.dbuf, src->data.dbuf, PMIX_DATA_BUFFER);
+    case PMIX_PROC_STATS:
+        return pmix_bfrops_base_copy_pstats(&p->data.pstats, src->data.pstats, PMIX_PROC_STATS);
+    case PMIX_DISK_STATS:
+        return pmix_bfrops_base_copy_dkstats(&p->data.dkstats, src->data.dkstats, PMIX_DISK_STATS);
+    case PMIX_NET_STATS:
+        return pmix_bfrops_base_copy_netstats(&p->data.netstats, src->data.netstats, PMIX_NET_STATS);
+    case PMIX_NODE_STATS:
+        return pmix_bfrops_base_copy_ndstats(&p->data.ndstats, src->data.ndstats, PMIX_NODE_STATS);
     default:
         pmix_output(0, "PMIX-XFER-VALUE: UNSUPPORTED TYPE %d", (int)src->type);
         return PMIX_ERROR;

@@ -15,6 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -702,6 +703,47 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes,
                 return PMIX_ERR_NOMEM;
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.endpoint, &m, PMIX_ENDPOINT, regtypes);
+            return ret;
+        case PMIX_PROC_NSPACE:
+            PMIX_PROC_CREATE(val->data.proc, 1);
+            if (NULL == val->data.proc) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &val->data.proc->nspace, &m, PMIX_PROC_NSPACE, regtypes);
+            return ret;
+        case PMIX_PROC_STATS:
+            PMIX_PROC_STATS_CREATE(val->data.pstats, 1);
+            if (NULL == val->data.pstats) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.pstats, &m, PMIX_PROC_STATS, regtypes);
+            return ret;
+        case PMIX_DISK_STATS:
+            PMIX_DISK_STATS_CREATE(val->data.dkstats, 1);
+            if (NULL == val->data.dkstats) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.dkstats, &m, PMIX_DISK_STATS, regtypes);
+            return ret;
+        case PMIX_NET_STATS:
+            PMIX_NET_STATS_CREATE(val->data.netstats, 1);
+            if (NULL == val->data.netstats) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.netstats, &m, PMIX_NET_STATS, regtypes);
+        case PMIX_NODE_STATS:
+            PMIX_NODE_STATS_CREATE(val->data.ndstats, 1);
+            if (NULL == val->data.ndstats) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.ndstats, &m, PMIX_NODE_STATS, regtypes);
+            return ret;
+        case PMIX_DATA_BUFFER:
+            PMIX_DATA_BUFFER_CREATE(val->data.ptr);
+            if (NULL == val->data.ptr) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.ptr, &m, PMIX_DATA_BUFFER, regtypes);
             return ret;
         default:
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &val->data, &m, val->type, regtypes);
@@ -1918,4 +1960,466 @@ pmix_status_t pmix_bfrops_base_unpack_locality(pmix_pointer_array_t *regtypes,
     PMIX_BFROPS_UNPACK_TYPE(ret, buffer,dest, num_vals, PMIX_UINT16, regtypes);
 
     return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_nspace(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer, void *dest,
+                                             int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_nspace_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+    char *p;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d nspace", *num_vals);
+
+    if (PMIX_PROC_NSPACE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    ptr = (pmix_nspace_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        m = 1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &p, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        PMIX_LOAD_NSPACE(ptr[i], p);
+        free(p);
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_pstats(pmix_pointer_array_t *regtypes,
+                                             pmix_buffer_t *buffer, void *dest,
+                                             int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_proc_stats_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+
+    ptr = (pmix_proc_stats_t *) dest;
+    n = *num_vals;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_PROC_STATS != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i = 0; i < n; ++i) {
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].node, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].proc, &m, PMIX_PROC, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].pid, &m, PMIX_PID, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].cmd, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].state[0], &m, PMIX_BYTE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].time, &m, PMIX_TIMEVAL, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].priority, &m, PMIX_INT32, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_threads, &m, PMIX_INT16, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].pss, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].vsize, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].rss, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].peak_vsize, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].processor, &m, PMIX_INT16, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].sample_time, &m, PMIX_TIMEVAL, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_dkstats(pmix_pointer_array_t *regtypes,
+                                              pmix_buffer_t *buffer, void *dest,
+                                              int32_t *num_vals, pmix_data_type_t type)
+{
+    int32_t i, m, n;
+    pmix_status_t ret;
+    pmix_disk_stats_t *ptr = (pmix_disk_stats_t*)dest;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_DISK_STATS != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* unpack them */
+    n = *num_vals;
+    for (i=0; i < n; i++) {
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].disk, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_reads_completed, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_reads_merged, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_sectors_read, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].milliseconds_reading, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_writes_completed, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_writes_merged, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_sectors_written, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].milliseconds_writing, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_ios_in_progress, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].milliseconds_io, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].weighted_milliseconds_io, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_netstats(pmix_pointer_array_t *regtypes,
+                                               pmix_buffer_t *buffer, void *dest,
+                                               int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_net_stats_t *ptr = (pmix_net_stats_t *) dest;
+    int32_t i, m, n;
+    int ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_NET_STATS != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    n = *num_vals;
+    for (i=0; i < n; i++) {
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].net_interface, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_bytes_recvd, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_packets_recvd, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_recv_errs, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_bytes_sent, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_packets_sent, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].num_send_errs, &m, PMIX_UINT64, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_ndstats(pmix_pointer_array_t *regtypes,
+                                              pmix_buffer_t *buffer, void *dest,
+                                              int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_node_stats_t *ptr = (pmix_node_stats_t *) dest;
+    int32_t i, m, n;
+    int ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_NODE_STATS != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    n = *num_vals;
+    for (i=0; i < n; i++) {
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].node, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].la, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].la5, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].la15, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].total_mem, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].free_mem, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].buffers, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].cached, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].swap_cached, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].swap_total, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].swap_free, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].mapped, &m, PMIX_FLOAT, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].sample_time, &m, PMIX_TIMEVAL, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].ndiskstats, &m, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].ndiskstats) {
+            m=ptr[i].ndiskstats;
+            PMIX_DISK_STATS_CREATE(ptr[i].diskstats, ptr[i].ndiskstats);
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].diskstats, &m, PMIX_DISK_STATS, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_DISK_STATS_FREE(ptr[i].diskstats, ptr[i].ndiskstats);
+                PMIX_ERROR_LOG(ret);
+                return ret;
+            }
+        }
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].nnetstats, &m, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].nnetstats) {
+            m=ptr[i].nnetstats;
+            PMIX_NET_STATS_CREATE(ptr[i].netstats, ptr[i].nnetstats);
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].netstats, &m, PMIX_NET_STATS, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_NET_STATS_FREE(ptr[i].netstats, ptr[i].nnetstats);
+                PMIX_ERROR_LOG(ret);
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_dbuf(pmix_pointer_array_t *regtypes,
+                                           pmix_buffer_t *buffer, void *dest,
+                                           int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_data_buffer_t *ptr = (pmix_data_buffer_t*)dest;
+    int32_t i, m, n;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_DATA_BUFFER != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    n = *num_vals;
+    for (i=0; i < n; ++i) {
+        m=1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].bytes_used, &m, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        if (0 < ptr[i].bytes_used) {
+            ptr[i].base_ptr = malloc(ptr[i].bytes_used);
+            m = ptr[i].bytes_used;
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].base_ptr, &m, PMIX_BYTE, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
 }
