@@ -1268,7 +1268,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_APP                        23
 #define PMIX_INFO                       24
 #define PMIX_PDATA                      25
-#define PMIX_BUFFER                     26
+// Hole left by deprecation/removal of PMIX_BUFFER
 #define PMIX_BYTE_OBJECT                27
 #define PMIX_KVAL                       28
 // Hole left by deprecation/removal of PMIX_MODEX
@@ -1441,7 +1441,7 @@ static inline void* pmix_calloc(size_t n, size_t m)
 
 /* define a convenience macro for checking nspaces */
 #define PMIX_CHECK_NSPACE(a, b) \
-    (0 == strncmp((a), (b), PMIX_MAX_NSLEN))
+    (PMIX_NSPACE_INVALID((a)) || PMIX_NSPACE_INVALID((b)) || 0 == strncmp((a), (b), PMIX_MAX_NSLEN))
 
 /* define a convenience macro for loading names */
 #define PMIX_LOAD_PROCID(a, b, c)               \
