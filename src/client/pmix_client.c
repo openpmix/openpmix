@@ -272,6 +272,15 @@ static void job_data(struct pmix_peer_t *pr,
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
 
+    /* a zero-byte buffer indicates that this recv is being
+     * completed due to a lost connection */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        cb->status = PMIX_ERROR;
+        PMIX_POST_OBJECT(cb);
+        PMIX_WAKEUP_THREAD(&cb->lock);
+        return;
+    }
+    
     /* unpack the nspace - should be same as our own */
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
                        buf, &nspace, &cnt, PMIX_STRING);
