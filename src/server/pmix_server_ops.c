@@ -8,6 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -3623,13 +3624,24 @@ pmix_status_t pmix_server_iofreg(pmix_peer_t *peer,
     cd->ncodes = req->local_id;
 
     /* ask the host to execute the request */
-    if (PMIX_SUCCESS != (rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,
-                                                        cd->info, cd->ninfo,
-                                                        cd->channels,
-                                                        cbfunc, cd))) {
-        goto exit;
+    rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,
+                                   cd->info, cd->ninfo,
+                                   cd->channels,
+                                   cbfunc, cd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* the host did it atomically - send the response. In
+         * this particular case, we can just use the cbfunc
+         * ourselves as it will threadshift and guarantee
+         * proper handling (i.e. that the refid will be
+         * returned in the response to the client) */
+        cbfunc(PMIX_SUCCESS, cd);
+        /* we return SUCCESS here as the cbfunc will
+         * release the cd object and we don't want
+         * the switchyard doing it as well */
+        return PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS == rc) {
+        return PMIX_SUCCESS;
     }
-    return PMIX_SUCCESS;
 
   exit:
     PMIX_RELEASE(cd);
@@ -3701,13 +3713,23 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer,
     PMIX_RELEASE(req);
 
     /* tell the server to stop */
-    if (PMIX_SUCCESS != (rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,
-                                                        cd->info, cd->ninfo,
-                                                        cd->channels,
-                                                        cbfunc, cd))) {
-        goto exit;
+    rc = pmix_host_server.iof_pull(cd->procs, cd->nprocs,
+                                   cd->info, cd->ninfo,
+                                   cd->channels,
+                                   cbfunc, cd);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        /* the host did it atomically - send the response. In
+         * this particular case, we can just use the cbfunc
+         * ourselves as it will threadshift and guarantee
+         * proper handling */
+        cbfunc(PMIX_SUCCESS, cd);
+        /* we return SUCCESS here as the cbfunc will
+         * release the cd object and we don't want
+         * the switchyard doing it as well */
+        return PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS == rc) {
+        return PMIX_SUCCESS;
     }
-    return PMIX_SUCCESS;
 
   exit:
     PMIX_RELEASE(cd);
