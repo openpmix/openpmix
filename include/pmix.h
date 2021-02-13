@@ -1370,6 +1370,182 @@ PMIX_EXPORT pmix_status_t PMIx_Data_print(char **output, char *prefix,
  */
 PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
                                                  pmix_data_buffer_t *src);
+/**
+ * Unload a buffer into a byte object
+ *
+ * The unload function provides the caller with a pointer to the data
+ * payload within the buffer and the size of that payload. This allows
+ * the user to directly access the payload.
+ *
+ * @note This is a destructive operation. While the payload is
+ * undisturbed, the function will clear the buffer's pointers to the
+ * payload. Thus, the buffer and the payload are completely separated,
+ * leaving the caller free to the buffer.
+ *
+ * @param buffer A pointer to the buffer whose payload is to be
+ * unloaded.
+ *
+ * @param payload The address of a pmix_byte_object_t into which
+ * the buffer is to be unloaded
+ *
+ * @retval PMIX_SUCCESS The request was succesfully completed.
+ *
+ * @retval PMIX_ERROR(s) An appropriate error code indicating the
+ * problem will be returned. This should be handled appropriately by
+ * the caller.
+ *
+ * @code
+ * pmix_data_buffer_t *buffer;
+ * pmix_byte_object_t payload;
+ *
+ * status_code = PMIx_Data_unload(buffer, &payload);
+ * @endcode
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_unload(pmix_data_buffer_t *buffer,
+                                           pmix_byte_object_t *payload);
+
+/**
+ * Load a data payload into a buffer.
+ *
+ * The load function allows the caller to replace the payload in a
+ * buffer with one provided by the caller. If a payload already exists
+ * in the buffer, the function will "free" the existing data to
+ * release it, and then replace the data payload with the one provided
+ * by the caller.
+ *
+ * @note The buffer must be allocated in advance - failing to do so
+ * will cause the load function to return an error code.
+ *
+ * @note The caller is responsible for pre-packing the provided
+ * payload - the load function cannot convert to network byte order
+ * any data contained in the provided payload.
+ *
+ * @note The "payload" object will be empty upon completion of
+ * this operation.
+ *
+ * @param buffer A pointer to the buffer into which the payload is to
+ * be loaded.
+ *
+ * @param payload A pointer to the pmix_byte_object_t .containing the
+ * desired payload
+ *
+ * @retval PMIX_SUCCESS The request was successfully completed
+ *
+ * @retval PMIX_ERROR(s) An appropriate error code indicating the
+ * problem will be returned. This should be handled appropriately by
+ * the caller.
+ *
+ * @code
+ * pmix_data_buffer_t *buffer;
+ * pmix_byte_object_t payload;
+ *
+ * PMIX_DATA_BUFFER_CREATE(buffer);
+ * status_code = PMIx_Data_load(buffer, &payload);
+ * @endcode
+ */
+PMIX_EXPORT pmix_status_t PMIx_Data_load(pmix_data_buffer_t *buffer,
+                                         pmix_byte_object_t *payload);
+
+/**
+* Embed a data payload into a buffer.
+*
+* The embed function is identical in operation to PMIx_Data_load
+* except that it does NOT "clear" the payload upon completion.
+*
+* @note The buffer must be allocated in advance - failing to do so
+* will cause the function to return an error code.
+*
+* @note The caller is responsible for pre-packing the provided
+* payload - the load function cannot convert to network byte order
+* any data contained in the provided payload.
+*
+* @note The "payload" object is unaltered by this operation.
+*
+* @param buffer A pointer to the buffer into which the payload is to
+* be loaded.
+*
+* @param payload A pointer to the pmix_byte_object_t .containing the
+* desired payload
+*
+* @retval PMIX_SUCCESS The request was successfully completed
+*
+* @retval PMIX_ERROR(s) An appropriate error code indicating the
+* problem will be returned. This should be handled appropriately by
+* the caller.
+*
+* @code
+* pmix_data_buffer_t *buffer;
+* pmix_byte_object_t payload;
+*
+* PMIX_DATA_BUFFER_CREATE(buffer);
+* status_code = PMIx_Data_embed(buffer, &payload);
+* @endcode
+*/
+PMIX_EXPORT pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
+                                          const pmix_byte_object_t *payload);
+
+/**
+* Compress data using loss-less compression algorithm.
+*
+* Compress the provided data block. Destination memory
+* will be allocated if successful operation is concluded. Caller
+* is responsible for release of the allocated region. The input
+* data block will remain unaltered.
+*
+* @param inbytes A pointer to the data to be compressed
+*
+* @param size Number of bytes in the input data region
+*
+* @param outbytes Address where a pointer to the compressed
+* data region is to be returned
+*
+* @param nbytes Address where the number of bytes in the
+* compressed data region is to be returned
+*
+* @retval PMIX_SUCCESS The request was successfully completed
+*
+* @retval PMIX_ERROR(s) An appropriate error code indicating the
+* problem will be returned. This should be handled appropriately by
+* the caller.
+*
+*/
+PMIX_EXPORT pmix_status_t PMIx_Data_compress(uint8_t *inbytes,
+                                             size_t size,
+                                             uint8_t **outbytes,
+                                             size_t *nbytes);
+
+/**
+* Decompress data.
+*
+* Decompress the provided data block. Destination memory
+* will be allocated if successful operation is concluded. Caller
+* is responsible for release of the allocated region. The input
+* data block will remain unaltered.
+*
+* note: only data compressed using PMIx_Data_compress can
+* be input to this function
+*
+* @param inbytes A pointer to the data to be decompressed
+*
+* @param size Number of bytes in the input data region
+*
+* @param outbytes Address where a pointer to the decompressed
+* data region is to be returned
+*
+* @param nbytes Address where the number of bytes in the
+* decompressed data region is to be returned
+*
+* @retval PMIX_SUCCESS The request was successfully completed
+*
+* @retval PMIX_ERROR(s) An appropriate error code indicating the
+* problem will be returned. This should be handled appropriately by
+* the caller.
+*
+*/
+PMIX_EXPORT pmix_status_t PMIx_Data_decompress(uint8_t **outbytes,
+                                               size_t *nbytes,
+                                               uint8_t *inbytes,
+                                               size_t size);
 
 
 #if defined(c_plusplus) || defined(__cplusplus)
