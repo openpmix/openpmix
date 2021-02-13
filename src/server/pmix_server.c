@@ -4121,6 +4121,12 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
     pmix_proc_t proc;
     pmix_buffer_t *reply;
 
+    /* protect against zero-byte buffers - these can come if the
+     * connection is dropped due to a process failure */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        return PMIX_ERR_LOST_CONNECTION;
+    }
+
     /* retrieve the cmd */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cmd, &cnt, PMIX_COMMAND);
