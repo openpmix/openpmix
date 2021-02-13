@@ -1486,6 +1486,70 @@ PMIX_EXPORT pmix_status_t PMIx_Data_load(pmix_data_buffer_t *buffer,
 PMIX_EXPORT pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
                                           const pmix_byte_object_t *payload);
 
+/**
+* Compress data using loss-less compression algorithm.
+*
+* Compress the provided data block. Destination memory
+* will be allocated if successful operation is concluded. Caller
+* is responsible for release of the allocated region. The input
+* data block will remain unaltered.
+*
+* @param inbytes A pointer to the data to be compressed
+*
+* @param size Number of bytes in the input data region
+*
+* @param outbytes Address where a pointer to the compressed
+* data region is to be returned
+*
+* @param nbytes Address where the number of bytes in the
+* compressed data region is to be returned
+*
+* @retval PMIX_SUCCESS The request was successfully completed
+*
+* @retval PMIX_ERROR(s) An appropriate error code indicating the
+* problem will be returned. This should be handled appropriately by
+* the caller.
+*
+*/
+PMIX_EXPORT pmix_status_t PMIx_Data_compress(uint8_t *inbytes,
+                                             size_t size,
+                                             uint8_t **outbytes,
+                                             size_t *nbytes);
+
+/**
+* Decompress data.
+*
+* Decompress the provided data block. Destination memory
+* will be allocated if successful operation is concluded. Caller
+* is responsible for release of the allocated region. The input
+* data block will remain unaltered.
+*
+* note: only data compressed using PMIx_Data_compress can
+* be input to this function
+*
+* @param inbytes A pointer to the data to be decompressed
+*
+* @param size Number of bytes in the input data region
+*
+* @param outbytes Address where a pointer to the decompressed
+* data region is to be returned
+*
+* @param nbytes Address where the number of bytes in the
+* decompressed data region is to be returned
+*
+* @retval PMIX_SUCCESS The request was successfully completed
+*
+* @retval PMIX_ERROR(s) An appropriate error code indicating the
+* problem will be returned. This should be handled appropriately by
+* the caller.
+*
+*/
+PMIX_EXPORT pmix_status_t PMIx_Data_decompress(uint8_t **outbytes,
+                                               size_t *nbytes,
+                                               uint8_t *inbytes,
+                                               size_t size);
+
+
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
