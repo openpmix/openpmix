@@ -35,6 +35,7 @@
 #include "include/pmix.h"
 
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/pcompress/pcompress.h"
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/client/pmix_client_ops.h"
@@ -395,5 +396,35 @@ pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
     /* do NOT destruct the source as that would release
      * data in the payload */
 
+    return rc;
+}
+
+pmix_status_t PMIx_Data_compress(uint8_t *inbytes,
+                                 size_t size,
+                                 uint8_t **outbytes,
+                                 size_t *nbytes)
+{
+    pmix_status_t rc;
+
+    if (NULL == inbytes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    rc = pmix_compress.compress(inbytes, size, outbytes, nbytes);
+    return rc;
+}
+
+pmix_status_t PMIx_Data_decompress(uint8_t **outbytes,
+                                   size_t *nbytes,
+                                   uint8_t *inbytes,
+                                   size_t size)
+{
+    pmix_status_t rc;
+
+    if (NULL == inbytes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    rc = pmix_compress.decompress(outbytes, nbytes, inbytes, size);
     return rc;
 }
