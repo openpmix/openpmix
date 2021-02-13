@@ -954,7 +954,9 @@ char* pmix_bfrop_buffer_extend(pmix_buffer_t *buffer, size_t bytes_to_add)
     size_t pack_offset, unpack_offset;
 
     /* Check to see if we have enough space already */
-
+    if (0 == bytes_to_add) {
+        return buffer->pack_ptr;
+    }
 
     if ((buffer->bytes_allocated - buffer->bytes_used) >= bytes_to_add) {
         return buffer->pack_ptr;

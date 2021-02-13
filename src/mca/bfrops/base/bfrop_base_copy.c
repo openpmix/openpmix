@@ -69,6 +69,13 @@ pmix_status_t pmix_bfrops_base_copy_payload(pmix_buffer_t *dest,
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* if the src buffer is empty, then there is
+     * nothing to do */
+    if (PMIX_BUFFER_IS_EMPTY(src)) {
+        return PMIX_SUCCESS;
+    }
+
+    /* extend the dest if necessary */
     to_copy = src->pack_ptr - src->unpack_ptr;
     if (NULL == (ptr = pmix_bfrop_buffer_extend(dest, to_copy))) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
