@@ -76,10 +76,10 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
         /* process the allocation request */
         PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
             if (NULL != active->module->allocate) {
-                if (PMIX_SUCCESS == (rc = active->module->allocate(nptr, info, ninfo, ilist))) {
-                    continue;
-                }
-                if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                rc = active->module->allocate(nptr, info, ninfo, ilist);
+                if (PMIX_SUCCESS != rc &&
+                    PMIX_ERR_NOT_AVAILABLE != rc &&
+                    PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                     /* true error */
                     return rc;
                 }
@@ -131,7 +131,10 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
 
     PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->setup_local_network) {
-            if (PMIX_SUCCESS != (rc = active->module->setup_local_network(nptr, info, ninfo))) {
+            rc = active->module->setup_local_network(nptr, info, ninfo);
+            if (PMIX_SUCCESS != rc &&
+                PMIX_ERR_NOT_AVAILABLE != rc &&
+                PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 return rc;
             }
         }
@@ -180,7 +183,9 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
     PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->setup_fork) {
             rc = active->module->setup_fork(nptr, proc, env);
-            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc) {
+            if (PMIX_SUCCESS != rc &&
+                PMIX_ERR_NOT_AVAILABLE != rc &&
+                PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 return rc;
             }
         }
