@@ -80,6 +80,12 @@ static int pmix_mca_base_var_count = 0;
 
 static pmix_hash_table_t pmix_mca_base_var_index_hash;
 
+#define PMIX_MCA_VAR_MBV_ENUMERATOR_FREE(mbv_enumerator) {  \
+    if(mbv_enumerator && !mbv_enumerator->enum_is_static) { \
+        PMIX_RELEASE(mbv_enumerator);                       \
+    }                                                       \
+}
+
 const char *pmix_var_type_names[] = {
     "int",
     "unsigned_int",
@@ -872,8 +878,8 @@ int pmix_mca_base_var_deregister(int vari)
         var->mbv_storage->stringval) {
         free (var->mbv_storage->stringval);
         var->mbv_storage->stringval = NULL;
-    } else if (var->mbv_enumerator && !var->mbv_enumerator->enum_is_static) {
-        PMIX_RELEASE(var->mbv_enumerator);
+    } else {
+        PMIX_MCA_VAR_MBV_ENUMERATOR_FREE(var -> mbv_enumerator);
     }
 
     var->mbv_enumerator = NULL;
@@ -1508,10 +1514,7 @@ static int register_variable (const char *project_name, const char *framework_na
     if (PMIX_MCA_BASE_VAR_TYPE_BOOL == var->mbv_type) {
         enumerator = &pmix_mca_base_var_enum_bool;
     } else if (NULL != enumerator) {
-        if (var->mbv_enumerator) {
-            PMIX_RELEASE (var->mbv_enumerator);
-        }
-
+        PMIX_MCA_VAR_MBV_ENUMERATOR_FREE(var -> mbv_enumerator);
         if (!enumerator->enum_is_static) {
             PMIX_RETAIN(enumerator);
         }
@@ -1877,9 +1880,7 @@ static void var_destructor(pmix_mca_base_var_t *var)
     }
 
     /* don't release the boolean enumerator */
-    if (var->mbv_enumerator && !var->mbv_enumerator->enum_is_static) {
-        PMIX_RELEASE(var->mbv_enumerator);
-    }
+    PMIX_MCA_VAR_MBV_ENUMERATOR_FREE(var->mbv_enumerator);
 
     if (NULL != var->mbv_variable_name) {
         free(var->mbv_variable_name);
