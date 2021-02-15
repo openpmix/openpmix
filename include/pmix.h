@@ -1494,6 +1494,9 @@ PMIX_EXPORT pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
 * is responsible for release of the allocated region. The input
 * data block will remain unaltered.
 *
+* Note: the compress function will return "false" if the operation
+* would not result in a smaller data block.
+*
 * @param inbytes A pointer to the data to be compressed
 *
 * @param size Number of bytes in the input data region
@@ -1504,17 +1507,15 @@ PMIX_EXPORT pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
 * @param nbytes Address where the number of bytes in the
 * compressed data region is to be returned
 *
-* @retval PMIX_SUCCESS The request was successfully completed
+* @retval true The input data was compressed.
 *
-* @retval PMIX_ERROR(s) An appropriate error code indicating the
-* problem will be returned. This should be handled appropriately by
-* the caller.
+* @retval false The input data was not compressed
 *
 */
-PMIX_EXPORT pmix_status_t PMIx_Data_compress(uint8_t *inbytes,
-                                             size_t size,
-                                             uint8_t **outbytes,
-                                             size_t *nbytes);
+PMIX_EXPORT bool PMIx_Data_compress(uint8_t *inbytes,
+                                    size_t size,
+                                    uint8_t **outbytes,
+                                    size_t *nbytes);
 
 /**
 * Decompress data.
@@ -1537,17 +1538,15 @@ PMIX_EXPORT pmix_status_t PMIx_Data_compress(uint8_t *inbytes,
 * @param nbytes Address where the number of bytes in the
 * decompressed data region is to be returned
 *
-* @retval PMIX_SUCCESS The request was successfully completed
+* @retval true The input data was decompressed
 *
-* @retval PMIX_ERROR(s) An appropriate error code indicating the
-* problem will be returned. This should be handled appropriately by
-* the caller.
+* @retval false The input data was not decompressed
 *
 */
-PMIX_EXPORT pmix_status_t PMIx_Data_decompress(uint8_t **outbytes,
-                                               size_t *nbytes,
-                                               uint8_t *inbytes,
-                                               size_t size);
+PMIX_EXPORT bool PMIx_Data_decompress(uint8_t **outbytes,
+                                      size_t *nbytes,
+                                      uint8_t *inbytes,
+                                      size_t size);
 
 
 
