@@ -3655,7 +3655,7 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer,
 {
     int32_t cnt;
     pmix_status_t rc;
-    pmix_setup_caddy_t *cd;
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
     pmix_iof_req_t *req;
     size_t ninfo, refid;
 
@@ -3666,10 +3666,6 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    cd = PMIX_NEW(pmix_setup_caddy_t);
-    if (NULL == cd) {
-        return PMIX_ERR_NOMEM;
-    }
     cd->cbdata = cbdata;  // this is the pmix_server_caddy_t
 
     /* unpack the number of directives */
@@ -3732,7 +3728,6 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer,
     }
 
   exit:
-    PMIX_RELEASE(cd);
     return rc;
 }
 
