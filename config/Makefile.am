@@ -17,6 +17,8 @@
 #                         reserved.
 # Copyright (c) 2016      Intel, Inc. All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021      IBM Corporation.  All rights reserved.
+#
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -44,6 +46,7 @@ EXTRA_DIST = \
 	pmix_functions.m4 \
 	pmix.m4 \
 	pmix_search_libs.m4 \
+	pmix_check_cflags.m4 \
 	pmix_setup_cc.m4 \
 	pmix_setup_libevent.m4 \
 	pmix_mca_priority_sort.pl \
