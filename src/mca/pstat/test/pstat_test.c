@@ -90,7 +90,7 @@ static int query(pid_t pid,
 
         stats->pid = pid;
         stats->cmd = strdup("UNKNOWN");
-        stats->state[0] = 'R';
+        stats->state = 'R';
         stats->priority = 2;
         stats->num_threads = 1;
 

@@ -1275,7 +1275,7 @@ pmix_status_t pmix_bfrops_base_copy_pstats(pmix_proc_stats_t **dest,
     if (NULL != src->cmd) {
         p->cmd = strdup(src->cmd);
     }
-    p->state[0] = src->state[0];
+    p->state = src->state;
     p->time = src->time;
     p->priority = src->priority;
     p->num_threads = src->num_threads;

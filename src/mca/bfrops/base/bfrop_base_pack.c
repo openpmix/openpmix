@@ -1646,7 +1646,7 @@ pmix_status_t pmix_bfrops_base_pack_pstats(pmix_pointer_array_t *regtypes,
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].state[0], 1, PMIX_BYTE, regtypes);
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].state, 1, PMIX_BYTE, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
