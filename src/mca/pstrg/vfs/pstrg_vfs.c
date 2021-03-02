@@ -111,8 +111,10 @@ static pmix_status_t vfs_init(void)
         for (n = 0; n < nmounts; n++) {
             ent = PMIX_VALUE_ARRAY_GET_ITEM(mounts, pmix_pstrg_mntent_t, n);
 
+#if 0
             /* XXX FILTER OUT ANY UNWANTED FILE SYSTEMS HERE */
             if (strcmp(ent.mnt_type, "ext4") != 0) continue;
+#endif
 
             /* allocate a tracker so we can track FSes we register */
             tracker = PMIX_NEW(pmix_pstrg_vfs_tracker_t);
