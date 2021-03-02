@@ -488,6 +488,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        event only when a process abnormally terminates.
 
 /* query keys - value type shown is the type of the value that will be RETURNED by that key  */
+#define PMIX_QUERY_RESULTS                  "pmix.qry.res"          // (pmix_data_array_t*) Collection of results for a query object, organized
+                                                                    //         by search key
 #define PMIX_QUERY_SUPPORTED_KEYS           "pmix.qry.keys"         // (char*) returns comma-delimited list of keys supported by the query
                                                                     //         function. NO QUALIFIERS
 #define PMIX_QUERY_NAMESPACES               "pmix.qry.ns"           // (char*) returns a comma-delimited list of active namespaces. NO QUALIFIERS
