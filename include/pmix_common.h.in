@@ -2026,6 +2026,23 @@ typedef struct pmix_data_array {
  * will utilize the void* entry of the pmix_value_t to
  * hold the point to pmix_regattr_t */
 
+/****    PMIX DATA BUFFER    ****/
+typedef struct pmix_data_buffer {
+    /** Start of my memory */
+    char *base_ptr;
+    /** Where the next data will be packed to (within the allocated
+        memory starting at base_ptr) */
+    char *pack_ptr;
+    /** Where the next data will be unpacked from (within the
+        allocated memory starting as base_ptr) */
+    char *unpack_ptr;
+    /** Number of bytes allocated (starting at base_ptr) */
+    size_t bytes_allocated;
+    /** Number of bytes used by the buffer (i.e., amount of data --
+        including overhead -- packed in the buffer) */
+    size_t bytes_used;
+} pmix_data_buffer_t;
+
 /****    PMIX VALUE STRUCT    ****/
 
 /* NOTE: operations can supply a collection of values under
