@@ -121,7 +121,7 @@ static pmix_status_t vfs_init(void)
                 break;
             }
 
-            /* create a unique string ID for the file system. 
+            /* create a unique string ID for the file system.
              * currently the ID is just '<mnt_type>-<fs_mount_dir>'
              */
             tracker->fs_info.id = malloc(strlen(ent.mnt_type) + strlen(ent.mnt_dir) + 2);
@@ -317,7 +317,7 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
                         } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_OBJECTS_USED)) {
                             uint64_t obj_used = stat_buf.f_files - stat_buf.f_favail;
                             printf("\t%s: %lu\n", marker, obj_used);
-                        } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_XFER_SIZE)) {
+                        } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_MINIMAL_XFER_SIZE)) {
                             uint64_t xfer_size = stat_buf.f_bsize / 1024;
                             printf("\t%s: %lu KB\n", marker, xfer_size);
                         } else {
