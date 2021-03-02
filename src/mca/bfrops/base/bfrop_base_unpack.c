@@ -2037,7 +2037,7 @@ pmix_status_t pmix_bfrops_base_unpack_pstats(pmix_pointer_array_t *regtypes,
             return ret;
         }
         m=1;
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].state[0], &m, PMIX_BYTE, regtypes);
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].state, &m, PMIX_BYTE, regtypes);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             return ret;

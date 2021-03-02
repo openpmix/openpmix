@@ -2073,7 +2073,7 @@ typedef struct pmix_proc_stats {
     pid_t pid;
     char *cmd;
     /* process stats */
-    char state[2];
+    char state;
     struct timeval time;
     float percent_cpu;
     int32_t priority;

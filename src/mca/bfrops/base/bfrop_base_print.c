@@ -2424,7 +2424,7 @@ pmix_status_t pmix_bfrops_base_print_pstats(char **output, char *prefix,
                   "%s\ttime: %ld.%06ld cpu: %5.2f  PSS: %8.2f  VMsize: %8.2f PeakVMSize: %8.2f RSS: %8.2f\n",
                   prefx, (long)src->sample_time.tv_sec, (long)src->sample_time.tv_usec,
                   prefx, src->node, PMIX_NAME_PRINT(&src->proc), src->pid, src->cmd,
-                  src->state[0], src->priority, src->num_threads, src->processor,
+                  src->state, src->priority, src->num_threads, src->processor,
                   prefx, (long)src->time.tv_sec, (long)src->time.tv_usec,
                   src->percent_cpu, src->pss, src->vsize, src->peak_vsize, src->rss);
     if (prefx != prefix) {

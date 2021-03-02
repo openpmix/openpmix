@@ -231,7 +231,7 @@ static int query(pid_t pid,
         ptr = next_field(eptr, len);
 
         /* next is the process state - a single character */
-        stats->state[0] = *ptr;
+        stats->state = *ptr;
         /* move to next field */
         ptr = next_field(ptr, len);
 
