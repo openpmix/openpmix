@@ -108,6 +108,8 @@ static void release_cb(pmix_status_t status, void *cbdata)
 
 void set_client_argv(test_params *params, char ***argv)
 {
+    char num_str[MAX_DIGIT_LEN];
+
     pmix_argv_append_nosize(argv, params->binary);
 
     pmix_argv_append_nosize(argv, "-n");
@@ -127,14 +129,14 @@ void set_client_argv(test_params *params, char ***argv)
     if (params->nonblocking) {
         pmix_argv_append_nosize(argv, "-nb");
     }
-    /*
-    if (params->collect) {
-        pmix_argv_append_nosize(argv, "-c");
-    }
-    if (params->collect_bad) {
-        pmix_argv_append_nosize(argv, "--collect-corrupt");
-    }
-    */
+
+    pmix_argv_append_nosize(argv, "-r");
+    sprintf(num_str, "%lf", params->fence_timeout_ratio);
+    pmix_argv_append_nosize(argv, num_str);
+
+    pmix_argv_append_nosize(argv, "-m");
+    sprintf(num_str, "%lf", params->fence_time_multiplier);
+    pmix_argv_append_nosize(argv, num_str);
 }
 
 static void fill_seq_ranks_array(uint32_t nprocs, char **ranks)
@@ -695,6 +697,8 @@ int server_fence_contrib(char *data, size_t ndata,
     msg_hdr.dst_id = 0;
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = ndata;
+    // this won't work if there is more than one fence active at the same time
+    // in the future, we will have to create a list instead of just one entry
     server->modex_cbfunc = cbfunc;
     server->cbdata = cbdata;
 

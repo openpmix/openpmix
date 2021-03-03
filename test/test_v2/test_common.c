@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2020      Triad National Security, LLC
+ * Copyright (c) 2020-2021 Triad National Security, LLC
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -184,6 +184,8 @@ void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_
             fprintf(stderr, "\t-t <>    set timeout\n");
             fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
             fprintf(stderr, "\t-d str   assign ranks to servers, for example: 0:0,1:1:2,3,4\n");
+            fprintf(stderr, "\t-m num   fence time multiplier (similar to an error bar)\n");
+            fprintf(stderr, "\t-r num   fence timeout ratio (used to calculate sleep time before fence calls)\n");
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
             fprintf(stderr, "\t-nb      use non-blocking fence\n");
             exit(0);
@@ -251,12 +253,23 @@ void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_
             v_params->custom_rank_placement = true;
             strcpy(v_params->rank_placement_string, argv[i]);
             TEST_VERBOSE(("rank_placement_string: %s", v_params->rank_placement_string));
+        // multiplier for fence timout threshold called 'fence timeout ratio' (1 of 2)
+	    } else if (0 == strcmp(argv[i], "--fence-timeout-ratio") || 0 == strcmp(argv[i], "-r") ) {
+            i++;
+            if (NULL != argv[i]) {
+                params->fence_timeout_ratio = strtod(argv[i], NULL);
+            }
+        // multiplier for fence timeout threshold called 'fence time multiplier' (2 of 2)
+	    } else if (0 == strcmp(argv[i], "--fence-time-multiplier") || 0 == strcmp(argv[i], "-m") ) {
+            i++;
+            if (NULL != argv[i]) {
+                params->fence_time_multiplier = strtod(argv[i], NULL);
+            }
         }
         else {
             TEST_ERROR_EXIT(("unrecognized option: %s", argv[i]));
         }
     }
-
     /* the block below allows us to immediately process things that depend on
      * the contents of v_params.
      * This will only be executed on clients; servers already have v_params
@@ -316,6 +329,8 @@ void default_params(test_params *params, validation_params *v_params) {
     params->nonblocking = 0;
     params->ns_size = -1;
     params->ns_id = -1;
+    params->fence_timeout_ratio = TEST_DEFAULT_FENCE_TIMEOUT_RATIO;
+    params->fence_time_multiplier = TEST_DEFAULT_FENCE_TIME_MULTIPLIER;
 
     v_params->version = PMIXT_VALIDATION_PARAMS_VER;
     v_params->validate_params = false;
@@ -394,3 +409,20 @@ pmix_list_t key_replace;
         }                                                       \
     }                                                           \
 } while (0)
+
+// cross-platform millisecond sleep function
+void sleep_ms(unsigned long milliseconds) {
+#ifdef WIN32
+    Sleep(milliseconds);
+#elif _POSIX_C_SOURCE >= 199309L
+    struct timespec ts;
+    ts.tv_sec = milliseconds / 1000;
+    ts.tv_nsec = (milliseconds % 1000) * 1000000;
+    nanosleep(&ts, NULL);
+#else
+    if (1000 <= milliseconds) {
+        sleep(milliseconds / 1000);
+    }
+    usleep((milliseconds % 1000) * 1000);
+#endif
+}

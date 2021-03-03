@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2020      Triad National Security, LLC
+ * Copyright (c) 2020-2021 Triad National Security, LLC
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -222,4 +222,30 @@ void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key,
             TEST_ERROR_EXIT(("No test logic for type: %d, key: %s", value->type, key));
         }
     }
+}
+
+double avg_fence_time(void) {
+	double avg_fence = 0.0;
+	int i, retval;
+    unsigned long usecs;
+    struct timeval local_start, local_end;
+
+    // Synchronize before timing
+    if (0 != PMIx_Fence(NULL, 0, NULL, 0)) {
+        TEST_ERROR_EXIT(("PMIx_Fence Problem: ret val = %d", retval));
+    }
+	/* Measure the average typical fence execution time */
+    gettimeofday(&local_start, NULL);
+	for(i = 0; i < 100; i++) {
+        if (0 != PMIx_Fence(NULL, 0, NULL, 0)) {
+            TEST_ERROR_EXIT(("PMIx_Fence Problem: ret val = %d", retval));
+        }
+	}
+    gettimeofday(&local_end, NULL);
+    usecs = (local_end.tv_sec * 1000000) + local_end.tv_usec
+        - ((local_start.tv_sec * 1000000) + local_start.tv_usec);
+    avg_fence = ((double)usecs)/1E8;
+
+    TEST_VERBOSE(("Simple PMIx_Fence, avg time: %lf", avg_fence));
+	return avg_fence;
 }

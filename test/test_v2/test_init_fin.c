@@ -21,11 +21,6 @@ int main(int argc, char *argv[]) {
     test_params params;
     validation_params v_params;
 
-/*
-    // for debugging frees down in clients
-    setenv("MALLOC_CHECK_", "3", 1);
-*/
-
     /* Handles all setup that's required prior to calling PMIx_Init() */
     pmixt_pre_init(argc, argv, &params, &v_params);
 
