@@ -349,7 +349,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_cmd_t cmd;
     pmix_cb_t cb;
     pmix_value_t value;
-    pmix_proc_t myproc;
     pmix_lock_t reglock, releaselock;
     pmix_status_t code;
 
@@ -682,7 +681,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
             return rc;
         }
         /* restore our original primary server */
-        rc = PMIx_tool_set_server(&myproc, NULL, 0);
+        rc = PMIx_tool_set_server(&pmix_globals.myid, NULL, 0);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
