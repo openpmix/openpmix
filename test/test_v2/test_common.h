@@ -29,7 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
-#include <unistd.h>
+#include <math.h>
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
@@ -41,15 +41,16 @@
 
 #define PMIXT_VALIDATION_PARAMS_VER 1
 
-#define PMIXT_CHECK_EXPECT(rc, expected_rc, params, vparams)                               \
-    do {                                                                                   \
-        int pmix_rc = (rc);                                                                \
-        if (expected_rc != pmix_rc) {                                                      \
-            TEST_ERROR(("Client ns %s rank %d: PMIx call failed: %s", vparams.pmix_nspace, \
-                        vparams.pmix_rank, PMIx_Error_string(pmix_rc)));                   \
-            exit(-1);                                                                      \
-        }                                                                                  \
-    } while (0)
+#define PMIXT_CHECK_EXPECT(fn_call, expected_rc, params, vparams) \
+do {                                                   \
+   int pmix_rc = (fn_call);                               \
+   if (expected_rc != pmix_rc) {                      \
+       TEST_ERROR(("Client ns %s rank %d: PMIx call failed: %s", \
+           vparams.pmix_nspace, vparams.pmix_rank,           \
+	   PMIx_Error_string(pmix_rc)));                   \
+       exit(-1);                                       \
+   }                                                   \
+} while (0)
 
 #define PMIXT_CHECK(stmt, params, vparams) PMIXT_CHECK_EXPECT(stmt, PMIX_SUCCESS, params, vparams)
 
@@ -118,24 +119,25 @@ extern FILE *pmixt_outfile;
 #define MAX_DIGIT_LEN        10
 #define TEST_REPLACE_DEFAULT "3:1"
 
-#define PMIXT_SET_FILE(prefix, ns_id, rank)                             \
-    {                                                                   \
-        char *fname = malloc(strlen(prefix) + MAX_DIGIT_LEN + 2);       \
-        sprintf(fname, "%s.%d.%d", prefix, ns_id, rank);                \
-        pmixt_outfile = fopen(fname, "w");                              \
-        free(fname);                                                    \
-        if (NULL == pmixt_outfile) {                                    \
-            fprintf(stderr, "Cannot open file %s for writing!", fname); \
-            exit(1);                                                    \
-        }                                                               \
-    }
+#define TEST_DEFAULT_FENCE_TIMEOUT_RATIO 20
+#define TEST_DEFAULT_FENCE_TIME_MULTIPLIER 100
 
-#define PMIXT_CLOSE_FILE()             \
-    {                                  \
-        if (stderr != pmixt_outfile) { \
-            fclose(pmixt_outfile);     \
-        }                              \
-    }
+#define PMIXT_SET_FILE(prefix, ns_id, rank) { \
+    char *fname = malloc( strlen(prefix) + MAX_DIGIT_LEN + 2 ); \
+    sprintf(fname, "%s.%d.%d", prefix, ns_id, rank); \
+    pmixt_outfile = fopen(fname, "w"); \
+    free(fname); \
+    if( NULL == pmixt_outfile ){ \
+        fprintf(stderr, "Cannot open file %s for writing!", fname); \
+        exit(1); \
+    } \
+}
+
+#define PMIXT_CLOSE_FILE() { \
+    if ( stderr != pmixt_outfile ) { \
+        fclose(pmixt_outfile); \
+    } \
+}
 
 /* a convenience macro for checking keys (test suite-specific) */
 #define PMIXT_CHECK_KEY(a, b) (0 == strncmp((a), (b), PMIX_MAX_KEYLEN))
@@ -208,6 +210,8 @@ typedef struct {
     int nonblocking;
     int ns_size;
     int ns_id;
+    double fence_timeout_ratio;
+    double fence_time_multiplier;
 } test_params;
 
 extern test_params params;
@@ -235,6 +239,9 @@ void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_v
 
 char *pmixt_encode(const void *val, size_t vallen);
 ssize_t pmixt_decode(const char *data, void *decdata, size_t buffsz);
+
+void sleep_ms(unsigned long milliseconds);
+double avg_fence_time(void);
 
 typedef struct {
     pmix_list_item_t super;

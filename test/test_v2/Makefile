@@ -22,7 +22,8 @@ TC1FILES = test_init_fin.c $(TCCOMMONFILES)
 TC2FILES = test_helloworld.c $(TCCOMMONFILES)
 TC3FILES = test_get_basic.c $(TCCOMMONFILES)
 TC4FILES = test_get_peers.c $(TCCOMMONFILES)
-TCFILES = $(TC1FILES) $(TC2FILES) $(TC3FILES) $(TC4FILES)
+TC5FILES = test_fence_wildcard.c $(TCCOMMONFILES)
+TCFILES = $(TC1FILES) $(TC2FILES) $(TC3FILES) $(TC4FILES) $(TC5FILES)
 CFILES = $(PCFILES) $(TCFILES)
 
 OBJ = $(CFILES:%.c=%.o)
@@ -31,8 +32,9 @@ T1OBJ = $(TC1FILES:%.c=%.o)
 T2OBJ = $(TC2FILES:%.c=%.o)
 T3OBJ = $(TC3FILES:%.c=%.o)
 T4OBJ = $(TC4FILES:%.c=%.o)
+T5OBJ = $(TC5FILES:%.c=%.o)
 
-all: pmix_test test_init_fin test_helloworld test_get_basic test_get_peers
+all: pmix_test test_init_fin test_helloworld test_get_basic test_get_peers test_fence_wildcard
 .PHONY: all
 
 clean:
@@ -49,6 +51,8 @@ test_get_basic: $(T3OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS)
 test_get_peers: $(T4OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS)
+test_fence_wildcard: $(T5OBJ)
+	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS) -lm
 
 %.o : %.c
 	$(CC) -c -o $@ $< $(CFLAGS)
