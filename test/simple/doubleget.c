@@ -8,16 +8,6 @@ static bool mywait = false;
 static bool refresh = false;
 static bool timeout = false;
 
-#define ERR(msg, ...)							\
-    do {								\
-	time_t tm = time(NULL);						\
-	char *stm = ctime(&tm);						\
-	stm[strlen(stm)-1] = 0;						\
-	fprintf(stderr, "%s ERROR: %s:%d  " msg "\n", stm, __FILE__, __LINE__, ## __VA_ARGS__); \
-	exit(1);							\
-    } while(0);
-
-
 static int pmi_set_string(const char *key, void *data, size_t size)
 {
     int rc;
@@ -28,11 +18,11 @@ static int pmi_set_string(const char *key, void *data, size_t size)
     value.data.bo.bytes = data;
     value.data.bo.size  = size;
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, key, &value))) {
-        ERR("Client ns %s rank %d: PMIx_Put failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Put failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
     }
 
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
-        ERR("Client ns %s rank %d: PMIx_Commit failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
     }
 
     /* protect the data */
@@ -66,10 +56,10 @@ static int pmi_get_string(uint32_t peer_rank, const char *key, void **data_out, 
         rc = PMIx_Get(&proc, key, NULL, 0, &pvalue);
     }
     if (PMIX_SUCCESS != rc) {
-        ERR("Client ns %s rank %d: PMIx_Get on rank %u %s: %s\n", myproc.nspace, myproc.rank, peer_rank, key, PMIx_Error_string(rc));
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get on rank %u %s: %s\n", myproc.nspace, myproc.rank, peer_rank, key, PMIx_Error_string(rc));
     }
     if(pvalue->type != PMIX_BYTE_OBJECT){
-        ERR("Client ns %s rank %d: PMIx_Get %s: got wrong data type\n", myproc.nspace, myproc.rank, key);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s: got wrong data type\n", myproc.nspace, myproc.rank, key);
     }
     *data_out = pvalue->data.bo.bytes;
     *data_size_out = pvalue->data.bo.size;
@@ -138,7 +128,7 @@ int main(int argc, char *argv[])
     }
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-	   ERR("PMIx_Init failed");
+        fprintf(stderr, "PMIx_Init failed\n");
         exit(1);
     }
     if (myproc.rank == 0) {
@@ -185,7 +175,7 @@ int main(int argc, char *argv[])
     printf("%d: obtained data \"%s\"\n", myproc.rank, data_out);
 
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        ERR("Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
     }
     if(myproc.rank == 0) printf("PMIx finalized\n");
 

@@ -2,6 +2,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2017      Inria.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -293,9 +294,6 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     pmix_topology_t *topo;
     char *file;
     pmix_status_t rc;
-#if HWLOC_API_VERSION >= 0x20000
-    char *tmp;
-#endif
 
     /* only go thru here ONCE! */
     if (passed_thru) {

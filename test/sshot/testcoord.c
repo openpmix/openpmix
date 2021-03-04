@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -127,7 +128,7 @@ int main(int argc, char **argv)
     mycaddy_t cd;
     mylock_t lock;
     pmix_proc_t proc;
-    int tclass;
+    int tclass=0;
     pmix_value_t *val;
     pmix_geometry_t *geos;
     size_t ngeos, n, m;

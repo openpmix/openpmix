@@ -1303,6 +1303,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_LOCTYPE                    58
 #define PMIX_COMPRESSED_BYTE_OBJECT     59
 #define PMIX_PROC_NSPACE                60
+#define PMIX_DATA_BUFFER                65
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1853,6 +1854,7 @@ typedef struct pmix_data_buffer {
         including overhead -- packed in the buffer) */
     size_t bytes_used;
 } pmix_data_buffer_t;
+
 #define PMIX_DATA_BUFFER_CREATE(m)                                          \
     do {                                                                    \
         (m) = (pmix_data_buffer_t*)pmix_calloc(1, sizeof(pmix_data_buffer_t));   \
@@ -2031,23 +2033,6 @@ typedef struct pmix_data_array {
  * will utilize the void* entry of the pmix_value_t to
  * hold the point to pmix_regattr_t */
 
-/****    PMIX DATA BUFFER    ****/
-typedef struct pmix_data_buffer {
-    /** Start of my memory */
-    char *base_ptr;
-    /** Where the next data will be packed to (within the allocated
-        memory starting at base_ptr) */
-    char *pack_ptr;
-    /** Where the next data will be unpacked from (within the
-        allocated memory starting as base_ptr) */
-    char *unpack_ptr;
-    /** Number of bytes allocated (starting at base_ptr) */
-    size_t bytes_allocated;
-    /** Number of bytes used by the buffer (i.e., amount of data --
-        including overhead -- packed in the buffer) */
-    size_t bytes_used;
-} pmix_data_buffer_t;
-
 /****    PMIX VALUE STRUCT    ****/
 
 /* NOTE: operations can supply a collection of values under
@@ -2101,7 +2086,7 @@ typedef struct pmix_value {
         pmix_device_type_t devtype;
         pmix_device_distance_t *devdist;
         pmix_endpoint_t *endpoint;
-        pmix_data_buffer_t buf;
+        pmix_data_buffer_t *dbuf;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
