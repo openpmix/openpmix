@@ -59,9 +59,18 @@ pmix_status_t pmix_pstrg_get_fs_mounts(pmix_value_array_t **mounts)
         tmp_pstrg_ent.mnt_fsname = strdup(ent->mnt_fsname);
         tmp_pstrg_ent.mnt_dir = strdup(ent->mnt_dir);
         tmp_pstrg_ent.mnt_type = strdup(ent->mnt_type);
-        rc = pmix_value_array_append_item(*mounts, &tmp_pstrg_ent);
+        if (NULL != tmp_pstrg_ent.mnt_fsname && NULL != tmp_pstrg_ent.mnt_dir &&
+            NULL != tmp_pstrg_ent.mnt_type) {
+            rc = pmix_value_array_append_item(*mounts, &tmp_pstrg_ent);
+        }
+        else {
+            rc = PMIX_ERR_NOMEM;
+        }
         if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE(*mounts);
+            free(tmp_pstrg_ent.mnt_fsname);
+            free(tmp_pstrg_ent.mnt_dir);
+            free(tmp_pstrg_ent.mnt_type);
+            pmix_pstrg_free_fs_mounts(mounts);
             goto exit;
         }
     }
@@ -95,6 +104,14 @@ pmix_status_t pmix_pstrg_free_fs_mounts(pmix_value_array_t **mounts)
 pmix_status_t pmix_pstrg_register_fs(pmix_pstrg_fs_info_t fs_info)
 {
     pmix_status_t rc;
+
+    /* check that this module has not been registered by another FS yet */
+    /* NOTE: we use mount dir since that must be unique */
+    rc = pmix_hash_table_get_value_ptr(&fs_mount_to_id_hash,
+        fs_info.mount_dir, strlen(fs_info.mount_dir)+1, (void **)&fs_info.id);
+    if (PMIX_SUCCESS == rc) {
+        return PMIX_ERR_DUPLICATE_KEY;
+    }
 
     /* maintain mappings from FS id->mount and mount->id */
     rc = pmix_hash_table_set_value_ptr(&fs_id_to_mount_hash,

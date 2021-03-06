@@ -59,14 +59,7 @@ static int pmix_pstrg_base_close(void)
     }
     PMIX_LIST_DESTRUCT(&pmix_pstrg_base.actives);
 
-    void *tmp_ptr = NULL;
-    size_t key_size;
-    void *key, *value;
-    for (; PMIX_SUCCESS == pmix_hash_table_get_next_key_ptr(
-            &fs_id_to_mount_hash, &key, &key_size, &value, tmp_ptr, &tmp_ptr);) {
-        printf("%s,%s\n", (char *)key, (char *)value);
-    }
-
+    /* destroy file system hash tables */
     PMIX_DESTRUCT(&fs_mount_to_id_hash);
     PMIX_DESTRUCT(&fs_id_to_mount_hash);
 
@@ -88,7 +81,7 @@ static int pmix_pstrg_base_open(pmix_mca_base_open_flag_t flags)
     /* construct the list of modules */
     PMIX_CONSTRUCT(&pmix_pstrg_base.actives, pmix_list_t);
 
-    /* construct/initialize hash of file system mounts->ids */
+    /* construct/initialize hash tables of file system mounts<->ids */
     PMIX_CONSTRUCT(&fs_mount_to_id_hash, pmix_hash_table_t);
     pmix_hash_table_init(&fs_mount_to_id_hash, 256);
     PMIX_CONSTRUCT(&fs_id_to_mount_hash, pmix_hash_table_t);

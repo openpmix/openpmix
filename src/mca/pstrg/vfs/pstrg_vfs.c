@@ -63,13 +63,15 @@ pmix_pstrg_base_module_t pmix_pstrg_vfs_module = {
     .query = query
 };
 
+/* list of FSes the VFS module has registered with base PSTRG component */
+pmix_list_t registered_fs_list;
+
+/* tracker object for file systems the VFS module is responsible for */
 typedef struct pmix_pstrg_vfs_tracker {
     pmix_list_item_t super;
     pmix_pstrg_fs_info_t fs_info;
     /* more FS state can go here */
 } pmix_pstrg_vfs_tracker_t;
-
-pmix_list_t registered_fs_list;
 
 static void tcon(pmix_pstrg_vfs_tracker_t *t)
 {
@@ -140,12 +142,19 @@ static pmix_status_t vfs_init(void)
                 break;
             }
 
+            /* attempt to register this FS ID/mount combo with the base component */
             rc = pmix_pstrg_register_fs(tracker->fs_info);
             if (PMIX_SUCCESS != rc) {
                 PMIX_RELEASE(tracker);
-                break;
+                if (PMIX_ERR_DUPLICATE_KEY != rc) {
+                    break;
+                }
+                else {
+                    continue;
+                }
             }
 
+            /* success, add this FS to the VFS module list of registered FSes */
             pmix_list_append(&registered_fs_list, &tracker->super);
         }
 
@@ -243,6 +252,10 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
 
             if (0 == strcmp(queries[n].keys[m], PMIX_QUERY_STORAGE_LIST)) {
                 // RHC: where do you check for the qualifiers?
+                // SDS: Not supported yet, but we could support PMIX_STORAGE_TYPE qualifiers here
+                //      in which case we only return a list of storage systems that match a given
+                //      type (i.e., PMIX_QUERY_STORAGE_LIST[PMIX_STORAGE_TYPE="lustre"])
+                //      The FS type is returned in the structures passed back from pmix_pstrg_get_fs_mounts 
                 printf("\t%s: ", pmix_pstrg_vfs_module.name); 
                 if (queries[n].nqual == 0) {
                     PMIX_LIST_FOREACH(tracker, &registered_fs_list, pmix_pstrg_vfs_tracker_t) {
@@ -270,6 +283,9 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
             // RHC: I guess you are asking for the storage ID's corresponding to
             // one or more mount paths? Perhaps some explanation of what you are
             // trying to query would help here as I'm confused
+            // SDS: Yes, if multiple mount path qualifiers are given here, then we
+            //      return the ID associated with each. If only one qualifier is supported
+            //      then this should be changed.
             else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_ID)) {
                 if (NULL != mount && NULL == sid) {
                     for (i = 0; mount[i] != NULL; i++) {
@@ -305,6 +321,9 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
                         // RHC: does this find more than one value? The attribute definition
                         // implies "no", that it only is supposed to return one, but the loop
                         // seems to aggregate all the values, so that is what I supported
+                        // SDS: Yes, just like PMIX_STORAGE_ID above, if multiple storage ID
+                        //      qualifiers are given here, then we return the mount path associated
+                        //      with each. If only one qualifier is supported then this should be changed.
                         tmp_mount = pmix_pstrg_get_registered_fs_mount_by_id(sid[i]);
                         if (tmp_mount) {
                             printf("%s\n", tmp_mount);

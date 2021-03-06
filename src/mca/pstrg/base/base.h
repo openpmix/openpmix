@@ -63,26 +63,38 @@ PMIX_EXPORT pmix_status_t pmix_pstrg_base_query(pmix_query_t queries[], size_t n
                                                 pmix_list_t *results,
                                                 pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT extern pmix_hash_table_t fs_mount_to_id_hash;
+/* tables to map from FS storage IDs to mount points, and vice versa */
 PMIX_EXPORT extern pmix_hash_table_t fs_id_to_mount_hash;
+PMIX_EXPORT extern pmix_hash_table_t fs_mount_to_id_hash;
 
+/* structure holding relevant FS mount entry state from getmntent calls */
 typedef struct {
     char *mnt_fsname;
     char *mnt_dir;
     char *mnt_type;
 } pmix_pstrg_mntent_t;
 
-//XXX individual modules allocate these, register them, and if successful-> add to per-mod list
+/* FS modules allocate FS info structs and register them with the base component */
+/* NOTE: registration of FSes is primarily so a storage system-specific module and
+ * the VFS module can agree on the ID of a particular storage system */
+/* NOTE: the first module to register a mount directory gets to set the associated
+ * FS ID -- other attempted registrations will fail */
 typedef struct {
     char *id;
     char *mount_dir;
 } pmix_pstrg_fs_info_t;
 
+/* get the list of currently mounted file systems and their state */
 PMIX_EXPORT pmix_status_t pmix_pstrg_get_fs_mounts(pmix_value_array_t **mounts);
+/* free the list of mounted file systems */
 PMIX_EXPORT pmix_status_t pmix_pstrg_free_fs_mounts(pmix_value_array_t **mounts);
+/* register information about a particular FS with the base component */
 PMIX_EXPORT pmix_status_t pmix_pstrg_register_fs(pmix_pstrg_fs_info_t fs_info);
+/* de-register information about a particular FS with the base component */
 PMIX_EXPORT pmix_status_t pmix_pstrg_deregister_fs(pmix_pstrg_fs_info_t fs_info);
+/* map a registered FS identifier to a FS mount directory */
 PMIX_EXPORT char *pmix_pstrg_get_registered_fs_id_by_mount(char *mount_dir);
+/* map a registered FS mount directory to a FS identifier */
 PMIX_EXPORT char *pmix_pstrg_get_registered_fs_mount_by_id(char *id);
 
 END_C_DECLS
