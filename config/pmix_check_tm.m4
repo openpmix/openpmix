@@ -133,7 +133,7 @@ AC_DEFUN([PMIX_CHECK_TM],[
                                               [_PMIX_CHECK_PACKAGE_LIB([pmix_check_tm],
 					                               [pbs],
 					                               [tm_init],
-					                               [-lcrypto],
+					                               [-lcrypto -lz],
 					                               [$pmix_check_tm_dir],
 					                               [$pmix_check_tm_libdir],
 					                               [pmix_check_tm_found="yes"],
