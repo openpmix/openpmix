@@ -566,6 +566,16 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (NULL != info) {
             _check_for_notify(info, ninfo);
         }
+        /* if we were given connection info, then we should try
+         * to connect if are currently unconnected */
+        if (!pmix_globals.connected) {
+            rc = pmix_ptl.connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
+            if (PMIX_SUCCESS == rc) {
+                pmix_init_result = rc;
+                pmix_client_globals.singleton = false;
+            }
+        }
+
         return pmix_init_result;
     }
     ++pmix_globals.init_cntr;

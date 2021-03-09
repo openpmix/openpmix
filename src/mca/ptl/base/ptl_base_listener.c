@@ -57,6 +57,7 @@
 #include "src/util/os_dirpath.h"
 #include "src/util/pif.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 #include "src/util/show_help.h"
 
  #include "src/mca/ptl/base/base.h"
@@ -318,6 +319,8 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     int myport;
     pmix_kval_t *urikv;
     pid_t mypid;
+    int outpipe;
+    char *leftover;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tool setup_listener");
@@ -562,20 +565,32 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
             /* output to stderr */
             fprintf(stderr, "%s\n", lt->uri);
         } else {
-            /* must be a file */
-            FILE *fp;
-            fp = fopen(pmix_ptl_base.report_uri, "w");
-            if (NULL == fp) {
-                pmix_output(0, "Impossible to open the file %s in write mode\n", pmix_ptl_base.report_uri);
-                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-                goto sockerror;
+            /* see if it is an integer pipe */
+            leftover = NULL;
+            outpipe = strtol(pmix_ptl_base.report_uri, &leftover, 10);
+            if (NULL == leftover || 0 == strlen(leftover)) {
+                /* stitch together the var names and URI */
+                pmix_asprintf(&leftover, "%s;%s", lt->varname, lt->uri);
+                /* output to the pipe */
+                rc = pmix_fd_write(outpipe, strlen(leftover)+1, leftover);
+                free(leftover);
+                close(outpipe);
+            } else {
+                /* must be a file */
+                FILE *fp;
+                fp = fopen(pmix_ptl_base.report_uri, "w");
+                if (NULL == fp) {
+                    pmix_output(0, "Impossible to open the file %s in write mode\n", pmix_ptl_base.report_uri);
+                    PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                    goto sockerror;
+                }
+                /* output my nspace and rank plus the URI */
+                fprintf(fp, "%s\n", lt->uri);
+                /* add a flag that indicates we accept v2.1 protocols */
+                fprintf(fp, "v%s\n", PMIX_VERSION);
+                fclose(fp);
+                pmix_ptl_base.created_urifile = true;
             }
-            /* output my nspace and rank plus the URI */
-            fprintf(fp, "%s\n", lt->uri);
-            /* add a flag that indicates we accept v2.1 protocols */
-            fprintf(fp, "v%s\n", PMIX_VERSION);
-            fclose(fp);
-            pmix_ptl_base.created_urifile = true;
         }
     }
 
