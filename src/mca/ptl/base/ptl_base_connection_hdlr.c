@@ -335,9 +335,14 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
     PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
+    if (PMIX_SUCCESS != reply) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "validation of client connection failed");
+        goto error;
+    }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "client connection validated with status=%d", reply);
+                        "client connection validated");
 
     /* tell the client all is good */
     u32 = htonl(reply);
@@ -348,12 +353,10 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* If needed, perform the handshake. The macro will update reply */
     PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(reply, peer, NULL, 0, NULL, NULL, &cred);
 
-    /* It is possible that connection validation failed
-     * We need to reply to the client first and cleanup after */
+    /* It is possible that connection validation failed */
     if (PMIX_SUCCESS != reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "validation of client connection failed");
-        /* send an error reply to the client */
         goto error;
     }
 

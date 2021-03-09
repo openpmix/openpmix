@@ -15,6 +15,7 @@
  *                         reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -75,19 +76,53 @@ pmix_ptl_module_t pmix_ptl_client_module = {
 static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                                      pmix_info_t *info, size_t ninfo)
 {
-    char *evar, *suri = NULL;
+    char *evar = NULL, *suri = NULL;
     char *nspace=NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char **server_nspace = NULL, *rendfile = NULL;
     pmix_status_t rc;
     pmix_peer_t *peer = (pmix_peer_t*)pr;
+    size_t m, n;
+    char **tmp;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
 
-    rc = pmix_ptl_base_check_server_uris(peer, &evar);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
+    /* see if we were given one */
+    for (n=0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
+            /* separate out the server URI version(s) */
+            suri = strchr(info[n].value.data.string, ';');
+            if (NULL == suri) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            *suri = '\0';
+            ++suri;
+            evar = info[n].value.data.string;
+            /* set the peer's module and type */
+            tmp = pmix_argv_split(evar, ':');
+            rc = PMIX_ERR_BAD_PARAM;
+            for (m=0; NULL != tmp[m]; m++) {
+                rc = pmix_ptl_base_set_peer(peer, tmp[m]);
+                if (PMIX_SUCCESS == rc) {
+                    break;
+                }
+            }
+            pmix_argv_free(tmp);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            /* setup to process the URI */
+            evar = suri;
+            break;
+        }
+    }
+    if (NULL == evar) {
+        /* check the environment */
+        rc = pmix_ptl_base_check_server_uris(peer, &evar);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
     }
 
     /* the URI consists of the following elements:

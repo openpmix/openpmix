@@ -55,14 +55,14 @@
 static void timeout(int sd, short args, void *cbdata);
 static char *pmix_getline(FILE *fp);
 
-pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
+pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
 {
-    char *evar, *vrs;
     pmix_status_t rc;
+    char *vrs;
 
     vrs = getenv("PMIX_VERSION");
 
-    if (NULL != (evar = getenv("PMIX_SERVER_URI41"))) {
+    if (0 == strcmp(evar, "PMIX_SERVER_URI41")) {
         /* we are talking to a v4 server */
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 4, 0);
@@ -72,11 +72,10 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
 
         /* must use the latest bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, NULL);
-        *ev = evar;
         return rc;
     }
 
-    if (NULL != (evar = getenv("PMIX_SERVER_URI4"))) {
+    if (0 == strcmp(evar, "PMIX_SERVER_URI4")) {
         /* we are talking to a v4 server */
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 4, 0);
@@ -86,10 +85,10 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
 
         /* must use the V4 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v4");
-        *ev = evar;
         return rc;
     }
-    if (NULL != (evar = getenv("PMIX_SERVER_URI3"))) {
+
+    if (0 == strcmp(evar, "PMIX_SERVER_URI3")) {
         /* we are talking to a v3 server */
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 3, 0);
@@ -99,11 +98,10 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
 
         /* must use the v3 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v3");
-        *ev = evar;
         return rc;
     }
 
-    if (NULL != (evar = getenv("PMIX_SERVER_URI21"))) {
+    if (0 == strcmp(evar, "PMIX_SERVER_URI21")) {
         /* we are talking to a v2.1 server */
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 2, 1);
@@ -113,11 +111,10 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
 
         /* must use the v21 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v21");
-        *ev = evar;
         return rc;
     }
 
-    if (NULL != (evar = getenv("PMIX_SERVER_URI2"))) {
+    if (0 == strcmp(evar, "PMIX_SERVER_URI2")) {
         /* we are talking to a v2.0 server */
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 2, 0);
@@ -127,6 +124,43 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
 
         /* must use the v20 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v20");
+        return rc;
+    }
+
+    return PMIX_ERR_UNREACH;
+}
+
+pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
+{
+    char *evar;
+    pmix_status_t rc;
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI41"))) {
+        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI41");
+        *ev = evar;
+        return rc;
+    }
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI4"))) {
+        /* we are talking to a v4 server */
+        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI4");
+        *ev = evar;
+        return rc;
+    }
+    if (NULL != (evar = getenv("PMIX_SERVER_URI3"))) {
+        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI3");
+        *ev = evar;
+        return rc;
+    }
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI21"))) {
+        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI21");
+        *ev = evar;
+        return rc;
+    }
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI2"))) {
+        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI2");
         *ev = evar;
         return rc;
     }
