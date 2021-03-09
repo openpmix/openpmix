@@ -173,6 +173,7 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_s
 PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                                                         pmix_info_t *info, size_t ninfo);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar);
 
 END_C_DECLS
 

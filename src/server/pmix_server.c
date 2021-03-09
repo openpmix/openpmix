@@ -240,6 +240,44 @@ done:
     }
 }
 
+static pmix_status_t register_singleton(char *name)
+{
+    char *tmp, *ptr;
+    pmix_namespace_t *nptr;
+    pmix_rank_t rank;
+    pmix_rank_info_t *rinfo;
+
+    tmp = strdup(name);
+    ptr = strrchr(tmp, '.');
+    *ptr = '\0';
+    ++ptr;
+    rank = strtoul(ptr, NULL, 10);
+
+    nptr = PMIX_NEW(pmix_namespace_t);
+    if (NULL == nptr) {
+        free(tmp);
+        return PMIX_ERR_NOMEM;
+    }
+    nptr->nspace = strdup(tmp);
+    nptr->nlocalprocs = 1;
+    nptr->nprocs = 1;
+    pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+    /* add this rank */
+    rinfo = PMIX_NEW(pmix_rank_info_t);
+    if (NULL == rinfo) {
+        free(tmp);
+        return PMIX_ERR_NOMEM;
+    }
+    rinfo->pname.nspace = strdup(tmp);
+    rinfo->pname.rank = rank;
+    rinfo->uid = geteuid();
+    rinfo->gid = getegid();
+    pmix_list_append(&nptr->ranks, &rinfo->super);
+    nptr->all_registered = true;
+    free(tmp);
+
+    return PMIX_SUCCESS;
+}
 
 // local functions for connection support
 pmix_status_t pmix_server_initialize(void)
@@ -566,6 +604,16 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     if (PMIX_SUCCESS != (rc = pmix_ploc_base_select())) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
+    }
+
+    /* if we were started to support a singleton, register it now
+     * so we won't reject it when it connects to us */
+    if (NULL != (evar = getenv("PMIX_MCA_singleton"))) {
+        rc = register_singleton(evar);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            return rc;
+        }
     }
 
     /* setup the wildcard recv for inbound messages from clients */
