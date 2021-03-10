@@ -83,6 +83,7 @@ AC_DEFUN([_PMIX_SETUP_PANDOC],[
                          [AC_MSG_WARN([*** Could not find a suitable pandoc on your system.])
                           AC_MSG_WARN([*** You need pandoc >=$min_major_version.$min_minor_version to build OpenPMIx man pages.])
                           AC_MSG_WARN([*** See pandoc.org.])
+                          AC_MSG_WARN([*** If no man pages are needed, rerun configure with option '--disable-man-pages'.])
                           AC_MSG_WARN([*** NOTE: If you are building from a tarball downloaded from the OpenPMIx GitHub repository, you do not need Pandoc])
                           AC_MSG_ERROR([Cannot continue])
                          ])])
