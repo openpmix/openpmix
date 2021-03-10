@@ -43,7 +43,7 @@ m4_include([config/autogen_found_items.m4])
 # call PMIX_GET_VERSION (etc.) before AC_INIT.  So use the shell
 # version.
 
-AC_INIT([pmix],[m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --tarball]))],[https://github.com/pmix/pmix/issues],[pmix])
+AC_INIT([pmix],[m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --tarball]))],[https://github.com/openpmix/openpmix/issues],[pmix])
 AC_PREREQ([2.69])
 AC_CONFIG_AUX_DIR(./config)
 # Note that this directory must *exactly* match what was specified via
