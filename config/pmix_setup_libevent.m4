@@ -88,10 +88,12 @@ AC_DEFUN([_PMIX_LIBEVENT_EMBEDDED_MODE], [
            PMIX_EVENT2_THREAD_HEADER="$with_libevent_header"])
 
     AC_MSG_CHECKING([if co-built libevent includes thread support])
-    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
         [
          #include <event.h>
          #include <event2/thread.h>
+        ],
+        [
          #if !(EVTHREAD_LOCK_API_VERSION >= 1)
          #error "No threads!"
          #endif
