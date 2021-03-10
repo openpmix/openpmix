@@ -3,6 +3,7 @@
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -19,11 +20,11 @@ AC_DEFUN([MCA_pmix_pcompress_zlib_CONFIG],[
     PMIX_VAR_SCOPE_PUSH([pmix_zlib_dir pmix_zlib_libdir pmix_zlib_standard_lib_location pmix_zlib_standard_header_location pmix_check_zlib_save_CPPFLAGS pmix_check_zlib_save_LDFLAGS pmix_check_zlib_save_LIBS])
 
     AC_ARG_WITH([zlib],
-                [AC_HELP_STRING([--with-zlib=DIR],
+                [AS_HELP_STRING([--with-zlib=DIR],
                                 [Search for zlib headers and libraries in DIR ])])
 
     AC_ARG_WITH([zlib-libdir],
-                [AC_HELP_STRING([--with-zlib-libdir=DIR],
+                [AS_HELP_STRING([--with-zlib-libdir=DIR],
                                 [Search for zlib libraries in DIR ])])
 
     pmix_check_zlib_save_CPPFLAGS="$CPPFLAGS"

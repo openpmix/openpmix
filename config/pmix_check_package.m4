@@ -46,6 +46,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_HEADER], [
            test "$hdir_prefix" = "/usr" || \
            test "$hdir_prefix" = "/usr/local"],
            [ # try as is...
+            AC_MSG_NOTICE([looking for header without includes])
             AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [])
             AS_IF([test "$pmix_check_package_header_happy" = "no"],
                   [# no go on the as is - reset the cache and try again
@@ -55,13 +56,13 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_HEADER], [
           [AS_IF([test "$hdir_prefix" != ""],
                  [$1_CPPFLAGS="$$1_CPPFLAGS -I$hdir_prefix"
                   CPPFLAGS="$CPPFLAGS -I$hdir_prefix"
-                  AC_VERBOSE([looking for header in $hdir_prefix])
+                  AC_MSG_NOTICE([looking for header in $hdir_prefix])
                   AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [], [$6])
                   AS_IF([test "$pmix_check_package_header_happy" = "no"],
                         [unset pmix_Header
                          $1_CPPFLAGS="$$1_CPPFLAGS -I$hdir_prefix/include"
                          CPPFLAGS="$CPPFLAGS -I$hdir_prefix/include"
-                         AC_VERBOSE([looking for header in $hdir_prefix/include])
+                         AC_MSG_NOTICE([looking for header in $hdir_prefix/include])
                          AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [], [$6])])])])
 
     AS_IF([test "$pmix_check_package_header_happy" = "yes"],
@@ -108,7 +109,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
             # first try standard locations as otherwise our
             # searches with libdir_prefix locations might come
             # back positive and unnecessarily add an LDFLAG
-            AC_VERBOSE([looking for library without search path])
+            AC_MSG_NOTICE([looking for library without search path])
             AC_SEARCH_LIBS([$3], [$2],
                            [pmix_check_package_lib_happy="yes"],
                            [pmix_check_package_lib_happy="no"], [$4])
@@ -125,7 +126,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
                        test "$libdir_prefix" != "/usr/local"],
                     [$1_LDFLAGS="$$1_LDFLAGS -L$libdir_prefix/lib64"
                      LDFLAGS="$LDFLAGS -L$libdir_prefix/lib64"
-                     AC_VERBOSE([looking for library in $libdir_prefix/lib64])
+                     AC_MSG_NOTICE([looking for library in $libdir_prefix/lib64])
                      AC_SEARCH_LIBS([$3], [$2],
                                [pmix_check_package_lib_happy="yes"],
                                [pmix_check_package_lib_happy="no"], [$4])
@@ -142,7 +143,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
                        test "$libdir_prefix" != "/usr/local"],
                     [$1_LDFLAGS="$$1_LDFLAGS -L$libdir_prefix/lib"
                      LDFLAGS="$LDFLAGS -L$libdir_prefix/lib"
-                     AC_VERBOSE([looking for library in $libdir_prefix/lib])
+                     AC_MSG_NOTICE([looking for library in $libdir_prefix/lib])
                      AC_SEARCH_LIBS([$3], [$2],
                                [pmix_check_package_lib_happy="yes"],
                                [pmix_check_package_lib_happy="no"], [$4])

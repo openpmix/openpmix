@@ -36,11 +36,11 @@ AC_DEFUN([PMIX_CHECK_PSM2],[
 
     if test -z "$pmix_check_psm2_happy" ; then
 	AC_ARG_WITH([psm2],
-		    [AC_HELP_STRING([--with-psm2(=DIR)],
+		    [AS_HELP_STRING([--with-psm2(=DIR)],
 				    [Build PSM2 support, optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
 	PMIX_CHECK_WITHDIR([psm2], [$with_psm2], [include/psm2.h])
 	AC_ARG_WITH([psm2-libdir],
-		    [AC_HELP_STRING([--with-psm2-libdir=DIR],
+		    [AS_HELP_STRING([--with-psm2-libdir=DIR],
 				    [Search for PSM2 libraries in DIR])])
 	PMIX_CHECK_WITHDIR([psm2-libdir], [$with_psm2_libdir], [libpsm2.*])
 
