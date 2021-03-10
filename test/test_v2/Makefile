@@ -13,7 +13,7 @@ LDFLAGS = -Wl,-rpath,$(LDIR) #-Wl,--stack,10485760
 LIBS =-lpmix -lpthread -levent # -lefence # <-- can link against electric fence for memory checking
 
 # Executables
-EXE = pmix_test test_init_fin test_helloworld test_get_basic test_get_peers
+EXE = pmix_test test_init_fin test_helloworld test_get_basic test_get_peers test_fence_wildcard test_fence_wildcard_timeout
 
 # List of all .c source files.
 PCFILES = pmix_test.c test_common.c cli_stages.c test_server.c server_callbacks.c base64_enc_dec.c
@@ -23,7 +23,8 @@ TC2FILES = test_helloworld.c $(TCCOMMONFILES)
 TC3FILES = test_get_basic.c $(TCCOMMONFILES)
 TC4FILES = test_get_peers.c $(TCCOMMONFILES)
 TC5FILES = test_fence_wildcard.c $(TCCOMMONFILES)
-TCFILES = $(TC1FILES) $(TC2FILES) $(TC3FILES) $(TC4FILES) $(TC5FILES)
+TC6FILES = test_fence_wildcard_timeout.c $(TCCOMMONFILES)
+TCFILES = $(TC1FILES) $(TC2FILES) $(TC3FILES) $(TC4FILES) $(TC5FILES) $(TC6FILES)
 CFILES = $(PCFILES) $(TCFILES)
 
 OBJ = $(CFILES:%.c=%.o)
@@ -33,8 +34,9 @@ T2OBJ = $(TC2FILES:%.c=%.o)
 T3OBJ = $(TC3FILES:%.c=%.o)
 T4OBJ = $(TC4FILES:%.c=%.o)
 T5OBJ = $(TC5FILES:%.c=%.o)
+T6OBJ = $(TC6FILES:%.c=%.o)
 
-all: pmix_test test_init_fin test_helloworld test_get_basic test_get_peers test_fence_wildcard
+all: pmix_test test_init_fin test_helloworld test_get_basic test_get_peers test_fence_wildcard test_fence_wildcard_timeout
 .PHONY: all
 
 clean:
@@ -52,6 +54,8 @@ test_get_basic: $(T3OBJ)
 test_get_peers: $(T4OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS)
 test_fence_wildcard: $(T5OBJ)
+	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS) -lm
+test_fence_wildcard_timeout: $(T6OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) -L$(LDIR) $(LDFLAGS) $(LIBS) -lm
 
 %.o : %.c

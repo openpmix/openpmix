@@ -184,8 +184,8 @@ void parse_cmd(int argc, char **argv, test_params *params, validation_params *v_
             fprintf(stderr, "\t-t <>    set timeout\n");
             fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
             fprintf(stderr, "\t-d str   assign ranks to servers, for example: 0:0,1:1:2,3,4\n");
-            fprintf(stderr, "\t-m num   fence time multiplier (similar to an error bar)\n");
-            fprintf(stderr, "\t-r num   fence timeout ratio (used to calculate sleep time before fence calls)\n");
+            fprintf(stderr, "\t-m num   fence time multiplier (similar to an error bar, default: 100)\n");
+            fprintf(stderr, "\t-r num   fence timeout ratio (used to calculate sleep time before fence calls, default: 100)\n");
             fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
             fprintf(stderr, "\t-nb      use non-blocking fence\n");
             exit(0);

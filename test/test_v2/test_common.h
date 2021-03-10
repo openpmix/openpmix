@@ -120,7 +120,7 @@ extern FILE *pmixt_outfile;
 #define MAX_DIGIT_LEN 10
 #define TEST_REPLACE_DEFAULT "3:1"
 
-#define TEST_DEFAULT_FENCE_TIMEOUT_RATIO 20
+#define TEST_DEFAULT_FENCE_TIMEOUT_RATIO 100
 #define TEST_DEFAULT_FENCE_TIME_MULTIPLIER 100
 
 #define PMIXT_SET_FILE(prefix, ns_id, rank) { \
