@@ -105,7 +105,8 @@ AM_SILENT_RULES([yes])
 # set the language
 AC_LANG([C])
 # find NM
-AC_PATH_PROG([NM], [nm])
+AC_PROG_GREP
+LT_PATH_NM
 
 # AC_USE_SYSTEM_EXTENSIONS will modify CFLAGS if nothing was in there
 # beforehand.  We don't want that.  So if there was nothing in
