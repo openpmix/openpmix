@@ -15,6 +15,7 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -372,7 +373,7 @@ char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
 
     /* Bozo case */
 
-    if (NULL == argv || NULL == argv[0] || (int)start > pmix_argv_count(argv)) {
+    if (NULL == argv || NULL == argv[0] || (int)start >= pmix_argv_count(argv)) {
         return strdup("");
     }
 
@@ -383,10 +384,15 @@ char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
         str_len += strlen(*p) + 1;
     }
 
+    if (0 == str_len) {
+        return strdup("");
+    }
+
     /* Allocate the string. */
 
-    if (NULL == (str = (char*) malloc(str_len)))
+    if (NULL == (str = (char*) malloc(str_len))) {
         return NULL;
+    }
 
     /* Loop filling in the string. */
 
