@@ -280,6 +280,24 @@ static pmix_status_t load_xml(char *xml)
 
 static bool passed_thru = false;
 
+static void ploc_hwloc_print_maps(void) {
+
+    FILE *maps_file = fopen("/proc/self/maps", "r");
+    if (maps_file) {
+        char line[256];
+        pmix_output(0, "%s Dumping /proc/self/maps",
+                    PMIX_NAME_PRINT(&pmix_globals.myid));
+        while (fgets(line, sizeof(line), maps_file) != NULL) {
+            char *end = strchr(line, '\n');
+            if (end) {
+                *end = '\0';
+            }
+            pmix_output(0, "%s", line);
+        }
+        fclose(maps_file);
+    }
+}
+
 pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
 {
     pmix_cb_t cb;
@@ -432,20 +450,7 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     /* failed to adopt from shmem, so provide some feedback and
      * then fallback to other ways to get the topology */
     if (4 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
-        FILE *file = fopen("/proc/self/maps", "r");
-        if (file) {
-            char line[256];
-            pmix_output(0, "Dumping /proc/self/maps");
-
-            while (fgets(line, sizeof(line), file) != NULL) {
-                char *end = strchr(line, '\n');
-                if (end) {
-                    *end = '\0';
-                }
-                pmix_output(0, "%s", line);
-            }
-            fclose(file);
-        }
+        ploc_hwloc_print_maps();
     }
 
 tryxml:
@@ -683,20 +688,7 @@ tryxml:
                                         &shmemaddr, shmemsize)) {
         /* we couldn't find a hole, so don't use the shmem support */
         if (4 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
-            FILE *file = fopen("/proc/self/maps", "r");
-            if (file) {
-                char line[256];
-                pmix_output(0, "%s Dumping /proc/self/maps",
-                            PMIX_NAME_PRINT(&pmix_globals.myid));
-                while (fgets(line, sizeof(line), file) != NULL) {
-                    char *end = strchr(line, '\n');
-                    if (end) {
-                       *end = '\0';
-                    }
-                    pmix_output(0, "%s", line);
-                }
-                fclose(file);
-            }
+            ploc_hwloc_print_maps();
         }
         return PMIX_SUCCESS;
     }

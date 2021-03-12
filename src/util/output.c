@@ -908,7 +908,6 @@ static int output(int output_id, const char *format, va_list arglist)
                     ++ldi->ldi_file_num_lines_lost;
                 } else if (ldi->ldi_file_num_lines_lost > 0 && 0 <= ldi->ldi_fd) {
                     char buffer[BUFSIZ];
-                    char *out = buffer;
                     memset(buffer, 0, BUFSIZ);
                     snprintf(buffer, BUFSIZ - 1,
                              "[WARNING: %d lines lost because the PMIx process session directory did\n not exist when pmix_output() was invoked]\n",
@@ -918,9 +917,6 @@ static int output(int output_id, const char *format, va_list arglist)
                         goto cleanup;
                     }
                     ldi->ldi_file_num_lines_lost = 0;
-                    if (out != buffer) {
-                        free(out);
-                    }
                 }
             }
             if (ldi->ldi_fd != -1) {

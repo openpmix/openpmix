@@ -924,7 +924,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
          * may have been deleted after the first invocation. In
          * such a case, we simply regenerate it locally as it is
          * well-known */
-        pmix_cb_t cb;
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
         cb.copy = true;
@@ -934,10 +933,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                                 "pmix:tool:client data not found in internal storage");
             rc = pmix_tool_init_info();
             if (PMIX_SUCCESS != rc) {
+                PMIX_DESTRUCT(&cb);
                 PMIX_RELEASE_THREAD(&pmix_global_lock);
                 return rc;
             }
         }
+        PMIX_DESTRUCT(&cb);
     } else {
         /* now finish the initialization by filling our local
          * datastore with typical job-related info. No point
