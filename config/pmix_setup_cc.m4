@@ -292,6 +292,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wmissing-prototypes, Wmissing_prototypes)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wstrict-prototypes, Wstrict_prototypes)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wcomment, Wcomment)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wshadow, Wshadow)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror-implicit-function-declaration, Werror_implicit_function_declaration)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-double, Wno_long_double, int main() { long double x; })
         _PMIX_CHECK_SPECIFIC_CFLAGS(-fno-strict-aliasing, fno_strict_aliasing, int main () { int x; })
