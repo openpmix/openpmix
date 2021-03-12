@@ -390,7 +390,7 @@ static PMIX_CLASS_INSTANCE(pmix_ltcaddy_t,
                            ltcon, ltdes);
 
 static pmix_event_t stdinsig_ev;
-static pmix_iof_read_event_t *stdinev = NULL;
+static pmix_iof_read_event_t *stdinev_global = NULL;
 
 static void stdincbfunc(struct pmix_peer_t *peer,
                         pmix_ptl_hdr_t *hdr,
@@ -500,7 +500,7 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                              * doesn't do a corresponding pull, however, then the stdin will
                              * be dropped upon receipt at the local daemon
                              */
-                            PMIX_IOF_READ_EVENT(&stdinev,
+                            PMIX_IOF_READ_EVENT(&stdinev_global,
                                                 targets, ntargets,
                                                 directives, ndirs, fd,
                                                 pmix_iof_read_local_handler, false);
@@ -510,13 +510,13 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                              * but may delay its activation
                              */
                             if (pmix_iof_stdin_check(fd)) {
-                                PMIX_IOF_READ_ACTIVATE(stdinev);
+                                PMIX_IOF_READ_ACTIVATE(stdinev_global);
                             }
                         } else {
                             /* if we are not looking at a tty, just setup a read event
                              * and activate it
                              */
-                            PMIX_IOF_READ_EVENT(&stdinev, targets, ntargets,
+                            PMIX_IOF_READ_EVENT(&stdinev_global, targets, ntargets,
                                                 directives, ndirs, fd,
                                                 pmix_iof_read_local_handler, true);
                         }

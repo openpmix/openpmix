@@ -321,12 +321,12 @@ static size_t flex_pack_integer(size_t val,
     size_t idx = 0;
 
     do {
-        uint8_t val = tmp & FLEX_BASE7_MASK;
+        uint8_t encoding = tmp & FLEX_BASE7_MASK;
         tmp >>= FLEX_BASE7_SHIFT;
         if (PMIX_UNLIKELY(tmp)) {
-            val |= FLEX_BASE7_CONT_FLAG;
+            encoding |= FLEX_BASE7_CONT_FLAG;
         }
-        out_buf[idx++] = val;
+        out_buf[idx++] = encoding;
     } while(tmp && idx < SIZEOF_SIZE_T);
 
     /* If we have leftover (VERY unlikely) */
