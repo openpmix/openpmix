@@ -1836,22 +1836,6 @@ typedef struct {
     } while(0)
 
 
-/****    PMIX DATA BUFFER    ****/
-typedef struct pmix_data_buffer {
-    /** Start of my memory */
-    char *base_ptr;
-    /** Where the next data will be packed to (within the allocated
-        memory starting at base_ptr) */
-    char *pack_ptr;
-    /** Where the next data will be unpacked from (within the
-        allocated memory starting as base_ptr) */
-    char *unpack_ptr;
-    /** Number of bytes allocated (starting at base_ptr) */
-    size_t bytes_allocated;
-    /** Number of bytes used by the buffer (i.e., amount of data --
-        including overhead -- packed in the buffer) */
-    size_t bytes_used;
-} pmix_data_buffer_t;
 #define PMIX_DATA_BUFFER_CREATE(m)                                          \
     do {                                                                    \
         (m) = (pmix_data_buffer_t*)pmix_calloc(1, sizeof(pmix_data_buffer_t));   \

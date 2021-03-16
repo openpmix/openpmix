@@ -457,30 +457,6 @@ int pmix_rte_init(uint32_t type,
         goto return_error;
     }
 
-<<<<<<< HEAD
-||||||| parent of e477f9d... Fix various PGI warnings.
-    /* open the pstrg framework */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, 0))) {
-        error = "pmix_strg_base_open";
-        goto return_error;
-    }
-    if (PMIX_SUCCESS != (ret = pmix_pstrg_base_select())) {
-        error = "pmix_pstrg_base_select";
-        goto return_error;
-    }
-
-=======
-    /* open the pstrg framework */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pstrg_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT))) {
-        error = "pmix_strg_base_open";
-        goto return_error;
-    }
-    if (PMIX_SUCCESS != (ret = pmix_pstrg_base_select())) {
-        error = "pmix_pstrg_base_select";
-        goto return_error;
-    }
-
->>>>>>> e477f9d... Fix various PGI warnings.
     /* initialize the attribute support system */
     pmix_init_registered_attrs();
 
