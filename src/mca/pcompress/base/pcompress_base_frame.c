@@ -17,6 +17,7 @@
 
 #include "pmix_config.h"
 
+#include "src/util/show_help.h"
 #include "src/mca/base/base.h"
 #include "src/mca/pcompress/base/base.h"
 
@@ -33,6 +34,10 @@ static bool compress_block(uint8_t *inblock, size_t size,
     (void)size;
     (void)outbytes;
     (void)nbytes;
+    if (!pmix_compress_base.silent) {
+        pmix_show_help("help-pcompress.txt", "unavailable", true);
+        pmix_compress_base.silent = true;
+    }
     return false;
 }
 
@@ -53,6 +58,10 @@ static bool compress_string(char *instring,
     (void)instring;
     (void)outbytes;
     (void)nbytes;
+    if (!pmix_compress_base.silent) {
+        pmix_show_help("help-pcompress.txt", "unavailable", true);
+        pmix_compress_base.silent = true;
+    }
     return false;
 }
 
@@ -81,9 +90,18 @@ static int pmix_compress_base_register(pmix_mca_base_register_flag_t flags)
     pmix_compress_base.compress_limit = 4096;
     (void) pmix_mca_base_var_register("pmix", "compress", "base", "limit",
                                       "Threshold beyond which data will be compressed",
-                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_compress_base.compress_limit);
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0,
+                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
+                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                      &pmix_compress_base.compress_limit);
 
+    pmix_compress_base.silent = false;
+    (void) pmix_mca_base_var_register("pmix", "compress", "base", "silence_warning",
+                                      "Do not warn if compression unavailable",
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
+                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
+                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                      &pmix_compress_base.silent);
     return PMIX_SUCCESS;
 }
 

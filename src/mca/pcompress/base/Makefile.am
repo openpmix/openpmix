@@ -4,6 +4,7 @@
 #                         Corporation.  All rights reserved.
 # Copyright (c) 2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2019      Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -17,3 +18,5 @@ headers += \
 libmca_pcompress_la_SOURCES += \
         base/pcompress_base_frame.c \
         base/pcompress_base_select.c
+
+dist_pmixdata_DATA = base/help-pcompress.txt
