@@ -1227,6 +1227,7 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
         if (NULL == pmix_host_server.push_stdin) {
             /* nothing we can do with this info */
+            goto reactivate;
         }
         PMIX_CONSTRUCT_LOCK(&lock);
         rc = pmix_host_server.push_stdin(&pmix_globals.myid,
