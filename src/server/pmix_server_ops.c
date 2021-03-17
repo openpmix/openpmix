@@ -4771,6 +4771,11 @@ static void tdes(pmix_server_trkr_t *t)
     if (NULL != t->info) {
         PMIX_INFO_FREE(t->info, t->ninfo);
     }
+    pmix_nspace_caddy_t *nm, *nm_next;
+    PMIX_LIST_FOREACH_SAFE(nm, nm_next, &t->nslist, pmix_nspace_caddy_t) {
+        pmix_list_remove_item (&t->nslist, &nm->super);
+        PMIX_RELEASE(nm);
+    }
     PMIX_DESTRUCT(&t->nslist);
 }
 PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
