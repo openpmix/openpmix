@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -609,6 +610,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     if (nspace_given || nspace_in_enviro) {
         PMIX_LOAD_PROCID(&pmix_globals.myid, nspace, rank);
         free(nspace);
+        nspace = NULL;
     }
 
     /* setup the IO Forwarding recv */
@@ -709,9 +711,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
      * so initialize the server globals too */
     if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
         PMIX_ERROR_LOG(rc);
-        if (NULL != nspace) {
-            free(nspace);
-        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -794,7 +793,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
 
     /* open the pmdl framework and select the active modules for this environment
      * as we might need them if we are asking a server to launch something for us */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, 0))) {
+    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework,
+                                                    PMIX_MCA_BASE_OPEN_DEFAULT))) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -924,7 +924,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
          * may have been deleted after the first invocation. In
          * such a case, we simply regenerate it locally as it is
          * well-known */
-        pmix_cb_t cb;
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
         cb.copy = true;
@@ -934,10 +933,12 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
                                 "pmix:tool:client data not found in internal storage");
             rc = pmix_tool_init_info();
             if (PMIX_SUCCESS != rc) {
+                PMIX_DESTRUCT(&cb);
                 PMIX_RELEASE_THREAD(&pmix_global_lock);
                 return rc;
             }
         }
+        PMIX_DESTRUCT(&cb);
     } else {
         /* now finish the initialization by filling our local
          * datastore with typical job-related info. No point
@@ -954,7 +955,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
     /* if we are acting as a server, then start listening */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* setup the fork/exec framework */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework, 0)) ) {
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework,
+                                                        PMIX_MCA_BASE_OPEN_DEFAULT)) ) {
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_pfexec_base_select()) ) {
@@ -962,7 +964,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
 
         /* open the ploc framework */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework, 0))) {
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework,
+                                                        PMIX_MCA_BASE_OPEN_DEFAULT))) {
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_ploc_base_select())) {
@@ -977,7 +980,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         }
 
         /* open the pnet framework and select the active modules for this environment */
-        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework, 0))) {
+        if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
+                                                        PMIX_MCA_BASE_OPEN_DEFAULT))) {
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
@@ -1066,7 +1070,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc,
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "[%s:%d] WAITING IN INIT FOR RELEASE",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
-        code = PMIX_ERR_DEBUGGER_RELEASE;
+        code = PMIX_DEBUGGER_RELEASE;
         PMIx_Register_event_handler(&code, 1, evinfo, 2,
                                     notification_fn, evhandler_reg_callbk, (void*)&reglock);
         /* wait for registration to complete */
@@ -1891,6 +1895,15 @@ static void retry_set(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(cb);
 
+    /* if we are switching back to me, then there is no point in
+     * searching the array of clients - I definitely won't be there! */
+    if (PMIX_CHECK_NSPACE(cb->proc->nspace, pmix_globals.myid.nspace) &&
+        PMIX_CHECK_RANK(cb->proc->rank, pmix_globals.myid.rank)) {
+        pmix_client_globals.myserver = pmix_globals.mypeer;
+        pmix_globals.connected = true;
+        goto done;
+    }
+
     /* see if we have this server */
     for (n=0; n < pmix_server_globals.clients.size; n++) {
         pr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
@@ -1937,6 +1950,7 @@ static void retry_set(int sd, short args, void *cbdata)
     pmix_client_globals.myserver = peer;
     pmix_globals.connected = true;
 
+done:
     cb->status = PMIX_SUCCESS;
     PMIX_WAKEUP_THREAD(&cb->lock);
     PMIX_POST_OBJECT(cb);

@@ -12,6 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1147,7 +1148,10 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_pointer_array_t *regtypes,
     switch (p->type) {
         case PMIX_UNDEF:
             break;
+        /* need to callout all the fields that are pointers to
+         * a data object as opposed to a simple value */
         case PMIX_PROC:
+        case PMIX_PROC_NSPACE:
         case PMIX_PROC_INFO:
         case PMIX_DATA_ARRAY:
         case PMIX_COORD:
@@ -1163,6 +1167,7 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_pointer_array_t *regtypes,
             }
             break;
         default:
+            /* pass the address of the value instead of the value itself */
             PMIX_BFROPS_PACK_TYPE(ret, buffer, &p->data, 1, p->type, regtypes);
             if (PMIX_ERR_UNKNOWN_DATA_TYPE == ret) {
                 pmix_output(0, "PACK-PMIX-VALUE[%s:%d]: UNSUPPORTED TYPE %d",
@@ -1574,4 +1579,60 @@ pmix_status_t pmix_bfrops_base_pack_locality(pmix_pointer_array_t *regtypes,
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;
+}
+
+pmix_status_t pmix_bfrops_base_pack_nspace(pmix_pointer_array_t *regtypes,
+                                           pmix_buffer_t *buffer, const void *src,
+                                           int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_nspace_t *ptr = (pmix_nspace_t*)src;
+    char *p;
+    int32_t i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_PROC_NSPACE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i=0; i < num_vals; ++i) {
+        p = (char*)ptr[i];
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &p, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_pack_dbuf(pmix_pointer_array_t *regtypes,
+                                         pmix_buffer_t *buffer, const void *src,
+                                         int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_data_buffer_t *ptr = (pmix_data_buffer_t*)src;
+    int32_t i;
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_DATA_BUFFER != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    for (i=0; i < num_vals; ++i) {
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].bytes_used, 1, PMIX_SIZE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        if (0 < ptr[i].bytes_used) {
+            PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].base_ptr, ptr[i].bytes_used, PMIX_BYTE, regtypes);
+            if (PMIX_SUCCESS != ret) {
+                return ret;
+            }
+        }
+    }
+    return PMIX_SUCCESS;
 }

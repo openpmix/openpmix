@@ -23,6 +23,7 @@
 # Copyright (c) 2016      IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -42,10 +43,8 @@ m4_include([config/autogen_found_items.m4])
 # call PMIX_GET_VERSION (etc.) before AC_INIT.  So use the shell
 # version.
 
-AC_INIT([pmix],
-        [m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --tarball]))],
-        [https://github.com/pmix/pmix/issues], [pmix])
-AC_PREREQ(2.69)
+AC_INIT([pmix],[m4_normalize(esyscmd([config/pmix_get_version.sh VERSION --tarball]))],[https://github.com/openpmix/openpmix/issues],[pmix])
+AC_PREREQ([2.69])
 AC_CONFIG_AUX_DIR(./config)
 # Note that this directory must *exactly* match what was specified via
 # -I in ACLOCAL_AMFLAGS in the top-level Makefile.am.
@@ -105,6 +104,9 @@ AM_SILENT_RULES([yes])
 
 # set the language
 AC_LANG([C])
+# find NM
+AC_PROG_GREP
+LT_PATH_NM
 
 # AC_USE_SYSTEM_EXTENSIONS will modify CFLAGS if nothing was in there
 # beforehand.  We don't want that.  So if there was nothing in
@@ -215,14 +217,14 @@ pmix_enable_static="$enable_static"
 AS_IF([test ! -z "$enable_static" && test "$enable_static" = "yes"],
       [CFLAGS="$CFLAGS -fPIC"])
 
-AM_ENABLE_SHARED
-AM_DISABLE_STATIC
+AC_ENABLE_SHARED([])
+AC_DISABLE_STATIC([])
 PMIX_SETUP_WRAPPER_INIT
 
 # This did not exist pre AM 1.11.x (where x is somewhere >0 and <3),
 # but it is necessary in AM 1.12.x.
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
-AM_PROG_LEX
+AC_PROG_LEX(yywrap)
 
 ############################################################################
 # Configuration options
@@ -331,7 +333,7 @@ AC_SUBST([PC_PRIVATE_LIBS], ["$PC_PRIVATE_LIBS"])
 ####################################################################
 
 AC_ARG_ENABLE(werror,
-    AC_HELP_STRING([--enable-werror],
+    AS_HELP_STRING([--enable-werror],
                    [Treat compiler warnings as errors]),
 [
     CFLAGS="$CFLAGS -Werror"

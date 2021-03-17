@@ -17,11 +17,11 @@ def harvest_constants(options, src, constants, definitions):
     path = os.path.join(options.src, src)
     # open the file
     try:
-        inputfile = open(path, "r")
+        inputfile = open(path, "r", encoding="utf-8")
     except:
         path = os.path.join(options.includedir, src)
         try:
-            inputfile = open(path, "r")
+            inputfile = open(path, "r", encoding="utf-8")
         except:
             print("File", path, "could not be opened")
             return -1

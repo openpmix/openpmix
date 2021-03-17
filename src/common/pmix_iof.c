@@ -6,6 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -49,47 +50,54 @@ static void msgcbfunc(struct pmix_peer_t *peer,
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
     int32_t m;
     pmix_status_t rc, status;
-    size_t refid = 0;
+    size_t refid = SIZE_MAX;
+    size_t localid = SIZE_MAX;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
     /* unpack the return status */
     m=1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &status, &m, PMIX_STATUS);
-    if (NULL != cd->iofreq && PMIX_SUCCESS == rc && PMIX_SUCCESS == status) {
-        /* get the reference ID */
-        m=1;
-        PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &m, PMIX_SIZE);
-        /* store the remote reference id */
-        cd->iofreq->remote_id = refid;
-        if (NULL != cd->cbfunc.hdlrregcbfn) {
-            cd->cbfunc.hdlrregcbfn(PMIX_SUCCESS, cd->iofreq->local_id, cd->cbdata);
-        }
-    } else if (PMIX_SUCCESS != rc) {
+    if (PMIX_SUCCESS != rc) {
         status = rc;
+    }
+    if (NULL != cd->iofreq) {
+        pmix_output_verbose(2, pmix_client_globals.iof_output,
+                            "pmix:iof_register returned status %s",
+                            PMIx_Error_string(status));
+        /* this was a registration request */
+        if (PMIX_SUCCESS == status) {
+            /* get the reference ID */
+            m=1;
+            PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &m, PMIX_SIZE);
+            if (PMIX_SUCCESS != rc) {
+                status = rc;
+            } else {
+                /* store the remote reference id */
+                cd->iofreq->remote_id = refid;
+                localid = cd->iofreq->local_id;
+            }
+        }
+        if (NULL == cd->cbfunc.hdlrregcbfn) {
+            cd->status = status;
+            cd->iofreq->remote_id = refid;
+            PMIX_WAKEUP_THREAD(&cd->lock);
+        } else {
+            cd->cbfunc.hdlrregcbfn(status, localid, cd->cbdata);
+        }
+        return;
     }
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
-                        "pmix:iof_register/deregister returned status %s", PMIx_Error_string(status));
+                        "pmix:iof_deregister returned status %s",
+                        PMIx_Error_string(status));
 
-    if (NULL == cd->iofreq) {
-        /* this was a deregistration request */
-        if (NULL == cd->cbfunc.opcbfn) {
-            cd->status = status;
-            PMIX_WAKEUP_THREAD(&cd->lock);
-        } else {
-            cd->cbfunc.opcbfn(status, cd->cbdata);
-        }
-    } else if (PMIX_SUCCESS != status) {
-        pmix_pointer_array_set_item(&pmix_globals.iof_requests, cd->iofreq->local_id, NULL);
-        PMIX_RELEASE(cd->iofreq);
-    } else if (NULL == cd->cbfunc.hdlrregcbfn) {
+    /* this was a deregistration request */
+    if (NULL == cd->cbfunc.opcbfn) {
         cd->status = status;
-        cd->iofreq->remote_id = refid;
         PMIX_WAKEUP_THREAD(&cd->lock);
     } else {
-        cd->iofreq->remote_id = refid;
-        cd->cbfunc.hdlrregcbfn(PMIX_SUCCESS, cd->iofreq->local_id, cd->cbdata);
+        cd->cbfunc.opcbfn(status, cd->cbdata);
     }
 
     PMIX_RELEASE(cd);
@@ -221,6 +229,12 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     }
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
                      msg, &channel, 1, PMIX_IOF_CHANNEL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
+                     msg, &req->local_id, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto cleanup;
@@ -376,7 +390,7 @@ static PMIX_CLASS_INSTANCE(pmix_ltcaddy_t,
                            ltcon, ltdes);
 
 static pmix_event_t stdinsig_ev;
-static pmix_iof_read_event_t *stdinev = NULL;
+static pmix_iof_read_event_t *stdinev_global = NULL;
 
 static void stdincbfunc(struct pmix_peer_t *peer,
                         pmix_ptl_hdr_t *hdr,
@@ -486,7 +500,7 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                              * doesn't do a corresponding pull, however, then the stdin will
                              * be dropped upon receipt at the local daemon
                              */
-                            PMIX_IOF_READ_EVENT(&stdinev,
+                            PMIX_IOF_READ_EVENT(&stdinev_global,
                                                 targets, ntargets,
                                                 directives, ndirs, fd,
                                                 pmix_iof_read_local_handler, false);
@@ -496,13 +510,13 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets,
                              * but may delay its activation
                              */
                             if (pmix_iof_stdin_check(fd)) {
-                                PMIX_IOF_READ_ACTIVATE(stdinev);
+                                PMIX_IOF_READ_ACTIVATE(stdinev_global);
                             }
                         } else {
                             /* if we are not looking at a tty, just setup a read event
                              * and activate it
                              */
-                            PMIX_IOF_READ_EVENT(&stdinev, targets, ntargets,
+                            PMIX_IOF_READ_EVENT(&stdinev_global, targets, ntargets,
                                                 directives, ndirs, fd,
                                                 pmix_iof_read_local_handler, true);
                         }

@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,13 +33,15 @@
 
  BEGIN_C_DECLS
 
-#define PMIX_EVENT_ORDER_NONE       0x00
-#define PMIX_EVENT_ORDER_FIRST      0x01
-#define PMIX_EVENT_ORDER_LAST       0x02
-#define PMIX_EVENT_ORDER_BEFORE     0x04
-#define PMIX_EVENT_ORDER_AFTER      0x08
-#define PMIX_EVENT_ORDER_PREPEND    0x10
-#define PMIX_EVENT_ORDER_APPEND     0x20
+#define PMIX_EVENT_ORDER_NONE           0x00
+#define PMIX_EVENT_ORDER_FIRST          0x01
+#define PMIX_EVENT_ORDER_LAST           0x02
+#define PMIX_EVENT_ORDER_BEFORE         0x04
+#define PMIX_EVENT_ORDER_AFTER          0x08
+#define PMIX_EVENT_ORDER_PREPEND        0x10
+#define PMIX_EVENT_ORDER_APPEND         0x20
+#define PMIX_EVENT_ORDER_FIRST_OVERALL  0x40
+#define PMIX_EVENT_ORDER_LAST_OVERALL   0x80
 
 /* define an internal attribute for marking that the
  * server processed an event before passing it up
@@ -181,9 +184,7 @@ PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
 #define PMIX_REPORT_EVENT(e, p, r, f)                                                   \
     do {                                                                                \
         pmix_event_chain_t *ch, *cp;                                                    \
-        size_t n, ninfo;                                                                \
-        pmix_info_t *info;                                                              \
-        pmix_proc_t proc;                                                               \
+        size_t n;                                                                       \
                                                                                         \
         ch = NULL;                                                                      \
         /* see if we already have this event cached */                                  \
@@ -237,20 +238,23 @@ PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
             pmix_event_add(&ch->ev, &pmix_globals.event_window);                        \
         } else {                                                                        \
             /* add this peer to the array of sources */                                 \
-            pmix_strncpy(proc.nspace, (p)->nptr->nspace, PMIX_MAX_NSLEN);               \
-            proc.rank = (p)->info->pname.rank;                                          \
-            ninfo = ch->nallocated + 1;                                                 \
-            PMIX_INFO_CREATE(info, ninfo);                                              \
+            pmix_proc_t proc_tmp;                                                       \
+            pmix_info_t *info_tmp;                                                      \
+            size_t ninfo_tmp;                                                           \
+            pmix_strncpy(proc_tmp.nspace, (p)->nptr->nspace, PMIX_MAX_NSLEN);           \
+            proc_tmp.rank = (p)->info->pname.rank;                                      \
+            ninfo_tmp = ch->nallocated + 1;                                             \
+            PMIX_INFO_CREATE(info_tmp, ninfo_tmp);                                      \
             /* must keep the hdlr name and return object at the end, so prepend */      \
-            PMIX_INFO_LOAD(&info[0], PMIX_PROCID,                                       \
-                           &proc, PMIX_PROC);                                           \
+            PMIX_INFO_LOAD(&info_tmp[0], PMIX_PROCID,                                   \
+                           &proc_tmp, PMIX_PROC);                                       \
             for (n=0; n < ch->ninfo; n++) {                                             \
-                PMIX_INFO_XFER(&info[n+1], &ch->info[n]);                               \
+                PMIX_INFO_XFER(&info_tmp[n+1], &ch->info[n]);                           \
             }                                                                           \
             PMIX_INFO_FREE(ch->info, ch->nallocated);                                   \
-            ch->nallocated = ninfo;                                                     \
-            ch->info = info;                                                            \
-            ch->ninfo = ninfo - 2;                                                      \
+            ch->nallocated = ninfo_tmp;                                                 \
+            ch->info = info_tmp;                                                        \
+            ch->ninfo = ninfo_tmp - 2;                                                  \
             /* reset the timer */                                                       \
             if (ch->timer_active) {                                                     \
                 pmix_event_del(&ch->ev);                                                \

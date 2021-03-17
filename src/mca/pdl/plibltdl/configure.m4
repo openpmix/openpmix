@@ -3,6 +3,7 @@
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 #
 # Copyright (c) 2017      Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -43,10 +44,10 @@ AC_DEFUN([MCA_pmix_pdl_plibltdl_CONFIG],[
 
     # Add --with options
     AC_ARG_WITH([plibltdl],
-        [AC_HELP_STRING([--with-libltdl(=DIR)],
+        [AS_HELP_STRING([--with-libltdl(=DIR)],
              [Build libltdl support, optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
     AC_ARG_WITH([libltdl-libdir],
-       [AC_HELP_STRING([--with-libltdl-libdir=DIR],
+       [AS_HELP_STRING([--with-libltdl-libdir=DIR],
              [Search for libltdl libraries in DIR])])
 
     # Sanity check the --with values

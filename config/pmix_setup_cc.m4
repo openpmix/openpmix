@@ -19,7 +19,9 @@ dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2020      Triad National Security, LLC. All rights
 dnl                         reserved.
+dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
 dnl
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -56,6 +58,12 @@ AC_DEFUN([PMIX_PROG_CC_C11_HELPER],[
 
     PMIX_CC_HELPER([if $CC $1 supports C11 _Atomic keyword], [pmix_prog_cc_c11_helper__Atomic_available],
                    [[#include <stdatomic.h>]],[[static _Atomic long foo = 1;++foo;]])
+
+   PMIX_CC_HELPER([if $CC $1 supports C11 _c11_atomic functions], [pmix_prog_cc_c11_atomic_function],
+                   [[#include <stdatomic.h>]],[[atomic_int acnt = 0; __c11_atomic_fetch_add(&acnt, 1, memory_order_relaxed);]])
+   if test $pmix_prog_cc_c11_atomic_function -eq 1; then
+      AC_DEFINE_UNQUOTED([PMIX_HAVE_CLANG_BUILTIN_ATOMIC_C11_FUNC], [$pmix_prog_cc_c11_atomic_function], [Whether we have Clang __c11 atomic functions])
+   fi;
 
     PMIX_CC_HELPER([if $CC $1 supports C11 _Generic keyword], [pmix_prog_cc_c11_helper__Generic_available],
                    [[#define FOO(x) (_Generic (x, int: 1))]], [[static int x, y; y = FOO(x);]])
@@ -158,7 +166,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
     AC_REQUIRE([_PMIX_PROG_CC])
     AC_REQUIRE([AM_PROG_CC_C_O])
 
-    PMIX_VAR_SCOPE_PUSH([pmix_prog_cc_c11_helper__Thread_local_available pmix_prog_cc_c11_helper_atomic_var_available pmix_prog_cc_c11_helper__Atomic_available pmix_prog_cc_c11_helper__static_assert_available pmix_prog_cc_c11_helper__Generic_available pmix_prog_cc__thread_available pmix_prog_cc_c11_helper_atomic_fetch_xor_explicit_available])
+    PMIX_VAR_SCOPE_PUSH([pmix_prog_cc_c11_helper__Thread_local_available pmix_prog_cc_c11_helper_atomic_var_available pmix_prog_cc_c11_helper__Atomic_available pmix_prog_cc_c11_helper__static_assert_available pmix_prog_cc_c11_helper__Generic_available pmix_prog_cc__thread_available pmix_prog_cc_c11_helper_atomic_fetch_xor_explicit_available pmix_prog_cc_c11_atomic_function])
 
     # AC_PROG_CC_C99 changes CC (instead of CFLAGS) so save CC (without c99
     # flags) for use in our wrappers.
@@ -174,8 +182,11 @@ AC_DEFUN([PMIX_SETUP_CC],[
         # AC_MSG_WARNING([Open MPI requires a C11 (or newer) compiler])
         # AC_MSG_ERROR([Aborting.])
         # From Open MPI 1.7 on we require a C99 compiant compiler
-        AC_PROG_CC_C99
-        # The result of AC_PROG_CC_C99 is stored in ac_cv_prog_cc_c99
+        # with autoconf 2.70 AC_PROG_CC makes AC_PROG_CC_C99 obsolete
+        m4_version_prereq([2.70],
+            [],
+            [AC_PROG_CC_C99])
+        # The C99 result of AC_PROG_CC is stored in ac_cv_prog_cc_c99
         if test "x$ac_cv_prog_cc_c99" = xno ; then
             AC_MSG_WARN([Open MPI requires a C99 (or newer) compiler. C11 is recommended.])
             AC_MSG_ERROR([Aborting.])
@@ -216,10 +227,6 @@ AC_DEFUN([PMIX_SETUP_CC],[
 
     PMIX_C_COMPILER_VENDOR([pmix_c_vendor])
 
-    # Check for standard headers, needed here because needed before
-    # the types checks.
-    AC_HEADER_STDC
-
     # GNU C and autotools are inconsistent about whether this is
     # defined so let's make it true everywhere for now...  However, IBM
     # XL compilers on PPC Linux behave really badly when compiled with
@@ -238,45 +245,33 @@ AC_DEFUN([PMIX_SETUP_CC],[
 
     # Do we want code coverage
     if test "$WANT_COVERAGE" = "1"; then
-        if test "$pmix_c_vendor" = "gnu" ; then
-            # For compilers > gcc-4.x, use --coverage for
-            # compiling and linking to circumvent trouble with
-            # libgcov.
-            CFLAGS_orig="$CFLAGS"
-            LDFLAGS_orig="$LDFLAGS"
+        # For compilers > gcc-4.x, use --coverage for
+        # compiling and linking to circumvent trouble with
+        # libgcov.
+        LDFLAGS_orig="$LDFLAGS"
+        LDFLAGS="$LDFLAGS_orig --coverage"
+        PMIX_COVERAGE_FLAGS=
 
-            CFLAGS="$CFLAGS_orig --coverage"
-            LDFLAGS="$LDFLAGS_orig --coverage"
-            PMIX_COVERAGE_FLAGS=
-
-            AC_CACHE_CHECK([if $CC supports --coverage],
-                      [pmix_cv_cc_coverage],
-                      [AC_TRY_COMPILE([], [],
-                                      [pmix_cv_cc_coverage="yes"],
-                                      [pmix_cv_cc_coverage="no"])])
-
-            if test "$pmix_cv_cc_coverage" = "yes" ; then
-                PMIX_COVERAGE_FLAGS="--coverage"
-                CLEANFILES="*.gcno ${CLEANFILES}"
-                CONFIG_CLEAN_FILES="*.gcda *.gcov ${CONFIG_CLEAN_FILES}"
-            else
-                PMIX_COVERAGE_FLAGS="-ftest-coverage -fprofile-arcs"
-                CLEANFILES="*.bb *.bbg ${CLEANFILES}"
-                CONFIG_CLEAN_FILES="*.da *.*.gcov ${CONFIG_CLEAN_FILES}"
-            fi
-            CFLAGS="$CFLAGS_orig $PMIX_COVERAGE_FLAGS"
-            LDFLAGS="$LDFLAGS_orig $PMIX_COVERAGE_FLAGS"
-
-            PMIX_FLAGS_UNIQ(CFLAGS)
-            PMIX_FLAGS_UNIQ(LDFLAGS)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(--coverage, coverage)
+        if test "$pmix_cv_cc_coverage" = "1" ; then
+            PMIX_COVERAGE_FLAGS="--coverage"
+            CLEANFILES="*.gcno ${CLEANFILES}"
+            CONFIG_CLEAN_FILES="*.gcda *.gcov ${CONFIG_CLEAN_FILES}"
             AC_MSG_WARN([$PMIX_COVERAGE_FLAGS has been added to CFLAGS (--enable-coverage)])
-
-            WANT_DEBUG=1
         else
-            AC_MSG_WARN([Code coverage functionality is currently available only with GCC])
-            AC_MSG_ERROR([Configure: Cannot continue])
-       fi
-    fi
+            _PMIX_CHECK_SPECIFIC_CFLAGS(-ftest-coverage, ftest_coverage)
+            _PMIX_CHECK_SPECIFIC_CFLAGS(-fprofile-arcs, fprofile_arcs)
+            if test "$pmix_cv_cc_ftest_coverage" = "0" || test "pmix_cv_cc_fprofile_arcs" = "0" ; then
+                AC_MSG_WARN([Code coverage functionality is not currently available with $CC])
+                AC_MSG_ERROR([Configure: Cannot continue])
+            fi
+            CLEANFILES="*.bb *.bbg ${CLEANFILES}"
+            PMIX_COVERAGE_FLAGS="-ftest-coverage -fprofile-arcs"
+        fi
+        PMIX_FLAGS_UNIQ(CFLAGS)
+        PMIX_FLAGS_UNIQ(LDFLAGS)
+        WANT_DEBUG=1
+   fi
 
     # Do we want debugging?
     if test "$WANT_DEBUG" = "1" && test "$enable_debug_symbols" != "no" ; then
@@ -291,117 +286,30 @@ AC_DEFUN([PMIX_SETUP_CC],[
     PMIX_CFLAGS_BEFORE_PICKY="$CFLAGS"
 
     if test $WANT_PICKY_COMPILER -eq 1; then
-        CFLAGS_orig=$CFLAGS
-        add=
-
-        # These flags are likely GCC-specific (or, more specifically,
-        # we don't have general tests for each one, and we know they
-        # work with all versions of GCC that we have used throughout
-        # the years, so we'll keep them limited just to GCC).
-        if test "$pmix_c_vendor" = "gnu" ; then
-            add="$add -Wall -Wundef -Wno-long-long -Wsign-compare"
-            add="$add -Wmissing-prototypes -Wstrict-prototypes"
-            add="$add -Wcomment -pedantic"
-        fi
-
-        # see if -Wno-long-double works...
-        # Starting with GCC-4.4, the compiler complains about not
-        # knowing -Wno-long-double, only if -Wstrict-prototypes is set, too.
-        #
-        # Actually, this is not real fix, as GCC will pass on any -Wno- flag,
-        # have fun with the warning: -Wno-britney
-        CFLAGS="$CFLAGS_orig $add -Wno-long-double -Wstrict-prototypes"
-
-        AC_CACHE_CHECK([if $CC supports -Wno-long-double],
-            [pmix_cv_cc_wno_long_double],
-            [AC_TRY_COMPILE([], [],
-                [
-                 dnl So -Wno-long-double did not produce any errors...
-                 dnl We will try to extract a warning regarding
-                 dnl unrecognized or ignored options
-                 AC_TRY_COMPILE([], [long double test;],
-                     [
-                      pmix_cv_cc_wno_long_double="yes"
-                      if test -s conftest.err ; then
-                          dnl Yes, it should be "ignor", in order to catch ignoring and ignore
-                          for i in unknown invalid ignor unrecognized 'not supported'; do
-                              $GREP -iq $i conftest.err
-                              if test "$?" = "0" ; then
-                                  pmix_cv_cc_wno_long_double="no"
-                                  break;
-                              fi
-                          done
-                      fi
-                     ],
-                     [pmix_cv_cc_wno_long_double="no"])],
-                [pmix_cv_cc_wno_long_double="no"])
-            ])
-
-        if test "$pmix_cv_cc_wno_long_double" = "yes" ; then
-            add="$add -Wno-long-double"
-        fi
-
-        # Per above, we know that this flag works with GCC / haven't
-        # really tested it elsewhere.
-        if test "$pmix_c_vendor" = "gnu" ; then
-            add="$add -Werror-implicit-function-declaration "
-        fi
-
-        CFLAGS="$CFLAGS_orig $add"
-        PMIX_FLAGS_UNIQ(CFLAGS)
-        AC_MSG_WARN([$add has been added to CFLAGS (--enable-picky)])
-        unset add
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wundef, Wundef)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-long, Wno_long_long, int main() { long long x; })
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wsign-compare, Wsign_compare)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wmissing-prototypes, Wmissing_prototypes)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wstrict-prototypes, Wstrict_prototypes)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wcomment, Wcomment)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wshadow, Wshadow)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror-implicit-function-declaration, Werror_implicit_function_declaration)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-double, Wno_long_double, int main() { long double x; })
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-fno-strict-aliasing, fno_strict_aliasing, int main () { int x; })
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-pedantic, pedantic)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wall, Wall)
     fi
 
-    # See if this version of gcc allows -finline-functions and/or
-    # -fno-strict-aliasing.  Even check the gcc-impersonating compilers.
-    if test "$GCC" = "yes"; then
-        CFLAGS_orig="$CFLAGS"
-
-        # Note: Some versions of clang (at least >= 3.5 -- perhaps
-        # older versions, too?) will *warn* about -finline-functions,
-        # but still allow it.  This is very annoying, so check for
-        # that warning, too.  The clang warning looks like this:
-        # clang: warning: optimization flag '-finline-functions' is not supported
-        # clang: warning: argument unused during compilation: '-finline-functions'
-        CFLAGS="$CFLAGS_orig -finline-functions"
-        add=
-        AC_CACHE_CHECK([if $CC supports -finline-functions],
-                   [pmix_cv_cc_finline_functions],
-                   [AC_TRY_COMPILE([], [],
-                                   [pmix_cv_cc_finline_functions="yes"
-                                    if test -s conftest.err ; then
-                                        for i in unused 'not supported' ; do
-                                            if $GREP -iq "$i" conftest.err; then
-                                                pmix_cv_cc_finline_functions="no"
-                                                break;
-                                            fi
-                                        done
-                                    fi
-                                   ],
-                                   [pmix_cv_cc_finline_functions="no"])])
-        if test "$pmix_cv_cc_finline_functions" = "yes" ; then
-            add=" -finline-functions"
-        fi
-        CFLAGS="$CFLAGS_orig$add"
-
-        CFLAGS_orig="$CFLAGS"
-        CFLAGS="$CFLAGS_orig -fno-strict-aliasing"
-        add=
-        AC_CACHE_CHECK([if $CC supports -fno-strict-aliasing],
-                   [pmix_cv_cc_fno_strict_aliasing],
-                   [AC_TRY_COMPILE([], [],
-                                   [pmix_cv_cc_fno_strict_aliasing="yes"],
-                                   [pmix_cv_cc_fno_strict_aliasing="no"])])
-        if test "$pmix_cv_cc_fno_strict_aliasing" = "yes" ; then
-            add=" -fno-strict-aliasing"
-        fi
-        CFLAGS="$CFLAGS_orig$add"
-
-        PMIX_FLAGS_UNIQ(CFLAGS)
-        AC_MSG_WARN([$add has been added to CFLAGS])
-        unset add
-    fi
+    # Note: Some versions of clang (at least >= 3.5 -- perhaps
+    # older versions, too?) and xlc with -g (v16.1, perhaps older)
+    # will *warn* about -finline-functions, but still allow it.
+    # This is very annoying, so check for that warning, too.
+    # The clang warning looks like this:
+    # clang: warning: optimization flag '-finline-functions' is not supported
+    # clang: warning: argument unused during compilation: '-finline-functions'
+    # the xlc warning looks like this:
+    # warning: "-qinline" is not compatible with "-g". "-qnoinline" is being set.
+    _PMIX_CHECK_SPECIFIC_CFLAGS(-finline-functions, finline_functions)
 
     # Try to enable restrict keyword
     RESTRICT_CFLAGS=
@@ -414,34 +322,21 @@ AC_DEFUN([PMIX_SETUP_CC],[
         ;;
     esac
     if test ! -z "$RESTRICT_CFLAGS" ; then
-        CFLAGS_orig="$CFLAGS"
-        CFLAGS="$CFLAGS_orig $RESTRICT_CFLAGS"
-        add=
-        AC_CACHE_CHECK([if $CC supports $RESTRICT_CFLAGS],
-                   [pmix_cv_cc_restrict_cflags],
-                   [AC_TRY_COMPILE([], [],
-                                   [pmix_cv_cc_restrict_cflags="yes"],
-                                   [pmix_cv_cc_restrict_cflags="no"])])
-        if test "$pmix_cv_cc_restrict_cflags" = "yes" ; then
-            add=" $RESTRICT_CFLAGS"
-        fi
-
-        CFLAGS="${CFLAGS_orig}${add}"
-        PMIX_FLAGS_UNIQ([CFLAGS])
-        if test "$add" != "" ; then
-            AC_MSG_WARN([$add has been added to CFLAGS])
-        fi
-        unset add
+        _PMIX_CHECK_SPECIFIC_CFLAGS($RESTRICT_CFLAGS, restrict)
     fi
+
+    PMIX_FLAGS_UNIQ([CFLAGS])
+    AC_MSG_RESULT(CFLAGS result: $CFLAGS)
 
     # see if the C compiler supports __builtin_expect
     AC_CACHE_CHECK([if $CC supports __builtin_expect],
         [pmix_cv_cc_supports___builtin_expect],
-        [AC_TRY_LINK([],
+        [AC_LINK_IFELSE([AC_LANG_PROGRAM([,
           [void *ptr = (void*) 0;
-           if (__builtin_expect (ptr != (void*) 0, 1)) return 0;],
+           if (__builtin_expect (ptr != (void*) 0, 1)) return 0;
+          ]],
           [pmix_cv_cc_supports___builtin_expect="yes"],
-          [pmix_cv_cc_supports___builtin_expect="no"])])
+          [pmix_cv_cc_supports___builtin_expect="no"])])])
     if test "$pmix_cv_cc_supports___builtin_expect" = "yes" ; then
         have_cc_builtin_expect=1
     else
@@ -453,11 +348,11 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # see if the C compiler supports __builtin_prefetch
     AC_CACHE_CHECK([if $CC supports __builtin_prefetch],
         [pmix_cv_cc_supports___builtin_prefetch],
-        [AC_TRY_LINK([],
+        [AC_LINK_IFELSE([AC_LANG_PROGRAM([
           [int ptr;
-           __builtin_prefetch(&ptr,0,0);],
+           __builtin_prefetch(&ptr,0,0);]],
           [pmix_cv_cc_supports___builtin_prefetch="yes"],
-          [pmix_cv_cc_supports___builtin_prefetch="no"])])
+          [pmix_cv_cc_supports___builtin_prefetch="no"])])])
     if test "$pmix_cv_cc_supports___builtin_prefetch" = "yes" ; then
         have_cc_builtin_prefetch=1
     else
@@ -469,11 +364,11 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # see if the C compiler supports __builtin_clz
     AC_CACHE_CHECK([if $CC supports __builtin_clz],
         [pmix_cv_cc_supports___builtin_clz],
-        [AC_TRY_LINK([],
+        [AC_LINK_IFELSE([AC_LANG_PROGRAM([
             [int value = 0xffff; /* we know we have 16 bits set */
-             if ((8*sizeof(int)-16) != __builtin_clz(value)) return 0;],
+             if ((8*sizeof(int)-16) != __builtin_clz(value)) return 0;]],
             [pmix_cv_cc_supports___builtin_clz="yes"],
-            [pmix_cv_cc_supports___builtin_clz="no"])])
+            [pmix_cv_cc_supports___builtin_clz="no"])])])
     if test "$pmix_cv_cc_supports___builtin_clz" = "yes" ; then
         have_cc_builtin_clz=1
     else
@@ -489,7 +384,6 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # optimization is not prohibitive).  If we're using anything else,
     # be conservative and just use -O.
     #
-    # Note: gcc-impersonating compilers accept -O3
     if test "$WANT_DEBUG" = "1"; then
         OPTFLAGS=
     else

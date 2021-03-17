@@ -8,6 +8,7 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -271,6 +272,15 @@ static void job_data(struct pmix_peer_t *pr,
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
 
+    /* a zero-byte buffer indicates that this recv is being
+     * completed due to a lost connection */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        cb->status = PMIX_ERROR;
+        PMIX_POST_OBJECT(cb);
+        PMIX_WAKEUP_THREAD(&cb->lock);
+        return;
+    }
+    
     /* unpack the nspace - should be same as our own */
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
                        buf, &nspace, &cnt, PMIX_STRING);
@@ -556,6 +566,16 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         if (NULL != info) {
             _check_for_notify(info, ninfo);
         }
+        /* if we were given connection info, then we should try
+         * to connect if are currently unconnected */
+        if (!pmix_globals.connected) {
+            rc = pmix_ptl.connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
+            if (PMIX_SUCCESS == rc) {
+                pmix_init_result = rc;
+                pmix_client_globals.singleton = false;
+            }
+        }
+
         return pmix_init_result;
     }
     ++pmix_globals.init_cntr;
@@ -729,7 +749,13 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
             if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
                 PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, info[n].value.data.string, PMIX_STRING);
                 found = true;
-                break;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY2)) {
+                /* adopt this as our topology */
+                pmix_topology_t *topo;
+                topo = info[n].value.data.topo;
+                pmix_globals.topology.source = strdup(topo->source);
+                pmix_globals.topology.topology = topo->topology;
+                pmix_globals.external_topology = true;
             }
         }
     }
@@ -815,9 +841,9 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-DEBUGGER", PMIX_STRING);
         pmix_output_verbose(2, pmix_client_globals.event_output,
-                            "[%s:%d] WAITING IN INIT FOR DEBUGGER",
+                            "[%s:%d] REGISTERING WAIT FOR DEBUGGER",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
-        code = PMIX_ERR_DEBUGGER_RELEASE;
+        code = PMIX_DEBUGGER_RELEASE;
         PMIx_Register_event_handler(&code, 1, evinfo, 2,
                                     notification_fn, evhandler_reg_callbk, (void*)&reglock);
         /* wait for registration to complete */
@@ -825,6 +851,13 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_DESTRUCT_LOCK(&reglock);
         PMIX_INFO_DESTRUCT(&evinfo[0]);
         PMIX_INFO_DESTRUCT(&evinfo[1]);
+        /* notify the host that we are waiting */
+        PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        PMIx_Notify_event(PMIX_DEBUG_WAITING_FOR_NOTIFY,
+                          &pmix_globals.myid,
+                          PMIX_RANGE_RM, &evinfo[0], 1,
+                          NULL, NULL);
+        PMIX_INFO_DESTRUCT(&evinfo[0]);
         /* wait for release to arrive */
         PMIX_WAIT_THREAD(&releaselock);
         PMIX_DESTRUCT_LOCK(&releaselock);

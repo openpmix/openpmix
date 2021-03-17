@@ -13,6 +13,7 @@
  * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,11 +81,17 @@ typedef struct {
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_kval_t);
 
 /* helpful macro extension of the usual PMIX_NEW */
-#define PMIX_KVAL_NEW(k, s)                                         \
-    do {                                                            \
-        (k) = PMIX_NEW(pmix_kval_t);                                \
-        (k)->key = strdup((s));                                     \
-        (k)->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));   \
+#define PMIX_KVAL_NEW(k, s)                                             \
+    do {                                                                \
+        (k) = PMIX_NEW(pmix_kval_t);                                    \
+        if (NULL != (k)) {                                              \
+            (k)->key = strdup((s));                                     \
+            (k)->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));   \
+            if (NULL == (k)->value) {                                   \
+                PMIX_RELEASE((k));                                      \
+                (k) = NULL;                                             \
+            }                                                           \
+        }                                                               \
     } while(0)
 
 /**
@@ -166,7 +173,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_buffer_t);
 /* Convenience macro to check for empty buffer without
  * exposing the internals */
 #define PMIX_BUFFER_IS_EMPTY(b)     \
-    (0 == (b)->bytes_used)
+    (0 == (b)->bytes_used || (b)->pack_ptr == (b)->unpack_ptr)
 
 END_C_DECLS
 

@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -61,12 +62,8 @@ pmix_pnet_API_module_t pmix_pnet = {
 
 static pmix_status_t pmix_pnet_close(void)
 {
-  pmix_pnet_base_active_module_t *active, *prev;
+    pmix_pnet_base_active_module_t *active, *prev;
 
-    if (!pmix_pnet_globals.initialized) {
-        return PMIX_SUCCESS;
-    }
-    pmix_pnet_globals.initialized = false;
     pmix_pnet_globals.selected = false;
 
     PMIX_LIST_FOREACH_SAFE(active, prev, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
@@ -76,26 +73,17 @@ static pmix_status_t pmix_pnet_close(void)
       }
       PMIX_RELEASE(active);
     }
-    PMIX_DESTRUCT(&pmix_pnet_globals.actives);
-    PMIX_DESTRUCT(&pmix_pnet_globals.fabrics);
+    PMIX_LIST_DESTRUCT(&pmix_pnet_globals.actives);
+    PMIX_LIST_DESTRUCT(&pmix_pnet_globals.fabrics);
 
-    PMIX_LIST_DESTRUCT(&pmix_pnet_globals.jobs);
-    PMIX_LIST_DESTRUCT(&pmix_pnet_globals.nodes);
-
-    PMIX_DESTRUCT_LOCK(&pmix_pnet_globals.lock);
     return pmix_mca_base_framework_components_close(&pmix_pnet_base_framework, NULL);
 }
 
 static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
 {
     /* initialize globals */
-    pmix_pnet_globals.initialized = true;
-    PMIX_CONSTRUCT_LOCK(&pmix_pnet_globals.lock);
-    pmix_pnet_globals.lock.active = false;
     PMIX_CONSTRUCT(&pmix_pnet_globals.actives, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_pnet_globals.fabrics, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_pnet_globals.jobs, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_pnet_globals.nodes, pmix_list_t);
 
     /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_pnet_base_framework, flags);
@@ -103,90 +91,11 @@ static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pnet, "PMIx Network Operations",
                                 NULL, pmix_pnet_open, pmix_pnet_close,
-                                mca_pnet_base_static_components, 0);
+                                mca_pnet_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 PMIX_CLASS_INSTANCE(pmix_pnet_base_active_module_t,
                     pmix_list_item_t,
                     NULL, NULL);
-
-static void lpcon(pmix_pnet_local_procs_t *p)
-{
-    p->nspace = NULL;
-    p->ranks = NULL;
-    p->np = 0;
-}
-static void lpdes(pmix_pnet_local_procs_t *p)
-{
-    if (NULL != p->nspace) {
-        free(p->nspace);
-    }
-    if (NULL != p->ranks) {
-        free(p->ranks);
-    }
-}
-PMIX_CLASS_INSTANCE(pmix_pnet_local_procs_t,
-                    pmix_list_item_t,
-                    lpcon, lpdes);
-
-static void ndcon(pmix_pnet_node_t *p)
-{
-    p->name = NULL;
-    PMIX_CONSTRUCT(&p->local_jobs, pmix_list_t);
-    PMIX_CONSTRUCT(&p->resources, pmix_list_t);
-}
-static void nddes(pmix_pnet_node_t *p)
-{
-    if (NULL != p->name) {
-        free(p->name);
-    }
-    PMIX_LIST_DESTRUCT(&p->local_jobs);
-    PMIX_LIST_DESTRUCT(&p->resources);
-}
-PMIX_CLASS_INSTANCE(pmix_pnet_node_t,
-                    pmix_list_item_t,
-                    ndcon, nddes);
-
-static void jcon(pmix_pnet_job_t *p)
-{
-    p->nspace = NULL;
-    PMIX_CONSTRUCT(&p->nodes, pmix_pointer_array_t);
-    pmix_pointer_array_init(&p->nodes, 1, INT_MAX, 1);
-}
-static void jdes(pmix_pnet_job_t *p)
-{
-    int n;
-    pmix_pnet_node_t *nd;
-
-    if (NULL != p->nspace) {
-        free(p->nspace);
-    }
-    for (n=0; n < p->nodes.size; n++) {
-        if (NULL != (nd = (pmix_pnet_node_t*)pmix_pointer_array_get_item(&p->nodes, n))) {
-            pmix_pointer_array_set_item(&p->nodes, n, NULL);
-            PMIX_RELEASE(nd);
-        }
-    }
-    PMIX_DESTRUCT(&p->nodes);
-}
-PMIX_CLASS_INSTANCE(pmix_pnet_job_t,
-                    pmix_list_item_t,
-                    jcon, jdes);
-
-static void rcon(pmix_pnet_resource_t *p)
-{
-    p->name = NULL;
-    PMIX_CONSTRUCT(&p->resources, pmix_list_t);
-}
-static void rdes(pmix_pnet_resource_t *p)
-{
-    if (NULL != p->name) {
-        free(p->name);
-    }
-    PMIX_LIST_DESTRUCT(&p->resources);
-}
-PMIX_CLASS_INSTANCE(pmix_pnet_resource_t,
-                    pmix_list_item_t,
-                    rcon, rdes);
 
 static void ftcon(pmix_pnet_fabric_t *p)
 {

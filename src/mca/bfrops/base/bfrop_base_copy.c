@@ -12,6 +12,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -68,6 +69,13 @@ pmix_status_t pmix_bfrops_base_copy_payload(pmix_buffer_t *dest,
         return PMIX_ERR_BAD_PARAM;
     }
 
+    /* if the src buffer is empty, then there is
+     * nothing to do */
+    if (PMIX_BUFFER_IS_EMPTY(src)) {
+        return PMIX_SUCCESS;
+    }
+
+    /* extend the dest if necessary */
     to_copy = src->pack_ptr - src->unpack_ptr;
     if (NULL == (ptr = pmix_bfrop_buffer_extend(dest, to_copy))) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
@@ -1224,5 +1232,41 @@ pmix_status_t pmix_bfrops_base_copy_topology(pmix_topology_t **dest,
     } else {
         free(dst);
     }
+    return rc;
+}
+
+pmix_status_t pmix_bfrops_base_copy_nspace(pmix_nspace_t **dest,
+                                           pmix_nspace_t *src,
+                                           pmix_data_type_t type)
+{
+    pmix_nspace_t *dst;
+
+    if (PMIX_PROC_NSPACE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    dst = (pmix_nspace_t*)malloc(sizeof(pmix_nspace_t));
+    if (NULL == dst) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_LOAD_NSPACE(dst, (char*)src);
+    *dest = dst;
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_copy_dbuf(pmix_data_buffer_t **dest,
+                                         pmix_data_buffer_t *src,
+                                         pmix_data_type_t type)
+{
+    pmix_data_buffer_t *p;
+    pmix_status_t rc;
+
+    /* create the new object */
+    PMIX_DATA_BUFFER_CREATE(p);
+    if (NULL == p) {
+        return PMIX_ERR_NOMEM;
+    }
+    *dest = p;
+
+    rc = PMIx_Data_copy_payload(p, src);
     return rc;
 }

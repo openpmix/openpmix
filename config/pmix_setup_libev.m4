@@ -5,6 +5,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017-2019 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -18,12 +19,12 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
     PMIX_VAR_SCOPE_PUSH([pmix_libev_dir pmix_libev_libdir pmix_libev_standard_header_location pmix_libev_standard_lib_location pmix_check_libev_save_CPPFLAGS pmix_check_libev_save_LDFLAGS pmix_check_libev_save_LIBS])
 
     AC_ARG_WITH([libev],
-                [AC_HELP_STRING([--with-libev=DIR],
+                [AS_HELP_STRING([--with-libev=DIR],
                                 [Search for libev headers and libraries in DIR ])])
     PMIX_CHECK_WITHDIR([libev], [$with_libev], [include/event.h])
 
     AC_ARG_WITH([libev-libdir],
-                [AC_HELP_STRING([--with-libev-libdir=DIR],
+                [AS_HELP_STRING([--with-libev-libdir=DIR],
                                 [Search for libev libraries in DIR ])])
     PMIX_CHECK_WITHDIR([libev-libdir], [$with_livev_libdir], [libev.*])
 

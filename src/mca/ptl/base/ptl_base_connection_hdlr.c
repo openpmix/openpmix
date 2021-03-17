@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -334,9 +335,14 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
     PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
+    if (PMIX_SUCCESS != reply) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "validation of client connection failed");
+        goto error;
+    }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "client connection validated with status=%d", reply);
+                        "client connection validated");
 
     /* tell the client all is good */
     u32 = htonl(reply);
@@ -347,12 +353,10 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* If needed, perform the handshake. The macro will update reply */
     PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(reply, peer, NULL, 0, NULL, NULL, &cred);
 
-    /* It is possible that connection validation failed
-     * We need to reply to the client first and cleanup after */
+    /* It is possible that connection validation failed */
     if (PMIX_SUCCESS != reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "validation of client connection failed");
-        /* send an error reply to the client */
         goto error;
     }
 
@@ -640,6 +644,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
 
     peer = PMIX_NEW(pmix_peer_t);
     if (NULL == peer) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return PMIX_ERR_NOMEM;
     }
     pnd->peer = peer;
@@ -670,6 +675,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
              * is allowed */
             nptr = PMIX_NEW(pmix_namespace_t);
             if (NULL == nptr) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
                 return PMIX_ERR_NOMEM;
             }
             nptr->nspace = strdup(pnd->proc.nspace);
@@ -700,6 +706,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         if (NULL == nptr) {
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             PMIX_RELEASE(peer);
+            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             return PMIX_ERR_NOMEM;
         }
     }
@@ -709,7 +716,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
     if (NULL == peer->nptr->compat.bfrops) {
         PMIX_RELEASE(peer);
-        return PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_AVAILABLE);
+        return PMIX_ERR_NOT_AVAILABLE;
     }
     /* set the buffer type */
     peer->nptr->compat.type = pnd->buffer_type;
@@ -722,6 +730,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         foo = 1;
         PMIX_BFROPS_UNPACK(rc, peer, &buf, &pnd->ninfo, &foo, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(peer);
             PMIX_DESTRUCT(&buf);
             return rc;
@@ -736,6 +745,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         PMIX_INFO_CREATE(pnd->info, pnd->ninfo);
         PMIX_BFROPS_UNPACK(rc, peer, &buf, pnd->info, &foo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(peer);
             PMIX_DESTRUCT(&buf);
             return rc;

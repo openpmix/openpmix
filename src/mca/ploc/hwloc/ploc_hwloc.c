@@ -2,6 +2,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2017      Inria.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -112,7 +113,6 @@ pmix_ploc_module_t pmix_ploc_hwloc_module = {
 static bool topo_in_shmem = false;
 
 #if HWLOC_API_VERSION >= 0x20000
-static bool shmem_available = false;
 static size_t shmemsize = 0;
 static size_t shmemaddr;
 static char *shmemfile = NULL;
@@ -169,250 +169,6 @@ static void finalize(void)
     return;
 }
 
-
-pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
-{
-    char *xmlbuffer=NULL;
-    int len;
-    size_t n;
-    pmix_kval_t *kv;
-    bool share = false;
-#if HWLOC_API_VERSION >= 0x20000
-    pmix_status_t rc;
-#endif
-
-    /* see if they want us to share the topology with our clients */
-    for (n=0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SHARE_TOPOLOGY)) {
-            share = PMIX_INFO_TRUE(&info[n]);
-            break;
-        }
-    }
-
-    if (NULL != pmix_globals.topology.topology) {
-        /* if we need to share it, go do that */
-        if (share) {
-            goto sharetopo;
-        }
-        /* otherwise, we are done */
-        return PMIX_SUCCESS;
-    }
-
-    /* see if they stipulated the type of topology they want */
-    if (NULL != pmix_globals.topology.source) {
-        if (0 != strcasecmp(pmix_globals.topology.source, "hwloc")) {
-            /* they want somebody else */
-            return PMIX_ERR_TAKE_NEXT_OPTION;
-        }
-    }
-
-    /* did they give us one to use? */
-    if (NULL != mca_ploc_hwloc_component.topo_file) {
-        if (0 != hwloc_topology_init((hwloc_topology_t*)&pmix_globals.topology.topology)) {
-            return PMIX_ERR_TAKE_NEXT_OPTION;
-        }
-        if (0 != hwloc_topology_set_xml((hwloc_topology_t)pmix_globals.topology.topology,
-                                        mca_ploc_hwloc_component.topo_file)) {
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        /* since we are loading this from an external source, we have to
-         * explicitly set a flag so hwloc sets things up correctly
-         */
-        if (0 != set_flags(pmix_globals.topology.topology,
-                           HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
-            return PMIX_ERROR;
-        }
-        /* now load the topology */
-        if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
-            return PMIX_ERROR;
-        }
-    } else {
-        /* we weren't given a topology, so get it for ourselves */
-        if (0 != hwloc_topology_init((hwloc_topology_t*)&pmix_globals.topology.topology)) {
-            return PMIX_ERR_TAKE_NEXT_OPTION;
-        }
-
-        if (0 != set_flags(pmix_globals.topology.topology, 0)) {
-            hwloc_topology_destroy(pmix_globals.topology.topology);
-            return PMIX_ERR_INIT;
-        }
-
-        if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            hwloc_topology_destroy(pmix_globals.topology.topology);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-    }
-    pmix_globals.topology.source = strdup("hwloc");
-
-    /* if we don't need to share it, then we are done */
-    if (!share) {
-        return PMIX_SUCCESS;
-    }
-
-  sharetopo:
-    /* setup the XML representation(s) */
-
-#if HWLOC_API_VERSION < 0x20000
-     /* pass the topology string as we don't
-      * have HWLOC shared memory available - we do
-      * this so the procs won't read the topology
-      * themselves as this could overwhelm the local
-      * system on large-scale SMPs */
-    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len)) {
-        kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(PMIX_HWLOC_XML_V1);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
-        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
-        /* save it with the deprecated key for older RMs */
-        kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(PMIX_LOCAL_TOPO);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
-        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
-        /* done with the buffer */
-        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
-    }
-    /* we don't have the ability to do shared memory, so we are done */
-    return PMIX_SUCCESS;
-#else
-    /* pass the topology as a v2 xml string */
-    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, 0)) {
-        kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(PMIX_HWLOC_XML_V2);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
-        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
-        /* save it with the deprecated key for older RMs */
-        kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(PMIX_LOCAL_TOPO);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
-        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
-        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
-    }
-    /* and as a v1 xml string, should an older client attach */
-    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, HWLOC_TOPOLOGY_EXPORT_XML_FLAG_V1)) {
-        kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(PMIX_HWLOC_XML_V1);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
-        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
-        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
-        /* cannot support the deprecated key here as it would overwrite the HWLOC v2 string */
-    }
-
-    /* if they specified no shared memory, then we are done */
-    if (VM_HOLE_NONE == mca_ploc_hwloc_component.hole_kind) {
-        return PMIX_SUCCESS;
-    }
-
-    /* try and find a hole */
-    if (PMIX_SUCCESS != (rc = find_hole(mca_ploc_hwloc_component.hole_kind,
-                                        &shmemaddr, shmemsize))) {
-        /* we couldn't find a hole, so don't use the shmem support */
-        if (4 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
-            FILE *file = fopen("/proc/self/maps", "r");
-            if (file) {
-                char line[256];
-                pmix_output(0, "%s Dumping /proc/self/maps",
-                            PMIX_NAME_PRINT(&pmix_globals.myid));
-                while (fgets(line, sizeof(line), file) != NULL) {
-                    char *end = strchr(line, '\n');
-                    if (end) {
-                       *end = '\0';
-                    }
-                    pmix_output(0, "%s", line);
-                }
-                fclose(file);
-            }
-        }
-        return PMIX_SUCCESS;
-    }
-    /* create the shmem file in our session dir so it
-     * will automatically get cleaned up */
-    pmix_asprintf(&shmemfile, "%s/hwloc.sm", pmix_server_globals.tmpdir);
-    /* let's make sure we have enough space for the backing file */
-    if (PMIX_SUCCESS != (rc = enough_space(shmemfile, shmemsize,
-                                           &amount_space_avail,
-                                           &space_available))) {
-        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
-                            "%s an error occurred while determining "
-                            "whether or not %s could be created for topo shmem.",
-                            PMIX_NAME_PRINT(&pmix_globals.myid), shmemfile);
-        free(shmemfile);
-        shmemfile = NULL;
-        return PMIX_SUCCESS;
-    }
-    if (!space_available) {
-        if (1 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
-            pmix_show_help("help-pmix-ploc-hwloc.txt", "target full", true,
-                           shmemfile, pmix_globals.hostname,
-                           (unsigned long)shmemsize,
-                           (unsigned long long)amount_space_avail);
-        }
-        free(shmemfile);
-        shmemfile = NULL;
-        return PMIX_SUCCESS;
-    }
-    /* enough space is available, so create the segment */
-    if (-1 == (shmemfd = open(shmemfile, O_CREAT | O_RDWR, 0600))) {
-        int err = errno;
-        if (1 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
-            pmix_show_help("help-pmix-ploc-hwloc-hwloc.txt", "sys call fail", true,
-                           pmix_globals.hostname,
-                           "open(2)", "", strerror(err), err);
-        }
-        free(shmemfile);
-        shmemfile = NULL;
-        return PMIX_SUCCESS;
-    }
-    /* ensure nobody inherits this fd */
-    pmix_fd_set_cloexec(shmemfd);
-    /* populate the shmem segment with the topology */
-    if (0 != (rc = hwloc_shmem_topology_write(pmix_globals.topology.topology, shmemfd, 0,
-                                              (void*)shmemaddr, shmemsize, 0))) {
-        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
-                            "%s an error occurred while writing topology to %s",
-                            PMIX_NAME_PRINT(&pmix_globals.myid), shmemfile);
-        unlink(shmemfile);
-        free(shmemfile);
-        shmemfile = NULL;
-        close(shmemfd);
-        shmemfd = -1;
-        return PMIX_SUCCESS;
-    }
-    /* record that we did this so we know to clean it up */
-    shmem_available = true;
-
-    /* add the requisite key-values to the global data to be
-     * give to each client */
-    kv = PMIX_NEW(pmix_kval_t);
-    kv->key = strdup(PMIX_HWLOC_SHMEM_FILE);
-    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-    PMIX_VALUE_LOAD(kv->value, shmemfile, PMIX_STRING);
-    pmix_list_append(&pmix_server_globals.gdata, &kv->super);
-
-    kv = PMIX_NEW(pmix_kval_t);
-    kv->key = strdup(PMIX_HWLOC_SHMEM_ADDR);
-    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-    PMIX_VALUE_LOAD(kv->value, &shmemaddr, PMIX_SIZE);
-    pmix_list_append(&pmix_server_globals.gdata, &kv->super);
-
-    kv = PMIX_NEW(pmix_kval_t);
-    kv->key = strdup(PMIX_HWLOC_SHMEM_SIZE);
-    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
-    PMIX_VALUE_LOAD(kv->value, &shmemsize, PMIX_SIZE);
-    pmix_list_append(&pmix_server_globals.gdata, &kv->super);
-
-#endif
-
-    return PMIX_SUCCESS;
-}
-
 static char* popstr(pmix_cb_t *cb)
 {
     pmix_list_t *kvs = &cb->kvs;
@@ -460,6 +216,29 @@ static size_t popsize(pmix_cb_t *cb)
 }
 #endif
 
+static pmix_topology_t* popptr(pmix_cb_t *cb)
+{
+    pmix_list_t *kvs = &cb->kvs;
+    pmix_kval_t *kv;
+    pmix_topology_t *t;
+
+    if (1 != pmix_list_get_size(kvs)) {
+        return NULL;
+    }
+    kv = (pmix_kval_t*)pmix_list_get_first(kvs);
+    if (PMIX_TOPO != kv->value->type) {
+        return NULL;
+    }
+    t = kv->value->data.topo;
+    kv->value->data.topo = NULL;
+    kv = (pmix_kval_t*)pmix_list_remove_first(kvs);
+    while (NULL != kv) {
+        PMIX_RELEASE(kv);
+        kv = (pmix_kval_t*)pmix_list_remove_first(kvs);
+    }
+    return t;
+}
+
 static int topology_set_flags (hwloc_topology_t topology, unsigned long flags) {
 #if HWLOC_API_VERSION < 0x20000
     flags |= HWLOC_TOPOLOGY_FLAG_IO_DEVICES;
@@ -495,28 +274,118 @@ static pmix_status_t load_xml(char *xml)
         hwloc_topology_destroy(pmix_globals.topology.topology);
         return PMIX_ERROR;
     }
-
+    pmix_globals.topology.source = strdup("hwloc");  // don't know the version?
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t load_topology(pmix_topology_t *topo)
+static bool passed_thru = false;
+
+static void ploc_hwloc_print_maps(void) {
+
+    FILE *maps_file = fopen("/proc/self/maps", "r");
+    if (maps_file) {
+        char line[256];
+        pmix_output(0, "%s Dumping /proc/self/maps",
+                    PMIX_NAME_PRINT(&pmix_globals.myid));
+        while (fgets(line, sizeof(line), maps_file) != NULL) {
+            char *end = strchr(line, '\n');
+            if (end) {
+                *end = '\0';
+            }
+            pmix_output(0, "%s", line);
+        }
+        fclose(maps_file);
+    }
+}
+
+pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
 {
     pmix_cb_t cb;
     pmix_proc_t wildcard;
-    pmix_status_t rc;
+    char *xmlbuffer=NULL;
+    int len;
+    size_t n;
+    pmix_kval_t *kv;
+    bool share = false;
+    bool found_dep = false;
+    bool found_new = false;
+    pmix_topology_t *topo;
     char *file;
+    pmix_status_t rc;
+#if HWLOC_API_VERSION >= 0x20000
+    char *tmp;
+#endif
 
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    /* only go thru here ONCE! */
+    if (passed_thru) {
+        return PMIX_SUCCESS;
+    }
+    passed_thru = true;
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s", __FILE__, __func__);
+
+    /* see if they want us to share the topology with our clients */
+    for (n=0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SHARE_TOPOLOGY)) {
+            share = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY2)) {
+            if (found_dep) {
+                /* must have come from PMIX_TOPOLOGY entry */
+                free(pmix_globals.topology.source);
+            }
+            topo = info[n].value.data.topo;
+            pmix_globals.topology.source = strdup(topo->source);
+            pmix_globals.topology.topology = topo->topology;
+            pmix_globals.external_topology = true;
+            found_new = true;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY)) {
+            if (!found_new) {  // prefer PMIX_TOPOLOGY2
+                pmix_globals.topology.source = strdup("hwloc");  // we cannot know the version they used
+                pmix_globals.topology.topology = (hwloc_topology_t)info[n].value.data.ptr;
+                pmix_globals.external_topology = true;
+                found_dep = true;
+            }
+        }
+    }
+
+    if (NULL != pmix_globals.topology.topology) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s topology externally provided", __FILE__, __func__);
+        /* record locally in case someone does a PMIx_Get to retrieve it */
+        PMIX_KVAL_NEW(kv, PMIX_TOPOLOGY2);
+        kv->value->type = PMIX_TOPO;
+        kv->value->data.topo = &pmix_globals.topology;
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                          &pmix_globals.myid, PMIX_INTERNAL, kv);
+        PMIX_RELEASE(kv);
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s stored",
+                            __FILE__, __func__);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        /* if we need to share it, go do that */
+        if (share) {
+            goto sharetopo;
+        }
+        /* otherwise, we are done */
+        return PMIX_SUCCESS;
+    }
     PMIX_LOAD_PROCID(&wildcard, pmix_globals.myid.nspace, PMIX_RANK_WILDCARD);
-    cb.proc = &wildcard;
-    cb.copy = true;
 
+    /* try to get it ourselves */
 #if HWLOC_API_VERSION >= 0x20000
     int fd;
     uint64_t addr, size;
 
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s checking shmem", __FILE__, __func__);
+
     /* first try to get the shmem link, if available */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.key = PMIX_HWLOC_SHMEM_FILE;
+    cb.proc = &wildcard;
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS != rc) {
         cb.key = NULL;
@@ -550,15 +419,30 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
     if (0 > (fd = open(file, O_RDONLY))) {
         free(file);
         PMIX_ERROR_LOG(PMIX_ERROR);
-        PMIX_DESTRUCT(&cb);
         return PMIX_ERROR;
     }
     free(file);
     rc = hwloc_shmem_topology_adopt((hwloc_topology_t*)&pmix_globals.topology.topology,
                                     fd, 0, (void*)addr, size, 0);
     if (0 == rc) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s shmem adopted", __FILE__, __func__);
         /* got it - we are done */
+#ifdef HWLOC_VERSION
+        pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
+#else
         pmix_globals.topology.source = strdup("hwloc");
+#endif
+        /* record locally in case someone does a PMIx_Get to retrieve it */
+        PMIX_KVAL_NEW(kv, PMIX_TOPOLOGY2);
+        kv->value->type = PMIX_TOPO;
+        kv->value->data.topo = &pmix_globals.topology;
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                          &pmix_globals.myid, PMIX_INTERNAL, kv);
+        PMIX_RELEASE(kv);
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s stored",
+                            __FILE__, __func__);
         topo_in_shmem = true;
         return PMIX_SUCCESS;
     }
@@ -566,26 +450,17 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
     /* failed to adopt from shmem, so provide some feedback and
      * then fallback to other ways to get the topology */
     if (4 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
-        FILE *file = fopen("/proc/self/maps", "r");
-        if (file) {
-            char line[256];
-            pmix_output(0, "Dumping /proc/self/maps");
-
-            while (fgets(line, sizeof(line), file) != NULL) {
-                char *end = strchr(line, '\n');
-                if (end) {
-                    *end = '\0';
-                }
-                pmix_output(0, "%s", line);
-            }
-            fclose(file);
-        }
+        ploc_hwloc_print_maps();
     }
 
-  tryxml:
+tryxml:
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s checking v2 xml", __FILE__, __func__);
+
     /* try to get the v2 XML string */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.key = PMIX_HWLOC_XML_V2;
+    cb.proc = &wildcard;
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS == rc) {
         file = popstr(&cb);
@@ -593,13 +468,38 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
         free(file);
         cb.key = NULL;
         PMIX_DESTRUCT(&cb);
+        if (PMIX_SUCCESS == rc) {
+            pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                "%s:%s v2 xml adopted", __FILE__, __func__);
+            /* record locally in case someone does a PMIx_Get to retrieve it */
+            PMIX_KVAL_NEW(kv, PMIX_TOPOLOGY2);
+            kv->value->type = PMIX_TOPO;
+            kv->value->data.topo = &pmix_globals.topology;
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                              &pmix_globals.myid, PMIX_INTERNAL, kv);
+            PMIX_RELEASE(kv);
+            pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                "%s:%s stored",
+                                __FILE__, __func__);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            if (share) {
+                goto sharetopo;
+            }
+        }
         return rc;
     }
 
 #endif
 
     /* try to get the v1 XML string */
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s checking v1 xml", __FILE__, __func__);
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.key = PMIX_HWLOC_XML_V1;
+    cb.proc = &wildcard;
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS == rc) {
         file = popstr(&cb);
@@ -607,20 +507,356 @@ static pmix_status_t load_topology(pmix_topology_t *topo)
         free(file);
         cb.key = NULL;
         PMIX_DESTRUCT(&cb);
+        if (PMIX_SUCCESS == rc) {
+            pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                "%s:%s v1 xml adopted", __FILE__, __func__);
+
+            /* record locally in case someone does a PMIx_Get to retrieve it */
+            PMIX_KVAL_NEW(kv, PMIX_TOPOLOGY2);
+            kv->value->type = PMIX_TOPO;
+            kv->value->data.topo = &pmix_globals.topology;
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                              &pmix_globals.myid, PMIX_INTERNAL, kv);
+            PMIX_RELEASE(kv);
+            pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                "%s:%s stored",
+                                __FILE__, __func__);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            if (share) {
+                goto sharetopo;
+            }
+        }
         return rc;
     }
-    /* if we got here, then we couldn't find anything */
-    cb.key = NULL;
-    PMIX_DESTRUCT(&cb);
 
-    /* try discovering it for ourselves */
-    if (0 != hwloc_topology_init((hwloc_topology_t*)&pmix_globals.topology.topology) ||
-        0 != topology_set_flags(pmix_globals.topology.topology, 0) ||
-        0 != hwloc_topology_load(pmix_globals.topology.topology)) {
-        return PMIX_ERR_NOT_SUPPORTED;
+    /* did they give us one to use? */
+    if (NULL != mca_ploc_hwloc_component.topo_file) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s using MCA provided topo file", __FILE__, __func__);
+
+        if (0 != hwloc_topology_init((hwloc_topology_t*)&pmix_globals.topology.topology)) {
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+        if (0 != hwloc_topology_set_xml((hwloc_topology_t)pmix_globals.topology.topology,
+                                        mca_ploc_hwloc_component.topo_file)) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        /* since we are loading this from an external source, we have to
+         * explicitly set a flag so hwloc sets things up correctly
+         */
+        if (0 != set_flags(pmix_globals.topology.topology,
+                           HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM)) {
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+            return PMIX_ERROR;
+        }
+        /* now load the topology */
+        if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+            return PMIX_ERROR;
+        }
+        /* we don't know the version */
+        pmix_globals.topology.source = strdup("hwloc");
+    } else {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s doing discovery", __FILE__, __func__);
+        /* we weren't given a topology, so get it for ourselves */
+        if (0 != hwloc_topology_init((hwloc_topology_t*)&pmix_globals.topology.topology)) {
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+
+        if (0 != set_flags(pmix_globals.topology.topology, 0)) {
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+            return PMIX_ERR_INIT;
+        }
+
+        if (0 != hwloc_topology_load(pmix_globals.topology.topology)) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            hwloc_topology_destroy(pmix_globals.topology.topology);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+#ifdef HWLOC_VERSION
+        pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
+#else
+        pmix_globals.topology.source = strdup("hwloc");
+#endif
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s discovery complete - source %s",
+                            __FILE__, __func__, pmix_globals.topology.source);
+    }
+    /* record locally in case someone does a PMIx_Get to retrieve it */
+    PMIX_KVAL_NEW(kv, PMIX_TOPOLOGY2);
+    kv->value->type = PMIX_TOPO;
+    kv->value->data.topo = &pmix_globals.topology;
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
+                      &pmix_globals.myid, PMIX_INTERNAL, kv);
+    PMIX_RELEASE(kv);
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s stored",
+                        __FILE__, __func__);
+
+    /* if we don't need to share it, then we are done */
+    if (!share) {
+        return PMIX_SUCCESS;
     }
 
+  sharetopo:
+    /* setup the XML representation(s) */
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s sharing topology",
+                        __FILE__, __func__);
+
+#if HWLOC_API_VERSION < 0x20000
+     /* pass the topology string as we don't
+      * have HWLOC shared memory available - we do
+      * this so the procs won't read the topology
+      * themselves as this could overwhelm the local
+      * system on large-scale SMPs */
+    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len)) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s export v1 xml",
+                            __FILE__, __func__);
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_HWLOC_XML_V1);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        /* save it with the deprecated key for older RMs */
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_LOCAL_TOPO);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        /* done with the buffer */
+        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
+    }
+    /* we don't have the ability to do shared memory, so we are done */
     return PMIX_SUCCESS;
+#else
+    /* pass the topology as a v2 xml string */
+    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, 0)) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s export v2 xml",
+                            __FILE__, __func__);
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_HWLOC_XML_V2);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        /* save it with the deprecated key for older RMs */
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_LOCAL_TOPO);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
+    }
+    /* and as a v1 xml string, should an older client attach */
+    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, HWLOC_TOPOLOGY_EXPORT_XML_FLAG_V1)) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s export v1 xml",
+                            __FILE__, __func__);
+        kv = PMIX_NEW(pmix_kval_t);
+        kv->key = strdup(PMIX_HWLOC_XML_V1);
+        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        PMIX_VALUE_LOAD(kv->value, xmlbuffer, PMIX_STRING);
+        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
+        pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+        /* cannot support the deprecated PMIX_LOCAL_TOPO key here as it would
+         * overwrite the HWLOC v2 string */
+    }
+
+    /* if they specified no shared memory, then we are done */
+    if (VM_HOLE_NONE == mca_ploc_hwloc_component.hole_kind) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s:%s no shmem requested",
+                            __FILE__, __func__);
+        return PMIX_SUCCESS;
+    }
+
+    /* get the size of the topology shared memory segment */
+    if (0 != hwloc_shmem_topology_get_length(pmix_globals.topology.topology, &shmemsize, 0)) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s hwloc topology shmem not available",
+                            PMIX_NAME_PRINT(&pmix_globals.myid));
+        return PMIX_SUCCESS;
+    }
+
+    /* try and find a hole */
+    if (PMIX_SUCCESS != find_hole(mca_ploc_hwloc_component.hole_kind,
+                                        &shmemaddr, shmemsize)) {
+        /* we couldn't find a hole, so don't use the shmem support */
+        if (4 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
+            ploc_hwloc_print_maps();
+        }
+        return PMIX_SUCCESS;
+    }
+    /* create the shmem file in our session dir so it
+     * will automatically get cleaned up */
+    pmix_asprintf(&shmemfile, "%s/hwloc.sm", pmix_server_globals.tmpdir);
+    /* let's make sure we have enough space for the backing file */
+    if (PMIX_SUCCESS != enough_space(shmemfile, shmemsize,
+                                           &amount_space_avail,
+                                           &space_available)) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s an error occurred while determining "
+                            "whether or not %s could be created for topo shmem.",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), shmemfile);
+        free(shmemfile);
+        shmemfile = NULL;
+        return PMIX_SUCCESS;
+    }
+    if (!space_available) {
+        if (1 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
+            pmix_show_help("help-pmix-ploc-hwloc.txt", "target full", true,
+                           shmemfile, pmix_globals.hostname,
+                           (unsigned long)shmemsize,
+                           (unsigned long long)amount_space_avail);
+        }
+        free(shmemfile);
+        shmemfile = NULL;
+        return PMIX_SUCCESS;
+    }
+    /* enough space is available, so create the segment */
+    if (-1 == (shmemfd = open(shmemfile, O_CREAT | O_RDWR, 0600))) {
+        int err = errno;
+        if (1 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
+            pmix_show_help("help-pmix-ploc-hwloc-hwloc.txt", "sys call fail", true,
+                           pmix_globals.hostname,
+                           "open(2)", "", strerror(err), err);
+        }
+        free(shmemfile);
+        shmemfile = NULL;
+        return PMIX_SUCCESS;
+    }
+    /* ensure nobody inherits this fd */
+    pmix_fd_set_cloexec(shmemfd);
+    /* populate the shmem segment with the topology */
+    rc = hwloc_shmem_topology_write(pmix_globals.topology.topology, shmemfd, 0,
+                                    (void*)shmemaddr, shmemsize, 0);
+    if (0 != rc) {
+        pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                            "%s an error %d (%s) occurred while writing topology to %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), rc, strerror(errno), shmemfile);
+        unlink(shmemfile);
+        free(shmemfile);
+        shmemfile = NULL;
+        close(shmemfd);
+        shmemfd = -1;
+        return PMIX_SUCCESS;
+    }
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s exported shmem",
+                        __FILE__, __func__);
+
+    /* add the requisite key-values to the global data to be
+     * given to each client for older PMIx versions */
+    kv = PMIX_NEW(pmix_kval_t);
+    kv->key = strdup(PMIX_HWLOC_SHMEM_FILE);
+    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    PMIX_VALUE_LOAD(kv->value, shmemfile, PMIX_STRING);
+    pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+
+    kv = PMIX_NEW(pmix_kval_t);
+    kv->key = strdup(PMIX_HWLOC_SHMEM_ADDR);
+    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    PMIX_VALUE_LOAD(kv->value, &shmemaddr, PMIX_SIZE);
+    pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+
+    kv = PMIX_NEW(pmix_kval_t);
+    kv->key = strdup(PMIX_HWLOC_SHMEM_SIZE);
+    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    PMIX_VALUE_LOAD(kv->value, &shmemsize, PMIX_SIZE);
+    pmix_list_append(&pmix_server_globals.gdata, &kv->super);
+
+    /* and add them to the global cache of envars as well */
+    pmix_setenv("PMIX_HWLOC_SHMEM_FILE", shmemfile, true, &pmix_server_globals.genvars);
+    pmix_asprintf(&tmp, "%"PRIsize_t, shmemaddr);
+    pmix_setenv("PMIX_HWLOC_SHMEM_ADDR", tmp, true, &pmix_server_globals.genvars);
+    pmix_asprintf(&tmp, "%"PRIsize_t, shmemsize);
+    pmix_setenv("PMIX_HWLOC_SHMEM_SIZE", tmp, true, &pmix_server_globals.genvars);
+#endif
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t load_topology(pmix_topology_t *topo)
+{
+    pmix_cb_t cb;
+    pmix_proc_t wildcard;
+    pmix_status_t rc;
+    pmix_topology_t *t;
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s", __FILE__, __func__);
+
+    /* see if they stipulated the type of topology they want */
+    if (NULL != topo->source) {
+        if (0 != strncasecmp(topo->source, "hwloc", strlen("hwloc"))) {
+            /* they want somebody else */
+            pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                "%s:%s no match - wanted %s", __FILE__, __func__, topo->source);
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+        /* if we already have a suitable version, just return it */
+        if (NULL != pmix_globals.topology.topology) {
+            if (0 == strncasecmp(pmix_globals.topology.source, topo->source, strlen(topo->source))) {
+                pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                    "%s:%s matched sources", __FILE__, __func__);
+               topo->topology = pmix_globals.topology.topology;
+                return PMIX_SUCCESS;
+            }
+            /* nope - not a suitable version */
+            pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                "%s:%s present but not suitable", __FILE__, __func__);
+            return PMIX_ERR_TAKE_NEXT_OPTION;
+        }
+    } else {
+        /* they didn't stipulate a source, so if we already have something, just return it */
+        if (NULL != pmix_globals.topology.topology) {
+            pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                "%s:%s no source stipulated - returning current version", __FILE__, __func__);
+            topo->source = strdup(pmix_globals.topology.source);
+            topo->topology = pmix_globals.topology.topology;
+            return PMIX_SUCCESS;
+        }
+    }
+
+
+    /* see if we have it in storage */
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s checking storage", __FILE__, __func__);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    PMIX_LOAD_PROCID(&wildcard, pmix_globals.myid.nspace, PMIX_RANK_WILDCARD);
+    cb.proc = &wildcard;
+    cb.copy = true;
+    cb.key = PMIX_TOPOLOGY2;
+    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
+    if (PMIX_SUCCESS == rc) {
+        cb.key = NULL;
+        t = popptr(&cb);
+        PMIX_DESTRUCT(&cb);
+        if (NULL != t) {
+            pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                                "%s:%s found in storage", __FILE__, __func__);
+            topo->source = strdup(t->source);
+            topo->topology = t->topology;
+            pmix_globals.topology.source = strdup(t->source);
+            pmix_globals.topology.topology = t->topology;
+            return PMIX_SUCCESS;
+        }
+    }
+
+    /* we don't have it - better set it up */
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "%s:%s nothing found - calling setup", __FILE__, __func__);
+    rc = setup_topology(NULL, 0);
+    if (PMIX_SUCCESS == rc) {
+        topo->source = strdup(pmix_globals.topology.source);
+        topo->topology = pmix_globals.topology.topology;
+    }
+    return rc;
 }
 
 static pmix_status_t generate_cpuset_string(const pmix_cpuset_t *cpuset,
@@ -1810,7 +2046,8 @@ static int parse_map_line(const char *line,
     return PMIX_SUCCESS;
 }
 
-#define ALIGN2MB (2*1024*1024UL)
+#define ALIGN2MB  (2*1024*1024UL)
+#define ALIGN64MB (64*1024*1024UL)
 
 static int use_hole(unsigned long holebegin,
                     unsigned long holesize,
@@ -1825,7 +2062,6 @@ static int use_hole(unsigned long holebegin,
     }
 
     /* try to align the middle of the hole on 64MB for POWER's 64k-page PMD */
-    #define ALIGN64MB (64*1024*1024UL)
     aligned = (middle + ALIGN64MB) & ~(ALIGN64MB-1);
     if (aligned + size <= holebegin + holesize) {
         *addrp = aligned;

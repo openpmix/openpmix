@@ -5,6 +5,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -36,11 +37,11 @@ AC_DEFUN([MCA_pmix_ploc_hwloc_CONFIG],[
     PMIX_VAR_SCOPE_PUSH([hwloc_build_mode])
 
     AC_ARG_WITH([hwloc],
-                [AC_HELP_STRING([--with-hwloc=DIR],
+                [AS_HELP_STRING([--with-hwloc=DIR],
                                 [Search for hwloc headers and libraries in DIR ])])
 
     AC_ARG_WITH([hwloc-libdir],
-                [AC_HELP_STRING([--with-hwloc-libdir=DIR],
+                [AS_HELP_STRING([--with-hwloc-libdir=DIR],
                                 [Search for hwloc libraries in DIR ])])
 
     pmix_hwloc_support=0

@@ -16,6 +16,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -335,17 +336,13 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars,
                     free(cs_env);
                     continue;
                 }
-                kv = PMIX_NEW(pmix_kval_t);
+                PMIX_KVAL_NEW(kv, PMIX_SET_ENVAR);
                 if (NULL == kv) {
-                    free(cs_env);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
+                    return PMIX_ERR_NOMEM;
                 }
-                kv->key = strdup(PMIX_SET_ENVAR);
-                kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
                 if (NULL == kv->value) {
                     PMIX_RELEASE(kv);
-                    free(cs_env);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
+                    return PMIX_ERR_NOMEM;
                 }
                 kv->value->type = PMIX_ENVAR;
                 PMIX_ENVAR_LOAD(&kv->value->data.envar, cs_env, string_key, ':');

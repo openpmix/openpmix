@@ -13,8 +13,9 @@
 # Copyright (c) 2012-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
-# Copyright (c) 2017      Research Organization for Information Science
-#                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2017-2021 Research Organization for Information Science
+#                         and Technology (RIST).  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -45,7 +46,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_HEADER], [
            test "$hdir_prefix" = "/usr" || \
            test "$hdir_prefix" = "/usr/local"],
            [ # try as is...
-            AC_VERBOSE([looking for header without includes])
+            AC_MSG_NOTICE([looking for header without includes])
             AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [])
             AS_IF([test "$pmix_check_package_header_happy" = "no"],
                   [# no go on the as is - reset the cache and try again
@@ -55,13 +56,13 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_HEADER], [
           [AS_IF([test "$hdir_prefix" != ""],
                  [$1_CPPFLAGS="$$1_CPPFLAGS -I$hdir_prefix"
                   CPPFLAGS="$CPPFLAGS -I$hdir_prefix"
-                  AC_VERBOSE([looking for header in $hdir_prefix])
+                  AC_MSG_NOTICE([looking for header in $hdir_prefix])
                   AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [], [$6])
                   AS_IF([test "$pmix_check_package_header_happy" = "no"],
                         [unset pmix_Header
                          $1_CPPFLAGS="$$1_CPPFLAGS -I$hdir_prefix/include"
                          CPPFLAGS="$CPPFLAGS -I$hdir_prefix/include"
-                         AC_VERBOSE([looking for header in $hdir_prefix/include])
+                         AC_MSG_NOTICE([looking for header in $hdir_prefix/include])
                          AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [], [$6])])])])
 
     AS_IF([test "$pmix_check_package_header_happy" = "yes"],
@@ -81,9 +82,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
     # This is stolen from autoconf to peek under the covers to get the
     # cache variable for the library check.  one should not copy this
     # code into other places unless you want much pain and suffering
-    AS_LITERAL_IF([$2],
-                  [AS_VAR_PUSHDEF([pmix_Lib], [ac_cv_lib_$2_$3])],
-                  [AS_VAR_PUSHDEF([pmix_Lib], [ac_cv_lib_$2''_$3])])dnl
+    AS_VAR_PUSHDEF([pmix_Lib], [ac_cv_search_$3])
 
     # see comment above
     unset pmix_Lib
@@ -110,7 +109,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
             # first try standard locations as otherwise our
             # searches with libdir_prefix locations might come
             # back positive and unnecessarily add an LDFLAG
-            AC_VERBOSE([looking for library without search path])
+            AC_MSG_NOTICE([looking for library without search path])
             AC_SEARCH_LIBS([$3], [$2],
                            [pmix_check_package_lib_happy="yes"],
                            [pmix_check_package_lib_happy="no"], [$4])
@@ -127,7 +126,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
                        test "$libdir_prefix" != "/usr/local"],
                     [$1_LDFLAGS="$$1_LDFLAGS -L$libdir_prefix/lib64"
                      LDFLAGS="$LDFLAGS -L$libdir_prefix/lib64"
-                     AC_VERBOSE([looking for library in $libdir_prefix/lib64])
+                     AC_MSG_NOTICE([looking for library in $libdir_prefix/lib64])
                      AC_SEARCH_LIBS([$3], [$2],
                                [pmix_check_package_lib_happy="yes"],
                                [pmix_check_package_lib_happy="no"], [$4])
@@ -144,7 +143,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
                        test "$libdir_prefix" != "/usr/local"],
                     [$1_LDFLAGS="$$1_LDFLAGS -L$libdir_prefix/lib"
                      LDFLAGS="$LDFLAGS -L$libdir_prefix/lib"
-                     AC_VERBOSE([looking for library in $libdir_prefix/lib])
+                     AC_MSG_NOTICE([looking for library in $libdir_prefix/lib])
                      AC_SEARCH_LIBS([$3], [$2],
                                [pmix_check_package_lib_happy="yes"],
                                [pmix_check_package_lib_happy="no"], [$4])

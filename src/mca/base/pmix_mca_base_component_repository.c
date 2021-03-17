@@ -16,6 +16,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -251,7 +252,7 @@ int pmix_mca_base_component_repository_init(void)
 #if PMIX_HAVE_PDL_SUPPORT
 
     /* Initialize the dl framework */
-    int ret = pmix_mca_base_framework_open(&pmix_pdl_base_framework, 0);
+    int ret = pmix_mca_base_framework_open(&pmix_pdl_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT);
     if (PMIX_SUCCESS != ret) {
         pmix_output(0, "%s %d:%s failed -- process will likely abort (open the dl framework returned %d instead of PMIX_SUCCESS)\n",
                     __FILE__, __LINE__, __func__, ret);
@@ -289,8 +290,9 @@ int pmix_mca_base_component_repository_get_components (pmix_mca_base_framework_t
 #if PMIX_HAVE_PDL_SUPPORT
     return pmix_hash_table_get_value_ptr (&pmix_mca_base_component_repository, framework->framework_name,
                                           strlen (framework->framework_name), (void **) framework_components);
-#endif
+#else
     return PMIX_ERR_NOT_FOUND;
+#endif
 }
 
 #if PMIX_HAVE_PDL_SUPPORT

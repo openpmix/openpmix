@@ -43,6 +43,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1141,7 +1142,7 @@ typedef int pmix_status_t;
 #define PMIX_PROCESS_SET_DELETE                     -56
 
 /* Debugger ops */
-#define PMIX_DEBUGGER_RELEASE                       -57
+#define PMIX_DEBUGGER_RELEASE                       -3      // replaced deprecated PMIX_ERR_DEBUGGER_RELEASE
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
 
 /* query errors */
@@ -1186,7 +1187,7 @@ typedef int pmix_status_t;
 #define PMIX_LAUNCH_COMPLETE                        -174     // include nspace of the launched job with notification
 #define PMIX_FABRIC_UPDATED                         -175
 #define PMIX_FABRIC_UPDATE_PENDING                  -176
-#define PMIX_FABRIC_UPDATE_ENDPOINTS                 -57
+#define PMIX_FABRIC_UPDATE_ENDPOINTS                -113
 
 /* job-related errors */
 #define PMIX_ERR_JOB_APP_NOT_EXECUTABLE             -177
@@ -1267,7 +1268,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_APP                        23
 #define PMIX_INFO                       24
 #define PMIX_PDATA                      25
-#define PMIX_BUFFER                     26
+// Hole left by deprecation/removal of PMIX_BUFFER
 #define PMIX_BYTE_OBJECT                27
 #define PMIX_KVAL                       28
 // Hole left by deprecation/removal of PMIX_MODEX
@@ -1301,6 +1302,8 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_DEVTYPE                    57
 #define PMIX_LOCTYPE                    58
 #define PMIX_COMPRESSED_BYTE_OBJECT     59
+#define PMIX_PROC_NSPACE                60
+#define PMIX_DATA_BUFFER                65
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1439,7 +1442,7 @@ static inline void* pmix_calloc(size_t n, size_t m)
 
 /* define a convenience macro for checking nspaces */
 #define PMIX_CHECK_NSPACE(a, b) \
-    (0 == strncmp((a), (b), PMIX_MAX_NSLEN))
+    (PMIX_NSPACE_INVALID((a)) || PMIX_NSPACE_INVALID((b)) || 0 == strncmp((a), (b), PMIX_MAX_NSLEN))
 
 /* define a convenience macro for loading names */
 #define PMIX_LOAD_PROCID(a, b, c)               \
@@ -1448,12 +1451,18 @@ static inline void* pmix_calloc(size_t n, size_t m)
         (a)->rank = (c);                        \
     }while(0)
 
+#define PMIX_XFER_PROCID(a, b)      \
+    memcpy((a), (b), sizeof(pmix_proc_t))
+
 /* define a convenience macro for checking names */
 #define PMIX_CHECK_PROCID(a, b) \
     (PMIX_CHECK_NSPACE((a)->nspace, (b)->nspace) && ((a)->rank == (b)->rank || (PMIX_RANK_WILDCARD == (a)->rank || PMIX_RANK_WILDCARD == (b)->rank)))
 
 #define PMIX_CHECK_RANK(a, b) \
     ((a) == (b) || (PMIX_RANK_WILDCARD == (a) || PMIX_RANK_WILDCARD == (b)))
+
+#define PMIX_NSPACE_INVALID(a) \
+    (NULL == (a) || 0 == strlen((a)))
 
 /****    PMIX COORD    ****/
 /* define coordinate system views */
@@ -1704,22 +1713,22 @@ typedef struct pmix_byte_object {
 #define PMIX_BYTE_OBJECT_DESTRUCT(m)    \
     do {                                \
         if (NULL != (m)->bytes) {       \
-            pmix_free((m)->bytes);           \
+            pmix_free((m)->bytes);      \
         }                               \
+        (m)->bytes = NULL;              \
+        (m)->size = 0;                  \
     } while(0)
 
-#define PMIX_BYTE_OBJECT_FREE(m, n)             \
-    do {                                        \
-        size_t _bon;                            \
-        if (NULL != (m)) {                      \
-            for (_bon=0; _bon < n; _bon++) {    \
-                if (NULL != (m)[_bon].bytes) {  \
-                    pmix_free((m)[_bon].bytes);      \
-                }                               \
-            }                                   \
-            pmix_free((m));                          \
-            (m) = NULL;                         \
-        }                                       \
+#define PMIX_BYTE_OBJECT_FREE(m, n)                     \
+    do {                                                \
+        size_t _bon;                                    \
+        if (NULL != (m)) {                              \
+            for (_bon=0; _bon < n; _bon++) {            \
+                PMIX_BYTE_OBJECT_DESTRUCT(&(m)[_bon]);  \
+            }                                           \
+            pmix_free((m));                             \
+            (m) = NULL;                                 \
+        }                                               \
     } while(0)
 
 #define PMIX_BYTE_OBJECT_LOAD(b, d, s)      \
@@ -1829,22 +1838,6 @@ typedef struct {
     } while(0)
 
 
-/****    PMIX DATA BUFFER    ****/
-typedef struct pmix_data_buffer {
-    /** Start of my memory */
-    char *base_ptr;
-    /** Where the next data will be packed to (within the allocated
-        memory starting at base_ptr) */
-    char *pack_ptr;
-    /** Where the next data will be unpacked from (within the
-        allocated memory starting as base_ptr) */
-    char *unpack_ptr;
-    /** Number of bytes allocated (starting at base_ptr) */
-    size_t bytes_allocated;
-    /** Number of bytes used by the buffer (i.e., amount of data --
-        including overhead -- packed in the buffer) */
-    size_t bytes_used;
-} pmix_data_buffer_t;
 #define PMIX_DATA_BUFFER_CREATE(m)                                          \
     do {                                                                    \
         (m) = (pmix_data_buffer_t*)pmix_calloc(1, sizeof(pmix_data_buffer_t));   \
@@ -2017,6 +2010,23 @@ typedef struct pmix_data_array {
  * will utilize the void* entry of the pmix_value_t to
  * hold the point to pmix_regattr_t */
 
+/****    PMIX DATA BUFFER    ****/
+typedef struct pmix_data_buffer {
+    /** Start of my memory */
+    char *base_ptr;
+    /** Where the next data will be packed to (within the allocated
+        memory starting at base_ptr) */
+    char *pack_ptr;
+    /** Where the next data will be unpacked from (within the
+        allocated memory starting as base_ptr) */
+    char *unpack_ptr;
+    /** Number of bytes allocated (starting at base_ptr) */
+    size_t bytes_allocated;
+    /** Number of bytes used by the buffer (i.e., amount of data --
+        including overhead -- packed in the buffer) */
+    size_t bytes_used;
+} pmix_data_buffer_t;
+
 /****    PMIX VALUE STRUCT    ****/
 
 /* NOTE: operations can supply a collection of values under
@@ -2048,6 +2058,7 @@ typedef struct pmix_value {
         time_t time;
         pmix_status_t status;
         pmix_rank_t rank;
+        pmix_nspace_t *nspace;
         pmix_proc_t *proc;
         pmix_byte_object_t bo;
         pmix_persistence_t persist;
@@ -2069,6 +2080,7 @@ typedef struct pmix_value {
         pmix_device_type_t devtype;
         pmix_device_distance_t *devdist;
         pmix_endpoint_t *endpoint;
+        pmix_data_buffer_t *dbuf;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
@@ -2261,8 +2273,15 @@ typedef struct pmix_info {
  * p - the void* pointer provided from PMIX_INFO_LIST_START
  * m - address of a pmix_data_array_t into which
  *     the array of info is to be placed */
-#define PMIX_INFO_LIST_CONVERT(r, p, m)   \
-    (r) = pmix_info_list_convert((p), (m))
+#define PMIX_INFO_LIST_CONVERT(r, p, m)                 \
+    do {                                                \
+        (m)->type = PMIX_INFO;                          \
+        (r) = pmix_info_list_convert((p), (m));         \
+        if (PMIX_SUCCESS != (r)) {                      \
+            (m)->array = NULL;                          \
+            (m)->size = 0;                              \
+        }                                               \
+    } while(0)
 
 /* Release any memory associated with the list
  * p - the void* pointer provided from PMIX_INFO_LIST_START */

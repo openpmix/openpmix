@@ -5,6 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -102,15 +103,17 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                                 pmix_buffer_t *buf, void *cbdata)
 {
     (void)hdr;
-    pmix_status_t rc, ret;
+    pmix_status_t rc, ret=PMIX_ERR_LOST_CONNECTION;
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
 
-    /* unpack the status */
-    PMIX_BFROPS_UNPACK(rc, pr, buf, &ret, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        ret = rc;
+    if (0 < hdr->nbytes) {
+        /* unpack the status */
+        PMIX_BFROPS_UNPACK(rc, pr, buf, &ret, &cnt, PMIX_STATUS);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            ret = rc;
+        }
     }
     /* do the cback */
     if (NULL != cb->cbfunc.opfn) {
@@ -280,6 +283,12 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
     chain->cached = true;
 
     if (PMIX_RANGE_PROC_LOCAL != range && NULL != msg) {
+        /* if this is a "lost-connection" event, then there is no
+         * server to pass it to! */
+        if (PMIX_ERR_LOST_CONNECTION == status) {
+            PMIX_RELEASE(msg);
+            goto local;
+        }
         /* create a callback object as we need to pass it to the
          * recv routine so we know which callback to use when
          * the server acks/nacks the register events request. The
@@ -305,6 +314,7 @@ static pmix_status_t notify_server_of_event(pmix_status_t status,
         cbfunc(PMIX_SUCCESS, cbdata);
     }
 
+local:
     /* now notify any matching registered callbacks we have */
     pmix_invoke_local_event_hdlr(chain);
 
@@ -330,7 +340,7 @@ static void cycle_events(int sd, short args, void *cbdata)
     pmix_info_t *newinfo;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
-                        "%s progressing local event",
+                        "%s progressing local event foo",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* aggregate the results per RFC0018 - first search the
@@ -388,28 +398,28 @@ static void cycle_events(int sd, short args, void *cbdata)
     if (NULL != chain->opcbfunc) {
         chain->opcbfunc(PMIX_SUCCESS, chain->cbdata);
     }
-    
+
     /* if the caller indicates that the chain is completed,
      * or we completed the "last" event */
-    if (PMIX_EVENT_ACTION_COMPLETE == chain->status || chain->endchain) {
+    if (PMIX_EVENT_ACTION_COMPLETE == chain->status ||
+        PMIX_EVENT_ORDER_LAST_OVERALL == chain->evhdlr->precedence ||
+        chain->endchain) {
         if (PMIX_EVENT_ACTION_COMPLETE == chain->status) {
             chain->status = PMIX_SUCCESS;
         }
-        /* we still have to call their final callback */
-        if (NULL != chain->final_cbfunc) {
-            chain->final_cbfunc(chain->status, chain->final_cbdata);
-        }
-        /* maintain acctng */
-        PMIX_RELEASE(chain);
-        return;
+        goto complete;
     }
-
     item = NULL;
+
     /* see if we need to continue, starting with the single code events */
     if (1 == chain->evhdlr->ncodes) {
         /* the last handler was for a single code - see if there are
          * any others that match this event */
-        item = &chain->evhdlr->super;
+        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
+            item = pmix_list_get_begin(&pmix_globals.events.single_events);
+        } else {
+            item = &chain->evhdlr->super;
+        }
         while (pmix_list_get_end(&pmix_globals.events.single_events) != (item = pmix_list_get_next(item))) {
             nxt = (pmix_event_hdlr_t*)item;
             if (nxt->codes[0] == chain->status &&
@@ -447,7 +457,9 @@ static void cycle_events(int sd, short args, void *cbdata)
     if (NULL != chain->evhdlr->codes || NULL != item) {
         /* the last handler was for a multi-code event, or we exhausted
          * all the single code events */
-        if (NULL == item) {
+        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
+            item = pmix_list_get_begin(&pmix_globals.events.multi_events);
+        } else if (NULL == item) {
             /* if the last handler was multi-code, then start from that point */
             item = &chain->evhdlr->super;
         }
@@ -492,7 +504,9 @@ static void cycle_events(int sd, short args, void *cbdata)
 
     /* if they didn't want it to go to a default handler, then ignore them */
     if (!chain->nondefault) {
-        if (NULL == item) {
+        if (PMIX_EVENT_ORDER_FIRST_OVERALL == chain->evhdlr->precedence) {
+            item = pmix_list_get_begin(&pmix_globals.events.default_events);
+        } else if (NULL == item) {
             item = &chain->evhdlr->super;
         }
         if (pmix_list_get_end(&pmix_globals.events.default_events) != (item = pmix_list_get_next(item))) {
@@ -606,6 +620,7 @@ static void cycle_events(int sd, short args, void *cbdata)
         }
     }
 
+complete:
     /* if we get here, there was nothing more to do, but
      * we still have to call their final callback */
     if (NULL != chain->final_cbfunc) {
@@ -702,7 +717,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             /* invoke the handler */
             chain->evhdlr = pmix_globals.events.first;
             pmix_output_verbose(8, pmix_client_globals.event_output,
-                                "%s %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
+                                "%s INVOKING FIRST %s:%d", PMIX_NAME_PRINT(&pmix_globals.myid),
                                 __FILE__, __LINE__);
             goto invk;
         } else if (NULL != pmix_globals.events.first->codes) {
@@ -957,6 +972,12 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     PMIX_INFO_CREATE(chain->info, chain->nallocated);
     /* prep the chain for processing */
     pmix_prep_event_chain(chain, cd->info, cd->ninfo, true);
+    /* if the range is PMIX_RANGE_RM, then we only process this
+     * event ourselves - the PMIx server may aggregate the
+     * events from a namespace prior to passing it to the host */
+    if (PMIX_RANGE_RM == cd->range) {
+        goto local;
+    }
     /* if we are a tool, we send it to our clients regardless
      * of the range - we assume that if we are in range, then
      * so are any clients attached to us
@@ -1211,6 +1232,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         }
     }
 
+local:
     /* process it ourselves */
     pmix_invoke_local_event_hdlr(chain);
 
