@@ -4,6 +4,7 @@
  *                         Corporation.  All rights reserved.
  *
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,6 +56,7 @@ extern "C" {
 typedef struct {
     size_t compress_limit;
     bool selected;
+    bool silent;
 } pmix_compress_base_t;
 
 PMIX_EXPORT extern pmix_compress_base_t pmix_compress_base;
