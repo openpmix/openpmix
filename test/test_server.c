@@ -4,6 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -134,7 +135,8 @@ static int server_find_id(const char *nspace, int rank)
 }
 
 static void set_namespace(int local_size, int univ_size,
-                          int base_rank, char *name)
+                          int base_rank, char *name,
+                          test_params *params)
 {
     size_t ninfo;
     pmix_info_t *info;
@@ -168,11 +170,11 @@ static void set_namespace(int local_size, int univ_size,
     info[3].value.data.string = strdup(ranks);
 
     /* assemble the node and proc map info */
-    if (1 == params.nservers) {
+    if (1 == params->nservers) {
         pmix_argv_append_nosize(&nodes, my_server_info->hostname);
     } else {
         char hostname[PMIX_MAXHOSTNAMELEN];
-        for (i = 0; i < params.nservers; i++) {
+        for (i = 0; i < params->nservers; i++) {
             snprintf(hostname, PMIX_MAXHOSTNAMELEN, "node%d", i);
             pmix_argv_append_nosize(&nodes, hostname);
         }
@@ -193,7 +195,7 @@ static void set_namespace(int local_size, int univ_size,
     /* generate the global proc map - if we have two
      * servers, then the procs not on this server must
      * be on the other */
-    if (2 == params.nservers) {
+    if (2 == params->nservers) {
         pmix_argv_append_nosize(&rks, ranks);
         free(ranks);
         nodes = NULL;
@@ -242,7 +244,7 @@ static void set_namespace(int local_size, int univ_size,
 static void server_unpack_procs(char *buf, size_t size)
 {
     char *ptr = buf;
-    size_t i;
+    size_t i, j;
     size_t ns_count;
     char *nspace;
 
@@ -284,8 +286,7 @@ static void server_unpack_procs(char *buf, size_t size)
             } else {
                 assert(ns_item->ntasks == ntasks);
             }
-            size_t i;
-            for (i = 0; i < ltasks; i++) {
+            for (j = 0; j < ltasks; j++) {
                 int rank;
                 memcpy (&rank, ptr, sizeof(int));
                 ptr += sizeof(int);
@@ -1014,7 +1015,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank,
 
     TEST_VERBOSE(("Setting job info"));
     (void)snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
-    set_namespace(local_size, univ_size, base_rank, proc.nspace);
+    set_namespace(local_size, univ_size, base_rank, proc.nspace, params);
     if (NULL != ranks) {
         free(ranks);
     }

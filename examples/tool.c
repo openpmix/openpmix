@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Triad National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,11 +36,11 @@
 
 static pmix_proc_t myproc = {"UNDEF", PMIX_RANK_UNDEF};
 
-static void cbfunc(pmix_status_t status,
-                   pmix_info_t *info, size_t ninfo,
-                   void *cbdata,
-                   pmix_release_cbfunc_t release_fn,
-                   void *release_cbdata)
+static void querycbfunc(pmix_status_t status,
+                        pmix_info_t *info, size_t ninfo,
+                        void *cbdata,
+                        pmix_release_cbfunc_t release_fn,
+                        void *release_cbdata)
 {
     myquery_data_t *mq = (myquery_data_t*)cbdata;
     size_t n;
@@ -235,7 +236,7 @@ int main(int argc, char **argv)
             PMIX_INFO_LOAD(&query[0].qualifiers[0], PMIX_HOSTNAME, nodename, PMIX_STRING);
         }
         DEBUG_CONSTRUCT_MYQUERY(&mydata);
-        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, cbfunc, (void*)&mydata))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&mydata))) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace, myproc.rank, rc);
             goto done;
         }
@@ -296,7 +297,7 @@ int main(int argc, char **argv)
         PMIX_QUERY_CREATE(query, nq);
         PMIX_ARGV_APPEND(rc, query[0].keys, PMIX_QUERY_NAMESPACE_INFO);
         DEBUG_CONSTRUCT_MYQUERY(&mydata);
-        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, cbfunc, (void*)&mydata))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&mydata))) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace, myproc.rank, rc);
             goto done;
         }
@@ -343,7 +344,7 @@ int main(int argc, char **argv)
         query[0].nqual = 1;
         PMIX_INFO_LOAD(&query[0].qualifiers[0], PMIX_NSPACE, nspace, PMIX_STRING);
         DEBUG_CONSTRUCT_MYQUERY(&mydata);
-        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, cbfunc, (void*)&mydata))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&mydata))) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace, myproc.rank, rc);
             goto done;
         }

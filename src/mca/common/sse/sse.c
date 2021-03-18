@@ -9,6 +9,7 @@
  ***********************
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -181,7 +182,7 @@ static size_t http_ignore_data(char *ptr, size_t size, size_t nmemb, void *userd
     return size * nmemb;
 }
 
-void pmix_common_on_sse_event(char** headers, const char* data, const char* reply_url, void *cbdata)
+void pmix_common_on_sse_event(char** inheaders, const char* data, const char* reply_url, void *cbdata)
 {
     pmix_sse_curl_handle_t *pcl = (pmix_sse_curl_handle_t*)cbdata;
     pmix_sse_curl_handle_t *reply;

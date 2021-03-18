@@ -62,6 +62,8 @@
  */
 
 pmix_cmd_line_t *pmix_info_cmd_line = NULL;
+pmix_pointer_array_t pmix_component_map = {{0}};
+pmix_pointer_array_t mca_types = {{0}};
 
 const char *pmix_info_type_base = "base";
 
@@ -71,8 +73,6 @@ int main(int argc, char *argv[])
     bool acted = false;
     bool want_all = false;
     int i;
-    pmix_pointer_array_t mca_types;
-    pmix_pointer_array_t component_map;
     pmix_info_component_map_t *map;
 
     /* protect against problems if someone passes us thru a pipe
@@ -125,25 +125,24 @@ int main(int argc, char *argv[])
         exit(ret);
     }
 
-    if (PMIX_SUCCESS != (ret = pmix_info_init(argc, argv, pmix_info_cmd_line))) {
+    if (PMIX_SUCCESS != (ret = pmix_info_init(argc, argv))) {
         return ret;
     }
 
     /* setup the mca_types array */
     PMIX_CONSTRUCT(&mca_types, pmix_pointer_array_t);
     pmix_pointer_array_init(&mca_types, 256, INT_MAX, 128);
-    pmix_info_register_types(&mca_types);
+    pmix_info_register_types();
 
     /* init the component map */
-    PMIX_CONSTRUCT(&component_map, pmix_pointer_array_t);
-    pmix_pointer_array_init(&component_map, 64, INT_MAX, 32);
+    PMIX_CONSTRUCT(&pmix_component_map, pmix_pointer_array_t);
+    pmix_pointer_array_init(&pmix_component_map, 64, INT_MAX, 32);
 
     /* Register PMIx's params */
-    if (PMIX_SUCCESS != (ret = pmix_info_register_framework_params(&component_map))) {
+    if (PMIX_SUCCESS != (ret = pmix_info_register_framework_params())) {
         if (PMIX_ERR_BAD_PARAM == ret) {
             /* output what we got */
-            pmix_info_do_params(true, pmix_cmd_line_is_taken(pmix_info_cmd_line, "internal"),
-                                &mca_types, &component_map, NULL);
+            pmix_info_do_params(true, pmix_cmd_line_is_taken(pmix_info_cmd_line, "internal"));
         }
         exit(1);
     }
@@ -156,7 +155,7 @@ int main(int argc, char *argv[])
         pmix_info_show_pmix_version(pmix_info_ver_full);
     }
     if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, "path")) {
-        pmix_info_do_path(want_all, pmix_info_cmd_line);
+        pmix_info_do_path(want_all);
         acted = true;
     }
     if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, "arch")) {
@@ -173,12 +172,11 @@ int main(int argc, char *argv[])
     }
     if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, "param") ||
         pmix_cmd_line_is_taken(pmix_info_cmd_line, "params")) {
-        pmix_info_do_params(want_all, pmix_cmd_line_is_taken(pmix_info_cmd_line, "internal"),
-                            &mca_types, &component_map, pmix_info_cmd_line);
+        pmix_info_do_params(want_all, pmix_cmd_line_is_taken(pmix_info_cmd_line, "internal"));
         acted = true;
     }
     if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "type")) {
-        pmix_info_do_type(pmix_info_cmd_line);
+        pmix_info_do_type();
         acted = true;
     }
 
@@ -191,7 +189,7 @@ int main(int argc, char *argv[])
         pmix_info_do_arch();
         pmix_info_do_hostname();
         pmix_info_do_config(false);
-        pmix_info_show_component_version(&mca_types, &component_map, pmix_info_type_all,
+        pmix_info_show_component_version(pmix_info_type_all,
                                          pmix_info_component_all, pmix_info_ver_full,
                                          pmix_info_ver_all);
     }
@@ -201,12 +199,12 @@ int main(int argc, char *argv[])
     pmix_info_close_components();
     PMIX_RELEASE(pmix_info_cmd_line);
     PMIX_DESTRUCT(&mca_types);
-    for (i=0; i < component_map.size; i++) {
-        if (NULL != (map = (pmix_info_component_map_t*)pmix_pointer_array_get_item(&component_map, i))) {
+    for (i=0; i < pmix_component_map.size; i++) {
+        if (NULL != (map = (pmix_info_component_map_t*)pmix_pointer_array_get_item(&pmix_component_map, i))) {
             PMIX_RELEASE(map);
         }
     }
-    PMIX_DESTRUCT(&component_map);
+    PMIX_DESTRUCT(&pmix_component_map);
 
     pmix_info_finalize();
 
