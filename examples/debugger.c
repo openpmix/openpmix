@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -94,7 +95,7 @@ static pmix_proc_t myproc;
  * Once we have dealt with the returned data, we must
  * call the release_fn so that the PMIx library can
  * cleanup */
-static void cbfunc(pmix_status_t status,
+static void querycbfunc(pmix_status_t status,
                    pmix_info_t *info, size_t ninfo,
                    void *cbdata,
                    pmix_release_cbfunc_t release_fn,
@@ -327,7 +328,7 @@ int main(int argc, char **argv)
         myquery_data.ninfo = 0;
         /* execute the query */
         fprintf(stderr, "Debugger: querying capabilities\n");
-        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, cbfunc, (void*)&myquery_data))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&myquery_data))) {
             fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
             goto done;
         }
@@ -431,7 +432,6 @@ int main(int argc, char **argv)
 static int attach_to_running_job(char *nspace)
 {
     pmix_status_t rc;
-    pmix_proc_t myproc;
     pmix_query_t *query;
     size_t nq;
     myquery_data_t *q;
@@ -444,7 +444,7 @@ static int attach_to_running_job(char *nspace)
 
     q = (myquery_data_t*)malloc(sizeof(myquery_data_t));
     DEBUG_CONSTRUCT_LOCK(&q->lock);
-    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, cbfunc, (void*)q))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)q))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace, myproc.rank, rc);
         return -1;
     }

@@ -72,11 +72,11 @@ typedef struct {
  * Once we have dealt with the returned data, we must
  * call the release_fn so that the PMIx library can
  * cleanup */
-static void cbfunc(pmix_status_t status,
-                   pmix_info_t *info, size_t ninfo,
-                   void *cbdata,
-                   pmix_release_cbfunc_t release_fn,
-                   void *release_cbdata)
+static void querycbfunc(pmix_status_t status,
+                        pmix_info_t *info, size_t ninfo,
+                        void *cbdata,
+                        pmix_release_cbfunc_t release_fn,
+                        void *release_cbdata)
 {
     myquery_data_t *mq = (myquery_data_t*)cbdata;
     size_t n;
@@ -457,7 +457,7 @@ int main(int argc, char **argv)
         PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_HOST_ATTRIBUTES, pmix_pattrs_globals.host, PMIX_STRING);
     }
     PMIX_CONSTRUCT_LOCK(&mq.lock);
-    rc = PMIx_Query_info_nb(&query, 1, cbfunc,(void*)&mq);
+    rc = PMIx_Query_info_nb(&query, 1, querycbfunc,(void*)&mq);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
         goto done;

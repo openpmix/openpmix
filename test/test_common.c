@@ -4,6 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,8 +22,6 @@
 #include <ctype.h>
 
 int pmix_test_verbose = 0;
-test_params params;
-
 FILE *file;
 
 #define OUTPUT_MAX 1024
@@ -249,8 +248,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
         char *ranklist = getenv("SLURM_GTIDS");
         char *rankno = getenv("SLURM_LOCALID");
         if( NULL != ranklist && NULL != rankno ){
-            char **argv = pmix_argv_split(ranklist, ',');
-            int count = pmix_argv_count(argv);
+            char **myargv = pmix_argv_split(ranklist, ',');
+            int count = pmix_argv_count(myargv);
             int rankidx = strtoul(rankno, NULL, 10);
             if( rankidx >= count ){
                 fprintf(stderr, "It feels like we are running under SLURM:\n\t"
@@ -258,8 +257,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
                         ranklist, rankno);
                 exit(1);
             }
-            params->rank = strtoul(argv[rankidx], NULL, 10);
-            pmix_argv_free(argv);
+            params->rank = strtoul(myargv[rankidx], NULL, 10);
+            pmix_argv_free(myargv);
         }
     }
 
@@ -624,8 +623,8 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t *
     } else {
         char *tmp = strdup(params.ns_dist);
         char *pch = tmp;
-        int ns_id = (int)strtol(nspace + strlen(TEST_NAMESPACE) + 1, NULL, 10);
-        while (NULL != pch && num != ns_id) {
+        int myns_id = (int)strtol(nspace + strlen(TEST_NAMESPACE) + 1, NULL, 10);
+        while (NULL != pch && num != myns_id) {
             pch = strtok((-1 == num ) ? tmp : NULL, ":");
             if (NULL == pch) {
                 break;
@@ -633,7 +632,7 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t *
             num++;
             num_ranks = (size_t)strtol(pch, NULL, 10);
         }
-        if (num == ns_id && 0 != num_ranks) {
+        if (num == myns_id && 0 != num_ranks) {
             *nranks = num_ranks;
             PMIX_PROC_CREATE(*ranks, num_ranks);
             for (j = 0; j < num_ranks; j++) {

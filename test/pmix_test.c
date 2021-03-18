@@ -19,6 +19,7 @@
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -52,6 +53,7 @@ int main(int argc, char **argv)
     char *tmp;
     int ns_nprocs;
     sigset_t unblock;
+    test_params params;
 
     INIT_TEST_PARAMS(params);
 
@@ -113,11 +115,10 @@ int main(int argc, char **argv)
     int launched = 0;
     /* set namespaces and fork clients */
     if (NULL == params.ns_dist) {
-        uint32_t i;
         int base_rank = 0;
 
         /* compute my start counter */
-        for(i = 0; i < (uint32_t)my_server_id; i++) {
+        for(i = 0; i < my_server_id; i++) {
             base_rank += (params.nprocs % params.nservers) > (uint32_t)i ?
                         params.nprocs / params.nservers + 1 :
                         params.nprocs / params.nservers;
