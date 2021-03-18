@@ -80,6 +80,15 @@ AC_DEFUN([MCA_pmix_pcompress_zlib_CONFIG],[
     AC_MSG_CHECKING([will zlib support be built])
     if test "$pmix_zlib_support" != "1"; then
         AC_MSG_RESULT([no])
+        AC_MSG_WARN([*************************************************])
+        AC_MSG_WARN([* PMIx was unable to find a usable version      *])
+        AC_MSG_WARN([* of zlib and zlib-devel on the system. We will *])
+        AC_MSG_WARN([* be unable to compress large data streams.     *])
+        AC_MSG_WARN([* This may result in longer-than-normal startup *])
+        AC_MSG_WARN([* times and larger memory footprints. We will   *])
+        AC_MSG_WARN([* continue, but strongly recommend installing   *])
+        AC_MSG_WARN([* zlib for better user experience.              *])
+        AC_MSG_WARN([*************************************************])
     else
         AC_MSG_RESULT([yes])
     fi
