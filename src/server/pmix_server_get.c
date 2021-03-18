@@ -849,8 +849,12 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
             }
             PMIX_DESTRUCT(&pkt);
         } else {
-            PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
-            PMIX_DESTRUCT(&pkt);
+            // Don't unload the buffer here. Since
+            // it gets repacked, we'll lose the base_ptr
+            // to destroy pkt later.
+            bo.bytes = (char*) pkt.unpack_ptr;
+            bo.size  = pkt.bytes_used;
+
             /* pack it for transmission */
             PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
             if (PMIX_SUCCESS != rc) {
@@ -869,6 +873,8 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     if (found) {
         /* pass it back */
         cbfunc(rc, data, sz, cbdata, relfn, data);
+        // Safe to free pkt.
+        PMIX_DATA_BUFFER_DESTRUCT(&pkt);
         return rc;
     }
 
