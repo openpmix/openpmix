@@ -4,6 +4,7 @@
  * Copyright (c) 2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2017 IBM Corporation.  All rights reserved.
  * Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -57,26 +58,22 @@ typedef struct {
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_info_component_map_t);
 
 
-PMIX_EXPORT int pmix_info_init(int argc, char **argv,
-                               pmix_cmd_line_t *pmix_info_cmd_line);
+PMIX_EXPORT int pmix_info_init(int argc, char **argv);
 
 PMIX_EXPORT void pmix_info_finalize(void);
 
-PMIX_EXPORT void pmix_info_register_types(pmix_pointer_array_t *mca_types);
+PMIX_EXPORT void pmix_info_register_types(void);
 
-PMIX_EXPORT int pmix_info_register_framework_params(pmix_pointer_array_t *component_map);
+PMIX_EXPORT int pmix_info_register_framework_params(void);
 
 PMIX_EXPORT void pmix_info_close_components(void);
-PMIX_EXPORT void pmix_info_err_params(pmix_pointer_array_t *component_map);
+PMIX_EXPORT void pmix_info_err_params(void);
 
-PMIX_EXPORT void pmix_info_do_params(bool want_all_in, bool want_internal,
-                                     pmix_pointer_array_t *mca_type,
-                                     pmix_pointer_array_t *component_map,
-                                     pmix_cmd_line_t *pmix_info_cmd_line);
+PMIX_EXPORT void pmix_info_do_params(bool want_all_in, bool want_internal);
 
 PMIX_EXPORT void pmix_info_show_path(const char *type, const char *value);
 
-PMIX_EXPORT void pmix_info_do_path(bool want_all, pmix_cmd_line_t *cmd_line);
+PMIX_EXPORT void pmix_info_do_path(bool want_all);
 
 PMIX_EXPORT void pmix_info_show_mca_params(const char *type,
                                            const char *component,
@@ -86,9 +83,7 @@ PMIX_EXPORT void pmix_info_show_mca_params(const char *type,
 PMIX_EXPORT void pmix_info_show_mca_version(const pmix_mca_base_component_t *component,
                                             const char *scope, const char *ver_type);
 
-PMIX_EXPORT void pmix_info_show_component_version(pmix_pointer_array_t *mca_types,
-                                                  pmix_pointer_array_t *component_map,
-                                                  const char *type_name,
+PMIX_EXPORT void pmix_info_show_component_version(const char *type_name,
                                                   const char *component_name,
                                                   const char *scope, const char *ver_type);
 
@@ -103,7 +98,7 @@ PMIX_EXPORT void pmix_info_do_arch(void);
 
 PMIX_EXPORT void pmix_info_do_hostname(void);
 
-PMIX_EXPORT void pmix_info_do_type(pmix_cmd_line_t *pmix_info_cmd_line);
+PMIX_EXPORT void pmix_info_do_type(void);
 
 PMIX_EXPORT void pmix_info_out(const char *pretty_message, const char *plain_message, const char *value);
 
@@ -112,8 +107,7 @@ PMIX_EXPORT void pmix_info_out_int(const char *pretty_message,
                                    int value);
 
 PMIX_EXPORT int pmix_info_register_project_frameworks (const char *project_name,
-                                                       pmix_mca_base_framework_t **frameworks,
-                                                       pmix_pointer_array_t *component_map);
+                                                       pmix_mca_base_framework_t **frameworks);
 
 END_C_DECLS
 
