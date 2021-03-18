@@ -8,6 +8,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -76,6 +77,10 @@ static bool zlib_compress(uint8_t *inbytes,
     /* set default output */
     *outbytes = NULL;
     *outlen = 0;
+
+    if (inlen < pmix_compress_base.compress_limit) {
+        return false;
+    }
 
     /* setup the stream */
     memset (&strm, 0, sizeof (strm));
