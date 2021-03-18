@@ -953,17 +953,17 @@ main(int argc, char *argv[])
                               (WIFSIGNALED(status) ? WTERMSIG(status) :
                                   (WIFSTOPPED(status) ? WSTOPSIG(status) : 255));
             if( (PMIX_SUCCESS != ret) || ((0 != exit_status) && (flags & COMP_SHOW_ERROR)) ) {
-                char* exec_command = pmix_argv_join(exec_argv, ' ');
+                char* myexec_command = pmix_argv_join(exec_argv, ' ');
                 if( PMIX_SUCCESS != ret ) {
                     pmix_show_help("help-pmixcc.txt", "spawn-failed", true,
-                                   exec_argv[0], strerror(status), exec_command, NULL);
+                                   exec_argv[0], strerror(status), myexec_command, NULL);
                 } else {
 #if 0
                     pmix_show_help("help-pmixcc.txt", "compiler-failed", true,
-                                   exec_argv[0], exit_status, exec_command, NULL);
+                                   exec_argv[0], exit_status, myexec_command, NULL);
 #endif
                 }
-                free(exec_command);
+                free(myexec_command);
             }
         }
     }

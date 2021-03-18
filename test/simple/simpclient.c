@@ -376,7 +376,7 @@ int main(int argc, char **argv)
             PMIX_VALUE_RELEASE(val);
             exit(1);
         } else {
-            pmix_info_t *iptr = (pmix_info_t*)val->data.darray->array;
+            iptr = (pmix_info_t*)val->data.darray->array;
             for (n=0; n < val->data.darray->size; n++) {
                 pmix_output(0, "\tKey: %s", iptr[n].key);
             }
