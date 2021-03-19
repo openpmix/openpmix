@@ -18,6 +18,7 @@
  * Copyright (c) 2017      IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -114,8 +115,7 @@ PMIX_CLASS_INSTANCE(pmix_info_component_map_t,
 static void pmix_info_show_failed_component(const pmix_mca_base_component_repository_item_t* ri,
                                             const char *error_msg);
 
-int pmix_info_init(int argc, char **argv,
-                   pmix_cmd_line_t *pmix_info_cmd_line)
+int pmix_info_init(int argc, char **argv)
 {
     int ret;
     bool want_help = false;
@@ -227,7 +227,7 @@ void pmix_info_finalize(void)
     pmix_mca_base_close();
 }
 
-static int info_register_framework (pmix_mca_base_framework_t *framework, pmix_pointer_array_t *component_map)
+static int info_register_framework (pmix_mca_base_framework_t *framework)
 {
     pmix_info_component_map_t *map;
     int rc;
@@ -236,24 +236,22 @@ static int info_register_framework (pmix_mca_base_framework_t *framework, pmix_p
         return rc;
     }
 
-    if (NULL != component_map) {
-        map = PMIX_NEW(pmix_info_component_map_t);
-        map->type = strdup(framework->framework_name);
-        map->components = &framework->framework_components;
-        map->failed_components = &framework->framework_failed_components;
-        pmix_pointer_array_add(component_map, map);
-    }
+    map = PMIX_NEW(pmix_info_component_map_t);
+    map->type = strdup(framework->framework_name);
+    map->components = &framework->framework_components;
+    map->failed_components = &framework->framework_failed_components;
+    pmix_pointer_array_add(&pmix_component_map, map);
 
     return rc;
 }
 
-int pmix_info_register_project_frameworks (const char *project_name, pmix_mca_base_framework_t **frameworks,
-                                           pmix_pointer_array_t *component_map)
+int pmix_info_register_project_frameworks (const char *project_name,
+                                           pmix_mca_base_framework_t **frameworks)
 {
     int i, rc=PMIX_SUCCESS;
 
     for (i=0; NULL != frameworks[i]; i++) {
-        if (PMIX_SUCCESS != (rc = info_register_framework(frameworks[i], component_map))) {
+        if (PMIX_SUCCESS != (rc = info_register_framework(frameworks[i]))) {
             if (PMIX_ERR_BAD_PARAM == rc) {
                 fprintf(stderr, "\nA \"bad parameter\" error was encountered when opening the %s %s framework\n",
                         project_name, frameworks[i]->framework_name);
@@ -272,21 +270,21 @@ int pmix_info_register_project_frameworks (const char *project_name, pmix_mca_ba
     return rc;
 }
 
-void pmix_info_register_types(pmix_pointer_array_t *mca_types)
+void pmix_info_register_types(void)
 {
     int i;
 
     /* add the top-level types */
-    pmix_pointer_array_add(mca_types, "mca");
-    pmix_pointer_array_add(mca_types, "pmix");
+    pmix_pointer_array_add(&mca_types, "mca");
+    pmix_pointer_array_add(&mca_types, "pmix");
 
     /* push all the types found by autogen */
     for (i=0; NULL != pmix_frameworks[i]; i++) {
-        pmix_pointer_array_add(mca_types, pmix_frameworks[i]->framework_name);
+        pmix_pointer_array_add(&mca_types, pmix_frameworks[i]->framework_name);
     }
 }
 
-int pmix_info_register_framework_params(pmix_pointer_array_t *component_map)
+int pmix_info_register_framework_params(void)
 {
     int rc;
 
@@ -306,7 +304,7 @@ int pmix_info_register_framework_params(pmix_pointer_array_t *component_map)
         return rc;
     }
 
-    return pmix_info_register_project_frameworks("pmix", pmix_frameworks, component_map);
+    return pmix_info_register_project_frameworks("pmix", pmix_frameworks);
 }
 
 
@@ -344,15 +342,15 @@ void pmix_info_show_path(const char *type, const char *value)
     free(path);
 }
 
-void pmix_info_do_path(bool want_all, pmix_cmd_line_t *cmd_line)
+void pmix_info_do_path(bool want_all)
 {
     int i, count;
     char *scope;
 
     /* Check bozo case */
-    count = pmix_cmd_line_get_ninsts(cmd_line, "path");
+    count = pmix_cmd_line_get_ninsts(pmix_info_cmd_line, "path");
     for (i = 0; i < count; ++i) {
-        scope = pmix_cmd_line_get_param(cmd_line, "path", i, 0);
+        scope = pmix_cmd_line_get_param(pmix_info_cmd_line, "path", i, 0);
         if (0 == strcmp("all", scope)) {
             want_all = true;
             break;
@@ -379,9 +377,9 @@ void pmix_info_do_path(bool want_all, pmix_cmd_line_t *cmd_line)
         pmix_info_show_path(pmix_info_path_pkglibdir, pmix_pinstall_dirs.pmixlibdir);
         pmix_info_show_path(pmix_info_path_pkgincludedir, pmix_pinstall_dirs.pmixincludedir);
     } else {
-        count = pmix_cmd_line_get_ninsts(cmd_line, "path");
+        count = pmix_cmd_line_get_ninsts(pmix_info_cmd_line, "path");
         for (i = 0; i < count; ++i) {
-            scope = pmix_cmd_line_get_param(cmd_line, "path", i, 0);
+            scope = pmix_cmd_line_get_param(pmix_info_cmd_line, "path", i, 0);
 
             if (0 == strcmp(pmix_info_path_prefix, scope)) {
                 pmix_info_show_path(pmix_info_path_prefix, pmix_pinstall_dirs.prefix);
@@ -418,7 +416,7 @@ void pmix_info_do_path(bool want_all, pmix_cmd_line_t *cmd_line)
             } else if (0 == strcmp(pmix_info_path_pkgincludedir, scope)) {
                 pmix_info_show_path(pmix_info_path_pkgincludedir, pmix_pinstall_dirs.pmixincludedir);
             } else {
-                char *usage = pmix_cmd_line_get_usage_msg(cmd_line);
+                char *usage = pmix_cmd_line_get_usage_msg(pmix_info_cmd_line);
                 pmix_show_help("help-pmix_info.txt", "usage", true, usage);
                 free(usage);
                 exit(1);
@@ -427,10 +425,7 @@ void pmix_info_do_path(bool want_all, pmix_cmd_line_t *cmd_line)
     }
 }
 
-void pmix_info_do_params(bool want_all_in, bool want_internal,
-                         pmix_pointer_array_t *mca_types,
-                         pmix_pointer_array_t *component_map,
-                         pmix_cmd_line_t *pmix_info_cmd_line)
+void pmix_info_do_params(bool want_all_in, bool want_internal)
 {
     pmix_mca_base_var_info_lvl_t max_level = PMIX_INFO_LVL_1;
     int count;
@@ -483,11 +478,12 @@ void pmix_info_do_params(bool want_all_in, bool want_internal,
     /* Show the params */
 
     if (want_all) {
-        pmix_info_show_component_version(mca_types, component_map, pmix_info_type_all,
-                                         pmix_info_component_all, pmix_info_ver_full,
+        pmix_info_show_component_version(pmix_info_type_all,
+                                         pmix_info_component_all,
+                                         pmix_info_ver_full,
                                          pmix_info_ver_all);
-        for (i = 0; i < mca_types->size; ++i) {
-            if (NULL == (type = (char *)pmix_pointer_array_get_item(mca_types, i))) {
+        for (i = 0; i < mca_types.size; ++i) {
+            if (NULL == (type = (char *)pmix_pointer_array_get_item(&mca_types, i))) {
                 continue;
             }
             pmix_info_show_mca_params(type, pmix_info_component_all, max_level, want_internal);
@@ -497,8 +493,8 @@ void pmix_info_do_params(bool want_all_in, bool want_internal,
             type = pmix_cmd_line_get_param(pmix_info_cmd_line, p, (int)i, 0);
             component = pmix_cmd_line_get_param(pmix_info_cmd_line, p, (int)i, 1);
 
-            for (found = false, i = 0; i < mca_types->size; ++i) {
-                if (NULL == (str = (char *)pmix_pointer_array_get_item(mca_types, i))) {
+            for (found = false, i = 0; i < mca_types.size; ++i) {
+                if (NULL == (str = (char *)pmix_pointer_array_get_item(&mca_types, i))) {
                     continue;
                 }
                 if (0 == strcmp(str, type)) {
@@ -514,7 +510,7 @@ void pmix_info_do_params(bool want_all_in, bool want_internal,
                 exit(1);
             }
 
-            pmix_info_show_component_version(mca_types, component_map, type,
+            pmix_info_show_component_version(type,
                                              component, pmix_info_ver_full,
                                              pmix_info_ver_all);
             pmix_info_show_mca_params(type, component, max_level, want_internal);
@@ -522,7 +518,7 @@ void pmix_info_do_params(bool want_all_in, bool want_internal,
     }
 }
 
-void pmix_info_err_params(pmix_pointer_array_t *component_map)
+void pmix_info_err_params(void)
 {
     pmix_info_component_map_t *map=NULL, *mptr;
     int i;
@@ -530,8 +526,8 @@ void pmix_info_err_params(pmix_pointer_array_t *component_map)
     /* all we want to do is display the LAST entry in the
      * component_map array as this is the one that generated the error
      */
-    for (i=0; i < component_map->size; i++) {
-        if (NULL == (mptr = (pmix_info_component_map_t*)pmix_pointer_array_get_item(component_map, i))) {
+    for (i=0; i < pmix_component_map.size; i++) {
+        if (NULL == (mptr = (pmix_info_component_map_t*)pmix_pointer_array_get_item(&pmix_component_map, i))) {
             continue;
         }
         map = mptr;
@@ -545,7 +541,7 @@ void pmix_info_err_params(pmix_pointer_array_t *component_map)
     return;
 }
 
-void pmix_info_do_type(pmix_cmd_line_t *pmix_info_cmd_line)
+void pmix_info_do_type(void)
 {
     pmix_mca_base_var_info_lvl_t max_level = PMIX_INFO_LVL_1;
     int count;
@@ -986,9 +982,7 @@ void pmix_info_out_int(const char *pretty_message,
  * Show all the components of a specific type/component combo (component may be
  * a wildcard)
  */
-void pmix_info_show_component_version(pmix_pointer_array_t *mca_types,
-                                      pmix_pointer_array_t *component_map,
-                                      const char *type_name,
+void pmix_info_show_component_version(const char *type_name,
                                       const char *component_name,
                                       const char *scope, const char *ver_type)
 {
@@ -1010,8 +1004,8 @@ void pmix_info_show_component_version(pmix_pointer_array_t *mca_types,
     if (0 != strcmp(pmix_info_type_all, type_name)) {
         /* Check to see if the type is valid */
 
-        for (found = false, j = 0; j < mca_types->size; ++j) {
-            if (NULL == (pos = (char*)pmix_pointer_array_get_item(mca_types, j))) {
+        for (found = false, j = 0; j < mca_types.size; ++j) {
+            if (NULL == (pos = (char*)pmix_pointer_array_get_item(&mca_types, j))) {
                 continue;
             }
             if (0 == strcmp(pos, type_name)) {
@@ -1028,8 +1022,8 @@ void pmix_info_show_component_version(pmix_pointer_array_t *mca_types,
     }
 
     /* Now that we have a valid type, find the right components */
-    for (j=0; j < component_map->size; j++) {
-        if (NULL == (map = (pmix_info_component_map_t*)pmix_pointer_array_get_item(component_map, j))) {
+    for (j=0; j < pmix_component_map.size; j++) {
+        if (NULL == (map = (pmix_info_component_map_t*)pmix_pointer_array_get_item(&pmix_component_map, j))) {
             continue;
         }
         if ((want_all_types || 0 == strcmp(type_name, map->type)) && map->components) {

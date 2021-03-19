@@ -10,7 +10,8 @@ static void model_declared_cb(size_t evhdlr_registration_id,
                               pmix_event_notification_cbfunc_fn_t cbfunc,
                               void *cbdata) {
   printf("Entered %s\n", __FUNCTION__);
-  int n;
+  size_t n;
+
   for (n = 0; n < ninfo; n++) {
     if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL) &&
         strcmp(info[n].value.data.string, "MPI") == 0) {

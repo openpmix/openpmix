@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2018 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,7 +56,7 @@ static pmix_proc_t myproc;
  * Once we have dealt with the returned data, we must
  * call the release_fn so that the PMIx library can
  * cleanup */
-static void cbfunc(pmix_status_t status,
+static void querycbfunc(pmix_status_t status,
                    pmix_info_t *info, size_t ninfo,
                    void *cbdata,
                    pmix_release_cbfunc_t release_fn,
@@ -186,7 +187,7 @@ fflush(stderr);
     myquery_data.ninfo = 0;
     myquery_data.active = true;
     /* execute the query */
-    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, cbfunc, (void*)&myquery_data))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&myquery_data))) {
         fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
         goto done;
     }
