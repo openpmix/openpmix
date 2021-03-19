@@ -1153,6 +1153,13 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer,
     pmix_iof_stdin_cb(0, 0, stdinev);
 }
 
+static void opcbfn(pmix_status_t status, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
+    PMIX_ACQUIRE_OBJECT(lock);
+    PMIX_WAKEUP_THREAD(lock);
+}
+
 /* this is the read handler for stdin */
 void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
 {
@@ -1165,6 +1172,7 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     pmix_byte_object_t bo;
     int fd;
     pmix_pfexec_child_t *child = (pmix_pfexec_child_t*)rev->childproc;
+    pmix_lock_t lock;
 
     PMIX_ACQUIRE_OBJECT(rev);
 
@@ -1195,6 +1203,8 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
          */
         numbytes = 0;
     }
+    bo.bytes = (char*)data;
+    bo.size = numbytes;
 
     /* The event has fired, so it's no longer active until we
        re-add it */
@@ -1203,8 +1213,6 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     /* if this is from our own child proc, then
      * just push it to the corresponding sink */
     if (NULL != child) {
-        bo.bytes = (char*)data;
-        bo.size = numbytes;
         pmix_iof_write_output(&rev->name, rev->channel, &bo, NULL);
         if (0 == numbytes && child->completed &&
             (NULL == child->stdoutev || !child->stdoutev->active) &&
@@ -1212,6 +1220,22 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
             PMIX_PFEXEC_CHK_COMPLETE(child);
             return;
         }
+        goto reactivate;
+    }
+
+    /* if I am a server, then push this up to my host */
+    if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
+        if (NULL == pmix_host_server.push_stdin) {
+            /* nothing we can do with this info */
+            goto reactivate;
+        }
+        PMIX_CONSTRUCT_LOCK(&lock);
+        rc = pmix_host_server.push_stdin(&pmix_globals.myid,
+                                         rev->targets, rev->ntargets,
+                                         rev->directives, rev->ndirs,
+                                         &bo, opcbfn, &lock);
+        PMIX_WAIT_THREAD(&lock);
+        PMIX_DESTRUCT_LOCK(&lock);
         goto reactivate;
     }
 
@@ -1267,8 +1291,6 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     }
 
     /* pack the data */
-    bo.bytes = (char*)data;
-    bo.size = numbytes;
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
                      msg, &bo, 1, PMIX_BYTE_OBJECT);
     if (PMIX_SUCCESS != rc) {
