@@ -13,6 +13,7 @@
  * Copyright (c) 2014-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -124,7 +125,7 @@ static char* print_args(char *ns, pmix_rank_t rnk)
     index = ptr->cntr;
     snprintf(ptr->buffers[index],
              PMIX_PRINT_NAME_ARGS_MAX_SIZE,
-             "[%s.%s]", ns, rank);
+             "[%s,%s]", ns, rank);
     ptr->cntr++;
     if (PMIX_PRINT_NAME_ARG_NUM_BUFS == ptr->cntr) {
         ptr->cntr = 0;

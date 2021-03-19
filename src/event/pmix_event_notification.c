@@ -928,10 +928,9 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(cd);
 
     pmix_output_verbose(2, pmix_server_globals.event_output,
-                        "pmix_server: _notify_client_event notifying clients of event %s range %s type %s",
+                        "pmix_server: _notify_client_event notifying clients of event %s range %s",
                         PMIx_Error_string(cd->status),
-                        PMIx_Data_range_string(cd->range),
-                        cd->nondefault ? "NONDEFAULT" : "OPEN");
+                        PMIx_Data_range_string(cd->range));
 
     /* check for caching instructions */
     holdcd = true;
@@ -972,6 +971,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
     PMIX_INFO_CREATE(chain->info, chain->nallocated);
     /* prep the chain for processing */
     pmix_prep_event_chain(chain, cd->info, cd->ninfo, true);
+    cd->nondefault = chain->nondefault;
     /* if the range is PMIX_RANGE_RM, then we only process this
      * event ourselves - the PMIx server may aggregate the
      * events from a namespace prior to passing it to the host */
@@ -1132,15 +1132,10 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                                                     pr->affected, pr->naffected)) {
                         continue;
                     }
-                    if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-                        /* check the range, if given */
-                        if (NULL == cd->targets) {
-                            rngtrk.procs = &cd->source;
-                            rngtrk.nprocs = 1;
-                        } else {
-                            rngtrk.procs = cd->targets;
-                            rngtrk.nprocs = cd->ntargets;
-                        }
+                    if (!PMIX_PEER_IS_TOOL(pmix_globals.mypeer) &&
+                        NULL != cd->targets) {
+                        rngtrk.procs = cd->targets;
+                        rngtrk.nprocs = cd->ntargets;
                         rngtrk.range = cd->range;
                         PMIX_LOAD_PROCID(&proc, pr->peer->info->pname.nspace, pr->peer->info->pname.rank);
                         if (!pmix_notify_check_range(&rngtrk, &proc)) {
