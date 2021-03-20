@@ -62,7 +62,7 @@ pmix_bfrops_base_component_t mca_bfrops_v4_component = {
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
     },
-    .priority = 50,
+    .priority = 55,
     .assign_module = assign_module
 };
 
@@ -71,7 +71,7 @@ pmix_status_t component_open(void)
 {
     /* setup the types array */
     PMIX_CONSTRUCT(&mca_bfrops_v4_component.types, pmix_pointer_array_t);
-    pmix_pointer_array_init(&mca_bfrops_v4_component.types, 42, INT_MAX, 16);
+    pmix_pointer_array_init(&mca_bfrops_v4_component.types, 50, INT_MAX, 16);
 
     return PMIX_SUCCESS;
 }

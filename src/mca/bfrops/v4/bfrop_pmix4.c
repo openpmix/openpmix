@@ -15,6 +15,7 @@
  *                         reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -513,6 +514,22 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_bo,
                        pmix_bfrops_base_copy_bo,
                        pmix_bfrops_base_print_bo,
+                       &mca_bfrops_v4_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_PROC_NSPACE",
+                       PMIX_PROC_NSPACE,
+                       pmix_bfrops_base_pack_nspace,
+                       pmix_bfrops_base_unpack_nspace,
+                       pmix_bfrops_base_copy_nspace,
+                       pmix_bfrops_base_print_nspace,
+                       &mca_bfrops_v4_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_DATA_BUFFER",
+                       PMIX_DATA_BUFFER,
+                       pmix_bfrops_base_pack_dbuf,
+                       pmix_bfrops_base_unpack_dbuf,
+                       pmix_bfrops_base_copy_dbuf,
+                       pmix_bfrops_base_print_dbuf,
                        &mca_bfrops_v4_component.types);
 
     return PMIX_SUCCESS;
