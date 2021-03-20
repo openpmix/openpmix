@@ -75,6 +75,19 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         return rc;
     }
 
+    if (0 == strcmp(evar, "PMIX_SERVER_URI401")) {
+        /* we are talking to a v4 server */
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        PMIX_SET_PEER_VERSION(peer, vrs, 4, 0);
+
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V401 SERVER DETECTED");
+
+        /* must use the latest bfrops module */
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "V401");
+        return rc;
+    }
+
     if (0 == strcmp(evar, "PMIX_SERVER_URI4")) {
         /* we are talking to a v4 server */
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
