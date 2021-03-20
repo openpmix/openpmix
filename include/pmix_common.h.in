@@ -1464,6 +1464,9 @@ static inline void* pmix_calloc(size_t n, size_t m)
 #define PMIX_NSPACE_INVALID(a) \
     (NULL == (a) || 0 == strlen((a)))
 
+#define PMIX_PROCID_INVALID(a)  \
+    (PMIX_NSPACE_INVALID((a)->nspace) || PMIX_RANK_INVALID == (a)->rank)
+
 /****    PMIX COORD    ****/
 /* define coordinate system views */
 typedef uint8_t pmix_coord_view_t;
@@ -2152,6 +2155,9 @@ typedef struct pmix_value {
             (r) = pmix_value_xfer((v), (s));                    \
         }                                                       \
     } while(0)
+
+#define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
+    (r) = pmix_value_xfer((v), (s))
 
 #define PMIX_VALUE_GET_NUMBER(s, m, n, t)               \
     do {                                                \
