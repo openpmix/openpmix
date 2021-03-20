@@ -1464,6 +1464,9 @@ static inline void* pmix_calloc(size_t n, size_t m)
 #define PMIX_NSPACE_INVALID(a) \
     (NULL == (a) || 0 == strlen((a)))
 
+#define PMIX_PROCID_INVALID(a)  \
+    (PMIX_NSPACE_INVALID((a)->nspace) || PMIX_RANK_INVALID == (a)->rank)
+
 /****    PMIX COORD    ****/
 /* define coordinate system views */
 typedef uint8_t pmix_coord_view_t;
@@ -1863,20 +1866,26 @@ typedef struct {
         (m)->bytes_allocated = 0;           \
         (m)->bytes_used = 0;                \
     } while (0)
-#define PMIX_DATA_BUFFER_LOAD(b, d, s)          \
-    do {                                        \
-        (b)->base_ptr = (char*)(d);             \
-        (b)->pack_ptr = (b)->base_ptr + (s);    \
-        (b)->unpack_ptr = (b)->base_ptr;        \
-        (b)->bytes_allocated = (s);             \
-        (b)->bytes_used = (s);                  \
+#define PMIX_DATA_BUFFER_LOAD(b, d, s)  \
+    do {                                \
+        pmix_byte_object_t _bo;         \
+        _bo.bytes = (char*)(d);         \
+        _bo.size = (s);                 \
+        PMIx_Data_load((b), &_bo);      \
     } while(0)
 
 #define PMIX_DATA_BUFFER_UNLOAD(b, d, s)    \
     do {                                    \
-        (d) = (b)->base_ptr;                \
-        (s) = (b)->bytes_used;              \
-        (b)->base_ptr = NULL;               \
+        pmix_byte_object_t _bo;             \
+        pmix_status_t _r;                   \
+        _r = PMIx_Data_unload((b), &_bo);   \
+        if (PMIX_SUCCESS == _r) {           \
+            (d) = _bo.bytes;                \
+            (s) = _bo.size;                 \
+        } else {                            \
+            (d) = NULL;                     \
+            (s) = 0;                        \
+        }                                   \
     } while(0)
 
 /****    PMIX PROC OBJECT    ****/
@@ -2146,6 +2155,9 @@ typedef struct pmix_value {
             (r) = pmix_value_xfer((v), (s));                    \
         }                                                       \
     } while(0)
+
+#define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
+    (r) = pmix_value_xfer((v), (s))
 
 #define PMIX_VALUE_GET_NUMBER(s, m, n, t)               \
     do {                                                \
