@@ -109,7 +109,6 @@ int pmix_rte_init(uint32_t type,
     char *error = NULL, *evar;
     size_t n, m;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
-    char *gds = NULL;
     pmix_info_t *iptr;
     size_t minfo;
     bool keepfqdn = false;
@@ -302,8 +301,6 @@ int pmix_rte_init(uint32_t type,
                 if (PMIX_SUCCESS != ret) {
                     goto return_error;
                 }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
-                gds = info[n].value.data.string;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
                 /* contains info about our node */
                 iptr = (pmix_info_t*)info[n].value.data.darray->array;
