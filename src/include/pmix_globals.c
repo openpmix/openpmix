@@ -255,6 +255,8 @@ static void iofreqcon(pmix_iof_req_t *p)
     p->nprocs = 0;
     p->channels = PMIX_FWD_NO_CHANNELS;
     p->cbfunc = NULL;
+    p->regcbfunc = NULL;
+    p->cbdata = NULL;
 }
 static void iofreqdes(pmix_iof_req_t *p)
 {
