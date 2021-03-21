@@ -597,11 +597,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     }
     PMIX_INFO_DESTRUCT(&ginfo);
 
-    /* copy needed parts over to the client_globals.myserver field
-     * so that calls into client-side functions will use our peer */
-    pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
-    PMIX_RETAIN(pmix_globals.mypeer->nptr);
-    pmix_client_globals.myserver->nptr = pmix_globals.mypeer->nptr;
+    /* we are our own server until something else happens */
+    PMIX_RETAIN(pmix_globals.mypeer);
+    pmix_client_globals.myserver = pmix_globals.mypeer;
 
     /* setup the server-specific globals */
     if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {
@@ -4151,6 +4149,43 @@ static void _iofreg(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
+static void iofdereg(pmix_status_t status,
+                     void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+    pmix_server_caddy_t *scd = (pmix_server_caddy_t*)cd->cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
+    /* setup the reply to the requestor */
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
+    /* its just the status */
+    PMIX_BFROPS_PACK(rc, scd->peer, reply, &cd->status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
+        goto cleanup;
+    }
+
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "server:_iofreg reply being sent to %s:%u",
+                        scd->peer->info->pname.nspace, scd->peer->info->pname.rank);
+    PMIX_SERVER_QUEUE_REPLY(rc, scd->peer, scd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+
+cleanup:
+    PMIX_RELEASE(cd);
+}
+
 static void iof_cbfunc(pmix_status_t status,
                        void *cbdata)
 {
@@ -4553,7 +4588,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag,
 
     if (PMIX_IOF_DEREG_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_iofdereg(peer, buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_iofdereg(peer, buf, iofdereg, cd))) {
             PMIX_RELEASE(cd);
         }
         return rc;
