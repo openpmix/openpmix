@@ -18,18 +18,18 @@
  * $HEADER$
  */
 
-#ifndef PMIX_BFROPS_PMIX4_H
-#define PMIX_BFROPS_PMIX4_H
+#ifndef PMIX_BFROPS_PMIX401_H
+#define PMIX_BFROPS_PMIX401_H
 
 #include "src/mca/bfrops/bfrops.h"
 
 BEGIN_C_DECLS
 
 /* the component must be visible data for the linker to find it */
- PMIX_EXPORT extern pmix_bfrops_base_component_t mca_bfrops_v4_component;
+ PMIX_EXPORT extern pmix_bfrops_base_component_t mca_bfrops_v401_component;
 
-extern pmix_bfrops_module_t pmix_bfrops_pmix4_module;
+extern pmix_bfrops_module_t pmix_bfrops_pmix401_module;
 
 END_C_DECLS
 
-#endif /* PMIX_BFROPS_PMIX4_H */
+#endif /* PMIX_BFROPS_PMIX401_H */

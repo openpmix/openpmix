@@ -20,22 +20,22 @@
 # $HEADER$
 #
 
-headers = bfrop_pmix4.h
+headers = bfrop_pmix401.h
 sources = \
-        bfrop_pmix4_component.c \
-        bfrop_pmix4.c
+        bfrop_pmix401_component.c \
+        bfrop_pmix401.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_bfrops_v4_DSO
+if MCA_BUILD_pmix_bfrops_v401_DSO
 lib =
 lib_sources =
-component = mca_bfrops_v4.la
+component = mca_bfrops_v401.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_bfrops_v4.la
+lib = libmca_bfrops_v401.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -43,12 +43,12 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_bfrops_v4_la_SOURCES = $(component_sources)
-mca_bfrops_v4_la_LDFLAGS = -module -avoid-version
+mca_bfrops_v401_la_SOURCES = $(component_sources)
+mca_bfrops_v401_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_bfrops_v4_la_LIBADD = $(top_builddir)/src/libpmix.la
+mca_bfrops_v401_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_bfrops_v4_la_SOURCES = $(lib_sources)
-libmca_bfrops_v4_la_LDFLAGS = -module -avoid-version
+libmca_bfrops_v401_la_SOURCES = $(lib_sources)
+libmca_bfrops_v401_la_LDFLAGS = -module -avoid-version

@@ -16,3 +16,6 @@ large data streams. This may result in longer-than-normal
 startup times and larger memory footprints. We will
 continue, but strongly recommend installing zlib or
 a comparable compression library for better user experience.
+
+You can set the MCA parameter "compress_base_silence_warning=1"
+to silence this warning in the future.
