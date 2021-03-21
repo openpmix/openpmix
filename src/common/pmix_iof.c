@@ -119,6 +119,103 @@ static void mycbfn(pmix_status_t status,
     PMIX_WAKEUP_THREAD(&cd->lock);
 }
 
+static void process_cache(int sd, short args, void *cbdata)
+{
+    pmix_iof_req_t *req = (pmix_iof_req_t*)cbdata;
+    pmix_iof_cache_t *iof, *ionext;
+    bool found;
+    size_t n;
+    pmix_status_t rc;
+    pmix_buffer_t *msg;
+
+    PMIX_LIST_FOREACH_SAFE(iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
+        /* if the channels don't match, then ignore it */
+        if (!(iof->channel & req->channels)) {
+            continue;
+        }
+        /* never forward back to the source! This can happen if the source
+         * is a launcher */
+        if (PMIX_CHECK_PROCID(&iof->source, &req->requestor->info->pname)) {
+            continue;
+        }
+        /* if the source does not match the request, then ignore it */
+        found = false;
+        for (n=0; n < req->nprocs; n++) {
+            if (PMIX_CHECK_PROCID(&iof->source, &req->procs[n])) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            /* setup the msg */
+            if (NULL == (msg = PMIX_NEW(pmix_buffer_t))) {
+                PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+                return;
+            }
+            /* provide the source */
+            PMIX_BFROPS_PACK(rc, req->requestor, msg, &iof->source, 1, PMIX_PROC);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                return;
+            }
+            /* provide the channel */
+            PMIX_BFROPS_PACK(rc, req->requestor, msg, &iof->channel, 1, PMIX_IOF_CHANNEL);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                return;
+            }
+            /* provide the local handler ID */
+            PMIX_BFROPS_PACK(rc, req->requestor, msg, &req->local_id, 1, PMIX_SIZE);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                return;
+            }
+            /* pack the number of info's provided */
+            PMIX_BFROPS_PACK(rc, req->requestor, msg, &iof->ninfo, 1, PMIX_SIZE);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                return;
+            }
+            /* if some were provided, then pack them too */
+            if (0 < iof->ninfo) {
+                PMIX_BFROPS_PACK(rc, req->requestor, msg, iof->info, iof->ninfo, PMIX_INFO);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(msg);
+                    return;
+                }
+            }
+            /* pack the data */
+            PMIX_BFROPS_PACK(rc, req->requestor, msg, iof->bo, 1, PMIX_BYTE_OBJECT);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                return;
+            }
+            /* send it to the requestor */
+            PMIX_PTL_SEND_ONEWAY(rc, req->requestor, msg, PMIX_PTL_TAG_IOF);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+            }
+        }
+    }
+}
+
+static void myreg(int sd, short args, void *cbdata)
+{
+    pmix_iof_req_t *req = (pmix_iof_req_t*)cbdata;
+
+    if (NULL != req->regcbfunc) {
+        req->regcbfunc(PMIX_SUCCESS, req->local_id, req->cbdata);
+    }
+    process_cache(0, 0, req);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs,
                                         const pmix_info_t directives[], size_t ndirs,
                                         pmix_iof_channel_t channel, pmix_iof_cbfunc_t cbfunc,
@@ -133,18 +230,11 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
-                        "pmix:iof_register");
+                        "pmix:iof:PULL");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
-    }
-
-    /* if we are a server, we cannot do this */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_NOT_SUPPORTED;
     }
 
     /* we don't allow stdin to flow thru this path */
@@ -159,6 +249,36 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
         return PMIX_ERR_UNREACH;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* if I am my own active server, then just register
+     * the request */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        pmix_client_globals.myserver == pmix_globals.mypeer) {
+        req = PMIX_NEW(pmix_iof_req_t);
+        if (NULL == req) {
+            return PMIX_ERR_NOMEM;
+        }
+        PMIX_RETAIN(pmix_globals.mypeer);
+        req->requestor = pmix_globals.mypeer;
+        req->nprocs = nprocs;
+        PMIX_PROC_CREATE(req->procs, req->nprocs);
+        memcpy(req->procs, procs, nprocs * sizeof(pmix_proc_t));
+        req->channels = channel;
+        req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
+        /* if there is a regsitration callback function, threadshift
+         * to call it - we cannot call it before returning from here */
+        if (NULL != regcbfunc) {
+            req->regcbfunc = regcbfunc;
+            req->cbdata = regcbdata;
+            PMIX_THREADSHIFT(req, myreg);
+            return PMIX_SUCCESS;
+        }
+        /* if there isn't a registration callback, then we can return "succeeded"
+         * as we atomically performend the request. threadshift to process any
+         * cached IO as we must return from this function before we do so */
+        PMIX_THREADSHIFT(req, process_cache);
+        return PMIX_OPERATION_SUCCEEDED;
+    }
 
     /* send this request to the server */
     cd = PMIX_NEW(pmix_shift_caddy_t);
@@ -241,7 +361,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
     }
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
-                        "pmix:iof_request sending to server");
+                        "pmix:iof:PULL sending request to server");
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
                        msg, msgcbfunc, (void*)cd);
 

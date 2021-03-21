@@ -7,6 +7,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -616,13 +617,15 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     (void)args;
     pmix_ptl_queue_t *queue = (pmix_ptl_queue_t*)cbdata;
     pmix_ptl_send_t *snd;
+    pmix_ptl_recv_t *msg;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(queue);
 
-    if (NULL == queue->peer || queue->peer->sd < 0 ||
+    if (NULL == queue->peer ||
         NULL == queue->peer->info || NULL == queue->peer->nptr) {
-        /* this peer has lost connection */
+        pmix_output(0, "UNKNOWN PEER");
+        /* we don't know this peer */
         if (NULL != queue->buf) {
             PMIX_RELEASE(queue->buf);
         }
@@ -640,6 +643,38 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
 
     if (NULL == queue->buf) {
         /* nothing to send? */
+        PMIX_RELEASE(queue);
+        return;
+    }
+
+    /* is this a send to myself? */
+    if (queue->peer == pmix_globals.mypeer) {
+        /* just push it to the matching code */
+        msg = PMIX_NEW(pmix_ptl_recv_t);
+        PMIX_RETAIN(queue->peer);
+        msg->peer = queue->peer;
+        msg->hdr.pindex = pmix_globals.pindex;
+        msg->hdr.tag = queue->tag;
+        if (NULL != queue->buf) {
+            msg->hdr.nbytes = (queue->buf)->bytes_used;
+            msg->data = (queue->buf)->base_ptr;
+            (queue->buf)->base_ptr = NULL;
+            (queue->buf)->bytes_used = 0;
+            PMIX_RELEASE(queue->buf);
+        }
+        PMIX_ACTIVATE_POST_MSG(msg);
+        PMIX_RELEASE(queue);
+        return;
+    }
+
+    /* do we have a live connection? */
+    if (queue->peer->sd < 0) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "%s no connection",
+                            PMIX_NAME_PRINT(&pmix_globals.myid));
+        if (NULL != queue->buf) {
+            PMIX_RELEASE(queue->buf);
+        }
         PMIX_RELEASE(queue);
         return;
     }
@@ -678,6 +713,7 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     pmix_ptl_posted_recv_t *req;
     pmix_ptl_send_t *snd;
     uint32_t tag;
+    pmix_ptl_recv_t *msg;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(ms);
@@ -724,6 +760,24 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
                         "QUEING MSG TO SERVER %s ON SOCKET %d OF SIZE %d",
                         PMIX_PNAME_PRINT(&ms->peer->info->pname),
                         ms->peer->sd, (int)ms->bfr->bytes_used);
+
+    /* is this a send to myself? */
+    if (ms->peer == pmix_globals.mypeer) {
+        /* just push it to the matching code */
+        msg = PMIX_NEW(pmix_ptl_recv_t);
+        PMIX_RETAIN(ms->peer);
+        msg->peer = ms->peer;
+        msg->hdr.pindex = pmix_globals.pindex;
+        msg->hdr.tag = tag;
+        msg->hdr.nbytes = ms->bfr->bytes_used;
+        msg->data = ms->bfr->base_ptr;
+        ms->bfr->base_ptr = NULL;
+        ms->bfr->bytes_used = 0;
+        PMIX_ACTIVATE_POST_MSG(msg);
+        PMIX_RELEASE(ms);
+        return;
+    }
+
     snd = PMIX_NEW(pmix_ptl_send_t);
     snd->hdr.pindex = htonl(pmix_globals.pindex);
     snd->hdr.tag = htonl(tag);

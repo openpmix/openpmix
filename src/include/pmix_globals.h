@@ -301,6 +301,7 @@ PMIX_CLASS_DECLARATION(pmix_peer_t);
 /* tracker for IOF requests */
 typedef struct {
     pmix_object_t super;
+    pmix_event_t ev;
     pmix_peer_t *requestor;
     size_t local_id;
     size_t remote_id;
@@ -308,6 +309,8 @@ typedef struct {
     size_t nprocs;
     pmix_iof_channel_t channels;
     pmix_iof_cbfunc_t cbfunc;
+    pmix_hdlr_reg_cbfunc_t regcbfunc;
+    void *cbdata;
 } pmix_iof_req_t;
 PMIX_CLASS_DECLARATION(pmix_iof_req_t);
 

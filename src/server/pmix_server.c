@@ -103,6 +103,87 @@ static void pdiedfn(int fd, short flags, void *arg)
                       info, 3, NULL, NULL);
 }
 
+static void server_iof_handler(struct pmix_peer_t *pr,
+                               pmix_ptl_hdr_t *hdr,
+                               pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_peer_t *peer = (pmix_peer_t*)pr;
+    pmix_proc_t source;
+    pmix_iof_channel_t channel;
+    pmix_byte_object_t bo;
+    int32_t cnt;
+    pmix_status_t rc;
+    size_t refid, ninfo=0;
+    pmix_iof_req_t *req;
+    pmix_info_t *info=NULL;
+
+      pmix_output_verbose(2, pmix_client_globals.iof_output,
+                "recvd IOF with %d bytes", (int)buf->bytes_used);
+
+    /* if the buffer is empty, they are simply closing the socket */
+    if (0 == buf->bytes_used) {
+        return;
+    }
+    PMIX_BYTE_OBJECT_CONSTRUCT(&bo);
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &source, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &channel, &cnt, PMIX_IOF_CHANNEL);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &refid, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return;
+    }
+    if (0 < ninfo) {
+        PMIX_INFO_CREATE(info, ninfo);
+        cnt = ninfo;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+    }
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    /* lookup the handler for this IOF package */
+    if (NULL != (req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid)) &&
+        NULL != req->cbfunc) {
+        req->cbfunc(refid, channel, &source, &bo, info, ninfo);
+    } else {
+        /* otherwise, simply write it out to the specified std IO channel */
+        if (NULL != bo.bytes && 0 < bo.size) {
+            pmix_iof_write_output(&source, channel, &bo, NULL);
+        }
+    }
+
+cleanup:
+    /* cleanup the memory */
+    if (0 < ninfo) {
+        PMIX_INFO_FREE(info, ninfo);
+    }
+    PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+}
+
 /* callback to receive job info */
 static void job_data(struct pmix_peer_t *pr,
                      pmix_ptl_hdr_t *hdr,
@@ -390,6 +471,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     pmix_value_t value;
     pmix_lock_t reglock, releaselock;
     pmix_status_t code;
+    pmix_ptl_posted_recv_t *rcv;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -527,6 +609,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
+    /* setup the IO Forwarding recv */
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_IOF;
+    rcv->cbfunc = server_iof_handler;
+    /* add it to the end of the list of recvs */
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
 
     if (nspace_given) {
         PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, nspace);
