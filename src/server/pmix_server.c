@@ -3274,7 +3274,6 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
     PMIX_LIST_FOREACH_SAFE(cd, nxt, &tracker->local_cbs, pmix_server_caddy_t) {
         reply = PMIX_NEW(pmix_buffer_t);
         if (NULL == reply) {
-            rc = PMIX_ERR_NOMEM;
             break;
         }
         /* setup the reply, starting with the returned status */
@@ -3286,8 +3285,8 @@ static void _mdxcbfunc(int sd, short argc, void *cbdata)
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "server:modex_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-        PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
-        if (PMIX_SUCCESS != rc) {
+        PMIX_SERVER_QUEUE_REPLY(ret, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != ret) {
             PMIX_RELEASE(reply);
         }
         /* remove this entry */
