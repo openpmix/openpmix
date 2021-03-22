@@ -574,20 +574,18 @@ static pmix_server_trkr_t* new_tracker(char *id, pmix_proc_t *procs,
 
 static void fence_timeout(int sd, short args, void *cbdata)
 {
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+    pmix_server_trkr_t *trk = (pmix_server_trkr_t*)cbdata;
 
     pmix_output_verbose(2, pmix_server_globals.fence_output,
                         "ALERT: fence timeout fired");
 
     /* execute the provided callback function with the error */
-    if (NULL != cd->trk->modexcbfunc) {
-        cd->trk->modexcbfunc(PMIX_ERR_TIMEOUT, NULL, 0, cd->trk, NULL, NULL);
+    if (NULL != trk->modexcbfunc) {
+        trk->modexcbfunc(PMIX_ERR_TIMEOUT, NULL, 0, trk, NULL, NULL);
         return;  // the cbfunc will have cleaned up the tracker
     }
-    cd->event_active = false;
-    /* remove it from the list */
-    pmix_list_remove_item(&cd->trk->local_cbs, &cd->super);
-    PMIX_RELEASE(cd);
+    trk->event_active = false;
+    PMIX_RELEASE(trk);
 }
 
 static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
@@ -1039,11 +1037,9 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
      * notified when we are done */
     pmix_list_append(&trk->local_cbs, &cd->super);
     /* if a timeout was specified, set it */
-    if (0 < tv.tv_sec) {
-        PMIX_RETAIN(trk);
-        cd->trk = trk;
-        PMIX_THREADSHIFT_DELAY(cd, fence_timeout, tv.tv_sec);
-        cd->event_active = true;
+    if (0 < tv.tv_sec && !trk->event_active) {
+        PMIX_THREADSHIFT_DELAY(trk, fence_timeout, tv.tv_sec);
+        trk->event_active = true;
     }
 
     /* if all local contributions have been received,
@@ -1054,6 +1050,16 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
         pmix_output_verbose(2, pmix_server_globals.fence_output,
                             "fence LOCALLY complete");
+        /* if a timeout was set, then we delete it here as we can
+         * ONLY check for local completion. Otherwise, passing
+         * the tracker object up to the host can result in
+         * competing timeout events, and the host could return
+         * the tracker AFTER we released it due to our internal
+         * timeout firing */
+        if (trk->event_active) {
+            pmix_event_del(&trk->ev);
+            trk->event_active = false;
+        }
         /* if this is a purely local fence (i.e., all participants are local),
          * then it is done and we notify accordingly */
         if (pmix_server_globals.fence_localonly_opt && trk->local) {
