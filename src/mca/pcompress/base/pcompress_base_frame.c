@@ -17,10 +17,11 @@
 
 #include "pmix_config.h"
 
+#include "src/include/pmix_globals.h"
 #include "src/util/show_help.h"
 #include "src/mca/base/base.h"
 #include "src/mca/pcompress/base/base.h"
-
+#include "src/mca/ptl/ptl_types.h"
 #include "src/mca/pcompress/base/static-components.h"
 
 /*
@@ -34,7 +35,7 @@ static bool compress_block(uint8_t *inblock, size_t size,
     (void)size;
     (void)outbytes;
     (void)nbytes;
-    if (!pmix_compress_base.silent) {
+    if (!pmix_compress_base.silent && !PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
         pmix_show_help("help-pcompress.txt", "unavailable", true);
         pmix_compress_base.silent = true;
     }
@@ -58,7 +59,7 @@ static bool compress_string(char *instring,
     (void)instring;
     (void)outbytes;
     (void)nbytes;
-    if (!pmix_compress_base.silent) {
+    if (!pmix_compress_base.silent && !PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
         pmix_show_help("help-pcompress.txt", "unavailable", true);
         pmix_compress_base.silent = true;
     }

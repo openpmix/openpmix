@@ -1854,20 +1854,18 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
 
 static void connect_timeout(int sd, short args, void *cbdata)
 {
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+    pmix_server_trkr_t *trk = (pmix_server_trkr_t*)cbdata;
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "ALERT: connect timeout fired");
 
     /* execute the provided callback function with the error */
-    if (NULL != cd->trk->op_cbfunc) {
-        cd->trk->op_cbfunc(PMIX_ERR_TIMEOUT, cd->trk);
+    if (NULL != trk->op_cbfunc) {
+        trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);
         return;  // the cbfunc will have cleaned up the tracker
     }
-    cd->event_active = false;
-    /* remove it from the list */
-    pmix_list_remove_item(&cd->trk->local_cbs, &cd->super);
-    PMIX_RELEASE(cd);
+    trk->event_active = false;
+    PMIX_RELEASE(trk);
 }
 
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
@@ -2016,9 +2014,8 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
     /* if a timeout was specified, set it */
     if (PMIX_SUCCESS == rc && 0 < tv.tv_sec) {
         PMIX_RETAIN(trk);
-        cd->trk = trk;
-        PMIX_THREADSHIFT_DELAY(cd, connect_timeout, tv.tv_sec);
-        cd->event_active = true;
+        PMIX_THREADSHIFT_DELAY(trk, connect_timeout, tv.tv_sec);
+        trk->event_active = true;
     }
 
   cleanup:
