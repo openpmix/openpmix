@@ -56,7 +56,8 @@ headers += \
         util/context_fns.h \
         util/pmix_pty.h \
         util/few.h \
-        util/string_copy.h
+        util/string_copy.h \
+        util/pmix_getcwd.h
 
 sources += \
         util/alfg.c \
@@ -85,7 +86,8 @@ sources += \
         util/context_fns.c \
         util/pmix_pty.c \
         util/few.c \
-        util/string_copy.c
+        util/string_copy.c \
+        util/pmix_getcwd.c
 
 libpmix_la_LIBADD += \
         util/keyval/libpmixutilkeyval.la
