@@ -1724,10 +1724,6 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
     pmix_server_trkr_t *trk;
     pmix_proc_t *procs = NULL;
 
-    if (NULL == pmix_host_server.disconnect) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
     /* unpack the number of procs */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &nprocs, &cnt, PMIX_SIZE);
@@ -1809,24 +1805,8 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
      * across all participants has been completed */
     if (trk->def_complete &&
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
-        trk->host_called = true;
-        rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            /* clear the caddy from this tracker so it can be
-             * released upon return - the switchyard will send an
-             * error to this caller, and so the op completion
-             * function doesn't need to do so */
-            pmix_list_remove_item(&trk->local_cbs, &cd->super);
-            cd->trk = NULL;
-            /* we need to ensure that all other local participants don't
-             * just hang waiting for the error return, so execute
-             * the op completion function - it threadshifts the call
-             * prior to processing, so it is okay to call it directly
-             * from here */
-            trk->host_called = false; // the host will not be calling us back
-            cbfunc(rc, trk);
-        } else if (PMIX_OPERATION_SUCCEEDED == rc) {
-            /* the operation was atomically completed and the host will
+        if (trk->local) {
+            /* the operation is being atomically completed and the host will
              * not be calling us back - ensure we notify all participants.
              * the cbfunc thread-shifts the call prior to processing,
              * so it is okay to call it directly from here */
@@ -1834,6 +1814,37 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
             cbfunc(PMIX_SUCCESS, trk);
             /* ensure that the switchyard doesn't release the caddy */
             rc = PMIX_SUCCESS;
+        } else if (NULL == pmix_host_server.disconnect) {
+            PMIX_RELEASE(trk);
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto cleanup;
+        } else {
+            trk->host_called = true;
+            rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
+            if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+                /* clear the caddy from this tracker so it can be
+                 * released upon return - the switchyard will send an
+                 * error to this caller, and so the op completion
+                 * function doesn't need to do so */
+                pmix_list_remove_item(&trk->local_cbs, &cd->super);
+                cd->trk = NULL;
+                /* we need to ensure that all other local participants don't
+                 * just hang waiting for the error return, so execute
+                 * the op completion function - it threadshifts the call
+                 * prior to processing, so it is okay to call it directly
+                 * from here */
+                trk->host_called = false; // the host will not be calling us back
+                cbfunc(rc, trk);
+            } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+                /* the operation was atomically completed and the host will
+                 * not be calling us back - ensure we notify all participants.
+                 * the cbfunc thread-shifts the call prior to processing,
+                 * so it is okay to call it directly from here */
+                trk->host_called = false; // the host will not be calling us back
+                cbfunc(PMIX_SUCCESS, trk);
+                /* ensure that the switchyard doesn't release the caddy */
+                rc = PMIX_SUCCESS;
+            }
         }
     } else {
         rc = PMIX_SUCCESS;
@@ -1880,10 +1891,6 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
                         "recvd CONNECT from peer %s:%d",
                         cd->peer->info->pname.nspace,
                         cd->peer->info->pname.rank);
-
-    if (NULL == pmix_host_server.connect) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
 
     /* unpack the number of procs */
     cnt = 1;
@@ -1978,24 +1985,9 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
      * across all participants has been completed */
     if (trk->def_complete &&
         pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
-        trk->host_called = true;
-        rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            /* clear the caddy from this tracker so it can be
-             * released upon return - the switchyard will send an
-             * error to this caller, and so the op completion
-             * function doesn't need to do so */
-            pmix_list_remove_item(&trk->local_cbs, &cd->super);
-            cd->trk = NULL;
-            /* we need to ensure that all other local participants don't
-             * just hang waiting for the error return, so execute
-             * the op completion function - it threadshifts the call
-             * prior to processing, so it is okay to call it directly
-             * from here */
-            trk->host_called = false; // the host will not be calling us back
-            cbfunc(rc, trk);
-        } else if (PMIX_OPERATION_SUCCEEDED == rc) {
-            /* the operation was atomically completed and the host will
+        /* if all the participants are local, then we don't need the host */
+        if (trk->local) {
+            /* the operation is being atomically completed and the host will
              * not be calling us back - ensure we notify all participants.
              * the cbfunc thread-shifts the call prior to processing,
              * so it is okay to call it directly from here */
@@ -2003,6 +1995,37 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
             cbfunc(PMIX_SUCCESS, trk);
             /* ensure that the switchyard doesn't release the caddy */
             rc = PMIX_SUCCESS;
+        } else if (NULL == pmix_host_server.connect) {
+            PMIX_RELEASE(trk);
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto cleanup;
+        } else {
+            trk->host_called = true;
+            rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info, trk->ninfo, cbfunc, trk);
+            if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+                /* clear the caddy from this tracker so it can be
+                 * released upon return - the switchyard will send an
+                 * error to this caller, and so the op completion
+                 * function doesn't need to do so */
+                pmix_list_remove_item(&trk->local_cbs, &cd->super);
+                cd->trk = NULL;
+                /* we need to ensure that all other local participants don't
+                 * just hang waiting for the error return, so execute
+                 * the op completion function - it threadshifts the call
+                 * prior to processing, so it is okay to call it directly
+                 * from here */
+                trk->host_called = false; // the host will not be calling us back
+                cbfunc(rc, trk);
+            } else if (PMIX_OPERATION_SUCCEEDED == rc) {
+                /* the operation was atomically completed and the host will
+                 * not be calling us back - ensure we notify all participants.
+                 * the cbfunc thread-shifts the call prior to processing,
+                 * so it is okay to call it directly from here */
+                trk->host_called = false; // the host will not be calling us back
+                cbfunc(PMIX_SUCCESS, trk);
+                /* ensure that the switchyard doesn't release the caddy */
+                rc = PMIX_SUCCESS;
+            }
         }
     } else {
         rc = PMIX_SUCCESS;
