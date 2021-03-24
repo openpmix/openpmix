@@ -53,7 +53,3 @@ EXTRA_DIST = \
 	mca_library_paths.txt \
     from-savannah/upstream-config.guess \
     from-savannah/upstream-config.sub
-
-
-maintainer-clean-local:
-	rm -f pmix_get_version.sh
