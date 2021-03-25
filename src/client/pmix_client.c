@@ -655,10 +655,9 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
         /* if we didn't see a PMIx server (e.g., missing envar),
          * then allow us to run as a singleton */
         pid = getpid();
-        snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN, "singleton.%lu", (unsigned long)pid);
+        snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN, "singleton.%s.%lu",
+                 pmix_globals.hostname, (unsigned long)pid);
         pmix_globals.myid.rank = 0;
-        /* mark that we shouldn't connect to a server */
-        pmix_client_globals.singleton = true;
         if (NULL != proc) {
             PMIX_LOAD_PROCID(proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
         }
@@ -771,9 +770,11 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     }
     PMIX_INFO_DESTRUCT(&ginfo);
 
-    if (pmix_client_globals.singleton) {
-        pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
-        pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+    /* attempt to connect to a server */
+    rc = pmix_ptl.connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
+    if (PMIX_SUCCESS != rc) {
+        /* mark that we couldn't connect to a server */
+        pmix_client_globals.singleton = true;
         /* initialize our data values */
         rc = pmix_tool_init_info();
         if (PMIX_SUCCESS != rc) {
@@ -782,15 +783,15 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
             return rc;
         }
         rc = PMIX_ERR_UNREACH;
-    } else {
-        /* connect to the server */
-        rc = pmix_ptl.connect_to_peer((struct pmix_peer_t*)pmix_client_globals.myserver, info, ninfo);
+    } else if (PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
+        /* we are a connected singleton */
+        rc = pmix_tool_init_info();
         if (PMIX_SUCCESS != rc) {
             pmix_init_result = rc;
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
         }
-
+    } else {
         /* send a request for our job info - we do this as a non-blocking
          * transaction because some systems cannot handle very large
          * blocking operations and error out if we try them. */

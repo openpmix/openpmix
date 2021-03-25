@@ -54,6 +54,7 @@
 #include "src/class/pmix_list.h"
 #include "src/util/output.h"
 #include "src/mca/bfrops/bfrops_types.h"
+#include "src/mca/ptl/base/ptl_base_handshake.h"
 
 BEGIN_C_DECLS
 
@@ -90,6 +91,8 @@ typedef struct {
 #define PMIX_PROC_CLIENT            0x00000001      // simple client process
 #define PMIX_PROC_SERVER            0x00000002      // simple server process
 #define PMIX_PROC_TOOL              0x00000004      // simple tool
+#define PMIX_PROC_SINGLETON_ACT     0x00000008      // self-started client process
+#define PMIX_PROC_SINGLETON         (PMIX_PROC_CLIENT | PMIX_PROC_SINGLETON_ACT)
 #define PMIX_PROC_LAUNCHER_ACT      0x10000000      // process acting as launcher
 #define PMIX_PROC_LAUNCHER          (PMIX_PROC_TOOL | PMIX_PROC_SERVER | PMIX_PROC_LAUNCHER_ACT)
 #define PMIX_PROC_CLIENT_LAUNCHER   (PMIX_PROC_LAUNCHER | PMIX_PROC_CLIENT)
@@ -107,6 +110,7 @@ typedef struct {
 
 /* define some convenience macros for testing proc type */
 #define PMIX_PEER_IS_CLIENT(p)              (PMIX_PROC_CLIENT & (p)->proc_type.type)
+#define PMIX_PEER_IS_SINGLETON(p)           (PMIX_PROC_SINGLETON_ACT & (p)->proc_type.type)
 #define PMIX_PEER_IS_SERVER(p)              (PMIX_PROC_SERVER & (p)->proc_type.type)
 #define PMIX_PEER_IS_TOOL(p)                (PMIX_PROC_TOOL & (p)->proc_type.type)
 #define PMIX_PEER_IS_LAUNCHER(p)            (PMIX_PROC_LAUNCHER_ACT & (p)->proc_type.type)
@@ -298,7 +302,7 @@ typedef struct {
     pmix_listener_protocol_t protocol;
     int sd;
     bool need_id;
-    uint8_t flag;
+    pmix_rnd_flag_t flag;
     pmix_proc_t proc;
     pmix_info_t *info;
     size_t ninfo;
