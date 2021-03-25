@@ -13,6 +13,8 @@ dnl                         All rights reserved.
 dnl Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
+dnl                         All Rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -60,8 +62,7 @@ AC_DEFUN([PMIX_MCA],[
                         type-component pairs that will be built as
                         run-time loadable components (as opposed to
                         statically linked in), if supported on this
-                        platform.  The default is to build all components
-                        as DSOs.]))
+                        platform.]))
     AC_ARG_ENABLE(mca-static,
         AS_HELP_STRING([--enable-mca-static=LIST],
                        [Comma-separated list of types and/or
@@ -69,21 +70,14 @@ AC_DEFUN([PMIX_MCA],[
                         linked into the library.  The default (if DSOs are
                         supported) is to build all components as DSOs.
                         Enabling a component as static disables it
-                        building as a DSO.]))
-    AC_ARG_ENABLE(mca-direct,
-        AS_HELP_STRING([--enable-mca-direct=LIST],
-                       [Comma-separated list of type-component pairs that
-                        will be hard coded as the one component to use for
-                        a given component type, saving the (small)
-                        overhead of the component architecture.  LIST must
-                        not be empty and implies given component pairs are
-                        build as static components.]))
+                        building as a DSO.  The default is to build all
+                        components statically.]))
 
     AC_MSG_CHECKING([which components should be disabled])
     if test "$enable_mca_no_build" = "yes"; then
         AC_MSG_RESULT([yes])
         AC_MSG_ERROR([*** The enable-mca-no-build flag requires an explicit list
-*** of type-component pairs.  For example, --enable-mca-direct=pml-ob1])
+*** of type-component pairs.  For example, --enable-mca-no-build-ob1])
     else
         ifs_save="$IFS"
         IFS="${IFS}$PATH_SEPARATOR,"
@@ -110,63 +104,25 @@ AC_DEFUN([PMIX_MCA],[
     unset msg
 
     #
-    # First, add all the mca-direct components / types into the mca-static
-    # lists and create a list of component types that are direct compile,
-    # in the form DIRECT_[type]=[component]
-    #
-    AC_MSG_CHECKING([which components should be direct-linked into the library])
-    if test "$enable_mca_direct" = "yes" ; then
-        AC_MSG_RESULT([yes])
-        AC_MSG_ERROR([*** The enable-mca-direct flag requires an explicit list of
-*** type-component pairs.  For example, --enable-mca-direct=pml-ob1,coll-basic])
-    elif test ! -z "$enable_mca_direct" && test "$enable_mca_direct" != "" ; then
-        #
-        # we need to add this into the static list, unless the static list
-        # is everything
-        #
-        if test "$enable_mca_static" = "no" ; then
-            AC_MSG_WARN([*** Re-enabling static component support for direct call])
-            enable_mca_static="$enable_mca_direct"
-        elif test -z "$enable_mca_static" ; then
-            enable_mca_static="$enable_mca_direct"
-        elif test "$enable_mca_static" != "yes" ; then
-            enable_mca_static="$enable_mca_direct,$enable_mca_static"
-        fi
-
-        ifs_save="$IFS"
-        IFS="${IFS}$PATH_SEPARATOR,"
-        msg=
-        for item in $enable_mca_direct; do
-            type="`echo $item | cut -f1 -d-`"
-            comp="`echo $item | cut -f2- -d-`"
-            if test -z $type || test -z $comp ; then
-                AC_MSG_ERROR([*** The enable-mca-direct flag requires a
-*** list of type-component pairs.  Invalid input detected.])
-            else
-                str="`echo DIRECT_$type=$comp | sed s/-/_/g`"
-                eval $str
-                msg="$item $msg"
-            fi
-        done
-        IFS="$ifs_save"
-    fi
-    AC_MSG_RESULT([$msg])
-    unset msg
-
-    #
-    # Second, set the DSO_all and STATIC_all variables.  conflict
+    # First, set the DSO_all and STATIC_all variables.  conflict
     # resolution (prefer static) is done in the big loop below
     #
     AC_MSG_CHECKING([which components should be run-time loadable])
     if test "$enable_static" != "no"; then
         DSO_all=0
-        msg=none
-    elif test -z "$enable_mca_dso" || test "$enable_mca_dso" = "yes"; then
-        DSO_all=1
-        msg=all
+        msg="none (static libraries built)"
+    elif test "$PMIX_ENABLE_DLOPEN_SUPPORT" = 0; then
+        DSO_all=0
+        msg="none (dlopen disabled)"
+    elif test -z "$enable_mca_dso"; then
+        DSO_all=0
+        msg="default"
     elif test "$enable_mca_dso" = "no"; then
         DSO_all=0
-        msg=none
+        msg="none"
+    elif test "$enable_mca_dso" = "yes"; then
+        DSO_all=1
+        msg="all"
     else
         DSO_all=0
         ifs_save="$IFS"
@@ -187,12 +143,15 @@ AC_DEFUN([PMIX_MCA],[
     fi
 
     AC_MSG_CHECKING([which components should be static])
-    if test "$enable_mca_static" = "yes"; then
-        STATIC_all=1
-        msg=all
-    elif test -z "$enable_mca_static" || test "$enable_mca_static" = "no"; then
+    if test -z "$enable_mca_static"; then
         STATIC_all=0
-        msg=none
+        msg="default"
+    elif test "$enable_mca_static" = "no"; then
+        STATIC_all=0
+        msg="none"
+    elif test "$enable_mca_static" = "yes"; then
+        STATIC_all=1
+        msg="all"
     else
         STATIC_all=0
         ifs_save="$IFS"
@@ -648,28 +607,27 @@ AC_DEFUN([MCA_COMPONENT_COMPILE_MODE],[
         [str="STATIC_COMPONENT=\$STATIC_$1_$2"
          eval $str])
 
-    shared_mode_override=static
-
-    # Setup for either shared or static
-    if test "$STATIC_FRAMEWORK" = "1" || \
-       test "$STATIC_COMPONENT" = "1" || \
-       test "$STATIC_all" = "1" ; then
-        $3="static"
-    elif test "$shared_mode_override" = "dso" || \
-         test "$SHARED_FRAMEWORK" = "1" || \
-         test "$SHARED_COMPONENT" = "1" || \
-         test "$DSO_all" = "1"; then
-        $3="dso"
+    # Look for the most specific specifier between static/dso.  If
+    # there is a tie (either neither or both specified), prefer
+    # static.
+    if test "$STATIC_COMPONENT" = "1"; then
+        $3=static
+    elif test "$SHARED_COMPONENT" = "1"; then
+        $3=dso
+    elif test "$STATIC_FRAMEWORK" = "1"; then
+        $3=static
+    elif test "$SHARED_FRAMEWORK" = "1"; then
+        $3=dso
+    elif test "$STATIC_all" = "1"; then
+        $3=static
+    elif test "$DSO_all" = "1"; then
+        $3=dso
     else
-        $3="static"
+        $3=static
     fi
 
     AC_MSG_CHECKING([for MCA component $1:$2 compile mode])
-    if test "$DIRECT_$1" = "$2" ; then
-        AC_MSG_RESULT([$$3 - direct])
-    else
-        AC_MSG_RESULT([$$3])
-    fi
+    AC_MSG_RESULT([$$3])
 ])
 
 
@@ -713,35 +671,6 @@ AC_DEFUN([MCA_PROCESS_COMPONENT],[
     # Output pretty results
     AC_MSG_CHECKING([if MCA component $1:$2 can compile])
     AC_MSG_RESULT([yes])
-
-    dnl BWB: FIX ME: We still use the post_configure.sh for frameworks that use the direct call infrastructure.
-    dnl All other uses we can ignore here, because config_components will have read it in and set all the
-    dnl proper environment variables.  At some point, we should handle the direct call stuff the same way we
-    dnl handle the headers for static components like timers in PMIx, ie, have a framework level configure.m4 that
-    dnl does the right thing
-    if test -f $infile; then
-        # check for direct call header to include.  This will be
-        # AC_SUBSTed later.
-        if test "$DIRECT_$1" = "$2" ; then
-            if test "`$GREP DIRECT_CALL_HEADER $infile`" != "" ; then
-                line="`$GREP DIRECT_CALL_HEADER $infile | cut -d= -f2-`"
-                str="MCA_pmix_$1_DIRECT_CALL_HEADER=$line"
-                eval $str
-            else
-AC_MSG_ERROR([*** $1 component $2 was supposed to be direct-called, but
-*** does not appear to support direct calling.
-*** Aborting])
-            fi
-        fi
-    else
-        # were we supposed to have found something in the
-        # post_configure.sh, but the file didn't exist?
-        if test "$DIRECT_$1" = "$2" ; then
-AC_MSG_ERROR([*** $1 component $2 was supposed to be direct-called, but
-*** does not appear to support direct calling.
-*** Aborting])
-        fi
-    fi
 ])
 
 
@@ -764,14 +693,6 @@ AC_DEFUN([MCA_PROCESS_DEAD_COMPONENT],[
         AC_MSG_WARN([This component was selected as the default])
         AC_MSG_ERROR([Cannot continue])
     fi
-
-    if test ! -z "$DIRECT_$1" ; then
-        if test "$DIRECT_$1" = "$2" ; then
-            AC_MSG_WARN([MCA component "$2" failed to configure properly])
-            AC_MSG_WARN([This component was selected as the default (direct call)])
-            AC_MSG_ERROR([Cannot continue])
-        fi
-    fi
 ])
 
 
@@ -790,7 +711,6 @@ AC_DEFUN([MCA_COMPONENT_BUILD_CHECK],[
     want_component=0
 
     # build if:
-    # - the component type is direct and we are that component
     # - there is no pmix_ignore file
     # - there is an pmix_ignore, but there is an empty pmix_unignore
     # - there is an pmix_ignore, but username is in pmix_unignore
@@ -816,15 +736,6 @@ AC_DEFUN([MCA_COMPONENT_BUILD_CHECK],[
                 want_component=1
             fi
         fi
-        # if this component type is direct and we are not it, we don't want
-        # to be built.  Otherwise, we do want to be built.
-        if test ! -z "$DIRECT_$1" ; then
-            if test "$DIRECT_$1" = "$2" ; then
-                want_component=1
-            else
-                want_component=0
-            fi
-        fi
     fi
 
     # if we were explicitly disabled, don't build :)
@@ -838,28 +749,6 @@ AC_DEFUN([MCA_COMPONENT_BUILD_CHECK],[
          fi])
 
     AS_IF([test "$want_component" = "1"], [$3], [$4])
-])
-
-
-# MCA_SETUP_DIRECT_CALL(framework_name  (1))
-# -------------------------------------------------------------
-AC_DEFUN([MCA_SETUP_DIRECT_CALL],[
-    if test ! -z "$DIRECT_$1" ; then
-        MCA_pmix_$1_DIRECT_CALL_COMPONENT=$DIRECT_$1
-        MCA_pmix_$1_DIRECT_CALL=1
-    else
-        MCA_pmix_$1_DIRECT_CALL_COMPONENT=
-        MCA_pmix_$1_DIRECT_CALL=0
-    fi
-
-    AC_SUBST(MCA_pmix_$1_DIRECT_CALL_HEADER)
-    AC_DEFINE_UNQUOTED([MCA_pmix_$2_DIRECT_CALL], [$MCA_pmix_$1_DIRECT_CALL],
-            [Defined to 1 if PMIx:$1 should use direct calls instead of components])
-    AC_DEFINE_UNQUOTED([MCA_pmix_$1_DIRECT_CALL_COMPONENT], [$MCA_pmix_$1_DIRECT_CALL_COMPONENT],
-            [name of component to use for direct calls, if MCA_pmix_$1_DIRECT_CALL is 1])
-    AC_DEFINE_UNQUOTED([MCA_pmix_$1_DIRECT_CALL_HEADER],
-                       ["[$MCA_pmix_]$1[_DIRECT_CALL_HEADER]"],
-                       [Header PMIx:$1 includes to be direct called])
 ])
 
 
