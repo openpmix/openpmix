@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -49,10 +50,12 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/util/argv.h"
+#include "src/util/basename.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_getcwd.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/pfexec/pfexec.h"
 #include "src/mca/pmdl/pmdl.h"
@@ -135,6 +138,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     bool forkexec = false;
     pmix_kval_t *kv;
     pmix_list_t ilist;
+    char cwd[PMIX_PATH_MAX];
+    char *tmp, *t2;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -186,9 +191,38 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     }
 
     for (n=0; n < napps; n++) {
+        aptr = (pmix_app_t*)&apps[n];
+        /* protect against idiot case (yes, they exist) */
+        if (NULL == aptr->cmd && NULL == aptr->argv) {
+            /* they gave us nothing to spawn! */
+            return PMIX_ERR_BAD_PARAM;
+        }
+        /* if they didn't give us a desired working directory, then
+         * take the one we are in */
+        if (NULL == aptr->cwd) {
+            rc = pmix_getcwd(cwd, sizeof(cwd));
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            aptr->cwd = strdup(cwd);
+        }
+        /* if they didn't give us the cmd as the first argv, fix it */
+        if (NULL == aptr->argv) {
+            tmp = pmix_basename(aptr->cmd);
+            aptr->argv = (char**)malloc(2 * sizeof(char*));
+            aptr->argv[0] = tmp;
+            aptr->argv[1] = NULL;
+        } else {
+            tmp = pmix_basename(aptr->cmd);
+            t2 = pmix_basename(aptr->argv[0]);
+            if (0 != strcmp(tmp, t2)) {
+                pmix_argv_prepend_nosize(&aptr->argv, tmp);
+            }
+            free(tmp);
+            free(t2);
+        }
         /* do a quick check of the apps directive array to ensure
          * the ninfo field has been set */
-        aptr = (pmix_app_t*)&apps[n];
         if (NULL != aptr->info && 0 == aptr->ninfo) {
             /* look for the info marked as "end" */
             m = 0;
