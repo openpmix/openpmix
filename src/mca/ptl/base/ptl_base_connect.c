@@ -288,7 +288,6 @@ char *pmix_ptl_base_get_cmd_line(void)
     size_t size;
     char *procargs = NULL, *cp, *cptr;
     char **stack = NULL;
-    int rc;
 
     /* Get the maximum process arguments size. */
     mib[0] = CTL_KERN;
@@ -297,15 +296,13 @@ char *pmix_ptl_base_get_cmd_line(void)
 
     if (sysctl(mib, 2, &argmax, &size, NULL, 0) == -1) {
         fprintf(stderr, "sysctl() argmax failed\n");
-        rc = PMIX_ERR_NO_PERMISSIONS;
-        goto cleanup;
+        return NULL;
     }
 
     /* Allocate space for the arguments. */
     procargs = (char *)malloc(argmax);
     if (procargs == NULL) {
-        rc = -1;
-        goto cleanup;
+        return NULL;
     }
 
     /* Make a sysctl() call to get the raw argument space of the process. */
@@ -317,8 +314,8 @@ char *pmix_ptl_base_get_cmd_line(void)
 
     if (sysctl(mib, 3, procargs, &size, NULL, 0) == -1) {
         fprintf(stderr, "Lacked permissions\n");;
-        rc = PMIX_ERR_NO_PERMISSIONS;
-        goto cleanup;
+        free(procargs);
+        return NULL;
     }
 
     memcpy(&nargs, procargs, sizeof(nargs));
@@ -346,7 +343,7 @@ char *pmix_ptl_base_get_cmd_line(void)
             }
         }
     }
-cleanup:
+
     p = pmix_argv_join(stack, ' ');
     pmix_argv_free(stack);
     free(procargs);
