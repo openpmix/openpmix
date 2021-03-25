@@ -41,6 +41,7 @@
 #include "src/include/pmix_socket_errno.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/net.h"
 #include "src/util/os_path.h"
 #include "src/util/pif.h"
@@ -605,7 +606,8 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
     reply = ntohl(u32);
 
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
         rc = pmix_ptl_base_client_handshake(peer, reply);
     } else {  // we are a tool
         rc = pmix_ptl_base_tool_handshake(peer, reply);
@@ -723,29 +725,19 @@ void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
     peer->send_ev_active = false;
 }
 
-uint8_t pmix_ptl_base_set_flag(size_t *sz)
+pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz)
 {
-    uint8_t flag;
+    pmix_rnd_flag_t flag;
     size_t sdsize = 0;
 
     /* Defined marker values:
      *
-     * 0 => simple client process
-     * 1 => legacy tool - may or may not have an identifier
-     * 2 => legacy launcher - may or may not have an identifier
-     * ------------------------------------------
-     * 3 => self-started tool process that needs an identifier
-     * 4 => self-started tool process that was given an identifier by caller
-     * 5 => tool that was started by a PMIx server - identifier specified by server
-     * 6 => self-started launcher that needs an identifier
-     * 7 => self-started launcher that was given an identifier by caller
-     * 8 => launcher that was started by a PMIx server - identifier specified by server
      */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
             /* if we are both launcher and client, then we need
              * to tell the server we are both */
-            flag = 8;
+            flag = PMIX_LAUNCHER_CLIENT;
             /* add space for our uid/gid for ACL purposes */
             sdsize += 2*sizeof(uint32_t);
             /* add space for our identifier */
@@ -756,37 +748,44 @@ uint8_t pmix_ptl_base_set_flag(size_t *sz)
             /* if they gave us an identifier, we need to pass it */
             if (0 < strlen(pmix_globals.myid.nspace) &&
                 PMIX_RANK_INVALID != pmix_globals.myid.rank) {
-                flag = 7;
+                flag = PMIX_LAUNCHER_GIVEN_ID;
                 sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
             } else {
-                flag = 6;
+                flag = PMIX_LAUNCHER_NEEDS_ID;
             }
         }
 
     } else if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
                !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        /* we are a simple client */
-        flag = 0;
-        /* reserve space for our nspace and rank info */
-        sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
-
+        if (PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
+            flag = PMIX_SINGLETON_CLIENT;
+            /* reserve space for our nspace and rank info */
+            sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
+            /* add space for our uid/gid for ACL purposes */
+            sdsize += 2*sizeof(uint32_t);
+        } else {
+            /* we are a simple client */
+            flag = PMIX_SIMPLE_CLIENT;
+            /* reserve space for our nspace and rank info */
+            sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
+        }
     } else {  // must be a tool of some sort
         /* add space for our uid/gid for ACL purposes */
         sdsize += 2*sizeof(uint32_t);
         if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
             /* if we are both tool and client, then we need
              * to tell the server we are both */
-            flag = 5;
+            flag = PMIX_TOOL_CLIENT;
             /* add space for our identifier */
             sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
         } else if (0 < strlen(pmix_globals.myid.nspace) &&
             PMIX_RANK_INVALID != pmix_globals.myid.rank) {
             /* we were given an identifier by the caller, pass it */
             sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
-            flag = 4;
+            flag = PMIX_TOOL_GIVEN_ID;
         } else {
             /* we are a self-started tool that needs an identifier */
-            flag = 3;
+            flag = PMIX_TOOL_NEEDS_ID;
         }
     }
 
@@ -816,6 +815,11 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
     hdr.pindex = -1;
     hdr.tag = UINT32_MAX;
 
+    /* add the name of our active sec module - we selected it
+     * in pmix_client.c prior to entering here */
+    sec = pmix_globals.mypeer->nptr->compat.psec->name;
+    sdsize += strlen(sec) + 1;
+
     /* a security module was assigned to us during rte_init based
      * on a list of available security modules provided by our
      * local PMIx server, if known. Now use that module to
@@ -828,32 +832,36 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
         return rc;
     }
+    sdsize += sizeof(uint32_t);  // need to pass the number of bytes
+    sdsize += cred.size;  // account for the payload itself
 
-    /* add the name of our active sec module - we selected it
-     * in pmix_client.c prior to entering here */
-    sec = pmix_globals.mypeer->nptr->compat.psec->name;
+    /* add our type flag */
+    sdsize += 1;
+
+    /* add our version string */
+    sdsize += strlen(PMIX_VERSION) + 1;
 
     /* add our active bfrops module name */
     bfrops = pmix_globals.mypeer->nptr->compat.bfrops->version;
+    sdsize += strlen(bfrops) + 1;
     /* and the type of buffer we are using */
     bftype = pmix_globals.mypeer->nptr->compat.type;
+    sdsize += sizeof(bftype);
 
     /* add our active gds module for working with the server */
     gds = (char*)peer->nptr->compat.gds->name;
+    sdsize += strlen(gds) + 1;
 
     /* if we were given info structs to pass to the server, pack them */
-    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
     if (NULL != iptr) {
+        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &niptr, 1, PMIX_SIZE);
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, iptr, niptr, PMIX_INFO);
+        sdsize += buf.bytes_used;
     }
 
-    /* set the number of bytes to be read beyond the header - must
-     * NULL terminate the strings! */
-    hdr.nbytes = sdsize + strlen(PMIX_VERSION) + 1 + strlen(sec) + 1 \
-                + strlen(bfrops) + 1 + sizeof(bftype) \
-                + strlen(gds) + 1 + sizeof(uint32_t) + cred.size \
-                + buf.bytes_used;
+    /* set the number of bytes to be read beyond the header */
+    hdr.nbytes = sdsize;
 
     /* create a space for our message */
     sdsize = sizeof(hdr) + hdr.nbytes;
@@ -885,7 +893,7 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
     PMIX_PTL_PUT_U8(peer->proc_type.flag);
 
     switch(peer->proc_type.flag) {
-        case 0:
+        case PMIX_SIMPLE_CLIENT:
             /* simple client process */
             PMIX_PTL_PUT_PROCID(pmix_globals.myid);
             break;
@@ -893,8 +901,8 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
         /* we cannot have cases 1 or 2 because those are only
          * for legacy processes */
 
-        case 3:
-        case 6:
+        case PMIX_TOOL_NEEDS_ID:
+        case PMIX_LAUNCHER_NEEDS_ID:
             /* self-started tool/launcher process that needs an identifier */
             euid = geteuid();
             PMIX_PTL_PUT_U32(euid);
@@ -902,9 +910,10 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
             PMIX_PTL_PUT_U32(egid);
             break;
 
-        case 4:
-        case 7:
-            /* self-started tool/launcher process that was given an identifier by caller */
+        case PMIX_TOOL_GIVEN_ID:
+        case PMIX_LAUNCHER_GIVEN_ID:
+        case PMIX_SINGLETON_CLIENT:
+            /* self-started tool/launcher/singleton process that was given an identifier by caller */
             euid = geteuid();
             PMIX_PTL_PUT_U32(euid);
             egid = getegid();
@@ -913,8 +922,8 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
             PMIX_PTL_PUT_PROCID(pmix_globals.myid);
             break;
 
-        case 5:
-        case 8:
+        case PMIX_TOOL_CLIENT:
+        case PMIX_LAUNCHER_CLIENT:
             /* tool/launcher that was started by a PMIx server - identifier specified by server */
             euid = geteuid();
             PMIX_PTL_PUT_U32(euid);
@@ -944,8 +953,10 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer,
     PMIX_PTL_PUT_STRING(gds);
 
     /* provide the info struct bytes */
-    PMIX_PTL_PUT_BLOB(buf.base_ptr, buf.bytes_used);
-    PMIX_DESTRUCT(&buf);
+    if (NULL != iptr) {
+        PMIX_PTL_PUT_BLOB(buf.base_ptr, buf.bytes_used);
+        PMIX_DESTRUCT(&buf);
+    }
 
     *msgout = msg;
     *sz = sdsize;
@@ -1038,7 +1049,7 @@ pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp)
     }
 
     /* if we need an identifier, it comes next */
-    if (3 == peer->proc_type.flag || 6 == peer->proc_type.flag) {
+    if (PMIX_TOOL_NEEDS_ID == peer->proc_type.flag || PMIX_LAUNCHER_NEEDS_ID == peer->proc_type.flag) {
         PMIX_PTL_RECV_NSPACE(peer->sd, pmix_globals.myid.nspace);
         PMIX_PTL_RECV_U32(peer->sd, pmix_globals.myid.rank);
     }

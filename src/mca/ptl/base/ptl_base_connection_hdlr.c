@@ -59,7 +59,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_ptl_hdr_t hdr;
     pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
-    char *msg = NULL, *mg, *p;
+    char *msg = NULL, *mg, *p, *blob=NULL;
     uint32_t u32;
     size_t cnt;
     pmix_namespace_t *nptr, *tmp;
@@ -121,14 +121,14 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     PMIX_PTL_GET_U8(pnd->flag);
 
     switch(pnd->flag) {
-        case 0:
+        case PMIX_SIMPLE_CLIENT:
             /* simple client process */
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_CLIENT);
             /* get their identifier */
             PMIX_PTL_GET_PROCID(pnd->proc);
             break;
 
-        case 1:
+        case PMIX_LEGACY_TOOL:
             /* legacy tool - may or may not have an identifier */
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
             /* get their uid/gid */
@@ -136,7 +136,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             PMIX_PTL_GET_U32(pnd->gid);
             break;
 
-        case 2:
+        case PMIX_LEGACY_LAUNCHER:
             /* legacy launcher - may or may not have an identifier */
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
             /* get their uid/gid */
@@ -144,8 +144,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             PMIX_PTL_GET_U32(pnd->gid);
             break;
 
-        case 3:
-        case 6:
+        case PMIX_TOOL_NEEDS_ID:
+        case PMIX_LAUNCHER_NEEDS_ID:
             /* self-started tool/launcher process that needs an identifier */
             if (3 == pnd->flag) {
                 PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
@@ -159,8 +159,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             pnd->need_id = true;
             break;
 
-        case 4:
-        case 7:
+        case PMIX_TOOL_GIVEN_ID:
+        case PMIX_LAUNCHER_GIVEN_ID:
+        case PMIX_SINGLETON_CLIENT:
             /* self-started tool/launcher process that was given an identifier by caller */
             if (4 == pnd->flag) {
                 PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
@@ -174,8 +175,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             PMIX_PTL_GET_PROCID(pnd->proc);
             break;
 
-        case 5:
-        case 8:
+        case PMIX_TOOL_CLIENT:
+        case PMIX_LAUNCHER_CLIENT:
             /* tool/launcher that was started by a PMIx server - identifier specified by server */
             if (5 == pnd->flag) {
                 PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
@@ -211,6 +212,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         pnd->bfrops = strdup("v20");
         pnd->buffer_type = pmix_bfrops_globals.default_type;  // we can't know any better
         pnd->gds = strdup("ds12,hash");
+        cnt = 0;
     } else {
         /* extract the name of the bfrops module they used */
         PMIX_PTL_GET_STRING(pnd->bfrops);
@@ -220,16 +222,24 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
         /* extract the name of the gds module they used */
         PMIX_PTL_GET_STRING(pnd->gds);
+
+        /* extract the blob */
+        if (0 < cnt) {
+            PMIX_PTL_GET_BLOB(blob, cnt);
+        }
     }
 
     /* see if this is a tool connection request */
-    if (0 != pnd->flag) {
+    if (PMIX_SIMPLE_CLIENT != pnd->flag) {
         /* nope, it's for a tool, so process it
          * separately - it is a 2-step procedure */
-        rc = process_tool_request(pnd, mg, cnt);
+        rc = process_tool_request(pnd, blob, cnt);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto error;
+        }
+        if (NULL != blob) {
+            free(blob);
         }
         return;
     }
@@ -485,7 +495,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 
     /* if this tool wasn't initially registered as a client,
      * then add some required structures */
-    if (5 != pnd->flag && 8 != pnd->flag) {
+    if (PMIX_TOOL_CLIENT != pnd->flag && PMIX_LAUNCHER_CLIENT != pnd->flag) {
         PMIX_RETAIN(nptr);
         nptr->nspace = strdup(cd->proc.nspace);
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
@@ -651,7 +661,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     /* if this is a tool we launched, then the host may
      * have already registered it as a client - so check
      * to see if we already have a peer for it */
-    if (5 == pnd->flag || 8 == pnd->flag) {
+    if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
         /* registration only adds the nspace and a rank in that
          * nspace - it doesn't add the peer object to our array
          * of local clients. So let's start by searching for

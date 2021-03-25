@@ -41,6 +41,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/ptl.h"
+#include "src/mca/ptl/base/ptl_base_handshake.h"
 
 
  BEGIN_C_DECLS
@@ -154,7 +155,7 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix,
                                                   int *sd, char **nspace,
                                                   pmix_rank_t *rank, char **uri,
                                                   pmix_peer_t *peer);
-PMIX_EXPORT uint8_t pmix_ptl_base_set_flag(size_t *sz);
+PMIX_EXPORT pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
                                                         pmix_info_t *iptr, size_t niptr);
 PMIX_EXPORT void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
@@ -174,6 +175,7 @@ PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                                                         pmix_info_t *info, size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar);
+PMIX_EXPORT char *pmix_ptl_base_get_cmd_line(void);
 
 END_C_DECLS
 
