@@ -286,8 +286,9 @@ char *pmix_ptl_base_get_cmd_line(void)
 #if PMIX_HAVE_APPLE
     int mib[3], argmax, nargs, num;
     size_t size;
-    char *procargs, *cp, *cptr;
+    char *procargs = NULL, *cp, *cptr;
     char **stack = NULL;
+    int rc;
 
     /* Get the maximum process arguments size. */
     mib[0] = CTL_KERN;
@@ -345,6 +346,7 @@ char *pmix_ptl_base_get_cmd_line(void)
             }
         }
     }
+cleanup:
     p = pmix_argv_join(stack, ' ');
     pmix_argv_free(stack);
     free(procargs);
