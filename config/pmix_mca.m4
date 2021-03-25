@@ -13,6 +13,8 @@ dnl                         All rights reserved.
 dnl Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
+dnl                         All Rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -60,8 +62,7 @@ AC_DEFUN([PMIX_MCA],[
                         type-component pairs that will be built as
                         run-time loadable components (as opposed to
                         statically linked in), if supported on this
-                        platform.  The default is to build all components
-                        as DSOs.]))
+                        platform.]))
     AC_ARG_ENABLE(mca-static,
         AS_HELP_STRING([--enable-mca-static=LIST],
                        [Comma-separated list of types and/or
@@ -69,7 +70,8 @@ AC_DEFUN([PMIX_MCA],[
                         linked into the library.  The default (if DSOs are
                         supported) is to build all components as DSOs.
                         Enabling a component as static disables it
-                        building as a DSO.]))
+                        building as a DSO.  The default is to build all
+                        components statically.]))
     AC_ARG_ENABLE(mca-direct,
         AS_HELP_STRING([--enable-mca-direct=LIST],
                        [Comma-separated list of type-component pairs that
@@ -160,13 +162,19 @@ AC_DEFUN([PMIX_MCA],[
     AC_MSG_CHECKING([which components should be run-time loadable])
     if test "$enable_static" != "no"; then
         DSO_all=0
-        msg=none
-    elif test -z "$enable_mca_dso" || test "$enable_mca_dso" = "yes"; then
-        DSO_all=1
-        msg=all
+        msg="none (static libraries built)"
+    elif test "$PMIX_ENABLE_DLOPEN_SUPPORT" = 0; then
+        DSO_all=0
+        msg="none (dlopen disabled)"
+    elif test -z "$enable_mca_dso"; then
+        DSO_all=0
+        msg="default"
     elif test "$enable_mca_dso" = "no"; then
         DSO_all=0
-        msg=none
+        msg="none"
+    elif test "$enable_mca_dso" = "yes"; then
+        DSO_all=1
+        msg="all"
     else
         DSO_all=0
         ifs_save="$IFS"
@@ -187,12 +195,15 @@ AC_DEFUN([PMIX_MCA],[
     fi
 
     AC_MSG_CHECKING([which components should be static])
-    if test "$enable_mca_static" = "yes"; then
-        STATIC_all=1
-        msg=all
-    elif test -z "$enable_mca_static" || test "$enable_mca_static" = "no"; then
+    if test -z "$enable_mca_static"; then
         STATIC_all=0
-        msg=none
+        msg="default"
+    elif test "$enable_mca_static" = "no"; then
+        STATIC_all=0
+        msg="none"
+    elif test "$enable_mca_static" = "yes"; then
+        STATIC_all=1
+        msg="all"
     else
         STATIC_all=0
         ifs_save="$IFS"
@@ -648,20 +659,23 @@ AC_DEFUN([MCA_COMPONENT_COMPILE_MODE],[
         [str="STATIC_COMPONENT=\$STATIC_$1_$2"
          eval $str])
 
-    shared_mode_override=static
-
-    # Setup for either shared or static
-    if test "$STATIC_FRAMEWORK" = "1" || \
-       test "$STATIC_COMPONENT" = "1" || \
-       test "$STATIC_all" = "1" ; then
-        $3="static"
-    elif test "$shared_mode_override" = "dso" || \
-         test "$SHARED_FRAMEWORK" = "1" || \
-         test "$SHARED_COMPONENT" = "1" || \
-         test "$DSO_all" = "1"; then
-        $3="dso"
+    # Look for the most specific specifier between static/dso.  If
+    # there is a tie (either neither or both specified), prefer
+    # static.
+    if test "$STATIC_COMPONENT" = "1"; then
+        $3=static
+    elif test "$SHARED_COMPONENT" = "1"; then
+        $3=dso
+    elif test "$STATIC_FRAMEWORK" = "1"; then
+        $3=static
+    elif test "$SHARED_FRAMEWORK" = "1"; then
+        $3=dso
+    elif test "$STATIC_all" = "1"; then
+        $3=static
+    elif test "$DSO_all" = "1"; then
+        $3=dso
     else
-        $3="static"
+        $3=static
     fi
 
     AC_MSG_CHECKING([for MCA component $1:$2 compile mode])
