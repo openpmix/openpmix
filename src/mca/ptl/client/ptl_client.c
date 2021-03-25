@@ -83,7 +83,12 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     pmix_status_t rc;
     pmix_peer_t *peer = (pmix_peer_t*)pr;
     size_t m, n;
-    char **tmp;
+    char **tmp, *mycmd;
+    void *ilist;
+    pid_t mypid;
+    pmix_info_t *iptr;
+    size_t niptr;
+    pmix_data_array_t darray;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -121,7 +126,62 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
         /* check the environment */
         rc = pmix_ptl_base_check_server_uris(peer, &evar);
         if (PMIX_SUCCESS != rc) {
-            return rc;
+            /* we must be a singleton */
+            PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_SINGLETON);
+            /* if we weren't given one and don't have one
+             * in the environment, we are allowed to check
+             * for a system server */
+            pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+            pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+            /* setup the system rendezvous file name */
+            if (0 > asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
+                return PMIX_ERR_NOMEM;
+            }
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:client looking for system server at %s",
+                                rendfile);
+            /* try to read the file */
+            rc = pmix_ptl_base_parse_uri_file(rendfile, &suri, &nspace, &rank, peer);
+            free(rendfile);
+            rendfile = NULL;
+            if (PMIX_SUCCESS == rc) {
+                /* provide our cmd line and PID */
+                PMIX_INFO_LIST_START(ilist);
+                mypid = getpid();
+                PMIX_INFO_LIST_ADD(rc, ilist, PMIX_PROC_PID, &mypid, PMIX_PID);
+                mycmd = pmix_ptl_base_get_cmd_line();
+                if (NULL != mycmd) {
+                    PMIX_INFO_LIST_ADD(rc, ilist, PMIX_CMD_LINE, mycmd, PMIX_STRING);
+                }
+                PMIX_INFO_LIST_CONVERT(rc, ilist, &darray);
+                if (PMIX_ERR_EMPTY == rc) {
+                    iptr = NULL;
+                    niptr = 0;
+                } else if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_INFO_LIST_RELEASE(ilist);
+                    free(nspace);
+                    free(suri);
+                    return rc;
+                } else {
+                    iptr = (pmix_info_t*)darray.array;
+                    niptr = darray.size;
+                }
+                PMIX_INFO_LIST_RELEASE(ilist);
+                /* set our protocol to V2 as that is all we support */
+                pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
+                /* go ahead and try to connect */
+                rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
+                if (PMIX_SUCCESS == rc) {
+                    /* don't free nspace - we will use it below */
+                    goto complete;
+                }
+                free(nspace);
+                free(suri);
+            }
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:tcp:client is singleton");
+            return PMIX_ERR_UNREACH;
         }
     }
 
@@ -148,6 +208,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                         "tcp_peer_try_connect: Connection across to peer %s:%u succeeded",
                         nspace, rank);
 
+complete:
     /* mark the connection as made */
     pmix_ptl_base_complete_connection(peer, nspace, rank, suri);
 
