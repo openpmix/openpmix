@@ -169,11 +169,11 @@ pmix_cmd_line_init_t cmd_line_opts[] = {
  * Once we have dealt with the returned data, we must
  * call the release_fn so that the PMIx library can
  * cleanup */
-static void cbfunc(pmix_status_t status,
-                   pmix_info_t *info, size_t ninfo,
-                   void *cbdata,
-                   pmix_release_cbfunc_t release_fn,
-                   void *release_cbdata)
+static void querycbfunc(pmix_status_t status,
+                        pmix_info_t *info, size_t ninfo,
+                        void *cbdata,
+                        pmix_release_cbfunc_t release_fn,
+                        void *release_cbdata)
 {
     myquery_data_t *mq = (myquery_data_t*)cbdata;
     size_t n;
@@ -354,7 +354,7 @@ main(int argc, char *argv[])
     myquery_data.ninfo = 0;
     /* execute the query */
     fprintf(stderr, "pps: querying nspaces\n");
-    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, cbfunc, (void*)&myquery_data))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&myquery_data))) {
         fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
         goto done;
     }
