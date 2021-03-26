@@ -257,7 +257,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         }
     }
 
-    /* if I am a tool and not connected, then just fork/exec
+    /* if we are not connected, then just fork/exec
      * the specified application */
     if (forkexec) {
         rc = pmix_pfexec.spawn_job(job_info, ninfo,
