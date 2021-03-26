@@ -505,13 +505,8 @@ static void client_iof_handler(struct pmix_peer_t *pr,
         goto cleanup;
     }
     /* lookup the handler for this IOF package */
-    if (NULL == (req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid))) {
-        /* something wrong here - should not happen */
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-        goto cleanup;
-    }
-    /* if the handler invokes a callback function, do so */
-    if (NULL != req->cbfunc) {
+    if (NULL != (req = (pmix_iof_req_t*)pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid)) &&
+        NULL != req->cbfunc) {
         req->cbfunc(refid, channel, &source, &bo, info, ninfo);
     } else {
         /* otherwise, simply write it out to the specified std IO channel */
@@ -546,6 +541,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_ptl_posted_recv_t *rcv;
     pid_t pid;
     pmix_kval_t *kptr;
+    pmix_iof_req_t *iofreq;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -616,7 +612,15 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc,
     rcv->cbfunc = client_iof_handler;
     /* add it to the end of the list of recvs */
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
-
+    /* create the default iof handler */
+    iofreq = PMIX_NEW(pmix_iof_req_t);
+    iofreq->channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL;
+    pmix_pointer_array_set_item(&pmix_globals.iof_requests, 0, iofreq);
+    /* define the sinks */
+    PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stdout, &pmix_globals.myid,
+                         1, PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
+    PMIX_IOF_SINK_DEFINE(&pmix_client_globals.iof_stderr, &pmix_globals.myid,
+                         2, PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
 
     /* setup the globals */
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
@@ -1053,6 +1057,10 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
      * tear down the infrastructure, including removal
      * of any events objects may be holding */
     (void)pmix_progress_thread_pause(NULL);
+
+    /* flush anything that is still trying to be written out */
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (i=0; i < pmix_client_globals.peers.size; i++) {
