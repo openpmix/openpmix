@@ -62,7 +62,8 @@ AC_DEFUN([PMIX_MCA],[
                         type-component pairs that will be built as
                         run-time loadable components (as opposed to
                         statically linked in), if supported on this
-                        platform.]))
+                        platform.]),
+                        [], [enable_mca_dso=pcompress-zlib,ploc-hwloc,pnet-opa,pnet-sshot,prm])
     AC_ARG_ENABLE(mca-static,
         AS_HELP_STRING([--enable-mca-static=LIST],
                        [Comma-separated list of types and/or
