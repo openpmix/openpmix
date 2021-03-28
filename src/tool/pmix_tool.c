@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -1953,6 +1953,7 @@ static void retry_set(int sd, short args, void *cbdata)
 
     /* switch the active server - we are in an event, so
      * it is safe to do so */
+    PMIX_RETAIN(peer);
     pmix_client_globals.myserver = peer;
     pmix_globals.connected = true;
 
