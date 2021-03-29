@@ -107,15 +107,22 @@ typedef struct pmix_ptl_base_t pmix_ptl_base_t;
 
 PMIX_EXPORT extern pmix_ptl_base_t pmix_ptl_base;
 
+typedef struct {
+    pmix_list_item_t super;
+    int sd;
+    char *nspace;
+    pmix_rank_t rank;
+    char *uri;
+    char *version;
+} pmix_connection_t;
+PMIX_CLASS_DECLARATION(pmix_connection_t);
+
 /* API stubs */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_notification_cbfunc(pmix_ptl_cbfunc_t cbfunc);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *peer,
                                                         pmix_info_t info[], size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
-                                                       char **uri,
-                                                       char **nspace,
-                                                       pmix_rank_t *rank,
-                                                       pmix_peer_t *peer);
+                                                       pmix_list_t *connections);
 
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_connection(char *uri,
                                                          struct sockaddr_storage *connection,
@@ -152,9 +159,7 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspac
                                                   pmix_rank_t *rank, char **suri);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix,
                                                   pmix_info_t info[], size_t ninfo,
-                                                  int *sd, char **nspace,
-                                                  pmix_rank_t *rank, char **uri,
-                                                  pmix_peer_t *peer);
+                                                  pmix_list_t *connections);
 PMIX_EXPORT pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
                                                         pmix_info_t *iptr, size_t niptr);

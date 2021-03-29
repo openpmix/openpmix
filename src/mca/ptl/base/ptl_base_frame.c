@@ -507,3 +507,27 @@ static void qdes(pmix_ptl_queue_t *p)
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_queue_t,
                                 pmix_object_t,
                                 qcon, qdes);
+
+static void ccon(pmix_connection_t *p)
+{
+    p->sd = -1;
+    p->nspace = NULL;
+    p->rank = PMIX_RANK_INVALID;
+    p->uri = NULL;
+    p->version = NULL;
+}
+static void dcon(pmix_connection_t *p)
+{
+    if (NULL != p->nspace) {
+        free(p->nspace);
+    }
+    if (NULL != p->uri) {
+        free(p->uri);
+    }
+    if (NULL != p->version) {
+        free(p->version);
+    }
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_connection_t,
+                                pmix_list_item_t,
+                                ccon, dcon);
