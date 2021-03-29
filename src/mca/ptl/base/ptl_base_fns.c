@@ -274,18 +274,19 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace,
 }
 
 pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
-                                           char **uri,
-                                           char **nspace,
-                                           pmix_rank_t *rank,
-                                           pmix_peer_t *peer)
+                                           pmix_list_t *connections)
 {
     FILE *fp;
-    char *srvr, *p;
+    char *srvr, *p = NULL;
     pmix_lock_t lock;
     pmix_event_t ev;
     struct timeval tv;
     int retries;
     pmix_status_t rc;
+    pmix_connection_t *cn;
+    char *nspace = NULL;
+    pmix_rank_t rank;
+    char *uri = NULL;
 
      /* if we cannot open the file, then the server must not
      * be configured to support tool connections, or this
@@ -364,31 +365,39 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
         return PMIX_ERR_UNREACH;
     }
 
-    peer->protocol = PMIX_PROTOCOL_V2;
     /* see if this file contains the server's version */
     p = pmix_getline(fp);
-    PMIX_SET_PEER_VERSION(peer, p, 2, 0);
-    if (NULL != p) {
-        free(p);
-    }
     fclose(fp);
 
     /* parse the URI */
-    rc = pmix_ptl_base_parse_uri(srvr, nspace, rank, uri);
+    rc = pmix_ptl_base_parse_uri(srvr, &nspace, &rank, &uri);
     free(srvr);
-
+    if (PMIX_SUCCESS == rc) {
+        cn = PMIX_NEW(pmix_connection_t);
+        cn->nspace = nspace;
+        cn->rank = rank;
+        cn->uri = uri;
+        cn->version = p;
+        pmix_list_append(connections, &cn->super);
+    } else {
+        if (NULL != nspace) {
+            free(nspace);
+        }
+        if (NULL != uri) {
+            free(uri);
+        }
+        if (NULL != p) {
+            free(p);
+        }
+    }
     return rc;
 }
 
 pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix,
                                       pmix_info_t info[], size_t ninfo,
-                                      int *sd, char **nspace,
-                                      pmix_rank_t *rank, char **uri,
-                                      pmix_peer_t *peer)
+                                      pmix_list_t *connections)
 {
-    char *suri, *nsp, *newdir;
-    pmix_rank_t rk;
-    pmix_status_t rc;
+    char *newdir;
     struct stat buf;
     DIR *cur_dirp;
     struct dirent *dir_entry;
@@ -415,13 +424,9 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix,
         }
         /* if it is a directory, down search */
         if (S_ISDIR(buf.st_mode)) {
-            rc = pmix_ptl_base_df_search(newdir, prefix, info, ninfo,
-                                         sd, nspace, rank, uri, peer);
+            pmix_ptl_base_df_search(newdir, prefix, info, ninfo,
+                                    connections);
             free(newdir);
-            if (PMIX_SUCCESS == rc) {
-                closedir(cur_dirp);
-                return rc;
-            }
             continue;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -431,28 +436,15 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix,
             /* try to read this file */
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "pmix:tool: reading file %s", newdir);
-            rc = pmix_ptl_base_parse_uri_file(newdir, &suri, &nsp, &rk, peer);
-            if (PMIX_SUCCESS == rc) {
-                /* go ahead and try to connect */
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "pmix:tool: attempting to connect to %s", suri);
-                rc = pmix_ptl_base_make_connection(peer, suri, info, ninfo);
-                if (PMIX_SUCCESS == rc) {
-                    (*nspace) = nsp;
-                    *rank = rk;
-                    closedir(cur_dirp);
-                    *uri = suri;
-                    free(newdir);
-                    return PMIX_SUCCESS;
-                }
-                free(suri);
-                free(nsp);
-            }
+            pmix_ptl_base_parse_uri_file(newdir, connections);
         }
         free(newdir);
     }
     closedir(cur_dirp);
-    return PMIX_ERR_NOT_FOUND;
+    if (0 == pmix_list_get_size(connections)) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_ptl_base_setup_connection(char *uri,
