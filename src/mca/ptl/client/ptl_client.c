@@ -89,6 +89,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     pmix_info_t *iptr;
     size_t niptr;
     pmix_data_array_t darray;
+    pmix_list_t connections;
+    pmix_connection_t *cn;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp: connecting to server");
@@ -141,10 +143,12 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                                 "ptl:client looking for system server at %s",
                                 rendfile);
             /* try to read the file */
-            rc = pmix_ptl_base_parse_uri_file(rendfile, &suri, &nspace, &rank, peer);
+            PMIX_CONSTRUCT(&connections, pmix_list_t);
+            rc = pmix_ptl_base_parse_uri_file(rendfile, &connections);
             free(rendfile);
             rendfile = NULL;
-            if (PMIX_SUCCESS == rc) {
+            if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections)) {
+                cn = (pmix_connection_t*)pmix_list_get_first(&connections);
                 /* provide our cmd line and PID */
                 PMIX_INFO_LIST_START(ilist);
                 mypid = getpid();
@@ -160,8 +164,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                 } else if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_INFO_LIST_RELEASE(ilist);
-                    free(nspace);
-                    free(suri);
+                    PMIX_LIST_DESTRUCT(&connections);
                     return rc;
                 } else {
                     iptr = (pmix_info_t*)darray.array;
@@ -170,17 +173,24 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                 PMIX_INFO_LIST_RELEASE(ilist);
                 /* set our protocol to V2 as that is all we support */
                 pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
+                peer->protocol = PMIX_PROTOCOL_V2;
+                PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
                 /* go ahead and try to connect */
-                rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
+                rc = pmix_ptl_base_make_connection(peer, cn->uri, iptr, niptr);
                 if (PMIX_SUCCESS == rc) {
                     /* don't free nspace - we will use it below */
+                    nspace = cn->nspace;
+                    rank = cn->rank;
+                    suri = cn->uri;
+                    cn->nspace = NULL;
+                    cn->uri = NULL;
+                    PMIX_LIST_DESTRUCT(&connections);
                     goto complete;
                 }
-                free(nspace);
-                free(suri);
             }
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:client is singleton");
+            PMIX_LIST_DESTRUCT(&connections);
             return PMIX_ERR_UNREACH;
         }
     }
