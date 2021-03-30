@@ -396,7 +396,7 @@ static pmix_status_t check_connections(pmix_list_t *connections)
 pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                                             pmix_info_t *info, size_t ninfo)
 {
-    char *suri, *st, *evar;
+    char *suri = NULL, *st, *evar;
     char *filename, *nspace=NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char *p = NULL, *server_nspace = NULL, *rendfile = NULL;
@@ -788,7 +788,9 @@ cleanup:
     if (NULL != rendfile) {
         free(rendfile);
     }
-    free(suri);
+    if (NULL != suri) {
+        free(suri);
+    }
     if (NULL != server_nspace) {
         free(server_nspace);
     }
