@@ -2,7 +2,7 @@
 
 echo "Running clang-format on code base..."
 
-files=($(git ls-tree -r master --name-only | grep -v 'contrib' | grep -e '.*\.[ch]$'))
+files=($(git ls-tree -r master --name-only | grep -v -E 'contrib/' | grep -e '.*\.[ch]$' ))
 
 for file in "${files[@]}" ; do
     if test "$1" = "-d" ; then
@@ -13,4 +13,3 @@ for file in "${files[@]}" ; do
 done
 
 echo "Done"
-

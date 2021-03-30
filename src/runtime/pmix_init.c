@@ -132,6 +132,12 @@ int pmix_rte_init(uint32_t type,
 
     pmix_init_called = true;
 
+    /* init the wildcard nspace */
+    for (n=0; n < PMIX_MAX_NSLEN; n++) {
+        pmix_nspace_wildcard[n] = '*';
+    }
+    pmix_nspace_wildcard[PMIX_MAX_NSLEN-1] = '\0';
+
     /* initialize the output system */
     if (!pmix_output_init()) {
         return PMIX_ERROR;

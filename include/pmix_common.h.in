@@ -92,6 +92,9 @@ typedef char pmix_key_t[PMIX_MAX_KEYLEN+1];
 /* define a type for rank values */
 typedef uint32_t pmix_rank_t;
 
+/* point to a wildcared nspace that must be defined in the implementation */
+PMIX_EXPORT extern pmix_nspace_t pmix_nspace_wildcard;
+
 /* define a value for requests for job-level data
  * where the info itself isn't associated with any
  * specific rank, or when a request involves
@@ -1470,7 +1473,8 @@ static inline void* pmix_calloc(size_t n, size_t m)
 
 /* define a convenience macro for checking nspaces */
 #define PMIX_CHECK_NSPACE(a, b) \
-    (PMIX_NSPACE_INVALID((a)) || PMIX_NSPACE_INVALID((b)) || 0 == strncmp((a), (b), PMIX_MAX_NSLEN))
+    (!PMIX_NSPACE_INVALID((a)) && !PMIX_NSPACE_INVALID((b)) && \
+    (PMIX_NSPACE_WILDCARD((a)) || PMIX_NSPACE_WILDCARD((b)) || 0 == strncmp((a), (b), PMIX_MAX_NSLEN)))
 
 /* define a convenience macro for loading names */
 #define PMIX_LOAD_PROCID(a, b, c)               \
@@ -1491,6 +1495,9 @@ static inline void* pmix_calloc(size_t n, size_t m)
 
 #define PMIX_NSPACE_INVALID(a) \
     (NULL == (a) || 0 == strlen((a)))
+
+#define PMIX_NSPACE_WILDCARD(a) \
+    (0 == strncmp((a), pmix_nspace_wildcard, PMIX_MAX_NSLEN))
 
 #define PMIX_PROCID_INVALID(a)  \
     (PMIX_NSPACE_INVALID((a)->nspace) || PMIX_RANK_INVALID == (a)->rank)

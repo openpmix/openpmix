@@ -55,6 +55,8 @@
 #include "src/util/argv.h"
 #include "src/util/os_path.h"
 
+pmix_nspace_t pmix_nspace_wildcard;
+
 static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd,
                             pmix_epilog_t *epi);
 static bool dirpath_is_empty(const char *path);
