@@ -3,7 +3,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
@@ -58,7 +58,13 @@ static void msgcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer
     m = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &status, &m, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
-        status = rc;
+        /* Ignore short buffer/premature connection disconnect */
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+            status = PMIX_SUCCESS;
+        }
+        else {
+            status = rc;
+        }
     }
     if (NULL != cd->iofreq) {
         pmix_output_verbose(2, pmix_client_globals.iof_output,
