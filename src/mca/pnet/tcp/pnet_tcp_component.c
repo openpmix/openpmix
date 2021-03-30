@@ -1,6 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,15 +18,14 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/util/argv.h"
-#include "src/mca/pnet/pnet.h"
 #include "pnet_tcp.h"
+#include "src/mca/pnet/pnet.h"
+#include "src/util/argv.h"
 
 static pmix_status_t component_register(void);
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
-static pmix_status_t component_query(pmix_mca_base_module_t **module,
-                                     int *priority);
+static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 
 /*
  * Instantiate the public struct with all of our public information
@@ -65,42 +65,39 @@ static pmix_status_t component_register(void)
     pmix_mca_base_component_t *component = &mca_pnet_tcp_component.super.base;
 
     mca_pnet_tcp_component.static_ports = NULL;
-    (void)pmix_mca_base_component_var_register(component, "static_ports",
-                                               "Static ports for procs, expressed as a semi-colon delimited "
-                                               "list of type:(optional)plane:Comma-delimited list of ranges (e.g., "
-                                               "\"tcp:10.10.10.0/24:32000-32100,33000;udp:40000,40005\")",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                               &mca_pnet_tcp_component.static_ports);
+    (void) pmix_mca_base_component_var_register(
+        component, "static_ports",
+        "Static ports for procs, expressed as a semi-colon delimited "
+        "list of type:(optional)plane:Comma-delimited list of ranges (e.g., "
+        "\"tcp:10.10.10.0/24:32000-32100,33000;udp:40000,40005\")",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2,
+        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &mca_pnet_tcp_component.static_ports);
 
-    (void)pmix_mca_base_component_var_register(component, "default_network_allocation",
-                                               "Semi-colon delimited list of (optional)type:(optional)plane:Comma-delimited list of ranges  "
-                                               "(e.g., \"udp:10.10.10.0/24:3\", or \"5\" if the choice of "
-                                               "type and plane isn't critical)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                               &mca_pnet_tcp_component.default_request);
+    (void) pmix_mca_base_component_var_register(
+        component, "default_network_allocation",
+        "Semi-colon delimited list of (optional)type:(optional)plane:Comma-delimited list of "
+        "ranges  "
+        "(e.g., \"udp:10.10.10.0/24:3\", or \"5\" if the choice of "
+        "type and plane isn't critical)",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2,
+        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &mca_pnet_tcp_component.default_request);
 
     mca_pnet_tcp_component.incparms = NULL;
-    (void)pmix_mca_base_component_var_register(component, "include_envars",
-                                               "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                               &mca_pnet_tcp_component.incparms);
+    (void) pmix_mca_base_component_var_register(
+        component, "include_envars",
+        "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        &mca_pnet_tcp_component.incparms);
     if (NULL != mca_pnet_tcp_component.incparms) {
         mca_pnet_tcp_component.include = pmix_argv_split(mca_pnet_tcp_component.incparms, ',');
     }
 
     mca_pnet_tcp_component.excparms = NULL;
-    (void)pmix_mca_base_component_var_register(component, "exclude_envars",
-                                               "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                               &mca_pnet_tcp_component.excparms);
+    (void) pmix_mca_base_component_var_register(
+        component, "exclude_envars",
+        "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        &mca_pnet_tcp_component.excparms);
     if (NULL != mca_pnet_tcp_component.excparms) {
         mca_pnet_tcp_component.exclude = pmix_argv_split(mca_pnet_tcp_component.excparms, ',');
     }
@@ -113,15 +110,12 @@ static pmix_status_t component_open(void)
     return PMIX_SUCCESS;
 }
 
-
-static pmix_status_t component_query(pmix_mca_base_module_t **module,
-                                     int *priority)
+static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 5;
-    *module = (pmix_mca_base_module_t *)&pmix_tcp_module;
+    *module = (pmix_mca_base_module_t *) &pmix_tcp_module;
     return PMIX_SUCCESS;
 }
-
 
 static pmix_status_t component_close(void)
 {

@@ -27,20 +27,20 @@
 #include "pmix_config.h"
 #include "include/pmix_common.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
-#include <pthread.h>
+#include <unistd.h>
 
 #include "include/pmix_tool.h"
 #include "src/mca/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/threads/threads.h"
 #include "src/util/cmd_line.h"
 #include "src/util/keyval_parse.h"
 #include "src/util/show_help.h"
-#include "src/runtime/pmix_rte.h"
 
 typedef struct {
     pmix_lock_t lock;
@@ -49,18 +49,14 @@ typedef struct {
 
 static pmix_proc_t myproc;
 
-
 /* this is the event notification function we pass down below
  * when registering for general events - i.e.,, the default
  * handler. We don't technically need to register one, but it
  * is usually good practice to catch any events that occur */
-static void notification_fn(size_t evhdlr_registration_id,
-                            pmix_status_t status,
-                            const pmix_proc_t *source,
-                            pmix_info_t info[], size_t ninfo,
+static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
+                            const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                             pmix_info_t results[], size_t nresults,
-                            pmix_event_notification_cbfunc_fn_t cbfunc,
-                            void *cbdata)
+                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     /* this example doesn't do anything with default events */
     if (NULL != cbfunc) {
@@ -75,15 +71,13 @@ static void notification_fn(size_t evhdlr_registration_id,
  * to the registered event. The index is used later on to deregister
  * an event handler - if we don't explicitly deregister it, then the
  * PMIx server will do so when it see us exit */
-static void evhandler_reg_callbk(pmix_status_t status,
-                                 size_t evhandler_ref,
-                                 void *cbdata)
+static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
 
     if (PMIX_SUCCESS != status) {
         fprintf(stderr, "Client %s:%d EVENT HANDLER REGISTRATION FAILED WITH STATUS %d, ref=%lu\n",
-                   myproc.nspace, myproc.rank, status, (unsigned long)evhandler_ref);
+                myproc.nspace, myproc.rank, status, (unsigned long) evhandler_ref);
     }
     lock->status = status;
     PMIX_WAKEUP_THREAD(&lock->lock);
@@ -102,48 +96,30 @@ typedef struct {
 
 pmix_pevent_globals_t pmix_pevent_globals = {0};
 
-pmix_cmd_line_init_t cmd_line_opts[] = {
-    { NULL,
-      'h', NULL, "help",
-      0,
-      &pmix_pevent_globals.help, PMIX_CMD_LINE_TYPE_BOOL,
-      "This help message" },
+pmix_cmd_line_init_t cmd_line_opts[] = {{NULL, 'h', NULL, "help", 0, &pmix_pevent_globals.help,
+                                         PMIX_CMD_LINE_TYPE_BOOL, "This help message"},
 
-    { NULL,
-      'v', NULL, "verbose",
-      0,
-      &pmix_pevent_globals.verbose, PMIX_CMD_LINE_TYPE_BOOL,
-      "Be Verbose" },
+                                        {NULL, 'v', NULL, "verbose", 0,
+                                         &pmix_pevent_globals.verbose, PMIX_CMD_LINE_TYPE_BOOL,
+                                         "Be Verbose"},
 
-    { NULL,
-      'p', NULL, "pid",
-      1,
-      &pmix_pevent_globals.pid, PMIX_CMD_LINE_TYPE_INT,
-      "Specify launcher pid" },
+                                        {NULL, 'p', NULL, "pid", 1, &pmix_pevent_globals.pid,
+                                         PMIX_CMD_LINE_TYPE_INT, "Specify launcher pid"},
 
-    { NULL,
-      'e', NULL, "event",
-      0,
-      &pmix_pevent_globals.code, PMIX_CMD_LINE_TYPE_INT,
-      "Status code (integer value) of event to be sent" },
+                                        {NULL, 'e', NULL, "event", 0, &pmix_pevent_globals.code,
+                                         PMIX_CMD_LINE_TYPE_INT,
+                                         "Status code (integer value) of event to be sent"},
 
-    { NULL,
-      'r', NULL, "range",
-      0,
-      &pmix_pevent_globals.range, PMIX_CMD_LINE_TYPE_INT,
-      "Range of event to be sent" },
+                                        {NULL, 'r', NULL, "range", 0, &pmix_pevent_globals.range,
+                                         PMIX_CMD_LINE_TYPE_INT, "Range of event to be sent"},
 
-    /* End of list */
-    { NULL,
-      '\0', NULL, NULL,
-      0,
-      NULL, PMIX_CMD_LINE_TYPE_NULL,
-      NULL }
-};
+                                        /* End of list */
+                                        {NULL, '\0', NULL, NULL, 0, NULL, PMIX_CMD_LINE_TYPE_NULL,
+                                         NULL}};
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
 
     lock->status = status;
     PMIX_WAKEUP_THREAD(&lock->lock);
@@ -168,14 +144,19 @@ int main(int argc, char **argv)
     }
 
     /* initialize install dirs code */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
-                                                    PMIX_MCA_BASE_OPEN_DEFAULT))) {
-        fprintf(stderr, "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
+    if (PMIX_SUCCESS
+        != (rc = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
+                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+        fprintf(stderr,
+                "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
+                "returned %d instead of PMIX_SUCCESS)\n",
                 __FILE__, __LINE__, rc);
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_pinstall_dirs_base_init(NULL, 0))) {
-        fprintf(stderr, "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
+        fprintf(stderr,
+                "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, "
+                "returned %d instead of PMIX_SUCCESS)\n",
                 __FILE__, __LINE__, rc);
         return rc;
     }
@@ -210,8 +191,7 @@ int main(int argc, char **argv)
 
     if (PMIX_SUCCESS != rc) {
         if (PMIX_ERR_SILENT != rc) {
-            fprintf(stderr, "%s: command line error (%s)\n", argv[0],
-                    PMIx_Error_string(rc));
+            fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
         }
         return rc;
     }
@@ -219,8 +199,7 @@ int main(int argc, char **argv)
     if (pmix_pevent_globals.help) {
         char *str, *args = NULL;
         args = pmix_cmd_line_get_usage_msg(&cmd_line);
-        str = pmix_show_help_string("help-pevent.txt", "usage", true,
-                                    args);
+        str = pmix_show_help_string("help-pevent.txt", "usage", true, args);
         if (NULL != str) {
             printf("%s", str);
             free(str);
@@ -230,8 +209,8 @@ int main(int argc, char **argv)
         exit(0);
     }
 
-    status = (pmix_status_t)pmix_pevent_globals.code;
-    range = (pmix_data_range_t)pmix_pevent_globals.range;
+    status = (pmix_status_t) pmix_pevent_globals.code;
+    range = (pmix_data_range_t) pmix_pevent_globals.range;
 
     /* if we were given the pid of a starter, then direct that
      * we connect to it */
@@ -248,8 +227,8 @@ int main(int argc, char **argv)
 
     /* register a default event handler */
     PMIX_CONSTRUCT_LOCK(&mylock.lock);
-    PMIx_Register_event_handler(NULL, 0, NULL, 0,
-                                notification_fn, evhandler_reg_callbk, (void*)&mylock);
+    PMIx_Register_event_handler(NULL, 0, NULL, 0, notification_fn, evhandler_reg_callbk,
+                                (void *) &mylock);
     PMIX_WAIT_THREAD(&mylock.lock);
     if (PMIX_SUCCESS != mylock.status) {
         fprintf(stderr, "PMIx_Register_event_handler returned bad status: %d\n", rc);
@@ -260,7 +239,7 @@ int main(int argc, char **argv)
 
     /* generate the specified event */
     PMIX_CONSTRUCT_LOCK(&mylock.lock);
-    rc = PMIx_Notify_event(status, &myproc, range, NULL, 0, opcbfunc, (void*)&mylock);
+    rc = PMIx_Notify_event(status, &myproc, range, NULL, 0, opcbfunc, (void *) &mylock);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "PMIx_Notify_event failed: %d\n", rc);
         goto done;
@@ -271,9 +250,8 @@ int main(int argc, char **argv)
     }
     PMIX_DESTRUCT_LOCK(&mylock.lock);
 
-
-  done:
+done:
     PMIx_tool_finalize();
 
-    return(rc);
+    return (rc);
 }

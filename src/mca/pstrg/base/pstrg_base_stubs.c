@@ -3,13 +3,13 @@
  * Copyright (c) 2012      Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
  *
  * $HEADER$
  */
-
 
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
@@ -18,11 +18,9 @@
 
 #include "src/mca/pstrg/base/base.h"
 
-static void qcbfunc(pmix_status_t status,
-                    pmix_list_t *results,
-                    void *cbdata)
+static void qcbfunc(pmix_status_t status, pmix_list_t *results, void *cbdata)
 {
-    pmix_query_caddy_t *rollup = (pmix_query_caddy_t*)cbdata;
+    pmix_query_caddy_t *rollup = (pmix_query_caddy_t *) cbdata;
     pmix_kval_t *kv;
 
     PMIX_ACQUIRE_THREAD(&rollup->lock);
@@ -32,7 +30,7 @@ static void qcbfunc(pmix_status_t status,
     }
     /* transfer any returned data */
     if (NULL != results) {
-        while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(results))) {
+        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(results))) {
             pmix_list_append(&rollup->results, &kv->super);
         }
     }
@@ -54,8 +52,7 @@ static void qcbfunc(pmix_status_t status,
     return;
 }
 
-pmix_status_t pmix_pstrg_base_query(pmix_query_t queries[], size_t nqueries,
-                                    pmix_list_t *results,
+pmix_status_t pmix_pstrg_base_query(pmix_query_t queries[], size_t nqueries, pmix_list_t *results,
                                     pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_pstrg_active_module_t *active;
@@ -88,11 +85,11 @@ pmix_status_t pmix_pstrg_base_query(pmix_query_t queries[], size_t nqueries,
     myrollup->stqcbfunc = cbfunc;
     myrollup->cbdata = cbdata;
 
-    PMIX_LIST_FOREACH(active, &pmix_pstrg_base.actives, pmix_pstrg_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pstrg_base.actives, pmix_pstrg_active_module_t) {
         if (NULL != active->module->query) {
-            pmix_output_verbose(5, pmix_pstrg_base_framework.framework_output,
-                                "QUERYING %s", active->module->name);
-            rc = active->module->query(queries, nqueries, results, qcbfunc, (void*)myrollup);
+            pmix_output_verbose(5, pmix_pstrg_base_framework.framework_output, "QUERYING %s",
+                                active->module->name);
+            rc = active->module->query(queries, nqueries, results, qcbfunc, (void *) myrollup);
             /* if they return success, then the values were
              * placed directly on the payload - nothing
              * to wait for here */
@@ -100,14 +97,13 @@ pmix_status_t pmix_pstrg_base_query(pmix_query_t queries[], size_t nqueries,
                 myrollup->nrequests++;
             } else if (PMIX_OPERATION_SUCCEEDED == rc) {
                 myrollup->status = PMIX_OPERATION_SUCCEEDED;
-            } else if (PMIX_SUCCESS != rc &&
-                       PMIX_ERR_TAKE_NEXT_OPTION != rc &&
-                       PMIX_ERR_NOT_SUPPORTED != rc) {
+            } else if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc
+                       && PMIX_ERR_NOT_SUPPORTED != rc) {
                 /* a true error - we need to wait for
                  * all pending requests to complete
                  * and then notify the caller of the error */
-                if (PMIX_SUCCESS == myrollup->status ||
-                    PMIX_OPERATION_SUCCEEDED == myrollup->status) {
+                if (PMIX_SUCCESS == myrollup->status
+                    || PMIX_OPERATION_SUCCEEDED == myrollup->status) {
                     myrollup->status = rc;
                     break;
                 }

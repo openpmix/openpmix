@@ -5,6 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,13 +19,11 @@
 
 #include "src/mca/pdl/base/static-components.h"
 
-
 /*
  * Globals
  */
 pmix_pdl_base_module_t *pmix_pdl = NULL;
 pmix_pdl_base_component_t *pmix_pdl_base_selected_component = NULL;
-
 
 /*
  * Function for finding and opening either all MCA components,
@@ -47,9 +46,7 @@ int pmix_pdl_base_open(pmix_mca_base_open_flag_t flags)
    But we must mark this framework is NO_DSO so that the MCA framework
    base doesn't try to open any dynamic components in this
    framework. */
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pdl, "Dynamic loader framework",
-                                NULL /* register */,
-                                pmix_pdl_base_open /* open */,
-                                NULL /* close */,
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pdl, "Dynamic loader framework", NULL /* register */,
+                                pmix_pdl_base_open /* open */, NULL /* close */,
                                 mca_pdl_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_NO_DSO);

@@ -2,6 +2,7 @@
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,41 +15,41 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #include <errno.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_SOCKIO_H
-#include <sys/sockio.h>
+#    include <sys/sockio.h>
 #endif
 #ifdef HAVE_SYS_IOCTL_H
-#include <sys/ioctl.h>
+#    include <sys/ioctl.h>
 #endif
 #ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
+#    include <netinet/in.h>
 #endif
 #ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
+#    include <arpa/inet.h>
 #endif
 #ifdef HAVE_NET_IF_H
-#include <net/if.h>
+#    include <net/if.h>
 #endif
 #ifdef HAVE_NETDB_H
-#include <netdb.h>
+#    include <netdb.h>
 #endif
 #ifdef HAVE_IFADDRS_H
-#include <ifaddrs.h>
+#    include <ifaddrs.h>
 #endif
 
+#include "src/mca/pif/base/base.h"
+#include "src/mca/pif/pif.h"
 #include "src/util/output.h"
 #include "src/util/pif.h"
-#include "src/mca/pif/pif.h"
-#include "src/mca/pif/base/base.h"
 
 static int if_bsdx_open(void);
 
@@ -81,7 +82,7 @@ pmix_pif_base_component_t mca_pif_bsdx_ipv4_component = {
 };
 
 /* convert a netmask (in network byte order) to CIDR notation */
-static int prefix (uint32_t netmask)
+static int prefix(uint32_t netmask)
 {
     uint32_t mask = ntohl(netmask);
     int plen = 0;
@@ -103,24 +104,22 @@ static int if_bsdx_open(void)
 {
     struct ifaddrs **ifadd_list;
     struct ifaddrs *cur_ifaddrs;
-    struct sockaddr_in* sin_addr;
+    struct sockaddr_in *sin_addr;
 
     /*
      * the manpage claims that getifaddrs() allocates the memory,
      * and freeifaddrs() is later used to release the allocated memory.
      * however, without this malloc the call to getifaddrs() segfaults
      */
-    ifadd_list = (struct ifaddrs **) malloc(sizeof(struct ifaddrs*));
+    ifadd_list = (struct ifaddrs **) malloc(sizeof(struct ifaddrs *));
 
     /* create the linked list of ifaddrs structs */
     if (getifaddrs(ifadd_list) < 0) {
-        pmix_output(0, "pmix_ifinit: getifaddrs() failed with error=%d\n",
-                    errno);
+        pmix_output(0, "pmix_ifinit: getifaddrs() failed with error=%d\n", errno);
         return PMIX_ERROR;
     }
 
-    for (cur_ifaddrs = *ifadd_list; NULL != cur_ifaddrs;
-         cur_ifaddrs = cur_ifaddrs->ifa_next) {
+    for (cur_ifaddrs = *ifadd_list; NULL != cur_ifaddrs; cur_ifaddrs = cur_ifaddrs->ifa_next) {
         pmix_pif_t *intf;
         struct in_addr a4;
 
@@ -149,8 +148,7 @@ static int if_bsdx_open(void)
 
         intf = PMIX_NEW(pmix_pif_t);
         if (NULL == intf) {
-            pmix_output(0, "pmix_ifinit: unable to allocate %d bytes\n",
-                        (int) sizeof(pmix_pif_t));
+            pmix_output(0, "pmix_ifinit: unable to allocate %d bytes\n", (int) sizeof(pmix_pif_t));
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         intf->af_family = AF_INET;
@@ -158,20 +156,19 @@ static int if_bsdx_open(void)
         /* fill values into the pmix_pif_t */
         memcpy(&a4, &(sin_addr->sin_addr), sizeof(struct in_addr));
 
-        pmix_strncpy(intf->if_name, cur_ifaddrs->ifa_name, PMIX_IF_NAMESIZE-1);
+        pmix_strncpy(intf->if_name, cur_ifaddrs->ifa_name, PMIX_IF_NAMESIZE - 1);
         intf->if_index = pmix_list_get_size(&pmix_if_list) + 1;
-        ((struct sockaddr_in*) &intf->if_addr)->sin_addr = a4;
-        ((struct sockaddr_in*) &intf->if_addr)->sin_family = AF_INET;
-        ((struct sockaddr_in*) &intf->if_addr)->sin_len =  cur_ifaddrs->ifa_addr->sa_len;
+        ((struct sockaddr_in *) &intf->if_addr)->sin_addr = a4;
+        ((struct sockaddr_in *) &intf->if_addr)->sin_family = AF_INET;
+        ((struct sockaddr_in *) &intf->if_addr)->sin_len = cur_ifaddrs->ifa_addr->sa_len;
 
-        intf->if_mask = prefix( sin_addr->sin_addr.s_addr);
+        intf->if_mask = prefix(sin_addr->sin_addr.s_addr);
         intf->if_flags = cur_ifaddrs->ifa_flags;
 
-        intf->if_kernel_index =
-            (uint16_t) if_nametoindex(cur_ifaddrs->ifa_name);
+        intf->if_kernel_index = (uint16_t) if_nametoindex(cur_ifaddrs->ifa_name);
 
         pmix_list_append(&pmix_if_list, &(intf->super));
-    }   /*  of for loop over ifaddrs list */
+    } /*  of for loop over ifaddrs list */
 
     return PMIX_SUCCESS;
 }

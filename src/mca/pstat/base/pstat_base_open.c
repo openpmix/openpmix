@@ -21,16 +21,14 @@
  * $HEADER$
  */
 
-
 #include "pmix_config.h"
 
 #include "include/pmix_common.h"
-#include "src/util/output.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
-#include "src/mca/pstat/pstat.h"
+#include "src/mca/mca.h"
 #include "src/mca/pstat/base/base.h"
-
+#include "src/mca/pstat/pstat.h"
+#include "src/util/output.h"
 
 /*
  * The following file was created by configure.  It contains extern
@@ -41,25 +39,24 @@
 
 /* unsupported functions */
 static int pmix_pstat_base_unsupported_init(void);
-static int pmix_pstat_base_unsupported_query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats);
+static int pmix_pstat_base_unsupported_query(pid_t pid, pmix_proc_stats_t *stats,
+                                             pmix_node_stats_t *nstats);
 static int pmix_pstat_base_unsupported_finalize(void);
 
 /*
  * Globals
  */
 pmix_pstat_base_component_t *pmix_pstat_base_component = NULL;
-pmix_pstat_base_module_t pmix_pstat = {
-    pmix_pstat_base_unsupported_init,
-    pmix_pstat_base_unsupported_query,
-    pmix_pstat_base_unsupported_finalize
-};
+pmix_pstat_base_module_t pmix_pstat = {pmix_pstat_base_unsupported_init,
+                                       pmix_pstat_base_unsupported_query,
+                                       pmix_pstat_base_unsupported_finalize};
 
 /* Use default register/open/close functions */
 static int pmix_pstat_base_close(void)
 {
     /* let the selected module finalize */
     if (NULL != pmix_pstat.finalize) {
-            pmix_pstat.finalize();
+        pmix_pstat.finalize();
     }
 
     return pmix_mca_base_framework_components_close(&pmix_pstat_base_framework, NULL);
@@ -71,16 +68,16 @@ static int pmix_pstat_base_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_pstat_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pstat, "process statistics", NULL,
-                                 pmix_pstat_base_open, pmix_pstat_base_close,
-                                 mca_pstat_base_static_components, 0);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pstat, "process statistics", NULL, pmix_pstat_base_open,
+                                pmix_pstat_base_close, mca_pstat_base_static_components, 0);
 
 static int pmix_pstat_base_unsupported_init(void)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-static int pmix_pstat_base_unsupported_query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats)
+static int pmix_pstat_base_unsupported_query(pid_t pid, pmix_proc_stats_t *stats,
+                                             pmix_node_stats_t *nstats)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }

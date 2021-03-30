@@ -22,14 +22,13 @@
  * $HEADER$
  */
 
-
 #include "pmix_config.h"
 
 #include "include/pmix_common.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
-#include "src/mca/pstat/pstat.h"
+#include "src/mca/mca.h"
 #include "src/mca/pstat/base/base.h"
+#include "src/mca/pstat/pstat.h"
 
 /*
  * Globals
@@ -44,10 +43,11 @@ int pmix_pstat_base_select(void)
     /*
      * Select the best component
      */
-    if( PMIX_SUCCESS != pmix_mca_base_select("pstat", pmix_pstat_base_framework.framework_output,
-                                                &pmix_pstat_base_framework.framework_components,
-                                                (pmix_mca_base_module_t **) &best_module,
-                                                (pmix_mca_base_component_t **) &best_component, NULL) ) {
+    if (PMIX_SUCCESS
+        != pmix_mca_base_select("pstat", pmix_pstat_base_framework.framework_output,
+                                &pmix_pstat_base_framework.framework_components,
+                                (pmix_mca_base_module_t **) &best_module,
+                                (pmix_mca_base_component_t **) &best_component, NULL)) {
         /* It is okay if we don't find a runnable component - default
          * to the unsupported default.
          */
@@ -56,14 +56,14 @@ int pmix_pstat_base_select(void)
 
     /* Save the winner */
     pmix_pstat_base_component = best_component;
-    pmix_pstat                = *best_module;
+    pmix_pstat = *best_module;
 
     /* Initialize the winner */
-    if (PMIX_SUCCESS != (ret = pmix_pstat.init()) ) {
+    if (PMIX_SUCCESS != (ret = pmix_pstat.init())) {
         exit_status = ret;
         goto cleanup;
     }
 
- cleanup:
+cleanup:
     return exit_status;
 }

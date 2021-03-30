@@ -13,7 +13,6 @@
  * $HEADER$
  */
 
-
 #include "src/include/pmix_config.h"
 
 #include "include/pmix_common.h"
@@ -21,11 +20,11 @@
 #include <pthread.h>
 #include PMIX_EVENT_HEADER
 
-#include "src/mca/mca.h"
-#include "src/mca/base/base.h"
 #include "src/class/pmix_list.h"
-#include "src/runtime/pmix_progress_threads.h"
 #include "src/include/types.h"
+#include "src/mca/base/base.h"
+#include "src/mca/mca.h"
+#include "src/runtime/pmix_progress_threads.h"
 
 #include "src/mca/pstrg/base/base.h"
 
@@ -40,11 +39,8 @@
 /*
  * Global variables
  */
-pmix_pstrg_API_module_t pmix_pstrg = {
-    pmix_pstrg_base_query
-};
+pmix_pstrg_API_module_t pmix_pstrg = {pmix_pstrg_base_query};
 pmix_pstrg_base_t pmix_pstrg_base = {{{0}}};
-
 
 static int pmix_pstrg_base_close(void)
 {
@@ -56,7 +52,7 @@ static int pmix_pstrg_base_close(void)
     pmix_pstrg_base.init = false;
     pmix_pstrg_base.selected = false;
 
-    PMIX_LIST_FOREACH(active, &pmix_pstrg_base.actives, pmix_pstrg_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pstrg_base.actives, pmix_pstrg_active_module_t) {
         if (NULL != active->module->finalize) {
             active->module->finalize();
         }
@@ -85,14 +81,11 @@ static int pmix_pstrg_base_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_pstrg_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pstrg, "PMIx Storage Support",
-                                NULL,
-                                pmix_pstrg_base_open, pmix_pstrg_base_close,
-                                mca_pstrg_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pstrg, "PMIx Storage Support", NULL, pmix_pstrg_base_open,
+                                pmix_pstrg_base_close, mca_pstrg_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-PMIX_CLASS_INSTANCE(pmix_pstrg_active_module_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_pstrg_active_module_t, pmix_list_item_t, NULL, NULL);
 
 static void qcon(pmix_pstrg_query_results_t *p)
 {
@@ -102,6 +95,4 @@ static void qdes(pmix_pstrg_query_results_t *p)
 {
     PMIX_LIST_DESTRUCT(&p->results);
 }
-PMIX_CLASS_INSTANCE(pmix_pstrg_query_results_t,
-                    pmix_list_item_t,
-                    qcon, qdes);
+PMIX_CLASS_INSTANCE(pmix_pstrg_query_results_t, pmix_list_item_t, qcon, qdes);

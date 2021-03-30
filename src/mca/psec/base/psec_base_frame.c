@@ -29,7 +29,7 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
@@ -49,7 +49,7 @@ pmix_psec_globals_t pmix_psec_globals = {{{0}}};
 
 static pmix_status_t pmix_psec_close(void)
 {
-  pmix_psec_base_active_module_t *active, *prev;
+    pmix_psec_base_active_module_t *active, *prev;
 
     if (!pmix_psec_globals.initialized) {
         return PMIX_SUCCESS;
@@ -57,12 +57,13 @@ static pmix_status_t pmix_psec_close(void)
     pmix_psec_globals.initialized = false;
     pmix_psec_globals.selected = false;
 
-    PMIX_LIST_FOREACH_SAFE(active, prev, &pmix_psec_globals.actives, pmix_psec_base_active_module_t) {
-      pmix_list_remove_item(&pmix_psec_globals.actives, &active->super);
-      if (NULL != active->component->finalize) {
-        active->component->finalize();
-      }
-      PMIX_RELEASE(active);
+    PMIX_LIST_FOREACH_SAFE (active, prev, &pmix_psec_globals.actives,
+                            pmix_psec_base_active_module_t) {
+        pmix_list_remove_item(&pmix_psec_globals.actives, &active->super);
+        if (NULL != active->component->finalize) {
+            active->component->finalize();
+        }
+        PMIX_RELEASE(active);
     }
     PMIX_DESTRUCT(&pmix_psec_globals.actives);
 
@@ -79,10 +80,8 @@ static pmix_status_t pmix_psec_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_psec_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psec, "PMIx Security Operations",
-                                NULL, pmix_psec_open, pmix_psec_close,
-                                mca_psec_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psec, "PMIx Security Operations", NULL, pmix_psec_open,
+                                pmix_psec_close, mca_psec_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-PMIX_CLASS_INSTANCE(pmix_psec_base_active_module_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_psec_base_active_module_t, pmix_list_item_t, NULL, NULL);

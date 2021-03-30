@@ -46,7 +46,6 @@ BEGIN_C_DECLS
  */
 PMIX_EXPORT int pmix_getcwd(char *buf, size_t size);
 
-
 END_C_DECLS
 
 #endif /* PMIX_GETCWD_H */

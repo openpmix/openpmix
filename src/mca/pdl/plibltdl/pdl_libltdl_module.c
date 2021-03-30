@@ -2,6 +2,7 @@
  * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,7 +16,6 @@
 #include "pmix/mca/pdl/pdl.h"
 
 #include "pdl_libltdl.h"
-
 
 static int plibltpdl_open(const char *fname, bool use_ext, bool private_namespace,
                           pmix_pdl_handle_t **handle, char **err_msg)
@@ -54,10 +54,9 @@ static int plibltpdl_open(const char *fname, bool use_ext, bool private_namespac
         (*handle)->ltpdl_handle = local_handle;
 
 #if PMIX_ENABLE_DEBUG
-        if( NULL != fname ) {
+        if (NULL != fname) {
             (*handle)->filename = strdup(fname);
-        }
-        else {
+        } else {
             (*handle)->filename = strdup("(null)");
         }
 #endif
@@ -66,14 +65,13 @@ static int plibltpdl_open(const char *fname, bool use_ext, bool private_namespac
     }
 
     if (NULL != err_msg) {
-        *err_msg = strdup((char*) lt_dlerror());
+        *err_msg = strdup((char *) lt_dlerror());
     }
     return PMIX_ERROR;
 }
 
-
-static int plibltpdl_lookup(pmix_pdl_handle_t *handle, const char *symbol,
-                            void **ptr, char **err_msg)
+static int plibltpdl_lookup(pmix_pdl_handle_t *handle, const char *symbol, void **ptr,
+                            char **err_msg)
 {
     assert(handle);
     assert(handle->ltpdl_handle);
@@ -90,11 +88,10 @@ static int plibltpdl_lookup(pmix_pdl_handle_t *handle, const char *symbol,
     }
 
     if (NULL != err_msg) {
-        *err_msg = strdup((char*) lt_dlerror());
+        *err_msg = strdup((char *) lt_dlerror());
     }
     return PMIX_ERROR;
 }
-
 
 static int plibltpdl_close(pmix_pdl_handle_t *handle)
 {
@@ -112,8 +109,7 @@ static int plibltpdl_close(pmix_pdl_handle_t *handle)
 }
 
 static int plibltpdl_foreachfile(const char *search_path,
-                                 int (*func)(const char *filename, void *data),
-                                 void *data)
+                                 int (*func)(const char *filename, void *data), void *data)
 {
     assert(search_path);
     assert(func);
@@ -122,13 +118,10 @@ static int plibltpdl_foreachfile(const char *search_path,
     return (0 == ret) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
-
 /*
  * Module definition
  */
-pmix_pdl_base_module_t pmix_pdl_plibltpdl_module = {
-    .open = plibltpdl_open,
-    .lookup = plibltpdl_lookup,
-    .close = plibltpdl_close,
-    .foreachfile = plibltpdl_foreachfile
-};
+pmix_pdl_base_module_t pmix_pdl_plibltpdl_module = {.open = plibltpdl_open,
+                                                    .lookup = plibltpdl_lookup,
+                                                    .close = plibltpdl_close,
+                                                    .foreachfile = plibltpdl_foreachfile};

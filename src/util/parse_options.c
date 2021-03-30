@@ -14,6 +14,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,13 +25,13 @@
 #include "include/pmix_common.h"
 
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 
 #include "src/util/argv.h"
@@ -40,12 +41,12 @@
 
 void pmix_util_parse_range_options(char *inp, char ***output)
 {
-    char **r1=NULL, **r2=NULL;
+    char **r1 = NULL, **r2 = NULL;
     int i, vint;
     int start, end, n;
     char nstr[32];
     char *input, *bang;
-    bool bang_option=false;
+    bool bang_option = false;
 
     /* protect against null input */
     if (NULL == inp) {
@@ -64,7 +65,7 @@ void pmix_util_parse_range_options(char *inp, char ***output)
     /* split on commas */
     r1 = pmix_argv_split(input, ',');
     /* for each resulting element, check for range */
-    for (i=0; i < pmix_argv_count(r1); i++) {
+    for (i = 0; i < pmix_argv_count(r1); i++) {
         r2 = pmix_argv_split(r1[i], '-');
         if (1 < pmix_argv_count(r2)) {
             /* given range - get start and end */
@@ -98,12 +99,11 @@ cleanup:
     }
     free(input);
     pmix_argv_free(r1);
-
 }
 
 void pmix_util_get_ranges(char *inp, char ***startpts, char ***endpts)
 {
-    char **r1=NULL, **r2=NULL;
+    char **r1 = NULL, **r2 = NULL;
     int i;
     char *input;
 
@@ -118,7 +118,7 @@ void pmix_util_get_ranges(char *inp, char ***startpts, char ***endpts)
     /* split on commas */
     r1 = pmix_argv_split(input, ',');
     /* for each resulting element, check for range */
-    for (i=0; i < pmix_argv_count(r1); i++) {
+    for (i = 0; i < pmix_argv_count(r1); i++) {
         r2 = pmix_argv_split(r1[i], '-');
         if (2 == pmix_argv_count(r2)) {
             /* given range - get start and end */
@@ -139,5 +139,4 @@ void pmix_util_get_ranges(char *inp, char ***startpts, char ***endpts)
 
     free(input);
     pmix_argv_free(r1);
-
 }

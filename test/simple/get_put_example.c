@@ -1,12 +1,11 @@
+#include <pmix.h>
 #include <stdbool.h>
 #include <sys/types.h>
-#include <pmix.h>
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
-
+#include <unistd.h>
 
 int main(int argc, char **argv)
 {
@@ -25,10 +24,10 @@ int main(int argc, char **argv)
 
     PMIX_VALUE_LOAD(&pvalue, "hello", PMIX_STRING);
     if (myproc.rank == 0) {
-      if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, "my.foo", &pvalue))) {
-        fprintf(stderr, "Put of my.foo failed\n");
-        exit(1);
-       }
+        if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, "my.foo", &pvalue))) {
+            fprintf(stderr, "Put of my.foo failed\n");
+            exit(1);
+        }
     }
 
     PMIx_Commit();
@@ -43,16 +42,16 @@ int main(int argc, char **argv)
     rootproc = myproc;
     rootproc.rank = 0;
 
-
     if (PMIX_SUCCESS != (rc = PMIx_Get(&rootproc, "my.foo", NULL, 0, &val))) {
-       fprintf(stderr, "Get of root's my.foo failed\n");
-       exit(1);
+        fprintf(stderr, "Get of root's my.foo failed\n");
+        exit(1);
     }
     fprintf(stderr, "[%s:%u]: Get complete and successful\n", myproc.nspace, myproc.rank);
 
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-       fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
-       exit(1);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
+        exit(1);
     }
-    return(rc);
+    return (rc);
 }

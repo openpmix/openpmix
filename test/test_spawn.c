@@ -19,10 +19,9 @@ typedef struct {
     pmix_nspace_t nspace;
 } spawn_cbdata;
 
-static void spawn_cb(pmix_status_t status,
-                      char nspace[], void *cbdata)
+static void spawn_cb(pmix_status_t status, char nspace[], void *cbdata)
 {
-    spawn_cbdata *cb = (spawn_cbdata*)cbdata;
+    spawn_cbdata *cb = (spawn_cbdata *) cbdata;
 
     PMIX_LOAD_NSPACE(cb->nspace, nspace);
     cb->in_progress = 0;
@@ -34,10 +33,10 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
     pmix_app_t *apps;
     size_t napps;
     pmix_nspace_t nspace;
-    memset(nspace, 0, PMIX_MAX_NSLEN+1);
+    memset(nspace, 0, PMIX_MAX_NSLEN + 1);
     napps = 1;
     PMIX_APP_CREATE(apps, napps);
-    apps[0].cmd = strdup("foo");  // need SOMETHING we intend to spawn!
+    apps[0].cmd = strdup("foo"); // need SOMETHING we intend to spawn!
     if (blocking) {
         if (PMIX_SUCCESS != (rc = PMIx_Spawn(NULL, 0, apps, napps, nspace))) {
             PMIX_APP_FREE(apps, napps);
@@ -46,8 +45,8 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
     } else {
         spawn_cbdata cbdata;
         cbdata.in_progress = 1;
-        memset(cbdata.nspace, 0, PMIX_MAX_NSLEN+1);
-        rc = PMIx_Spawn_nb(NULL, 0, apps, napps, spawn_cb, (void*)&cbdata);
+        memset(cbdata.nspace, 0, PMIX_MAX_NSLEN + 1);
+        rc = PMIx_Spawn_nb(NULL, 0, apps, napps, spawn_cb, (void *) &cbdata);
         if (PMIX_SUCCESS != rc) {
             PMIX_APP_FREE(apps, napps);
             exit(rc);

@@ -28,25 +28,25 @@
  *
  */
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <signal.h>
 
-#include "src/util/pmix_environ.h"
 #include "src/util/output.h"
+#include "src/util/pmix_environ.h"
 
 #include "server_callbacks.h"
-#include "utils.h"
-#include "test_server.h"
 #include "test_common.h"
+#include "test_server.h"
+#include "utils.h"
 
 bool spawn_wait = false;
 
 int main(int argc, char **argv)
 {
-    char **client_env=NULL;
-    char **client_argv=NULL;
+    char **client_env = NULL;
+    char **client_argv = NULL;
     int rc, i;
     struct stat stat_buf;
     int test_fail = 0;
@@ -77,15 +77,16 @@ int main(int argc, char **argv)
     free(tmp);
 
     /* verify executable */
-    if( 0 > ( rc = stat(params.binary, &stat_buf) ) ){
-        TEST_ERROR(("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
+    if (0 > (rc = stat(params.binary, &stat_buf))) {
+        TEST_ERROR(
+            ("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
         FREE_TEST_PARAMS(params);
         return 0;
-    } else if( !S_ISREG(stat_buf.st_mode) ){
+    } else if (!S_ISREG(stat_buf.st_mode)) {
         TEST_ERROR(("Client executable \"%s\": is not a regular file", params.binary));
         FREE_TEST_PARAMS(params);
         return 0;
-    }else if( !(stat_buf.st_mode & S_IXUSR) ){
+    } else if (!(stat_buf.st_mode & S_IXUSR)) {
         TEST_ERROR(("Client executable \"%s\": has no executable flag", params.binary));
         FREE_TEST_PARAMS(params);
         return 0;
@@ -118,34 +119,38 @@ int main(int argc, char **argv)
         int base_rank = 0;
 
         /* compute my start counter */
-        for(i = 0; i < my_server_id; i++) {
-            base_rank += (params.nprocs % params.nservers) > (uint32_t)i ?
-                        params.nprocs / params.nservers + 1 :
-                        params.nprocs / params.nservers;
+        for (i = 0; i < my_server_id; i++) {
+            base_rank += (params.nprocs % params.nservers) > (uint32_t) i
+                             ? params.nprocs / params.nservers + 1
+                             : params.nprocs / params.nservers;
         }
         /* we have a single namespace for all clients */
         ns_nprocs = params.nprocs;
-        launched += server_launch_clients(params.lsize, params.nprocs, base_rank,
-                                   &params, &client_env, &client_argv);
+        launched += server_launch_clients(params.lsize, params.nprocs, base_rank, &params,
+                                          &client_env, &client_argv);
     } else {
         char *pch;
         pch = strtok(params.ns_dist, ":");
         while (NULL != pch) {
-            ns_nprocs = (int)strtol(pch, NULL, 10);
-            if (params.nprocs < (uint32_t)(launched+ns_nprocs)) {
-                TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
+            ns_nprocs = (int) strtol(pch, NULL, 10);
+            if (params.nprocs < (uint32_t)(launched + ns_nprocs)) {
+                TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number "
+                            "specified by ns_dist parameter.",
+                            my_server_id));
                 FREE_TEST_PARAMS(params);
                 return PMIX_ERROR;
             }
             if (0 < ns_nprocs) {
-                launched += server_launch_clients(ns_nprocs, ns_nprocs, 0, &params,
-                                           &client_env, &client_argv);
+                launched += server_launch_clients(ns_nprocs, ns_nprocs, 0, &params, &client_env,
+                                                  &client_argv);
             }
-            pch = strtok (NULL, ":");
+            pch = strtok(NULL, ":");
         }
     }
-    if (params.lsize != (uint32_t)launched) {
-        TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by ns_dist parameter.", my_server_id));
+    if (params.lsize != (uint32_t) launched) {
+        TEST_ERROR(("srv #%d: Total number of processes doesn't correspond number specified by "
+                    "ns_dist parameter.",
+                    my_server_id));
         cli_kill_all();
         test_fail = 1;
         goto done;
@@ -159,19 +164,19 @@ int main(int argc, char **argv)
         nanosleep(&ts, NULL);
     }
 
-    if( test_abort ){
+    if (test_abort) {
         TEST_ERROR(("srv #%d: Test was aborted!", my_server_id));
         /* do not simply kill the clients as that generates
          * event notifications which these tests then print
          * out, flooding the log */
-      //  cli_kill_all();
+        //  cli_kill_all();
         test_fail = 1;
     }
 
     if (0 != params.test_spawn) {
         PMIX_WAIT_FOR_COMPLETION(spawn_wait);
     }
-    for(i=0; i < cli_info_cnt; i++){
+    for (i = 0; i < cli_info_cnt; i++) {
         if (cli_info[i].exit_code != 0) {
             ++test_fail;
         }
@@ -180,7 +185,7 @@ int main(int argc, char **argv)
     /* deregister the errhandler */
     PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
-  done:
+done:
     TEST_VERBOSE(("srv #%d: call server_finalize!", my_server_id));
     test_fail += server_finalize(&params, test_fail);
 

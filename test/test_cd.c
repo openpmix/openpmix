@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,7 +20,7 @@ typedef struct {
 
 static void cd_cb(pmix_status_t status, void *cbdata)
 {
-    cd_cbdata *cb = (cd_cbdata*)cbdata;
+    cd_cbdata *cb = (cd_cbdata *) cbdata;
 
     cb->status = status;
     cb->in_progress = 0;
@@ -27,7 +28,7 @@ static void cd_cb(pmix_status_t status, void *cbdata)
 
 static void cnct_cb(pmix_status_t status, void *cbdata)
 {
-    cd_cbdata *cb = (cd_cbdata*)cbdata;
+    cd_cbdata *cb = (cd_cbdata *) cbdata;
 
     cb->status = status;
     cb->in_progress = 0;
@@ -39,7 +40,7 @@ int test_connect_disconnect(char *my_nspace, int my_rank)
     pmix_proc_t proc;
     cd_cbdata cbdata;
 
-    (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    (void) strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
 
     rc = PMIx_Connect(&proc, 1, NULL, 0);

@@ -14,6 +14,7 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -39,11 +40,11 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/class/pmix_object.h"
-#include "src/class/pmix_list.h"
-#include "src/class/pmix_value_array.h"
-#include "src/class/pmix_pointer_array.h"
 #include "src/class/pmix_hash_table.h"
+#include "src/class/pmix_list.h"
+#include "src/class/pmix_object.h"
+#include "src/class/pmix_pointer_array.h"
+#include "src/class/pmix_value_array.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 
 BEGIN_C_DECLS
@@ -53,7 +54,7 @@ BEGIN_C_DECLS
 
 typedef enum {
     /** Variable is valid */
-    PMIX_MCA_BASE_VAR_FLAG_VALID   = 0x00010000,
+    PMIX_MCA_BASE_VAR_FLAG_VALID = 0x00010000,
     /** Variable is a synonym */
     PMIX_MCA_BASE_VAR_FLAG_SYNONYM = 0x00020000,
     /** mbv_source_file needs to be freed */
@@ -62,12 +63,12 @@ typedef enum {
 
 #define PMIX_VAR_FLAG_ISSET(var, flag) (!!((var).mbp_flags & (flag)))
 
-#define PMIX_VAR_IS_VALID(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_VALID))
-#define PMIX_VAR_IS_SYNONYM(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SYNONYM))
-#define PMIX_VAR_IS_INTERNAL(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_INTERNAL))
+#define PMIX_VAR_IS_VALID(var)        (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_VALID))
+#define PMIX_VAR_IS_SYNONYM(var)      (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SYNONYM))
+#define PMIX_VAR_IS_INTERNAL(var)     (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_INTERNAL))
 #define PMIX_VAR_IS_DEFAULT_ONLY(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY))
-#define PMIX_VAR_IS_SETTABLE(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SETTABLE))
-#define PMIX_VAR_IS_DEPRECATED(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DEPRECATED))
+#define PMIX_VAR_IS_SETTABLE(var)     (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SETTABLE))
+#define PMIX_VAR_IS_DEPRECATED(var)   (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DEPRECATED))
 
 PMIX_EXPORT extern const char *pmix_var_type_names[];
 PMIX_EXPORT extern const size_t pmix_var_type_sizes[];
@@ -113,7 +114,9 @@ PMIX_CLASS_DECLARATION(pmix_mca_base_var_file_value_t);
  * @param[out] group       Returned group if it exists
  * @param[in]  invalidok   Return group even if it has been deregistered
  */
-PMIX_EXPORT int pmix_mca_base_var_group_get_internal (const int group_index, pmix_mca_base_var_group_t **group, bool invalidok);
+PMIX_EXPORT int pmix_mca_base_var_group_get_internal(const int group_index,
+                                                     pmix_mca_base_var_group_t **group,
+                                                     bool invalidok);
 
 /**
  * \internal
@@ -127,23 +130,23 @@ PMIX_EXPORT int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t
  *
  * Add a variable to a group
  */
-PMIX_EXPORT int pmix_mca_base_var_group_add_var (const int group_index, const int param_index);
+PMIX_EXPORT int pmix_mca_base_var_group_add_var(const int group_index, const int param_index);
 
 /**
  * \internal
  *
  * Add a performance variable to a group
  */
-PMIX_EXPORT int pmix_mca_base_var_group_add_pvar (const int group_index, const int param_index);
+PMIX_EXPORT int pmix_mca_base_var_group_add_pvar(const int group_index, const int param_index);
 
 /**
  * \internal
  *
  * Generate a full name with _ between all of the non-NULL arguments
  */
-PMIX_EXPORT int pmix_mca_base_var_generate_full_name4 (const char *project, const char *framework,
-                                           const char *component, const char *variable,
-                                           char **full_name);
+PMIX_EXPORT int pmix_mca_base_var_generate_full_name4(const char *project, const char *framework,
+                                                      const char *component, const char *variable,
+                                                      char **full_name);
 
 /**
  * \internal
@@ -157,8 +160,8 @@ PMIX_EXPORT int pmix_mca_base_internal_env_store(void);
  *
  * Initialize/finalize MCA variable groups
  */
-PMIX_EXPORT int pmix_mca_base_var_group_init (void);
-PMIX_EXPORT int pmix_mca_base_var_group_finalize (void);
+PMIX_EXPORT int pmix_mca_base_var_group_init(void);
+PMIX_EXPORT int pmix_mca_base_var_group_finalize(void);
 
 END_C_DECLS
 

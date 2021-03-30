@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -8,13 +9,13 @@
  *
  */
 
+#include <fcntl.h>
+#include <getopt.h>
+#include <jansson.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
-#include <getopt.h>
-#include <fcntl.h>
-#include <jansson.h>
+#include <unistd.h>
 
 int main(int argc, char **argv)
 {
@@ -39,7 +40,7 @@ int main(int argc, char **argv)
             /* signal to exit */
             break;
         }
-        grps = (char*)malloc(len);
+        grps = (char *) malloc(len);
         rc = read(mypipe, grps, len);
         if (0 > rc || len != rc) {
             /* hit an error */

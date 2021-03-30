@@ -15,6 +15,7 @@
  *                         reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,18 +31,18 @@
 #define PMIX_SYS_ARCHITECTURE_H
 
 /* Architectures */
-#define PMIX_UNSUPPORTED    0000
-#define PMIX_IA32           0010
-#define PMIX_X86_64         0030
-#define PMIX_POWERPC32      0050
-#define PMIX_POWERPC64      0051
-#define PMIX_ARM            0100
-#define PMIX_ARM64          0101
-#define PMIX_BUILTIN_GCC    0202
-#define PMIX_BUILTIN_NO     0203
-#define PMIX_BUILTIN_C11    0204
+#define PMIX_UNSUPPORTED 0000
+#define PMIX_IA32        0010
+#define PMIX_X86_64      0030
+#define PMIX_POWERPC32   0050
+#define PMIX_POWERPC64   0051
+#define PMIX_ARM         0100
+#define PMIX_ARM64       0101
+#define PMIX_BUILTIN_GCC 0202
+#define PMIX_BUILTIN_NO  0203
+#define PMIX_BUILTIN_C11 0204
 
 /* Formats */
-#define PMIX_DEFAULT        1000  /* standard for given architecture */
+#define PMIX_DEFAULT 1000 /* standard for given architecture */
 
 #endif /* #ifndef PMIX_SYS_ARCHITECTURE_H */

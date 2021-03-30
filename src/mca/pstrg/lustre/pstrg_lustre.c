@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,55 +14,50 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #include <time.h>
 
 #include "include/pmix_common.h"
 
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/class/pmix_list.h"
-#include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"
-#include "src/class/pmix_list.h"
+#include "src/include/pmix_socket_errno.h"
+#include "src/mca/base/pmix_mca_base_var.h"
+#include "src/mca/preg/preg.h"
 #include "src/util/alfg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/printf.h"
-#include "src/mca/preg/preg.h"
 
-#include "src/mca/pstrg/pstrg.h"
-#include "src/mca/pstrg/base/base.h"
 #include "pstrg_lustre.h"
+#include "src/mca/pstrg/base/base.h"
+#include "src/mca/pstrg/pstrg.h"
 
 static pmix_status_t lustre_init(void);
 static void lustre_finalize(void);
-static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
-                           pmix_list_t *results,
+static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t *results,
                            pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata);
 
-pmix_pstrg_base_module_t pmix_pstrg_lustre_module = {
-    .name = "lustre",
-    .init = lustre_init,
-    .finalize = lustre_finalize,
-    .query = query
-};
+pmix_pstrg_base_module_t pmix_pstrg_lustre_module = {.name = "lustre",
+                                                     .init = lustre_init,
+                                                     .finalize = lustre_finalize,
+                                                     .query = query};
 
 static pmix_status_t lustre_init(void)
 {
-    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output,
-                        "pstrg: lustre init");
+    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output, "pstrg: lustre init");
 
     /* ADD HERE:
      *
@@ -73,8 +69,7 @@ static pmix_status_t lustre_init(void)
 
 static void lustre_finalize(void)
 {
-    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output,
-                        "pstrg: lustre finalize");
+    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output, "pstrg: lustre finalize");
 
     /* ADD HERE:
      *
@@ -82,8 +77,7 @@ static void lustre_finalize(void)
      */
 }
 
-static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
-                           pmix_list_t *results,
+static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t *results,
                            pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata)
 {
     size_t n, m, k;
@@ -92,8 +86,7 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
     uid_t uid = UINT32_MAX;
     gid_t gid = UINT32_MAX;
 
-    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output,
-                        "pstrg: lustre query");
+    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output, "pstrg: lustre query");
 
     /* just put something here so that Travis will pass its tests
      * because it treats warnings as errors, and wants to warn about
@@ -107,11 +100,10 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
 
     /* now on to the real code */
 
-
-    for (n=0; n < nqueries; n++) {
+    for (n = 0; n < nqueries; n++) {
         /* did they specify a storage type for this query? */
         takeus = true;
-        for (k=0; k < queries[n].nqual; k++) {
+        for (k = 0; k < queries[n].nqual; k++) {
             if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_STORAGE_TYPE)) {
 
                 /* NOTE: I only included "lustre" as an accepted type, but we might
@@ -119,7 +111,8 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
 
                 if (NULL == strcasestr("lustre", queries[n].qualifiers[k].value.data.string)) {
                     /* they are not interested in us */
-                    takeus = false;;
+                    takeus = false;
+                    ;
                 }
                 break;
             }
@@ -130,7 +123,7 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
 
         /* see if they want the list of storage systems - this doesn't take any
          * qualifiers */
-        for (m=0; NULL != queries[n].keys[m]; m++) {
+        for (m = 0; NULL != queries[n].keys[m]; m++) {
             if (0 == strcmp(queries[n].keys[m], PMIX_QUERY_STORAGE_LIST)) {
                 /* ADD HERE:
                  *
@@ -147,7 +140,7 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
             /* the remaining query keys all accept the storage ID and/or path qualifiers */
             sid = NULL;
             mountpt = NULL;
-            for (k=0; k < queries[n].nqual; k++) {
+            for (k = 0; k < queries[n].nqual; k++) {
                 if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_STORAGE_ID)) {
                     /* there may be more than one (comma-delimited) storage ID, so
                      * split them into a NULL-terminated argv-type array */
@@ -192,7 +185,6 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
                 if (UINT32_MAX == uid || UINT32_MAX == gid) {
                     /* they failed to provide the user's info - I will
                      * take care of returning an appropriate error */
-
                 }
 
                 /*
@@ -233,7 +225,6 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
                 if (UINT32_MAX == uid || UINT32_MAX == gid) {
                     /* they failed to provide the user's info - I will
                      * take care of returning an appropriate error */
-
                 }
 
                 /*
@@ -264,7 +255,6 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
                 if (UINT32_MAX == uid || UINT32_MAX == gid) {
                     /* they failed to provide the user's info - I will
                      * take care of returning an appropriate error */
-
                 }
 
                 /*

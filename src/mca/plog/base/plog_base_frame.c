@@ -15,14 +15,14 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
-#include "src/threads/threads.h"
-#include "src/util/argv.h"
 #include "src/mca/base/base.h"
 #include "src/mca/plog/base/base.h"
+#include "src/threads/threads.h"
+#include "src/util/argv.h"
 
 /*
  * The following file was created by configure.  It contains extern
@@ -34,20 +34,16 @@
 
 /* Instantiate the global vars */
 pmix_plog_globals_t pmix_plog_globals = {{0}};
-pmix_plog_API_module_t pmix_plog = {
-    .log = pmix_plog_base_log
-};
+pmix_plog_API_module_t pmix_plog = {.log = pmix_plog_base_log};
 
 static char *order = NULL;
 static int pmix_plog_register(pmix_mca_base_register_flag_t flags)
 {
-    (void)flags;
+    (void) flags;
     pmix_mca_base_var_register("pmix", "plog", "base", "order",
                                "Comma-delimited, prioritized list of logging channels",
                                PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                               PMIX_INFO_LVL_2,
-                               PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                               &order);
+                               PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY, &order);
     if (NULL != order) {
         pmix_plog_globals.channels = pmix_argv_split(order, ',');
     }
@@ -65,12 +61,14 @@ static pmix_status_t pmix_plog_close(void)
     pmix_plog_globals.initialized = false;
     pmix_plog_globals.selected = false;
 
-    for (n=0; n < pmix_plog_globals.actives.size; n++) {
-        if (NULL == (active = (pmix_plog_base_active_module_t*)pmix_pointer_array_get_item(&pmix_plog_globals.actives, n))) {
+    for (n = 0; n < pmix_plog_globals.actives.size; n++) {
+        if (NULL
+            == (active = (pmix_plog_base_active_module_t *)
+                    pmix_pointer_array_get_item(&pmix_plog_globals.actives, n))) {
             continue;
         }
         if (NULL != active->module->finalize) {
-          active->module->finalize();
+            active->module->finalize();
         }
         PMIX_RELEASE(active);
         pmix_pointer_array_set_item(&pmix_plog_globals.actives, n, NULL);
@@ -96,15 +94,13 @@ static pmix_status_t pmix_plog_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_plog_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, plog, "PMIx Logging Operations",
-                                pmix_plog_register, pmix_plog_open, pmix_plog_close,
-                                mca_plog_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, plog, "PMIx Logging Operations", pmix_plog_register,
+                                pmix_plog_open, pmix_plog_close, mca_plog_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 static void acon(pmix_plog_base_active_module_t *p)
 {
     p->reqd = false;
     p->added = false;
 }
-PMIX_CLASS_INSTANCE(pmix_plog_base_active_module_t,
-                    pmix_list_item_t,
-                    acon, NULL);
+PMIX_CLASS_INSTANCE(pmix_plog_base_active_module_t, pmix_list_item_t, acon, NULL);

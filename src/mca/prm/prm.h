@@ -5,6 +5,7 @@
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,10 +30,10 @@
 #include "include/pmix_common.h"
 
 #include "src/class/pmix_list.h"
-#include "src/mca/mca.h"
-#include "src/mca/base/pmix_mca_base_var.h"
-#include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/base/pmix_mca_base_var.h"
+#include "src/mca/mca.h"
 #include "src/server/pmix_server_ops.h"
 
 BEGIN_C_DECLS
@@ -72,19 +73,17 @@ typedef pmix_status_t (*pmix_prm_base_module_notify_fn_t)(pmix_status_t status,
 typedef struct {
     char *name;
     /* init/finalize */
-    pmix_prm_base_module_init_fn_t                 init;
-    pmix_prm_base_module_fini_fn_t                 finalize;
-    pmix_prm_base_module_notify_fn_t               notify;
+    pmix_prm_base_module_init_fn_t init;
+    pmix_prm_base_module_fini_fn_t finalize;
+    pmix_prm_base_module_notify_fn_t notify;
 } pmix_prm_module_t;
-
 
 /**
  * Base structure for a PRM API - don't expose the init/finalize fns
  */
 typedef struct {
-    pmix_prm_base_module_notify_fn_t               notify;
+    pmix_prm_base_module_notify_fn_t notify;
 } pmix_prm_API_module_t;
-
 
 /* declare the global APIs */
 PMIX_EXPORT extern pmix_prm_API_module_t pmix_prm;
@@ -93,16 +92,15 @@ PMIX_EXPORT extern pmix_prm_API_module_t pmix_prm;
  * the standard component data structure
  */
 struct pmix_prm_base_component_t {
-    pmix_mca_base_component_t                        base;
-    pmix_mca_base_component_data_t                   data;
+    pmix_mca_base_component_t base;
+    pmix_mca_base_component_data_t data;
 };
 typedef struct pmix_prm_base_component_t pmix_prm_base_component_t;
 
 /*
  * Macro for use in components that are of type prm
  */
-#define PMIX_PRM_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("prm", 1, 0, 0)
+#define PMIX_PRM_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("prm", 1, 0, 0)
 
 END_C_DECLS
 

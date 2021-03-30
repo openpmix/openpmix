@@ -31,7 +31,7 @@
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include PMIX_EVENT_HEADER
 
@@ -40,8 +40,8 @@
 #include "include/pmix_tool.h"
 
 #include "src/class/pmix_hash_table.h"
-#include "src/class/pmix_list.h"
 #include "src/class/pmix_hotel.h"
+#include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
 #include "src/threads/threads.h"
 
@@ -53,19 +53,19 @@
 BEGIN_C_DECLS
 
 /* some limits */
-#define PMIX_MAX_CRED_SIZE      131072              // set max at 128kbytes
-#define PMIX_MAX_ERR_CONSTANT   INT_MIN
+#define PMIX_MAX_CRED_SIZE    131072 // set max at 128kbytes
+#define PMIX_MAX_ERR_CONSTANT INT_MIN
 
 /* internal-only attributes */
-#define PMIX_BFROPS_MODULE                  "pmix.bfrops.mod"       // (char*) name of bfrops plugin in-use by a given nspace
-#define PMIX_PNET_SETUP_APP                 "pmix.pnet.setapp"      // (pmix_byte_object_t) blob containing info to be given to
-                                                                    //      pnet framework on remote nodes
+#define PMIX_BFROPS_MODULE \
+    "pmix.bfrops.mod" // (char*) name of bfrops plugin in-use by a given nspace
+#define PMIX_PNET_SETUP_APP \
+    "pmix.pnet.setapp" // (pmix_byte_object_t) blob containing info to be given to
+                       //      pnet framework on remote nodes
 
-#define PMIX_INFO_OP_COMPLETE    0x80000000
-#define PMIX_INFO_OP_COMPLETED(m)            \
-    ((pmix_info_t*)(m))->flags |= PMIX_INFO_OP_COMPLETE
-#define PMIX_INFO_OP_IS_COMPLETE(m)          \
-    ((m)->flags & PMIX_INFO_OP_COMPLETE)
+#define PMIX_INFO_OP_COMPLETE       0x80000000
+#define PMIX_INFO_OP_COMPLETED(m)   ((pmix_info_t *) (m))->flags |= PMIX_INFO_OP_COMPLETE
+#define PMIX_INFO_OP_IS_COMPLETE(m) ((m)->flags & PMIX_INFO_OP_COMPLETE)
 
 /* define an internal-only process name that has
  * a dynamically-sized nspace field to save memory */
@@ -104,43 +104,42 @@ PMIX_CLASS_DECLARATION(pmix_topo_obj_t);
 typedef uint8_t pmix_cmd_t;
 
 /* define some commands */
-#define PMIX_REQ_CMD                         0
-#define PMIX_ABORT_CMD                       1
-#define PMIX_COMMIT_CMD                      2
-#define PMIX_FENCENB_CMD                     3
-#define PMIX_GETNB_CMD                       4
-#define PMIX_FINALIZE_CMD                    5
-#define PMIX_PUBLISHNB_CMD                   6
-#define PMIX_LOOKUPNB_CMD                    7
-#define PMIX_UNPUBLISHNB_CMD                 8
-#define PMIX_SPAWNNB_CMD                     9
-#define PMIX_CONNECTNB_CMD                  10
-#define PMIX_DISCONNECTNB_CMD               11
-#define PMIX_NOTIFY_CMD                     12
-#define PMIX_REGEVENTS_CMD                  13
-#define PMIX_DEREGEVENTS_CMD                14
-#define PMIX_QUERY_CMD                      15
-#define PMIX_LOG_CMD                        16
-#define PMIX_ALLOC_CMD                      17
-#define PMIX_JOB_CONTROL_CMD                18
-#define PMIX_MONITOR_CMD                    19
-#define PMIX_GET_CREDENTIAL_CMD             20
-#define PMIX_VALIDATE_CRED_CMD              21
-#define PMIX_IOF_PULL_CMD                   22
-#define PMIX_IOF_PUSH_CMD                   23
-#define PMIX_GROUP_CONSTRUCT_CMD            24
-#define PMIX_GROUP_JOIN_CMD                 25
-#define PMIX_GROUP_INVITE_CMD               26
-#define PMIX_GROUP_LEAVE_CMD                27
-#define PMIX_GROUP_DESTRUCT_CMD             28
-#define PMIX_IOF_DEREG_CMD                  29
-#define PMIX_FABRIC_REGISTER_CMD            30
-#define PMIX_FABRIC_UPDATE_CMD              31
-#define PMIX_FABRIC_COMPUTE_DISTANCES_CMD   32
-
+#define PMIX_REQ_CMD                      0
+#define PMIX_ABORT_CMD                    1
+#define PMIX_COMMIT_CMD                   2
+#define PMIX_FENCENB_CMD                  3
+#define PMIX_GETNB_CMD                    4
+#define PMIX_FINALIZE_CMD                 5
+#define PMIX_PUBLISHNB_CMD                6
+#define PMIX_LOOKUPNB_CMD                 7
+#define PMIX_UNPUBLISHNB_CMD              8
+#define PMIX_SPAWNNB_CMD                  9
+#define PMIX_CONNECTNB_CMD                10
+#define PMIX_DISCONNECTNB_CMD             11
+#define PMIX_NOTIFY_CMD                   12
+#define PMIX_REGEVENTS_CMD                13
+#define PMIX_DEREGEVENTS_CMD              14
+#define PMIX_QUERY_CMD                    15
+#define PMIX_LOG_CMD                      16
+#define PMIX_ALLOC_CMD                    17
+#define PMIX_JOB_CONTROL_CMD              18
+#define PMIX_MONITOR_CMD                  19
+#define PMIX_GET_CREDENTIAL_CMD           20
+#define PMIX_VALIDATE_CRED_CMD            21
+#define PMIX_IOF_PULL_CMD                 22
+#define PMIX_IOF_PUSH_CMD                 23
+#define PMIX_GROUP_CONSTRUCT_CMD          24
+#define PMIX_GROUP_JOIN_CMD               25
+#define PMIX_GROUP_INVITE_CMD             26
+#define PMIX_GROUP_LEAVE_CMD              27
+#define PMIX_GROUP_DESTRUCT_CMD           28
+#define PMIX_IOF_DEREG_CMD                29
+#define PMIX_FABRIC_REGISTER_CMD          30
+#define PMIX_FABRIC_UPDATE_CMD            31
+#define PMIX_FABRIC_COMPUTE_DISTANCES_CMD 32
 
 /* provide a "pretty-print" function for cmds */
-const char* pmix_command_string(pmix_cmd_t cmd);
+const char *pmix_command_string(pmix_cmd_t cmd);
 
 /* provide a hook to init tool data */
 PMIX_EXPORT extern pmix_status_t pmix_tool_init_info(void);
@@ -200,24 +199,24 @@ typedef struct {
         uint8_t minor;
         uint8_t release;
     } version;
-    pmix_rank_t nprocs;          // num procs in this nspace
+    pmix_rank_t nprocs; // num procs in this nspace
     size_t nlocalprocs;
-    size_t num_waiting;          // number of local procs waiting for debugger attach/release
-    bool all_registered;         // all local ranks have been defined
-    bool version_stored;         // the version string used by this nspace has been stored
-    pmix_buffer_t *jobbkt;       // packed version of jobinfo
-    size_t ndelivered;           // count of #local clients that have received the jobinfo
-    size_t nfinalized;           // count of #local clients that have finalized
-    pmix_list_t ranks;           // list of pmix_rank_info_t for connection support of my clients
+    size_t num_waiting;    // number of local procs waiting for debugger attach/release
+    bool all_registered;   // all local ranks have been defined
+    bool version_stored;   // the version string used by this nspace has been stored
+    pmix_buffer_t *jobbkt; // packed version of jobinfo
+    size_t ndelivered;     // count of #local clients that have received the jobinfo
+    size_t nfinalized;     // count of #local clients that have finalized
+    pmix_list_t ranks;     // list of pmix_rank_info_t for connection support of my clients
     /* all members of an nspace are required to have the
      * same personality, but it can differ between nspaces.
      * Since servers may support clients from multiple nspaces,
      * track their respective compatibility modules here */
     pmix_personality_t compat;
-    pmix_epilog_t epilog;       // things to do upon termination of all local clients
-                                // from this nspace
-    pmix_list_t setup_data;     // list of pmix_kval_t containing info structs having blobs
-                                // for setting up the local node for this nspace/application
+    pmix_epilog_t epilog;   // things to do upon termination of all local clients
+                            // from this nspace
+    pmix_list_t setup_data; // list of pmix_kval_t containing info structs having blobs
+                            // for setting up the local node for this nspace/application
 } pmix_namespace_t;
 PMIX_CLASS_DECLARATION(pmix_namespace_t);
 
@@ -231,16 +230,15 @@ PMIX_CLASS_DECLARATION(pmix_nspace_caddy_t);
 
 typedef struct pmix_rank_info_t {
     pmix_list_item_t super;
-    int peerid;                 // peer object index into the local clients array on the server
+    int peerid; // peer object index into the local clients array on the server
     pmix_name_t pname;
     uid_t uid;
     gid_t gid;
     bool modex_recvd;
-    int proc_cnt;              // #clones of this rank we know about
-    void *server_object;       // pointer to rank-specific object provided by server
+    int proc_cnt;        // #clones of this rank we know about
+    void *server_object; // pointer to rank-specific object provided by server
 } pmix_rank_info_t;
 PMIX_CLASS_DECLARATION(pmix_rank_info_t);
-
 
 /* define a very simple caddy for dealing with pmix_info_t
  * and pmix_query_t objects when transferring portions of arrays */
@@ -276,27 +274,26 @@ PMIX_CLASS_DECLARATION(pmix_proclist_t);
  * by the socket, not the process nspace/rank */
 typedef struct pmix_peer_t {
     pmix_object_t super;
-    pmix_namespace_t *nptr;            // point to the nspace object for this process
+    pmix_namespace_t *nptr; // point to the nspace object for this process
     pmix_rank_info_t *info;
     pmix_proc_type_t proc_type;
     pmix_listener_protocol_t protocol;
     int proc_cnt;
-    int index;                      // index into the local clients array on the server
+    int index; // index into the local clients array on the server
     int sd;
-    bool finalized;                 // peer has called finalize
-    pmix_event_t send_event;        /**< registration with event thread for send events */
+    bool finalized;          // peer has called finalize
+    pmix_event_t send_event; /**< registration with event thread for send events */
     bool send_ev_active;
-    pmix_event_t recv_event;        /**< registration with event thread for recv events */
+    pmix_event_t recv_event; /**< registration with event thread for recv events */
     bool recv_ev_active;
-    pmix_list_t send_queue;         /**< list of messages to send */
-    pmix_ptl_send_t *send_msg;      /**< current send in progress */
-    pmix_ptl_recv_t *recv_msg;      /**< current recv in progress */
+    pmix_list_t send_queue;    /**< list of messages to send */
+    pmix_ptl_send_t *send_msg; /**< current send in progress */
+    pmix_ptl_recv_t *recv_msg; /**< current recv in progress */
     int commit_cnt;
-    pmix_epilog_t epilog;           /**< things to be performed upon
-                                         termination of this peer */
+    pmix_epilog_t epilog; /**< things to be performed upon
+                               termination of this peer */
 } pmix_peer_t;
 PMIX_CLASS_DECLARATION(pmix_peer_t);
-
 
 /* tracker for IOF requests */
 typedef struct {
@@ -314,10 +311,7 @@ typedef struct {
 } pmix_iof_req_t;
 PMIX_CLASS_DECLARATION(pmix_iof_req_t);
 
-typedef void (*pmix_pstrg_query_cbfunc_t)(pmix_status_t status,
-                                          pmix_list_t *results,
-                                          void *cbdata);
-
+typedef void (*pmix_pstrg_query_cbfunc_t)(pmix_status_t status, pmix_list_t *results, void *cbdata);
 
 /* caddy for query requests */
 typedef struct {
@@ -351,25 +345,26 @@ typedef struct {
     pmix_list_item_t super;
     pmix_event_t ev;
     bool event_active;
-    bool host_called;               // tracker has been passed up to host
-    bool local;                     // operation is strictly local
-    char *id;                       // string identifier for the collective
+    bool host_called; // tracker has been passed up to host
+    bool local;       // operation is strictly local
+    char *id;         // string identifier for the collective
     pmix_cmd_t type;
     pmix_proc_t pname;
-    bool hybrid;                    // true if participating procs are from more than one nspace
-    pmix_proc_t *pcs;               // copy of the original array of participants
-    size_t   npcs;                  // number of procs in the array
-    pmix_list_t nslist;             // unique nspace list of participants
-    pmix_lock_t lock;               // flag for waiting for completion
-    bool def_complete;              // all local procs have been registered and the trk definition is complete
-    pmix_list_t local_cbs;          // list of pmix_server_caddy_t for sending result to the local participants
-                                    //    Note: there may be multiple entries for a given proc if that proc
-                                    //    has fork/exec'd clones that are also participating
-    uint32_t nlocal;                // number of local participants
-    uint32_t local_cnt;             // number of local participants who have contributed
-    pmix_info_t *info;              // array of info structs
-    size_t ninfo;                   // number of info structs in array
-    pmix_collect_t collect_type;    // whether or not data is to be returned at completion
+    bool hybrid;        // true if participating procs are from more than one nspace
+    pmix_proc_t *pcs;   // copy of the original array of participants
+    size_t npcs;        // number of procs in the array
+    pmix_list_t nslist; // unique nspace list of participants
+    pmix_lock_t lock;   // flag for waiting for completion
+    bool def_complete;  // all local procs have been registered and the trk definition is complete
+    pmix_list_t
+        local_cbs;      // list of pmix_server_caddy_t for sending result to the local participants
+                        //    Note: there may be multiple entries for a given proc if that proc
+                        //    has fork/exec'd clones that are also participating
+    uint32_t nlocal;    // number of local participants
+    uint32_t local_cnt; // number of local participants who have contributed
+    pmix_info_t *info;  // array of info structs
+    size_t ninfo;       // number of info structs in array
+    pmix_collect_t collect_type; // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
     void *cbdata;
@@ -393,8 +388,8 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
 /****    THREAD-RELATED    ****/
- /* define a caddy for thread-shifting operations */
- typedef struct {
+/* define a caddy for thread-shifting operations */
+typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     pmix_lock_t lock;
@@ -418,14 +413,14 @@ PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
     pmix_server_trkr_t *tracker;
     bool enviro;
     union {
-       pmix_release_cbfunc_t relfn;
-       pmix_hdlr_reg_cbfunc_t hdlrregcbfn;
-       pmix_op_cbfunc_t opcbfn;
-       pmix_modex_cbfunc_t modexcbfunc;
+        pmix_release_cbfunc_t relfn;
+        pmix_hdlr_reg_cbfunc_t hdlrregcbfn;
+        pmix_op_cbfunc_t opcbfn;
+        pmix_modex_cbfunc_t modexcbfunc;
     } cbfunc;
     void *cbdata;
     size_t ref;
- } pmix_shift_caddy_t;
+} pmix_shift_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_shift_caddy_t);
 
 typedef struct {
@@ -481,25 +476,22 @@ typedef struct {
 } pmix_cb_t;
 PMIX_CLASS_DECLARATION(pmix_cb_t);
 
-#define PMIX_THREADSHIFT(r, c)                              \
- do {                                                       \
-    pmix_event_assign(&((r)->ev), pmix_globals.evbase,      \
-                      -1, EV_WRITE, (c), (r));              \
-    PMIX_POST_OBJECT((r));                                  \
-    pmix_event_active(&((r)->ev), EV_WRITE, 1);             \
-} while (0)
+#define PMIX_THREADSHIFT(r, c)                                                      \
+    do {                                                                            \
+        pmix_event_assign(&((r)->ev), pmix_globals.evbase, -1, EV_WRITE, (c), (r)); \
+        PMIX_POST_OBJECT((r));                                                      \
+        pmix_event_active(&((r)->ev), EV_WRITE, 1);                                 \
+    } while (0)
 
-#define PMIX_THREADSHIFT_DELAY(r, c, t)                     \
- do {                                                       \
-    struct timeval _tv = {0, 0};                            \
-    pmix_event_evtimer_set(pmix_globals.evbase, &(r)->ev,   \
-                               (c), (r));                   \
-    _tv.tv_sec = (int)(t);                                  \
-    _tv.tv_usec = ((t) - _tv.tv_sec) * 1000000.0;           \
-    PMIX_POST_OBJECT((r));                                  \
-    pmix_event_evtimer_add(&(r)->ev, &_tv);                 \
-} while (0)
-
+#define PMIX_THREADSHIFT_DELAY(r, c, t)                                  \
+    do {                                                                 \
+        struct timeval _tv = {0, 0};                                     \
+        pmix_event_evtimer_set(pmix_globals.evbase, &(r)->ev, (c), (r)); \
+        _tv.tv_sec = (int) (t);                                          \
+        _tv.tv_usec = ((t) -_tv.tv_sec) * 1000000.0;                     \
+        PMIX_POST_OBJECT((r));                                           \
+        pmix_event_evtimer_add(&(r)->ev, &_tv);                          \
+    } while (0)
 
 typedef struct {
     pmix_object_t super;
@@ -519,7 +511,7 @@ typedef struct {
      */
     pmix_proc_t *targets;
     size_t ntargets;
-    size_t nleft;   // number of targets left to be notified
+    size_t nleft; // number of targets left to be notified
     /* When generating a notification, the originator can
      * specify the range of procs affected by this event.
      * For example, when creating a JOB_TERMINATED event,
@@ -546,38 +538,37 @@ typedef struct {
 } pmix_notify_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 
-
 /****    GLOBAL STORAGE    ****/
 /* define a global construct that includes values that must be shared
  * between various parts of the code library. The client, tool,
  * and server libraries must instance this structure */
 typedef struct {
-    int init_cntr;                      // #times someone called Init - #times called Finalize
+    int init_cntr; // #times someone called Init - #times called Finalize
     pmix_proc_t myid;
     pmix_value_t myidval;
     pmix_value_t myrankval;
-    pmix_peer_t *mypeer;                // my own peer object
-    uid_t uid;                          // my effective uid
-    gid_t gid;                          // my effective gid
-    char *hostname;                     // my hostname
-    uint32_t appnum;                    // my appnum
-    pid_t pid;                          // my local pid
-    uint32_t nodeid;                    // my nodeid, if given
+    pmix_peer_t *mypeer; // my own peer object
+    uid_t uid;           // my effective uid
+    gid_t gid;           // my effective gid
+    char *hostname;      // my hostname
+    uint32_t appnum;     // my appnum
+    pid_t pid;           // my local pid
+    uint32_t nodeid;     // my nodeid, if given
     int pindex;
     pmix_event_base_t *evbase;
     int debug_output;
-    pmix_events_t events;               // my event handler registrations.
+    pmix_events_t events; // my event handler registrations.
     bool connected;
     bool commits_pending;
     struct timeval event_window;
-    pmix_list_t cached_events;          // events waiting in the window prior to processing
-    pmix_pointer_array_t iof_requests;  // array of pmix_iof_req_t IOF requests
-    int max_events;                     // size of the notifications hotel
-    int event_eviction_time;            // max time to cache notifications
-    pmix_hotel_t notifications;         // hotel of pending notifications
+    pmix_list_t cached_events;         // events waiting in the window prior to processing
+    pmix_pointer_array_t iof_requests; // array of pmix_iof_req_t IOF requests
+    int max_events;                    // size of the notifications hotel
+    int event_eviction_time;           // max time to cache notifications
+    pmix_hotel_t notifications;        // hotel of pending notifications
     /* IOF controls */
     bool pushstdin;
-    pmix_list_t stdin_targets;          // list of pmix_namelist_t
+    pmix_list_t stdin_targets; // list of pmix_namelist_t
     bool tag_output;
     bool xml_output;
     bool timestamp_output;
@@ -596,24 +587,22 @@ PMIX_EXPORT pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd);
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
 
-static inline bool pmix_check_node_info(const char* key)
+static inline bool pmix_check_node_info(const char *key)
 {
-    char *keys[] = {
-    	PMIX_HOSTNAME,
-    	PMIX_HOSTNAME_ALIASES,
-    	PMIX_NODEID,
-    	PMIX_AVAIL_PHYS_MEMORY,
-        PMIX_LOCAL_PEERS,
-        PMIX_LOCAL_PROCS,
-        PMIX_LOCAL_CPUSETS,
-        PMIX_LOCAL_SIZE,
-        PMIX_NODE_SIZE,
-        PMIX_LOCALLDR,
-        NULL
-    };
+    char *keys[] = {PMIX_HOSTNAME,
+                    PMIX_HOSTNAME_ALIASES,
+                    PMIX_NODEID,
+                    PMIX_AVAIL_PHYS_MEMORY,
+                    PMIX_LOCAL_PEERS,
+                    PMIX_LOCAL_PROCS,
+                    PMIX_LOCAL_CPUSETS,
+                    PMIX_LOCAL_SIZE,
+                    PMIX_NODE_SIZE,
+                    PMIX_LOCALLDR,
+                    NULL};
     size_t n;
 
-    for (n=0; NULL != keys[n]; n++) {
+    for (n = 0; NULL != keys[n]; n++) {
         if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
             return true;
         }
@@ -621,21 +610,13 @@ static inline bool pmix_check_node_info(const char* key)
     return false;
 }
 
-static inline bool pmix_check_app_info(const char* key)
+static inline bool pmix_check_app_info(const char *key)
 {
-    char *keys[] = {
-        PMIX_APP_SIZE,
-        PMIX_APPLDR,
-        PMIX_APP_ARGV,
-        PMIX_WDIR,
-        PMIX_PSET_NAME,
-        PMIX_APP_MAP_TYPE,
-        PMIX_APP_MAP_REGEX,
-        NULL
-    };
+    char *keys[] = {PMIX_APP_SIZE,  PMIX_APPLDR,       PMIX_APP_ARGV,      PMIX_WDIR,
+                    PMIX_PSET_NAME, PMIX_APP_MAP_TYPE, PMIX_APP_MAP_REGEX, NULL};
     size_t n;
 
-    for (n=0; NULL != keys[n]; n++) {
+    for (n = 0; NULL != keys[n]; n++) {
         if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
             return true;
         }
@@ -643,29 +624,20 @@ static inline bool pmix_check_app_info(const char* key)
     return false;
 }
 
-static inline bool pmix_check_session_info(const char* key)
+static inline bool pmix_check_session_info(const char *key)
 {
-    char *keys[] = {
-        PMIX_SESSION_ID,
-        PMIX_CLUSTER_ID,
-        PMIX_UNIV_SIZE,
-        PMIX_TMPDIR,
-        PMIX_TDIR_RMCLEAN,
-        PMIX_HOSTNAME_KEEP_FQDN,
-        PMIX_RM_NAME,
-        PMIX_RM_VERSION,
-        NULL
-    };
+    char *keys[] = {PMIX_SESSION_ID, PMIX_CLUSTER_ID,   PMIX_UNIV_SIZE,
+                    PMIX_TMPDIR,     PMIX_TDIR_RMCLEAN, PMIX_HOSTNAME_KEEP_FQDN,
+                    PMIX_RM_NAME,    PMIX_RM_VERSION,   NULL};
     size_t n;
 
-    for (n=0; NULL != keys[n]; n++) {
+    for (n = 0; NULL != keys[n]; n++) {
         if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
             return true;
         }
     }
     return false;
 }
-
 
 END_C_DECLS
 

@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Voltaire All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,33 +21,23 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
 #include "src/class/pmix_list.h"
+#include "include/pmix_common.h"
 
 /*
  *  List classes
  */
 
-static void pmix_list_item_construct(pmix_list_item_t*);
-static void pmix_list_item_destruct(pmix_list_item_t*);
+static void pmix_list_item_construct(pmix_list_item_t *);
+static void pmix_list_item_destruct(pmix_list_item_t *);
 
-PMIX_CLASS_INSTANCE(
-    pmix_list_item_t,
-    pmix_object_t,
-    pmix_list_item_construct,
-    pmix_list_item_destruct
-);
+PMIX_CLASS_INSTANCE(pmix_list_item_t, pmix_object_t, pmix_list_item_construct,
+                    pmix_list_item_destruct);
 
-static void pmix_list_construct(pmix_list_t*);
-static void pmix_list_destruct(pmix_list_t*);
+static void pmix_list_construct(pmix_list_t *);
+static void pmix_list_destruct(pmix_list_t *);
 
-PMIX_CLASS_INSTANCE(
-    pmix_list_t,
-    pmix_object_t,
-    pmix_list_construct,
-    pmix_list_destruct
-);
-
+PMIX_CLASS_INSTANCE(pmix_list_t, pmix_object_t, pmix_list_construct, pmix_list_destruct);
 
 /*
  *
@@ -67,11 +58,10 @@ static void pmix_list_item_construct(pmix_list_item_t *item)
 static void pmix_list_item_destruct(pmix_list_item_t *item)
 {
 #if PMIX_ENABLE_DEBUG
-    assert( 0 == item->pmix_list_item_refcount );
-    assert( NULL == item->pmix_list_item_belong_to );
-#endif  /* PMIX_ENABLE_DEBUG */
+    assert(0 == item->pmix_list_item_refcount);
+    assert(NULL == item->pmix_list_item_belong_to);
+#endif /* PMIX_ENABLE_DEBUG */
 }
-
 
 /*
  *
@@ -86,8 +76,8 @@ static void pmix_list_construct(pmix_list_t *list)
        should never be removed from this list, added to another list,
        etc.  So set them to sentinel values. */
 
-    PMIX_CONSTRUCT( &(list->pmix_list_sentinel), pmix_list_item_t );
-    list->pmix_list_sentinel.pmix_list_item_refcount  = 1;
+    PMIX_CONSTRUCT(&(list->pmix_list_sentinel), pmix_list_item_t);
+    list->pmix_list_sentinel.pmix_list_item_refcount = 1;
     list->pmix_list_sentinel.pmix_list_item_belong_to = list;
 #endif
 
@@ -95,7 +85,6 @@ static void pmix_list_construct(pmix_list_t *list)
     list->pmix_list_sentinel.pmix_list_prev = &list->pmix_list_sentinel;
     list->pmix_list_length = 0;
 }
-
 
 /*
  * Reset all the pointers to be NULL -- do not actually destroy
@@ -106,22 +95,20 @@ static void pmix_list_destruct(pmix_list_t *list)
     pmix_list_construct(list);
 }
 
-
 /*
  * Insert an item at a specific place in a list
  */
 bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, long long idx)
 {
     /* Adds item to list at index and retains item. */
-    int     i;
+    int i;
     volatile pmix_list_item_t *ptr, *next;
 
-    if ( idx >= (long long)list->pmix_list_length ) {
+    if (idx >= (long long) list->pmix_list_length) {
         return false;
     }
 
-    if ( 0 == idx )
-    {
+    if (0 == idx) {
         pmix_list_prepend(list, item);
     } else {
 #if PMIX_ENABLE_DEBUG
@@ -132,7 +119,7 @@ bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, long long idx)
 #endif
         /* pointer to element 0 */
         ptr = list->pmix_list_sentinel.pmix_list_next;
-        for ( i = 0; i < idx-1; i++ )
+        for (i = 0; i < idx - 1; i++)
             ptr = ptr->pmix_list_next;
 
         next = ptr->pmix_list_next;
@@ -155,11 +142,8 @@ bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, long long idx)
     return true;
 }
 
-
-static
-void
-pmix_list_transfer(pmix_list_item_t *pos, pmix_list_item_t *begin,
-                   pmix_list_item_t *end)
+static void pmix_list_transfer(pmix_list_item_t *pos, pmix_list_item_t *begin,
+                               pmix_list_item_t *end)
 {
     volatile pmix_list_item_t *tmp;
 
@@ -176,25 +160,21 @@ pmix_list_transfer(pmix_list_item_t *pos, pmix_list_item_t *begin,
         begin->pmix_list_prev = tmp;
 #if PMIX_ENABLE_DEBUG
         {
-            volatile pmix_list_item_t* item = begin;
-            while( pos != item ) {
+            volatile pmix_list_item_t *item = begin;
+            while (pos != item) {
                 item->pmix_list_item_belong_to = pos->pmix_list_item_belong_to;
                 item = item->pmix_list_next;
                 assert(NULL != item);
             }
         }
-#endif  /* PMIX_ENABLE_DEBUG */
+#endif /* PMIX_ENABLE_DEBUG */
     }
 }
 
-
-void
-pmix_list_join(pmix_list_t *thislist, pmix_list_item_t *pos,
-               pmix_list_t *xlist)
+void pmix_list_join(pmix_list_t *thislist, pmix_list_item_t *pos, pmix_list_t *xlist)
 {
     if (0 != pmix_list_get_size(xlist)) {
-        pmix_list_transfer(pos, pmix_list_get_first(xlist),
-                           pmix_list_get_end(xlist));
+        pmix_list_transfer(pos, pmix_list_get_first(xlist), pmix_list_get_end(xlist));
 
         /* fix the sizes */
         thislist->pmix_list_length += xlist->pmix_list_length;
@@ -202,11 +182,8 @@ pmix_list_join(pmix_list_t *thislist, pmix_list_item_t *pos,
     }
 }
 
-
-void
-pmix_list_splice(pmix_list_t *thislist, pmix_list_item_t *pos,
-                 pmix_list_t *xlist, pmix_list_item_t *first,
-                 pmix_list_item_t *last)
+void pmix_list_splice(pmix_list_t *thislist, pmix_list_item_t *pos, pmix_list_t *xlist,
+                      pmix_list_item_t *first, pmix_list_item_t *last)
 {
     size_t change = 0;
     pmix_list_item_t *tmp;
@@ -216,7 +193,7 @@ pmix_list_splice(pmix_list_t *thislist, pmix_list_item_t *pos,
          * first, since last might be end and then we wouldn't be able
          * to run the loop)
          */
-        for (tmp = first ; tmp != last ; tmp = pmix_list_get_next(tmp)) {
+        for (tmp = first; tmp != last; tmp = pmix_list_get_next(tmp)) {
             change++;
         }
 
@@ -228,31 +205,28 @@ pmix_list_splice(pmix_list_t *thislist, pmix_list_item_t *pos,
     }
 }
 
-
-int pmix_list_sort(pmix_list_t* list, pmix_list_item_compare_fn_t compare)
+int pmix_list_sort(pmix_list_t *list, pmix_list_item_compare_fn_t compare)
 {
-    pmix_list_item_t* item;
-    pmix_list_item_t** items;
-    size_t i, index=0;
+    pmix_list_item_t *item;
+    pmix_list_item_t **items;
+    size_t i, index = 0;
 
     if (0 == list->pmix_list_length) {
         return PMIX_SUCCESS;
     }
-    items = (pmix_list_item_t**)malloc(sizeof(pmix_list_item_t*) *
-                                       list->pmix_list_length);
+    items = (pmix_list_item_t **) malloc(sizeof(pmix_list_item_t *) * list->pmix_list_length);
 
     if (NULL == items) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    while(NULL != (item = pmix_list_remove_first(list))) {
+    while (NULL != (item = pmix_list_remove_first(list))) {
         items[index++] = item;
     }
 
-    qsort(items, index, sizeof(pmix_list_item_t*),
-          (int(*)(const void*,const void*))compare);
-    for (i=0; i<index; i++) {
-        pmix_list_append(list,items[i]);
+    qsort(items, index, sizeof(pmix_list_item_t *), (int (*)(const void *, const void *)) compare);
+    for (i = 0; i < index; i++) {
+        pmix_list_append(list, items[i]);
     }
     free(items);
     return PMIX_SUCCESS;

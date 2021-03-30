@@ -6,6 +6,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,9 +32,9 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/mca/mca.h"
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/base/pmix_mca_base_var.h"
+#include "src/mca/mca.h"
 #include "src/mca/ptl/ptl_types.h"
 
 BEGIN_C_DECLS
@@ -66,8 +67,9 @@ typedef void (*pmix_psec_base_module_fini_fn_t)(void);
  * plus any other info the agent chooses to return.
  */
 typedef pmix_status_t (*pmix_psec_base_module_create_cred_fn_t)(struct pmix_peer_t *peer,
-                                                                const pmix_info_t directives[], size_t ndirs,
-                                                                pmix_info_t **info, size_t *ninfo,
+                                                                const pmix_info_t directives[],
+                                                                size_t ndirs, pmix_info_t **info,
+                                                                size_t *ninfo,
                                                                 pmix_byte_object_t *cred);
 
 /**
@@ -76,7 +78,6 @@ typedef pmix_status_t (*pmix_psec_base_module_create_cred_fn_t)(struct pmix_peer
  * credential and handshake interfaces. It is acceptable, therefore,
  * for one of them to be NULL */
 typedef pmix_status_t (*pmix_psec_base_module_client_hndshk_fn_t)(int sd);
-
 
 /****    SERVER-SIDE FUNCTIONS    ****/
 /**
@@ -90,8 +91,9 @@ typedef pmix_status_t (*pmix_psec_base_module_client_hndshk_fn_t)(int sd);
  * chooses to return (e.g., the uid/gid contained in the credential)
  */
 typedef pmix_status_t (*pmix_psec_base_module_validate_cred_fn_t)(struct pmix_peer_t *peer,
-                                                                  const pmix_info_t directives[], size_t ndirs,
-                                                                  pmix_info_t **info, size_t *ninfo,
+                                                                  const pmix_info_t directives[],
+                                                                  size_t ndirs, pmix_info_t **info,
+                                                                  size_t *ninfo,
                                                                   const pmix_byte_object_t *cred);
 
 /**
@@ -107,82 +109,72 @@ typedef pmix_status_t (*pmix_psec_base_module_server_hndshk_fn_t)(int sd);
 typedef struct {
     char *name;
     /* init/finalize */
-    pmix_psec_base_module_init_fn_t           init;
-    pmix_psec_base_module_fini_fn_t           finalize;
+    pmix_psec_base_module_init_fn_t init;
+    pmix_psec_base_module_fini_fn_t finalize;
     /** Client-side */
-    pmix_psec_base_module_create_cred_fn_t    create_cred;
-    pmix_psec_base_module_client_hndshk_fn_t  client_handshake;
+    pmix_psec_base_module_create_cred_fn_t create_cred;
+    pmix_psec_base_module_client_hndshk_fn_t client_handshake;
     /** Server-side */
-    pmix_psec_base_module_validate_cred_fn_t  validate_cred;
-    pmix_psec_base_module_server_hndshk_fn_t  server_handshake;
+    pmix_psec_base_module_validate_cred_fn_t validate_cred;
+    pmix_psec_base_module_server_hndshk_fn_t server_handshake;
 } pmix_psec_module_t;
-
 
 /* define an API module */
 
 /* get a list of available options - caller must free results
  * when done */
-PMIX_EXPORT char* pmix_psec_base_get_available_modules(void);
+PMIX_EXPORT char *pmix_psec_base_get_available_modules(void);
 
 /* Select a psec module for a given peer */
-PMIX_EXPORT pmix_psec_module_t* pmix_psec_base_assign_module(const char *options);
+PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options);
 
 /* MACROS FOR EXECUTING PSEC FUNCTIONS */
 
-#define PMIX_PSEC_CREATE_CRED(r, p, d, nd, in, nin, c)                      \
-    (r) = (p)->nptr->compat.psec->create_cred((struct pmix_peer_t*)(p),     \
-                                              (d), (nd), (in), (nin), c)
+#define PMIX_PSEC_CREATE_CRED(r, p, d, nd, in, nin, c) \
+    (r) = (p)->nptr->compat.psec->create_cred((struct pmix_peer_t *) (p), (d), (nd), (in), (nin), c)
 
-#define PMIX_PSEC_CLIENT_HANDSHAKE(r, p, sd) \
-    (r) = (p)->nptr->compat.psec->client_handshake(sd)
+#define PMIX_PSEC_CLIENT_HANDSHAKE(r, p, sd) (r) = (p)->nptr->compat.psec->client_handshake(sd)
 
-#define PMIX_PSEC_VALIDATE_CRED(r, p, d, nd, in, nin, c)                    \
-    (r) = (p)->nptr->compat.psec->validate_cred((struct pmix_peer_t*)(p),   \
-                                                (d), (nd),                  \
-                                                (in), (nin), c)
+#define PMIX_PSEC_VALIDATE_CRED(r, p, d, nd, in, nin, c)                                     \
+    (r) = (p)->nptr->compat.psec->validate_cred((struct pmix_peer_t *) (p), (d), (nd), (in), \
+                                                (nin), c)
 
-#define PMIX_PSEC_VALIDATE_CONNECTION(r, p, d, nd, in, nin, c)                                              \
-    do {                                                                                                    \
-        int _r;                                                                                             \
-        /* if a credential is available, then check it */                                                   \
-        if (NULL != (p)->nptr->compat.psec->validate_cred) {                                                \
-            _r = (p)->nptr->compat.psec->validate_cred((struct pmix_peer_t*)(p),                            \
-                                                       (d), (nd), (in), (nin), c);                          \
-            if (PMIX_SUCCESS != _r) {                                                                       \
-                pmix_output_verbose(2, pmix_globals.debug_output,                                           \
-                                    "validation of credential failed: %s",                                  \
-                                    PMIx_Error_string(_r));                                                 \
-            } else {                                                                                        \
-                pmix_output_verbose(2, pmix_globals.debug_output,                                           \
-                                    "credential validated");                                                \
-            }                                                                                               \
-            (r) = _r;                                                                                       \
-        } else if (NULL != (p)->nptr->compat.psec->server_handshake) {                                      \
-            /* request the handshake if the security mode calls for it */                                   \
-            pmix_output_verbose(2, pmix_globals.debug_output,                                               \
-                                "requesting handshake");                                                    \
-            _r = PMIX_ERR_READY_FOR_HANDSHAKE;                                                              \
-            (r) = _r;                                                                                       \
-        } else {                                                                                            \
-            /* this is not allowed */                                                                       \
-            (r) = PMIX_ERR_NOT_SUPPORTED;                                                                   \
-        }                                                                                                   \
-    } while(0)
+#define PMIX_PSEC_VALIDATE_CONNECTION(r, p, d, nd, in, nin, c)                                     \
+    do {                                                                                           \
+        int _r;                                                                                    \
+        /* if a credential is available, then check it */                                          \
+        if (NULL != (p)->nptr->compat.psec->validate_cred) {                                       \
+            _r = (p)->nptr->compat.psec->validate_cred((struct pmix_peer_t *) (p), (d), (nd),      \
+                                                       (in), (nin), c);                            \
+            if (PMIX_SUCCESS != _r) {                                                              \
+                pmix_output_verbose(2, pmix_globals.debug_output,                                  \
+                                    "validation of credential failed: %s", PMIx_Error_string(_r)); \
+            } else {                                                                               \
+                pmix_output_verbose(2, pmix_globals.debug_output, "credential validated");         \
+            }                                                                                      \
+            (r) = _r;                                                                              \
+        } else if (NULL != (p)->nptr->compat.psec->server_handshake) {                             \
+            /* request the handshake if the security mode calls for it */                          \
+            pmix_output_verbose(2, pmix_globals.debug_output, "requesting handshake");             \
+            _r = PMIX_ERR_READY_FOR_HANDSHAKE;                                                     \
+            (r) = _r;                                                                              \
+        } else {                                                                                   \
+            /* this is not allowed */                                                              \
+            (r) = PMIX_ERR_NOT_SUPPORTED;                                                          \
+        }                                                                                          \
+    } while (0)
 
-
-#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(r, p, d, nd, in, nin, c)                                      \
-    if(PMIX_ERR_READY_FOR_HANDSHAKE == r) {                                                             \
-        int _r;                                                                                         \
-        /* execute the handshake if the security mode calls for it */                                   \
-        pmix_output_verbose(2, pmix_globals.debug_output,                                               \
-                            "executing handshake");                                                     \
-        if (PMIX_SUCCESS != (_r = p->nptr->compat.psec->server_handshake((p)->sd))) {                   \
-            PMIX_ERROR_LOG(_r);                                                                         \
-        }                                                                                               \
-        /* Update the reply status */                                                                   \
-        (r) = _r;                                                                                       \
+#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(r, p, d, nd, in, nin, c)                    \
+    if (PMIX_ERR_READY_FOR_HANDSHAKE == r) {                                          \
+        int _r;                                                                       \
+        /* execute the handshake if the security mode calls for it */                 \
+        pmix_output_verbose(2, pmix_globals.debug_output, "executing handshake");     \
+        if (PMIX_SUCCESS != (_r = p->nptr->compat.psec->server_handshake((p)->sd))) { \
+            PMIX_ERROR_LOG(_r);                                                       \
+        }                                                                             \
+        /* Update the reply status */                                                 \
+        (r) = _r;                                                                     \
     }
-
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
 
@@ -193,26 +185,25 @@ typedef pmix_status_t (*pmix_psec_base_component_init_fn_t)(void);
 typedef void (*pmix_psec_base_component_finalize_fn_t)(void);
 
 /* define a component-level API for getting a module */
-typedef pmix_psec_module_t* (*pmix_psec_base_component_assign_module_fn_t)(void);
+typedef pmix_psec_module_t *(*pmix_psec_base_component_assign_module_fn_t)(void);
 
 /*
  * the standard component data structure
  */
 struct pmix_psec_base_component_t {
-    pmix_mca_base_component_t                        base;
-    pmix_mca_base_component_data_t                   data;
-    int                                              priority;
-    pmix_psec_base_component_init_fn_t               init;
-    pmix_psec_base_component_finalize_fn_t           finalize;
-    pmix_psec_base_component_assign_module_fn_t      assign_module;
+    pmix_mca_base_component_t base;
+    pmix_mca_base_component_data_t data;
+    int priority;
+    pmix_psec_base_component_init_fn_t init;
+    pmix_psec_base_component_finalize_fn_t finalize;
+    pmix_psec_base_component_assign_module_fn_t assign_module;
 };
 typedef struct pmix_psec_base_component_t pmix_psec_base_component_t;
 
 /*
  * Macro for use in components that are of type psec
  */
-#define PMIX_PSEC_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("psec", 1, 0, 0)
+#define PMIX_PSEC_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("psec", 1, 0, 0)
 
 END_C_DECLS
 

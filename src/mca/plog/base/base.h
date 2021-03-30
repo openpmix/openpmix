@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,22 +27,20 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h> /* for struct timeval */
+#    include <sys/time.h> /* for struct timeval */
 #endif
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/threads/threads.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
+#include "src/threads/threads.h"
 
 #include "src/mca/plog/plog.h"
-
 
 BEGIN_C_DECLS
 
@@ -71,7 +70,6 @@ struct pmix_plog_base_active_module_t {
 typedef struct pmix_plog_base_active_module_t pmix_plog_base_active_module_t;
 PMIX_CLASS_DECLARATION(pmix_plog_base_active_module_t);
 
-
 /* framework globals */
 struct pmix_plog_globals_t {
     pmix_lock_t lock;
@@ -84,10 +82,9 @@ typedef struct pmix_plog_globals_t pmix_plog_globals_t;
 
 PMIX_EXPORT extern pmix_plog_globals_t pmix_plog_globals;
 
-PMIX_EXPORT pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
-                                             const pmix_info_t data[], size_t ndata,
-                                             const pmix_info_t directives[], size_t ndirs,
-                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t data[],
+                                             size_t ndata, const pmix_info_t directives[],
+                                             size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 END_C_DECLS
 

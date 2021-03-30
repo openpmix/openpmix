@@ -16,6 +16,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -92,7 +93,6 @@ BEGIN_C_DECLS
  *     functions - they don't need to duplicate all that code!
  */
 
-
 /* The following functions are exposed to the user - they
  * therefore are implemented in the bfrops/base functions
  * as wrappers to the real functions.
@@ -101,8 +101,6 @@ BEGIN_C_DECLS
  * USE THE MACROS INSTEAD
  */
 bool pmix_value_cmp(pmix_value_t *p, pmix_value_t *p1);
-
-
 
 /****    MODULE INTERFACE DEFINITION    ****/
 
@@ -164,10 +162,8 @@ typedef void (*pmix_bfrop_finalize_fn_t)(void);
  * status_code = pmix_bfrop.pack(buffer, &src, 1, PMIX_INT32);
  * @endcode
  */
-typedef pmix_status_t (*pmix_bfrop_pack_fn_t)(pmix_buffer_t *buffer,
-                                              const void *src,
-                                              int32_t num_values,
-                                              pmix_data_type_t type);
+typedef pmix_status_t (*pmix_bfrop_pack_fn_t)(pmix_buffer_t *buffer, const void *src,
+                                              int32_t num_values, pmix_data_type_t type);
 
 /**
  * Unpack values from a buffer.
@@ -257,8 +253,7 @@ typedef pmix_status_t (*pmix_bfrop_pack_fn_t)(pmix_buffer_t *buffer,
  * @endcode
  */
 typedef pmix_status_t (*pmix_bfrop_unpack_fn_t)(pmix_buffer_t *buffer, void *dest,
-                                                int32_t *max_num_values,
-                                                pmix_data_type_t type);
+                                                int32_t *max_num_values, pmix_data_type_t type);
 /**
  * Copy a payload from one buffer to another
  * This function will append a copy of the payload in one buffer into
@@ -270,8 +265,7 @@ typedef pmix_status_t (*pmix_bfrop_unpack_fn_t)(pmix_buffer_t *buffer, void *des
  * source buffer's payload will remain intact, as will any pre-existing
  * payload in the destination's buffer.
  */
-typedef pmix_status_t (*pmix_bfrop_copy_payload_fn_t)(pmix_buffer_t *dest,
-                                                      pmix_buffer_t *src);
+typedef pmix_status_t (*pmix_bfrop_copy_payload_fn_t)(pmix_buffer_t *dest, pmix_buffer_t *src);
 
 /**
  * Copy a data value from one location to another.
@@ -296,8 +290,7 @@ typedef pmix_status_t (*pmix_bfrop_copy_payload_fn_t)(pmix_buffer_t *dest,
  * @retval PMIX_ERROR(s) An appropriate error code.
  *
  */
-typedef pmix_status_t (*pmix_bfrop_copy_fn_t)(void **dest, void *src,
-                                              pmix_data_type_t type);
+typedef pmix_status_t (*pmix_bfrop_copy_fn_t)(void **dest, void *src, pmix_data_type_t type);
 
 /**
  * Print a data value.
@@ -310,8 +303,8 @@ typedef pmix_status_t (*pmix_bfrop_copy_fn_t)(void **dest, void *src,
  *
  * @retval PMIX_ERROR(s) An appropriate error code.
  */
-typedef pmix_status_t (*pmix_bfrop_print_fn_t)(char **output, char *prefix,
-                                               void *src, pmix_data_type_t type);
+typedef pmix_status_t (*pmix_bfrop_print_fn_t)(char **output, char *prefix, void *src,
+                                               pmix_data_type_t type);
 
 /**
  * Transfer a value from one pmix_value_t to another. Ordinarily,
@@ -323,9 +316,7 @@ typedef pmix_status_t (*pmix_bfrop_print_fn_t)(char **output, char *prefix,
  *
  * @retval PMIX_ERROR(s) An appropriate error code
  */
-typedef pmix_status_t (*pmix_bfrop_value_xfer_fn_t)(pmix_value_t *dest,
-                                                    const pmix_value_t *src);
-
+typedef pmix_status_t (*pmix_bfrop_value_xfer_fn_t)(pmix_value_t *dest, const pmix_value_t *src);
 
 /**
  * Load data into a pmix_value_t object. Again, this is provided
@@ -341,8 +332,7 @@ typedef void (*pmix_bfrop_value_load_fn_t)(pmix_value_t *v, const void *data,
  *
  * @retval PMIX_ERROR(s) An appropriate error code
  */
-typedef pmix_status_t (*pmix_bfrop_value_unload_fn_t)(pmix_value_t *kv,
-                                                      void **data, size_t *sz);
+typedef pmix_status_t (*pmix_bfrop_value_unload_fn_t)(pmix_value_t *kv, void **data, size_t *sz);
 
 /**
  * Compare two pmix_value_t structs
@@ -358,77 +348,69 @@ typedef pmix_status_t (*pmix_bfrop_base_register_fn_t)(const char *name, pmix_da
                                                        pmix_bfrop_print_fn_t print);
 
 /* return the string name of a provided data type */
-typedef const char* (*pmix_bfrop_data_type_string_fn_t)(pmix_data_type_t type);
+typedef const char *(*pmix_bfrop_data_type_string_fn_t)(pmix_data_type_t type);
 
 /**
  * Base structure for a BFROP module
  */
 typedef struct {
     char *version;
-    pmix_bfrop_init_fn_t              init;
-    pmix_bfrop_finalize_fn_t          finalize;
-    pmix_bfrop_pack_fn_t              pack;
-    pmix_bfrop_unpack_fn_t            unpack;
-    pmix_bfrop_copy_fn_t              copy;
-    pmix_bfrop_print_fn_t             print;
-    pmix_bfrop_copy_payload_fn_t      copy_payload;
-    pmix_bfrop_value_xfer_fn_t        value_xfer;
-    pmix_bfrop_value_load_fn_t        value_load;
-    pmix_bfrop_value_unload_fn_t      value_unload;
-    pmix_bfrop_value_cmp_fn_t         value_cmp;
-    pmix_bfrop_base_register_fn_t     register_type;
-    pmix_bfrop_data_type_string_fn_t  data_type_string;
+    pmix_bfrop_init_fn_t init;
+    pmix_bfrop_finalize_fn_t finalize;
+    pmix_bfrop_pack_fn_t pack;
+    pmix_bfrop_unpack_fn_t unpack;
+    pmix_bfrop_copy_fn_t copy;
+    pmix_bfrop_print_fn_t print;
+    pmix_bfrop_copy_payload_fn_t copy_payload;
+    pmix_bfrop_value_xfer_fn_t value_xfer;
+    pmix_bfrop_value_load_fn_t value_load;
+    pmix_bfrop_value_unload_fn_t value_unload;
+    pmix_bfrop_value_cmp_fn_t value_cmp;
+    pmix_bfrop_base_register_fn_t register_type;
+    pmix_bfrop_data_type_string_fn_t data_type_string;
 } pmix_bfrops_module_t;
-
 
 /* get a list of available versions - caller must free results
  * when done */
-PMIX_EXPORT char* pmix_bfrops_base_get_available_modules(void);
+PMIX_EXPORT char *pmix_bfrops_base_get_available_modules(void);
 
 /* Select a bfrops module for a given version */
-PMIX_EXPORT pmix_bfrops_module_t* pmix_bfrops_base_assign_module(const char *version);
+PMIX_EXPORT pmix_bfrops_module_t *pmix_bfrops_base_assign_module(const char *version);
 
 /* provide a backdoor to access the framework debug output */
 PMIX_EXPORT extern int pmix_bfrops_base_output;
 
 /* MACROS FOR EXECUTING BFROPS FUNCTIONS */
-#define PMIX_BFROPS_ASSIGN_TYPE(p, b)               \
-    (b)->type = (p)->nptr->compat.type
+#define PMIX_BFROPS_ASSIGN_TYPE(p, b) (b)->type = (p)->nptr->compat.type
 
-#define PMIX_BFROPS_PACK(r, p, b, s, n, t)                          \
-    do {                                                            \
-        pmix_output_verbose(2, pmix_bfrops_base_output,             \
-                            "[%s:%d] PACK version %s",              \
-                            __FILE__, __LINE__,                     \
-                            (p)->nptr->compat.bfrops->version);     \
-        if (PMIX_BFROP_BUFFER_UNDEF == (b)->type) {                 \
-            (b)->type = (p)->nptr->compat.type;                     \
-            (r) = (p)->nptr->compat.bfrops->pack(b, s, n, t);       \
-        } else if ((b)->type == (p)->nptr->compat.type) {           \
-            (r) = (p)->nptr->compat.bfrops->pack(b, s, n, t);       \
-        } else {                                                    \
-            (r) = PMIX_ERR_PACK_MISMATCH;                           \
-        }                                                           \
-    } while(0)
+#define PMIX_BFROPS_PACK(r, p, b, s, n, t)                                                   \
+    do {                                                                                     \
+        pmix_output_verbose(2, pmix_bfrops_base_output, "[%s:%d] PACK version %s", __FILE__, \
+                            __LINE__, (p)->nptr->compat.bfrops->version);                    \
+        if (PMIX_BFROP_BUFFER_UNDEF == (b)->type) {                                          \
+            (b)->type = (p)->nptr->compat.type;                                              \
+            (r) = (p)->nptr->compat.bfrops->pack(b, s, n, t);                                \
+        } else if ((b)->type == (p)->nptr->compat.type) {                                    \
+            (r) = (p)->nptr->compat.bfrops->pack(b, s, n, t);                                \
+        } else {                                                                             \
+            (r) = PMIX_ERR_PACK_MISMATCH;                                                    \
+        }                                                                                    \
+    } while (0)
 
-#define PMIX_BFROPS_UNPACK(r, p, b, d, m, t)                        \
-    do {                                                            \
-        pmix_output_verbose(2, pmix_bfrops_base_output,             \
-                            "[%s:%d] UNPACK version %s",            \
-                            __FILE__, __LINE__,                     \
-                            (p)->nptr->compat.bfrops->version);     \
-        if ((b)->type == (p)->nptr->compat.type) {                  \
-            (r) = (p)->nptr->compat.bfrops->unpack(b, d, m, t);     \
-        } else {                                                    \
-            (r) = PMIX_ERR_UNPACK_FAILURE;                          \
-        }                                                           \
-    } while(0)
+#define PMIX_BFROPS_UNPACK(r, p, b, d, m, t)                                                   \
+    do {                                                                                       \
+        pmix_output_verbose(2, pmix_bfrops_base_output, "[%s:%d] UNPACK version %s", __FILE__, \
+                            __LINE__, (p)->nptr->compat.bfrops->version);                      \
+        if ((b)->type == (p)->nptr->compat.type) {                                             \
+            (r) = (p)->nptr->compat.bfrops->unpack(b, d, m, t);                                \
+        } else {                                                                               \
+            (r) = PMIX_ERR_UNPACK_FAILURE;                                                     \
+        }                                                                                      \
+    } while (0)
 
-#define PMIX_BFROPS_COPY(r, p, d, s, t)             \
-    (r) = (p)->nptr->compat.bfrops->copy(d, s, t)
+#define PMIX_BFROPS_COPY(r, p, d, s, t) (r) = (p)->nptr->compat.bfrops->copy(d, s, t)
 
-#define PMIX_BFROPS_PRINT(r, p, o, pr, s, t)        \
-    (r) = (p)->nptr->compat.bfrops->print(o, pr, s, t)
+#define PMIX_BFROPS_PRINT(r, p, o, pr, s, t) (r) = (p)->nptr->compat.bfrops->print(o, pr, s, t)
 
 #define PMIX_BFROPS_COPY_PAYLOAD(r, p, d, s)                    \
     do {                                                        \
@@ -440,49 +422,43 @@ PMIX_EXPORT extern int pmix_bfrops_base_output;
         } else {                                                \
             (r) = PMIX_ERR_PACK_MISMATCH;                       \
         }                                                       \
-    } while(0)
+    } while (0)
 
-#define PMIX_BFROPS_VALUE_XFER(r, p, d, s)          \
-    (r) = (p)->nptr->compat.bfrops->value_xfer(d, s)
+#define PMIX_BFROPS_VALUE_XFER(r, p, d, s) (r) = (p)->nptr->compat.bfrops->value_xfer(d, s)
 
-#define PMIX_BFROPS_VALUE_LOAD(p, v, d, t)          \
-    (p)->nptr->compat.bfrops->value_load(v, d, t)
+#define PMIX_BFROPS_VALUE_LOAD(p, v, d, t) (p)->nptr->compat.bfrops->value_load(v, d, t)
 
-#define PMIX_BFROPS_VALUE_UNLOAD(r, p, k, d, s)     \
-    (r) = (p)->nptr->compat.bfrops->value_unload(k,, d, s)
+#define PMIX_BFROPS_VALUE_UNLOAD(r, p, k, d, s) \
+    (r) = (p)->nptr->compat.bfrops->value_unload(k, , d, s)
 
-#define PMIX_BFROPS_VALUE_CMP(r, p, q, s)           \
-    (r) = (p)->nptr->compat.bfrops->value_cmp(q, s)
+#define PMIX_BFROPS_VALUE_CMP(r, p, q, s) (r) = (p)->nptr->compat.bfrops->value_cmp(q, s)
 
-#define PMIX_BFROPS_REGISTER(r, p, n, t, pk, u, c, pr)   \
+#define PMIX_BFROPS_REGISTER(r, p, n, t, pk, u, c, pr) \
     (r) = (p)->nptr->compat.bfrops->register_type(n, t, pk, u, c, pr)
 
-#define PMIX_BFROPS_PRINT_TYPE(c, p, t)             \
-    (c) = (p)->nptr->compat.bfrops->data_type_string(t)
-
+#define PMIX_BFROPS_PRINT_TYPE(c, p, t) (c) = (p)->nptr->compat.bfrops->data_type_string(t)
 
 /****    COMPONENT STRUCTURE DEFINITION    ****/
 
 /* define a component-level API for getting a module */
-typedef pmix_bfrops_module_t* (*pmix_bfrop_base_component_assign_module_fn_t)(void);
+typedef pmix_bfrops_module_t *(*pmix_bfrop_base_component_assign_module_fn_t)(void);
 
 /*
  * the standard component data structure
  */
 struct pmix_bfrops_base_component_t {
-    pmix_mca_base_component_t                           base;
-    pmix_mca_base_component_data_t                      data;
-    int                                                 priority;
-    pmix_pointer_array_t                                types;
-    pmix_bfrop_base_component_assign_module_fn_t        assign_module;
+    pmix_mca_base_component_t base;
+    pmix_mca_base_component_data_t data;
+    int priority;
+    pmix_pointer_array_t types;
+    pmix_bfrop_base_component_assign_module_fn_t assign_module;
 };
 typedef struct pmix_bfrops_base_component_t pmix_bfrops_base_component_t;
 
 /*
  * Macro for use in components that are of type bfrops
  */
-#define PMIX_BFROPS_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("bfrops", 1, 0, 0)
+#define PMIX_BFROPS_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("bfrops", 1, 0, 0)
 
 END_C_DECLS
 

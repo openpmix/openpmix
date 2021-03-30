@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,20 +27,18 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h> /* for struct timeval */
+#    include <sys/time.h> /* for struct timeval */
 #endif
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_pointer_array.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/preg/preg.h"
-
 
 BEGIN_C_DECLS
 
@@ -67,25 +66,20 @@ struct pmix_preg_base_active_module_t {
 typedef struct pmix_preg_base_active_module_t pmix_preg_base_active_module_t;
 PMIX_CLASS_DECLARATION(pmix_preg_base_active_module_t);
 
-
 /* framework globals */
 struct pmix_preg_globals_t {
-  pmix_list_t actives;
-  bool initialized;
-  bool selected;
+    pmix_list_t actives;
+    bool initialized;
+    bool selected;
 };
 typedef struct pmix_preg_globals_t pmix_preg_globals_t;
 
 PMIX_EXPORT extern pmix_preg_globals_t pmix_preg_globals;
 
-PMIX_EXPORT pmix_status_t pmix_preg_base_generate_node_regex(const char *input,
-                                                             char **regex);
-PMIX_EXPORT pmix_status_t pmix_preg_base_generate_ppn(const char *input,
-                                                      char **ppn);
-PMIX_EXPORT pmix_status_t pmix_preg_base_parse_nodes(const char *regexp,
-                                                     char ***names);
-PMIX_EXPORT pmix_status_t pmix_preg_base_parse_procs(const char *regexp,
-                                                     char ***procs);
+PMIX_EXPORT pmix_status_t pmix_preg_base_generate_node_regex(const char *input, char **regex);
+PMIX_EXPORT pmix_status_t pmix_preg_base_generate_ppn(const char *input, char **ppn);
+PMIX_EXPORT pmix_status_t pmix_preg_base_parse_nodes(const char *regexp, char ***names);
+PMIX_EXPORT pmix_status_t pmix_preg_base_parse_procs(const char *regexp, char ***procs);
 PMIX_EXPORT pmix_status_t pmix_preg_base_copy(char **dest, size_t *len, const char *input);
 
 PMIX_EXPORT pmix_status_t pmix_preg_base_pack(pmix_buffer_t *buffer, const char *input);

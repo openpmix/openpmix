@@ -15,58 +15,51 @@
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 
 #include "include/pmix_common.h"
 
-#include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_socket_errno.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 
-#include "src/mca/psec/base/base.h"
 #include "psec_native.h"
+#include "src/mca/psec/base/base.h"
 
 static pmix_status_t native_init(void);
 static void native_finalize(void);
-static pmix_status_t create_cred(struct pmix_peer_t *peer,
-                                 const pmix_info_t directives[], size_t ndirs,
-                                 pmix_info_t **info, size_t *ninfo,
+static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                 size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred);
-static pmix_status_t validate_cred(struct pmix_peer_t *peer,
-                                   const pmix_info_t directives[], size_t ndirs,
-                                   pmix_info_t **info, size_t *ninfo,
+static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                   size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                    const pmix_byte_object_t *cred);
 
-pmix_psec_module_t pmix_native_module = {
-    .name = "native",
-    .init = native_init,
-    .finalize = native_finalize,
-    .create_cred = create_cred,
-    .validate_cred = validate_cred
-};
+pmix_psec_module_t pmix_native_module = {.name = "native",
+                                         .init = native_init,
+                                         .finalize = native_finalize,
+                                         .create_cred = create_cred,
+                                         .validate_cred = validate_cred};
 
 static pmix_status_t native_init(void)
 {
-    pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                        "psec: native init");
+    pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: native init");
     return PMIX_SUCCESS;
 }
 
 static void native_finalize(void)
 {
-    pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                        "psec: native finalize");
+    pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: native finalize");
 }
 
-static pmix_status_t create_cred(struct pmix_peer_t *peer,
-                                 const pmix_info_t directives[], size_t ndirs,
-                                 pmix_info_t **info, size_t *ninfo,
+static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                 size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred)
 {
-    pmix_peer_t *pr = (pmix_peer_t*)peer;
+    pmix_peer_t *pr = (pmix_peer_t *) peer;
     char **types;
     size_t n, m;
     bool takeus;
@@ -83,13 +76,13 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
         /* cycle across the provided info and see if they specified
          * any desired credential types */
         takeus = true;
-        for (n=0; n < ndirs; n++) {
+        for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
                 /* see if we are included */
                 types = pmix_argv_split(directives[n].value.data.string, ',');
                 /* start by assuming they don't want us */
                 takeus = false;
-                for (m=0; NULL != types[m]; m++) {
+                for (m = 0; NULL != types[m]; m++) {
                     if (0 == strcmp(types[m], "native")) {
                         /* it's us! */
                         takeus = true;
@@ -112,7 +105,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
     } else if (PMIX_PROTOCOL_V2 == pr->protocol) {
         /* tcp protocol - need to provide our effective
          * uid and gid for validation on remote end */
-        tmp = (char*)malloc(sizeof(uid_t) + sizeof(gid_t));
+        tmp = (char *) malloc(sizeof(uid_t) + sizeof(gid_t));
         if (NULL == tmp) {
             return PMIX_ERR_NOMEM;
         }
@@ -130,7 +123,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-  complete:
+complete:
     if (NULL != info) {
         /* mark that this came from us */
         PMIX_INFO_CREATE(*info, 1);
@@ -143,21 +136,20 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t validate_cred(struct pmix_peer_t *peer,
-                                   const pmix_info_t directives[], size_t ndirs,
-                                   pmix_info_t **info, size_t *ninfo,
+static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                   size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                    const pmix_byte_object_t *cred)
 {
-    pmix_peer_t *pr = (pmix_peer_t*)peer;
+    pmix_peer_t *pr = (pmix_peer_t *) peer;
 
 #if defined(SO_PEERCRED)
-#ifdef HAVE_STRUCT_SOCKPEERCRED_UID
-#define HAVE_STRUCT_UCRED_UID
+#    ifdef HAVE_STRUCT_SOCKPEERCRED_UID
+#        define HAVE_STRUCT_UCRED_UID
     struct sockpeercred ucred;
-#else
+#    else
     struct ucred ucred;
-#endif
-    socklen_t crlen = sizeof (ucred);
+#    endif
+    socklen_t crlen = sizeof(ucred);
 #endif
     uid_t euid = (uid_t) -1;
     gid_t egid = (gid_t) -1;
@@ -169,38 +161,39 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
     uint32_t u32;
 
     pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                        "psec: native validate_cred %s",
-                        (NULL == cred) ? "NULL" : "NON-NULL");
+                        "psec: native validate_cred %s", (NULL == cred) ? "NULL" : "NON-NULL");
 
     if (PMIX_PROTOCOL_V1 == pr->protocol) {
         /* usock protocol - get the remote side's uid/gid */
 #if defined(SO_PEERCRED) && (defined(HAVE_STRUCT_UCRED_UID) || defined(HAVE_STRUCT_UCRED_CR_UID))
         /* Ignore received 'cred' and validate ucred for socket instead. */
         pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                            "psec:native checking getsockopt on socket %d for peer credentials", pr->sd);
+                            "psec:native checking getsockopt on socket %d for peer credentials",
+                            pr->sd);
         if (getsockopt(pr->sd, SOL_SOCKET, SO_PEERCRED, &ucred, &crlen) < 0) {
             pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
                                 "psec: getsockopt SO_PEERCRED failed: %s",
-                                strerror (pmix_socket_errno));
+                                strerror(pmix_socket_errno));
             return PMIX_ERR_INVALID_CRED;
         }
-#if defined(HAVE_STRUCT_UCRED_UID)
+#    if defined(HAVE_STRUCT_UCRED_UID)
         euid = ucred.uid;
         egid = ucred.gid;
-#else
+#    else
         euid = ucred.cr_uid;
         egid = ucred.cr_gid;
-#endif
+#    endif
 
 #elif defined(HAVE_GETPEEREID)
         pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                            "psec:native checking getpeereid on socket %d for peer credentials", pr->sd);
+                            "psec:native checking getpeereid on socket %d for peer credentials",
+                            pr->sd);
         if (0 != getpeereid(pr->sd, &euid, &egid)) {
             pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
                                 "psec: getsockopt getpeereid failed: %s",
-                                strerror (pmix_socket_errno));
+                                strerror(pmix_socket_errno));
             return PMIX_ERR_INVALID_CRED;
-    }
+        }
 #else
         return PMIX_ERR_NOT_SUPPORTED;
 #endif
@@ -234,12 +227,12 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
     /* if we are responding to a local request to validate a credential,
      * then see if they specified a mechanism */
     if (NULL != directives && 0 < ndirs) {
-        for (n=0; n < ndirs; n++) {
+        for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
                 /* split the specified string */
                 types = pmix_argv_split(directives[n].value.data.string, ',');
                 takeus = false;
-                for (m=0; NULL != types[m]; m++) {
+                for (m = 0; NULL != types[m]; m++) {
                     if (0 == strcmp(types[m], "native")) {
                         /* it's us! */
                         takeus = true;
@@ -285,5 +278,4 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
         PMIX_INFO_LOAD(info[2], PMIX_GRPID, &u32, PMIX_UINT32);
     }
     return PMIX_SUCCESS;
-
 }

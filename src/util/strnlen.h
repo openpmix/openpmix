@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,20 +19,19 @@
 #include "src/include/pmix_config.h"
 
 #if defined(HAVE_STRNLEN)
-#define PMIX_STRNLEN(c, a, b)       \
-    (c) = strnlen(a, b)
+#    define PMIX_STRNLEN(c, a, b) (c) = strnlen(a, b)
 #else
-#define PMIX_STRNLEN(c, a, b)           \
-    do {                                \
-        size_t _x;                      \
-        (c) = 0;                        \
-        for (_x=0; _x < (b); _x++) {    \
-            if ('\0' == (a)[_x]) {      \
-                break;                  \
-            }                           \
-            ++(c);                      \
-        }                               \
-    } while(0)
+#    define PMIX_STRNLEN(c, a, b)          \
+        do {                               \
+            size_t _x;                     \
+            (c) = 0;                       \
+            for (_x = 0; _x < (b); _x++) { \
+                if ('\0' == (a)[_x]) {     \
+                    break;                 \
+                }                          \
+                ++(c);                     \
+            }                              \
+        } while (0)
 #endif
 
 #endif /* PMIX_STRNLEN_H */

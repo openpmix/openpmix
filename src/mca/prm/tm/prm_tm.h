@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,7 +13,6 @@
 #define PMIX_PRM_TM_H
 
 #include "src/include/pmix_config.h"
-
 
 #include "src/mca/prm/prm.h"
 

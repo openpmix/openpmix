@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,7 +29,8 @@ static int resolve_nspace(char *nspace, test_params params, char *my_nspace, int
         exit(rc);
     }
     if (NULL == procs || 0 == nprocs) {
-        TEST_ERROR(("%s:%d: Resolve peers didn't find any process from ns %s at this node\n", my_nspace, my_rank,my_nspace));
+        TEST_ERROR(("%s:%d: Resolve peers didn't find any process from ns %s at this node\n",
+                    my_nspace, my_rank, my_nspace));
         exit(PMIX_ERROR);
     }
     rc = get_all_ranks_from_namespace(params, nspace, &ranks, &nranks);
@@ -38,14 +40,17 @@ static int resolve_nspace(char *nspace, test_params params, char *my_nspace, int
         exit(rc);
     }
     if (nprocs != nranks) {
-        TEST_ERROR(("%s:%d: Resolve peers returned incorect result: returned %lu processes, expected %lu", my_nspace, my_rank, nprocs, nranks));
+        TEST_ERROR(
+            ("%s:%d: Resolve peers returned incorect result: returned %lu processes, expected %lu",
+             my_nspace, my_rank, nprocs, nranks));
         PMIX_PROC_FREE(procs, nprocs);
         PMIX_PROC_FREE(ranks, nranks);
         exit(PMIX_ERROR);
     }
     for (i = 0; i < nprocs; i++) {
         if (procs[i].rank != ranks[i].rank) {
-            TEST_ERROR(("%s:%d: Resolve peers returned incorrect result: returned value %s:%d, expected rank %d",
+            TEST_ERROR(("%s:%d: Resolve peers returned incorrect result: returned value %s:%d, "
+                        "expected rank %d",
                         my_nspace, my_rank, procs[i].nspace, procs[i].rank, ranks[i].rank));
             exit(PMIX_ERROR);
         }
@@ -59,13 +64,14 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
 {
     int rc, n;
     int ns_num;
-    char nspace[PMIX_MAX_NSLEN+1];
+    char nspace[PMIX_MAX_NSLEN + 1];
     pmix_proc_t procs[2];
 
     /* first resolve peers from the own namespace. */
     rc = resolve_nspace(my_nspace, params, my_nspace, my_rank);
     if (PMIX_SUCCESS == rc) {
-        TEST_VERBOSE(("%s:%d: Resolve peers succeeded for the own namespace\n", my_nspace, my_rank));
+        TEST_VERBOSE(
+            ("%s:%d: Resolve peers succeeded for the own namespace\n", my_nspace, my_rank));
     } else {
         TEST_ERROR(("%s:%d: Resolve peers failed for the own namespace\n", my_nspace, my_rank));
         exit(rc);
@@ -78,26 +84,27 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         exit(PMIX_ERROR);
     }
     for (n = 0; n < ns_num; n++) {
-        memset(nspace, 0, PMIX_MAX_NSLEN+1);
+        memset(nspace, 0, PMIX_MAX_NSLEN + 1);
         /* then connect to processes from different namespaces and resolve peers. */
-        (void)snprintf(nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, n);
-        if (0 == strncmp(my_nspace, nspace, strlen(nspace)+1)) {
+        (void) snprintf(nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, n);
+        if (0 == strncmp(my_nspace, nspace, strlen(nspace) + 1)) {
             continue;
         }
 
-        /* add to procs array all processes from own namespace and all processes from this namespace.
-         * Make sure that processes are placed in the same order. */
+        /* add to procs array all processes from own namespace and all processes from this
+         * namespace. Make sure that processes are placed in the same order. */
         if (0 < strncmp(nspace, my_nspace, PMIX_MAX_NSLEN)) {
-            (void)strncpy(procs[0].nspace, nspace, PMIX_MAX_NSLEN);
-            (void)strncpy(procs[1].nspace, my_nspace, PMIX_MAX_NSLEN);
+            (void) strncpy(procs[0].nspace, nspace, PMIX_MAX_NSLEN);
+            (void) strncpy(procs[1].nspace, my_nspace, PMIX_MAX_NSLEN);
         } else {
-            (void)strncpy(procs[1].nspace, nspace, PMIX_MAX_NSLEN);
-            (void)strncpy(procs[0].nspace, my_nspace, PMIX_MAX_NSLEN);
+            (void) strncpy(procs[1].nspace, nspace, PMIX_MAX_NSLEN);
+            (void) strncpy(procs[0].nspace, my_nspace, PMIX_MAX_NSLEN);
         }
         procs[0].rank = PMIX_RANK_WILDCARD;
         procs[1].rank = PMIX_RANK_WILDCARD;
 
-        /* make a connection between processes from own namespace and processes from this namespace. */
+        /* make a connection between processes from own namespace and processes from this namespace.
+         */
         rc = PMIx_Connect(procs, 2, NULL, 0);
         if (PMIX_SUCCESS == rc) {
             TEST_VERBOSE(("%s:%d: Connect to %s succeeded.", my_nspace, my_rank, nspace));
@@ -112,7 +119,8 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         if (NULL != getenv("PMIX_VERSION")) {
             rc = resolve_nspace(nspace, params, my_nspace, my_rank);
             if (PMIX_SUCCESS == rc) {
-                TEST_VERBOSE(("%s:%d: Resolve peers succeeded for ns %s\n", my_nspace, my_rank, nspace));
+                TEST_VERBOSE(
+                    ("%s:%d: Resolve peers succeeded for ns %s\n", my_nspace, my_rank, nspace));
             } else {
                 exit(rc);
             }

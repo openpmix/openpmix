@@ -3,6 +3,7 @@
  *
  * NOTE: THE MUNGE CLIENT LIBRARY (libmunge) IS LICENSED AS LGPL
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,32 +22,28 @@
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include <munge.h>
 
-#include "src/threads/threads.h"
-#include "src/mca/psec/psec.h"
 #include "psec_munge.h"
+#include "src/mca/psec/psec.h"
+#include "src/threads/threads.h"
 
 static pmix_status_t munge_init(void);
 static void munge_finalize(void);
-static pmix_status_t create_cred(struct pmix_peer_t *peer,
-                                 const pmix_info_t directives[], size_t ndirs,
-                                 pmix_info_t **info, size_t *ninfo,
+static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                 size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred);
-static pmix_status_t validate_cred(struct pmix_peer_t *peer,
-                                   const pmix_info_t directives[], size_t ndirs,
-                                   pmix_info_t **info, size_t *ninfo,
+static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                   size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                    const pmix_byte_object_t *cred);
 
-pmix_psec_module_t pmix_munge_module = {
-    .name = "munge",
-    .init = munge_init,
-    .finalize = munge_finalize,
-    .create_cred = create_cred,
-    .validate_cred = validate_cred
-};
+pmix_psec_module_t pmix_munge_module = {.name = "munge",
+                                        .init = munge_init,
+                                        .finalize = munge_finalize,
+                                        .create_cred = create_cred,
+                                        .validate_cred = validate_cred};
 
 static pmix_lock_t lock;
 static char *mycred = NULL;
@@ -57,8 +54,7 @@ static pmix_status_t munge_init(void)
 {
     int rc;
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psec: munge init");
+    pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge init");
 
     PMIX_CONSTRUCT_LOCK(&lock);
     lock.active = false;
@@ -69,8 +65,7 @@ static pmix_status_t munge_init(void)
 
     if (EMUNGE_SUCCESS != (rc = munge_encode(&mycred, NULL, NULL, 0))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "psec: munge failed to create credential: %s",
-                            munge_strerror(rc));
+                            "psec: munge failed to create credential: %s", munge_strerror(rc));
         return PMIX_ERR_SERVER_NOT_AVAIL;
     }
 
@@ -83,8 +78,7 @@ static void munge_finalize(void)
 {
     PMIX_ACQUIRE_THREAD(&lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psec: munge finalize");
+    pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge finalize");
     if (initialized) {
         if (NULL != mycred) {
             free(mycred);
@@ -95,9 +89,8 @@ static void munge_finalize(void)
     PMIX_DESTRUCT_LOCK(&lock);
 }
 
-static pmix_status_t create_cred(struct pmix_peer_t *peer,
-                                 const pmix_info_t directives[], size_t ndirs,
-                                 pmix_info_t **info, size_t *ninfo,
+static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                 size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred)
 {
     int rc;
@@ -107,8 +100,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
 
     PMIX_ACQUIRE_THREAD(&lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psec: munge create_cred");
+    pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge create_cred");
 
     /* ensure initialization */
     PMIX_BYTE_OBJECT_CONSTRUCT(cred);
@@ -116,12 +108,12 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
     /* if we are responding to a local request to create a credential,
      * then see if they specified a mechanism */
     if (NULL != directives && 0 < ndirs) {
-        for (n=0; n < ndirs; n++) {
+        for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
                 /* split the specified string */
                 types = pmix_argv_split(directives[n].value.data.string, ',');
                 takeus = false;
-                for (m=0; NULL != types[m]; m++) {
+                for (m = 0; NULL != types[m]; m++) {
                     if (0 == strcmp(types[m], "munge")) {
                         /* it's us! */
                         takeus = true;
@@ -173,12 +165,11 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t validate_cred(struct pmix_peer_t *peer,
-                                   const pmix_info_t directives[], size_t ndirs,
-                                   pmix_info_t **info, size_t *ninfo,
+static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
+                                   size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                    const pmix_byte_object_t *cred)
 {
-    pmix_peer_t *pr = (pmix_peer_t*)peer;
+    pmix_peer_t *pr = (pmix_peer_t *) peer;
     uid_t euid;
     gid_t egid;
     munge_err_t rc;
@@ -187,19 +178,18 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
     size_t n, m;
     uint32_t u32;
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psec: munge validate_cred %s",
+    pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge validate_cred %s",
                         (NULL == cred) ? "NULL" : "NON-NULL");
 
     /* if we are responding to a local request to validate a credential,
      * then see if they specified a mechanism */
     if (NULL != directives && 0 < ndirs) {
-        for (n=0; n < ndirs; n++) {
+        for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
                 /* split the specified string */
                 types = pmix_argv_split(directives[n].value.data.string, ',');
                 takeus = false;
-                for (m=0; NULL != types[m]; m++) {
+                for (m = 0; NULL != types[m]; m++) {
                     if (0 == strcmp(types[m], "munge")) {
                         /* it's us! */
                         takeus = true;
@@ -217,8 +207,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
     /* parse the inbound string */
     if (EMUNGE_SUCCESS != (rc = munge_decode(cred->bytes, NULL, NULL, NULL, &euid, &egid))) {
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "psec: munge failed to decode credential: %s",
-                            munge_strerror(rc));
+                            "psec: munge failed to decode credential: %s", munge_strerror(rc));
         return PMIX_ERR_INVALID_CRED;
     }
 
@@ -232,8 +221,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer,
         return PMIX_ERR_INVALID_CRED;
     }
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psec: munge credential valid");
+    pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge credential valid");
     if (NULL != info) {
         PMIX_INFO_CREATE(*info, 3);
         if (NULL == *info) {

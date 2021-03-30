@@ -4,6 +4,7 @@
  * Copyright (c) 2012      Los Alamos National Security, LLC. All rights reserved
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,19 +14,18 @@
 
 #include "src/include/pmix_config.h"
 
-#include <stdio.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #include PMIX_EVENT_HEADER
 #include "src/class/pmix_hotel.h"
 
-
 static void local_eviction_callback(int fd, short flags, void *arg)
 {
-    (void)fd;
-    (void)flags;
-    pmix_hotel_room_eviction_callback_arg_t *eargs =
-        (pmix_hotel_room_eviction_callback_arg_t*) arg;
+    (void) fd;
+    (void) flags;
+    pmix_hotel_room_eviction_callback_arg_t *eargs = (pmix_hotel_room_eviction_callback_arg_t *)
+        arg;
     void *occupant = eargs->hotel->rooms[eargs->room_num].occupant;
 
     /* Remove the occurpant from the room.
@@ -41,22 +41,17 @@ static void local_eviction_callback(int fd, short flags, void *arg)
     hotel->unoccupied_rooms[hotel->last_unoccupied_room] = eargs->room_num;
 
     /* Invoke the user callback to tell them that they were evicted */
-    hotel->evict_callback_fn(hotel,
-                             eargs->room_num,
-                             occupant);
+    hotel->evict_callback_fn(hotel, eargs->room_num, occupant);
 }
 
-
-pmix_status_t pmix_hotel_init(pmix_hotel_t *h, int num_rooms,
-                              pmix_event_base_t *evbase,
+pmix_status_t pmix_hotel_init(pmix_hotel_t *h, int num_rooms, pmix_event_base_t *evbase,
                               uint32_t eviction_timeout,
                               pmix_hotel_eviction_callback_fn_t evict_callback_fn)
 {
     int i;
 
     /* Bozo check */
-    if (num_rooms <= 0 ||
-        NULL == evict_callback_fn) {
+    if (num_rooms <= 0 || NULL == evict_callback_fn) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -65,12 +60,12 @@ pmix_status_t pmix_hotel_init(pmix_hotel_t *h, int num_rooms,
     h->eviction_timeout.tv_usec = 0;
     h->eviction_timeout.tv_sec = eviction_timeout;
     h->evict_callback_fn = evict_callback_fn;
-    h->rooms = (pmix_hotel_room_t*)malloc(num_rooms * sizeof(pmix_hotel_room_t));
+    h->rooms = (pmix_hotel_room_t *) malloc(num_rooms * sizeof(pmix_hotel_room_t));
     if (NULL != evict_callback_fn) {
-        h->eviction_args =
-            (pmix_hotel_room_eviction_callback_arg_t*)malloc(num_rooms * sizeof(pmix_hotel_room_eviction_callback_arg_t));
+        h->eviction_args = (pmix_hotel_room_eviction_callback_arg_t *) malloc(
+            num_rooms * sizeof(pmix_hotel_room_eviction_callback_arg_t));
     }
-    h->unoccupied_rooms = (int*) malloc(num_rooms * sizeof(int));
+    h->unoccupied_rooms = (int *) malloc(num_rooms * sizeof(int));
     h->last_unoccupied_room = num_rooms - 1;
 
     for (i = 0; i < num_rooms; ++i) {
@@ -86,10 +81,8 @@ pmix_status_t pmix_hotel_init(pmix_hotel_t *h, int num_rooms,
 
         /* Create this room's event (but don't add it) */
         if (NULL != h->evbase) {
-            pmix_event_assign(&(h->rooms[i].eviction_timer_event),
-                              h->evbase,
-                              -1, 0, local_eviction_callback,
-                              &(h->eviction_args[i]));
+            pmix_event_assign(&(h->rooms[i].eviction_timer_event), h->evbase, -1, 0,
+                              local_eviction_callback, &(h->eviction_args[i]));
         }
     }
 
@@ -133,7 +126,4 @@ static void destructor(pmix_hotel_t *h)
     }
 }
 
-PMIX_CLASS_INSTANCE(pmix_hotel_t,
-                    pmix_object_t,
-                    constructor,
-                    destructor);
+PMIX_CLASS_INSTANCE(pmix_hotel_t, pmix_object_t, constructor, destructor);

@@ -2,6 +2,7 @@
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,17 +24,17 @@
 #include "src/include/pmix_config.h"
 
 #if PMIX_C_HAVE_BUILTIN_EXPECT
-#define PMIX_LIKELY(expression) __builtin_expect(!!(expression), 1)
-#define PMIX_UNLIKELY(expression) __builtin_expect(!!(expression), 0)
+#    define PMIX_LIKELY(expression)   __builtin_expect(!!(expression), 1)
+#    define PMIX_UNLIKELY(expression) __builtin_expect(!!(expression), 0)
 #else
-#define PMIX_LIKELY(expression) (expression)
-#define PMIX_UNLIKELY(expression) (expression)
+#    define PMIX_LIKELY(expression)   (expression)
+#    define PMIX_UNLIKELY(expression) (expression)
 #endif
 
 #if PMIX_C_HAVE_BUILTIN_PREFETCH
-#define PMIX_PREFETCH(address,rw,locality) __builtin_prefetch(address,rw,locality)
+#    define PMIX_PREFETCH(address, rw, locality) __builtin_prefetch(address, rw, locality)
 #else
-#define PMIX_PREFETCH(address,rw,locality)
+#    define PMIX_PREFETCH(address, rw, locality)
 #endif
 
 #endif

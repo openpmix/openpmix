@@ -14,6 +14,7 @@
  * Copyright (c) 2012-2016 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,12 +23,12 @@
  */
 
 #if !defined(PMIX_MCA_BASE_VAR_ENUM_H)
-#define PMIX_MCA_BASE_VAR_ENUM_H
+#    define PMIX_MCA_BASE_VAR_ENUM_H
 
-#include "src/include/pmix_config.h"
+#    include "src/include/pmix_config.h"
 
-#include "src/class/pmix_object.h"
-#include "include/pmix_common.h"
+#    include "include/pmix_common.h"
+#    include "src/class/pmix_object.h"
 
 typedef struct pmix_mca_base_var_enum_t pmix_mca_base_var_enum_t;
 
@@ -60,8 +61,8 @@ typedef int (*pmix_mca_base_var_enum_get_value_fn_t)(pmix_mca_base_var_enum_t *s
  * @retval PMIX_SUCCESS if found
  * @retval PMIX_ERR_VALUE_OUT_OF_BOUNDS if not
  */
-typedef int (*pmix_mca_base_var_enum_vfs_fn_t)(pmix_mca_base_var_enum_t *self, const char *string_value,
-                                               int *value);
+typedef int (*pmix_mca_base_var_enum_vfs_fn_t)(pmix_mca_base_var_enum_t *self,
+                                               const char *string_value, int *value);
 
 /**
  * Dump a textual representation of all the values in an enumerator
@@ -139,7 +140,6 @@ struct pmix_mca_base_var_enum_t {
     pmix_mca_base_var_enum_value_t *enum_values;
 };
 
-
 /**
  * The default flag enumerator class takes in a list of integer-string pairs. If a
  * string is read from an environment variable or a file value the matching
@@ -198,8 +198,8 @@ PMIX_CLASS_DECLARATION(pmix_mca_base_var_enum_t);
  * strings passed in values[] after pmix_mca_base_var_enum_create()
  * returns.
  */
-int pmix_mca_base_var_enum_create (const char *name, const pmix_mca_base_var_enum_value_t values[],
-                                   pmix_mca_base_var_enum_t **enumerator);
+int pmix_mca_base_var_enum_create(const char *name, const pmix_mca_base_var_enum_value_t values[],
+                                  pmix_mca_base_var_enum_t **enumerator);
 
 /**
  * Create a new default flag enumerator
@@ -225,8 +225,9 @@ int pmix_mca_base_var_enum_create (const char *name, const pmix_mca_base_var_enu
  * strings passed in values[] after pmix_mca_base_var_enum_create()
  * returns.
  */
-int pmix_mca_base_var_enum_create_flag (const char *name, const pmix_mca_base_var_enum_value_flag_t flags[],
-                                        pmix_mca_base_var_enum_flag_t **enumerator);
+int pmix_mca_base_var_enum_create_flag(const char *name,
+                                       const pmix_mca_base_var_enum_value_flag_t flags[],
+                                       pmix_mca_base_var_enum_flag_t **enumerator);
 
 /* standard enumerators. it is invalid to call OBJ_RELEASE on any of these enumerators */
 /**

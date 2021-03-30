@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,20 +27,18 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h> /* for struct timeval */
+#    include <sys/time.h> /* for struct timeval */
 #endif
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_pointer_array.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/psec/psec.h"
-
 
 BEGIN_C_DECLS
 
@@ -67,20 +66,18 @@ struct pmix_psec_base_active_module_t {
 typedef struct pmix_psec_base_active_module_t pmix_psec_base_active_module_t;
 PMIX_CLASS_DECLARATION(pmix_psec_base_active_module_t);
 
-
 /* framework globals */
 struct pmix_psec_globals_t {
-  pmix_list_t actives;
-  bool initialized;
-  bool selected;
+    pmix_list_t actives;
+    bool initialized;
+    bool selected;
 };
 typedef struct pmix_psec_globals_t pmix_psec_globals_t;
 
 PMIX_EXPORT extern pmix_psec_globals_t pmix_psec_globals;
 
-PMIX_EXPORT char* pmix_psec_base_get_available_modules(void);
-PMIX_EXPORT pmix_psec_module_t* pmix_psec_base_assign_module(const char *options);
-
+PMIX_EXPORT char *pmix_psec_base_get_available_modules(void);
+PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options);
 
 END_C_DECLS
 

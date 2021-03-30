@@ -13,6 +13,7 @@
  * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,19 +27,19 @@
 #include <string.h>
 
 #include "src/class/pmix_list.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
+#include "src/mca/mca.h"
 #include "src/util/keyval_parse.h"
 
 static void save_value(const char *name, const char *value);
 
-static char * file_being_read;
-static pmix_list_t * _param_list;
+static char *file_being_read;
+static pmix_list_t *_param_list;
 
 int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t *list)
 {
-    file_being_read = (char*)paramfile;
+    file_being_read = (char *) paramfile;
     _param_list = list;
 
     return pmix_util_keyval_parse(paramfile, save_value);
@@ -58,10 +59,10 @@ static void save_value(const char *name, const char *value)
        already have a param of this name.  If we do, just replace the
        value. */
 
-    PMIX_LIST_FOREACH(fv, _param_list, pmix_mca_base_var_file_value_t) {
+    PMIX_LIST_FOREACH (fv, _param_list, pmix_mca_base_var_file_value_t) {
         if (0 == strcmp(name, fv->mbvfv_var)) {
             if (NULL != fv->mbvfv_value) {
-                free (fv->mbvfv_value);
+                free(fv->mbvfv_value);
             }
             found = true;
             break;
@@ -80,6 +81,6 @@ static void save_value(const char *name, const char *value)
     }
 
     fv->mbvfv_value = value ? strdup(value) : NULL;
-    fv->mbvfv_file  = file_being_read;
+    fv->mbvfv_file = file_being_read;
     fv->mbvfv_lineno = pmix_util_keyval_parse_lineno;
 }

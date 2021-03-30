@@ -27,21 +27,19 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h> /* for struct timeval */
+#    include <sys/time.h> /* for struct timeval */
 #endif
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/pnet/pnet.h"
-
 
 BEGIN_C_DECLS
 
@@ -93,19 +91,16 @@ typedef struct pmix_pnet_globals_t pmix_pnet_globals_t;
 
 PMIX_EXPORT extern pmix_pnet_globals_t pmix_pnet_globals;
 
-PMIX_EXPORT pmix_status_t pmix_pnet_base_allocate(char *nspace,
-                                                  pmix_info_t info[], size_t ninfo,
+PMIX_EXPORT pmix_status_t pmix_pnet_base_allocate(char *nspace, pmix_info_t info[], size_t ninfo,
                                                   pmix_list_t *ilist);
-PMIX_EXPORT pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
-                                                             pmix_info_t info[],
+PMIX_EXPORT pmix_status_t pmix_pnet_base_setup_local_network(char *nspace, pmix_info_t info[],
                                                              size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *peer, char ***env);
 PMIX_EXPORT void pmix_pnet_base_child_finalized(pmix_proc_t *peer);
 PMIX_EXPORT void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr);
 PMIX_EXPORT void pmix_pnet_base_deregister_nspace(char *nspace);
 PMIX_EXPORT void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                                  pmix_inventory_cbfunc_t cbfunc,
-                                                  void *cbdata);
+                                                  pmix_inventory_cbfunc_t cbfunc, void *cbdata);
 PMIX_EXPORT void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
                                                   pmix_info_t directives[], size_t ndirs,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -114,8 +109,8 @@ PMIX_EXPORT pmix_status_t pmix_pnet_base_harvest_envars(char **incvars, char **e
 
 PMIX_EXPORT pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
                                                          const pmix_info_t directives[],
-                                                         size_t ndirs,
-                                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
+                                                         size_t ndirs, pmix_op_cbfunc_t cbfunc,
+                                                         void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric);
 PMIX_EXPORT pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric);
 

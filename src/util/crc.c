@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,44 +18,37 @@
  * $HEADER$
  */
 
-
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_STDIO_H
-#include <stdio.h>
+#    include <stdio.h>
 #endif /* HAVE_STDIO_H */
 #ifdef HAVE_STDLIB_H
-#include <stdlib.h>
-#endif  /* HAVE_STDLIB_H */
+#    include <stdlib.h>
+#endif /* HAVE_STDLIB_H */
 #ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif  /* HAVE_STRINGS_H */
+#    include <strings.h>
+#endif /* HAVE_STRINGS_H */
 #ifdef HAVE_STRING_H
-#include <string.h>
-#endif  /* HAVE_STRING_H */
+#    include <string.h>
+#endif /* HAVE_STRING_H */
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif  /* HAVE_UNISTD_H */
+#    include <unistd.h>
+#endif /* HAVE_UNISTD_H */
 
 #include "src/util/crc.h"
 
-
 #if (PMIX_ALIGNMENT_LONG == 8)
-#define PMIX_CRC_WORD_MASK_ 0x7
+#    define PMIX_CRC_WORD_MASK_ 0x7
 #elif (PMIX_ALIGNMENT_LONG == 4)
-#define PMIX_CRC_WORD_MASK_ 0x3
+#    define PMIX_CRC_WORD_MASK_ 0x3
 #else
-#define PMIX_CRC_WORD_MASK_ 0xFFFF
+#    define PMIX_CRC_WORD_MASK_ 0xFFFF
 #endif
 
+#define WORDALIGNED(v) (((intptr_t) v & PMIX_CRC_WORD_MASK_) ? false : true)
 
-#define WORDALIGNED(v) \
-    (((intptr_t)v & PMIX_CRC_WORD_MASK_) ? false : true)
-
-
-#define INTALIGNED(v) \
-    (((intptr_t)v & 3) ? false : true)
+#define INTALIGNED(v) (((intptr_t) v & 3) ? false : true)
 
 /*
  * this version of bcopy_csum() looks a little too long, but it
@@ -66,18 +60,12 @@
  * of bcopy_csum() - Mitch
  */
 
-unsigned long
-pmix_bcopy_csum_partial (
-    const void *  source,
-    void *  destination,
-    size_t copylen,
-    size_t csumlen,
-    unsigned long *  lastPartialLong,
-    size_t*  lastPartialLength
-    )
+unsigned long pmix_bcopy_csum_partial(const void *source, void *destination, size_t copylen,
+                                      size_t csumlen, unsigned long *lastPartialLong,
+                                      size_t *lastPartialLength)
 {
-    unsigned long *  src = (unsigned long *) source;
-    unsigned long *  dest = (unsigned long *) destination;
+    unsigned long *src = (unsigned long *) source;
+    unsigned long *dest = (unsigned long *) destination;
     unsigned long csum = 0;
     size_t csumlenresidue;
     unsigned long i, temp;
@@ -89,16 +77,17 @@ pmix_bcopy_csum_partial (
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (copylen >= (sizeof(unsigned long) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned long) - *lastPartialLength));
-                memcpy(dest, ((char *)&temp + *lastPartialLength),
+                memcpy(dest, ((char *) &temp + *lastPartialLength),
                        (sizeof(unsigned long) - *lastPartialLength));
-                src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
-                dest = (unsigned long *)((char *)dest + sizeof(unsigned long) - *lastPartialLength);
+                src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
+                dest = (unsigned long *) ((char *) dest + sizeof(unsigned long)
+                                          - *lastPartialLength);
                 csum += (temp - *lastPartialLong);
                 copylen -= sizeof(unsigned long) - *lastPartialLength;
                 /* now we have an unaligned source and an unaligned destination */
-                for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                     memcpy(&temp, src, sizeof(temp));
                     src++;
                     csum += temp;
@@ -107,81 +96,76 @@ pmix_bcopy_csum_partial (
                 }
                 *lastPartialLength = 0;
                 *lastPartialLong = 0;
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, copylen);
-                memcpy(dest, ((char *)&temp + *lastPartialLength), copylen);
-                src = (unsigned long *)((char *)src + copylen);
-                dest = (unsigned long *)((char *)dest + copylen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
+                memcpy(dest, ((char *) &temp + *lastPartialLength), copylen);
+                src = (unsigned long *) ((char *) src + copylen);
+                dest = (unsigned long *) ((char *) dest + copylen);
                 csum += (temp - *lastPartialLong);
                 *lastPartialLong = temp;
                 *lastPartialLength += copylen;
                 copylen = 0;
             }
-        }
-        else { /* fast path... */
-            size_t numLongs = copylen/sizeof(unsigned long);
-            for(i = 0; i < numLongs; i++) {
-                    csum += *src;
-                    *dest++ = *src++;
+        } else { /* fast path... */
+            size_t numLongs = copylen / sizeof(unsigned long);
+            for (i = 0; i < numLongs; i++) {
+                csum += *src;
+                *dest++ = *src++;
             }
             *lastPartialLong = 0;
             *lastPartialLength = 0;
             if (WORDALIGNED(copylen) && (csumlenresidue == 0)) {
-                    return(csum);
-            }
-            else {
-                    copylen -= i * sizeof(unsigned long);
+                return (csum);
+            } else {
+                copylen -= i * sizeof(unsigned long);
             }
         }
     } else if (WORDALIGNED(source)) {
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (copylen >= (sizeof(unsigned long) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned long) - *lastPartialLength));
-                memcpy(dest, ((char *)&temp + *lastPartialLength),
+                memcpy(dest, ((char *) &temp + *lastPartialLength),
                        (sizeof(unsigned long) - *lastPartialLength));
-                src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
-                dest = (unsigned long *)((char *)dest + sizeof(unsigned long) - *lastPartialLength);
+                src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
+                dest = (unsigned long *) ((char *) dest + sizeof(unsigned long)
+                                          - *lastPartialLength);
                 csum += (temp - *lastPartialLong);
                 copylen -= sizeof(unsigned long) - *lastPartialLength;
                 /* now we have an unaligned source and an unknown alignment for our destination */
                 if (WORDALIGNED(dest)) {
-                    size_t numLongs = copylen/sizeof(unsigned long);
-                    for(i = 0; i < numLongs; i++) {
-                            memcpy(&temp, src, sizeof(temp));
-                            src++;
-                            csum += temp;
-                            *dest++ = temp;
+                    size_t numLongs = copylen / sizeof(unsigned long);
+                    for (i = 0; i < numLongs; i++) {
+                        memcpy(&temp, src, sizeof(temp));
+                        src++;
+                        csum += temp;
+                        *dest++ = temp;
                     }
                     copylen -= i * sizeof(unsigned long);
-                }
-                else {
-                    for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
-                            memcpy(&temp, src, sizeof(temp));
-                            src++;
-                            csum += temp;
-                            memcpy(dest, &temp, sizeof(temp));
-                            dest++;
+                } else {
+                    for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                        memcpy(&temp, src, sizeof(temp));
+                        src++;
+                        csum += temp;
+                        memcpy(dest, &temp, sizeof(temp));
+                        dest++;
                     }
                 }
                 *lastPartialLong = 0;
                 *lastPartialLength = 0;
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
+                memcpy(dest, ((char *) &temp + *lastPartialLength), copylen);
+                src = (unsigned long *) ((char *) src + copylen);
+                dest = (unsigned long *) ((char *) dest + copylen);
+                csum += (temp - *lastPartialLong);
+                *lastPartialLong = temp;
+                *lastPartialLength += copylen;
+                copylen = 0;
             }
-            else { /* NO, we don't... */
-                    memcpy(((char *)&temp + *lastPartialLength), src, copylen);
-                    memcpy(dest, ((char *)&temp + *lastPartialLength), copylen);
-                    src = (unsigned long *)((char *)src + copylen);
-                    dest = (unsigned long *)((char *)dest + copylen);
-                    csum += (temp - *lastPartialLong);
-                    *lastPartialLong = temp;
-                    *lastPartialLength += copylen;
-                    copylen = 0;
-            }
-        }
-        else {
-            for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+        } else {
+            for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                 temp = *src++;
                 csum += temp;
                 memcpy(dest, &temp, sizeof(temp));
@@ -194,17 +178,18 @@ pmix_bcopy_csum_partial (
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (copylen >= (sizeof(unsigned long) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned long) - *lastPartialLength));
-                memcpy(dest, ((char *)&temp + *lastPartialLength),
+                memcpy(dest, ((char *) &temp + *lastPartialLength),
                        (sizeof(unsigned long) - *lastPartialLength));
-                src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
-                dest = (unsigned long *)((char *)dest + sizeof(unsigned long) - *lastPartialLength);
+                src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
+                dest = (unsigned long *) ((char *) dest + sizeof(unsigned long)
+                                          - *lastPartialLength);
                 csum += (temp - *lastPartialLong);
                 copylen -= sizeof(unsigned long) - *lastPartialLength;
                 /* now we have a source of unknown alignment and a unaligned destination */
                 if (WORDALIGNED(src)) {
-                    for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                    for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                         temp = *src++;
                         csum += temp;
                         memcpy(dest, &temp, sizeof(temp));
@@ -212,9 +197,8 @@ pmix_bcopy_csum_partial (
                     }
                     *lastPartialLong = 0;
                     *lastPartialLength = 0;
-                }
-                else {
-                    for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                } else {
+                    for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                         memcpy(&temp, src, sizeof(temp));
                         src++;
                         csum += temp;
@@ -224,20 +208,18 @@ pmix_bcopy_csum_partial (
                     *lastPartialLength = 0;
                     *lastPartialLong = 0;
                 }
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, copylen);
-                memcpy(dest, ((char *)&temp + *lastPartialLength), copylen);
-                src = (unsigned long *)((char *)src + copylen);
-                dest = (unsigned long *)((char *)dest + copylen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
+                memcpy(dest, ((char *) &temp + *lastPartialLength), copylen);
+                src = (unsigned long *) ((char *) src + copylen);
+                dest = (unsigned long *) ((char *) dest + copylen);
                 csum += (temp - *lastPartialLong);
                 *lastPartialLong = temp;
                 *lastPartialLength += copylen;
                 copylen = 0;
             }
-        }
-        else {
-            for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+        } else {
+            for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                 memcpy(&temp, src, sizeof(temp));
                 src++;
                 csum += temp;
@@ -250,48 +232,46 @@ pmix_bcopy_csum_partial (
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (copylen >= (sizeof(unsigned long) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned long) - *lastPartialLength));
-                memcpy(dest, ((char *)&temp + *lastPartialLength),
+                memcpy(dest, ((char *) &temp + *lastPartialLength),
                        (sizeof(unsigned long) - *lastPartialLength));
-                src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
-                dest = (unsigned long *)((char *)dest + sizeof(unsigned long) - *lastPartialLength);
+                src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
+                dest = (unsigned long *) ((char *) dest + sizeof(unsigned long)
+                                          - *lastPartialLength);
                 csum += (temp - *lastPartialLong);
                 copylen -= sizeof(unsigned long) - *lastPartialLength;
                 /* now we have an unknown alignment for our source and destination */
                 if (WORDALIGNED(src) && WORDALIGNED(dest)) {
-                    size_t numLongs = copylen/sizeof(unsigned long);
-                    for(i = 0; i < numLongs; i++) {
-                            csum += *src;
-                            *dest++ = *src++;
+                    size_t numLongs = copylen / sizeof(unsigned long);
+                    for (i = 0; i < numLongs; i++) {
+                        csum += *src;
+                        *dest++ = *src++;
                     }
                     copylen -= i * sizeof(unsigned long);
-                }
-                else { /* safe but slower for all other alignments */
-                    for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
-                            memcpy(&temp, src, sizeof(temp));
-                            src++;
-                            csum += temp;
-                            memcpy(dest, &temp, sizeof(temp));
-                            dest++;
+                } else { /* safe but slower for all other alignments */
+                    for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                        memcpy(&temp, src, sizeof(temp));
+                        src++;
+                        csum += temp;
+                        memcpy(dest, &temp, sizeof(temp));
+                        dest++;
                     }
                 }
                 *lastPartialLong = 0;
                 *lastPartialLength = 0;
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, copylen);
-                memcpy(dest, ((char *)&temp + *lastPartialLength), copylen);
-                src = (unsigned long *)((char *)src + copylen);
-                dest = (unsigned long *)((char *)dest + copylen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
+                memcpy(dest, ((char *) &temp + *lastPartialLength), copylen);
+                src = (unsigned long *) ((char *) src + copylen);
+                dest = (unsigned long *) ((char *) dest + copylen);
                 csum += (temp - *lastPartialLong);
                 *lastPartialLong = temp;
                 *lastPartialLength += copylen;
                 copylen = 0;
             }
-        }
-        else {
-            for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+        } else {
+            for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                 memcpy(&temp, src, sizeof(temp));
                 src++;
                 csum += temp;
@@ -313,14 +293,14 @@ pmix_bcopy_csum_partial (
                 memcpy(&copytemp, src, copylen);
                 memcpy(dest, &copytemp, copylen);
                 /* fill out rest of partial word and add to checksum */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned long) - *lastPartialLength));
                 /* avoid unsigned arithmetic overflow by subtracting the old partial
                  * word from the new one before adding to the checksum...
-        */
+                 */
                 csum += (temp - *lastPartialLong);
                 copylen -= sizeof(unsigned long) - *lastPartialLength;
-                src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
+                src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
                 *lastPartialLength = copylen;
                 /* reset temp, and calculate next partial word */
                 temp = 0;
@@ -330,24 +310,21 @@ pmix_bcopy_csum_partial (
                 /* add it to the the checksum */
                 csum += temp;
                 *lastPartialLong = temp;
-            }
-            else {
+            } else {
                 /* copy all remaining bytes from src to dest */
                 unsigned long copytemp = 0;
                 memcpy(&copytemp, src, copylen);
                 memcpy(dest, &copytemp, copylen);
                 /* fill out rest of partial word and add to checksum */
-                memcpy(((char *)&temp + *lastPartialLength), src,
-                       copylen);
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
                 /* avoid unsigned arithmetic overflow by subtracting the old partial
                  * word from the new one before adding to the checksum...
-        */
+                 */
                 csum += temp - *lastPartialLong;
                 *lastPartialLong = temp;
                 *lastPartialLength += copylen;
             }
-        }
-        else { /* fast path... */
+        } else { /* fast path... */
             /* temp and *lastPartialLong are 0 if *lastPartialLength is 0... */
             memcpy(&temp, src, copylen);
             csum += temp;
@@ -356,8 +333,7 @@ pmix_bcopy_csum_partial (
             *lastPartialLength = copylen;
             /* done...return the checksum */
         }
-    }
-    else if (csumlenresidue != 0) {
+    } else if (csumlenresidue != 0) {
         if (copylen != 0) {
             temp = 0;
             memcpy(&temp, src, copylen);
@@ -365,7 +341,7 @@ pmix_bcopy_csum_partial (
         }
         if (csumlenresidue < (sizeof(unsigned long) - copylen - *lastPartialLength)) {
             temp = *lastPartialLong;
-            memcpy(((char *)&temp + *lastPartialLength), src, (copylen + csumlenresidue));
+            memcpy(((char *) &temp + *lastPartialLength), src, (copylen + csumlenresidue));
             /* avoid unsigned arithmetic overflow by subtracting the old partial */
             /* word from the new one before adding to the checksum... */
             csum += temp - *lastPartialLong;
@@ -373,28 +349,26 @@ pmix_bcopy_csum_partial (
             *lastPartialLong = temp;
             *lastPartialLength += copylen + csumlenresidue;
             csumlenresidue = 0;
-        }
-        else {
+        } else {
             /* we have enough chksum data to fill out our last partial */
             /* word */
             temp = *lastPartialLong;
-            memcpy(((char *)&temp + *lastPartialLength), src,
+            memcpy(((char *) &temp + *lastPartialLength), src,
                    (sizeof(unsigned long) - *lastPartialLength));
             /* avoid unsigned arithmetic overflow by subtracting the old partial */
             /* word from the new one before adding to the checksum... */
             csum += temp - *lastPartialLong;
-            src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
+            src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
             csumlenresidue -= sizeof(unsigned long) - *lastPartialLength - copylen;
             *lastPartialLength = 0;
             *lastPartialLong = 0;
         }
         if (WORDALIGNED(src)) {
-            for (i = 0; i < csumlenresidue/sizeof(unsigned long); i++) {
+            for (i = 0; i < csumlenresidue / sizeof(unsigned long); i++) {
                 csum += *src++;
             }
-        }
-        else {
-            for (i = 0; i < csumlenresidue/sizeof(unsigned long); i++) {
+        } else {
+            for (i = 0; i < csumlenresidue / sizeof(unsigned long); i++) {
                 memcpy(&temp, src, sizeof(temp));
                 csum += temp;
                 src++;
@@ -413,18 +387,12 @@ pmix_bcopy_csum_partial (
     return csum;
 }
 
-unsigned int
-pmix_bcopy_uicsum_partial (
-    const void *  source,
-    void *  destination,
-    size_t copylen,
-    size_t csumlen,
-    unsigned int*  lastPartialInt,
-    size_t*  lastPartialLength
-    )
+unsigned int pmix_bcopy_uicsum_partial(const void *source, void *destination, size_t copylen,
+                                       size_t csumlen, unsigned int *lastPartialInt,
+                                       size_t *lastPartialLength)
 {
-    unsigned int *  src = (unsigned int *) source;
-    unsigned int *  dest = (unsigned int *) destination;
+    unsigned int *src = (unsigned int *) source;
+    unsigned int *dest = (unsigned int *) destination;
     unsigned int csum = 0;
     size_t csumlenresidue;
     unsigned long i;
@@ -437,16 +405,16 @@ pmix_bcopy_uicsum_partial (
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (copylen >= (sizeof(unsigned int) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned int) - *lastPartialLength));
-                memcpy(dest, ((char *)&temp + *lastPartialLength),
+                memcpy(dest, ((char *) &temp + *lastPartialLength),
                        (sizeof(unsigned int) - *lastPartialLength));
-                src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
-                dest = (unsigned int *)((char *)dest + sizeof(unsigned int) - *lastPartialLength);
+                src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
+                dest = (unsigned int *) ((char *) dest + sizeof(unsigned int) - *lastPartialLength);
                 csum += (temp - *lastPartialInt);
                 copylen -= sizeof(unsigned int) - *lastPartialLength;
                 /* now we have an unaligned source and an unaligned destination */
-                for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                     memcpy(&temp, src, sizeof(temp));
                     src++;
                     csum += temp;
@@ -455,58 +423,54 @@ pmix_bcopy_uicsum_partial (
                 }
                 *lastPartialLength = 0;
                 *lastPartialInt = 0;
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, copylen);
-                memcpy(dest, ((char *)&temp + *lastPartialLength), copylen);
-                src = (unsigned int *)((char *)src + copylen);
-                dest = (unsigned int *)((char *)dest + copylen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
+                memcpy(dest, ((char *) &temp + *lastPartialLength), copylen);
+                src = (unsigned int *) ((char *) src + copylen);
+                dest = (unsigned int *) ((char *) dest + copylen);
                 csum += (temp - *lastPartialInt);
                 *lastPartialInt = temp;
                 *lastPartialLength += copylen;
                 copylen = 0;
             }
-        }
-        else { /* fast path... */
-            size_t numLongs = copylen/sizeof(unsigned int);
-            for(i = 0; i < numLongs; i++) {
-                    csum += *src;
-                    *dest++ = *src++;
+        } else { /* fast path... */
+            size_t numLongs = copylen / sizeof(unsigned int);
+            for (i = 0; i < numLongs; i++) {
+                csum += *src;
+                *dest++ = *src++;
             }
             *lastPartialInt = 0;
             *lastPartialLength = 0;
             if (INTALIGNED(copylen) && (csumlenresidue == 0)) {
-                    return(csum);
-            }
-            else {
-                    copylen -= i * sizeof(unsigned int);
+                return (csum);
+            } else {
+                copylen -= i * sizeof(unsigned int);
             }
         }
     } else if (INTALIGNED(source)) {
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (copylen >= (sizeof(unsigned int) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned int) - *lastPartialLength));
-                memcpy(dest, ((char *)&temp + *lastPartialLength),
+                memcpy(dest, ((char *) &temp + *lastPartialLength),
                        (sizeof(unsigned int) - *lastPartialLength));
-                src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
-                dest = (unsigned int *)((char *)dest + sizeof(unsigned int) - *lastPartialLength);
+                src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
+                dest = (unsigned int *) ((char *) dest + sizeof(unsigned int) - *lastPartialLength);
                 csum += (temp - *lastPartialInt);
                 copylen -= sizeof(unsigned int) - *lastPartialLength;
                 /* now we have an unaligned source and an unknown alignment for our destination */
                 if (INTALIGNED(dest)) {
-                    size_t numLongs = copylen/sizeof(unsigned int);
-                    for(i = 0; i < numLongs; i++) {
+                    size_t numLongs = copylen / sizeof(unsigned int);
+                    for (i = 0; i < numLongs; i++) {
                         memcpy(&temp, src, sizeof(temp));
                         src++;
                         csum += temp;
                         *dest++ = temp;
                     }
                     copylen -= i * sizeof(unsigned int);
-                }
-                else {
-                    for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                } else {
+                    for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                         memcpy(&temp, src, sizeof(temp));
                         src++;
                         csum += temp;
@@ -516,20 +480,18 @@ pmix_bcopy_uicsum_partial (
                 }
                 *lastPartialInt = 0;
                 *lastPartialLength = 0;
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, copylen);
-                memcpy(dest, ((char *)&temp + *lastPartialLength), copylen);
-                src = (unsigned int *)((char *)src + copylen);
-                dest = (unsigned int *)((char *)dest + copylen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
+                memcpy(dest, ((char *) &temp + *lastPartialLength), copylen);
+                src = (unsigned int *) ((char *) src + copylen);
+                dest = (unsigned int *) ((char *) dest + copylen);
                 csum += (temp - *lastPartialInt);
                 *lastPartialInt = temp;
                 *lastPartialLength += copylen;
                 copylen = 0;
             }
-        }
-        else {
-            for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+        } else {
+            for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                 temp = *src++;
                 csum += temp;
                 memcpy(dest, &temp, sizeof(temp));
@@ -542,17 +504,17 @@ pmix_bcopy_uicsum_partial (
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (copylen >= (sizeof(unsigned int) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned int) - *lastPartialLength));
-                memcpy(dest, ((char *)&temp + *lastPartialLength),
+                memcpy(dest, ((char *) &temp + *lastPartialLength),
                        (sizeof(unsigned int) - *lastPartialLength));
-                src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
-                dest = (unsigned int *)((char *)dest + sizeof(unsigned int) - *lastPartialLength);
+                src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
+                dest = (unsigned int *) ((char *) dest + sizeof(unsigned int) - *lastPartialLength);
                 csum += (temp - *lastPartialInt);
                 copylen -= sizeof(unsigned int) - *lastPartialLength;
                 /* now we have a source of unknown alignment and a unaligned destination */
                 if (INTALIGNED(src)) {
-                    for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                    for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                         temp = *src++;
                         csum += temp;
                         memcpy(dest, &temp, sizeof(temp));
@@ -560,9 +522,8 @@ pmix_bcopy_uicsum_partial (
                     }
                     *lastPartialInt = 0;
                     *lastPartialLength = 0;
-                }
-                else {
-                    for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                } else {
+                    for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                         memcpy(&temp, src, sizeof(temp));
                         src++;
                         csum += temp;
@@ -572,20 +533,18 @@ pmix_bcopy_uicsum_partial (
                     *lastPartialLength = 0;
                     *lastPartialInt = 0;
                 }
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, copylen);
-                memcpy(dest, ((char *)&temp + *lastPartialLength), copylen);
-                src = (unsigned int *)((char *)src + copylen);
-                dest = (unsigned int *)((char *)dest + copylen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
+                memcpy(dest, ((char *) &temp + *lastPartialLength), copylen);
+                src = (unsigned int *) ((char *) src + copylen);
+                dest = (unsigned int *) ((char *) dest + copylen);
                 csum += (temp - *lastPartialInt);
                 *lastPartialInt = temp;
                 *lastPartialLength += copylen;
                 copylen = 0;
             }
-        }
-        else {
-            for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+        } else {
+            for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                 memcpy(&temp, src, sizeof(temp));
                 src++;
                 csum += temp;
@@ -598,25 +557,24 @@ pmix_bcopy_uicsum_partial (
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (copylen >= (sizeof(unsigned int) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned int) - *lastPartialLength));
-                memcpy(dest, ((char *)&temp + *lastPartialLength),
+                memcpy(dest, ((char *) &temp + *lastPartialLength),
                        (sizeof(unsigned int) - *lastPartialLength));
-                src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
-                dest = (unsigned int *)((char *)dest + sizeof(unsigned int) - *lastPartialLength);
+                src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
+                dest = (unsigned int *) ((char *) dest + sizeof(unsigned int) - *lastPartialLength);
                 csum += (temp - *lastPartialInt);
                 copylen -= sizeof(unsigned int) - *lastPartialLength;
                 /* now we have an unknown alignment for our source and destination */
                 if (INTALIGNED(src) && INTALIGNED(dest)) {
-                    size_t numLongs = copylen/sizeof(unsigned int);
-                    for(i = 0; i < numLongs; i++) {
+                    size_t numLongs = copylen / sizeof(unsigned int);
+                    for (i = 0; i < numLongs; i++) {
                         csum += *src;
                         *dest++ = *src++;
                     }
                     copylen -= i * sizeof(unsigned int);
-                }
-                else { /* safe but slower for all other alignments */
-                    for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+                } else { /* safe but slower for all other alignments */
+                    for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                         memcpy(&temp, src, sizeof(temp));
                         src++;
                         csum += temp;
@@ -626,20 +584,18 @@ pmix_bcopy_uicsum_partial (
                 }
                 *lastPartialInt = 0;
                 *lastPartialLength = 0;
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, copylen);
-                memcpy(dest, ((char *)&temp + *lastPartialLength), copylen);
-                src = (unsigned int *)((char *)src + copylen);
-                dest = (unsigned int *)((char *)dest + copylen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
+                memcpy(dest, ((char *) &temp + *lastPartialLength), copylen);
+                src = (unsigned int *) ((char *) src + copylen);
+                dest = (unsigned int *) ((char *) dest + copylen);
                 csum += (temp - *lastPartialInt);
                 *lastPartialInt = temp;
                 *lastPartialLength += copylen;
                 copylen = 0;
             }
-        }
-        else {
-            for( ;copylen >= sizeof(*src); copylen -= sizeof(*src)) {
+        } else {
+            for (; copylen >= sizeof(*src); copylen -= sizeof(*src)) {
                 memcpy(&temp, src, sizeof(temp));
                 src++;
                 csum += temp;
@@ -661,14 +617,14 @@ pmix_bcopy_uicsum_partial (
                 memcpy(&copytemp, src, copylen);
                 memcpy(dest, &copytemp, copylen);
                 /* fill out rest of partial word and add to checksum */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned int) - *lastPartialLength));
                 /* avoid unsigned arithmetic overflow by subtracting the old partial
                  * word from the new one before adding to the checksum...
-        */
+                 */
                 csum += (temp - *lastPartialInt);
                 copylen -= sizeof(unsigned int) - *lastPartialLength;
-                src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
+                src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
                 *lastPartialLength = copylen;
                 /* reset temp, and calculate next partial word */
                 temp = 0;
@@ -678,24 +634,21 @@ pmix_bcopy_uicsum_partial (
                 /* add it to the the checksum */
                 csum += temp;
                 *lastPartialInt = temp;
-            }
-            else {
+            } else {
                 /* copy all remaining bytes from src to dest */
                 unsigned int copytemp = 0;
                 memcpy(&copytemp, src, copylen);
                 memcpy(dest, &copytemp, copylen);
                 /* fill out rest of partial word and add to checksum */
-                memcpy(((char *)&temp + *lastPartialLength), src,
-                       copylen);
+                memcpy(((char *) &temp + *lastPartialLength), src, copylen);
                 /* avoid unsigned arithmetic overflow by subtracting the old partial
                  * word from the new one before adding to the checksum...
-        */
+                 */
                 csum += temp - *lastPartialInt;
                 *lastPartialInt = temp;
                 *lastPartialLength += copylen;
             }
-        }
-        else { /* fast path... */
+        } else { /* fast path... */
             /* temp and *lastPartialInt are 0 if *lastPartialLength is 0... */
             memcpy(&temp, src, copylen);
             csum += temp;
@@ -704,8 +657,7 @@ pmix_bcopy_uicsum_partial (
             *lastPartialLength = copylen;
             /* done...return the checksum */
         }
-    }
-    else if (csumlenresidue != 0) {
+    } else if (csumlenresidue != 0) {
         if (copylen != 0) {
             temp = 0;
             memcpy(&temp, src, copylen);
@@ -713,39 +665,37 @@ pmix_bcopy_uicsum_partial (
         }
         if (csumlenresidue < (sizeof(unsigned int) - copylen - *lastPartialLength)) {
             temp = *lastPartialInt;
-            memcpy(((char *)&temp + *lastPartialLength), src, (copylen + csumlenresidue));
+            memcpy(((char *) &temp + *lastPartialLength), src, (copylen + csumlenresidue));
             /* avoid unsigned arithmetic overflow by subtracting the old partial
              * word from the new one before adding to the checksum...
-        */
+             */
             csum += temp - *lastPartialInt;
             src++;
             *lastPartialInt = temp;
             *lastPartialLength += copylen + csumlenresidue;
             csumlenresidue = 0;
-        }
-        else {
+        } else {
             /* we have enough chksum data to fill out our last partial
              * word
-        */
+             */
             temp = *lastPartialInt;
-            memcpy(((char *)&temp + *lastPartialLength), src,
+            memcpy(((char *) &temp + *lastPartialLength), src,
                    (sizeof(unsigned int) - *lastPartialLength));
             /* avoid unsigned arithmetic overflow by subtracting the old partial
              * word from the new one before adding to the checksum...
-        */
+             */
             csum += temp - *lastPartialInt;
-            src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
+            src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
             csumlenresidue -= sizeof(unsigned int) - *lastPartialLength - copylen;
             *lastPartialLength = 0;
             *lastPartialInt = 0;
         }
         if (INTALIGNED(src)) {
-            for (i = 0; i < csumlenresidue/sizeof(unsigned int); i++) {
+            for (i = 0; i < csumlenresidue / sizeof(unsigned int); i++) {
                 csum += *src++;
             }
-        }
-        else {
-            for (i = 0; i < csumlenresidue/sizeof(unsigned int); i++) {
+        } else {
+            for (i = 0; i < csumlenresidue / sizeof(unsigned int); i++) {
                 memcpy(&temp, src, sizeof(temp));
                 csum += temp;
                 src++;
@@ -764,39 +714,31 @@ pmix_bcopy_uicsum_partial (
     return csum;
 }
 
-
 /*
  * csum() generates a bcopy_csum() - compatible checksum that can be
  * called multiple times
  */
 
-unsigned long
-pmix_csum_partial (
-    const void *  source,
-    size_t csumlen,
-    unsigned long*  lastPartialLong,
-    size_t* lastPartialLength
-    )
+unsigned long pmix_csum_partial(const void *source, size_t csumlen, unsigned long *lastPartialLong,
+                                size_t *lastPartialLength)
 {
-    unsigned long *  src = (unsigned long *) source;
+    unsigned long *src = (unsigned long *) source;
     unsigned long csum = 0;
     unsigned long i, temp;
 
-
-
     temp = *lastPartialLong;
 
-    if (WORDALIGNED(source))  {
+    if (WORDALIGNED(source)) {
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (csumlen >= (sizeof(unsigned long) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned long) - *lastPartialLength));
-                src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
+                src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
                 csum += (temp - *lastPartialLong);
                 csumlen -= sizeof(unsigned long) - *lastPartialLength;
                 /* now we have an unaligned source */
-                for(i = 0; i < csumlen/sizeof(unsigned long); i++) {
+                for (i = 0; i < csumlen / sizeof(unsigned long); i++) {
                     memcpy(&temp, src, sizeof(temp));
                     csum += temp;
                     src++;
@@ -804,50 +746,46 @@ pmix_csum_partial (
                 csumlen -= i * sizeof(unsigned long);
                 *lastPartialLong = 0;
                 *lastPartialLength = 0;
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, csumlen);
-                src = (unsigned long *)((char *)src + csumlen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, csumlen);
+                src = (unsigned long *) ((char *) src + csumlen);
                 csum += (temp - *lastPartialLong);
                 *lastPartialLong = temp;
                 *lastPartialLength += csumlen;
                 csumlen = 0;
             }
-        }
-        else { /* fast path... */
-            size_t numLongs = csumlen/sizeof(unsigned long);
-            for(i = 0; i < numLongs; i++) {
-                    csum += *src++;
+        } else { /* fast path... */
+            size_t numLongs = csumlen / sizeof(unsigned long);
+            for (i = 0; i < numLongs; i++) {
+                csum += *src++;
             }
             *lastPartialLong = 0;
             *lastPartialLength = 0;
             if (WORDALIGNED(csumlen)) {
-                    return(csum);
-            }
-            else {
-                    csumlen -= i * sizeof(unsigned long);
+                return (csum);
+            } else {
+                csumlen -= i * sizeof(unsigned long);
             }
         }
     } else {
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (csumlen >= (sizeof(unsigned long) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned long) - *lastPartialLength));
-                src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
+                src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
                 csum += (temp - *lastPartialLong);
                 csumlen -= sizeof(unsigned long) - *lastPartialLength;
                 /* now we have a source of unknown alignment */
                 if (WORDALIGNED(src)) {
-                    for(i = 0; i < csumlen/sizeof(unsigned long); i++) {
+                    for (i = 0; i < csumlen / sizeof(unsigned long); i++) {
                         csum += *src++;
                     }
                     csumlen -= i * sizeof(unsigned long);
                     *lastPartialLong = 0;
                     *lastPartialLength = 0;
-                }
-                else {
-                    for(i = 0; i < csumlen/sizeof(unsigned long); i++) {
+                } else {
+                    for (i = 0; i < csumlen / sizeof(unsigned long); i++) {
                         memcpy(&temp, src, sizeof(temp));
                         csum += temp;
                         src++;
@@ -856,18 +794,16 @@ pmix_csum_partial (
                     *lastPartialLong = 0;
                     *lastPartialLength = 0;
                 }
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, csumlen);
-                src = (unsigned long *)((char *)src + csumlen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, csumlen);
+                src = (unsigned long *) ((char *) src + csumlen);
                 csum += (temp - *lastPartialLong);
                 *lastPartialLong = temp;
                 *lastPartialLength += csumlen;
                 csumlen = 0;
             }
-        }
-        else {
-            for( ;csumlen >= sizeof(*src); csumlen -= sizeof(*src)) {
+        } else {
+            for (; csumlen >= sizeof(*src); csumlen -= sizeof(*src)) {
                 memcpy(&temp, src, sizeof(temp));
                 src++;
                 csum += temp;
@@ -883,11 +819,11 @@ pmix_csum_partial (
         if (*lastPartialLength) {
             if (csumlen >= (sizeof(unsigned long) - *lastPartialLength)) {
                 /* fill out rest of partial word and add to checksum */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned long) - *lastPartialLength));
                 csum += (temp - *lastPartialLong);
                 csumlen -= sizeof(unsigned long) - *lastPartialLength;
-                src = (unsigned long *)((char *)src + sizeof(unsigned long) - *lastPartialLength);
+                src = (unsigned long *) ((char *) src + sizeof(unsigned long) - *lastPartialLength);
                 *lastPartialLength = csumlen;
                 /* reset temp, and calculate next partial word */
                 temp = 0;
@@ -897,17 +833,14 @@ pmix_csum_partial (
                 /* add it to the the checksum */
                 csum += temp;
                 *lastPartialLong = temp;
-            }
-            else {
+            } else {
                 /* fill out rest of partial word and add to checksum */
-                memcpy(((char *)&temp + *lastPartialLength), src,
-                       csumlen);
+                memcpy(((char *) &temp + *lastPartialLength), src, csumlen);
                 csum += (temp - *lastPartialLong);
                 *lastPartialLong = temp;
                 *lastPartialLength += csumlen;
             }
-        }
-        else { /* fast path... */
+        } else { /* fast path... */
             /* temp and *lastPartialLong are 0 if *lastPartialLength is 0... */
             memcpy(&temp, src, csumlen);
             csum += temp;
@@ -920,33 +853,27 @@ pmix_csum_partial (
     return csum;
 }
 
-unsigned int
-pmix_uicsum_partial (
-    const void *  source,
-    size_t csumlen,
-    unsigned int*  lastPartialInt,
-    size_t*  lastPartialLength
-    )
+unsigned int pmix_uicsum_partial(const void *source, size_t csumlen, unsigned int *lastPartialInt,
+                                 size_t *lastPartialLength)
 {
-    unsigned int *  src = (unsigned int *) source;
+    unsigned int *src = (unsigned int *) source;
     unsigned int csum = 0;
     unsigned int temp;
     unsigned long i;
 
-
     temp = *lastPartialInt;
 
-    if (INTALIGNED(source))  {
+    if (INTALIGNED(source)) {
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (csumlen >= (sizeof(unsigned int) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned int) - *lastPartialLength));
-                src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
+                src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
                 csum += (temp - *lastPartialInt);
                 csumlen -= sizeof(unsigned int) - *lastPartialLength;
                 /* now we have an unaligned source */
-                for(i = 0; i < csumlen/sizeof(unsigned int); i++) {
+                for (i = 0; i < csumlen / sizeof(unsigned int); i++) {
                     memcpy(&temp, src, sizeof(temp));
                     csum += temp;
                     src++;
@@ -954,50 +881,46 @@ pmix_uicsum_partial (
                 csumlen -= i * sizeof(unsigned int);
                 *lastPartialInt = 0;
                 *lastPartialLength = 0;
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, csumlen);
-                src = (unsigned int *)((char *)src + csumlen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, csumlen);
+                src = (unsigned int *) ((char *) src + csumlen);
                 csum += (temp - *lastPartialInt);
                 *lastPartialInt = temp;
                 *lastPartialLength += csumlen;
                 csumlen = 0;
             }
-        }
-        else { /* fast path... */
-            size_t numLongs = csumlen/sizeof(unsigned int);
-            for(i = 0; i < numLongs; i++) {
-                    csum += *src++;
+        } else { /* fast path... */
+            size_t numLongs = csumlen / sizeof(unsigned int);
+            for (i = 0; i < numLongs; i++) {
+                csum += *src++;
             }
             *lastPartialInt = 0;
             *lastPartialLength = 0;
             if (INTALIGNED(csumlen)) {
-                    return(csum);
-            }
-            else {
-                    csumlen -= i * sizeof(unsigned int);
+                return (csum);
+            } else {
+                csumlen -= i * sizeof(unsigned int);
             }
         }
     } else {
         if (*lastPartialLength) {
             /* do we have enough data to fill out the partial word? */
             if (csumlen >= (sizeof(unsigned int) - *lastPartialLength)) { /* YES, we do... */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned int) - *lastPartialLength));
-                src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
+                src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
                 csum += (temp - *lastPartialInt);
                 csumlen -= sizeof(unsigned int) - *lastPartialLength;
                 /* now we have a source of unknown alignment */
                 if (INTALIGNED(src)) {
-                    for(i = 0; i < csumlen/sizeof(unsigned int); i++) {
+                    for (i = 0; i < csumlen / sizeof(unsigned int); i++) {
                         csum += *src++;
                     }
                     csumlen -= i * sizeof(unsigned int);
                     *lastPartialInt = 0;
                     *lastPartialLength = 0;
-                }
-                else {
-                    for(i = 0; i < csumlen/sizeof(unsigned int); i++) {
+                } else {
+                    for (i = 0; i < csumlen / sizeof(unsigned int); i++) {
                         memcpy(&temp, src, sizeof(temp));
                         csum += temp;
                         src++;
@@ -1006,18 +929,16 @@ pmix_uicsum_partial (
                     *lastPartialInt = 0;
                     *lastPartialLength = 0;
                 }
-            }
-            else { /* NO, we don't... */
-                memcpy(((char *)&temp + *lastPartialLength), src, csumlen);
-                src = (unsigned int *)((char *)src + csumlen);
+            } else { /* NO, we don't... */
+                memcpy(((char *) &temp + *lastPartialLength), src, csumlen);
+                src = (unsigned int *) ((char *) src + csumlen);
                 csum += (temp - *lastPartialInt);
                 *lastPartialInt = temp;
                 *lastPartialLength += csumlen;
                 csumlen = 0;
             }
-        }
-        else {
-            for( ;csumlen >= sizeof(*src); csumlen -= sizeof(*src)) {
+        } else {
+            for (; csumlen >= sizeof(*src); csumlen -= sizeof(*src)) {
                 memcpy(&temp, src, sizeof(temp));
                 src++;
                 csum += temp;
@@ -1033,11 +954,11 @@ pmix_uicsum_partial (
         if (*lastPartialLength) {
             if (csumlen >= (sizeof(unsigned int) - *lastPartialLength)) {
                 /* fill out rest of partial word and add to checksum */
-                memcpy(((char *)&temp + *lastPartialLength), src,
+                memcpy(((char *) &temp + *lastPartialLength), src,
                        (sizeof(unsigned int) - *lastPartialLength));
                 csum += (temp - *lastPartialInt);
                 csumlen -= sizeof(unsigned int) - *lastPartialLength;
-                src = (unsigned int *)((char *)src + sizeof(unsigned int) - *lastPartialLength);
+                src = (unsigned int *) ((char *) src + sizeof(unsigned int) - *lastPartialLength);
                 *lastPartialLength = csumlen;
                 /* reset temp, and calculate next partial word */
                 temp = 0;
@@ -1047,17 +968,14 @@ pmix_uicsum_partial (
                 /* add it to the the checksum */
                 csum += temp;
                 *lastPartialInt = temp;
-            }
-            else {
+            } else {
                 /* fill out rest of partial word and add to checksum */
-                memcpy(((char *)&temp + *lastPartialLength), src,
-                       csumlen);
+                memcpy(((char *) &temp + *lastPartialLength), src, csumlen);
                 csum += (temp - *lastPartialInt);
                 *lastPartialInt = temp;
                 *lastPartialLength += csumlen;
             }
-        }
-        else { /* fast path... */
+        } else { /* fast path... */
             /* temp and *lastPartialInt are 0 if *lastPartialLength is 0... */
             memcpy(&temp, src, csumlen);
             csum += temp;
@@ -1081,7 +999,7 @@ static unsigned int _pmix_crc_table[256];
 
 void pmix_initialize_crc_table(void)
 {
-    register int i,j;
+    register int i, j;
     register unsigned int crc_accum;
 
     for (i = 0; i < 256; i++) {
@@ -1100,12 +1018,8 @@ void pmix_initialize_crc_table(void)
     return;
 }
 
-unsigned int pmix_bcopy_uicrc_partial(
-    const void *  source,
-    void *  destination,
-    size_t copylen,
-    size_t crclen,
-    unsigned int partial_crc)
+unsigned int pmix_bcopy_uicrc_partial(const void *source, void *destination, size_t copylen,
+                                      size_t crclen, unsigned int partial_crc)
 {
     size_t crclenresidue = (crclen > copylen) ? (crclen - copylen) : 0;
     register int i, j;
@@ -1117,22 +1031,22 @@ unsigned int pmix_bcopy_uicrc_partial(
     }
 
     if (INTALIGNED(source) && INTALIGNED(destination)) {
-        register unsigned int *  src = (unsigned int *)source;
-        register unsigned int *  dst = (unsigned int *)destination;
+        register unsigned int *src = (unsigned int *) source;
+        register unsigned int *dst = (unsigned int *) destination;
         register unsigned char *ts, *td;
         /* copy whole integers */
         while (copylen >= sizeof(unsigned int)) {
             tmp = *src++;
             *dst++ = tmp;
-            ts = (unsigned char *)&tmp;
-            for (j = 0; j < (int)sizeof(unsigned int); j++) {
+            ts = (unsigned char *) &tmp;
+            for (j = 0; j < (int) sizeof(unsigned int); j++) {
                 i = ((partial_crc >> 24) ^ *ts++) & 0xff;
                 partial_crc = (partial_crc << 8) ^ _pmix_crc_table[i];
             }
             copylen -= sizeof(unsigned int);
         }
-        ts = (unsigned char *)src;
-        td = (unsigned char *)dst;
+        ts = (unsigned char *) src;
+        td = (unsigned char *) dst;
         /* copy partial integer */
         while (copylen--) {
             t = *ts++;
@@ -1145,10 +1059,9 @@ unsigned int pmix_bcopy_uicrc_partial(
             i = ((partial_crc >> 24) ^ *ts++) & 0xff;
             partial_crc = (partial_crc << 8) ^ _pmix_crc_table[i];
         }
-    }
-    else {
-        register unsigned char *  src = (unsigned char *)source;
-        register unsigned char *  dst = (unsigned char *)destination;
+    } else {
+        register unsigned char *src = (unsigned char *) source;
+        register unsigned char *dst = (unsigned char *) destination;
         while (copylen--) {
             t = *src++;
             *dst++ = t;
@@ -1164,12 +1077,10 @@ unsigned int pmix_bcopy_uicrc_partial(
     return partial_crc;
 }
 
-
-unsigned int pmix_uicrc_partial(
-    const void *  source, size_t crclen, unsigned int partial_crc)
+unsigned int pmix_uicrc_partial(const void *source, size_t crclen, unsigned int partial_crc)
 {
     register int i, j;
-    register unsigned char * t;
+    register unsigned char *t;
     unsigned int tmp;
 
     if (!_pmix_crc_table_initialized) {
@@ -1177,24 +1088,23 @@ unsigned int pmix_uicrc_partial(
     }
 
     if (INTALIGNED(source)) {
-        register unsigned int *  src = (unsigned int *)source;
+        register unsigned int *src = (unsigned int *) source;
         while (crclen >= sizeof(unsigned int)) {
             tmp = *src++;
-            t = (unsigned char *)&tmp;
-            for (j = 0; j < (int)sizeof(unsigned int); j++) {
+            t = (unsigned char *) &tmp;
+            for (j = 0; j < (int) sizeof(unsigned int); j++) {
                 i = ((partial_crc >> 24) ^ *t++) & 0xff;
                 partial_crc = (partial_crc << 8) ^ _pmix_crc_table[i];
             }
             crclen -= sizeof(unsigned int);
         }
-        t = (unsigned char *)src;
+        t = (unsigned char *) src;
         while (crclen--) {
             i = ((partial_crc >> 24) ^ *t++) & 0xff;
             partial_crc = (partial_crc << 8) ^ _pmix_crc_table[i];
         }
-    }
-    else {
-        register unsigned char *  src = (unsigned char *)source;
+    } else {
+        register unsigned char *src = (unsigned char *) source;
         while (crclen--) {
             i = ((partial_crc >> 24) ^ *src++) & 0xff;
             partial_crc = (partial_crc << 8) ^ _pmix_crc_table[i];

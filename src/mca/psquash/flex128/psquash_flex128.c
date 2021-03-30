@@ -4,6 +4,7 @@
  *                         All rights reserved.
  *
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,25 +16,25 @@
 
 #include "include/pmix_common.h"
 
-#include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_socket_errno.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 
-#include "src/mca/psquash/base/base.h"
 #include "psquash_flex128.h"
+#include "src/mca/psquash/base/base.h"
 
 /* Flexible packing constants */
-#define FLEX_BASE7_MAX_BUF_SIZE (SIZEOF_SIZE_T+1)
-#define FLEX_BASE7_MASK ((1<<7) - 1)
-#define FLEX_BASE7_SHIFT 7
-#define FLEX_BASE7_CONT_FLAG (1<<7)
+#define FLEX_BASE7_MAX_BUF_SIZE (SIZEOF_SIZE_T + 1)
+#define FLEX_BASE7_MASK         ((1 << 7) - 1)
+#define FLEX_BASE7_SHIFT        7
+#define FLEX_BASE7_CONT_FLAG    (1 << 7)
 
 /**
  * Packing conversion of a signed integer value to a flexible representation.
@@ -49,20 +50,20 @@
  *       extended to uint64_t if needed
  * (see a comment to `pmix_bfrops_pack_flex` for additional details)
  */
-#define FLEX128_PACK_CONVERT_SIGNED(type, ptr, out)         \
-do {                                                        \
-    type __tbuf = 0;                                        \
-    size_t __tmp;                                           \
-    int __sign = 0;                                         \
-    memcpy(&__tbuf, (ptr), sizeof(type));                   \
-    __tmp = __tbuf;                                         \
-    (out) = (size_t)__tmp;                                  \
-    if (__tmp & (1UL << (sizeof(__tmp)*CHAR_BIT-1))) {      \
-        __sign = 1;                                         \
-        out = ~(out);                                       \
-    }                                                       \
-    (out) = ((out) << 1) + __sign;                          \
-} while (0)
+#define FLEX128_PACK_CONVERT_SIGNED(type, ptr, out)            \
+    do {                                                       \
+        type __tbuf = 0;                                       \
+        size_t __tmp;                                          \
+        int __sign = 0;                                        \
+        memcpy(&__tbuf, (ptr), sizeof(type));                  \
+        __tmp = __tbuf;                                        \
+        (out) = (size_t) __tmp;                                \
+        if (__tmp & (1UL << (sizeof(__tmp) * CHAR_BIT - 1))) { \
+            __sign = 1;                                        \
+            out = ~(out);                                      \
+        }                                                      \
+        (out) = ((out) << 1) + __sign;                         \
+    } while (0)
 
 /**
  * Packing conversion of a signed integer value to a flexible representation.
@@ -75,12 +76,12 @@ do {                                                        \
  *       extended to uint64_t if needed
  * (see a comment to `pmix_bfrops_pack_flex` for additional details)
  */
-#define FLEX128_PACK_CONVERT_UNSIGNED(type, ptr, out)       \
-do {                                                        \
-    type __tbuf = 0;                                        \
-    memcpy(&__tbuf, (ptr), sizeof(type));                   \
-    out = __tbuf;                                           \
-} while (0)
+#define FLEX128_PACK_CONVERT_UNSIGNED(type, ptr, out) \
+    do {                                              \
+        type __tbuf = 0;                              \
+        memcpy(&__tbuf, (ptr), sizeof(type));         \
+        out = __tbuf;                                 \
+    } while (0)
 
 /**
  * Packing conversion from integer value to a flexible representation.
@@ -92,37 +93,37 @@ do {                                                        \
  * d - flexible representation output value (uin64_t)
  * (see a comment to `pmix_bfrops_pack_flex` for additional details)
  */
-#define FLEX128_PACK_CONVERT(r, t, s, d)                            \
-do {                                                                \
-    (r) = PMIX_SUCCESS;                                             \
-    switch (t) {                                                    \
-        case PMIX_INT16:                                            \
-            FLEX128_PACK_CONVERT_SIGNED(int16_t, s, d);             \
-            break;                                                  \
-        case PMIX_UINT16:                                           \
-            FLEX128_PACK_CONVERT_UNSIGNED(uint16_t, s, d);          \
-            break;                                                  \
-        case PMIX_INT:                                              \
-        case PMIX_INT32:                                            \
-            FLEX128_PACK_CONVERT_SIGNED(int32_t, s, d);             \
-            break;                                                  \
-        case PMIX_UINT:                                             \
-        case PMIX_UINT32:                                           \
-            FLEX128_PACK_CONVERT_UNSIGNED(uint32_t, s, d);          \
-            break;                                                  \
-        case PMIX_INT64:                                            \
-            FLEX128_PACK_CONVERT_SIGNED(int64_t, s, d);             \
-            break;                                                  \
-        case PMIX_SIZE:                                             \
-            FLEX128_PACK_CONVERT_UNSIGNED(size_t, s, d);            \
-            break;                                                  \
-        case PMIX_UINT64:                                           \
-            FLEX128_PACK_CONVERT_UNSIGNED(uint64_t, s, d);          \
-            break;                                                  \
-        default:                                                    \
-            (r) = PMIX_ERR_BAD_PARAM;                               \
-    }                                                               \
-} while(0)
+#define FLEX128_PACK_CONVERT(r, t, s, d)                   \
+    do {                                                   \
+        (r) = PMIX_SUCCESS;                                \
+        switch (t) {                                       \
+        case PMIX_INT16:                                   \
+            FLEX128_PACK_CONVERT_SIGNED(int16_t, s, d);    \
+            break;                                         \
+        case PMIX_UINT16:                                  \
+            FLEX128_PACK_CONVERT_UNSIGNED(uint16_t, s, d); \
+            break;                                         \
+        case PMIX_INT:                                     \
+        case PMIX_INT32:                                   \
+            FLEX128_PACK_CONVERT_SIGNED(int32_t, s, d);    \
+            break;                                         \
+        case PMIX_UINT:                                    \
+        case PMIX_UINT32:                                  \
+            FLEX128_PACK_CONVERT_UNSIGNED(uint32_t, s, d); \
+            break;                                         \
+        case PMIX_INT64:                                   \
+            FLEX128_PACK_CONVERT_SIGNED(int64_t, s, d);    \
+            break;                                         \
+        case PMIX_SIZE:                                    \
+            FLEX128_PACK_CONVERT_UNSIGNED(size_t, s, d);   \
+            break;                                         \
+        case PMIX_UINT64:                                  \
+            FLEX128_PACK_CONVERT_UNSIGNED(uint64_t, s, d); \
+            break;                                         \
+        default:                                           \
+            (r) = PMIX_ERR_BAD_PARAM;                      \
+        }                                                  \
+    } while (0)
 
 /**
  * Unpacking conversion from a flexible representation to a
@@ -133,18 +134,18 @@ do {                                                                \
  * ptr - pointer to a 64-bit output buffer for the upacked value
  * (see a comment to `pmix_bfrops_pack_flex` for additional details)
  */
-#define FLEX128_UNPACK_CONVERT_SIGNED(type, val, ptr)           \
-do {                                                            \
-    type __tbuf = 0;                                            \
-    size_t __tmp = val;                                         \
-    int sign = (__tmp) & 1;                                     \
-    __tmp >>= 1;                                                \
-    if (sign) {                                                 \
-        __tmp = ~__tmp;                                         \
-    }                                                           \
-    __tbuf = (type)__tmp;                                       \
-    memcpy(ptr, &__tbuf, sizeof(type));                         \
-} while (0)
+#define FLEX128_UNPACK_CONVERT_SIGNED(type, val, ptr) \
+    do {                                              \
+        type __tbuf = 0;                              \
+        size_t __tmp = val;                           \
+        int sign = (__tmp) &1;                        \
+        __tmp >>= 1;                                  \
+        if (sign) {                                   \
+            __tmp = ~__tmp;                           \
+        }                                             \
+        __tbuf = (type) __tmp;                        \
+        memcpy(ptr, &__tbuf, sizeof(type));           \
+    } while (0)
 
 /**
  * Unpacking conversion of a flexible representation value
@@ -155,12 +156,12 @@ do {                                                            \
  * ptr - pointer to a 64-bit output buffer for the upacked value
  * (see a comment to `pmix_bfrops_pack_flex` for additional details)
  */
-#define FLEX128_UNPACK_CONVERT_UNSIGNED(type, val, ptr)         \
-do {                                                            \
-    type __tbuf = 0;                                            \
-    __tbuf = (type)val;                                         \
-    memcpy(ptr, &__tbuf, sizeof(type));                         \
-} while (0)
+#define FLEX128_UNPACK_CONVERT_UNSIGNED(type, val, ptr) \
+    do {                                                \
+        type __tbuf = 0;                                \
+        __tbuf = (type) val;                            \
+        memcpy(ptr, &__tbuf, sizeof(type));             \
+    } while (0)
 
 /**
  * Unpacking conversion of a flexible representation value
@@ -173,37 +174,37 @@ do {                                                            \
  * d - pointer to a 64-bit output buffer for the upacked value
  * (see a comment to `pmix_bfrops_pack_flex` for additional details)
  */
-#define FLEX128_UNPACK_CONVERT(r, t, s, d)                              \
-do {                                                                    \
-    (r) = PMIX_SUCCESS;                                                 \
-    switch (t) {                                                        \
-        case PMIX_INT16:                                                \
-            FLEX128_UNPACK_CONVERT_SIGNED(int16_t, s, d);               \
-            break;                                                      \
-        case PMIX_UINT16:                                               \
-            FLEX128_UNPACK_CONVERT_UNSIGNED(uint16_t, s, d);            \
-            break;                                                      \
-        case PMIX_INT:                                                  \
-        case PMIX_INT32:                                                \
-            FLEX128_UNPACK_CONVERT_SIGNED(int32_t, s, d);               \
-            break;                                                      \
-        case PMIX_UINT:                                                 \
-        case PMIX_UINT32:                                               \
-            FLEX128_UNPACK_CONVERT_UNSIGNED(uint32_t, s, d);            \
-            break;                                                      \
-        case PMIX_INT64:                                                \
-            FLEX128_UNPACK_CONVERT_SIGNED(int64_t, s, d);               \
-            break;                                                      \
-        case PMIX_SIZE:                                                 \
-            FLEX128_UNPACK_CONVERT_UNSIGNED(size_t, s, d);              \
-            break;                                                      \
-        case PMIX_UINT64:                                               \
-            FLEX128_UNPACK_CONVERT_UNSIGNED(uint64_t, s, d);            \
-            break;                                                      \
-        default:                                                        \
-            (r) = PMIX_ERR_BAD_PARAM;                                   \
-    }                                                                   \
-} while(0)
+#define FLEX128_UNPACK_CONVERT(r, t, s, d)                   \
+    do {                                                     \
+        (r) = PMIX_SUCCESS;                                  \
+        switch (t) {                                         \
+        case PMIX_INT16:                                     \
+            FLEX128_UNPACK_CONVERT_SIGNED(int16_t, s, d);    \
+            break;                                           \
+        case PMIX_UINT16:                                    \
+            FLEX128_UNPACK_CONVERT_UNSIGNED(uint16_t, s, d); \
+            break;                                           \
+        case PMIX_INT:                                       \
+        case PMIX_INT32:                                     \
+            FLEX128_UNPACK_CONVERT_SIGNED(int32_t, s, d);    \
+            break;                                           \
+        case PMIX_UINT:                                      \
+        case PMIX_UINT32:                                    \
+            FLEX128_UNPACK_CONVERT_UNSIGNED(uint32_t, s, d); \
+            break;                                           \
+        case PMIX_INT64:                                     \
+            FLEX128_UNPACK_CONVERT_SIGNED(int64_t, s, d);    \
+            break;                                           \
+        case PMIX_SIZE:                                      \
+            FLEX128_UNPACK_CONVERT_UNSIGNED(size_t, s, d);   \
+            break;                                           \
+        case PMIX_UINT64:                                    \
+            FLEX128_UNPACK_CONVERT_UNSIGNED(uint64_t, s, d); \
+            break;                                           \
+        default:                                             \
+            (r) = PMIX_ERR_BAD_PARAM;                        \
+        }                                                    \
+    } while (0)
 
 static pmix_status_t flex128_init(void);
 
@@ -211,45 +212,37 @@ static void flex128_finalize(void);
 
 static pmix_status_t flex128_get_max_size(pmix_data_type_t type, size_t *size);
 
-static pmix_status_t flex128_encode_int(pmix_data_type_t type, void *src,
-                                        void *dst, size_t *size);
+static pmix_status_t flex128_encode_int(pmix_data_type_t type, void *src, void *dst, size_t *size);
 
-static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src,
-                                        size_t src_len, void *dest,
-                                        size_t *dst_size);
+static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src, size_t src_len,
+                                        void *dest, size_t *dst_size);
 
-static size_t flex_pack_integer(size_t val,
-                                uint8_t out_buf[FLEX_BASE7_MAX_BUF_SIZE]);
+static size_t flex_pack_integer(size_t val, uint8_t out_buf[FLEX_BASE7_MAX_BUF_SIZE]);
 
-static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size,
-                                  size_t *out_val, size_t *out_val_size);
+static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size, size_t *out_val,
+                                  size_t *out_val_size);
 
-pmix_psquash_base_module_t pmix_flex128_module = {
-    .name = "flex128",
-    .int_type_is_encoded = true,
-    .init = flex128_init,
-    .finalize = flex128_finalize,
-    .get_max_size = flex128_get_max_size,
-    .encode_int = flex128_encode_int,
-    .decode_int = flex128_decode_int
-};
-
+pmix_psquash_base_module_t pmix_flex128_module = {.name = "flex128",
+                                                  .int_type_is_encoded = true,
+                                                  .init = flex128_init,
+                                                  .finalize = flex128_finalize,
+                                                  .get_max_size = flex128_get_max_size,
+                                                  .encode_int = flex128_encode_int,
+                                                  .decode_int = flex128_decode_int};
 
 static pmix_status_t flex128_init(void)
 {
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psquash: flex128 init");
+    pmix_output_verbose(2, pmix_globals.debug_output, "psquash: flex128 init");
     return PMIX_SUCCESS;
 }
 
 static void flex128_finalize(void)
 {
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psquash: flex128 finalize");
+    pmix_output_verbose(2, pmix_globals.debug_output, "psquash: flex128 finalize");
 }
 
 static pmix_status_t flex128_get_max_size(pmix_data_type_t type, size_t *size)
- {
+{
     pmix_status_t rc;
     PMIX_SQUASH_TYPE_SIZEOF(rc, type, *size);
     /* the size of the packed value can be 1B larger
@@ -258,14 +251,13 @@ static pmix_status_t flex128_get_max_size(pmix_data_type_t type, size_t *size)
     return rc;
 }
 
-static pmix_status_t flex128_encode_int(pmix_data_type_t type, void *src,
-                                        void *dst, size_t *size)
+static pmix_status_t flex128_encode_int(pmix_data_type_t type, void *src, void *dst, size_t *size)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     uint8_t tmp_buf[FLEX_BASE7_MAX_BUF_SIZE];
     uint64_t tmp;
 
-    FLEX128_PACK_CONVERT(rc, type, (uint8_t*)src, tmp);
+    FLEX128_PACK_CONVERT(rc, type, (uint8_t *) src, tmp);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -276,8 +268,8 @@ static pmix_status_t flex128_encode_int(pmix_data_type_t type, void *src,
     return rc;
 }
 
-static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src,
-                                        size_t src_len, void *dest, size_t *dst_size)
+static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src, size_t src_len,
+                                        void *dest, size_t *dst_size)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     size_t tmp;
@@ -290,12 +282,12 @@ static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src,
     }
     *dst_size = flex_unpack_integer(src, src_len, &tmp, &unpack_val_size);
 
-    if( val_size < unpack_val_size ) { // sanity check
+    if (val_size < unpack_val_size) { // sanity check
         rc = PMIX_ERR_UNPACK_FAILURE;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    FLEX128_UNPACK_CONVERT(rc, type, tmp, (uint8_t*)dest);
+    FLEX128_UNPACK_CONVERT(rc, type, tmp, (uint8_t *) dest);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -314,8 +306,7 @@ static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src,
  * with the same representation, but the base B = 128 and the remaning bit is
  * used to indicate whether or not the next byte contains more bits of this value.
  */
-static size_t flex_pack_integer(size_t val,
-                                uint8_t out_buf[FLEX_BASE7_MAX_BUF_SIZE])
+static size_t flex_pack_integer(size_t val, uint8_t out_buf[FLEX_BASE7_MAX_BUF_SIZE])
 {
     size_t tmp = val;
     size_t idx = 0;
@@ -327,7 +318,7 @@ static size_t flex_pack_integer(size_t val,
             encoding |= FLEX_BASE7_CONT_FLAG;
         }
         out_buf[idx++] = encoding;
-    } while(tmp && idx < SIZEOF_SIZE_T);
+    } while (tmp && idx < SIZEOF_SIZE_T);
 
     /* If we have leftover (VERY unlikely) */
     if (PMIX_UNLIKELY(SIZEOF_SIZE_T == idx && tmp)) {
@@ -340,8 +331,8 @@ static size_t flex_pack_integer(size_t val,
 /*
  * See a comment to `pmix_bfrops_pack_flex` for additional details.
  */
-static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size,
-                                  size_t *out_val, size_t *out_val_size)
+static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size, size_t *out_val,
+                                  size_t *out_val_size)
 {
     size_t value = 0, shift = 0, shift_last = 0;
     size_t idx = 0;
@@ -358,16 +349,14 @@ static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size,
         val = in_buf[idx++];
         val_last = val;
         shift_last = shift;
-        value = value + (((uint64_t)val & FLEX_BASE7_MASK) << shift);
+        value = value + (((uint64_t) val & FLEX_BASE7_MASK) << shift);
         shift += FLEX_BASE7_SHIFT;
-    } while(PMIX_UNLIKELY((val & FLEX_BASE7_CONT_FLAG) &&
-                          (idx < (flex_size-1))));
+    } while (PMIX_UNLIKELY((val & FLEX_BASE7_CONT_FLAG) && (idx < (flex_size - 1))));
     /* If we have leftover (VERY unlikely) */
-    if (PMIX_UNLIKELY((flex_size-1) == idx &&
-                      (val & FLEX_BASE7_CONT_FLAG))) {
+    if (PMIX_UNLIKELY((flex_size - 1) == idx && (val & FLEX_BASE7_CONT_FLAG))) {
         val = in_buf[idx++];
         val_last = val;
-        value = value + ((uint64_t)val << shift);
+        value = value + ((uint64_t) val << shift);
         shift_last = shift;
     }
     /* compute the most significant bit of val */
@@ -376,8 +365,7 @@ static size_t flex_unpack_integer(const uint8_t in_buf[], size_t buf_size,
         hi_bit++;
     }
     /* compute the real val size */
-    *out_val_size = (hi_bit + shift_last)/CHAR_BIT +
-            !!((hi_bit + shift_last) & (CHAR_BIT - 1));
+    *out_val_size = (hi_bit + shift_last) / CHAR_BIT + !!((hi_bit + shift_last) & (CHAR_BIT - 1));
     *out_val = value;
 
     return idx;

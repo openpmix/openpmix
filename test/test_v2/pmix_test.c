@@ -21,6 +21,7 @@
  * Copyright (c) 2020      Triad National Security, LLC.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,25 +30,25 @@
  *
  */
 
+#include <limits.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <signal.h>
-#include <limits.h>
 
-#include "src/util/pmix_environ.h"
 #include "src/util/output.h"
+#include "src/util/pmix_environ.h"
 
 #include "server_callbacks.h"
-#include "test_server.h"
 #include "test_common.h"
+#include "test_server.h"
 
 bool spawn_wait = false;
 
 int main(int argc, char **argv)
 {
-    char **client_env=NULL;
-    char **client_argv=NULL;
+    char **client_env = NULL;
+    char **client_argv = NULL;
     int rc, i;
     struct stat stat_buf;
     int test_fail = 0;
@@ -75,11 +76,12 @@ int main(int argc, char **argv)
     free(tmp);
 
     /* verify executable */
-    if( 0 > ( rc = stat(params.binary, &stat_buf) ) ){
-        TEST_ERROR_EXIT(("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
-    } else if( !S_ISREG(stat_buf.st_mode) ){
+    if (0 > (rc = stat(params.binary, &stat_buf))) {
+        TEST_ERROR_EXIT(
+            ("Cannot stat() executable \"%s\": %d: %s", params.binary, errno, strerror(errno)));
+    } else if (!S_ISREG(stat_buf.st_mode)) {
         TEST_ERROR_EXIT(("Client executable \"%s\": is not a regular file", params.binary));
-    }else if( !(stat_buf.st_mode & S_IXUSR) ){
+    } else if (!(stat_buf.st_mode & S_IXUSR)) {
         TEST_ERROR_EXIT(("Client executable \"%s\": has no executable flag", params.binary));
     }
 
@@ -107,9 +109,10 @@ int main(int argc, char **argv)
     int launched = 0;
     launched += server_launch_clients(&params, &val_params, &client_env, &client_argv);
 
-    if (val_params.pmix_local_size != (uint32_t)launched) {
-        TEST_ERROR(("srv #%d: Total number of processes doesn't correspond to pmix_local_size parameter.",
-                    my_server_id));
+    if (val_params.pmix_local_size != (uint32_t) launched) {
+        TEST_ERROR(
+            ("srv #%d: Total number of processes doesn't correspond to pmix_local_size parameter.",
+             my_server_id));
         cli_kill_all();
         test_fail = 1;
         goto done;
@@ -123,26 +126,27 @@ int main(int argc, char **argv)
         nanosleep(&ts, NULL);
     }
 
-    if( test_abort ){
+    if (test_abort) {
         TEST_ERROR(("srv #%d: Test was aborted!", my_server_id));
         /* do not simply kill the clients as that generates
          * event notifications which these tests then print
          * out, flooding the log */
-      //  cli_kill_all();
+        //  cli_kill_all();
         test_fail = 1;
     }
 
-    for(i=0; i < cli_info_cnt; i++){
+    for (i = 0; i < cli_info_cnt; i++) {
         if (cli_info[i].exit_code != 0) {
             ++test_fail;
         }
-       TEST_VERBOSE(("client %d exit code = %d, test_fail = %d", i, cli_info[i].exit_code, test_fail));
+        TEST_VERBOSE(
+            ("client %d exit code = %d, test_fail = %d", i, cli_info[i].exit_code, test_fail));
     }
 
     /* deregister the errhandler */
     PMIx_Deregister_event_handler(0, op_callbk, NULL);
 
-  done:
+done:
     TEST_VERBOSE(("srv #%d: calling server_finalize", my_server_id));
     test_fail += server_finalize(&val_params, test_fail);
 

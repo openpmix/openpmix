@@ -25,13 +25,13 @@
 #include "src/include/pmix_config.h"
 
 #ifdef malloc
-#undef malloc
+#    undef malloc
 #endif
 #ifdef realloc
-#undef realloc
+#    undef realloc
 #endif
 #ifdef free
-#undef free
+#    undef free
 #endif
 
 #include <stdio.h>
@@ -65,11 +65,11 @@ extern int pmix_util_keyval_yylineno;
 /*
  * Make lex-generated files not issue compiler warnings
  */
-#define YY_STACK_USED 0
+#define YY_STACK_USED         0
 #define YY_ALWAYS_INTERACTIVE 0
-#define YY_NEVER_INTERACTIVE 0
-#define YY_MAIN 0
-#define YY_NO_UNPUT 1
-#define YY_SKIP_YYWRAP 1
+#define YY_NEVER_INTERACTIVE  0
+#define YY_MAIN               0
+#define YY_NO_UNPUT           1
+#define YY_SKIP_YYWRAP        1
 
 #endif

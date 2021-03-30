@@ -6,6 +6,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -56,10 +57,10 @@
 #define PMIX_HOTEL_H
 
 #include "src/include/pmix_config.h"
-#include "src/include/prefetch.h"
 #include "include/pmix_common.h"
-#include "src/include/types.h"
 #include "src/class/pmix_object.h"
+#include "src/include/prefetch.h"
+#include "src/include/types.h"
 #include PMIX_EVENT_HEADER
 
 #include "src/util/output.h"
@@ -69,8 +70,7 @@ BEGIN_C_DECLS
 struct pmix_hotel_t;
 
 /* User-supplied function to be invoked when an occupant is evicted. */
-typedef void (*pmix_hotel_eviction_callback_fn_t)(struct pmix_hotel_t *hotel,
-                                                  int room_num,
+typedef void (*pmix_hotel_eviction_callback_fn_t)(struct pmix_hotel_t *hotel, int room_num,
                                                   void *occupant);
 
 /* Note that this is an internal data structure; it is not part of the
@@ -161,8 +161,7 @@ PMIX_CLASS_DECLARATION(pmix_hotel_t);
  *  the error indicate what went wrong in the function.
  */
 PMIX_EXPORT pmix_status_t pmix_hotel_init(pmix_hotel_t *hotel, int num_rooms,
-                                          pmix_event_base_t *evbase,
-                                          uint32_t eviction_timeout,
+                                          pmix_event_base_t *evbase, uint32_t eviction_timeout,
                                           pmix_hotel_eviction_callback_fn_t evict_callback_fn);
 
 /**
@@ -185,9 +184,7 @@ PMIX_EXPORT pmix_status_t pmix_hotel_init(pmix_hotel_t *hotel, int num_rooms,
  * @return PMIX_ERR_TEMP_OUT_OF_RESOURCE is the hotel is full.  Try
  * again later.
  */
-static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel,
-                                               void *occupant,
-                                               int *room_num)
+static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel, void *occupant, int *room_num)
 {
     pmix_hotel_room_t *room;
 
@@ -204,8 +201,7 @@ static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel,
 
     /* Assign the event and make it pending */
     if (NULL != hotel->evbase) {
-        pmix_event_add(&(room->eviction_timer_event),
-                       &(hotel->eviction_timeout));
+        pmix_event_add(&(room->eviction_timer_event), &(hotel->eviction_timeout));
     }
 
     return PMIX_SUCCESS;
@@ -215,9 +211,7 @@ static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel,
  * Same as pmix_hotel_checkin(), but slightly optimized for when the
  * caller *knows* that there is a room available.
  */
-static inline void pmix_hotel_checkin_with_res(pmix_hotel_t *hotel,
-                                               void *occupant,
-                                               int *room_num)
+static inline void pmix_hotel_checkin_with_res(pmix_hotel_t *hotel, void *occupant, int *room_num)
 {
     pmix_hotel_room_t *room;
 
@@ -229,8 +223,7 @@ static inline void pmix_hotel_checkin_with_res(pmix_hotel_t *hotel,
 
     /* Assign the event and make it pending */
     if (NULL != hotel->evbase) {
-        pmix_event_add(&(room->eviction_timer_event),
-                       &(hotel->eviction_timeout));
+        pmix_event_add(&(room->eviction_timer_event), &(hotel->eviction_timeout));
     }
 }
 
@@ -287,7 +280,8 @@ static inline void pmix_hotel_checkout(pmix_hotel_t *hotel, int room_num)
  *
  * Use this checkout and when caller needs the occupant
  */
-static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, int room_num, void **occupant)
+static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, int room_num,
+                                                           void **occupant)
 {
     pmix_hotel_room_t *room;
 
@@ -302,7 +296,7 @@ static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, 
     /* If there's an occupant in the room, check them out */
     room = &(hotel->rooms[room_num]);
     if (PMIX_LIKELY(NULL != room->occupant)) {
-        pmix_output (10, "checking out occupant %p from room num %d", room->occupant, room_num);
+        pmix_output(10, "checking out occupant %p from room num %d", room->occupant, room_num);
         /* Do not change this logic without also changing the same
            logic in pmix_hotel_checkout() and
            pmix_hotel.c:local_eviction_callback(). */
@@ -314,8 +308,7 @@ static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, 
         hotel->last_unoccupied_room++;
         assert(hotel->last_unoccupied_room < hotel->num_rooms);
         hotel->unoccupied_rooms[hotel->last_unoccupied_room] = room_num;
-    }
-    else {
+    } else {
         *occupant = NULL;
     }
 }
@@ -326,7 +319,7 @@ static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, 
  * @return bool true if empty false if there is a occupant(s)
  *
  */
-static inline bool pmix_hotel_is_empty (pmix_hotel_t *hotel)
+static inline bool pmix_hotel_is_empty(pmix_hotel_t *hotel)
 {
     if (hotel->last_unoccupied_room == hotel->num_rooms - 1)
         return true;
@@ -360,7 +353,7 @@ static inline void pmix_hotel_knock(pmix_hotel_t *hotel, int room_num, void **oc
     /* If there's an occupant in the room, have them come to the door */
     room = &(hotel->rooms[room_num]);
     if (PMIX_LIKELY(NULL != room->occupant)) {
-        pmix_output (10, "occupant %p in room num %d responded to knock", room->occupant, room_num);
+        pmix_output(10, "occupant %p in room num %d responded to knock", room->occupant, room_num);
         *occupant = room->occupant;
     }
 }

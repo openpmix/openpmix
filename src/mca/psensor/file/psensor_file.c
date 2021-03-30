@@ -9,6 +9,7 @@
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,23 +20,23 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include <stdio.h>
-#include <stddef.h>
 #include <ctype.h>
+#include <stddef.h>
+#include <stdio.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_NETDB_H
-#include <netdb.h>
+#    include <netdb.h>
 #endif
 #ifdef HAVE_SYS_PARAM_H
-#include <sys/param.h>
+#    include <sys/param.h>
 #endif
-#include <fcntl.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <signal.h>
 #ifdef HAVE_TIME_H
-#include <time.h>
+#    include <time.h>
 #endif
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -46,20 +47,16 @@
 #include "src/util/output.h"
 #include "src/util/show_help.h"
 
-#include "src/mca/psensor/base/base.h"
 #include "psensor_file.h"
+#include "src/mca/psensor/base/base.h"
 
 /* declare the API functions */
-static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error,
-                           const pmix_info_t *monitor,
+static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pmix_info_t *monitor,
                            const pmix_info_t directives[], size_t ndirs);
 static pmix_status_t stop(pmix_peer_t *requestor, char *id);
 
 /* instantiate the module */
-pmix_psensor_base_module_t pmix_psensor_file_module = {
-    .start = start,
-    .stop = stop
-};
+pmix_psensor_base_module_t pmix_psensor_file_module = {.start = start, .stop = stop};
 
 /* define a tracking object */
 typedef struct {
@@ -124,9 +121,7 @@ static void ft_destructor(file_tracker_t *ft)
         PMIX_INFO_FREE(ft->info, ft->ninfo);
     }
 }
-PMIX_CLASS_INSTANCE(file_tracker_t,
-                    pmix_list_item_t,
-                    ft_constructor, ft_destructor);
+PMIX_CLASS_INSTANCE(file_tracker_t, pmix_list_item_t, ft_constructor, ft_destructor);
 
 /* define a local caddy */
 typedef struct {
@@ -149,15 +144,13 @@ static void cd_des(file_caddy_t *p)
         free(p->id);
     }
 }
-PMIX_CLASS_INSTANCE(file_caddy_t,
-                    pmix_object_t,
-                    cd_con, cd_des);
+PMIX_CLASS_INSTANCE(file_caddy_t, pmix_object_t, cd_con, cd_des);
 
 static void file_sample(int sd, short args, void *cbdata);
 
 static void add_tracker(int sd, short flags, void *cbdata)
 {
-    file_tracker_t *ft = (file_tracker_t*)cbdata;
+    file_tracker_t *ft = (file_tracker_t *) cbdata;
 
     PMIX_ACQUIRE_OBJECT(fd);
 
@@ -165,8 +158,7 @@ static void add_tracker(int sd, short flags, void *cbdata)
     pmix_list_append(&mca_psensor_file_component.trackers, &ft->super);
 
     /* setup the timer event */
-    pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev,
-                           file_sample, ft);
+    pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev, file_sample, ft);
     pmix_event_evtimer_add(&ft->ev, &ft->tv);
     ft->event_active = true;
 }
@@ -174,8 +166,7 @@ static void add_tracker(int sd, short flags, void *cbdata)
 /*
  * Start monitoring of local processes
  */
-static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error,
-                           const pmix_info_t *monitor,
+static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pmix_info_t *monitor,
                            const pmix_info_t directives[], size_t ndirs)
 {
     file_tracker_t *ft;
@@ -198,7 +189,7 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error,
     ft->file = strdup(monitor->value.data.string);
 
     /* check the directives to see if what they want monitored */
-    for (n=0; n < ndirs; n++) {
+    for (n = 0; n < ndirs; n++) {
         if (0 == strcmp(directives[n].key, PMIX_MONITOR_FILE_SIZE)) {
             ft->file_size = PMIX_INFO_TRUE(&directives[n]);
         } else if (0 == strcmp(directives[n].key, PMIX_MONITOR_FILE_ACCESS)) {
@@ -214,37 +205,33 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error,
         }
     }
 
-    if (0 == ft->tv.tv_sec ||
-        (!ft->file_size && !ft->file_access && !ft->file_mod)) {
+    if (0 == ft->tv.tv_sec || (!ft->file_size && !ft->file_access && !ft->file_mod)) {
         /* didn't specify a sample rate, or what should be sampled */
         PMIX_RELEASE(ft);
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* need to push into our event base to add this to our trackers */
-    pmix_event_assign(&ft->cdev, pmix_psensor_base.evbase, -1,
-                      EV_WRITE, add_tracker, ft);
+    pmix_event_assign(&ft->cdev, pmix_psensor_base.evbase, -1, EV_WRITE, add_tracker, ft);
     PMIX_POST_OBJECT(ft);
     pmix_event_active(&ft->cdev, EV_WRITE, 1);
 
     return PMIX_SUCCESS;
 }
 
-
 static void del_tracker(int sd, short flags, void *cbdata)
 {
-    file_caddy_t *cd = (file_caddy_t*)cbdata;
+    file_caddy_t *cd = (file_caddy_t *) cbdata;
     file_tracker_t *ft, *ftnext;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
     /* remove the tracker from our list */
-    PMIX_LIST_FOREACH_SAFE(ft, ftnext, &mca_psensor_file_component.trackers, file_tracker_t) {
+    PMIX_LIST_FOREACH_SAFE (ft, ftnext, &mca_psensor_file_component.trackers, file_tracker_t) {
         if (ft->requestor != cd->requestor) {
             continue;
         }
-        if (NULL == cd->id ||
-            (NULL != ft->id && 0 == strcmp(ft->id, cd->id))) {
+        if (NULL == cd->id || (NULL != ft->id && 0 == strcmp(ft->id, cd->id))) {
             pmix_list_remove_item(&mca_psensor_file_component.trackers, &ft->super);
             PMIX_RELEASE(ft);
         }
@@ -264,8 +251,7 @@ static pmix_status_t stop(pmix_peer_t *requestor, char *id)
     }
 
     /* need to push into our event base to add this to our trackers */
-    pmix_event_assign(&cd->ev, pmix_psensor_base.evbase, -1,
-                      EV_WRITE, del_tracker, cd);
+    pmix_event_assign(&cd->ev, pmix_psensor_base.evbase, -1, EV_WRITE, del_tracker, cd);
     PMIX_POST_OBJECT(cd);
     pmix_event_active(&cd->ev, EV_WRITE, 1);
 
@@ -274,14 +260,14 @@ static pmix_status_t stop(pmix_peer_t *requestor, char *id)
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
-    file_tracker_t *ft = (file_tracker_t*)cbdata;
+    file_tracker_t *ft = (file_tracker_t *) cbdata;
 
     PMIX_RELEASE(ft);
 }
 
 static void file_sample(int sd, short args, void *cbdata)
 {
-    file_tracker_t *ft = (file_tracker_t*)cbdata;
+    file_tracker_t *ft = (file_tracker_t *) cbdata;
     struct stat buf;
     pmix_status_t rc;
     pmix_proc_t source;
@@ -289,30 +275,28 @@ static void file_sample(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(ft);
 
     PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
-                         "[%s:%d] sampling file %s",
-                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                         ft->file));
+                         "[%s:%d] sampling file %s", pmix_globals.myid.nspace,
+                         pmix_globals.myid.rank, ft->file));
 
     /* stat the file and get its info */
     /* coverity[toctou] */
     if (0 > stat(ft->file, &buf)) {
         /* cannot stat file */
         PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
-                             "[%s:%d] could not stat %s",
-                             pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                             ft->file));
+                             "[%s:%d] could not stat %s", pmix_globals.myid.nspace,
+                             pmix_globals.myid.rank, ft->file));
         /* re-add the timer, in case this file shows up */
         pmix_event_evtimer_add(&ft->ev, &ft->tv);
         return;
     }
 
     PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
-                         "[%s:%d] size %lu access %s\tmod %s",
-                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                         (unsigned long)buf.st_size, ctime(&buf.st_atime), ctime(&buf.st_mtime)));
+                         "[%s:%d] size %lu access %s\tmod %s", pmix_globals.myid.nspace,
+                         pmix_globals.myid.rank, (unsigned long) buf.st_size, ctime(&buf.st_atime),
+                         ctime(&buf.st_mtime)));
 
     if (ft->file_size) {
-        if (buf.st_size == (int64_t)ft->last_size) {
+        if (buf.st_size == (int64_t) ft->last_size) {
             ft->nmisses++;
         } else {
             ft->nmisses = 0;
@@ -335,22 +319,21 @@ static void file_sample(int sd, short args, void *cbdata)
     }
 
     PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
-                         "[%s:%d] sampled file %s misses %d",
-                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                         ft->file, ft->nmisses));
+                         "[%s:%d] sampled file %s misses %d", pmix_globals.myid.nspace,
+                         pmix_globals.myid.rank, ft->file, ft->nmisses));
 
     if (ft->nmisses == ft->ndrops) {
         if (4 < pmix_output_get_verbosity(pmix_psensor_base_framework.framework_output)) {
-            pmix_show_help("help-pmix-psensor-file.txt", "file-stalled", true,
-                           ft->file, ft->last_size, ctime(&ft->last_access), ctime(&ft->last_mod));
+            pmix_show_help("help-pmix-psensor-file.txt", "file-stalled", true, ft->file,
+                           ft->last_size, ctime(&ft->last_access), ctime(&ft->last_mod));
         }
         /* stop monitoring this client */
         pmix_list_remove_item(&mca_psensor_file_component.trackers, &ft->super);
         /* generate an event */
         pmix_strncpy(source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
         source.rank = ft->requestor->info->pname.rank;
-        rc = PMIx_Notify_event(PMIX_MONITOR_FILE_ALERT, &source,
-                               ft->range, ft->info, ft->ninfo, opcbfunc, ft);
+        rc = PMIx_Notify_event(PMIX_MONITOR_FILE_ALERT, &source, ft->range, ft->info, ft->ninfo,
+                               opcbfunc, ft);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }

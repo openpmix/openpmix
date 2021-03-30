@@ -5,6 +5,7 @@
  * Copyright (c) 2007      Sun Microsystem, Inc.  All rights reserved.
  * Copyright (c) 2010      Sandia National Laboratories. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,9 +18,9 @@
 
 #include <string.h>
 
-#include "src/util/os_path.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
+#include "src/util/os_path.h"
 
 /* Support both ${name} and @{name} forms.  The latter allows us to
    pass values through AC_SUBST without being munged by m4 (e.g., if
@@ -27,40 +28,36 @@
    whatever the actual value of the shell variable is. */
 #define EXPAND_STRING(name) EXPAND_STRING2(name, name)
 
-#define EXPAND_STRING2(ompiname, fieldname)                                         \
-    do {                                                                            \
-        if (NULL != (start_pos = strstr(retval, "${" #fieldname "}"))) {            \
-            tmp = retval;                                                           \
-            *start_pos = '\0';                                                      \
-            end_pos = start_pos + strlen("${" #fieldname "}");                      \
-            if (0 > asprintf(&retval, "%s%s%s", tmp,                                \
-                     pmix_pinstall_dirs.ompiname + destdir_offset,                  \
-                     end_pos)) {                                                    \
-                pmix_output(0, "NOMEM");                                            \
-            }                                                                       \
-            free(tmp);                                                              \
-            changed = true;                                                         \
-        } else if (NULL != (start_pos = strstr(retval, "@{" #fieldname "}"))) {     \
-            tmp = retval;                                                           \
-            *start_pos = '\0';                                                      \
-            end_pos = start_pos + strlen("@{" #fieldname "}");                      \
-            if (0 > asprintf(&retval, "%s%s%s", tmp,                                \
-                     pmix_pinstall_dirs.ompiname + destdir_offset,                  \
-                     end_pos)) {                                                    \
-                pmix_output(0, "NOMEM");                                            \
-            }                                                                       \
-            free(tmp);                                                              \
-            changed = true;                                                         \
-        }                                                                           \
+#define EXPAND_STRING2(ompiname, fieldname)                                                        \
+    do {                                                                                           \
+        if (NULL != (start_pos = strstr(retval, "${" #fieldname "}"))) {                           \
+            tmp = retval;                                                                          \
+            *start_pos = '\0';                                                                     \
+            end_pos = start_pos + strlen("${" #fieldname "}");                                     \
+            if (0 > asprintf(&retval, "%s%s%s", tmp, pmix_pinstall_dirs.ompiname + destdir_offset, \
+                             end_pos)) {                                                           \
+                pmix_output(0, "NOMEM");                                                           \
+            }                                                                                      \
+            free(tmp);                                                                             \
+            changed = true;                                                                        \
+        } else if (NULL != (start_pos = strstr(retval, "@{" #fieldname "}"))) {                    \
+            tmp = retval;                                                                          \
+            *start_pos = '\0';                                                                     \
+            end_pos = start_pos + strlen("@{" #fieldname "}");                                     \
+            if (0 > asprintf(&retval, "%s%s%s", tmp, pmix_pinstall_dirs.ompiname + destdir_offset, \
+                             end_pos)) {                                                           \
+                pmix_output(0, "NOMEM");                                                           \
+            }                                                                                      \
+            free(tmp);                                                                             \
+            changed = true;                                                                        \
+        }                                                                                          \
     } while (0)
-
 
 /*
  * Read the lengthy comment below to understand the value of the
  * is_setup parameter.
  */
-static char *
-pmix_pinstall_dirs_expand_internal(const char* input, bool is_setup)
+static char *pmix_pinstall_dirs_expand_internal(const char *input, bool is_setup)
 {
     size_t len, i;
     bool needs_expand = false;
@@ -116,7 +113,7 @@ pmix_pinstall_dirs_expand_internal(const char* input, bool is_setup)
     }
 
     len = strlen(input);
-    for (i = 0 ; i < len ; ++i) {
+    for (i = 0; i < len; ++i) {
         if ('$' == input[i] || '@' == input[i]) {
             needs_expand = true;
             break;
@@ -124,7 +121,8 @@ pmix_pinstall_dirs_expand_internal(const char* input, bool is_setup)
     }
 
     retval = strdup(input);
-    if (NULL == retval) return NULL;
+    if (NULL == retval)
+        return NULL;
 
     if (needs_expand) {
         bool changed = false;
@@ -161,17 +159,13 @@ pmix_pinstall_dirs_expand_internal(const char* input, bool is_setup)
     return retval;
 }
 
-
-char *
-pmix_pinstall_dirs_expand(const char* input)
+char *pmix_pinstall_dirs_expand(const char *input)
 {
     /* We do NOT want PMIX_DESTDIR expansion in this case. */
     return pmix_pinstall_dirs_expand_internal(input, false);
 }
 
-
-char *
-pmix_pinstall_dirs_expand_setup(const char* input)
+char *pmix_pinstall_dirs_expand_setup(const char *input)
 {
     /* We DO want PMIX_DESTDIR expansion in this case. */
     return pmix_pinstall_dirs_expand_internal(input, true);

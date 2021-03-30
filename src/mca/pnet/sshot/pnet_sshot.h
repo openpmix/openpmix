@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,7 +13,6 @@
 #define PMIX_PNET_sshot_H
 
 #include "src/include/pmix_config.h"
-
 
 #include "src/mca/pnet/pnet.h"
 
@@ -31,12 +31,12 @@ PMIX_EXPORT extern pmix_pnet_sshot_component_t mca_pnet_sshot_component;
 PMIX_EXPORT extern pmix_pnet_module_t pmix_sshot_module;
 
 /* define a key for any blob we need to send in a launch msg */
-#define PMIX_PNET_SSHOT_BLOB  "pmix.pnet.sshot.blob"
+#define PMIX_PNET_SSHOT_BLOB "pmix.pnet.sshot.blob"
 
 PMIX_EXPORT pmix_status_t pmix_pnet_sshot_register_fabric(pmix_fabric_t *fabric,
                                                           const pmix_info_t directives[],
-                                                          size_t ndirs,
-                                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
+                                                          size_t ndirs, pmix_op_cbfunc_t cbfunc,
+                                                          void *cbdata);
 
 END_C_DECLS
 

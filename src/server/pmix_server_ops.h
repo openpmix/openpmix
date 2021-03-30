@@ -17,21 +17,21 @@
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 
 #include "src/include/pmix_config.h"
-#include "src/include/types.h"
 #include "include/pmix_common.h"
+#include "src/include/types.h"
 
-#include "src/class/pmix_hotel.h"
 #include "include/pmix_server.h"
-#include "src/threads/threads.h"
+#include "src/class/pmix_hotel.h"
 #include "src/include/pmix_globals.h"
+#include "src/threads/threads.h"
 #include "src/util/hash.h"
 
-#define PMIX_IOF_HOTEL_SIZE  256
-#define PMIX_IOF_MAX_STAY    300000000
+#define PMIX_IOF_HOTEL_SIZE 256
+#define PMIX_IOF_MAX_STAY   300000000
 
 typedef struct {
     pmix_object_t super;
@@ -79,9 +79,7 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_setup_caddy_t);
 
 /* define a callback function returning inventory */
-typedef void (*pmix_inventory_cbfunc_t)(pmix_status_t status,
-                                        pmix_list_t *inventory,
-                                        void *cbdata);
+typedef void (*pmix_inventory_cbfunc_t)(pmix_status_t status, pmix_list_t *inventory, void *cbdata);
 
 /* define an object for rolling up the inventory*/
 typedef struct {
@@ -91,7 +89,7 @@ typedef struct {
     pmix_status_t status;
     int requests;
     int replies;
-    pmix_list_t payload;   // list of pmix_kval_t containing the replies
+    pmix_list_t payload; // list of pmix_kval_t containing the replies
     pmix_info_t *info;
     size_t ninfo;
     pmix_inventory_cbfunc_t cbfunc;
@@ -109,11 +107,11 @@ PMIX_CLASS_DECLARATION(pmix_dmdx_remote_t);
 
 typedef struct {
     pmix_list_item_t super;
-    pmix_proc_t proc;               // id of proc whose data is being requested
-    pmix_list_t loc_reqs;           // list of pmix_dmdx_request_t elem is keeping track of
-                                    // all local ranks that are interested in this namespace-rank
-    pmix_info_t *info;              // array of info structs for this request
-    size_t ninfo;                   // number of info structs
+    pmix_proc_t proc;     // id of proc whose data is being requested
+    pmix_list_t loc_reqs; // list of pmix_dmdx_request_t elem is keeping track of
+                          // all local ranks that are interested in this namespace-rank
+    pmix_info_t *info;    // array of info structs for this request
+    size_t ninfo;         // number of info structs
 } pmix_dmdx_local_t;
 PMIX_CLASS_DECLARATION(pmix_dmdx_local_t);
 
@@ -122,7 +120,7 @@ typedef struct {
     pmix_event_t ev;
     bool event_active;
     pmix_dmdx_local_t *lcd;
-    pmix_modex_cbfunc_t cbfunc;     // cbfunc to be executed when data is available
+    pmix_modex_cbfunc_t cbfunc; // cbfunc to be executed when data is available
     void *cbdata;
 } pmix_dmdx_request_t;
 PMIX_CLASS_DECLARATION(pmix_dmdx_request_t);
@@ -139,7 +137,7 @@ PMIX_CLASS_DECLARATION(pmix_peer_events_info_t);
 
 typedef struct {
     pmix_list_item_t super;
-    pmix_list_t peers;              // list of pmix_peer_events_info_t
+    pmix_list_t peers; // list of pmix_peer_events_info_t
     int code;
 } pmix_regevents_info_t;
 PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
@@ -179,22 +177,24 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_pset_t);
 
 typedef struct {
-    pmix_list_t nspaces;                    // list of pmix_nspace_t for the nspaces we know about
-    pmix_pointer_array_t clients;           // array of pmix_peer_t local clients
-    pmix_list_t collectives;                // list of active pmix_server_trkr_t
-    pmix_list_t remote_pnd;                 // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing remote req's
-    pmix_list_t local_reqs;                 // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
-    pmix_list_t gdata;                      // cache of data given to me for passing to all clients
-    char **genvars;                         // argv array of envars given to me for passing to all clients
-    pmix_list_t events;                     // list of pmix_regevents_info_t registered events
-    pmix_list_t groups;                     // list of pmix_group_t group memberships
-    pmix_list_t iof;                        // IO to be forwarded to clients
-    pmix_list_t psets;                      // list of known psets and memberships
-    size_t max_iof_cache;                   // max number of IOF messages to cache
+    pmix_list_t nspaces;          // list of pmix_nspace_t for the nspaces we know about
+    pmix_pointer_array_t clients; // array of pmix_peer_t local clients
+    pmix_list_t collectives;      // list of active pmix_server_trkr_t
+    pmix_list_t remote_pnd; // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing
+                            // remote req's
+    pmix_list_t
+        local_reqs;     // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
+    pmix_list_t gdata;  // cache of data given to me for passing to all clients
+    char **genvars;     // argv array of envars given to me for passing to all clients
+    pmix_list_t events; // list of pmix_regevents_info_t registered events
+    pmix_list_t groups; // list of pmix_group_t group memberships
+    pmix_list_t iof;    // IO to be forwarded to clients
+    pmix_list_t psets;  // list of known psets and memberships
+    size_t max_iof_cache; // max number of IOF messages to cache
     bool tool_connections_allowed;
-    char *tmpdir;                           // temporary directory for this server
-    char *system_tmpdir;                    // system tmpdir
-    bool fence_localonly_opt;               // local-only fence optimization
+    char *tmpdir;             // temporary directory for this server
+    char *system_tmpdir;      // system tmpdir
+    bool fence_localonly_opt; // local-only fence optimization
     // verbosity for server get operations
     int get_output;
     int get_verbose;
@@ -222,29 +222,26 @@ typedef struct {
 
 } pmix_server_globals_t;
 
-#define PMIX_GDS_CADDY(c, p, t)                \
-    do {                                        \
-        (c) = PMIX_NEW(pmix_server_caddy_t);    \
-        (c)->hdr.tag = (t);                     \
-        PMIX_RETAIN((p));                       \
-        (c)->peer = (p);                        \
+#define PMIX_GDS_CADDY(c, p, t)              \
+    do {                                     \
+        (c) = PMIX_NEW(pmix_server_caddy_t); \
+        (c)->hdr.tag = (t);                  \
+        PMIX_RETAIN((p));                    \
+        (c)->peer = (p);                     \
     } while (0)
 
-#define PMIX_SETUP_COLLECTIVE(c, t)             \
-    do {                                        \
-        (c) = PMIX_NEW(pmix_trkr_caddy_t);      \
-        (c)->trk = (t);                         \
+#define PMIX_SETUP_COLLECTIVE(c, t)        \
+    do {                                   \
+        (c) = PMIX_NEW(pmix_trkr_caddy_t); \
+        (c)->trk = (t);                    \
     } while (0)
 
-#define PMIX_EXECUTE_COLLECTIVE(c, t, f)                        \
-    do {                                                        \
-        PMIX_SETUP_COLLECTIVE(c, t);                            \
-        pmix_event_assign(&((c)->ev), pmix_globals.evbase, -1,  \
-                          EV_WRITE, (f), (c));                  \
-        pmix_event_active(&((c)->ev), EV_WRITE, 1);             \
+#define PMIX_EXECUTE_COLLECTIVE(c, t, f)                                            \
+    do {                                                                            \
+        PMIX_SETUP_COLLECTIVE(c, t);                                                \
+        pmix_event_assign(&((c)->ev), pmix_globals.evbase, -1, EV_WRITE, (f), (c)); \
+        pmix_event_active(&((c)->ev), EV_WRITE, 1);                                 \
     } while (0)
-
-
 
 PMIX_EXPORT bool pmix_server_trk_update(pmix_server_trkr_t *trk);
 
@@ -252,140 +249,98 @@ PMIX_EXPORT void pmix_pending_nspace_requests(pmix_namespace_t *nptr);
 PMIX_EXPORT pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
                                                pmix_status_t status, pmix_dmdx_local_t *lcd);
 
-
 PMIX_EXPORT pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 PMIX_EXPORT pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf);
 
-PMIX_EXPORT pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd,
-                                            pmix_buffer_t *buf,
+PMIX_EXPORT pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                             pmix_modex_cbfunc_t modexcbfunc,
                                             pmix_op_cbfunc_t opcbfunc);
 
-PMIX_EXPORT pmix_status_t pmix_server_get(pmix_buffer_t *buf,
-                                          pmix_modex_cbfunc_t cbfunc,
+PMIX_EXPORT pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc,
                                           void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_publish(pmix_peer_t *peer,
-                                              pmix_buffer_t *buf,
-                                              pmix_op_cbfunc_t cbfunc,
-                                              void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_publish(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                              pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_lookup(pmix_peer_t *peer,
-                                             pmix_buffer_t *buf,
-                                             pmix_lookup_cbfunc_t cbfunc,
-                                             void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                             pmix_lookup_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_unpublish(pmix_peer_t *peer,
-                                                pmix_buffer_t *buf,
-                                                pmix_op_cbfunc_t cbfunc,
-                                                void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_spawn(pmix_peer_t *peer,
-                                            pmix_buffer_t *buf,
-                                            pmix_spawn_cbfunc_t cbfunc,
-                                            void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                            pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd,
-                                              pmix_buffer_t *buf,
+PMIX_EXPORT pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                               pmix_op_cbfunc_t cbfunc);
 
-PMIX_EXPORT pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd,
-                                                 pmix_buffer_t *buf,
+PMIX_EXPORT pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                                  pmix_op_cbfunc_t cbfunc);
 
-PMIX_EXPORT pmix_status_t pmix_server_notify_error(pmix_status_t status,
-                                                   pmix_proc_t procs[], size_t nprocs,
-                                                   pmix_proc_t error_procs[], size_t error_nprocs,
-                                                   pmix_info_t info[], size_t ninfo,
-                                                   pmix_op_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_notify_error(pmix_status_t status, pmix_proc_t procs[],
+                                                   size_t nprocs, pmix_proc_t error_procs[],
+                                                   size_t error_nprocs, pmix_info_t info[],
+                                                   size_t ninfo, pmix_op_cbfunc_t cbfunc,
+                                                   void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_register_events(pmix_peer_t *peer,
-                                                      pmix_buffer_t *buf,
-                                                      pmix_op_cbfunc_t cbfunc,
-                                                      void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer,
-                                               pmix_buffer_t *buf);
+PMIX_EXPORT void pmix_server_deregister_events(pmix_peer_t *peer, pmix_buffer_t *buf);
 
-PMIX_EXPORT pmix_status_t pmix_server_query(pmix_peer_t *peer,
-                                            pmix_buffer_t *buf,
-                                            pmix_info_cbfunc_t cbfunc,
-                                            void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                            pmix_info_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_log(pmix_peer_t *peer,
-                                          pmix_buffer_t *buf,
-                                          pmix_op_cbfunc_t cbfunc,
-                                          void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_alloc(pmix_peer_t *peer,
-                                            pmix_buffer_t *buf,
-                                            pmix_info_cbfunc_t cbfunc,
-                                            void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_alloc(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                            pmix_info_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer,
-                                               pmix_buffer_t *buf,
-                                               pmix_info_cbfunc_t cbfunc,
-                                               void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                               pmix_info_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_monitor(pmix_peer_t *peer,
-                                              pmix_buffer_t *buf,
-                                              pmix_info_cbfunc_t cbfunc,
-                                              void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                              pmix_info_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_get_credential(pmix_peer_t *peer,
-                                                     pmix_buffer_t *buf,
-                                                     pmix_credential_cbfunc_t cbfunc,
-                                                     void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_get_credential(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                                     pmix_credential_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer,
-                                                          pmix_buffer_t *buf,
+PMIX_EXPORT pmix_status_t pmix_server_validate_credential(pmix_peer_t *peer, pmix_buffer_t *buf,
                                                           pmix_validation_cbfunc_t cbfunc,
                                                           void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_iofreg(pmix_peer_t *peer,
-                                             pmix_buffer_t *buf,
-                                             pmix_op_cbfunc_t cbfunc,
-                                             void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_iofreg(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer,
-                                               pmix_buffer_t *buf,
-                                               pmix_op_cbfunc_t cbfunc,
-                                               void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_iofstdin(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer,
-                                               pmix_buffer_t *buf,
-                                               pmix_op_cbfunc_t cbfunc,
-                                               void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-PMIX_EXPORT pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd,
-                                                   pmix_buffer_t *buf);
+PMIX_EXPORT pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *buf);
 
-PMIX_EXPORT pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd,
-                                                  pmix_buffer_t *buf);
+PMIX_EXPORT pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *buf);
 
-PMIX_EXPORT pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer,
-                                                              pmix_buffer_t *buf,
+PMIX_EXPORT pmix_status_t pmix_server_event_recvd_from_client(pmix_peer_t *peer, pmix_buffer_t *buf,
                                                               pmix_op_cbfunc_t cbfunc,
                                                               void *cbdata);
 PMIX_EXPORT void pmix_server_execute_collective(int sd, short args, void *cbdata);
 
 PMIX_EXPORT pmix_status_t pmix_server_initialize(void);
 
-PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr,
-                                             pmix_ptl_hdr_t *hdr,
+PMIX_EXPORT void pmix_server_message_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
                                              pmix_buffer_t *buf, void *cbdata);
 
-PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer,
-                                          pmix_proc_t *proc);
+PMIX_EXPORT void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc);
 
-PMIX_EXPORT pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd,
-                                                      pmix_buffer_t *buf,
+PMIX_EXPORT pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                                       pmix_info_cbfunc_t cbfunc);
 
-PMIX_EXPORT pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd,
-                                                    pmix_buffer_t *buf,
+PMIX_EXPORT pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                                     pmix_info_cbfunc_t cbfunc);
 
 PMIX_EXPORT pmix_status_t pmix_server_fabric_get_vertex_info(pmix_server_caddy_t *cd,
@@ -398,6 +353,5 @@ PMIX_EXPORT pmix_status_t pmix_server_fabric_get_device_index(pmix_server_caddy_
 
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;
-
 
 #endif // PMIX_SERVER_OPS_H

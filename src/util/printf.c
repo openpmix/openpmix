@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,14 +25,13 @@
 
 #include "src/include/pmix_config.h"
 
-
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "src/util/printf.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 
 /*
  * Make a good guess about how long a printf-style varargs formatted
@@ -52,16 +52,16 @@ static int guess_strlen(const char *fmt, va_list ap)
     /* Start off with a fudge factor of 128 to handle the % escapes that
        we aren't calculating here */
 
-    len = (int)strlen(fmt) + 128;
+    len = (int) strlen(fmt) + 128;
     for (i = 0; i < strlen(fmt); ++i) {
-        if ('%' == fmt[i] && i + 1 < strlen(fmt)
-            && '%' != fmt[i + 1]) {
+        if ('%' == fmt[i] && i + 1 < strlen(fmt) && '%' != fmt[i + 1]) {
             ++i;
             switch (fmt[i]) {
             case 'c':
                 carg = va_arg(ap, int);
-                len += 1;  /* let's suppose it's a printable char */
-                (void)carg;  /* prevent compiler from complaining about set but not used variables */
+                len += 1; /* let's suppose it's a printable char */
+                (void)
+                    carg; /* prevent compiler from complaining about set but not used variables */
                 break;
             case 's':
                 sarg = va_arg(ap, char *);
@@ -70,7 +70,7 @@ static int guess_strlen(const char *fmt, va_list ap)
                  * use (null) */
 
                 if (NULL != sarg) {
-                    len += (int)strlen(sarg);
+                    len += (int) strlen(sarg);
                 } else {
 #if PMIX_ENABLE_DEBUG
                     pmix_output(0, "PMIX DEBUG WARNING: Got a NULL argument to pmix_vasprintf!\n");
@@ -103,7 +103,7 @@ static int guess_strlen(const char *fmt, va_list ap)
                 break;
 
             case 'f':
-                farg = (float)va_arg(ap, int);
+                farg = (float) va_arg(ap, int);
                 /* Alloc for minus sign */
                 if (farg < 0) {
                     ++len;
@@ -186,7 +186,6 @@ static int guess_strlen(const char *fmt, va_list ap)
     return len;
 }
 
-
 int pmix_asprintf(char **ptr, const char *fmt, ...)
 {
     int length;
@@ -198,7 +197,6 @@ int pmix_asprintf(char **ptr, const char *fmt, ...)
 
     return length;
 }
-
 
 int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
 {
@@ -213,7 +211,7 @@ int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
 #elif PMIX_HAVE_UNDERSCORE_VA_COPY
     __va_copy(ap2, ap);
 #else
-    memcpy (&ap2, &ap, sizeof(va_list));
+    memcpy(&ap2, &ap, sizeof(va_list));
 #endif
 
     /* guess the size */
@@ -231,10 +229,10 @@ int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
     length = vsprintf(*ptr, fmt, ap2);
 #if PMIX_HAVE_VA_COPY || PMIX_HAVE_UNDERSCORE_VA_COPY
     va_end(ap2);
-#endif  /* PMIX_HAVE_VA_COPY || PMIX_HAVE_UNDERSCORE_VA_COPY */
+#endif /* PMIX_HAVE_VA_COPY || PMIX_HAVE_UNDERSCORE_VA_COPY */
 
     /* realloc */
-    *ptr = (char*) realloc(*ptr, (size_t) length + 1);
+    *ptr = (char *) realloc(*ptr, (size_t) length + 1);
     if (NULL == *ptr) {
         errno = ENOMEM;
         return -1;
@@ -242,7 +240,6 @@ int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
 
     return length;
 }
-
 
 int pmix_snprintf(char *str, size_t size, const char *fmt, ...)
 {
@@ -255,7 +252,6 @@ int pmix_snprintf(char *str, size_t size, const char *fmt, ...)
 
     return length;
 }
-
 
 int pmix_vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
 {
@@ -282,7 +278,6 @@ int pmix_vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
 
     return length;
 }
-
 
 #ifdef TEST
 

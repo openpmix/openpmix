@@ -12,6 +12,7 @@
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,11 +27,11 @@
 #include "pmix_config.h"
 #include "include/pmix_common.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdarg.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #include <signal.h>
 
@@ -39,22 +40,16 @@
 #include "src/util/name_fns.h"
 #include "src/util/show_help.h"
 
-#include "src/mca/plog/base/base.h"
 #include "plog_smtp.h"
-
+#include "src/mca/plog/base/base.h"
 
 /* Static API's */
-static pmix_status_t mylog(const pmix_proc_t *source,
-                           const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs,
-                           pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
+                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
+                           void *cbdata);
 
 /* Module */
-pmix_plog_module_t pmix_plog_smtp_module = {
-    .name = "smtp",
-    .channels = "email",
-    .log = mylog
-};
+pmix_plog_module_t pmix_plog_smtp_module = {.name = "smtp", .channels = "email", .log = mylog};
 
 typedef enum {
     SENT_NONE,
@@ -105,7 +100,7 @@ static char *crnl(char *orig)
  */
 static const char *message_cb(void **buf, int *len, void *arg)
 {
-    message_status_t *ms = (message_status_t*) arg;
+    message_status_t *ms = (message_status_t *) arg;
 
     if (NULL == *buf) {
         *buf = malloc(8192);
@@ -177,8 +172,7 @@ static int send_email(char *msg)
 
     if (NULL == c->to_argv) {
         c->to_argv = pmix_argv_split(c->to, ',');
-        if (NULL == c->to_argv ||
-            NULL == c->to_argv[0]) {
+        if (NULL == c->to_argv || NULL == c->to_argv[0]) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
     }
@@ -231,19 +225,18 @@ static int send_email(char *msg)
     }
 
     /* Set the subject and some headers */
-    asprintf(&str, "PMIx SMTP Plog v%d.%d.%d",
-             c->super.base.pmix_mca_component_major_version,
+    asprintf(&str, "PMIx SMTP Plog v%d.%d.%d", c->super.base.pmix_mca_component_major_version,
              c->super.base.pmix_mca_component_minor_version,
              c->super.base.pmix_mca_component_release_version);
-    if (0 == smtp_set_header(message, "Subject", c->subject) ||
-        0 == smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1) ||
-        0 == smtp_set_header(message, "To", NULL, NULL) ||
-        0 == smtp_set_header(message, "From",
-                             (NULL != c->from_name ?
-                              c->from_name : c->from_addr),
-                             c->from_addr) ||
-        0 == smtp_set_header(message, "X-Mailer", str) ||
-        0 == smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1)) {
+    if (0 == smtp_set_header(message, "Subject", c->subject)
+        || 0 == smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1)
+        || 0 == smtp_set_header(message, "To", NULL, NULL)
+        || 0
+               == smtp_set_header(message, "From",
+                                  (NULL != c->from_name ? c->from_name : c->from_addr),
+                                  c->from_addr)
+        || 0 == smtp_set_header(message, "X-Mailer", str)
+        || 0 == smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1)) {
         err = PMIX_ERROR;
         errmsg = "smtp_set_header";
         goto error;
@@ -276,7 +269,7 @@ static int send_email(char *msg)
 
     /* Fall through */
 
- error:
+error:
     if (NULL != str) {
         free(str);
     }
@@ -293,18 +286,15 @@ static int send_email(char *msg)
 
         e = smtp_errno();
         smtp_strerror(e, em, sizeof(em));
-        pmix_show_help("help-pmix-plog-smtp.txt",
-                       "send_email failed",
-                       true, "libesmtp library call failed",
-                       errmsg, em, e, msg);
+        pmix_show_help("help-pmix-plog-smtp.txt", "send_email failed", true,
+                       "libesmtp library call failed", errmsg, em, e, msg);
     }
     return err;
 }
 
-static pmix_status_t mylog(const pmix_proc_t *source,
-                           const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs,
-                           pmix_op_cbfunc_t cbfunc, void *cbdata)
+static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
+                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
+                           void *cbdata)
 {
     char *output, *msg;
     size_t n;
@@ -317,7 +307,7 @@ static pmix_status_t mylog(const pmix_proc_t *source,
     }
 
     /* check to see if there are any email directives */
-    for (n=0; n < ndirs; n++) {
+    for (n = 0; n < ndirs; n++) {
         if (0 == strncmp(directives[n].key, PMIX_LOG_EMAIL, PMIX_MAX_KEYLEN)) {
             /* we default to using the local syslog */
             generic = true;

@@ -2,6 +2,7 @@
  * Copyright (c) 2020      Triad National Security, LLC.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,7 +17,8 @@
 
 pmix_proc_t this_proc;
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 
     size_t ninfo = 0;
     test_params params;
@@ -34,16 +36,16 @@ int main(int argc, char *argv[]) {
      * has the same values as this_proc */
     if (!(0 == strncmp(v_params.pmix_nspace, this_proc.nspace, PMIX_MAX_NSLEN))) {
         TEST_ERROR(("Client ns %s validation ns: %s rank %d: nspace validation failed",
-           this_proc.nspace, v_params.pmix_nspace, v_params.pmix_rank));
+                    this_proc.nspace, v_params.pmix_nspace, v_params.pmix_rank));
         exit(1);
     }
     if (!(v_params.pmix_rank == this_proc.rank)) {
         TEST_ERROR(("Client ns %s rank %d validation rank: %d: rank validation failed",
-           this_proc.nspace, this_proc.rank, v_params.pmix_rank));
+                    this_proc.nspace, this_proc.rank, v_params.pmix_rank));
         exit(1);
     }
-    TEST_VERBOSE(("nspace validated: %s, rank validated: %d", v_params.pmix_nspace,
-                   v_params.pmix_rank));
+    TEST_VERBOSE(
+        ("nspace validated: %s, rank validated: %d", v_params.pmix_nspace, v_params.pmix_rank));
 
     PMIXT_CHECK(PMIx_Finalize(NULL, 0), params, v_params);
 

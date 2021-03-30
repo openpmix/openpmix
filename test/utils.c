@@ -4,6 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,9 +14,9 @@
  */
 
 #include "utils.h"
-#include "test_common.h"
-#include "pmix_server.h"
 #include "cli_stages.h"
+#include "pmix_server.h"
+#include "test_common.h"
 #include "test_server.h"
 
 void set_client_argv(test_params *params, char ***argv)
@@ -27,14 +28,14 @@ void set_client_argv(test_params *params, char ***argv)
     } else {
         pmix_argv_append_nosize(argv, params->np);
     }
-    if( params->verbose ){
+    if (params->verbose) {
         pmix_argv_append_nosize(argv, "-v");
     }
     if (NULL != params->prefix) {
         pmix_argv_append_nosize(argv, "-o");
         pmix_argv_append_nosize(argv, params->prefix);
     }
-    if( params->early_fail ){
+    if (params->early_fail) {
         pmix_argv_append_nosize(argv, "--early-fail");
     }
     if (NULL != params->fences) {

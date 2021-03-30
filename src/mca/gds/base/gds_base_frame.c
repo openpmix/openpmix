@@ -29,7 +29,7 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
@@ -52,7 +52,7 @@ int pmix_gds_base_output = -1;
 
 static pmix_status_t pmix_gds_close(void)
 {
-  pmix_gds_base_active_module_t *active, *prev;
+    pmix_gds_base_active_module_t *active, *prev;
 
     if (!pmix_gds_globals.initialized) {
         return PMIX_SUCCESS;
@@ -60,12 +60,13 @@ static pmix_status_t pmix_gds_close(void)
     pmix_gds_globals.initialized = false;
     pmix_gds_globals.selected = false;
 
-    PMIX_LIST_FOREACH_SAFE(active, prev, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
-      pmix_list_remove_item(&pmix_gds_globals.actives, &active->super);
-      if (NULL != active->module->finalize) {
-        active->module->finalize();
-      }
-      PMIX_RELEASE(active);
+    PMIX_LIST_FOREACH_SAFE (active, prev, &pmix_gds_globals.actives,
+                            pmix_gds_base_active_module_t) {
+        pmix_list_remove_item(&pmix_gds_globals.actives, &active->super);
+        if (NULL != active->module->finalize) {
+            active->module->finalize();
+        }
+        PMIX_RELEASE(active);
     }
     PMIX_DESTRUCT(&pmix_gds_globals.actives);
 
@@ -90,10 +91,8 @@ static pmix_status_t pmix_gds_open(pmix_mca_base_open_flag_t flags)
     return rc;
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, gds, "PMIx Generalized Data Store",
-                                NULL, pmix_gds_open, pmix_gds_close,
-                                mca_gds_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, gds, "PMIx Generalized Data Store", NULL, pmix_gds_open,
+                                pmix_gds_close, mca_gds_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-PMIX_CLASS_INSTANCE(pmix_gds_base_active_module_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_gds_base_active_module_t, pmix_list_item_t, NULL, NULL);

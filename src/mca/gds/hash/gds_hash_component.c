@@ -30,9 +30,8 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-
-#include "src/mca/gds/gds.h"
 #include "gds_hash.h"
+#include "src/mca/gds/gds.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -66,7 +65,6 @@ pmix_gds_hash_component_t mca_gds_hash_component = {
     },
 };
 
-
 static int component_open(void)
 {
     PMIX_CONSTRUCT(&mca_gds_hash_component.mysessions, pmix_list_t);
@@ -75,14 +73,12 @@ static int component_open(void)
     return PMIX_SUCCESS;
 }
 
-
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 10;
-    *module = (pmix_mca_base_module_t *)&pmix_hash_module;
+    *module = (pmix_mca_base_module_t *) &pmix_hash_module;
     return PMIX_SUCCESS;
 }
-
 
 static int component_close(void)
 {
@@ -105,9 +101,7 @@ static void sdes(pmix_session_t *s)
     PMIX_LIST_DESTRUCT(&s->sessioninfo);
     PMIX_LIST_DESTRUCT(&s->nodeinfo);
 }
-PMIX_CLASS_INSTANCE(pmix_session_t,
-                    pmix_list_item_t,
-                    scon, sdes);
+PMIX_CLASS_INSTANCE(pmix_session_t, pmix_list_item_t, scon, sdes);
 
 static void htcon(pmix_job_t *p)
 {
@@ -146,9 +140,7 @@ static void htdes(pmix_job_t *p)
         PMIX_RELEASE(p->session);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_job_t,
-                    pmix_list_item_t,
-                    htcon, htdes);
+PMIX_CLASS_INSTANCE(pmix_job_t, pmix_list_item_t, htcon, htdes);
 
 static void apcon(pmix_apptrkr_t *p)
 {
@@ -165,9 +157,7 @@ static void apdes(pmix_apptrkr_t *p)
         PMIX_RELEASE(p->job);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_apptrkr_t,
-                    pmix_list_item_t,
-                    apcon, apdes);
+PMIX_CLASS_INSTANCE(pmix_apptrkr_t, pmix_list_item_t, apcon, apdes);
 
 static void ndinfocon(pmix_nodeinfo_t *p)
 {
@@ -186,6 +176,4 @@ static void ndinfodes(pmix_nodeinfo_t *p)
     }
     PMIX_LIST_DESTRUCT(&p->info);
 }
-PMIX_CLASS_INSTANCE(pmix_nodeinfo_t,
-                    pmix_list_item_t,
-                    ndinfocon, ndinfodes);
+PMIX_CLASS_INSTANCE(pmix_nodeinfo_t, pmix_list_item_t, ndinfocon, ndinfodes);

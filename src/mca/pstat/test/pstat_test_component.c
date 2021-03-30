@@ -33,20 +33,19 @@
 #include "pmix_config.h"
 
 #include "include/pmix_common.h"
-#include "src/mca/pstat/pstat.h"
 #include "pstat_test.h"
+#include "src/mca/pstat/pstat.h"
 
 /*
  * Public string showing the pstat ompi_test component version number
  */
-const char *pmix_pstat_test_component_version_string =
-    "PMIX test pstat MCA component version " PMIX_VERSION;
+const char *pmix_pstat_test_component_version_string
+    = "PMIX test pstat MCA component version " PMIX_VERSION;
 
 /*
  * Local function
  */
 static int pstat_test_component_query(pmix_mca_base_module_t **module, int *priority);
-
 
 /*
  * Instantiate the public struct with all of our public information
@@ -81,11 +80,10 @@ const pmix_pstat_base_component_t mca_pstat_test_component = {
     }
 };
 
-
 static int pstat_test_component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 20;
-    *module = (pmix_mca_base_module_t *)&pmix_pstat_test_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pstat_test_module;
 
     return PMIX_SUCCESS;
 }
