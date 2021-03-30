@@ -14,6 +14,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -68,9 +69,8 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_STDARG_H
-#include <stdarg.h>
+#    include <stdarg.h>
 #endif
 
 #include "src/class/pmix_object.h"
@@ -153,7 +153,7 @@ struct pmix_output_stream_t {
     char *lds_syslog_ident;
 #else
     HANDLE lds_syslog_ident;
-#endif  /* !defined(__WINDOWS__) */
+#endif /* !defined(__WINDOWS__) */
 
     /**
      * String prefix added to all output on the stream.
@@ -245,7 +245,6 @@ struct pmix_output_stream_t {
      * for details on what happens in this situation.
      */
     char *lds_file_suffix;
-
 };
 
 /**
@@ -383,7 +382,8 @@ PMIX_EXPORT void pmix_output_close(int output_id);
  * created, pmix_output() will automatically create the file and
  * writing to it.
  */
-PMIX_EXPORT void pmix_output(int output_id, const char *format, ...) __pmix_attribute_format__(__printf__, 2, 3);
+PMIX_EXPORT void pmix_output(int output_id, const char *format, ...)
+    __pmix_attribute_format__(__printf__, 2, 3);
 
 /**
  * Send output to a stream only if the passed verbosity level is
@@ -413,15 +413,15 @@ PMIX_EXPORT void pmix_output(int output_id, const char *format, ...) __pmix_attr
  *
  * @see pmix_output_set_verbosity()
  */
-#define pmix_output_verbose(verbose_level, output_id, ...) \
+#define pmix_output_verbose(verbose_level, output_id, ...)       \
     if (pmix_output_check_verbosity(verbose_level, output_id)) { \
-        pmix_output(output_id, __VA_ARGS__); \
+        pmix_output(output_id, __VA_ARGS__);                     \
     }
 
 PMIX_EXPORT bool pmix_output_check_verbosity(int verbose_level, int output_id);
 
-PMIX_EXPORT void pmix_output_vverbose(int verbose_level, int output_id,
-                                      const char *format, va_list ap) __pmix_attribute_format__(__printf__, 3, 0);
+PMIX_EXPORT void pmix_output_vverbose(int verbose_level, int output_id, const char *format,
+                                      va_list ap) __pmix_attribute_format__(__printf__, 3, 0);
 
 /**
  * Set the verbosity level for a stream.
@@ -482,53 +482,50 @@ PMIX_EXPORT int pmix_output_get_verbosity(int output_id);
  * this function affects both new streams \em and any stream that
  * was previously opened but had not yet output anything.
  */
-PMIX_EXPORT void pmix_output_set_output_file_info(const char *dir,
-                                                  const char *prefix,
-                                                  char **olddir,
-                                                  char **oldprefix);
+PMIX_EXPORT void pmix_output_set_output_file_info(const char *dir, const char *prefix,
+                                                  char **olddir, char **oldprefix);
 
 /**
  * Same as pmix_output_verbose(), but pointer to buffer and size.
  */
-PMIX_EXPORT void pmix_output_hexdump(int verbose_level, int output_id,
-                                     void *ptr, int buflen);
+PMIX_EXPORT void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen);
 
 #if PMIX_ENABLE_DEBUG
-    /**
-     * Main macro for use in sending debugging output to output streams;
-     * will be "compiled out" when PMIX is configured without
-     * --enable-debug.
-     *
-     * @see pmix_output()
-     */
-#define PMIX_OUTPUT(a) pmix_output a
+/**
+ * Main macro for use in sending debugging output to output streams;
+ * will be "compiled out" when PMIX is configured without
+ * --enable-debug.
+ *
+ * @see pmix_output()
+ */
+#    define PMIX_OUTPUT(a) pmix_output a
 
-    /**
-     * Macro for use in sending debugging output to the output
-     * streams.  Will be "compiled out" when PMIX is configured
-     * without --enable-debug.
-     *
-     * @see pmix_output_verbose()
-     */
-#define PMIX_OUTPUT_VERBOSE(a) pmix_output_verbose a
+/**
+ * Macro for use in sending debugging output to the output
+ * streams.  Will be "compiled out" when PMIX is configured
+ * without --enable-debug.
+ *
+ * @see pmix_output_verbose()
+ */
+#    define PMIX_OUTPUT_VERBOSE(a) pmix_output_verbose a
 #else
-    /**
-     * Main macro for use in sending debugging output to output streams;
-     * will be "compiled out" when PMIX is configured without
-     * --enable-debug.
-     *
-     * @see pmix_output()
-     */
-#define PMIX_OUTPUT(a)
+/**
+ * Main macro for use in sending debugging output to output streams;
+ * will be "compiled out" when PMIX is configured without
+ * --enable-debug.
+ *
+ * @see pmix_output()
+ */
+#    define PMIX_OUTPUT(a)
 
-    /**
-     * Macro for use in sending debugging output to the output
-     * streams.  Will be "compiled out" when PMIX is configured
-     * without --enable-debug.
-     *
-     * @see pmix_output_verbose()
-     */
-#define PMIX_OUTPUT_VERBOSE(a)
+/**
+ * Macro for use in sending debugging output to the output
+ * streams.  Will be "compiled out" when PMIX is configured
+ * without --enable-debug.
+ *
+ * @see pmix_output_verbose()
+ */
+#    define PMIX_OUTPUT_VERBOSE(a)
 #endif
 
 /**

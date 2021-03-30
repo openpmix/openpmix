@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,8 +16,8 @@
 #include "src/include/pmix_globals.h"
 
 #include "src/class/pmix_list.h"
-#include "src/util/error.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/util/error.h"
 
 #include "src/mca/plog/base/base.h"
 
@@ -41,13 +42,11 @@ static void mydes(pmix_mycount_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
 }
-static PMIX_CLASS_INSTANCE(pmix_mycount_t,
-                           pmix_object_t,
-                           mycon, mydes);
+static PMIX_CLASS_INSTANCE(pmix_mycount_t, pmix_object_t, mycon, mydes);
 
 static void localcbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_mycount_t *mycount = (pmix_mycount_t*)cbdata;
+    pmix_mycount_t *mycount = (pmix_mycount_t *) cbdata;
 
     PMIX_ACQUIRE_THREAD(&mycount->lock);
     mycount->nreqs--;
@@ -66,8 +65,7 @@ static void localcbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE_THREAD(&mycount->lock);
 }
 
-pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
-                                 const pmix_info_t data[], size_t ndata,
+pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
                                  const pmix_info_t directives[], size_t ndirs,
                                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -89,8 +87,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
      * can only be on one list at a time */
     PMIX_ACQUIRE_THREAD(&pmix_plog_globals.lock);
 
-    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
-                        "plog:log called");
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output, "plog:log called");
 
     /* initialize the tracker */
     mycount = PMIX_NEW(pmix_mycount_t);
@@ -108,7 +105,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
          * which indicates we should stop with the first log
          * channel that can successfully handle this request,
          * and any channel directives */
-        for (n=0; n < ndirs; n++) {
+        for (n = 0; n < ndirs; n++) {
             if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_ONCE)) {
                 logonce = PMIX_INFO_TRUE(&directives[n]);
                 break;
@@ -119,13 +116,15 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
     /* scan the incoming logging requests and assemble the modules in
      * the corresponding order - this will ensure that the one they
      * requested first gets first shot at "log once" */
-    for (n=0; n < ndata; n++) {
+    for (n = 0; n < ndata; n++) {
         if (PMIX_INFO_OP_IS_COMPLETE(&data[n])) {
             continue;
         }
         all_complete = false;
-        for (m=0; m < pmix_plog_globals.actives.size; m++) {
-            if (NULL == (active = (pmix_plog_base_active_module_t*)pmix_pointer_array_get_item(&pmix_plog_globals.actives, m))) {
+        for (m = 0; m < pmix_plog_globals.actives.size; m++) {
+            if (NULL
+                == (active = (pmix_plog_base_active_module_t *)
+                        pmix_pointer_array_get_item(&pmix_plog_globals.actives, m))) {
                 continue;
             }
             /* if this channel is included in the ones serviced by this
@@ -138,7 +137,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
                     active->added = true;
                 }
             } else {
-                for (k=0; NULL != active->module->channels[k]; k++) {
+                for (k = 0; NULL != active->module->channels[k]; k++) {
                     if (NULL != strstr(data[n].key, active->module->channels[k])) {
                         if (!active->added) {
                             /* add this channel to the list */
@@ -153,23 +152,24 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
         }
     }
     /* reset the added marker for the next time we are called */
-    PMIX_LIST_FOREACH(active, &channels, pmix_plog_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &channels, pmix_plog_base_active_module_t) {
         active->added = false;
     }
     if (all_complete) {
         /* nothing we need do */
-        while (NULL != pmix_list_remove_first(&channels));
+        while (NULL != pmix_list_remove_first(&channels))
+            ;
         PMIX_DESTRUCT(&channels);
         PMIX_RELEASE(mycount);
         PMIX_RELEASE_THREAD(&pmix_plog_globals.lock);
         return PMIX_SUCCESS;
     }
     PMIX_ACQUIRE_THREAD(&mycount->lock);
-    PMIX_LIST_FOREACH(active, &channels, pmix_plog_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &channels, pmix_plog_base_active_module_t) {
         if (NULL != active->module->log) {
             mycount->nreqs++;
-            rc = active->module->log(source, data, ndata, directives, ndirs,
-                                     localcbfunc, (void*)mycount);
+            rc = active->module->log(source, data, ndata, directives, ndirs, localcbfunc,
+                                     (void *) mycount);
             /* The plugins are required to return:
              *
              * PMIX_SUCCESS - indicating that the logging operation for
@@ -211,8 +211,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
                 if (logonce) {
                     break;
                 }
-            } else if (PMIX_ERR_NOT_AVAILABLE == rc ||
-                       PMIX_ERR_TAKE_NEXT_OPTION == rc) {
+            } else if (PMIX_ERR_NOT_AVAILABLE == rc || PMIX_ERR_TAKE_NEXT_OPTION == rc) {
                 mycount->nreqs--;
             } else if (PMIX_OPERATION_IN_PROGRESS == rc) {
                 /* even though the operation hasn't completed,
@@ -232,10 +231,11 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
     }
 
     /* cannot release the modules - just remove everything from the list */
-    while (NULL != pmix_list_remove_first(&channels));
+    while (NULL != pmix_list_remove_first(&channels))
+        ;
     PMIX_DESTRUCT(&channels);
 
-    rc = mycount->status;  // save the status as it could change when the lock is released
+    rc = mycount->status; // save the status as it could change when the lock is released
     if (0 == mycount->nreqs) {
         PMIX_RELEASE_THREAD(&mycount->lock);
         PMIX_RELEASE(mycount);

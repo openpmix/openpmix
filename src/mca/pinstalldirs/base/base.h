@@ -4,6 +4,7 @@
  * Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010      Sandia National Laboratories. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,7 +34,7 @@ PMIX_EXPORT extern pmix_mca_base_framework_t pmix_pinstalldirs_base_framework;
    also insert the value of the environment variable $PMIX_DESTDIR, if
    it exists/is set.  This function should *only* be used during the
    setup routines of pinstalldirs. */
-PMIX_EXPORT char * pmix_pinstall_dirs_expand_setup(const char* input);
+PMIX_EXPORT char *pmix_pinstall_dirs_expand_setup(const char *input);
 
 PMIX_EXPORT int pmix_pinstall_dirs_base_init(pmix_info_t info[], size_t ninfo);
 

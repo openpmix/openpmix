@@ -28,60 +28,55 @@
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
+#    include <sys/uio.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_DIRENT_H
-#include <dirent.h>
+#    include <dirent.h>
 #endif
 #ifdef HAVE_SYS_SYSCTL_H
-#include <sys/sysctl.h>
+#    include <sys/sysctl.h>
 #endif
 
-#include "src/include/pmix_socket_errno.h"
 #include "src/client/pmix_client_ops.h"
+#include "src/include/pmix_socket_errno.h"
+#include "src/mca/bfrops/base/base.h"
+#include "src/mca/gds/gds.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/os_path.h"
 #include "src/util/show_help.h"
-#include "src/mca/bfrops/base/base.h"
-#include "src/mca/gds/gds.h"
 
-#include "src/mca/ptl/base/base.h"
 #include "ptl_client.h"
+#include "src/mca/ptl/base/base.h"
 
-static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
-                                     pmix_info_t *info, size_t ninfo);
+static pmix_status_t connect_to_peer(struct pmix_peer_t *peer, pmix_info_t *info, size_t ninfo);
 
-pmix_ptl_module_t pmix_ptl_client_module = {
-    .name = "client",
-    .connect_to_peer = connect_to_peer
-};
+pmix_ptl_module_t pmix_ptl_client_module = {.name = "client", .connect_to_peer = connect_to_peer};
 
-static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
-                                     pmix_info_t *info, size_t ninfo)
+static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, size_t ninfo)
 {
     char *evar = NULL, *suri = NULL;
-    char *nspace=NULL;
+    char *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char **server_nspace = NULL, *rendfile = NULL;
     pmix_status_t rc;
-    pmix_peer_t *peer = (pmix_peer_t*)pr;
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
     size_t m, n;
     char **tmp, *mycmd;
     void *ilist;
@@ -96,7 +91,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                         "ptl:tcp: connecting to server");
 
     /* see if we were given one */
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
             /* separate out the server URI version(s) */
             suri = strchr(info[n].value.data.string, ';');
@@ -109,7 +104,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             /* set the peer's module and type */
             tmp = pmix_argv_split(evar, ':');
             rc = PMIX_ERR_BAD_PARAM;
-            for (m=0; NULL != tmp[m]; m++) {
+            for (m = 0; NULL != tmp[m]; m++) {
                 rc = pmix_ptl_base_set_peer(peer, tmp[m]);
                 if (PMIX_SUCCESS == rc) {
                     break;
@@ -134,21 +129,22 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
              * in the environment, we are allowed to check
              * for a system server */
             pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
-            pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
+            pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(
+                NULL);
             /* setup the system rendezvous file name */
-            if (0 > asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
+            if (0 > asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
+                             pmix_globals.hostname)) {
                 return PMIX_ERR_NOMEM;
             }
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:client looking for system server at %s",
-                                rendfile);
+                                "ptl:client looking for system server at %s", rendfile);
             /* try to read the file */
             PMIX_CONSTRUCT(&connections, pmix_list_t);
             rc = pmix_ptl_base_parse_uri_file(rendfile, &connections);
             free(rendfile);
             rendfile = NULL;
             if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections)) {
-                cn = (pmix_connection_t*)pmix_list_get_first(&connections);
+                cn = (pmix_connection_t *) pmix_list_get_first(&connections);
                 /* provide our cmd line and PID */
                 PMIX_INFO_LIST_START(ilist);
                 mypid = getpid();
@@ -167,7 +163,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
                     PMIX_LIST_DESTRUCT(&connections);
                     return rc;
                 } else {
-                    iptr = (pmix_info_t*)darray.array;
+                    iptr = (pmix_info_t *) darray.array;
                     niptr = darray.size;
                 }
                 PMIX_INFO_LIST_RELEASE(ilist);
@@ -196,9 +192,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     }
 
     /* the URI consists of the following elements:
-    *    - server nspace.rank
-    *    - ptl rendezvous URI
-    */
+     *    - server nspace.rank
+     *    - ptl rendezvous URI
+     */
     rc = pmix_ptl_base_parse_uri(evar, &nspace, &rank, &suri);
     if (PMIX_SUCCESS != rc) {
         return rc;
@@ -215,8 +211,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "tcp_peer_try_connect: Connection across to peer %s:%u succeeded",
-                        nspace, rank);
+                        "tcp_peer_try_connect: Connection across to peer %s:%u succeeded", nspace,
+                        rank);
 
 complete:
     /* mark the connection as made */

@@ -18,45 +18,44 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #include <time.h>
 
 #include "include/pmix_common.h"
 
-#include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
-#include "src/server/pmix_server_ops.h"
+#include "src/include/pmix_globals.h"
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/pmdl/pmdl.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
-#include "src/util/output.h"
 #include "src/util/name_fns.h"
+#include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 
-#include "src/mca/gds/base/base.h"
 #include "gds_hash.h"
+#include "src/mca/gds/base/base.h"
 
 /* process a node array - contains an array of
  * node-level info for a single node. Either the
  * nodeid, hostname, or both must be included
  * in the array to identify the node */
-pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
-                                               pmix_list_t *tgt)
+pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *tgt)
 {
     size_t size, j;
     pmix_info_t *iptr;
@@ -66,8 +65,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
     pmix_nodeinfo_t *nd = NULL, *ndptr;
     bool update;
 
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "PROCESSING NODE ARRAY");
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output, "PROCESSING NODE ARRAY");
 
     /* array of node-level info for a specific node */
     if (PMIX_DATA_ARRAY != val->type) {
@@ -77,12 +75,12 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
 
     /* setup arrays */
     size = val->data.darray->size;
-    iptr = (pmix_info_t*)val->data.darray->array;
+    iptr = (pmix_info_t *) val->data.darray->array;
     PMIX_CONSTRUCT(&cache, pmix_list_t);
 
     /* cache the values while searching for the nodeid
      * and/or hostname */
-    for (j=0; j < size; j++) {
+    for (j = 0; j < size; j++) {
         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
                             "%s gds:hash:node_array for key %s",
                             PMIX_NAME_PRINT(&pmix_globals.myid), iptr[j].key);
@@ -110,7 +108,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
             /* need to cache this value as well */
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
-            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
             PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -123,7 +121,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
-            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
             PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -147,7 +145,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
     /* see if we already have this node on the
      * provided list */
     update = false;
-    PMIX_LIST_FOREACH(ndptr, tgt, pmix_nodeinfo_t) {
+    PMIX_LIST_FOREACH (ndptr, tgt, pmix_nodeinfo_t) {
         if (pmix_gds_hash_check_node(ndptr, nd)) {
             /* we assume that the data is updating the current
              * values */
@@ -165,12 +163,12 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
     }
 
     /* transfer the cached items to the nodeinfo list */
-    kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
+    kp2 = (pmix_kval_t *) pmix_list_remove_first(&cache);
     while (NULL != kp2) {
         /* if this is an update, we have to ensure each data
          * item only appears once on the list */
         if (update) {
-            PMIX_LIST_FOREACH(k1, &nd->info, pmix_kval_t) {
+            PMIX_LIST_FOREACH (k1, &nd->info, pmix_kval_t) {
                 if (PMIX_CHECK_KEY(k1, kp2->key)) {
                     pmix_list_remove_item(&nd->info, &k1->super);
                     PMIX_RELEASE(k1);
@@ -179,7 +177,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
             }
         }
         pmix_list_append(&nd->info, &kp2->super);
-        kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
+        kp2 = (pmix_kval_t *) pmix_list_remove_first(&cache);
     }
     PMIX_LIST_DESTRUCT(&cache);
 
@@ -192,8 +190,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
  * it is assumed that only app is in the job.
  * This assumption is checked and generates
  * an error if violated */
-pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
-                                              pmix_job_t *trk)
+pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk)
 {
     pmix_list_t cache, ncache;
     size_t size, j;
@@ -205,8 +202,7 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
     pmix_nodeinfo_t *nd;
     bool update;
 
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "PROCESSING APP ARRAY");
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output, "PROCESSING APP ARRAY");
 
     /* apps have to belong to a job */
     if (NULL == trk) {
@@ -223,12 +219,12 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
     PMIX_CONSTRUCT(&cache, pmix_list_t);
     PMIX_CONSTRUCT(&ncache, pmix_list_t);
     size = val->data.darray->size;
-    iptr = (pmix_info_t*)val->data.darray->array;
+    iptr = (pmix_info_t *) val->data.darray->array;
 
-    for (j=0; j < size; j++) {
+    for (j = 0; j < size; j++) {
         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
-                            "%s gds:hash:app_array for key %s",
-                            PMIX_NAME_PRINT(&pmix_globals.myid), iptr[j].key);
+                            "%s gds:hash:app_array for key %s", PMIX_NAME_PRINT(&pmix_globals.myid),
+                            iptr[j].key);
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_APPNUM)) {
             PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, appnum, uint32_t);
             if (PMIX_SUCCESS != rc) {
@@ -253,7 +249,7 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
-            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
             PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -280,7 +276,7 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
     /* see if we already have this app on the
      * provided list */
     update = false;
-    PMIX_LIST_FOREACH(apptr, &trk->apps, pmix_apptrkr_t) {
+    PMIX_LIST_FOREACH (apptr, &trk->apps, pmix_apptrkr_t) {
         if (apptr->appnum == app->appnum) {
             /* we assume that the data is updating the current
              * values */
@@ -300,12 +296,12 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
     }
 
     /* transfer the app-level data across */
-    kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
+    kp2 = (pmix_kval_t *) pmix_list_remove_first(&cache);
     while (NULL != kp2) {
         /* if this is an update, we have to ensure each data
          * item only appears once on the list */
         if (update) {
-            PMIX_LIST_FOREACH(k1, &app->appinfo, pmix_kval_t) {
+            PMIX_LIST_FOREACH (k1, &app->appinfo, pmix_kval_t) {
                 if (PMIX_CHECK_KEY(k1, kp2->key)) {
                     pmix_list_remove_item(&app->appinfo, &k1->super);
                     PMIX_RELEASE(k1);
@@ -313,24 +309,24 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
                 }
             }
         }
-        if (PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_NAME) ||
-            PMIX_CHECK_KEY(kp2, PMIX_PROGRAMMING_MODEL) ||
-            PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION) ||
-            PMIX_CHECK_KEY(kp2, PMIX_PERSONALITY)) {
+        if (PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_NAME)
+            || PMIX_CHECK_KEY(kp2, PMIX_PROGRAMMING_MODEL)
+            || PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION)
+            || PMIX_CHECK_KEY(kp2, PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace_kv(trk->nptr, kp2);
         }
         pmix_list_append(&app->appinfo, &kp2->super);
-        kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
+        kp2 = (pmix_kval_t *) pmix_list_remove_first(&cache);
     }
     /* transfer the associated node-level data across */
-    nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
+    nd = (pmix_nodeinfo_t *) pmix_list_remove_first(&ncache);
     while (NULL != nd) {
         pmix_list_append(&app->nodeinfo, &nd->super);
-        nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
+        nd = (pmix_nodeinfo_t *) pmix_list_remove_first(&ncache);
     }
 
-  release:
+release:
     PMIX_LIST_DESTRUCT(&cache);
     PMIX_LIST_DESTRUCT(&ncache);
 
@@ -338,11 +334,8 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
 }
 
 /* process a job array */
-pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info,
-                                              pmix_job_t *trk,
-                                              uint32_t *flags,
-                                              char ***procs,
-                                              char ***nodes)
+pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk, uint32_t *flags,
+                                              char ***procs, char ***nodes)
 {
     pmix_list_t cache;
     size_t j, size;
@@ -350,8 +343,7 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info,
     pmix_kval_t *kp2;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "PROCESSING JOB ARRAY");
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output, "PROCESSING JOB ARRAY");
 
     /* array of job-level info */
     if (PMIX_DATA_ARRAY != info->value.type) {
@@ -359,15 +351,16 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info,
         return PMIX_ERR_TYPE_MISMATCH;
     }
     size = info->value.data.darray->size;
-    iptr = (pmix_info_t*)info->value.data.darray->array;
+    iptr = (pmix_info_t *) info->value.data.darray->array;
     PMIX_CONSTRUCT(&cache, pmix_list_t);
-    for (j=0; j < size; j++) {
+    for (j = 0; j < size; j++) {
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_APP_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_app_array(&iptr[j].value, trk))) {
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODE_INFO_ARRAY)) {
-            if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_node_array(&iptr[j].value, &trk->nodeinfo))) {
+            if (PMIX_SUCCESS
+                != (rc = pmix_gds_hash_process_node_array(&iptr[j].value, &trk->nodeinfo))) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
@@ -397,16 +390,16 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info,
             }
             /* mark that we got the map */
             *flags |= PMIX_HASH_NODE_MAP;
-        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_NAME) ||
-                   PMIX_CHECK_KEY(&iptr[j], PMIX_PROGRAMMING_MODEL) ||
-                   PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION)  ||
-                   PMIX_CHECK_KEY(&iptr[j], PMIX_PERSONALITY)) {
+        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_NAME)
+                   || PMIX_CHECK_KEY(&iptr[j], PMIX_PROGRAMMING_MODEL)
+                   || PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION)
+                   || PMIX_CHECK_KEY(&iptr[j], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace(trk->nptr, &iptr[j]);
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
-            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
             PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_RELEASE(kp2);
@@ -415,8 +408,7 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info,
             }
             pmix_list_append(&trk->jobinfo, &kp2->super);
             /* check for job size */
-            if (PMIX_CHECK_KEY(&iptr[j], PMIX_JOB_SIZE) &&
-                !(PMIX_HASH_JOB_SIZE & *flags)) {
+            if (PMIX_CHECK_KEY(&iptr[j], PMIX_JOB_SIZE) && !(PMIX_HASH_JOB_SIZE & *flags)) {
                 trk->nptr->nprocs = iptr[j].value.data.uint32;
                 *flags |= PMIX_HASH_JOB_SIZE;
             }
@@ -425,8 +417,7 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val,
-                                                  pmix_job_t *trk)
+pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t *trk)
 {
     pmix_session_t *s = NULL, *sptr;
     size_t j, size;
@@ -443,11 +434,11 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val,
         return PMIX_ERR_TYPE_MISMATCH;
     }
     size = val->data.darray->size;
-    iptr = (pmix_info_t*)val->data.darray->array;
+    iptr = (pmix_info_t *) val->data.darray->array;
 
     PMIX_CONSTRUCT(&cache, pmix_list_t);
     PMIX_CONSTRUCT(&ncache, pmix_list_t);
-    for (j=0; j < size; j++) {
+    for (j = 0; j < size; j++) {
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_SESSION_ID)) {
             PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, sid, uint32_t);
             if (PMIX_SUCCESS != rc) {
@@ -458,7 +449,7 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val,
             }
             /* see if we already have this session - it could have
              * been defined by a separate PMIX_SESSION_ID key */
-            PMIX_LIST_FOREACH(sptr, &mca_gds_hash_component.mysessions, pmix_session_t) {
+            PMIX_LIST_FOREACH (sptr, &mca_gds_hash_component.mysessions, pmix_session_t) {
                 if (sptr->session == sid) {
                     s = sptr;
                     break;
@@ -480,7 +471,7 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val,
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
-            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
             PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -508,16 +499,16 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val,
     PMIX_RETAIN(s);
     trk->session = s;
     /* transfer the data across */
-    kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
+    kp2 = (pmix_kval_t *) pmix_list_remove_first(&cache);
     while (NULL != kp2) {
         pmix_list_append(&s->sessioninfo, &kp2->super);
-        kp2 = (pmix_kval_t*)pmix_list_remove_first(&cache);
+        kp2 = (pmix_kval_t *) pmix_list_remove_first(&cache);
     }
     PMIX_LIST_DESTRUCT(&cache);
-    nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
+    nd = (pmix_nodeinfo_t *) pmix_list_remove_first(&ncache);
     while (NULL != nd) {
         pmix_list_append(&s->nodeinfo, &nd->super);
-        nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
+        nd = (pmix_nodeinfo_t *) pmix_list_remove_first(&ncache);
     }
     PMIX_LIST_DESTRUCT(&ncache);
     return PMIX_SUCCESS;

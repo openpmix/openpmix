@@ -25,34 +25,27 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #include <string.h>
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
+#    include <sys/time.h>
 #endif
 
-
 #include "src/include/pmix_globals.h"
-#include "src/mca/pstat/pstat.h"
 #include "src/mca/pstat/base/base.h"
+#include "src/mca/pstat/pstat.h"
 
 #include "pstat_test.h"
 
 static int init(void);
-static int query(pid_t pid,
-                 pmix_proc_stats_t *stats,
-                 pmix_node_stats_t *nstats);
+static int query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats);
 static int fini(void);
 
 /*
  * Test pstat module
  */
-const pmix_pstat_base_module_t pmix_pstat_test_module = {
-    init,
-    query,
-    fini
-};
+const pmix_pstat_base_module_t pmix_pstat_test_module = {init, query, fini};
 
 static int init(void)
 {
@@ -64,9 +57,7 @@ static int fini(void)
     return PMIX_SUCCESS;
 }
 
-static int query(pid_t pid,
-                 pmix_proc_stats_t *stats,
-                 pmix_node_stats_t *nstats)
+static int query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats)
 {
     double dtime;
 
@@ -101,8 +92,8 @@ static int query(pid_t pid,
 
         /* convert to time in seconds */
         dtime = 12345.678;
-        stats->time.tv_sec = (long)dtime;
-        stats->time.tv_usec = (long)(1000000.0 * (dtime - stats->time.tv_sec));
+        stats->time.tv_sec = (long) dtime;
+        stats->time.tv_usec = (long) (1000000.0 * (dtime - stats->time.tv_sec));
         stats->priority = 2;
     }
 

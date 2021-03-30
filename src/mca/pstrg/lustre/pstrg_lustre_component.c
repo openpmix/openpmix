@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,9 +30,9 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/util/argv.h"
-#include "src/mca/pstrg/pstrg.h"
 #include "pstrg_lustre.h"
+#include "src/mca/pstrg/pstrg.h"
+#include "src/util/argv.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -69,8 +70,7 @@ pmix_pstrg_lustre_component_t mca_pstrg_lustre_component = {
 
 static pmix_status_t component_register(void)
 {
-  //  pmix_mca_base_component_t *component = &mca_pstrg_lustre_component.super.base;
-
+    //  pmix_mca_base_component_t *component = &mca_pstrg_lustre_component.super.base;
 
     return PMIX_SUCCESS;
 }
@@ -80,14 +80,12 @@ static pmix_status_t component_open(void)
     return PMIX_SUCCESS;
 }
 
-
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 10;
-    *module = (pmix_mca_base_module_t *)&pmix_pstrg_lustre_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pstrg_lustre_module;
     return PMIX_SUCCESS;
 }
-
 
 static pmix_status_t component_close(void)
 {

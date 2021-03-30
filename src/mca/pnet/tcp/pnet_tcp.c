@@ -3,6 +3,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,24 +15,25 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #include <time.h>
 
 #include "include/pmix_common.h"
 
-#include "src/include/pmix_socket_errno.h"
-#include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"
+#include "src/include/pmix_socket_errno.h"
+#include "src/mca/preg/preg.h"
 #include "src/util/alfg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -39,46 +41,38 @@
 #include "src/util/parse_options.h"
 #include "src/util/pif.h"
 #include "src/util/pmix_environ.h"
-#include "src/mca/preg/preg.h"
 
-#include "src/mca/pnet/base/base.h"
 #include "pnet_tcp.h"
+#include "src/mca/pnet/base/base.h"
 
-#define PMIX_TCP_SETUP_APP_KEY  "pmix.tcp.setup.app.key"
-#define PMIX_TCP_INVENTORY_KEY  "pmix.tcp.inventory"
+#define PMIX_TCP_SETUP_APP_KEY "pmix.tcp.setup.app.key"
+#define PMIX_TCP_INVENTORY_KEY "pmix.tcp.inventory"
 
 static pmix_status_t tcp_init(void);
 static void tcp_finalize(void);
-static pmix_status_t allocate(pmix_namespace_t *nptr,
-                              pmix_info_t info[], size_t ninfo,
+static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist);
-static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
-                                         pmix_info_t info[],
-                                         size_t ninfo);
-static pmix_status_t setup_fork(pmix_namespace_t *nptr,
-                                const pmix_proc_t *peer, char ***env);
+static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_fork(pmix_namespace_t *nptr, const pmix_proc_t *peer, char ***env);
 static void child_finalized(pmix_proc_t *peer);
 static void local_app_finalized(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
-                                       pmix_info_t directives[], size_t ndirs,
-                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_info_t directives[],
+                                       size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-pmix_pnet_module_t pmix_tcp_module = {
-    .name = "tcp",
-    .init = tcp_init,
-    .finalize = tcp_finalize,
-    .allocate = allocate,
-    .setup_local_network = setup_local_network,
-    .setup_fork = setup_fork,
-    .child_finalized = child_finalized,
-    .local_app_finalized = local_app_finalized,
-    .deregister_nspace = deregister_nspace,
-    .collect_inventory = collect_inventory,
-    .deliver_inventory = deliver_inventory
-};
+pmix_pnet_module_t pmix_tcp_module = {.name = "tcp",
+                                      .init = tcp_init,
+                                      .finalize = tcp_finalize,
+                                      .allocate = allocate,
+                                      .setup_local_network = setup_local_network,
+                                      .setup_fork = setup_fork,
+                                      .child_finalized = child_finalized,
+                                      .local_app_finalized = local_app_finalized,
+                                      .deregister_nspace = deregister_nspace,
+                                      .collect_inventory = collect_inventory,
+                                      .deliver_inventory = deliver_inventory};
 
 typedef struct {
     pmix_list_item_t super;
@@ -100,14 +94,12 @@ typedef struct {
     pmix_list_item_t super;
     char *nspace;
     char **ports;
-    tcp_available_ports_t *src;  // source of the allocated ports
+    tcp_available_ports_t *src; // source of the allocated ports
 } tcp_port_tracker_t;
 
 static pmix_list_t allocations, available;
-static pmix_status_t process_request(pmix_namespace_t *nptr,
-                                     char *idkey, int ports_per_node,
-                                     tcp_port_tracker_t *trk,
-                                     pmix_list_t *ilist);
+static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int ports_per_node,
+                                     tcp_port_tracker_t *trk, pmix_list_t *ilist);
 
 static void dcon(tcp_device_t *p)
 {
@@ -123,9 +115,7 @@ static void ddes(tcp_device_t *p)
         free(p->address);
     }
 }
-static PMIX_CLASS_INSTANCE(tcp_device_t,
-                           pmix_list_item_t,
-                           dcon, ddes);
+static PMIX_CLASS_INSTANCE(tcp_device_t, pmix_list_item_t, dcon, ddes);
 
 static void tacon(tcp_available_ports_t *p)
 {
@@ -148,9 +138,7 @@ static void tades(tcp_available_ports_t *p)
         pmix_argv_free(p->ports);
     }
 }
-static PMIX_CLASS_INSTANCE(tcp_available_ports_t,
-                           pmix_list_item_t,
-                           tacon, tades);
+static PMIX_CLASS_INSTANCE(tcp_available_ports_t, pmix_list_item_t, tacon, tades);
 
 static void ttcon(tcp_port_tracker_t *p)
 {
@@ -168,9 +156,9 @@ static void ttdes(tcp_port_tracker_t *p)
     if (NULL != p->src) {
         if (NULL != p->ports) {
             mstart = 0;
-            for (n=0; NULL != p->ports[n]; n++) {
+            for (n = 0; NULL != p->ports[n]; n++) {
                 /* find an empty position */
-                for (m=mstart; m < p->src->nports; m++) {
+                for (m = mstart; m < p->src->nports; m++) {
                     if (NULL == p->src->ports[m]) {
                         p->src->ports[m] = strdup(p->ports[n]);
                         mstart = m + 1;
@@ -180,14 +168,12 @@ static void ttdes(tcp_port_tracker_t *p)
             }
             pmix_argv_free(p->ports);
         }
-        PMIX_RELEASE(p->src);  // maintain accounting
+        PMIX_RELEASE(p->src); // maintain accounting
     } else if (NULL != p->ports) {
         pmix_argv_free(p->ports);
     }
 }
-static PMIX_CLASS_INSTANCE(tcp_port_tracker_t,
-                           pmix_list_item_t,
-                           ttcon, ttdes);
+static PMIX_CLASS_INSTANCE(tcp_port_tracker_t, pmix_list_item_t, ttcon, ttdes);
 
 static pmix_status_t tcp_init(void)
 {
@@ -195,8 +181,7 @@ static pmix_status_t tcp_init(void)
     char *p, **grps;
     size_t n;
 
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet: tcp init");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet: tcp init");
 
     /* if we are not the "gateway", then there is nothing
      * for us to do */
@@ -219,7 +204,7 @@ static pmix_status_t tcp_init(void)
 
     /* split on semi-colons */
     grps = pmix_argv_split(mca_pnet_tcp_component.static_ports, ';');
-    for (n=0; NULL != grps[n]; n++) {
+    for (n = 0; NULL != grps[n]; n++) {
         trk = PMIX_NEW(tcp_available_ports_t);
         if (NULL == trk) {
             pmix_argv_free(grps);
@@ -244,9 +229,8 @@ static pmix_status_t tcp_init(void)
         }
         /* the type is just what is left at the front */
         trk->type = strdup(grps[n]);
-        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                            "TYPE: %s PLANE %s", trk->type,
-                            (NULL == trk->plane) ? "NULL" : trk->plane);
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "TYPE: %s PLANE %s",
+                            trk->type, (NULL == trk->plane) ? "NULL" : trk->plane);
         pmix_list_append(&available, &trk->super);
     }
     pmix_argv_free(grps);
@@ -256,8 +240,7 @@ static pmix_status_t tcp_init(void)
 
 static void tcp_finalize(void)
 {
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet: tcp finalize");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet: tcp finalize");
     if (PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
         PMIX_LIST_DESTRUCT(&allocations);
         PMIX_LIST_DESTRUCT(&available);
@@ -278,9 +261,10 @@ static void tcp_finalize(void)
  * for doing so.
  */
 
-static inline void generate_key(uint64_t* unique_key) {
+static inline void generate_key(uint64_t *unique_key)
+{
     pmix_rng_buff_t rng;
-    pmix_srand(&rng,(unsigned int)time(NULL));
+    pmix_srand(&rng, (unsigned int) time(NULL));
     unique_key[0] = pmix_rand(&rng);
     unique_key[1] = pmix_rand(&rng);
 }
@@ -297,13 +281,12 @@ static inline void generate_key(uint64_t* unique_key) {
  * NOTE: this implementation is offered as an example that can
  * undoubtedly be vastly improved/optimized */
 
-static pmix_status_t allocate(pmix_namespace_t *nptr,
-                              pmix_info_t info[], size_t ninfo,
+static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist)
 {
     uint64_t unique_key[2];
-    size_t n, nreqs=0;
-    int ports_per_node=0;
+    size_t n, nreqs = 0;
+    int ports_per_node = 0;
     pmix_kval_t *kv;
     pmix_status_t rc;
     pmix_info_t *requests = NULL;
@@ -330,23 +313,22 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 
     /* check directives to see if a crypto key and/or
      * network resource allocations requested */
-    for (n=0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ENVARS) ||
-            PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ALL)) {
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ENVARS)
+            || PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ALL)) {
             envars = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(info, PMIX_ALLOC_FABRIC)) {
             /* this info key includes an array of pmix_info_t, each providing
              * a key (that is to be used as the key for the allocated ports) and
              * a number of ports to allocate for that key */
-            if (PMIX_DATA_ARRAY != info->value.type ||
-                NULL == info->value.data.darray ||
-                PMIX_INFO != info->value.data.darray->type ||
-                NULL == info->value.data.darray->array) {
+            if (PMIX_DATA_ARRAY != info->value.type || NULL == info->value.data.darray
+                || PMIX_INFO != info->value.data.darray->type
+                || NULL == info->value.data.darray->array) {
                 /* they made an error */
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }
-            requests = (pmix_info_t*)info->value.data.darray->array;
+            requests = (pmix_info_t *) info->value.data.darray->array;
             nreqs = info->value.data.darray->size;
         }
     }
@@ -355,11 +337,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         if (NULL != mca_pnet_tcp_component.include) {
             pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                 "pnet: tcp harvesting envars %s excluding %s",
-                                (NULL == mca_pnet_tcp_component.incparms) ? "NONE" : mca_pnet_tcp_component.incparms,
-                                (NULL == mca_pnet_tcp_component.excparms) ? "NONE" : mca_pnet_tcp_component.excparms);
+                                (NULL == mca_pnet_tcp_component.incparms)
+                                    ? "NONE"
+                                    : mca_pnet_tcp_component.incparms,
+                                (NULL == mca_pnet_tcp_component.excparms)
+                                    ? "NONE"
+                                    : mca_pnet_tcp_component.excparms);
             rc = pmix_util_harvest_envars(mca_pnet_tcp_component.include,
-                                          mca_pnet_tcp_component.exclude,
-                                          ilist);
+                                          mca_pnet_tcp_component.exclude, ilist);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
@@ -371,24 +356,21 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     }
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:tcp:allocate alloc_network for nspace %s",
-                        nptr->nspace);
+                        "pnet:tcp:allocate alloc_network for nspace %s", nptr->nspace);
     /* cycle thru the provided array and see if this refers to
      * tcp/udp-based resources - there is no required ordering
      * of the keys, so just have to do a search */
-    for (n=0; n < nreqs; n++) {
+    for (n = 0; n < nreqs; n++) {
         if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_FABRIC_TYPE, PMIX_MAX_KEYLEN)) {
             /* check for bozo error */
-            if (PMIX_STRING != requests[n].value.type ||
-                NULL == requests[n].value.data.string) {
+            if (PMIX_STRING != requests[n].value.type || NULL == requests[n].value.data.string) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }
             type = requests[n].value.data.string;
         } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_FABRIC_PLANE, PMIX_MAX_KEYLEN)) {
             /* check for bozo error */
-            if (PMIX_STRING != requests[n].value.type ||
-                NULL == requests[n].value.data.string) {
+            if (PMIX_STRING != requests[n].value.type || NULL == requests[n].value.data.string) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }
@@ -400,8 +382,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             }
         } else if (0 == strncmp(requests[n].key, PMIX_ALLOC_FABRIC_ID, PMIX_MAX_KEYLEN)) {
             /* check for bozo error */
-            if (PMIX_STRING != requests[n].value.type ||
-                NULL == requests[n].value.data.string) {
+            if (PMIX_STRING != requests[n].value.type || NULL == requests[n].value.data.string) {
                 PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
                 return PMIX_ERR_BAD_PARAM;
             }
@@ -423,7 +404,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(PMIX_ALLOC_FABRIC_ID);
-    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -446,7 +427,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                                 nptr->nspace);
             /* do we have static tcp ports? */
             avail = NULL;
-            PMIX_LIST_FOREACH(aptr, &available, tcp_available_ports_t) {
+            PMIX_LIST_FOREACH (aptr, &available, tcp_available_ports_t) {
                 if (0 == strcmp(aptr->type, "tcp")) {
                     /* if they specified a plane, then require it */
                     if (NULL != plane && (NULL == aptr->plane || 0 != strcmp(aptr->plane, plane))) {
@@ -487,7 +468,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                                 nptr->nspace);
             /* do we have static udp ports? */
             avail = NULL;
-            PMIX_LIST_FOREACH(aptr, &available, tcp_available_ports_t) {
+            PMIX_LIST_FOREACH (aptr, &available, tcp_available_ports_t) {
                 if (0 == strcmp(aptr->type, "udp")) {
                     /* if they specified a plane, then require it */
                     if (NULL != plane && (NULL == aptr->plane || 0 != strcmp(aptr->plane, plane))) {
@@ -524,8 +505,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         } else {
             /* unsupported type */
             pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                                "pnet:tcp:allocate unsupported type %s for nspace %s",
-                                type, nptr->nspace);
+                                "pnet:tcp:allocate unsupported type %s for nspace %s", type,
+                                nptr->nspace);
             PMIX_LIST_DESTRUCT(&mylist);
             return PMIX_ERR_TAKE_NEXT_OPTION;
         }
@@ -534,7 +515,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         if (NULL != plane) {
             /* if they didn't specify a type, but they did specify a plane, we can
              * see if that is a plane we recognize */
-            PMIX_LIST_FOREACH(aptr, &available, tcp_available_ports_t) {
+            PMIX_LIST_FOREACH (aptr, &available, tcp_available_ports_t) {
                 if (0 != strcmp(aptr->plane, plane)) {
                     continue;
                 }
@@ -568,13 +549,13 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                                     "pnet:tcp:allocate allocating default ports %s for nspace %s",
                                     mca_pnet_tcp_component.default_request, nptr->nspace);
                 reqs = pmix_argv_split(mca_pnet_tcp_component.default_request, ';');
-                for (n=0; NULL != reqs[n]; n++) {
+                for (n = 0; NULL != reqs[n]; n++) {
                     /* if there is no colon, then it is just
                      * a number of ports to use */
                     type = NULL;
                     plane = NULL;
                     if (NULL == (cptr = strrchr(reqs[n], ':'))) {
-                        avail = (tcp_available_ports_t*)pmix_list_get_first(&available);
+                        avail = (tcp_available_ports_t *) pmix_list_get_first(&available);
                     } else {
                         *cptr = '\0';
                         ++cptr;
@@ -588,10 +569,11 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                         }
                         type = reqs[n];
                         avail = NULL;
-                        PMIX_LIST_FOREACH(aptr, &available, tcp_available_ports_t) {
+                        PMIX_LIST_FOREACH (aptr, &available, tcp_available_ports_t) {
                             if (0 == strcmp(aptr->type, type)) {
                                 /* if they specified a plane, then require it */
-                                if (NULL != plane && (NULL == aptr->plane || 0 != strcmp(aptr->plane, plane))) {
+                                if (NULL != plane
+                                    && (NULL == aptr->plane || 0 != strcmp(aptr->plane, plane))) {
                                     continue;
                                 }
                                 avail = aptr;
@@ -633,7 +615,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
                     PMIX_LIST_DESTRUCT(&mylist);
                     return PMIX_ERR_TAKE_NEXT_OPTION;
                 }
-                avail = (tcp_available_ports_t*)pmix_list_get_first(&available);
+                avail = (tcp_available_ports_t *) pmix_list_get_first(&available);
                 if (NULL != avail) {
                     /* setup to track the assignment */
                     trk = PMIX_NEW(tcp_port_tracker_t);
@@ -673,14 +655,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(PMIX_ALLOC_FABRIC_SEC_KEY);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             PMIX_LIST_DESTRUCT(&mylist);
             return PMIX_ERR_NOMEM;
         }
         kv->value->type = PMIX_BYTE_OBJECT;
-        kv->value->data.bo.bytes = (char*)malloc(2 * sizeof(uint64_t));
+        kv->value->data.bo.bytes = (char *) malloc(2 * sizeof(uint64_t));
         if (NULL == kv->value->data.bo.bytes) {
             PMIX_RELEASE(kv);
             PMIX_LIST_DESTRUCT(&mylist);
@@ -691,14 +673,13 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         pmix_list_append(&mylist, &kv->super);
     }
 
-
     n = pmix_list_get_size(&mylist);
     if (0 < n) {
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
         /* pack the number of kvals for ease on the remote end */
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &n, 1, PMIX_SIZE);
         /* cycle across the list and pack the kvals */
-        while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(&mylist))) {
+        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(&mylist))) {
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv, 1, PMIX_KVAL);
             PMIX_RELEASE(kv);
             if (PMIX_SUCCESS != rc) {
@@ -710,7 +691,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         PMIX_LIST_DESTRUCT(&mylist);
         kv = PMIX_NEW(pmix_kval_t);
         kv->key = strdup(PMIX_TCP_SETUP_APP_KEY);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             PMIX_DESTRUCT(&buf);
@@ -730,9 +711,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 /* upon receipt of the launch message, each daemon adds the
  * static address assignments to the job-level info cache
  * for that job */
-static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
-                                         pmix_info_t info[],
-                                         size_t ninfo)
+static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo)
 {
     size_t n, m, nkvals;
     pmix_buffer_t bkt;
@@ -747,49 +726,45 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
 
     if (NULL != info) {
         idkey = strdup("default");
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             /* look for my key */
             if (0 == strncmp(info[n].key, PMIX_TCP_SETUP_APP_KEY, PMIX_MAX_KEYLEN)) {
                 /* this macro NULLs and zero's the incoming bo */
-                PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt,
-                                 info[n].value.data.bo.bytes,
+                PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt, info[n].value.data.bo.bytes,
                                  info[n].value.data.bo.size);
                 /* unpack the number of kvals */
                 cnt = 1;
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                   &bkt, &nkvals, &cnt, PMIX_SIZE);
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &nkvals, &cnt, PMIX_SIZE);
                 /* setup the info array */
                 PMIX_INFO_CONSTRUCT(&stinfo);
                 pmix_strncpy(stinfo.key, idkey, PMIX_MAX_KEYLEN);
                 stinfo.value.type = PMIX_DATA_ARRAY;
                 PMIX_DATA_ARRAY_CREATE(stinfo.value.data.darray, nkvals, PMIX_INFO);
-                jinfo = (pmix_info_t*)stinfo.value.data.darray->array;
+                jinfo = (pmix_info_t *) stinfo.value.data.darray->array;
 
                 /* cycle thru the blob and extract the kvals */
                 kv = PMIX_NEW(pmix_kval_t);
                 cnt = 1;
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                   &bkt, kv, &cnt, PMIX_KVAL);
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, kv, &cnt, PMIX_KVAL);
                 m = 0;
                 while (PMIX_SUCCESS == rc) {
                     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                         "recvd KEY %s %s", kv->key,
-                                        (PMIX_STRING == kv->value->type) ? kv->value->data.string : "NON-STRING");
+                                        (PMIX_STRING == kv->value->type) ? kv->value->data.string
+                                                                         : "NON-STRING");
                     /* xfer the value to the info */
                     pmix_strncpy(jinfo[m].key, kv->key, PMIX_MAX_KEYLEN);
-                    PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer,
-                                           &jinfo[m].value, kv->value);
+                    PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, &jinfo[m].value, kv->value);
                     /* if this is the ID key, save it */
-                    if (NULL == idkey &&
-                        0 == strncmp(kv->key, PMIX_ALLOC_FABRIC_ID, PMIX_MAX_KEYLEN)) {
+                    if (NULL == idkey
+                        && 0 == strncmp(kv->key, PMIX_ALLOC_FABRIC_ID, PMIX_MAX_KEYLEN)) {
                         idkey = strdup(kv->value->data.string);
                     }
                     ++m;
                     PMIX_RELEASE(kv);
                     kv = PMIX_NEW(pmix_kval_t);
                     cnt = 1;
-                    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                       &bkt, kv, &cnt, PMIX_KVAL);
+                    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, kv, &cnt, PMIX_KVAL);
                 }
                 /* restore the incoming data */
                 info[n].value.data.bo.bytes = bkt.base_ptr;
@@ -804,8 +779,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 }
 
                 /* cache the info on the job */
-                PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
-                                        &stinfo, 1);
+                PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, &stinfo, 1);
                 PMIX_INFO_DESTRUCT(&stinfo);
             }
         }
@@ -816,11 +790,9 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t setup_fork(pmix_namespace_t *nptr,
-                                const pmix_proc_t *peer, char ***env)
+static pmix_status_t setup_fork(pmix_namespace_t *nptr, const pmix_proc_t *peer, char ***env)
 {
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:tcp:setup_fork");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet:tcp:setup_fork");
     return PMIX_SUCCESS;
 }
 
@@ -829,8 +801,7 @@ static pmix_status_t setup_fork(pmix_namespace_t *nptr,
  * have anything we need to do */
 static void child_finalized(pmix_proc_t *peer)
 {
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:tcp child finalized");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet:tcp child finalized");
 }
 
 /* when all local clients for a given job finalize, the server
@@ -839,8 +810,7 @@ static void child_finalized(pmix_proc_t *peer)
  * We don't have anything we need to do */
 static void local_app_finalized(pmix_namespace_t *nptr)
 {
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:tcp app finalized");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet:tcp app finalized");
 }
 
 /* when the job completes, the scheduler calls the "deregister nspace"
@@ -861,7 +831,7 @@ static void deregister_nspace(pmix_namespace_t *nptr)
     }
 
     /* find this tracker */
-    PMIX_LIST_FOREACH(trk, &allocations, tcp_port_tracker_t) {
+    PMIX_LIST_FOREACH (trk, &allocations, tcp_port_tracker_t) {
         if (0 == strcmp(nptr->nspace, trk->nspace)) {
             pmix_list_remove_item(&allocations, &trk->super);
             PMIX_RELEASE(trk);
@@ -875,7 +845,7 @@ static void deregister_nspace(pmix_namespace_t *nptr)
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_inventory_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t*)cbdata;
+    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t *) cbdata;
     char *prefix;
     char myconnhost[PMIX_MAXHOSTNAMELEN] = {0};
     char name[32], uri[2048];
@@ -888,8 +858,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     pmix_byte_object_t pbo;
     pmix_kval_t *kv;
 
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:tcp:collect_inventory");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet:tcp:collect_inventory");
 
     /* setup the bucket - we will pass the results as a blob */
     PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
@@ -903,14 +872,13 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
 
     /* look at all available interfaces */
     for (i = pmix_ifbegin(); i >= 0; i = pmix_ifnext(i)) {
-        if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr*)&my_ss, sizeof(my_ss))) {
-            pmix_output (0, "ptl_tcp: problems getting address for index %i (kernel index %i)\n",
-                         i, pmix_ifindextokindex(i));
+        if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr *) &my_ss, sizeof(my_ss))) {
+            pmix_output(0, "ptl_tcp: problems getting address for index %i (kernel index %i)\n", i,
+                        pmix_ifindextokindex(i));
             continue;
         }
         /* ignore non-ip4/6 interfaces */
-        if (AF_INET != my_ss.ss_family &&
-            AF_INET6 != my_ss.ss_family) {
+        if (AF_INET != my_ss.ss_family && AF_INET6 != my_ss.ss_family) {
             continue;
         }
         /* get the name for diagnostic purposes */
@@ -926,17 +894,17 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         }
         if (AF_INET == my_ss.ss_family) {
             prefix = "tcp4://";
-            inet_ntop(AF_INET, &((struct sockaddr_in*) &my_ss)->sin_addr,
-                      myconnhost, PMIX_MAXHOSTNAMELEN-1);
+            inet_ntop(AF_INET, &((struct sockaddr_in *) &my_ss)->sin_addr, myconnhost,
+                      PMIX_MAXHOSTNAMELEN - 1);
         } else if (AF_INET6 == my_ss.ss_family) {
             prefix = "tcp6://";
-            inet_ntop(AF_INET6, &((struct sockaddr_in6*) &my_ss)->sin6_addr,
-                      myconnhost, PMIX_MAXHOSTNAMELEN-1);
+            inet_ntop(AF_INET6, &((struct sockaddr_in6 *) &my_ss)->sin6_addr, myconnhost,
+                      PMIX_MAXHOSTNAMELEN - 1);
         } else {
             continue;
         }
-        (void)snprintf(uri, 2048, "%s%s", prefix, myconnhost);
-        pmix_output_verbose(2, pmix_pnet_base_framework. framework_output,
+        (void) snprintf(uri, 2048, "%s%s", prefix, myconnhost);
+        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                             "TCP INVENTORY ADDING: %s %s", name, uri);
         found = true;
         /* pack the name of the device */
@@ -986,10 +954,8 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t process_request(pmix_namespace_t *nptr,
-                                     char *idkey, int ports_per_node,
-                                     tcp_port_tracker_t *trk,
-                                     pmix_list_t *ilist)
+static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int ports_per_node,
+                                     tcp_port_tracker_t *trk, pmix_list_t *ilist)
 {
     char **plist;
     pmix_kval_t *kv;
@@ -1002,7 +968,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr,
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(idkey);
-    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -1020,7 +986,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr,
     /* assemble the list of ports */
     p = 0;
     plist = NULL;
-    for (m=0; p < ppn && m < avail->nports; m++) {
+    for (m = 0; p < ppn && m < avail->nports; m++) {
         if (NULL != avail->ports[m]) {
             pmix_argv_append_nosize(&trk->ports, avail->ports[m]);
             pmix_argv_append_nosize(&plist, avail->ports[m]);
@@ -1047,7 +1013,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr,
         return PMIX_ERR_NOMEM;
     }
     kv->key = strdup(idkey);
-    kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+    kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
     if (NULL == kv->value) {
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
@@ -1061,7 +1027,7 @@ static pmix_status_t process_request(pmix_namespace_t *nptr,
             return PMIX_ERR_NOMEM;
         }
         kv->key = strdup(idkey);
-        kv->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
         if (NULL == kv->value) {
             PMIX_RELEASE(kv);
             return PMIX_ERR_NOMEM;
@@ -1073,9 +1039,8 @@ static pmix_status_t process_request(pmix_namespace_t *nptr,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
-                                       pmix_info_t directives[], size_t ndirs,
-                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
+static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_info_t directives[],
+                                       size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t bkt, pbkt;
     size_t n;
@@ -1088,19 +1053,16 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
     tcp_device_t *res;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:tcp deliver inventory");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet:tcp deliver inventory");
 
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_TCP_INVENTORY_KEY, PMIX_MAX_KEYLEN)) {
             /* this is our inventory in the form of a blob */
-            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt,
-                             info[n].value.data.bo.bytes,
+            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt, info[n].value.data.bo.bytes,
                              info[n].value.data.bo.size);
             /* first is the host this came from */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                               &bkt, &hostname, &cnt, PMIX_STRING);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &hostname, &cnt, PMIX_STRING);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 /* must _not_ destruct bkt as we don't
@@ -1109,7 +1071,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
             }
             /* do we already have this node? */
             nd = NULL;
-            PMIX_LIST_FOREACH(ndptr, &pmix_pnet_globals.nodes, pmix_pnet_node_t) {
+            PMIX_LIST_FOREACH (ndptr, &pmix_pnet_globals.nodes, pmix_pnet_node_t) {
                 if (0 == strcmp(hostname, ndptr->name)) {
                     nd = ndptr;
                     break;
@@ -1122,7 +1084,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
             }
             /* does this node already have a TCP entry? */
             lst = NULL;
-            PMIX_LIST_FOREACH(lt, &nd->resources, pmix_pnet_resource_t) {
+            PMIX_LIST_FOREACH (lt, &nd->resources, pmix_pnet_resource_t) {
                 if (0 == strcmp(lt->name, "tcp")) {
                     lst = lt;
                     break;
@@ -1138,16 +1100,14 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
             pmix_list_append(&lst->resources, &prts->super);
             /* cycle across any provided interfaces */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                               &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
             while (PMIX_SUCCESS == rc) {
                 /* load the byte object for unpacking */
                 PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt, pbo.bytes, pbo.size);
                 /* unpack the name of the device */
                 cnt = 1;
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                   &pbkt, &device, &cnt, PMIX_STRING);
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, &device, &cnt, PMIX_STRING);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&pbkt);
@@ -1157,8 +1117,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                 }
                 /* unpack the address */
                 cnt = 1;
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                   &pbkt, &address, &cnt, PMIX_STRING);
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, &address, &cnt, PMIX_STRING);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&pbkt);
@@ -1173,24 +1132,24 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                 pmix_list_append(&prts->devices, &res->super);
                 PMIX_DESTRUCT(&pbkt);
                 cnt = 1;
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                   &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &pbo, &cnt, PMIX_BYTE_OBJECT);
             }
             if (5 < pmix_output_get_verbosity(pmix_pnet_base_framework.framework_output)) {
                 /* dump the resulting node resources */
                 pmix_output(0, "TCP resources for node: %s", nd->name);
-                PMIX_LIST_FOREACH(lt, &nd->resources, pmix_pnet_resource_t) {
+                PMIX_LIST_FOREACH (lt, &nd->resources, pmix_pnet_resource_t) {
                     if (0 == strcmp(lt->name, "tcp")) {
-                        PMIX_LIST_FOREACH(prts, &lt->resources, tcp_available_ports_t) {
+                        PMIX_LIST_FOREACH (prts, &lt->resources, tcp_available_ports_t) {
                             device = NULL;
                             if (NULL != prts->ports) {
                                 device = pmix_argv_join(prts->ports, ',');
                             }
-                            pmix_output(0, "\tPorts: %s", (NULL == device) ? "UNSPECIFIED" : device);
+                            pmix_output(0, "\tPorts: %s",
+                                        (NULL == device) ? "UNSPECIFIED" : device);
                             if (NULL != device) {
                                 free(device);
                             }
-                            PMIX_LIST_FOREACH(res, &prts->devices, tcp_device_t) {
+                            PMIX_LIST_FOREACH (res, &prts->devices, tcp_device_t) {
                                 pmix_output(0, "\tDevice: %s", res->device);
                                 pmix_output(0, "\tAddress: %s", res->address);
                             }

@@ -1,4 +1,4 @@
- /*
+/*
  * Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
@@ -6,6 +6,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2020      Triad National Security, LLC
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,21 +16,21 @@
  */
 
 #define _GNU_SOURCE
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <pthread.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include "pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
 
-#include "test_server.h"
-#include "test_common.h"
 #include "cli_stages.h"
 #include "server_callbacks.h"
+#include "test_common.h"
+#include "test_server.h"
 
 int my_server_id = 0;
 
@@ -64,9 +65,7 @@ static void scon(server_info_t *s)
     s->cbdata = NULL;
 }
 
-PMIX_CLASS_INSTANCE(server_info_t,
-                    pmix_list_item_t,
-                    scon, sdes);
+PMIX_CLASS_INSTANCE(server_info_t, pmix_list_item_t, scon, sdes);
 
 /* namespace destructor */
 static void nsdes(server_nspace_t *ns)
@@ -84,9 +83,7 @@ static void nscon(server_nspace_t *ns)
     ns->task_map = NULL;
 }
 
-PMIX_CLASS_INSTANCE(server_nspace_t,
-                    pmix_list_item_t,
-                    nscon, nsdes);
+PMIX_CLASS_INSTANCE(server_nspace_t, pmix_list_item_t, nscon, nsdes);
 
 static int server_send_procs(void);
 static void server_read_cb(int fd, short event, void *arg);
@@ -95,14 +92,14 @@ static int server_fwd_msg(msg_hdr_t *msg_hdr, char *buf, size_t size);
 static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size);
 static void remove_server_item(server_info_t *server);
 static void server_unpack_dmdx(char *buf, int *sender, pmix_proc_t *proc);
-static int server_pack_dmdx(int sender_id, const char *nspace, int rank,
-                            char **buf);
+static int server_pack_dmdx(int sender_id, const char *nspace, int rank, char **buf);
 static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata);
-static void fill_global_validation_params(pmix_proc_t proc, int univ_size, validation_params *v_params);
+static void fill_global_validation_params(pmix_proc_t proc, int univ_size,
+                                          validation_params *v_params);
 
 static void release_cb(pmix_status_t status, void *cbdata)
 {
-    int *ptr = (int*)cbdata;
+    int *ptr = (int *) cbdata;
     *ptr = 0;
 }
 
@@ -117,7 +114,7 @@ void set_client_argv(test_params *params, char ***argv)
         pmix_argv_append_nosize(argv, params->np);
     }
 
-    if( params->verbose ){
+    if (params->verbose) {
         pmix_argv_append_nosize(argv, "-v");
     }
     if (NULL != params->prefix) {
@@ -144,19 +141,21 @@ static void fill_seq_ranks_array(uint32_t nprocs, char **ranks)
     if (0 >= nprocs) {
         return;
     }
-    max_ranks_len = nprocs * (MAX_DIGIT_LEN+1);
-    *ranks = (char*) malloc(max_ranks_len);
+    max_ranks_len = nprocs * (MAX_DIGIT_LEN + 1);
+    *ranks = (char *) malloc(max_ranks_len);
     // i is equivalent to local rank
     for (i = 0; i < nprocs; i++) {
-        len += snprintf(*ranks + len, max_ranks_len-len-1, "%d", nodes[my_server_id].pmix_rank[i]);
-        if (i != nprocs-1) {
-            len += snprintf(*ranks + len, max_ranks_len-len-1, "%c", ',');
+        len += snprintf(*ranks + len, max_ranks_len - len - 1, "%d",
+                        nodes[my_server_id].pmix_rank[i]);
+        if (i != nprocs - 1) {
+            len += snprintf(*ranks + len, max_ranks_len - len - 1, "%c", ',');
         }
     }
-    if (len >= max_ranks_len-1) {
+    if (len >= max_ranks_len - 1) {
         free(*ranks);
         *ranks = NULL;
-        TEST_ERROR_EXIT(("ERROR: Server id: %d Not enough allocated space for global ranks array.", my_server_id));
+        TEST_ERROR_EXIT(("ERROR: Server id: %d Not enough allocated space for global ranks array.",
+                         my_server_id));
     }
 }
 
@@ -164,7 +163,7 @@ static int server_find_id(const char *nspace, int rank)
 {
     server_nspace_t *tmp;
 
-    PMIX_LIST_FOREACH(tmp, server_nspace, server_nspace_t) {
+    PMIX_LIST_FOREACH (tmp, server_nspace, server_nspace_t) {
         if (0 == strcmp(tmp->name, nspace)) {
             return tmp->task_map[rank];
         }
@@ -179,7 +178,7 @@ static void set_namespace(validation_params *v_params)
     ninfo = 8;
     char *regex, *ppn, *tmp;
     char *ranks = NULL, **node_string = NULL;
-    char **rks=NULL;
+    char **rks = NULL;
     int i, j;
     int rc;
 
@@ -217,7 +216,7 @@ static void set_namespace(validation_params *v_params)
         tmp = pmix_argv_join(node_string, ',');
         pmix_argv_free(node_string);
         node_string = NULL;
-        if (PMIX_SUCCESS != (rc = PMIx_generate_regex(tmp, &regex) )) {
+        if (PMIX_SUCCESS != (rc = PMIx_generate_regex(tmp, &regex))) {
             PMIX_ERROR_LOG(rc);
             return;
         }
@@ -227,18 +226,18 @@ static void set_namespace(validation_params *v_params)
 
     /* generate the global proc map for multiserver case  */
     if (2 <= v_params->pmix_num_nodes) {
-        for (j = 0; j < v_params->pmix_num_nodes; j++){
+        for (j = 0; j < v_params->pmix_num_nodes; j++) {
             for (i = 0; i < nodes[j].pmix_local_size; i++) {
                 asprintf(&ppn, "%d", nodes[j].pmix_rank[i]);
                 pmix_argv_append_nosize(&node_string, ppn);
-                TEST_VERBOSE(("multiserver, server id: %d, ppn: %s, node_string: %s",
-                my_server_id, ppn, node_string[i]));
+                TEST_VERBOSE(("multiserver, server id: %d, ppn: %s, node_string: %s", my_server_id,
+                              ppn, node_string[i]));
                 free(ppn);
             }
             ppn = pmix_argv_join(node_string, ',');
             pmix_argv_append_nosize(&rks, ppn);
             TEST_VERBOSE(("my_server id: %d, remote server: %d, remote's local ranks: %s",
-                my_server_id, j, ppn));
+                          my_server_id, j, ppn));
             free(ppn);
             pmix_argv_free(node_string);
             node_string = NULL;
@@ -257,11 +256,12 @@ static void set_namespace(validation_params *v_params)
 
     pmix_strncpy(info[7].key, PMIX_APPNUM, PMIX_MAX_KEYLEN);
     info[7].value.type = PMIX_UINT32;
-    info[7].value.data.uint32 = getpid ();
+    info[7].value.data.uint32 = getpid();
 
     int in_progress = 1;
-    if (PMIX_SUCCESS == (rc = PMIx_server_register_nspace(v_params->pmix_nspace, v_params->pmix_local_size,
-                                    info, ninfo, release_cb, &in_progress))) {
+    if (PMIX_SUCCESS
+        == (rc = PMIx_server_register_nspace(v_params->pmix_nspace, v_params->pmix_local_size, info,
+                                             ninfo, release_cb, &in_progress))) {
         PMIX_WAIT_FOR_COMPLETION(in_progress);
     }
     PMIX_INFO_FREE(info, ninfo);
@@ -275,7 +275,7 @@ static void server_unpack_procs(char *buf, size_t size)
     char *nspace;
 
     while ((size_t)(ptr - buf) < size) {
-        memcpy (&ns_count, ptr, sizeof(size_t));
+        memcpy(&ns_count, ptr, sizeof(size_t));
         ptr += sizeof(size_t);
 
         for (i = 0; i < ns_count; i++) {
@@ -283,19 +283,19 @@ static void server_unpack_procs(char *buf, size_t size)
             size_t ltasks, ntasks;
             int server_id;
 
-            memcpy (&server_id, ptr, sizeof(int));
+            memcpy(&server_id, ptr, sizeof(int));
             ptr += sizeof(int);
 
             nspace = ptr;
-            ptr += PMIX_MAX_NSLEN+1;
+            ptr += PMIX_MAX_NSLEN + 1;
 
-            memcpy (&ntasks, ptr, sizeof(size_t));
+            memcpy(&ntasks, ptr, sizeof(size_t));
             ptr += sizeof(size_t);
 
-            memcpy (&ltasks, ptr, sizeof(size_t));
+            memcpy(&ltasks, ptr, sizeof(size_t));
             ptr += sizeof(size_t);
 
-            PMIX_LIST_FOREACH(tmp, server_nspace, server_nspace_t) {
+            PMIX_LIST_FOREACH (tmp, server_nspace, server_nspace_t) {
                 if (0 == strcmp(nspace, tmp->name)) {
                     ns_item = tmp;
                     break;
@@ -307,7 +307,7 @@ static void server_unpack_procs(char *buf, size_t size)
                 pmix_list_append(server_nspace, &ns_item->super);
                 ns_item->ltasks = ltasks;
                 ns_item->ntasks = ntasks;
-                ns_item->task_map = (int*)malloc(sizeof(int) * ntasks);
+                ns_item->task_map = (int *) malloc(sizeof(int) * ntasks);
                 memset(ns_item->task_map, -1, sizeof(int) * ntasks);
             } else {
                 assert(ns_item->ntasks == ntasks);
@@ -315,7 +315,7 @@ static void server_unpack_procs(char *buf, size_t size)
             size_t i;
             for (i = 0; i < ltasks; i++) {
                 int rank;
-                memcpy (&rank, ptr, sizeof(int));
+                memcpy(&rank, ptr, sizeof(int));
                 ptr += sizeof(int);
                 if (ns_item->task_map[rank] >= 0) {
                     continue;
@@ -329,7 +329,7 @@ static void server_unpack_procs(char *buf, size_t size)
 static size_t server_pack_procs(int server_id, char **buf, size_t size)
 {
     size_t ns_count = pmix_list_get_size(server_nspace);
-    size_t buf_size = sizeof(size_t) + (PMIX_MAX_NSLEN+1)*ns_count;
+    size_t buf_size = sizeof(size_t) + (PMIX_MAX_NSLEN + 1) * ns_count;
     server_nspace_t *tmp;
     char *ptr;
 
@@ -339,11 +339,10 @@ static size_t server_pack_procs(int server_id, char **buf, size_t size)
 
     buf_size += size;
     /* compute size: server_id + total + local procs count + ranks */
-    PMIX_LIST_FOREACH(tmp, server_nspace, server_nspace_t) {
-        buf_size += sizeof(int) + sizeof(size_t) + sizeof(size_t) +
-                sizeof(int) * tmp->ltasks;
+    PMIX_LIST_FOREACH (tmp, server_nspace, server_nspace_t) {
+        buf_size += sizeof(int) + sizeof(size_t) + sizeof(size_t) + sizeof(int) * tmp->ltasks;
     }
-    *buf = (char*)realloc(*buf, buf_size);
+    *buf = (char *) realloc(*buf, buf_size);
     memset(*buf + size, 0, buf_size);
     ptr = *buf + size;
     /* pack ns count */
@@ -352,14 +351,14 @@ static size_t server_pack_procs(int server_id, char **buf, size_t size)
 
     assert(server_nspace->pmix_list_length);
 
-    PMIX_LIST_FOREACH(tmp, server_nspace, server_nspace_t) {
+    PMIX_LIST_FOREACH (tmp, server_nspace, server_nspace_t) {
         size_t i;
         /* pack server_id */
         memcpy(ptr, &server_id, sizeof(int));
         ptr += sizeof(int);
         /* pack ns name */
-        memcpy(ptr, tmp->name, PMIX_MAX_NSLEN+1);
-        ptr += PMIX_MAX_NSLEN+1;
+        memcpy(ptr, tmp->name, PMIX_MAX_NSLEN + 1);
+        ptr += PMIX_MAX_NSLEN + 1;
         /* pack ns total size */
         memcpy(ptr, &tmp->ntasks, sizeof(size_t));
         ptr += sizeof(size_t);
@@ -367,9 +366,9 @@ static size_t server_pack_procs(int server_id, char **buf, size_t size)
         memcpy(ptr, &tmp->ltasks, sizeof(size_t));
         ptr += sizeof(size_t);
         /* pack ns ranks */
-        for(i = 0; i < tmp->ntasks; i++) {
+        for (i = 0; i < tmp->ntasks; i++) {
             if (tmp->task_map[i] == server_id) {
-                int rank = (int)i;
+                int rank = (int) i;
                 memcpy(ptr, &rank, sizeof(int));
                 ptr += sizeof(int);
             }
@@ -396,11 +395,11 @@ static int srv_wait_all(double timeout)
     int ret = 0;
 
     gettimeofday(&tv, NULL);
-    start_time = tv.tv_sec + 1E-6*tv.tv_usec;
+    start_time = tv.tv_sec + 1E-6 * tv.tv_usec;
     cur_time = start_time;
 
     /* Remove this server from the list */
-    PMIX_LIST_FOREACH_SAFE(server, next, server_list, server_info_t) {
+    PMIX_LIST_FOREACH_SAFE (server, next, server_list, server_info_t) {
         if (server->pid == getpid()) {
             /* remove himself */
             remove_server_item(server);
@@ -408,15 +407,14 @@ static int srv_wait_all(double timeout)
         }
     }
 
-    while (!pmix_list_is_empty(server_list) &&
-                                (timeout >= (cur_time - start_time))) {
+    while (!pmix_list_is_empty(server_list) && (timeout >= (cur_time - start_time))) {
         TEST_VERBOSE(("Server list is not empty"));
         pid = waitpid(-1, &status, 0);
         if (pid >= 0) {
-            PMIX_LIST_FOREACH_SAFE(server, next, server_list, server_info_t) {
+            PMIX_LIST_FOREACH_SAFE (server, next, server_list, server_info_t) {
                 if (server->pid == pid) {
                     TEST_VERBOSE(("server %d finalize PID:%d with status %d", server->idx,
-                                server->pid, WEXITSTATUS(status)));
+                                  server->pid, WEXITSTATUS(status)));
                     ret += WEXITSTATUS(status);
                     remove_server_item(server);
                 }
@@ -424,7 +422,7 @@ static int srv_wait_all(double timeout)
         }
         // calculate current timestamp
         gettimeofday(&tv, NULL);
-        cur_time = tv.tv_sec + 1E-6*tv.tv_usec;
+        cur_time = tv.tv_sec + 1E-6 * tv.tv_usec;
     }
     TEST_VERBOSE(("Inside serv_wait_all, ret = %d", ret));
     return ret;
@@ -435,7 +433,7 @@ static int server_fwd_msg(msg_hdr_t *msg_hdr, char *buf, size_t size)
     server_info_t *tmp_server, *server = NULL;
     int rc = PMIX_SUCCESS;
 
-    PMIX_LIST_FOREACH(tmp_server, server_list, server_info_t) {
+    PMIX_LIST_FOREACH (tmp_server, server_list, server_info_t) {
         if (tmp_server->idx == msg_hdr->dst_id) {
             server = tmp_server;
             break;
@@ -449,7 +447,7 @@ static int server_fwd_msg(msg_hdr_t *msg_hdr, char *buf, size_t size)
         return PMIX_ERROR;
     }
     rc = write(server->wr_fd, buf, size);
-    if (rc != (ssize_t)size) {
+    if (rc != (ssize_t) size) {
         return PMIX_ERROR;
     }
     return PMIX_SUCCESS;
@@ -460,7 +458,7 @@ static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size)
     size_t ret = 0;
     server_info_t *server = NULL, *server_tmp;
     if (0 == my_server_id) {
-        PMIX_LIST_FOREACH(server_tmp, server_list, server_info_t) {
+        PMIX_LIST_FOREACH (server_tmp, server_list, server_info_t) {
             if (server_tmp->idx == msg_hdr->dst_id) {
                 server = server_tmp;
                 break;
@@ -470,7 +468,7 @@ static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size)
             abort();
         }
     } else {
-        server = (server_info_t *)pmix_list_get_first(server_list);
+        server = (server_info_t *) pmix_list_get_first(server_list);
     }
 
     ret += write(server->wr_fd, msg_hdr, sizeof(msg_hdr_t));
@@ -481,14 +479,13 @@ static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size)
     return PMIX_SUCCESS;
 }
 
-static void _send_procs_cb(pmix_status_t status, const char *data,
-                           size_t ndata, void *cbdata,
+static void _send_procs_cb(pmix_status_t status, const char *data, size_t ndata, void *cbdata,
                            pmix_release_cbfunc_t relfn, void *relcbd)
 {
-    server_info_t *server = (server_info_t*)cbdata;
+    server_info_t *server = (server_info_t *) cbdata;
 
-    server_unpack_procs((char*)data, ndata);
-    free((char*)data);
+    server_unpack_procs((char *) data, ndata);
+    free((char *) data);
     PMIX_WAKEUP_THREAD(&server->lock);
 }
 
@@ -502,7 +499,7 @@ static int server_send_procs(void)
     if (0 == my_server_id) {
         server = my_server_info;
     } else {
-        server = (server_info_t *)pmix_list_get_first(server_list);
+        server = (server_info_t *) pmix_list_get_first(server_list);
     }
 
     msg_hdr.cmd = CMD_FENCE_CONTRIB;
@@ -510,7 +507,7 @@ static int server_send_procs(void)
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = server_pack_procs(my_server_id, &buf, 0);
     server->modex_cbfunc = _send_procs_cb;
-    server->cbdata = (void*)server;
+    server->cbdata = (void *) server;
 
     server->lock.active = true;
 
@@ -537,7 +534,7 @@ int server_barrier(void)
     if (0 == my_server_id) {
         server = my_server_info;
     } else {
-        server = (server_info_t *)pmix_list_get_first(server_list);
+        server = (server_info_t *) pmix_list_get_first(server_list);
     }
 
     msg_hdr.cmd = CMD_BARRIER_REQUEST;
@@ -557,7 +554,7 @@ int server_barrier(void)
 
 static void _libpmix_cb(void *cbdata)
 {
-    char *ptr = (char*)cbdata;
+    char *ptr = (char *) cbdata;
     if (ptr) {
         free(ptr);
     }
@@ -565,7 +562,7 @@ static void _libpmix_cb(void *cbdata)
 
 static void server_read_cb(int fd, short event, void *arg)
 {
-    server_info_t *server = (server_info_t*)arg;
+    server_info_t *server = (server_info_t *) arg;
     msg_hdr_t msg_hdr;
     char *msg_buf = NULL;
     static char *fence_buf = NULL;
@@ -579,10 +576,10 @@ static void server_read_cb(int fd, short event, void *arg)
         return;
     }
     if (msg_hdr.size) {
-        msg_buf = (char*) malloc(sizeof(char) * msg_hdr.size);
+        msg_buf = (char *) malloc(sizeof(char) * msg_hdr.size);
         rc += read(server->rd_fd, msg_buf, msg_hdr.size);
     }
-    if (rc != (int)(sizeof(msg_hdr_t) + msg_hdr.size)) {
+    if (rc != (int) (sizeof(msg_hdr_t) + msg_hdr.size)) {
         TEST_ERROR(("error read from %d", server->idx));
     }
 
@@ -592,95 +589,92 @@ static void server_read_cb(int fd, short event, void *arg)
         return;
     }
 
-    switch(msg_hdr.cmd) {
-        case CMD_BARRIER_REQUEST:
-            barrier_cnt++;
-            TEST_VERBOSE(("CMD_BARRIER_REQ req from %d cnt %lu", msg_hdr.src_id,
-                          (unsigned long)barrier_cnt));
-            if (pmix_list_get_size(server_list) == barrier_cnt) {
-                barrier_cnt = 0; /* reset barrier counter */
-                server_info_t *tmp_server;
-                PMIX_LIST_FOREACH(tmp_server, server_list, server_info_t) {
-                    msg_hdr_t resp_hdr;
-                    resp_hdr.dst_id = tmp_server->idx;
-                    resp_hdr.src_id = my_server_id;
-                    resp_hdr.cmd = CMD_BARRIER_RESPONSE;
-                    resp_hdr.size = 0;
-                    server_send_msg(&resp_hdr, NULL, 0);
-                }
+    switch (msg_hdr.cmd) {
+    case CMD_BARRIER_REQUEST:
+        barrier_cnt++;
+        TEST_VERBOSE(
+            ("CMD_BARRIER_REQ req from %d cnt %lu", msg_hdr.src_id, (unsigned long) barrier_cnt));
+        if (pmix_list_get_size(server_list) == barrier_cnt) {
+            barrier_cnt = 0; /* reset barrier counter */
+            server_info_t *tmp_server;
+            PMIX_LIST_FOREACH (tmp_server, server_list, server_info_t) {
+                msg_hdr_t resp_hdr;
+                resp_hdr.dst_id = tmp_server->idx;
+                resp_hdr.src_id = my_server_id;
+                resp_hdr.cmd = CMD_BARRIER_RESPONSE;
+                resp_hdr.size = 0;
+                server_send_msg(&resp_hdr, NULL, 0);
             }
-            break;
-        case CMD_BARRIER_RESPONSE:
-            TEST_VERBOSE(("%d: CMD_BARRIER_RESP", my_server_id));
-            PMIX_WAKEUP_THREAD(&server->lock);
-            break;
-        case CMD_FENCE_CONTRIB:
-            contrib_cnt++;
-            if (msg_hdr.size > 0) {
-                fence_buf = (char*)realloc((void*)fence_buf,
-                                           fence_buf_offset + msg_hdr.size);
-                memcpy(fence_buf + fence_buf_offset, msg_buf, msg_hdr.size);
-                fence_buf_offset += msg_hdr.size;
-                free(msg_buf);
-                msg_buf = NULL;
-            }
-
-            TEST_VERBOSE(("CMD_FENCE_CONTRIB req from %d cnt %lu size %d",
-                        msg_hdr.src_id, (unsigned long)contrib_cnt, msg_hdr.size));
-            if (pmix_list_get_size(server_list) == contrib_cnt) {
-                server_info_t *tmp_server;
-                PMIX_LIST_FOREACH(tmp_server, server_list, server_info_t) {
-                    msg_hdr_t resp_hdr;
-                    resp_hdr.dst_id = tmp_server->idx;
-                    resp_hdr.src_id = my_server_id;
-                    resp_hdr.cmd = CMD_FENCE_COMPLETE;
-                    resp_hdr.size = fence_buf_offset;
-                    server_send_msg(&resp_hdr, fence_buf, fence_buf_offset);
-                }
-                TEST_VERBOSE(("CMD_FENCE_CONTRIB complete, size %lu",
-                              (unsigned long)fence_buf_offset));
-                if (fence_buf) {
-                    free(fence_buf);
-                    fence_buf = NULL;
-                    fence_buf_offset = 0;
-                }
-                contrib_cnt = 0;
-            }
-            break;
-        case CMD_FENCE_COMPLETE:
-            TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %d", my_server_id,
-                        msg_hdr.size));
-            server->modex_cbfunc(PMIX_SUCCESS, msg_buf, msg_hdr.size,
-                                 server->cbdata, _libpmix_cb, msg_buf);
-            msg_buf = NULL;
-            break;
-        case CMD_DMDX_REQUEST: {
-            int *sender_id;
-            pmix_proc_t proc;
-            if (NULL == msg_buf) {
-                abort();
-            }
-            sender_id = (int*)malloc(sizeof(int));
-            server_unpack_dmdx(msg_buf, sender_id, &proc);
-            TEST_VERBOSE(("%d: CMD_DMDX_REQUEST from %d: %s:%d", my_server_id,
-                        *sender_id, proc.nspace, proc.rank));
-            rc = PMIx_server_dmodex_request(&proc, _dmdx_cb, (void*)sender_id);
-            break;
         }
-        case CMD_DMDX_RESPONSE:
-            TEST_VERBOSE(("%d: CMD_DMDX_RESPONSE", my_server_id));
-            server->modex_cbfunc(PMIX_SUCCESS, msg_buf, msg_hdr.size,
-                                 server->cbdata, _libpmix_cb, msg_buf);
+        break;
+    case CMD_BARRIER_RESPONSE:
+        TEST_VERBOSE(("%d: CMD_BARRIER_RESP", my_server_id));
+        PMIX_WAKEUP_THREAD(&server->lock);
+        break;
+    case CMD_FENCE_CONTRIB:
+        contrib_cnt++;
+        if (msg_hdr.size > 0) {
+            fence_buf = (char *) realloc((void *) fence_buf, fence_buf_offset + msg_hdr.size);
+            memcpy(fence_buf + fence_buf_offset, msg_buf, msg_hdr.size);
+            fence_buf_offset += msg_hdr.size;
+            free(msg_buf);
             msg_buf = NULL;
-            break;
+        }
+
+        TEST_VERBOSE(("CMD_FENCE_CONTRIB req from %d cnt %lu size %d", msg_hdr.src_id,
+                      (unsigned long) contrib_cnt, msg_hdr.size));
+        if (pmix_list_get_size(server_list) == contrib_cnt) {
+            server_info_t *tmp_server;
+            PMIX_LIST_FOREACH (tmp_server, server_list, server_info_t) {
+                msg_hdr_t resp_hdr;
+                resp_hdr.dst_id = tmp_server->idx;
+                resp_hdr.src_id = my_server_id;
+                resp_hdr.cmd = CMD_FENCE_COMPLETE;
+                resp_hdr.size = fence_buf_offset;
+                server_send_msg(&resp_hdr, fence_buf, fence_buf_offset);
+            }
+            TEST_VERBOSE(
+                ("CMD_FENCE_CONTRIB complete, size %lu", (unsigned long) fence_buf_offset));
+            if (fence_buf) {
+                free(fence_buf);
+                fence_buf = NULL;
+                fence_buf_offset = 0;
+            }
+            contrib_cnt = 0;
+        }
+        break;
+    case CMD_FENCE_COMPLETE:
+        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %d", my_server_id, msg_hdr.size));
+        server->modex_cbfunc(PMIX_SUCCESS, msg_buf, msg_hdr.size, server->cbdata, _libpmix_cb,
+                             msg_buf);
+        msg_buf = NULL;
+        break;
+    case CMD_DMDX_REQUEST: {
+        int *sender_id;
+        pmix_proc_t proc;
+        if (NULL == msg_buf) {
+            abort();
+        }
+        sender_id = (int *) malloc(sizeof(int));
+        server_unpack_dmdx(msg_buf, sender_id, &proc);
+        TEST_VERBOSE(("%d: CMD_DMDX_REQUEST from %d: %s:%d", my_server_id, *sender_id, proc.nspace,
+                      proc.rank));
+        rc = PMIx_server_dmodex_request(&proc, _dmdx_cb, (void *) sender_id);
+        break;
+    }
+    case CMD_DMDX_RESPONSE:
+        TEST_VERBOSE(("%d: CMD_DMDX_RESPONSE", my_server_id));
+        server->modex_cbfunc(PMIX_SUCCESS, msg_buf, msg_hdr.size, server->cbdata, _libpmix_cb,
+                             msg_buf);
+        msg_buf = NULL;
+        break;
     }
     if (NULL != msg_buf) {
         free(msg_buf);
     }
 }
 
-int server_fence_contrib(char *data, size_t ndata,
-                         pmix_modex_cbfunc_t cbfunc, void *cbdata)
+int server_fence_contrib(char *data, size_t ndata, pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     server_info_t *server;
     msg_hdr_t msg_hdr;
@@ -689,7 +683,7 @@ int server_fence_contrib(char *data, size_t ndata,
     if (0 == my_server_id) {
         server = my_server_info;
     } else {
-        server = (server_info_t *)pmix_list_get_first(server_list);
+        server = (server_info_t *) pmix_list_get_first(server_list);
     }
     msg_hdr.cmd = CMD_FENCE_CONTRIB;
     msg_hdr.dst_id = 0;
@@ -704,20 +698,19 @@ int server_fence_contrib(char *data, size_t ndata,
     return rc;
 }
 
-static int server_pack_dmdx(int sender_id, const char *nspace, int rank,
-                            char **buf)
+static int server_pack_dmdx(int sender_id, const char *nspace, int rank, char **buf)
 {
-    size_t buf_size = sizeof(int) + PMIX_MAX_NSLEN +1 + sizeof(int);
+    size_t buf_size = sizeof(int) + PMIX_MAX_NSLEN + 1 + sizeof(int);
     char *ptr;
 
-    *buf = (char*)malloc(buf_size);
+    *buf = (char *) malloc(buf_size);
     ptr = *buf;
 
     memcpy(ptr, &sender_id, sizeof(int));
     ptr += sizeof(int);
 
-    memcpy(ptr, nspace, PMIX_MAX_NSLEN+1);
-    ptr += PMIX_MAX_NSLEN +1;
+    memcpy(ptr, nspace, PMIX_MAX_NSLEN + 1);
+    ptr += PMIX_MAX_NSLEN + 1;
 
     memcpy(ptr, &rank, sizeof(int));
     ptr += sizeof(int);
@@ -729,41 +722,38 @@ static void server_unpack_dmdx(char *buf, int *sender, pmix_proc_t *proc)
 {
     char *ptr = buf;
 
-    *sender = *(int *)ptr;
+    *sender = *(int *) ptr;
     ptr += sizeof(int);
 
-    memcpy(proc->nspace, ptr, PMIX_MAX_NSLEN +1);
-    ptr += PMIX_MAX_NSLEN +1;
+    memcpy(proc->nspace, ptr, PMIX_MAX_NSLEN + 1);
+    ptr += PMIX_MAX_NSLEN + 1;
 
-    proc->rank = *(int *)ptr;
+    proc->rank = *(int *) ptr;
     ptr += sizeof(int);
 }
-
 
 static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata)
 {
     msg_hdr_t msg_hdr;
-    int *sender_id = (int*)cbdata;
+    int *sender_id = (int *) cbdata;
 
     msg_hdr.cmd = CMD_DMDX_RESPONSE;
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = sz;
     msg_hdr.dst_id = *sender_id;
-    TEST_VERBOSE(("srv #%d: DMDX RESPONSE: receiver=%d, size=%lu,",
-                  my_server_id, *sender_id, (unsigned long)sz));
+    TEST_VERBOSE(("srv #%d: DMDX RESPONSE: receiver=%d, size=%lu,", my_server_id, *sender_id,
+                  (unsigned long) sz));
     free(sender_id);
 
     server_send_msg(&msg_hdr, data, sz);
 }
 
-int server_dmdx_get(const char *nspace, int rank,
-                    pmix_modex_cbfunc_t cbfunc, void *cbdata)
+int server_dmdx_get(const char *nspace, int rank, pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     server_info_t *server = NULL, *tmp;
     msg_hdr_t msg_hdr;
     pmix_status_t rc = PMIX_SUCCESS;
     char *buf = NULL;
-
 
     if (0 > (msg_hdr.dst_id = server_find_id(nspace, rank))) {
         TEST_ERROR(("%d: server not found for %s:%d", my_server_id, nspace, rank));
@@ -771,14 +761,14 @@ int server_dmdx_get(const char *nspace, int rank,
     }
 
     if (0 == my_server_id) {
-        PMIX_LIST_FOREACH(tmp, server_list, server_info_t) {
+        PMIX_LIST_FOREACH (tmp, server_list, server_info_t) {
             if (tmp->idx == msg_hdr.dst_id) {
                 server = tmp;
                 break;
             }
         }
     } else {
-        server = (server_info_t *)pmix_list_get_first(server_list);
+        server = (server_info_t *) pmix_list_get_first(server_list);
     }
 
     if (server == NULL) {
@@ -810,13 +800,13 @@ static void set_handler_default(int sig)
     act.sa_flags = 0;
     sigemptyset(&act.sa_mask);
 
-    sigaction(sig, &act, (struct sigaction *)0);
+    sigaction(sig, &act, (struct sigaction *) 0);
 }
 
 static pmix_event_t handler;
 static void wait_signal_callback(int fd, short event, void *arg)
 {
-    pmix_event_t *sig = (pmix_event_t*) arg;
+    pmix_event_t *sig = (pmix_event_t *) arg;
     int status;
     pid_t pid;
     int i;
@@ -839,16 +829,18 @@ static void wait_signal_callback(int fd, short event, void *arg)
             goto done;
         }
         /* we are already in an event, so it is safe to access the list */
-        for(i=0; i < cli_info_cnt; i++){
-            if( cli_info[i].pid == pid ){
+        for (i = 0; i < cli_info_cnt; i++) {
+            if (cli_info[i].pid == pid) {
                 /* found it! */
                 if (WIFEXITED(status)) {
                     cli_info[i].exit_code = WEXITSTATUS(status);
-                    TEST_VERBOSE(("WIFEXITED, pid = %d, exit_code = %d", pid, cli_info[i].exit_code));
+                    TEST_VERBOSE(
+                        ("WIFEXITED, pid = %d, exit_code = %d", pid, cli_info[i].exit_code));
                 } else {
                     if (WIFSIGNALED(status)) {
                         cli_info[i].exit_code = WTERMSIG(status) + 128;
-                        TEST_VERBOSE(("WIFSIGNALED, pid = %d, exit_code = %d", pid, cli_info[i].exit_code));
+                        TEST_VERBOSE(
+                            ("WIFSIGNALED, pid = %d, exit_code = %d", pid, cli_info[i].exit_code));
                     }
                 }
                 cli_cleanup(&cli_info[i]);
@@ -857,8 +849,8 @@ static void wait_signal_callback(int fd, short event, void *arg)
             }
         }
     }
-  done:
-    for(i=0; i < cli_info_cnt; i++){
+done:
+    for (i = 0; i < cli_info_cnt; i++) {
         if (cli_info[i].alive) {
             /* someone is still alive */
             return;
@@ -893,7 +885,7 @@ int server_init(test_params *params, validation_params *v_params)
 
             // copy hostname from nodes array
             server_info->hostname = strdup(nodes[i].pmix_hostname);
-            strncpy(v_params->pmix_hostname, server_info->hostname, PMIX_MAX_KEYLEN-1);
+            strncpy(v_params->pmix_hostname, server_info->hostname, PMIX_MAX_KEYLEN - 1);
             if (0 != i) {
                 pid = fork();
                 if (pid < 0) {
@@ -917,18 +909,18 @@ int server_init(test_params *params, validation_params *v_params)
                     break;
                 }
 
-                server_info->idx = i; // idx is id of server we are talking to (descriptor of remote peer)
+                server_info->idx
+                    = i; // idx is id of server we are talking to (descriptor of remote peer)
                 server_info->pid = pid;
                 server_info->wr_fd = fd1[1];
                 server_info->rd_fd = fd2[0];
                 PMIX_CONSTRUCT_LOCK(&server_info->lock);
                 close(fd1[0]);
                 close(fd2[1]);
-            }
-            else {
+            } else {
                 my_server_info = server_info;
                 server_info->pid = getpid();
-                server_info->idx  = 0;
+                server_info->idx = 0;
                 server_info->rd_fd = fd1[0];
                 server_info->wr_fd = fd1[1];
                 PMIX_CONSTRUCT_LOCK(&server_info->lock);
@@ -940,12 +932,12 @@ int server_init(test_params *params, validation_params *v_params)
     }
     // set validation params for server-specific (i.e., node-specific) info.
     v_params->pmix_nodeid = my_server_id;
-    TEST_VERBOSE(("my_server_id: %d, pmix_node_id: %d, pmix_hostname: %s",
-                   my_server_id, v_params->pmix_nodeid, v_params->pmix_hostname));
+    TEST_VERBOSE(("my_server_id: %d, pmix_node_id: %d, pmix_hostname: %s", my_server_id,
+                  v_params->pmix_nodeid, v_params->pmix_hostname));
     /* set local proc size */
     v_params->pmix_local_size = nodes[my_server_id].pmix_local_size;
-    TEST_VERBOSE(("my_server_id: %d local_size: %d, job_size: %d",
-        my_server_id, v_params->pmix_local_size, v_params->pmix_job_size));
+    TEST_VERBOSE(("my_server_id: %d local_size: %d, job_size: %d", my_server_id,
+                  v_params->pmix_local_size, v_params->pmix_job_size));
 
     /* setup the server library */
     uint32_t u32 = 0666;
@@ -962,22 +954,20 @@ int server_init(test_params *params, validation_params *v_params)
     /* register test server read thread */
     if (v_params->pmix_num_nodes && pmix_list_get_size(server_list)) {
         server_info_t *server;
-        PMIX_LIST_FOREACH(server, server_list, server_info_t) {
+        PMIX_LIST_FOREACH (server, server_list, server_info_t) {
             server->evread = pmix_event_new(pmix_globals.evbase, server->rd_fd,
-                                            EV_READ|EV_PERSIST, server_read_cb, server);
+                                            EV_READ | EV_PERSIST, server_read_cb, server);
             pmix_event_add(server->evread, NULL);
         }
     }
 
     /* register the errhandler */
-    PMIx_Register_event_handler(NULL, 0, NULL, 0,
-                                errhandler, errhandler_reg_callbk, NULL);
+    PMIx_Register_event_handler(NULL, 0, NULL, 0, errhandler, errhandler_reg_callbk, NULL);
 
     /* setup to see sigchld on the forked tests */
-    pmix_event_assign(&handler, pmix_globals.evbase, SIGCHLD,
-                      EV_SIGNAL|EV_PERSIST, wait_signal_callback, &handler);
+    pmix_event_assign(&handler, pmix_globals.evbase, SIGCHLD, EV_SIGNAL | EV_PERSIST,
+                      wait_signal_callback, &handler);
     pmix_event_add(&handler, NULL);
-
 
     if (0 != (rc = server_barrier())) {
         goto error;
@@ -1001,7 +991,7 @@ int server_finalize(validation_params *v_params, int local_fail)
     }
 
     if (0 != my_server_id) {
-        server_info_t *server = (server_info_t*)pmix_list_get_first(server_list);
+        server_info_t *server = (server_info_t *) pmix_list_get_first(server_list);
         remove_server_item(server);
     }
 
@@ -1009,8 +999,8 @@ int server_finalize(validation_params *v_params, int local_fail)
         /* wait for all servers to finish */
         total_ret += srv_wait_all(10.0);
         PMIX_LIST_RELEASE(server_list);
-        TEST_VERBOSE(("SERVER %d FINALIZE PID:%d with status %d",
-                        my_server_id, getpid(), total_ret));
+        TEST_VERBOSE(
+            ("SERVER %d FINALIZE PID:%d with status %d", my_server_id, getpid(), total_ret));
         if (0 == total_ret) {
             TEST_OUTPUT(("Test finished OK!"));
         } else {
@@ -1030,8 +1020,8 @@ exit:
     return total_ret;
 }
 
-int server_launch_clients(test_params *params, validation_params *v_params,
-                          char *** client_env, char ***base_argv)
+int server_launch_clients(test_params *params, validation_params *v_params, char ***client_env,
+                          char ***base_argv)
 {
     int n;
     uid_t myuid;
@@ -1052,7 +1042,7 @@ int server_launch_clients(test_params *params, validation_params *v_params,
                   my_server_id, v_params->pmix_local_size, v_params->pmix_univ_size,
                   v_params->pmix_num_nodes));
 
-    (void)snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
+    (void) snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
     strncpy(v_params->pmix_nspace, proc.nspace, PMIX_MAX_NSLEN);
 
     set_namespace(v_params);
@@ -1065,8 +1055,8 @@ int server_launch_clients(test_params *params, validation_params *v_params,
     /* add namespace entry */
     nspace_item->ntasks = univ_size;
     nspace_item->ltasks = local_size;
-    nspace_item->task_map = (int*)malloc(sizeof(int) * univ_size);
-    memset(nspace_item->task_map, -1, sizeof(int)*univ_size);
+    nspace_item->task_map = (int *) malloc(sizeof(int) * univ_size);
+    memset(nspace_item->task_map, -1, sizeof(int) * univ_size);
     strcpy(nspace_item->name, proc.nspace);
     pmix_list_append(server_nspace, &nspace_item->super);
 
@@ -1074,8 +1064,8 @@ int server_launch_clients(test_params *params, validation_params *v_params,
     v_params->validate_params = true;
 
     for (n = 0; n < local_size; n++) {
-       custom_rank_val = nodes[my_server_id].pmix_rank[n];
-       nspace_item->task_map[custom_rank_val] = my_server_id;
+        custom_rank_val = nodes[my_server_id].pmix_rank[n];
+        nspace_item->task_map[custom_rank_val] = my_server_id;
     }
 
     server_send_procs(); // note: calls server_pack_procs
@@ -1104,8 +1094,8 @@ int server_launch_clients(test_params *params, validation_params *v_params,
         TEST_VERBOSE(("run namespace: %s rank:%d", proc.nspace, proc.rank));
         // fork the client
         cli_info[cli_counter].pid = fork();
-        //sleep for debugging purposes (to attach to clients)
-        //sleep(120);
+        // sleep for debugging purposes (to attach to clients)
+        // sleep(120);
         if (cli_info[cli_counter].pid < 0) {
             TEST_ERROR(("Fork failed"));
             PMIx_server_finalize();
@@ -1163,9 +1153,9 @@ int server_launch_clients(test_params *params, validation_params *v_params,
             sigprocmask(0, 0, &sigs);
             sigprocmask(SIG_UNBLOCK, &sigs, 0);
 
-            if( !TEST_VERBOSE_GET() ){
+            if (!TEST_VERBOSE_GET()) {
                 // Hide clients stdout
-                if (NULL == freopen("/dev/null","w", stdout)) {
+                if (NULL == freopen("/dev/null", "w", stdout)) {
                     return 0;
                 }
             }

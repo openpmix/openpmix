@@ -30,9 +30,9 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/util/argv.h"
-#include "src/mca/pnet/pnet.h"
 #include "pnet_opa.h"
+#include "src/mca/pnet/pnet.h"
+#include "src/util/argv.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -76,33 +76,30 @@ static pmix_status_t component_register(void)
     pmix_mca_base_component_t *component = &mca_pnet_opa_component.super.base;
 
     mca_pnet_opa_component.incparms = "HFI_*,PSM2_*";
-    (void)pmix_mca_base_component_var_register(component, "include_envars",
-                                               "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                               &mca_pnet_opa_component.incparms);
+    (void) pmix_mca_base_component_var_register(
+        component, "include_envars",
+        "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        &mca_pnet_opa_component.incparms);
     if (NULL != mca_pnet_opa_component.incparms) {
         mca_pnet_opa_component.include = pmix_argv_split(mca_pnet_opa_component.incparms, ',');
     }
 
     mca_pnet_opa_component.excparms = NULL;
-    (void)pmix_mca_base_component_var_register(component, "exclude_envars",
-                                               "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                               &mca_pnet_opa_component.excparms);
+    (void) pmix_mca_base_component_var_register(
+        component, "exclude_envars",
+        "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        &mca_pnet_opa_component.excparms);
     if (NULL != mca_pnet_opa_component.excparms) {
         mca_pnet_opa_component.exclude = pmix_argv_split(mca_pnet_opa_component.excparms, ',');
     }
 
-    (void)pmix_mca_base_component_var_register(component, "radix",
-                                               "Radix for simulating the network coordinates",
-                                               PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                               &mca_pnet_opa_component.radix);
+    (void) pmix_mca_base_component_var_register(component, "radix",
+                                                "Radix for simulating the network coordinates",
+                                                PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                                PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+                                                &mca_pnet_opa_component.radix);
 
     return PMIX_SUCCESS;
 }
@@ -112,14 +109,12 @@ static pmix_status_t component_open(void)
     return PMIX_SUCCESS;
 }
 
-
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 10;
-    *module = (pmix_mca_base_module_t *)&pmix_opa_module;
+    *module = (pmix_mca_base_module_t *) &pmix_opa_module;
     return PMIX_SUCCESS;
 }
-
 
 static pmix_status_t component_close(void)
 {

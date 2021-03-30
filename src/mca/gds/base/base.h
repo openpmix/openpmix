@@ -17,6 +17,7 @@
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,20 +30,18 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h> /* for struct timeval */
+#    include <sys/time.h> /* for struct timeval */
 #endif
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/gds/gds.h"
-
 
 BEGIN_C_DECLS
 
@@ -70,13 +69,12 @@ struct pmix_gds_base_active_module_t {
 typedef struct pmix_gds_base_active_module_t pmix_gds_base_active_module_t;
 PMIX_CLASS_DECLARATION(pmix_gds_base_active_module_t);
 
-
 /* framework globals */
 struct pmix_gds_globals_t {
-  pmix_list_t actives;
-  bool initialized;
-  bool selected;
-  char *all_mods;
+    pmix_list_t actives;
+    bool initialized;
+    bool selected;
+    char *all_mods;
 };
 
 typedef enum {
@@ -89,58 +87,51 @@ typedef enum {
 /* define a modex blob info */
 typedef uint8_t pmix_gds_modex_blob_info_t;
 
-#define PMIX_GDS_COLLECT_BIT        0x0001
-#define PMIX_GDS_KEYMAP_BIT         0x0002
+#define PMIX_GDS_COLLECT_BIT 0x0001
+#define PMIX_GDS_KEYMAP_BIT  0x0002
 
-#define PMIX_GDS_KEYMAP_IS_SET(byte)        (PMIX_GDS_KEYMAP_BIT & (byte))
-#define PMIX_GDS_COLLECT_IS_SET(byte)       (PMIX_GDS_COLLECT_BIT & (byte))
+#define PMIX_GDS_KEYMAP_IS_SET(byte)  (PMIX_GDS_KEYMAP_BIT & (byte))
+#define PMIX_GDS_COLLECT_IS_SET(byte) (PMIX_GDS_COLLECT_BIT & (byte))
 
 typedef struct pmix_gds_globals_t pmix_gds_globals_t;
 
-typedef void * pmix_gds_base_ctx_t;
+typedef void *pmix_gds_base_ctx_t;
 typedef pmix_status_t (*pmix_gds_base_store_modex_cb_fn_t)(pmix_gds_base_ctx_t ctx,
                                                            pmix_proc_t *proc,
                                                            pmix_gds_modex_key_fmt_t key_fmt,
-                                                           char **kmap,
-                                                           pmix_buffer_t *pbkt);
+                                                           char **kmap, pmix_buffer_t *pbkt);
 
 PMIX_EXPORT extern pmix_gds_globals_t pmix_gds_globals;
 
 /* get a list of available support - caller must free results
  * when done. The list is returned as a comma-delimited string
  * of available components in priority order */
-PMIX_EXPORT char* pmix_gds_base_get_available_modules(void);
-
+PMIX_EXPORT char *pmix_gds_base_get_available_modules(void);
 
 /* Select a gds module based on the provided directives */
-PMIX_EXPORT pmix_gds_base_module_t* pmix_gds_base_assign_module(pmix_info_t *info,
-                                                                size_t ninfo);
+PMIX_EXPORT pmix_gds_base_module_t *pmix_gds_base_assign_module(pmix_info_t *info, size_t ninfo);
 
 /**
-* Add any envars to a peer's environment that the module needs
-* to communicate. The API stub will rotate across all active modules, giving
-* each a chance to contribute
-*
-* @return PMIX_SUCCESS on success.
-*/
-PMIX_EXPORT pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
-                                                   char ***env);
+ * Add any envars to a peer's environment that the module needs
+ * to communicate. The API stub will rotate across all active modules, giving
+ * each a chance to contribute
+ *
+ * @return PMIX_SUCCESS on success.
+ */
+PMIX_EXPORT pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc, char ***env);
 
 PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
-                                                    pmix_buffer_t * buff,
-                                                    pmix_gds_base_ctx_t ctx,
+                                                    pmix_buffer_t *buff, pmix_gds_base_ctx_t ctx,
                                                     pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                                     void *cbdata);
 
 PMIX_EXPORT
-pmix_status_t pmix_gds_base_modex_pack_kval(pmix_gds_modex_key_fmt_t key_fmt,
-                                            pmix_buffer_t *buf, char ***kmap,
-                                            pmix_kval_t *kv);
+pmix_status_t pmix_gds_base_modex_pack_kval(pmix_gds_modex_key_fmt_t key_fmt, pmix_buffer_t *buf,
+                                            char ***kmap, pmix_kval_t *kv);
 
 PMIX_EXPORT
-pmix_status_t pmix_gds_base_modex_unpack_kval(pmix_gds_modex_key_fmt_t key_fmt,
-                                              pmix_buffer_t *buf, char **kmap,
-                                              pmix_kval_t *kv);
+pmix_status_t pmix_gds_base_modex_unpack_kval(pmix_gds_modex_key_fmt_t key_fmt, pmix_buffer_t *buf,
+                                              char **kmap, pmix_kval_t *kv);
 END_C_DECLS
 
 #endif

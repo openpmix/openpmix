@@ -26,7 +26,7 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 
 BEGIN_C_DECLS
@@ -64,8 +64,7 @@ BEGIN_C_DECLS
  *   (len-1) characters of the source string will be copied to the
  *   destination, and dest[len-1] will be set to '\0'.
  */
-PMIX_EXPORT void pmix_string_copy(char *dest, const char *src,
-                                    size_t dest_len)
+PMIX_EXPORT void pmix_string_copy(char *dest, const char *src, size_t dest_len)
     __pmix_attribute_nonnull__(1) __pmix_attribute_nonnull__(2);
 
 /**

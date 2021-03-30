@@ -12,6 +12,7 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,32 +20,31 @@
  * $HEADER$
  */
 
-
 #include "pmix_config.h"
 
 #include <errno.h>
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif  /* HAVE_UNISTD_H */
+#    include <unistd.h>
+#endif /* HAVE_UNISTD_H */
 #include <stdlib.h>
 #if HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif /* HAVE_SYS_STAT_H */
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif  /* HAVE_SYS_TYPES_H */
+#    include <sys/types.h>
+#endif /* HAVE_SYS_TYPES_H */
 #ifdef HAVE_DIRENT_H
-#include <dirent.h>
-#endif  /* HAVE_DIRENT_H */
+#    include <dirent.h>
+#endif /* HAVE_DIRENT_H */
 
-#include "src/util/error.h"
-#include "src/util/output.h"
-#include "src/util/os_dirpath.h"
-#include "src/util/show_help.h"
-#include "src/util/argv.h"
-#include "src/util/os_path.h"
 #include "include/pmix_common.h"
+#include "src/util/argv.h"
+#include "src/util/error.h"
+#include "src/util/os_dirpath.h"
+#include "src/util/os_path.h"
+#include "src/util/output.h"
+#include "src/util/show_help.h"
 
 static const char path_sep[] = PMIX_PATH_SEP;
 
@@ -56,25 +56,24 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
     int ret;
 
     if (NULL == path) { /* protect ourselves from errors */
-        return(PMIX_ERR_BAD_PARAM);
+        return (PMIX_ERR_BAD_PARAM);
     }
 
     /* coverity[toctou] */
-    if (0 == (ret = stat(path, &buf))) { /* already exists */
+    if (0 == (ret = stat(path, &buf))) {    /* already exists */
         if (mode == (mode & buf.st_mode)) { /* has correct mode */
-            return(PMIX_SUCCESS);
+            return (PMIX_SUCCESS);
         }
         if (0 == (ret = chmod(path, (buf.st_mode | mode)))) { /* successfully change mode */
-            return(PMIX_SUCCESS);
+            return (PMIX_SUCCESS);
         }
-        pmix_show_help("help-pmix-util.txt", "dir-mode", true,
-                    path, mode, strerror(errno));
-        return(PMIX_ERR_PERM); /* can't set correct mode */
+        pmix_show_help("help-pmix-util.txt", "dir-mode", true, path, mode, strerror(errno));
+        return (PMIX_ERR_PERM); /* can't set correct mode */
     }
 
     /* quick -- try to make directory */
     if (0 == mkdir(path, mode)) {
-        return(PMIX_SUCCESS);
+        return (PMIX_SUCCESS);
     }
 
     /* didnt work, so now have to build our way down the tree */
@@ -85,7 +84,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
     /* Ensure to allocate enough space for tmp: the strlen of the
        incoming path + 1 (for \0) */
 
-    tmp = (char*)malloc(strlen(path) + 1);
+    tmp = (char *) malloc(strlen(path) + 1);
     tmp[0] = '\0';
 
     /* Iterate through all the subdirectory names in the path,
@@ -116,20 +115,19 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
 
         /* Now that we have the name, try to create it */
         mkdir(tmp, mode);
-        ret = errno;  // save the errno for an error msg, if needed
+        ret = errno; // save the errno for an error msg, if needed
         /* coverity[toctou] */
         if (0 != stat(tmp, &buf)) {
-            pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                        tmp, strerror(ret));
+            pmix_show_help("help-pmix-util.txt", "mkdir-failed", true, tmp, strerror(ret));
             pmix_argv_free(parts);
             free(tmp);
             return PMIX_ERROR;
-        } else if (i == (len-1) && (mode != (mode & buf.st_mode)) && (0 > chmod(tmp, (buf.st_mode | mode)))) {
-            pmix_show_help("help-pmix-util.txt", "dir-mode", true,
-                           tmp, mode, strerror(errno));
+        } else if (i == (len - 1) && (mode != (mode & buf.st_mode))
+                   && (0 > chmod(tmp, (buf.st_mode | mode)))) {
+            pmix_show_help("help-pmix-util.txt", "dir-mode", true, tmp, mode, strerror(errno));
             pmix_argv_free(parts);
             free(tmp);
-            return(PMIX_ERR_PERM); /* can't set correct mode */
+            return (PMIX_ERR_PERM); /* can't set correct mode */
         }
     }
 
@@ -148,8 +146,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
  * removed.  If the callback returns non-zero, then no removal is
  * done.
  */
-int pmix_os_dirpath_destroy(const char *path,
-                            bool recursive,
+int pmix_os_dirpath_destroy(const char *path, bool recursive,
                             pmix_os_dirpath_destroy_callback_fn_t cbfunc)
 {
     int rc, exit_status = PMIX_SUCCESS;
@@ -159,7 +156,7 @@ int pmix_os_dirpath_destroy(const char *path,
     char *filenm;
     struct stat buf;
 
-    if (NULL == path) {  /* protect against error */
+    if (NULL == path) { /* protect against error */
         return PMIX_ERROR;
     }
 
@@ -181,8 +178,7 @@ int pmix_os_dirpath_destroy(const char *path,
         /* skip:
          *  - . and ..
          */
-        if ((0 == strcmp(ep->d_name, ".")) ||
-            (0 == strcmp(ep->d_name, ".."))) {
+        if ((0 == strcmp(ep->d_name, ".")) || (0 == strcmp(ep->d_name, ".."))) {
             continue;
         }
 
@@ -255,31 +251,31 @@ int pmix_os_dirpath_destroy(const char *path,
     /* Done with this directory */
     closedir(dp);
 
- cleanup:
+cleanup:
 
     /*
      * If the directory is empty, them remove it
      */
-    if(pmix_os_dirpath_is_empty(path)) {
+    if (pmix_os_dirpath_is_empty(path)) {
         rmdir(path);
     }
 
     return exit_status;
 }
 
-bool pmix_os_dirpath_is_empty(const char *path ) {
+bool pmix_os_dirpath_is_empty(const char *path)
+{
     DIR *dp;
     struct dirent *ep;
 
-    if (NULL != path) {  /* protect against error */
+    if (NULL != path) { /* protect against error */
         dp = opendir(path);
         if (NULL != dp) {
             while ((ep = readdir(dp))) {
-                        if ((0 != strcmp(ep->d_name, ".")) &&
-                            (0 != strcmp(ep->d_name, ".."))) {
-                            closedir(dp);
-                            return false;
-                        }
+                if ((0 != strcmp(ep->d_name, ".")) && (0 != strcmp(ep->d_name, ".."))) {
+                    closedir(dp);
+                    return false;
+                }
             }
             closedir(dp);
             return true;
@@ -290,9 +286,10 @@ bool pmix_os_dirpath_is_empty(const char *path ) {
     return true;
 }
 
-int pmix_os_dirpath_access(const char *path, const mode_t in_mode ) {
+int pmix_os_dirpath_access(const char *path, const mode_t in_mode)
+{
     struct stat buf;
-    mode_t loc_mode = S_IRWXU;  /* looking for full rights */
+    mode_t loc_mode = S_IRWXU; /* looking for full rights */
 
     /*
      * If there was no mode specified, use the default mode
@@ -302,15 +299,15 @@ int pmix_os_dirpath_access(const char *path, const mode_t in_mode ) {
     }
 
     /* coverity[toctou] */
-    if (0 == stat(path, &buf)) { /* exists - check access */
+    if (0 == stat(path, &buf)) {                    /* exists - check access */
         if ((buf.st_mode & loc_mode) == loc_mode) { /* okay, I can work here */
-            return(PMIX_SUCCESS);
+            return (PMIX_SUCCESS);
         } else {
             /* Don't have access rights to the existing path */
-            return(PMIX_ERROR);
+            return (PMIX_ERROR);
         }
     } else {
         /* We could not find the path */
-        return( PMIX_ERR_NOT_FOUND );
+        return (PMIX_ERR_NOT_FOUND);
     }
 }

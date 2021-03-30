@@ -30,7 +30,7 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
@@ -71,6 +71,6 @@ static pmix_status_t pmix_psquash_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_psquash_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psquash, "PMIx Squash Operations",
-                                NULL, pmix_psquash_open, pmix_psquash_close,
-                                mca_psquash_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psquash, "PMIx Squash Operations", NULL, pmix_psquash_open,
+                                pmix_psquash_close, mca_psquash_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);

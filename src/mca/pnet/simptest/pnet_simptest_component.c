@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,9 +30,9 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/util/argv.h"
-#include "src/mca/pnet/pnet.h"
 #include "pnet_simptest.h"
+#include "src/mca/pnet/pnet.h"
+#include "src/util/argv.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -72,22 +73,20 @@ static pmix_status_t component_register(void)
 {
     pmix_mca_base_component_t *component = &mca_pnet_simptest_component.super.base;
 
-    (void)pmix_mca_base_component_var_register(component, "config_file",
-                                               "Path of file containing network coordinate configuration",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                               &mca_pnet_simptest_component.configfile);
+    (void) pmix_mca_base_component_var_register(
+        component, "config_file", "Path of file containing network coordinate configuration",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2,
+        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &mca_pnet_simptest_component.configfile);
     return PMIX_SUCCESS;
 }
 
 static pmix_status_t component_open(void)
 {
     int index;
-    const pmix_mca_base_var_storage_t *value=NULL;
+    const pmix_mca_base_var_storage_t *value = NULL;
 
-    if (NULL == mca_pnet_simptest_component.configfile ||
-        !PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
+    if (NULL == mca_pnet_simptest_component.configfile
+        || !PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
         /* nothing we can do without a description
          * of the fabric topology */
         return PMIX_ERROR;
@@ -107,14 +106,12 @@ static pmix_status_t component_open(void)
     return PMIX_ERROR;
 }
 
-
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 0;
-    *module = (pmix_mca_base_module_t *)&pmix_simptest_module;
+    *module = (pmix_mca_base_module_t *) &pmix_simptest_module;
     return PMIX_SUCCESS;
 }
-
 
 static pmix_status_t component_close(void)
 {

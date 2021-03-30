@@ -2,6 +2,7 @@
  * Copyright (c) 2020      Triad National Security, LLC.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,15 +18,15 @@
 #include <stdlib.h>
 /*
 #include <assert.h>
-#include <sys/time.h>
 #include <stdarg.h>
+#include <sys/time.h>
 #include <unistd.h>
 */
 
-
 pmix_proc_t this_proc;
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 
     pmix_value_t *val;
     size_t ninfo = 0;
@@ -49,16 +50,14 @@ int main(int argc, char *argv[]) {
     free(val);
     TEST_VERBOSE(("after PMIX_JOB_SIZE check"));
 
-
     PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_LOCAL_PEERS, NULL, 0, &val), params, v_params);
     pmixt_validate_predefined(&job_proc, PMIX_LOCAL_PEERS, val, PMIX_STRING, &v_params);
     free(val);
     TEST_VERBOSE(("after PMIX_LOCAL_PEERS check"));
 
-
     // validation data must be populated for all peers, remote and local, by this point
     peer_proc = this_proc;
-    for (i = 0; i < v_params.pmix_job_size; i++ ) {
+    for (i = 0; i < v_params.pmix_job_size; i++) {
         peer_proc.rank = i;
         PMIXT_CHECK(PMIx_Get(&peer_proc, PMIX_LOCAL_RANK, NULL, 0, &val), params, v_params);
         pmixt_validate_predefined(&peer_proc, PMIX_LOCAL_RANK, val, PMIX_UINT16, &v_params);

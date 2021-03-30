@@ -14,54 +14,47 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
+#    include <sys/time.h>
 #endif
-#include <time.h>
 #include <jansson.h>
+#include <time.h>
 
 #include "include/pmix_common.h"
 
-#include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"
+#include "src/mca/pcompress/pcompress.h"
+#include "src/mca/preg/preg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
-#include "src/mca/pcompress/pcompress.h"
-#include "src/mca/preg/preg.h"
 
-#include "src/mca/pnet/pnet.h"
-#include "src/mca/pnet/base/base.h"
 #include "pnet_sshot.h"
+#include "src/mca/pnet/base/base.h"
+#include "src/mca/pnet/pnet.h"
 
 static pmix_status_t sshot_init(void);
 static void sshot_finalize(void);
-static pmix_status_t allocate(pmix_namespace_t *nptr,
-                              pmix_info_t info[], size_t ninfo,
+static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist);
-static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
-                                         pmix_info_t info[],
-                                         size_t ninfo);
-static pmix_status_t setup_fork(pmix_namespace_t *nptr,
-                                const pmix_proc_t *proc,
-                                char ***env);
-pmix_pnet_module_t pmix_sshot_module = {
-    .name = "sshot",
-    .init = sshot_init,
-    .finalize = sshot_finalize,
-    .allocate = allocate,
-    .setup_local_network = setup_local_network,
-    .setup_fork = setup_fork,
-    .register_fabric = pmix_pnet_sshot_register_fabric
-};
+static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_fork(pmix_namespace_t *nptr, const pmix_proc_t *proc, char ***env);
+pmix_pnet_module_t pmix_sshot_module = {.name = "sshot",
+                                        .init = sshot_init,
+                                        .finalize = sshot_finalize,
+                                        .allocate = allocate,
+                                        .setup_local_network = setup_local_network,
+                                        .setup_fork = setup_fork,
+                                        .register_fabric = pmix_pnet_sshot_register_fabric};
 
 /*    FORWARD-DECLARE LOCAL FUNCTIONS    */
 static pmix_status_t compute_endpoint(pmix_endpoint_t *endpt, char *xname, uint16_t lrank);
@@ -80,7 +73,6 @@ static pmix_status_t sshot_init(void)
 static void sshot_finalize(void)
 {
 }
-
 
 /* PMIx_server_setup_application calls the "allocate" function
  * to allow us an opportunity to assign fabric resources to the
@@ -173,34 +165,31 @@ static void sshot_finalize(void)
  * (c) the final "blob" that is returned to the caller shall be compressed
  *     prior to adding it to the input "ilist"
  */
-static pmix_status_t allocate(pmix_namespace_t *nptr,
-                              pmix_info_t info[], size_t ninfo,
+static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist)
 {
-	int n, m;
+    int n, m;
 
     /* Values retrieved from the fabric controller */
-    char *vni = NULL;               // VNI assigned to the job by the FC
-    int tclass = 0;                 // Traffic class assigned by the FC
-    char **macs = NULL;             // Argv-array of comma-delimited MAC addresses of NICs on each node
-    char **xnames = NULL;           // Argv-array of comma-delimited xnames of NICs on each node
-    char **osnames = NULL;          // Argv-array of comma-delimited OS names of NICs on each node
-
+    char *vni = NULL;      // VNI assigned to the job by the FC
+    int tclass = 0;        // Traffic class assigned by the FC
+    char **macs = NULL;    // Argv-array of comma-delimited MAC addresses of NICs on each node
+    char **xnames = NULL;  // Argv-array of comma-delimited xnames of NICs on each node
+    char **osnames = NULL; // Argv-array of comma-delimited OS names of NICs on each node
 
     /* Values computed here as well as scratch storage */
-    char **nodes = NULL; 		// Argv-array of hostnames
+    char **nodes = NULL; // Argv-array of hostnames
     char **targs = NULL;
     char *tmp;
     pmix_status_t rc;
-    pmix_buffer_t mydata;		// Buffer used to store information to be transmitted (scratch storage)
+    pmix_buffer_t mydata; // Buffer used to store information to be transmitted (scratch storage)
     pmix_kval_t *kv;
     pmix_byte_object_t bo;
     bool sinfo = false;
     struct timeval start = {0, 0}, end;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:sshot:allocate for nspace %s",
-                        nptr->nspace);
+                        "pnet:sshot:allocate for nspace %s", nptr->nspace);
 
     /* Assume that we always provide the following information:
      *
@@ -212,10 +201,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
      */
     if (0 == mca_pnet_sshot_component.numnodes) {
         /* check directives to get the node map */
-        for (n=0; n < (int)ninfo; n++) {
+        for (n = 0; n < (int) ninfo; n++) {
             pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                                "pnet:sshot:allocate processing key %s",
-                                info[n].key);
+                                "pnet:sshot:allocate processing key %s", info[n].key);
             if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_MAP)) {
                 /* passed to us as a regex - parse to retrieve the argv-array
                  * of nodes */
@@ -228,13 +216,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             }
         }
     } else {
-        for (n=0; n < mca_pnet_sshot_component.numnodes; n++) {
+        for (n = 0; n < mca_pnet_sshot_component.numnodes; n++) {
             pmix_asprintf(&tmp, "nid%06d", n);
             pmix_argv_append_nosize(&nodes, tmp);
             free(tmp);
 
-            for (m=0; m < mca_pnet_sshot_component.numdevs; m++) {
-                pmix_asprintf(&tmp, "%02d:%02d:%02d:%02d:%02d:%02d", n % 100, (n+1) % 100, (n+2) % 100, (n+3) % 100, (n+4) % 100, m);
+            for (m = 0; m < mca_pnet_sshot_component.numdevs; m++) {
+                pmix_asprintf(&tmp, "%02d:%02d:%02d:%02d:%02d:%02d", n % 100, (n + 1) % 100,
+                              (n + 2) % 100, (n + 3) % 100, (n + 4) % 100, m);
                 pmix_argv_append_nosize(&targs, tmp);
                 free(tmp);
             }
@@ -244,7 +233,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             pmix_argv_free(targs);
             targs = NULL;
 
-            for (m=0; m < mca_pnet_sshot_component.numdevs; m++) {
+            for (m = 0; m < mca_pnet_sshot_component.numdevs; m++) {
                 pmix_asprintf(&tmp, "x30000c%1dr%02da%04d", n % 10, n % 100, m);
                 pmix_argv_append_nosize(&targs, tmp);
                 free(tmp);
@@ -255,7 +244,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             pmix_argv_free(targs);
             targs = NULL;
 
-            for (m=0; m < mca_pnet_sshot_component.numdevs; m++) {
+            for (m = 0; m < mca_pnet_sshot_component.numdevs; m++) {
                 pmix_asprintf(&tmp, "eth%1d", m);
                 pmix_argv_append_nosize(&targs, tmp);
                 free(tmp);
@@ -307,9 +296,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     PMIX_KVAL_NEW(kv, PMIX_CREDENTIAL);
     kv->value->type = PMIX_STRING;
     kv->value->data.string = vni;
-    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                      &pmix_globals.myid, PMIX_LOCAL, kv);
-    PMIX_RELEASE(kv);  // maintain refcount
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_LOCAL, kv);
+    PMIX_RELEASE(kv); // maintain refcount
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -325,9 +313,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     PMIX_KVAL_NEW(kv, "HPE_TRAFFIC_CLASS");
     kv->value->type = PMIX_INT;
     kv->value->data.integer = tclass;
-    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                      &pmix_globals.myid, PMIX_LOCAL, kv);
-    PMIX_RELEASE(kv);  // maintain refcount
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_LOCAL, kv);
+    PMIX_RELEASE(kv); // maintain refcount
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
@@ -355,7 +342,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
      */
 
     /* for each node... */
-    for (n=0; NULL != nodes[n]; n++) {
+    for (n = 0; NULL != nodes[n]; n++) {
         /* pack the node name - might be able to avoid this or at least reduce its
          * size. For example, we could assume that the node map on the compute
          * end will be provided in the same order as given here - thus, we could
@@ -374,7 +361,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &osnames[n], 1, PMIX_STRING);
     }
 
-  complete:
+complete:
     /* load all our results into a buffer for xmission to the backend */
     PMIX_KVAL_NEW(kv, PMIX_PNET_SSHOT_BLOB);
     if (NULL == kv || NULL == kv->value) {
@@ -385,9 +372,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     kv->value->type = PMIX_BYTE_OBJECT;
     PMIX_UNLOAD_BUFFER(&mydata, bo.bytes, bo.size);
     /* to help scalability, compress this blob */
-    if (pmix_compress.compress((uint8_t*)bo.bytes, bo.size,
-                               (uint8_t**)&kv->value->data.bo.bytes,
-                               &kv->value->data.bo.size)) {
+    if (pmix_compress.compress((uint8_t *) bo.bytes, bo.size,
+                               (uint8_t **) &kv->value->data.bo.bytes, &kv->value->data.bo.size)) {
         kv->value->type = PMIX_COMPRESSED_BYTE_OBJECT;
     } else {
         kv->value->data.bo.bytes = bo.bytes;
@@ -403,7 +389,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 
     if (0 < mca_pnet_sshot_component.numnodes) {
         gettimeofday(&end, NULL);
-        pmix_output(0, "TIME SPENT ALLOCATING DATA: %f seconds", (float)(end.tv_sec - start.tv_sec) + (float)(end.tv_usec - start.tv_usec)/1000000.0);
+        pmix_output(0, "TIME SPENT ALLOCATING DATA: %f seconds",
+                    (float) (end.tv_sec - start.tv_sec)
+                        + (float) (end.tv_usec - start.tv_usec) / 1000000.0);
     }
     /* be sure to release all the data from the fabric controller! */
     return PMIX_SUCCESS;
@@ -420,9 +408,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
  * from PMIx_server_setup_application. In this case, we search for a blob
  * that our "allocate" function may have included in that info.
  */
-static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
-                                         pmix_info_t info[],
-                                         size_t ninfo)
+static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo)
 {
     size_t n, ndevs, m, d, ndims = 3;
     pmix_buffer_t bkt;
@@ -449,18 +435,18 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
     uint8_t *data;
     size_t size;
     bool restore = false;
-    pmix_rank_t rank=0;
+    pmix_rank_t rank = 0;
     pmix_cb_t cb;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:sshot:setup_local_network with %lu info", (unsigned long)ninfo);
+                        "pnet:sshot:setup_local_network with %lu info", (unsigned long) ninfo);
 
     /* setup the namespace for the job */
     PMIX_LOAD_NSPACE(proc.nspace, nptr->nspace);
     /* prep the unpack buffer */
     PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
 
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         /* look for my key */
         if (PMIX_CHECK_KEY(&info[n], PMIX_PNET_SSHOT_BLOB)) {
             pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
@@ -477,11 +463,10 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
 
             /* if this is a compressed byte object, decompress it */
             if (PMIX_COMPRESSED_BYTE_OBJECT == info[n].value.type) {
-                pmix_compress.decompress(&data, &size,
-                                         (uint8_t*)info[n].value.data.bo.bytes,
+                pmix_compress.decompress(&data, &size, (uint8_t *) info[n].value.data.bo.bytes,
                                          info[n].value.data.bo.size);
             } else {
-                data = (uint8_t*)info[n].value.data.bo.bytes;
+                data = (uint8_t *) info[n].value.data.bo.bytes;
                 size = info[n].value.data.bo.size;
                 restore = true;
             }
@@ -491,8 +476,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
 
             /* unpack the VNI */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                               &bkt, &vni, &cnt, PMIX_STRING);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &vni, &cnt, PMIX_STRING);
             if (PMIX_SUCCESS != rc) {
                 goto cleanup;
             }
@@ -504,17 +488,15 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
             PMIX_KVAL_NEW(kv, PMIX_CREDENTIAL);
             kv->value->type = PMIX_STRING;
             kv->value->data.string = vni;
-            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                              &proc, PMIX_INTERNAL, kv);
-            PMIX_RELEASE(kv);  // maintain refcount
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_INTERNAL, kv);
+            PMIX_RELEASE(kv); // maintain refcount
             if (PMIX_SUCCESS != rc) {
                 goto cleanup;
             }
 
             /* unpack the traffic class */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                               &bkt, &tclass, &cnt, PMIX_INT);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &tclass, &cnt, PMIX_INT);
             if (PMIX_SUCCESS != rc) {
                 goto cleanup;
             }
@@ -525,29 +507,26 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
             PMIX_KVAL_NEW(kv, "HPE_TRAFFIC_CLASS");
             kv->value->type = PMIX_INT;
             kv->value->data.integer = tclass;
-            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                              &proc, PMIX_INTERNAL, kv);
-            PMIX_RELEASE(kv);  // maintain refcount
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_INTERNAL, kv);
+            PMIX_RELEASE(kv); // maintain refcount
             if (PMIX_SUCCESS != rc) {
-            	goto cleanup;
+                goto cleanup;
             }
 
             /* while there are node names to unpack... */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                               &bkt, &hostname, &cnt, PMIX_STRING);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &hostname, &cnt, PMIX_STRING);
             while (PMIX_SUCCESS == rc) {
                 /* prep the node info data array */
                 PMIX_DATA_ARRAY_CREATE(ndinfo, 2, PMIX_INFO);
-                itmp = (pmix_info_t*)ndinfo->array;
+                itmp = (pmix_info_t *) ndinfo->array;
 
                 /* insert the name into the nodeinfo array */
                 PMIX_INFO_LOAD(&itmp[0], PMIX_HOSTNAME, hostname, PMIX_STRING);
 
                 /* unpack the MAC addresses of the NICs on this node */
                 cnt = 1;
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                   &bkt, &macstring, &cnt, PMIX_STRING);
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &macstring, &cnt, PMIX_STRING);
                 if (PMIX_SUCCESS != rc) {
                     free(hostname);
                     break;
@@ -556,8 +535,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 free(macstring);
                 /* unpack the xnames of the NICs on this node */
                 cnt = 1;
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                   &bkt, &xnamestring, &cnt, PMIX_STRING);
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &xnamestring, &cnt, PMIX_STRING);
                 if (PMIX_SUCCESS != rc) {
                     free(hostname);
                     break;
@@ -566,8 +544,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 free(xnamestring);
                 /* unpack the osnames of the NICs on this node */
                 cnt = 1;
-                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                                   &bkt, &osnamestring, &cnt, PMIX_STRING);
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &osnamestring, &cnt, PMIX_STRING);
                 if (PMIX_SUCCESS != rc) {
                     free(hostname);
                     break;
@@ -580,7 +557,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 PMIX_GEOMETRY_CREATE(geometry, ndevs);
 
                 /* load the objects */
-                for (m=0; m < ndevs; m++) {
+                for (m = 0; m < ndevs; m++) {
                     geometry[m].uuid = strdup(xnames[m]);
                     geometry[m].osname = strdup(osnames[m]);
                     geometry[m].ncoords = 2;
@@ -589,7 +566,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                     compute_coord(&geometry[m].coordinates[1], xnames[m], PMIX_COORD_PHYSICAL_VIEW);
                 }
                 /* add it to the node info array */
-                darray = (pmix_data_array_t*)malloc(sizeof(pmix_data_array_t));
+                darray = (pmix_data_array_t *) malloc(sizeof(pmix_data_array_t));
                 darray->type = PMIX_GEOMETRY;
                 darray->size = ndevs;
                 darray->array = geometry;
@@ -600,9 +577,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 PMIX_KVAL_NEW(kv, PMIX_NODE_INFO_ARRAY);
                 kv->value->type = PMIX_DATA_ARRAY;
                 kv->value->data.darray = ndinfo;
-                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                                  &proc, PMIX_LOCAL, kv);
-                PMIX_RELEASE(kv);  // maintain refcount
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_LOCAL, kv);
+                PMIX_RELEASE(kv); // maintain refcount
                 if (PMIX_SUCCESS != rc) {
                     free(hostname);
                     goto cleanup;
@@ -613,8 +589,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                     if (0 < mca_pnet_sshot_component.ppn) {
                         /* simulating procs */
                         prs = NULL;
-                        for (m=0; m < (size_t)mca_pnet_sshot_component.ppn; m++) {
-                            pmix_asprintf(&peers, "%d", (int)rank);
+                        for (m = 0; m < (size_t) mca_pnet_sshot_component.ppn; m++) {
+                            pmix_asprintf(&peers, "%d", (int) rank);
                             pmix_argv_append_nosize(&prs, peers);
                             free(peers);
                             ++rank;
@@ -645,7 +621,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                         PMIX_DESTRUCT(&cb);
                         return PMIX_ERR_BAD_PARAM;
                     }
-                    kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+                    kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
                     if (NULL != kv->value->data.string) {
                         prs = pmix_argv_split(kv->value->data.string, ',');
                     } else {
@@ -656,15 +632,15 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 /* if this node is hosting procs for this job, then
                  * construct endpts for each of them */
                 if (NULL != prs) {
-                    for (m=0; NULL != prs[m]; m++) {
+                    for (m = 0; NULL != prs[m]; m++) {
                         /* create an array of endpoints for this proc */
                         PMIX_ENDPOINT_CREATE(endpts, ndevs);
-                        darray = (pmix_data_array_t*)malloc(sizeof(pmix_data_array_t));
+                        darray = (pmix_data_array_t *) malloc(sizeof(pmix_data_array_t));
                         darray->type = PMIX_ENDPOINT;
                         darray->size = ndevs;
                         darray->array = endpts;
                         /* for each fabric device, provide an endpt */
-                        for (d=0; d < ndevs; d++) {
+                        for (d = 0; d < ndevs; d++) {
                             endpts[m].uuid = strdup(xnames[d]);
                             endpts[m].osname = strdup(osnames[d]);
                             compute_endpoint(&endpts[m], macs[d], m);
@@ -674,9 +650,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                         PMIX_KVAL_NEW(kv, PMIX_FABRIC_ENDPT);
                         kv->value->type = PMIX_DATA_ARRAY;
                         kv->value->data.darray = darray;
-                        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                                          &proc, PMIX_LOCAL, kv);
-                        PMIX_RELEASE(kv);  // maintain refcount
+                        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &proc, PMIX_LOCAL, kv);
+                        PMIX_RELEASE(kv); // maintain refcount
                         if (PMIX_SUCCESS != rc) {
                             goto cleanup;
                         }
@@ -691,9 +666,8 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
                 free(hostname);
 
                 /* get the next hostname */
-	            cnt = 1;
-	            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-	                               &bkt, &hostname, &cnt, PMIX_STRING);
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &hostname, &cnt, PMIX_STRING);
             }
 
             /* we are done */
@@ -701,7 +675,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
         }
     }
 
-  cleanup:
+cleanup:
     if (restore) {
         /* restore the incoming data */
         iptr->value.data.bo.bytes = bkt.base_ptr;
@@ -709,17 +683,17 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr,
     }
     if (0 < mca_pnet_sshot_component.numnodes) {
         gettimeofday(&end, NULL);
-        pmix_output(0, "TIME SPENT CONSTRUCTING BACKEND DATA: %f seconds", (float)(end.tv_sec - start.tv_sec) + (float)(end.tv_usec - start.tv_usec)/1000000.0);
+        pmix_output(0, "TIME SPENT CONSTRUCTING BACKEND DATA: %f seconds",
+                    (float) (end.tv_sec - start.tv_sec)
+                        + (float) (end.tv_usec - start.tv_usec) / 1000000.0);
     }
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t setup_fork(pmix_namespace_t *nptr,
-                                const pmix_proc_t *proc,
-                                char ***env)
+static pmix_status_t setup_fork(pmix_namespace_t *nptr, const pmix_proc_t *proc, char ***env)
 {
-	/* if you have envars you want to pass to each client,
-	 * here is the place to do so */
+    /* if you have envars you want to pass to each client,
+     * here is the place to do so */
     return PMIX_SUCCESS;
 }
 
@@ -727,7 +701,7 @@ static void compute_coord(pmix_coord_t *coord, char *xname, pmix_coord_view_t vi
 {
     /* assume three dimensions */
     coord->view = view;
-    coord->coord = (uint32_t*)malloc(3 * sizeof(uint32_t));
+    coord->coord = (uint32_t *) malloc(3 * sizeof(uint32_t));
     /* do something to compute the coord */
     coord->coord[0] = 1;
     coord->coord[1] = 2;
@@ -736,9 +710,9 @@ static void compute_coord(pmix_coord_t *coord, char *xname, pmix_coord_view_t vi
 
 static pmix_status_t compute_endpoint(pmix_endpoint_t *endpt, char *mac, uint16_t lrank)
 {
-	/* compute the endpt - can be string or any byte array */
-	pmix_asprintf(&endpt->endpt.bytes, "%s:%d", mac, (int)lrank);
-	endpt->endpt.size = strlen(endpt->endpt.bytes) + 1;  // ensure the NULL is included
+    /* compute the endpt - can be string or any byte array */
+    pmix_asprintf(&endpt->endpt.bytes, "%s:%d", mac, (int) lrank);
+    endpt->endpt.size = strlen(endpt->endpt.bytes) + 1; // ensure the NULL is included
 
-	return PMIX_SUCCESS;
+    return PMIX_SUCCESS;
 }

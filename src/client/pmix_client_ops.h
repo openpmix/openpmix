@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,20 +13,19 @@
 
 #include "src/include/pmix_config.h"
 
-
-#include "src/threads/threads.h"
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/include/pmix_globals.h"
 #include "src/common/pmix_iof.h"
+#include "src/include/pmix_globals.h"
+#include "src/threads/threads.h"
 
 BEGIN_C_DECLS
 
 typedef struct {
-    pmix_peer_t *myserver;          // messaging support to/from my server
-    bool singleton;                 // no server
-    pmix_list_t pending_requests;   // list of pmix_cb_t pending data requests
-    pmix_pointer_array_t peers;     // array of pmix_peer_t cached for data ops
+    pmix_peer_t *myserver;        // messaging support to/from my server
+    bool singleton;               // no server
+    pmix_list_t pending_requests; // list of pmix_cb_t pending data requests
+    pmix_pointer_array_t peers;   // array of pmix_peer_t cached for data ops
     // verbosity for client get operations
     int get_output;
     int get_verbose;

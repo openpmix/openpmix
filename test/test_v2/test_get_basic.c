@@ -2,6 +2,7 @@
  * Copyright (c) 2020      Triad National Security, LLC.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,16 +18,17 @@
 #include <stdlib.h>
 /*
 #include <assert.h>
-#include <sys/time.h>
 #include <stdarg.h>
+#include <sys/time.h>
 #include <unistd.h>
 */
 
-//extern FILE *pmixt_outfile;
+// extern FILE *pmixt_outfile;
 
 pmix_proc_t this_proc;
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
 
     pmix_value_t *val;
     int retval;
@@ -39,10 +41,11 @@ int main(int argc, char *argv[]) {
     pmixt_pre_init(argc, argv, &params, &v_params);
     TEST_VERBOSE(("v_params values: pmix_nspace %s; pmix_job_size %d; pmix_univ_size %d",
                   v_params.pmix_nspace, v_params.pmix_job_size, v_params.pmix_univ_size));
-    TEST_VERBOSE(("v_params values: pmix_rank %d; pmix_local_rank %d; pmix_nodeid %d; pmix_num_nodes %d",
-                  v_params.pmix_rank, v_params.pmix_local_rank, v_params.pmix_nodeid, v_params.pmix_num_nodes));
-    TEST_VERBOSE(("v_params values: pmix_local_peers: %s",
-                  v_params.pmix_local_peers));
+    TEST_VERBOSE(
+        ("v_params values: pmix_rank %d; pmix_local_rank %d; pmix_nodeid %d; pmix_num_nodes %d",
+         v_params.pmix_rank, v_params.pmix_local_rank, v_params.pmix_nodeid,
+         v_params.pmix_num_nodes));
+    TEST_VERBOSE(("v_params values: pmix_local_peers: %s", v_params.pmix_local_peers));
     /* initialization */
     PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), params, v_params);
 
@@ -91,11 +94,11 @@ int main(int argc, char *argv[]) {
     TEST_VERBOSE(("after PMIX_HOSTNAME check"));
 
     // Code hangs when PMIx_Get of PMIX_RANK is enabled
-   /*
-    job_proc.rank = PMIX_RANK_UNDEF;
-    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_RANK, NULL, 0, &val), params, v_params);
-    pmixt_validate_predefined(&job_proc, PMIX_RANK, val, PMIX_PROC_RANK, &v_params);
-    */
+    /*
+     job_proc.rank = PMIX_RANK_UNDEF;
+     PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_RANK, NULL, 0, &val), params, v_params);
+     pmixt_validate_predefined(&job_proc, PMIX_RANK, val, PMIX_PROC_RANK, &v_params);
+     */
 
     /* finalize */
     PMIXT_CHECK(PMIx_Finalize(NULL, 0), params, v_params);

@@ -28,7 +28,6 @@
  *
  */
 
-
 #ifndef pmix_pstat_LINUX_EXPORT_H
 #define pmix_pstat_LINUX_EXPORT_H
 
@@ -36,7 +35,6 @@
 
 #include "src/mca/mca.h"
 #include "src/mca/pstat/pstat.h"
-
 
 BEGIN_C_DECLS
 

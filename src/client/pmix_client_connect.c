@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,41 +26,40 @@
 #include "src/mca/gds/base/base.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_UN_H
-#include <sys/un.h>
+#    include <sys/un.h>
 #endif
 #ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
+#    include <sys/uio.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/gds/gds.h"
+#include "src/mca/ptl/ptl.h"
+#include "src/threads/threads.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
-#include "src/threads/threads.h"
-#include "src/mca/gds/gds.h"
-#include "src/mca/ptl/ptl.h"
 
 #include "pmix_client_ops.h"
 
 /* callback for wait completion */
-static void wait_cbfunc(struct pmix_peer_t *pr,
-                        pmix_ptl_hdr_t *hdr,
-                        pmix_buffer_t *buf, void *cbdata);
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                        void *cbdata);
 static void op_cbfunc(pmix_status_t status, void *cbdata);
 
 PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
@@ -70,8 +70,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix: connect called");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix: connect called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -101,8 +100,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
     rc = cb->status;
     PMIX_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: connect completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: connect completed");
 
     return rc;
 }
@@ -118,8 +116,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix:connect_nb called");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix:connect_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -140,38 +137,33 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the number of procs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &nprocs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nprocs, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, procs, nprocs, PMIX_PROC);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, procs, nprocs, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, info, ninfo, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -187,8 +179,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, wait_cbfunc, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
@@ -231,8 +222,7 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect(const pmix_proc_t procs[], size_t npro
     rc = cb->status;
     PMIX_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: disconnect completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: disconnect completed");
 
     return rc;
 }
@@ -248,8 +238,7 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: disconnect called");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: disconnect called");
 
     size_t cnt;
     for (cnt = 0; cnt < nprocs; cnt++) {
@@ -277,38 +266,33 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the number of procs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &nprocs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nprocs, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, procs, nprocs, PMIX_PROC);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, procs, nprocs, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, info, ninfo, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -324,24 +308,21 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, wait_cbfunc, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
     }
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: disconnect completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: disconnect completed");
 
     return rc;
 }
 
-static void wait_cbfunc(struct pmix_peer_t *pr,
-                        pmix_ptl_hdr_t *hdr,
-                        pmix_buffer_t *buf, void *cbdata)
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                        void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
     pmix_status_t ret;
     int32_t cnt;
@@ -351,7 +332,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
-                        (NULL == buf) ? -1 : (int)buf->bytes_used);
+                        (NULL == buf) ? -1 : (int) buf->bytes_used);
 
     if (NULL == buf) {
         ret = PMIX_ERR_BAD_PARAM;
@@ -367,8 +348,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
 
     /* unpack the returned status */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                       buf, &ret, &cnt, PMIX_STATUS);
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
@@ -376,8 +356,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
     /* connect has to also pass back data from all nspace's involved in
      * the operation, including our own. Each will come as a byte object */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                       buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
     while (PMIX_SUCCESS == rc) {
         /* load it for unpacking */
         PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
@@ -385,8 +364,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
 
         /* unpack the nspace for this blob */
         cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                           &bkt, &nspace, &cnt, PMIX_STRING);
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &bkt, &nspace, &cnt, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&bkt);
@@ -401,15 +379,14 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
         PMIX_DESTRUCT(&bkt);
         /* get the next one */
         cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                           buf, &bo, &cnt, PMIX_BYTE_OBJECT);
-        }
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    }
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
 
-  report:
+report:
     if (NULL != cb->cbfunc.opfn) {
         cb->cbfunc.opfn(ret, cb->cbdata);
     }
@@ -418,7 +395,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr,
 
 static void op_cbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
     cb->status = status;
     PMIX_POST_OBJECT(cb);

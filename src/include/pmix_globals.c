@@ -21,61 +21,54 @@
 #include "src/include/pmix_config.h"
 
 #include "include/pmix_common.h"
-#include "src/include/types.h"
-#include "src/include/pmix_stdint.h"
 #include "src/include/pmix_socket_errno.h"
+#include "src/include/pmix_stdint.h"
+#include "src/include/types.h"
 
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include <ctype.h>
 #include PMIX_EVENT_HEADER
 #if HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif /* HAVE_SYS_STAT_H */
 #ifdef HAVE_DIRENT_H
-#include <dirent.h>
-#endif  /* HAVE_DIRENT_H */
+#    include <dirent.h>
+#endif /* HAVE_DIRENT_H */
 
 #include "include/pmix_common.h"
 
-#include "src/mca/bfrops/bfrops_types.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
+#include "src/mca/bfrops/bfrops_types.h"
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
 #include "src/util/os_path.h"
+
 
 static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd,
                             pmix_epilog_t *epi);
 static bool dirpath_is_empty(const char *path);
 
-PMIX_EXPORT pmix_lock_t pmix_global_lock = {
-    .mutex = PMIX_MUTEX_STATIC_INIT,
-    .cond = PMIX_CONDITION_STATIC_INIT,
-    .active = false
-};
+PMIX_EXPORT pmix_lock_t pmix_global_lock = {.mutex = PMIX_MUTEX_STATIC_INIT,
+                                            .cond = PMIX_CONDITION_STATIC_INIT,
+                                            .active = false};
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namelist_t,
-                                pmix_list_item_t,
-                                NULL, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namelist_t, pmix_list_item_t, NULL, NULL);
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_proclist_t,
-                                pmix_list_item_t,
-                                NULL, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_proclist_t, pmix_list_item_t, NULL, NULL);
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_topo_obj_t,
-                                pmix_object_t,
-                                NULL, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_topo_obj_t, pmix_object_t, NULL, NULL);
 
 static void cfcon(pmix_cleanup_file_t *p)
 {
@@ -87,9 +80,7 @@ static void cfdes(pmix_cleanup_file_t *p)
         free(p->path);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cleanup_file_t,
-                                pmix_list_item_t,
-                                cfcon, cfdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cleanup_file_t, pmix_list_item_t, cfcon, cfdes);
 
 static void cdcon(pmix_cleanup_dir_t *p)
 {
@@ -103,9 +94,7 @@ static void cddes(pmix_cleanup_dir_t *p)
         free(p->path);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cleanup_dir_t,
-                                pmix_list_item_t,
-                                cdcon, cddes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cleanup_dir_t, pmix_list_item_t, cdcon, cddes);
 
 static void nscon(pmix_namespace_t *p)
 {
@@ -143,9 +132,7 @@ static void nsdes(pmix_namespace_t *p)
     PMIX_LIST_DESTRUCT(&p->epilog.ignores);
     PMIX_LIST_DESTRUCT(&p->setup_data);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namespace_t,
-                                pmix_list_item_t,
-                                nscon, nsdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namespace_t, pmix_list_item_t, nscon, nsdes);
 
 static void ncdcon(pmix_nspace_caddy_t *p)
 {
@@ -154,15 +141,13 @@ static void ncdcon(pmix_nspace_caddy_t *p)
 static void ncddes(pmix_nspace_caddy_t *p)
 {
     if (NULL != p->ns) {
-        if(NULL != p->ns->jobbkt) {
+        if (NULL != p->ns->jobbkt) {
             PMIX_RELEASE(p->ns->jobbkt);
         }
         PMIX_RELEASE(p->ns);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_caddy_t,
-                                pmix_list_item_t,
-                                ncdcon, ncddes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_caddy_t, pmix_list_item_t, ncdcon, ncddes);
 
 static void info_con(pmix_rank_info_t *info)
 {
@@ -180,9 +165,7 @@ static void info_des(pmix_rank_info_t *info)
         free(info->pname.nspace);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t,
-                                pmix_list_item_t,
-                                info_con, info_des);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t, pmix_list_item_t, info_con, info_des);
 
 static void pcon(pmix_peer_t *p)
 {
@@ -206,7 +189,6 @@ static void pcon(pmix_peer_t *p)
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.ignores, pmix_list_t);
-
 }
 
 static void pdes(pmix_peer_t *p)
@@ -242,9 +224,7 @@ static void pdes(pmix_peer_t *p)
         PMIX_RELEASE(p->nptr);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_peer_t,
-                                pmix_object_t,
-                                pcon, pdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_peer_t, pmix_object_t, pcon, pdes);
 
 static void iofreqcon(pmix_iof_req_t *p)
 {
@@ -267,10 +247,7 @@ static void iofreqdes(pmix_iof_req_t *p)
         PMIX_PROC_FREE(p->procs, p->nprocs);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_iof_req_t,
-                                pmix_object_t,
-                                iofreqcon, iofreqdes);
-
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_iof_req_t, pmix_object_t, iofreqcon, iofreqdes);
 
 static void scon(pmix_shift_caddy_t *p)
 {
@@ -311,9 +288,7 @@ static void scdes(pmix_shift_caddy_t *p)
         PMIX_RELEASE(p->kv);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_shift_caddy_t,
-                                pmix_object_t,
-                                scon, scdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_shift_caddy_t, pmix_object_t, scon, scdes);
 
 static void lgcon(pmix_get_logic_t *p)
 {
@@ -324,9 +299,7 @@ static void lgcon(pmix_get_logic_t *p)
     p->refresh_cache = false;
     p->scope = PMIX_SCOPE_UNDEF;
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_get_logic_t,
-                                pmix_object_t,
-                                lgcon, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_get_logic_t, pmix_object_t, lgcon, NULL);
 
 static void cbcon(pmix_cb_t *p)
 {
@@ -371,13 +344,9 @@ static void cbdes(pmix_cb_t *p)
     }
     PMIX_LIST_DESTRUCT(&p->kvs);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cb_t,
-                                pmix_list_item_t,
-                                cbcon, cbdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cb_t, pmix_list_item_t, cbcon, cbdes);
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_info_caddy_t,
-                                pmix_list_item_t,
-                                NULL, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_info_caddy_t, pmix_list_item_t, NULL, NULL);
 
 static void ifcon(pmix_infolist_t *p)
 {
@@ -387,17 +356,13 @@ static void ifdes(pmix_infolist_t *p)
 {
     PMIX_INFO_DESTRUCT(&p->info);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_infolist_t,
-                                pmix_list_item_t,
-                                ifcon, ifdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_infolist_t, pmix_list_item_t, ifcon, ifdes);
 
 static void qlcon(pmix_querylist_t *p)
 {
     PMIX_QUERY_CONSTRUCT(&p->query);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t,
-                                pmix_list_item_t,
-                                qlcon, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t, pmix_list_item_t, qlcon, NULL);
 
 static void qcon(pmix_query_caddy_t *p)
 {
@@ -428,9 +393,7 @@ static void qdes(pmix_query_caddy_t *p)
     PMIX_INFO_FREE(p->info, p->ninfo);
     PMIX_LIST_DESTRUCT(&p->results);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t,
-                                pmix_object_t,
-                                qcon, qdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t, pmix_object_t, qcon, qdes);
 
 static void ncon(pmix_notify_caddy_t *p)
 {
@@ -446,7 +409,7 @@ static void ncon(pmix_notify_caddy_t *p)
     p->ts = tv.tv_sec;
 #endif
     p->room = -1;
-    memset(p->source.nspace, 0, PMIX_MAX_NSLEN+1);
+    memset(p->source.nspace, 0, PMIX_MAX_NSLEN + 1);
     p->source.rank = PMIX_RANK_UNDEF;
     p->range = PMIX_RANGE_UNDEF;
     p->targets = NULL;
@@ -469,9 +432,7 @@ static void ndes(pmix_notify_caddy_t *p)
         free(p->targets);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,
-                    pmix_object_t,
-                    ncon, ndes);
+PMIX_CLASS_INSTANCE(pmix_notify_caddy_t, pmix_object_t, ncon, ndes);
 
 void pmix_execute_epilog(pmix_epilog_t *epi)
 {
@@ -483,32 +444,31 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
     size_t n;
 
     /* start with any specified files */
-    PMIX_LIST_FOREACH_SAFE(cf, cfnext, &epi->cleanup_files, pmix_cleanup_file_t) {
+    PMIX_LIST_FOREACH_SAFE (cf, cfnext, &epi->cleanup_files, pmix_cleanup_file_t) {
         /* check the effective uid/gid of the file and ensure it
          * matches that of the peer - we do this to provide at least
          * some minimum level of protection */
         tmp = pmix_argv_split(cf->path, ',');
-        for (n=0; NULL != tmp[n]; n++) {
+        for (n = 0; NULL != tmp[n]; n++) {
             /* coverity[toctou] */
             rc = stat(tmp[n], &statbuf);
             if (0 != rc) {
-                pmix_output_verbose(10, pmix_globals.debug_output,
-                                    "File %s failed to stat: %d", tmp[n], rc);
+                pmix_output_verbose(10, pmix_globals.debug_output, "File %s failed to stat: %d",
+                                    tmp[n], rc);
                 continue;
             }
-            if (statbuf.st_uid != epi->uid ||
-                statbuf.st_gid != epi->gid) {
+            if (statbuf.st_uid != epi->uid || statbuf.st_gid != epi->gid) {
                 pmix_output_verbose(10, pmix_globals.debug_output,
                                     "File %s uid/gid doesn't match: uid %lu(%lu) gid %lu(%lu)",
-                                    cf->path,
-                                    (unsigned long)statbuf.st_uid, (unsigned long)epi->uid,
-                                    (unsigned long)statbuf.st_gid, (unsigned long)epi->gid);
+                                    cf->path, (unsigned long) statbuf.st_uid,
+                                    (unsigned long) epi->uid, (unsigned long) statbuf.st_gid,
+                                    (unsigned long) epi->gid);
                 continue;
             }
             rc = unlink(tmp[n]);
             if (0 != rc) {
-                pmix_output_verbose(10, pmix_globals.debug_output,
-                                    "File %s failed to unlink: %d", tmp[n], rc);
+                pmix_output_verbose(10, pmix_globals.debug_output, "File %s failed to unlink: %d",
+                                    tmp[n], rc);
             }
         }
         pmix_argv_free(tmp);
@@ -517,12 +477,12 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
     }
 
     /* now cleanup the directories */
-    PMIX_LIST_FOREACH_SAFE(cd, cdnext, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
+    PMIX_LIST_FOREACH_SAFE (cd, cdnext, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
         /* check the effective uid/gid of the file and ensure it
          * matches that of the peer - we do this to provide at least
          * some minimum level of protection */
         tmp = pmix_argv_split(cd->path, ',');
-        for (n=0; NULL != tmp[n]; n++) {
+        for (n = 0; NULL != tmp[n]; n++) {
             /* coverity[toctou] */
             rc = stat(tmp[n], &statbuf);
             if (0 != rc) {
@@ -530,20 +490,19 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
                                     "Directory %s failed to stat: %d", tmp[n], rc);
                 continue;
             }
-            if (statbuf.st_uid != epi->uid ||
-                statbuf.st_gid != epi->gid) {
+            if (statbuf.st_uid != epi->uid || statbuf.st_gid != epi->gid) {
                 pmix_output_verbose(10, pmix_globals.debug_output,
                                     "Directory %s uid/gid doesn't match: uid %lu(%lu) gid %lu(%lu)",
-                                    cd->path,
-                                    (unsigned long)statbuf.st_uid, (unsigned long)epi->uid,
-                                    (unsigned long)statbuf.st_gid, (unsigned long)epi->gid);
+                                    cd->path, (unsigned long) statbuf.st_uid,
+                                    (unsigned long) epi->uid, (unsigned long) statbuf.st_gid,
+                                    (unsigned long) epi->gid);
                 continue;
             }
             if ((statbuf.st_mode & S_IRWXU) == S_IRWXU) {
                 dirpath_destroy(tmp[n], cd, epi);
             } else {
-                pmix_output_verbose(10, pmix_globals.debug_output,
-                                    "Directory %s lacks permissions", tmp[n]);
+                pmix_output_verbose(10, pmix_globals.debug_output, "Directory %s lacks permissions",
+                                    tmp[n]);
             }
         }
         pmix_argv_free(tmp);
@@ -562,12 +521,12 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
     struct stat buf;
     pmix_cleanup_file_t *cf;
 
-    if (NULL == path) {  /* protect against error */
+    if (NULL == path) { /* protect against error */
         return;
     }
 
     /* if this path is it to be ignored, then do so */
-    PMIX_LIST_FOREACH(cf, &epi->ignores, pmix_cleanup_file_t) {
+    PMIX_LIST_FOREACH (cf, &epi->ignores, pmix_cleanup_file_t) {
         if (0 == strcmp(cf->path, path)) {
             return;
         }
@@ -583,8 +542,7 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
         /* skip:
          *  - . and ..
          */
-        if ((0 == strcmp(ep->d_name, ".")) ||
-            (0 == strcmp(ep->d_name, ".."))) {
+        if ((0 == strcmp(ep->d_name, ".")) || (0 == strcmp(ep->d_name, ".."))) {
             continue;
         }
 
@@ -595,7 +553,7 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
         filenm = pmix_os_path(false, path, ep->d_name, NULL);
 
         /* if this path is to be ignored, then do so */
-        PMIX_LIST_FOREACH(cf, &epi->ignores, pmix_cleanup_file_t) {
+        PMIX_LIST_FOREACH (cf, &epi->ignores, pmix_cleanup_file_t) {
             if (0 == strcmp(cf->path, filenm)) {
                 free(filenm);
                 filenm = NULL;
@@ -621,8 +579,7 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
             continue;
         }
         /* if the uid/gid don't match, then leave it alone */
-        if (buf.st_uid != epi->uid ||
-            buf.st_gid != epi->gid) {
+        if (buf.st_uid != epi->uid || buf.st_gid != epi->gid) {
             free(filenm);
             continue;
         }
@@ -665,20 +622,19 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
     }
 }
 
-static bool dirpath_is_empty(const char *path )
+static bool dirpath_is_empty(const char *path)
 {
     DIR *dp;
     struct dirent *ep;
 
-    if (NULL != path) {  /* protect against error */
+    if (NULL != path) { /* protect against error */
         dp = opendir(path);
         if (NULL != dp) {
             while ((ep = readdir(dp))) {
-                        if ((0 != strcmp(ep->d_name, ".")) &&
-                            (0 != strcmp(ep->d_name, ".."))) {
-                            closedir(dp);
-                            return false;
-                        }
+                if ((0 != strcmp(ep->d_name, ".")) && (0 != strcmp(ep->d_name, ".."))) {
+                    closedir(dp);
+                    return false;
+                }
             }
             closedir(dp);
             return true;
@@ -689,8 +645,8 @@ static bool dirpath_is_empty(const char *path )
     return true;
 }
 
-int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase,
-                      int fd, short arg, event_callback_fn cbfn, void *cbd)
+int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase, int fd, short arg,
+                      event_callback_fn cbfn, void *cbd)
 {
 #if PMIX_HAVE_LIBEV
     event_set(ev, fd, arg, cbfn, cbd);
@@ -701,13 +657,13 @@ int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase,
     return 0;
 }
 
-pmix_event_t* pmix_event_new(pmix_event_base_t *b, int fd,
-                             short fg, event_callback_fn cbfn, void *cbd)
+pmix_event_t *pmix_event_new(pmix_event_base_t *b, int fd, short fg, event_callback_fn cbfn,
+                             void *cbd)
 {
     pmix_event_t *ev = NULL;
 
 #if PMIX_HAVE_LIBEV
-    ev = (pmix_event_t*)calloc(1, sizeof(pmix_event_t));
+    ev = (pmix_event_t *) calloc(1, sizeof(pmix_event_t));
     ev->ev_base = b;
 #else
     ev = event_new(b, fd, fg, (event_callback_fn) cbfn, cbd);

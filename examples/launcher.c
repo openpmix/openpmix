@@ -1,6 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -11,22 +12,18 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
-#include <pmix_tool.h>
 #include "examples.h"
+#include <pmix_tool.h>
 
 static pmix_proc_t myproc;
 
-
-static void notification_fn(size_t evhdlr_registration_id,
-                            pmix_status_t status,
-                            const pmix_proc_t *source,
-                            pmix_info_t info[], size_t ninfo,
+static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
+                            const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                             pmix_info_t results[], size_t nresults,
-                            pmix_event_notification_cbfunc_fn_t cbfunc,
-                            void *cbdata)
+                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     myrel_t *lock = NULL;
     size_t n;
@@ -39,13 +36,13 @@ static void notification_fn(size_t evhdlr_registration_id,
     /* we should always have info returned to us - if not, there is
      * nothing we can do */
     if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_JOB_TERM_STATUS, PMIX_MAX_KEYLEN)) {
                 jobstatus = info[n].value.data.status;
             } else if (0 == strncmp(info[n].key, PMIX_EVENT_AFFECTED_PROC, PMIX_MAX_KEYLEN)) {
                 memcpy(&affected, info[n].value.data.proc, sizeof(pmix_proc_t));
             } else if (0 == strncmp(info[n].key, PMIX_EVENT_RETURN_OBJECT, PMIX_MAX_KEYLEN)) {
-                lock = (myrel_t*)info[n].value.data.ptr;
+                lock = (myrel_t *) info[n].value.data.ptr;
             } else if (0 == strncmp(info[n].key, PMIX_EVENT_TEXT_MESSAGE, PMIX_MAX_KEYLEN)) {
                 msg = info[n].value.data.string;
             }
@@ -63,7 +60,7 @@ static void notification_fn(size_t evhdlr_registration_id,
     /* release the lock */
     DEBUG_WAKEUP_THREAD(&lock->lock);
 
-  done:
+done:
     /* we _always_ have to execute the evhandler callback or
      * else the event progress engine will hang */
     if (NULL != cbfunc) {
@@ -78,21 +75,18 @@ static void notification_fn(size_t evhdlr_registration_id,
  * to the registered event. The index is used later on to deregister
  * an event handler - if we don't explicitly deregister it, then the
  * PMIx server will do so when it see us exit */
-static void evhandler_reg_callbk(pmix_status_t status,
-                                 size_t evhandler_ref,
-                                 void *cbdata)
+static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
 
     if (PMIX_SUCCESS != status) {
         fprintf(stderr, "Client %s:%d EVENT HANDLER REGISTRATION FAILED WITH STATUS %d, ref=%lu\n",
-                   myproc.nspace, myproc.rank, status, (unsigned long)evhandler_ref);
+                myproc.nspace, myproc.rank, status, (unsigned long) evhandler_ref);
     }
     lock->status = status;
     lock->evhandler_ref = evhandler_ref;
     DEBUG_WAKEUP_THREAD(lock);
 }
-
 
 int main(int argc, char **argv)
 {
@@ -103,9 +97,12 @@ int main(int argc, char **argv)
     bool flag;
     myrel_t myrel;
     mylock_t mylock;
-    pmix_status_t code[6] = {PMIX_ERR_PROC_ABORTING, PMIX_ERR_PROC_ABORTED,
-                             PMIX_ERR_PROC_REQUESTED_ABORT, PMIX_ERR_JOB_TERMINATED,
-                             PMIX_ERR_UNREACH, PMIX_ERR_LOST_CONNECTION_TO_SERVER};
+    pmix_status_t code[6] = {PMIX_ERR_PROC_ABORTING,
+                             PMIX_ERR_PROC_ABORTED,
+                             PMIX_ERR_PROC_REQUESTED_ABORT,
+                             PMIX_ERR_JOB_TERMINATED,
+                             PMIX_ERR_UNREACH,
+                             PMIX_ERR_LOST_CONNECTION_TO_SERVER};
     pmix_nspace_t appspace;
 
     /* we need to attach to a "system" PMIx server so we
@@ -127,13 +124,14 @@ int main(int argc, char **argv)
      * our spawned job completes, or if it fails (even at launch) */
     DEBUG_CONSTRUCT_LOCK(&mylock);
     PMIX_INFO_LOAD(&info, PMIX_EVENT_RETURN_OBJECT, &myrel, PMIX_POINTER);
-    PMIx_Register_event_handler(code, 6, &info, 1,
-                                notification_fn, evhandler_reg_callbk, (void*)&mylock);
+    PMIx_Register_event_handler(code, 6, &info, 1, notification_fn, evhandler_reg_callbk,
+                                (void *) &mylock);
     DEBUG_WAIT_THREAD(&mylock);
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "[%s:%d] Default handler registration failed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "[%s:%d] Default handler registration failed\n", myproc.nspace,
+                myproc.rank);
         goto done;
     }
 
@@ -143,7 +141,7 @@ int main(int argc, char **argv)
     PMIX_APP_CREATE(app, napps);
     /* setup the executable */
     app[0].cmd = strdup("app");
-    app[0].argv = (char**)malloc(2*sizeof(char*));
+    app[0].argv = (char **) malloc(2 * sizeof(char *));
     app[0].argv[0] = strdup("app");
     app[0].argv[1] = NULL;
     app[0].maxprocs = 128;
@@ -165,8 +163,8 @@ int main(int argc, char **argv)
     DEBUG_WAIT_THREAD(&myrel.lock);
     DEBUG_DESTRUCT_MYREL(&myrel);
 
-  done:
+done:
     PMIx_tool_finalize();
 
-    return(0);
+    return (0);
 }

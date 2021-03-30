@@ -18,6 +18,7 @@
  * Copyright (c) 2019      Triad National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,25 +27,22 @@
  *
  */
 
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
-#include <pthread.h>
+#include <unistd.h>
 
-#include <pmix.h>
 #include "examples.h"
+#include <pmix.h>
 
 static pmix_proc_t myproc;
 
-static void notification_fn(size_t evhdlr_registration_id,
-                            pmix_status_t status,
-                            const pmix_proc_t *source,
-                            pmix_info_t info[], size_t ninfo,
+static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
+                            const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                             pmix_info_t results[], size_t nresults,
-                            pmix_event_notification_cbfunc_fn_t cbfunc,
-                            void *cbdata)
+                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     myrel_t *lock;
     bool found;
@@ -55,9 +53,9 @@ static void notification_fn(size_t evhdlr_registration_id,
     /* find our return object */
     lock = NULL;
     found = false;
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_EVENT_RETURN_OBJECT, PMIX_MAX_KEYLEN)) {
-            lock = (myrel_t*)info[n].value.data.ptr;
+            lock = (myrel_t *) info[n].value.data.ptr;
             /* not every RM will provide an exit code, but check if one was given */
         } else if (0 == strncmp(info[n].key, PMIX_EXIT_CODE, PMIX_MAX_KEYLEN)) {
             exit_code = info[n].value.data.integer;
@@ -90,22 +88,21 @@ static void notification_fn(size_t evhdlr_registration_id,
     DEBUG_WAKEUP_THREAD(&lock->lock);
 }
 
-static void op_callbk(pmix_status_t status,
-                      void *cbdata)
+static void op_callbk(pmix_status_t status, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
-    fprintf(stderr, "Client %s:%d OP CALLBACK CALLED WITH STATUS %d\n", myproc.nspace, myproc.rank, status);
+    mylock_t *lock = (mylock_t *) cbdata;
+    fprintf(stderr, "Client %s:%d OP CALLBACK CALLED WITH STATUS %d\n", myproc.nspace, myproc.rank,
+            status);
     DEBUG_WAKEUP_THREAD(lock);
 }
 
-static void evhandler_reg_callbk(pmix_status_t status,
-                                  size_t errhandler_ref,
-                                  void *cbdata)
+static void evhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
 
-    fprintf(stderr, "Client %s:%d ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu\n",
-               myproc.nspace, myproc.rank, status, (unsigned long)errhandler_ref);
+    fprintf(stderr,
+            "Client %s:%d ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu\n",
+            myproc.nspace, myproc.rank, status, (unsigned long) errhandler_ref);
     DEBUG_WAKEUP_THREAD(lock);
 }
 
@@ -122,7 +119,8 @@ int main(int argc, char **argv)
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
         exit(0);
     }
     fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
@@ -132,7 +130,8 @@ int main(int argc, char **argv)
 
     /* get our universe size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
     nprocs = val->data.uint32;
@@ -148,8 +147,8 @@ int main(int argc, char **argv)
     PMIX_INFO_LOAD(&info[1], PMIX_NSPACE, myproc.nspace, PMIX_STRING);
 
     DEBUG_CONSTRUCT_LOCK(&mylock);
-    PMIx_Register_event_handler(code, 2, info, 2,
-                                notification_fn, evhandler_reg_callbk, (void*)&mylock);
+    PMIx_Register_event_handler(code, 2, info, 2, notification_fn, evhandler_reg_callbk,
+                                (void *) &mylock);
     DEBUG_WAIT_THREAD(&mylock);
     if (PMIX_SUCCESS != mylock.status) {
         rc = mylock.status;
@@ -164,7 +163,8 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
         goto done;
     }
 
@@ -178,7 +178,7 @@ int main(int argc, char **argv)
     DEBUG_WAIT_THREAD(&myrel.lock);
     DEBUG_DESTRUCT_MYREL(&myrel);
 
- done:
+done:
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     DEBUG_CONSTRUCT_LOCK(&mylock);
@@ -187,10 +187,12 @@ int main(int argc, char **argv)
     DEBUG_DESTRUCT_LOCK(&mylock);
 
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return(0);
+    return (0);
 }

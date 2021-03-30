@@ -29,7 +29,7 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
@@ -46,19 +46,17 @@
 
 /* Instantiate the global vars */
 pmix_pnet_globals_t pmix_pnet_globals = {{0}};
-pmix_pnet_API_module_t pmix_pnet = {
-    .allocate = pmix_pnet_base_allocate,
-    .setup_local_network = pmix_pnet_base_setup_local_network,
-    .setup_fork = pmix_pnet_base_setup_fork,
-    .child_finalized = pmix_pnet_base_child_finalized,
-    .local_app_finalized = pmix_pnet_base_local_app_finalized,
-    .deregister_nspace = pmix_pnet_base_deregister_nspace,
-    .collect_inventory = pmix_pnet_base_collect_inventory,
-    .deliver_inventory = pmix_pnet_base_deliver_inventory,
-    .register_fabric = pmix_pnet_base_register_fabric,
-    .update_fabric = pmix_pnet_base_update_fabric,
-    .deregister_fabric = pmix_pnet_base_deregister_fabric
-};
+pmix_pnet_API_module_t pmix_pnet = {.allocate = pmix_pnet_base_allocate,
+                                    .setup_local_network = pmix_pnet_base_setup_local_network,
+                                    .setup_fork = pmix_pnet_base_setup_fork,
+                                    .child_finalized = pmix_pnet_base_child_finalized,
+                                    .local_app_finalized = pmix_pnet_base_local_app_finalized,
+                                    .deregister_nspace = pmix_pnet_base_deregister_nspace,
+                                    .collect_inventory = pmix_pnet_base_collect_inventory,
+                                    .deliver_inventory = pmix_pnet_base_deliver_inventory,
+                                    .register_fabric = pmix_pnet_base_register_fabric,
+                                    .update_fabric = pmix_pnet_base_update_fabric,
+                                    .deregister_fabric = pmix_pnet_base_deregister_fabric};
 
 static pmix_status_t pmix_pnet_close(void)
 {
@@ -66,12 +64,13 @@ static pmix_status_t pmix_pnet_close(void)
 
     pmix_pnet_globals.selected = false;
 
-    PMIX_LIST_FOREACH_SAFE(active, prev, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
-      pmix_list_remove_item(&pmix_pnet_globals.actives, &active->super);
-      if (NULL != active->module->finalize) {
-        active->module->finalize();
-      }
-      PMIX_RELEASE(active);
+    PMIX_LIST_FOREACH_SAFE (active, prev, &pmix_pnet_globals.actives,
+                            pmix_pnet_base_active_module_t) {
+        pmix_list_remove_item(&pmix_pnet_globals.actives, &active->super);
+        if (NULL != active->module->finalize) {
+            active->module->finalize();
+        }
+        PMIX_RELEASE(active);
     }
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.actives);
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.fabrics);
@@ -89,13 +88,11 @@ static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_pnet_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pnet, "PMIx Network Operations",
-                                NULL, pmix_pnet_open, pmix_pnet_close,
-                                mca_pnet_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pnet, "PMIx Network Operations", NULL, pmix_pnet_open,
+                                pmix_pnet_close, mca_pnet_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-PMIX_CLASS_INSTANCE(pmix_pnet_base_active_module_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_pnet_base_active_module_t, pmix_list_item_t, NULL, NULL);
 
 static void ftcon(pmix_pnet_fabric_t *p)
 {
@@ -110,6 +107,4 @@ static void ftdes(pmix_pnet_fabric_t *p)
         free(p->name);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_pnet_fabric_t,
-                    pmix_list_item_t,
-                    ftcon, ftdes);
+PMIX_CLASS_INSTANCE(pmix_pnet_fabric_t, pmix_list_item_t, ftcon, ftdes);

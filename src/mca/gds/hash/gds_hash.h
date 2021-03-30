@@ -19,8 +19,8 @@
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
-#include "src/util/output.h"
 #include "src/util/name_fns.h"
+#include "src/util/output.h"
 
 #include "src/mca/gds/gds.h"
 
@@ -38,13 +38,12 @@ extern pmix_gds_base_module_t pmix_hash_module;
 
 /* Define a bitmask to track what information may not have
  * been provided but is computable from other info */
-#define PMIX_HASH_PROC_DATA     0x00000001
-#define PMIX_HASH_JOB_SIZE      0x00000002
-#define PMIX_HASH_MAX_PROCS     0x00000004
-#define PMIX_HASH_NUM_NODES     0x00000008
-#define PMIX_HASH_PROC_MAP      0x00000010
-#define PMIX_HASH_NODE_MAP      0x00000020
-
+#define PMIX_HASH_PROC_DATA 0x00000001
+#define PMIX_HASH_JOB_SIZE  0x00000002
+#define PMIX_HASH_MAX_PROCS 0x00000004
+#define PMIX_HASH_NUM_NODES 0x00000008
+#define PMIX_HASH_PROC_MAP  0x00000010
+#define PMIX_HASH_NODE_MAP  0x00000020
 
 /* struct definitions */
 typedef struct {
@@ -88,54 +87,38 @@ typedef struct {
 } pmix_nodeinfo_t;
 PMIX_CLASS_DECLARATION(pmix_nodeinfo_t);
 
-extern pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val,
-                                                      pmix_list_t *tgt);
+extern pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *tgt);
 
-extern pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val,
-                                                     pmix_job_t *trk);
+extern pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk);
 
-extern pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info,
-                                                     pmix_job_t *trk,
-                                                     uint32_t *flags,
-                                                     char ***procs,
-                                                     char ***nodes);
+extern pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk,
+                                                     uint32_t *flags, char ***procs, char ***nodes);
 
-extern pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val,
-                                                         pmix_job_t *trk);
+extern pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t *trk);
 
-extern pmix_job_t* pmix_gds_hash_get_tracker(const pmix_nspace_t nspace,
-                                             bool create);
+extern pmix_job_t *pmix_gds_hash_get_tracker(const pmix_nspace_t nspace, bool create);
 
 extern bool pmix_gds_hash_check_hostname(char *h1, char *h2);
 
-extern bool pmix_gds_hash_check_node(pmix_nodeinfo_t *n1,
-                                     pmix_nodeinfo_t *n2);
+extern bool pmix_gds_hash_check_node(pmix_nodeinfo_t *n1, pmix_nodeinfo_t *n2);
 
-extern bool pmix_gds_hash_check_nodename(pmix_nodeinfo_t *nptr,
-                                         char *hostname);
+extern bool pmix_gds_hash_check_nodename(pmix_nodeinfo_t *nptr, char *hostname);
 
-extern pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk,
-                                             char **nodes, char **ppn,
+extern pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                                              uint32_t flags);
 
-extern pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc,
-                                         pmix_scope_t scope, bool copy,
-                                         const char *key,
-                                         pmix_info_t qualifiers[], size_t nqual,
+extern pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, bool copy,
+                                         const char *key, pmix_info_t qualifiers[], size_t nqual,
                                          pmix_list_t *kvs);
 
 extern pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk,
-                                                  pmix_list_t *tgt,
-                                                  pmix_info_t *info, size_t ninfo,
+                                                  pmix_list_t *tgt, pmix_info_t *info, size_t ninfo,
                                                   pmix_list_t *kvs);
 
-extern pmix_status_t pmix_gds_hash_fetch_appinfo(const char *key, pmix_job_t *trk,
-                                                 pmix_list_t *tgt,
-                                                 pmix_info_t *info, size_t ninfo,
-                                                 pmix_list_t *kvs);
+extern pmix_status_t pmix_gds_hash_fetch_appinfo(const char *key, pmix_job_t *trk, pmix_list_t *tgt,
+                                                 pmix_info_t *info, size_t ninfo, pmix_list_t *kvs);
 
-extern pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
-                                         pmix_scope_t scope,
+extern pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc, pmix_scope_t scope,
                                          pmix_kval_t *kv);
 
 END_C_DECLS

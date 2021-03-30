@@ -4,6 +4,7 @@
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,8 +20,8 @@
 #include "src/include/pmix_config.h"
 
 #include "src/class/pmix_list.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/pstrg/pstrg.h"
 
@@ -61,7 +62,6 @@ PMIX_CLASS_DECLARATION(pmix_pstrg_query_results_t);
 PMIX_EXPORT pmix_status_t pmix_pstrg_base_query(pmix_query_t queries[], size_t nqueries,
                                                 pmix_list_t *results,
                                                 pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata);
-
 
 END_C_DECLS
 #endif

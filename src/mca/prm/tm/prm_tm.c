@@ -3,6 +3,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,24 +15,25 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #include <time.h>
 
 #include "include/pmix_common.h"
 
-#include "src/include/pmix_socket_errno.h"
-#include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"
+#include "src/include/pmix_socket_errno.h"
+#include "src/mca/preg/preg.h"
 #include "src/util/alfg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -39,27 +41,18 @@
 #include "src/util/parse_options.h"
 #include "src/util/pif.h"
 #include "src/util/pmix_environ.h"
-#include "src/mca/preg/preg.h"
 
-#include "src/mca/prm/base/base.h"
 #include "prm_tm.h"
+#include "src/mca/prm/base/base.h"
 
-static pmix_status_t tm_notify(pmix_status_t status,
-                               const pmix_proc_t *source,
-                               pmix_data_range_t range,
-                               const pmix_info_t info[], size_t ninfo,
+static pmix_status_t tm_notify(pmix_status_t status, const pmix_proc_t *source,
+                               pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-pmix_prm_module_t pmix_prm_tm_module = {
-    .name = "tm",
-    .notify = tm_notify
-};
+pmix_prm_module_t pmix_prm_tm_module = {.name = "tm", .notify = tm_notify};
 
-
-static pmix_status_t tm_notify(pmix_status_t status,
-                               const pmix_proc_t *source,
-                               pmix_data_range_t range,
-                               const pmix_info_t info[], size_t ninfo,
+static pmix_status_t tm_notify(pmix_status_t status, const pmix_proc_t *source,
+                               pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     return PMIX_ERR_NOT_SUPPORTED;

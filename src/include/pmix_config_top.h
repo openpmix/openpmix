@@ -2,6 +2,7 @@
  * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013-2015 Intel, Inc. All rights reserved
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +19,7 @@
  */
 
 #ifndef PMIX_CONFIG_H
-#error "pmix_config_top.h should only be included from config.h(.in)"
+#    error "pmix_config_top.h should only be included from config.h(.in)"
 #endif
 
 /* The only purpose of this file is to undef the PACKAGE_<foo> macros

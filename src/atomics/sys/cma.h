@@ -5,6 +5,7 @@
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  */
 
@@ -21,73 +22,63 @@
 
 #if !defined(PMIX_ASSEMBLY_ARCH)
 /* need pmix_config.h for the assembly architecture */
-#include "pmix_config.h"
+#    include "pmix_config.h"
 #endif
 
 #include "src/atomics/sys/architecture.h"
 
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 
 #ifdef HAVE_UNISTD_H
-#include <sys/unistd.h>
+#    include <sys/unistd.h>
 #endif
 
 #ifdef __linux__
 
 /* Cross Memory Attach is so far only supported under linux */
 
-#if PMIX_ASSEMBLY_ARCH == PMIX_X86_64
-#define __NR_process_vm_readv 310
-#define __NR_process_vm_writev 311
-#elif PMIX_ASSEMBLY_ARCH == PMIX_IA32
-#define __NR_process_vm_readv 347
-#define __NR_process_vm_writev 348
-#elif PMIX_ASSEMBLY_ARCH == PMIX_POWERPC32
-#define __NR_process_vm_readv 351
-#define __NR_process_vm_writev 352
-#elif PMIX_ASSEMBLY_ARCH == PMIX_POWERPC64
-#define __NR_process_vm_readv 351
-#define __NR_process_vm_writev 352
-#elif PMIX_ASSEMBLY_ARCH == PMIX_ARM
+#    if PMIX_ASSEMBLY_ARCH == PMIX_X86_64
+#        define __NR_process_vm_readv  310
+#        define __NR_process_vm_writev 311
+#    elif PMIX_ASSEMBLY_ARCH == PMIX_IA32
+#        define __NR_process_vm_readv  347
+#        define __NR_process_vm_writev 348
+#    elif PMIX_ASSEMBLY_ARCH == PMIX_POWERPC32
+#        define __NR_process_vm_readv  351
+#        define __NR_process_vm_writev 352
+#    elif PMIX_ASSEMBLY_ARCH == PMIX_POWERPC64
+#        define __NR_process_vm_readv  351
+#        define __NR_process_vm_writev 352
+#    elif PMIX_ASSEMBLY_ARCH == PMIX_ARM
 
-#define __NR_process_vm_readv 376
-#define __NR_process_vm_writev 377
+#        define __NR_process_vm_readv  376
+#        define __NR_process_vm_writev 377
 
-#elif PMIX_ASSEMBLY_ARCH == PMIX_ARM64
+#    elif PMIX_ASSEMBLY_ARCH == PMIX_ARM64
 
 /* ARM64 uses the asm-generic syscall numbers */
 
-#define __NR_process_vm_readv 270
-#define __NR_process_vm_writev 271
+#        define __NR_process_vm_readv  270
+#        define __NR_process_vm_writev 271
 
+#    else
+#        error "Unsupported architecture for process_vm_readv and process_vm_writev syscalls"
+#    endif
 
-#else
-#error "Unsupported architecture for process_vm_readv and process_vm_writev syscalls"
-#endif
-
-
-static inline ssize_t
-process_vm_readv(pid_t pid,
-                 const struct iovec  *lvec,
-                 unsigned long liovcnt,
-                 const struct iovec *rvec,
-                 unsigned long riovcnt,
-                 unsigned long flags)
+static inline ssize_t process_vm_readv(pid_t pid, const struct iovec *lvec, unsigned long liovcnt,
+                                       const struct iovec *rvec, unsigned long riovcnt,
+                                       unsigned long flags)
 {
-  return syscall(__NR_process_vm_readv, pid, lvec, liovcnt, rvec, riovcnt, flags);
+    return syscall(__NR_process_vm_readv, pid, lvec, liovcnt, rvec, riovcnt, flags);
 }
 
-static inline ssize_t
-process_vm_writev(pid_t pid,
-                  const struct iovec  *lvec,
-                  unsigned long liovcnt,
-                  const struct iovec *rvec,
-                  unsigned long riovcnt,
-                  unsigned long flags)
+static inline ssize_t process_vm_writev(pid_t pid, const struct iovec *lvec, unsigned long liovcnt,
+                                        const struct iovec *rvec, unsigned long riovcnt,
+                                        unsigned long flags)
 {
-  return syscall(__NR_process_vm_writev, pid, lvec, liovcnt, rvec, riovcnt, flags);
+    return syscall(__NR_process_vm_writev, pid, lvec, liovcnt, rvec, riovcnt, flags);
 }
 
 #endif /* __linux__ */

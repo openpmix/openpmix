@@ -28,21 +28,18 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
-#include <pmix_tool.h>
 #include "examples.h"
+#include <pmix_tool.h>
 
 static pmix_proc_t myproc = {"UNDEF", PMIX_RANK_UNDEF};
 
-static void querycbfunc(pmix_status_t status,
-                        pmix_info_t *info, size_t ninfo,
-                        void *cbdata,
-                        pmix_release_cbfunc_t release_fn,
-                        void *release_cbdata)
+static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                        pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    myquery_data_t *mq = (myquery_data_t*)cbdata;
+    myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
 
     mq->lock.status = status;
@@ -52,7 +49,7 @@ static void querycbfunc(pmix_status_t status,
     if (0 < ninfo) {
         PMIX_INFO_CREATE(mq->info, ninfo);
         mq->ninfo = ninfo;
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             PMIX_INFO_XFER(&mq->info[n], &info[n]);
         }
     }
@@ -73,13 +70,10 @@ static void querycbfunc(pmix_status_t status,
  * to declare a use-specific notification callback point. In this case,
  * we are asking to know whenever a job terminates, and we will then
  * know we can exit */
-static void release_fn(size_t evhdlr_registration_id,
-                       pmix_status_t status,
-                       const pmix_proc_t *source,
-                       pmix_info_t info[], size_t ninfo,
+static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
+                       const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                        pmix_info_t results[], size_t nresults,
-                       pmix_event_notification_cbfunc_fn_t cbfunc,
-                       void *cbdata)
+                       pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     myrel_t *lock;
     bool found;
@@ -90,9 +84,9 @@ static void release_fn(size_t evhdlr_registration_id,
     /* find the return object */
     lock = NULL;
     found = false;
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_EVENT_RETURN_OBJECT, PMIX_MAX_KEYLEN)) {
-            lock = (myrel_t*)info[n].value.data.ptr;
+            lock = (myrel_t *) info[n].value.data.ptr;
             /* not every RM will provide an exit code, but check if one was given */
         } else if (0 == strncmp(info[n].key, PMIX_EXIT_CODE, PMIX_MAX_KEYLEN)) {
             exit_code = info[n].value.data.integer;
@@ -135,20 +129,17 @@ static void release_fn(size_t evhdlr_registration_id,
  * to the registered event. The index is used later on to deregister
  * an event handler - if we don't explicitly deregister it, then the
  * PMIx server will do so when it see us exit */
-static void evhandler_reg_callbk(pmix_status_t status,
-                                 size_t evhandler_ref,
-                                 void *cbdata)
+static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
 
     if (PMIX_SUCCESS != status) {
         fprintf(stderr, "Client %s:%d EVENT HANDLER REGISTRATION FAILED WITH STATUS %d, ref=%lu\n",
-                   myproc.nspace, myproc.rank, status, (unsigned long)evhandler_ref);
+                myproc.nspace, myproc.rank, status, (unsigned long) evhandler_ref);
     }
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
-
 
 int main(int argc, char **argv)
 {
@@ -172,33 +163,33 @@ int main(int argc, char **argv)
     mylock_t mylock;
 
     gethostname(hostname, 1024);
-    for (n=1; n < (size_t)argc; n++) {
+    for (n = 1; n < (size_t) argc; n++) {
         if (0 == strcmp("-u", argv[n]) || 0 == strcmp("--url", argv[n])) {
-            if (NULL == argv[n+1]) {
+            if (NULL == argv[n + 1]) {
                 fprintf(stderr, "Must provide URI argument to %s option\n", argv[n]);
                 exit(1);
             }
-            server_uri = argv[n+1];
+            server_uri = argv[n + 1];
             ++n;
             ++ninfo;
         } else if (0 == strcmp("-nspace", argv[n]) || 0 == strcmp("--nspace", argv[n])) {
-            if (NULL == argv[n+1]) {
+            if (NULL == argv[n + 1]) {
                 fprintf(stderr, "Must provide nspace argument to %s option\n", argv[n]);
                 exit(1);
             }
-            nspace = argv[n+1];
+            nspace = argv[n + 1];
             ++n;
         } else if (0 == strcmp("-uri", argv[n]) || 0 == strcmp("--uri", argv[n])) {
             /* retrieve the PMIx server's uri from the indicated node */
-            nodename = argv[n+1];
+            nodename = argv[n + 1];
             geturi = true;
             ++n;
         } else if (0 == strcmp("-spawn", argv[n]) || 0 == strcmp("--spawn", argv[n])) {
-            if (NULL == argv[n+1]) {
+            if (NULL == argv[n + 1]) {
                 fprintf(stderr, "Must provide executable argument to %s option\n", argv[n]);
                 exit(1);
             }
-            spawn = argv[n+1];
+            spawn = argv[n + 1];
             ++n;
             ninfo += 2;
         }
@@ -236,8 +227,9 @@ int main(int argc, char **argv)
             PMIX_INFO_LOAD(&query[0].qualifiers[0], PMIX_HOSTNAME, nodename, PMIX_STRING);
         }
         DEBUG_CONSTRUCT_MYQUERY(&mydata);
-        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&mydata))) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace, myproc.rank, rc);
+        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void *) &mydata))) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace,
+                    myproc.rank, rc);
             goto done;
         }
         DEBUG_WAIT_THREAD(&mydata.lock);
@@ -246,10 +238,10 @@ int main(int argc, char **argv)
             /* should be in the first key */
             if (PMIX_CHECK_KEY(&mydata.info[0], PMIX_SERVER_URI)) {
                 fprintf(stderr, "PMIx server URI for node %s: %s\n",
-                        (NULL == nodename) ? hostname : nodename,
-                        mydata.info[0].value.data.string);
+                        (NULL == nodename) ? hostname : nodename, mydata.info[0].value.data.string);
             } else {
-                fprintf(stderr, "Query returned wrong info key at first posn: %s\n", mydata.info[0].key);
+                fprintf(stderr, "Query returned wrong info key at first posn: %s\n",
+                        mydata.info[0].key);
             }
         } else {
             fprintf(stderr, "Query returned error: %s\n", PMIx_Error_string(mydata.lock.status));
@@ -270,8 +262,8 @@ int main(int argc, char **argv)
         PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &proc, PMIX_PROC);
 
         DEBUG_CONSTRUCT_LOCK(&mylock);
-        PMIx_Register_event_handler(&code, 1, info, 2,
-                                    release_fn, evhandler_reg_callbk, (void*)&mylock);
+        PMIx_Register_event_handler(&code, 1, info, 2, release_fn, evhandler_reg_callbk,
+                                    (void *) &mylock);
         DEBUG_WAIT_THREAD(&mylock);
         rc = mylock.status;
         DEBUG_DESTRUCT_LOCK(&mylock);
@@ -297,8 +289,9 @@ int main(int argc, char **argv)
         PMIX_QUERY_CREATE(query, nq);
         PMIX_ARGV_APPEND(rc, query[0].keys, PMIX_QUERY_NAMESPACE_INFO);
         DEBUG_CONSTRUCT_MYQUERY(&mydata);
-        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&mydata))) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace, myproc.rank, rc);
+        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void *) &mydata))) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace,
+                    myproc.rank, rc);
             goto done;
         }
         DEBUG_WAIT_THREAD(&mydata.lock);
@@ -311,18 +304,19 @@ int main(int argc, char **argv)
                 if (NULL == darray || 0 == darray->size || NULL == darray->array) {
                     fprintf(stderr, "\tNone\n");
                 } else {
-                    info = (pmix_info_t*)darray->array;
+                    info = (pmix_info_t *) darray->array;
                     if (NULL == info) {
                         fprintf(stderr, "Error\n");
                     } else {
-                        for (n=0; n < darray->size; n++) {
+                        for (n = 0; n < darray->size; n++) {
                             dptr = info[n].value.data.darray;
                             if (NULL == dptr || 0 == dptr->size || NULL == dptr->array) {
-                                fprintf(stderr, "Error in array %s\n", (NULL == dptr) ? "NULL" : "NON-NULL");
+                                fprintf(stderr, "Error in array %s\n",
+                                        (NULL == dptr) ? "NULL" : "NON-NULL");
                                 break;
                             }
-                            iptr = (pmix_info_t*)dptr->array;
-                            for (m=0; m < dptr->size; m++) {
+                            iptr = (pmix_info_t *) dptr->array;
+                            for (m = 0; m < dptr->size; m++) {
                                 fprintf(stderr, "\t%s", iptr[m].value.data.string);
                             }
                             fprintf(stderr, "\n");
@@ -330,7 +324,8 @@ int main(int argc, char **argv)
                     }
                 }
             } else {
-                fprintf(stderr, "Query returned wrong info key at first posn: %s\n", mydata.info[0].key);
+                fprintf(stderr, "Query returned wrong info key at first posn: %s\n",
+                        mydata.info[0].key);
             }
         } else {
             fprintf(stderr, "Query returned error: %s\n", PMIx_Error_string(mydata.lock.status));
@@ -344,8 +339,9 @@ int main(int argc, char **argv)
         query[0].nqual = 1;
         PMIX_INFO_LOAD(&query[0].qualifiers[0], PMIX_NSPACE, nspace, PMIX_STRING);
         DEBUG_CONSTRUCT_MYQUERY(&mydata);
-        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void*)&mydata))) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace, myproc.rank, rc);
+        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void *) &mydata))) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace,
+                    myproc.rank, rc);
             goto done;
         }
         DEBUG_WAIT_THREAD(&mydata.lock);
@@ -353,9 +349,11 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS == mydata.lock.status) {
             /* should be in the first key */
             if (PMIX_CHECK_KEY(&mydata.info[0], PMIX_JOB_SIZE)) {
-                fprintf(stderr, "JOB SIZE FOR NSPACE %s: %lu\n", nspace, (unsigned long)mydata.info[0].value.data.uint32);
+                fprintf(stderr, "JOB SIZE FOR NSPACE %s: %lu\n", nspace,
+                        (unsigned long) mydata.info[0].value.data.uint32);
             } else {
-                fprintf(stderr, "Query returned wrong info key at first posn: %s\n", mydata.info[0].key);
+                fprintf(stderr, "Query returned wrong info key at first posn: %s\n",
+                        mydata.info[0].key);
             }
         } else {
             fprintf(stderr, "Query returned error: %s\n", PMIx_Error_string(mydata.lock.status));
@@ -363,8 +361,8 @@ int main(int argc, char **argv)
         DEBUG_DESTRUCT_MYQUERY(&mydata);
     }
 
- done:
+done:
     /* finalize us */
     PMIx_tool_finalize();
-    return(rc);
+    return (rc);
 }

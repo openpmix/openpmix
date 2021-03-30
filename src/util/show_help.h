@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -104,14 +105,12 @@ BEGIN_C_DECLS
  */
 PMIX_EXPORT int pmix_show_help_init(void);
 
-
 /**
  * \internal
  *
  * Finalization of show_help subsystem
  */
 PMIX_EXPORT int pmix_show_help_finalize(void);
-
 
 /**
  * Look up a text message in a text file and display it to the
@@ -135,30 +134,27 @@ PMIX_EXPORT int pmix_show_help_finalize(void);
  * promotion to va_start() has undefined behavior (according to clang
  * warnings on MacOS High Sierra).
  */
-PMIX_EXPORT int pmix_show_help(const char *filename, const char *topic,
-                               int want_error_header, ...);
+PMIX_EXPORT int pmix_show_help(const char *filename, const char *topic, int want_error_header, ...);
 
 /**
  * This function does the same thing as pmix_show_help(), but accepts
  * a va_list form of varargs.
  */
-PMIX_EXPORT int pmix_show_vhelp(const char *filename, const char *topic,
-                                int want_error_header, va_list ap);
+PMIX_EXPORT int pmix_show_vhelp(const char *filename, const char *topic, int want_error_header,
+                                va_list ap);
 
 /**
  * This function does the same thing as pmix_show_help(), but returns
  * its output in a string (that must be freed by the caller).
  */
-PMIX_EXPORT char* pmix_show_help_string(const char *filename,
-                                        const char *topic,
+PMIX_EXPORT char *pmix_show_help_string(const char *filename, const char *topic,
                                         int want_error_header, ...);
 
 /**
  * This function does the same thing as pmix_show_help_string(), but
  * accepts a va_list form of varargs.
  */
-PMIX_EXPORT char* pmix_show_help_vstring(const char *filename,
-                                         const char *topic,
+PMIX_EXPORT char *pmix_show_help_vstring(const char *filename, const char *topic,
                                          int want_error_header, va_list ap);
 
 /**

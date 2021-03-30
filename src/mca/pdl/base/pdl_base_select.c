@@ -5,6 +5,7 @@
  *
  * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
@@ -17,16 +18,15 @@
 #include "src/include/pmix_config.h"
 
 #ifdef HAVE_UNISTD_H
-#include "unistd.h"
+#    include "unistd.h"
 #endif
 
 #include "include/pmix_common.h"
-#include "src/util/output.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
-#include "src/mca/pdl/pdl.h"
+#include "src/mca/mca.h"
 #include "src/mca/pdl/base/base.h"
-
+#include "src/mca/pdl/pdl.h"
+#include "src/util/output.h"
 
 int pmix_pdl_base_select(void)
 {
@@ -37,11 +37,11 @@ int pmix_pdl_base_select(void)
     /*
      * Select the best component
      */
-    if (PMIX_SUCCESS != pmix_mca_base_select("pdl",
-                                             pmix_pdl_base_framework.framework_output,
-                                             &pmix_pdl_base_framework.framework_components,
-                                             (pmix_mca_base_module_t **) &best_module,
-                                             (pmix_mca_base_component_t **) &best_component, NULL) ) {
+    if (PMIX_SUCCESS
+        != pmix_mca_base_select("pdl", pmix_pdl_base_framework.framework_output,
+                                &pmix_pdl_base_framework.framework_components,
+                                (pmix_mca_base_module_t **) &best_module,
+                                (pmix_mca_base_component_t **) &best_component, NULL)) {
         /* This will only happen if no component was selected */
         exit_status = PMIX_ERROR;
         goto cleanup;
@@ -51,6 +51,6 @@ int pmix_pdl_base_select(void)
     pmix_pdl_base_selected_component = best_component;
     pmix_pdl = best_module;
 
- cleanup:
+cleanup:
     return exit_status;
 }

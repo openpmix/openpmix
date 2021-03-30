@@ -24,27 +24,25 @@
  * $HEADER$
  */
 
-
 #include "pmix_config.h"
 #include "include/pmix_common.h"
 #include "src/include/types.h"
 
-#include <string.h>
 #include <signal.h>
+#include <string.h>
 #ifdef HAVE_SYS_WAIT_H
-#include <sys/wait.h>
+#    include <sys/wait.h>
 #endif
 
-#include "src/mca/mca.h"
-#include "src/mca/base/base.h"
-#include "src/threads/threads.h"
-#include "src/include/pmix_globals.h"
-#include "src/common/pmix_iof.h"
 #include "src/client/pmix_client_ops.h"
+#include "src/common/pmix_iof.h"
+#include "src/include/pmix_globals.h"
+#include "src/mca/base/base.h"
+#include "src/mca/mca.h"
+#include "src/threads/threads.h"
 #include "src/util/error.h"
 
 #include "src/mca/pfexec/base/base.h"
-
 
 /*
  * The following file was created by configure.  It contains extern
@@ -80,9 +78,9 @@ static int pmix_pfexec_base_close(void)
 /* callback from the event library whenever a SIGCHLD is received */
 static void wait_signal_callback(int fd, short event, void *arg)
 {
-    (void)fd;
-    (void)event;
-    pmix_event_t *signal = (pmix_event_t*) arg;
+    (void) fd;
+    (void) event;
+    pmix_event_t *signal = (pmix_event_t *) arg;
     int status;
     pid_t pid;
     pmix_pfexec_child_t *child;
@@ -111,7 +109,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
         }
 
         /* we are already in an event, so it is safe to access globals */
-        PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+        PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
             if (pid == child->pid) {
                 /* record the exit status */
                 if (WIFEXITED(status)) {
@@ -123,8 +121,8 @@ static void wait_signal_callback(int fd, short event, void *arg)
                 }
                 /* mark the child as complete */
                 child->completed = true;
-                if ((NULL == child->stdoutev || !child->stdoutev->active) &&
-                    (NULL == child->stderrev || !child->stderrev->active)) {
+                if ((NULL == child->stdoutev || !child->stdoutev->active)
+                    && (NULL == child->stderrev || !child->stderrev->active)) {
                     PMIX_PFEXEC_CHK_COMPLETE(child);
                 }
                 break;
@@ -135,9 +133,9 @@ static void wait_signal_callback(int fd, short event, void *arg)
 
 void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
 {
-    (void)sd;
-    (void)args;
-    pmix_pfexec_cmpl_caddy_t *cd = (pmix_pfexec_cmpl_caddy_t*)cbdata;
+    (void) sd;
+    (void) args;
+    pmix_pfexec_cmpl_caddy_t *cd = (pmix_pfexec_cmpl_caddy_t *) cbdata;
     pmix_info_t info[2];
     pmix_status_t rc;
     pmix_pfexec_child_t *child;
@@ -146,7 +144,7 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
 
     pmix_list_remove_item(&pmix_pfexec_globals.children, &cd->child->super);
     /* see if any more children from this nspace are alive */
-    PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+    PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
         if (PMIX_CHECK_NSPACE(child->proc.nspace, cd->child->proc.nspace)) {
             stillalive = true;
         }
@@ -156,8 +154,7 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
         PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
         PMIX_LOAD_NSPACE(wildcard.nspace, cd->child->proc.nspace);
         PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &wildcard, PMIX_PROC);
-        rc = PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED,
-                               &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
+        rc = PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
                                info, 2, NULL, NULL);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -169,14 +166,13 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
 
 static int pmix_pfexec_register(pmix_mca_base_register_flag_t flags)
 {
-    (void)flags;
+    (void) flags;
     pmix_pfexec_globals.timeout_before_sigkill = 1;
-    pmix_mca_base_var_register("pmix", "pfexec", "base", "sigkill_timeout",
-                                 "Time to wait for a process to die after issuing a kill signal to it",
-                               PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                               PMIX_INFO_LVL_2,
-                               PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                               &pmix_pfexec_globals.timeout_before_sigkill);
+    pmix_mca_base_var_register(
+        "pmix", "pfexec", "base", "sigkill_timeout",
+        "Time to wait for a process to die after issuing a kill signal to it",
+        PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
+        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_pfexec_globals.timeout_before_sigkill);
     return PMIX_SUCCESS;
 }
 
@@ -206,23 +202,21 @@ static int pmix_pfexec_base_open(pmix_mca_base_open_flag_t flags)
     }
 
     /* set to catch SIGCHLD events */
-    pmix_pfexec_globals.handler = (pmix_event_t*)malloc(sizeof(pmix_event_t));
-    pmix_event_set(pmix_globals.evbase,
-                   pmix_pfexec_globals.handler,
-                   SIGCHLD, PMIX_EV_SIGNAL|PMIX_EV_PERSIST,
-                   wait_signal_callback,
+    pmix_pfexec_globals.handler = (pmix_event_t *) malloc(sizeof(pmix_event_t));
+    pmix_event_set(pmix_globals.evbase, pmix_pfexec_globals.handler, SIGCHLD,
+                   PMIX_EV_SIGNAL | PMIX_EV_PERSIST, wait_signal_callback,
                    pmix_pfexec_globals.handler);
     pmix_pfexec_globals.active = true;
     pmix_event_add(pmix_pfexec_globals.handler, NULL);
 
-     /* Open up all available components */
+    /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_pfexec_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pfexec, "PMIx fork/exec Subsystem",
-                                pmix_pfexec_register, pmix_pfexec_base_open, pmix_pfexec_base_close,
-                                mca_pfexec_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
-
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pfexec, "PMIx fork/exec Subsystem", pmix_pfexec_register,
+                                pmix_pfexec_base_open, pmix_pfexec_base_close,
+                                mca_pfexec_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 /**** FRAMEWORK CLASS INSTANTIATIONS ****/
 
@@ -259,9 +253,7 @@ static void chdes(pmix_pfexec_child_t *p)
         close(p->keepalive[1]);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_pfexec_child_t,
-                    pmix_list_item_t,
-                    chcon, chdes);
+PMIX_CLASS_INSTANCE(pmix_pfexec_child_t, pmix_list_item_t, chcon, chdes);
 
 static void fccon(pmix_pfexec_fork_caddy_t *p)
 {
@@ -273,14 +265,8 @@ static void fccon(pmix_pfexec_fork_caddy_t *p)
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
-PMIX_CLASS_INSTANCE(pmix_pfexec_fork_caddy_t,
-                    pmix_object_t,
-                    fccon, NULL);
+PMIX_CLASS_INSTANCE(pmix_pfexec_fork_caddy_t, pmix_object_t, fccon, NULL);
 
-PMIX_CLASS_INSTANCE(pmix_pfexec_signal_caddy_t,
-                    pmix_object_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_pfexec_signal_caddy_t, pmix_object_t, NULL, NULL);
 
-PMIX_CLASS_INSTANCE(pmix_pfexec_cmpl_caddy_t,
-                    pmix_object_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_pfexec_cmpl_caddy_t, pmix_object_t, NULL, NULL);

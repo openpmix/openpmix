@@ -13,6 +13,7 @@
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,14 +23,13 @@
 
 #include "src/include/pmix_config.h"
 
-
 #include <stdlib.h>
 #ifdef HAVE_STRING_H
-#include <string.h>
-#endif  /* HAVE_STRING_H */
+#    include <string.h>
+#endif /* HAVE_STRING_H */
 #ifdef HAVE_LIBGEN_H
-#include <libgen.h>
-#endif  /* HAVE_LIBGEN_H */
+#    include <libgen.h>
+#endif /* HAVE_LIBGEN_H */
 
 #include "src/util/basename.h"
 #include "src/util/os_path.h"
@@ -41,22 +41,22 @@
  * of characters.
  * If the last character on the string is a path separator, it will be skipped.
  */
-static inline char* pmix_find_last_path_separator( const char* filename, size_t n )
+static inline char *pmix_find_last_path_separator(const char *filename, size_t n)
 {
-    char* p = (char*)filename + n;
+    char *p = (char *) filename + n;
 
     /* First skip the latest separators */
-    for ( ; p >= filename; p-- ) {
-        if( *p != PMIX_PATH_SEP[0] )
+    for (; p >= filename; p--) {
+        if (*p != PMIX_PATH_SEP[0])
             break;
     }
 
-    for ( ; p >= filename; p-- ) {
-        if( *p == PMIX_PATH_SEP[0] )
+    for (; p >= filename; p--) {
+        if (*p == PMIX_PATH_SEP[0])
             return p;
     }
 
-    return NULL;  /* nothing found inside the filename */
+    return NULL; /* nothing found inside the filename */
 }
 
 char *pmix_basename(const char *filename)
@@ -91,7 +91,7 @@ char *pmix_basename(const char *filename)
     }
 
     /* Look for the final sep */
-    ret = pmix_find_last_path_separator( tmp, strlen(tmp) );
+    ret = pmix_find_last_path_separator(tmp, strlen(tmp));
     if (NULL == ret) {
         return tmp;
     }
@@ -100,36 +100,36 @@ char *pmix_basename(const char *filename)
     return ret;
 }
 
-char* pmix_dirname(const char* filename)
+char *pmix_dirname(const char *filename)
 {
 #if defined(HAVE_DIRNAME) || PMIX_HAVE_DIRNAME
-    char* safe_tmp = strdup(filename), *result;
+    char *safe_tmp = strdup(filename), *result;
     result = strdup(dirname(safe_tmp));
     free(safe_tmp);
     return result;
 #else
-    const char* p = pmix_find_last_path_separator(filename, strlen(filename));
+    const char *p = pmix_find_last_path_separator(filename, strlen(filename));
     /* NOTE: p will be NULL if no path separator was in the filename - i.e.,
      * if filename is just a local file */
 
-    for( ; NULL != p && p != filename; p-- ) {
-        if( (*p == '\\') || (*p == '/') ) {
+    for (; NULL != p && p != filename; p--) {
+        if ((*p == '\\') || (*p == '/')) {
             /* If there are several delimiters remove them all */
-            for( --p; p != filename; p-- ) {
-                if( (*p != '\\') && (*p != '/') ) {
+            for (--p; p != filename; p--) {
+                if ((*p != '\\') && (*p != '/')) {
                     p++;
                     break;
                 }
             }
-            if( p != filename ) {
-                char* ret = (char*)malloc( p - filename + 1 );
+            if (p != filename) {
+                char *ret = (char *) malloc(p - filename + 1);
                 pmix_strncpy(ret, filename, p - filename);
                 ret[p - filename] = '\0';
                 return pmix_make_filename_os_friendly(ret);
             }
-            break;  /* return the duplicate of "." */
+            break; /* return the duplicate of "." */
         }
     }
     return strdup(".");
-#endif  /* defined(HAVE_DIRNAME) || PMIX_HAVE_DIRNAME */
+#endif /* defined(HAVE_DIRNAME) || PMIX_HAVE_DIRNAME */
 }

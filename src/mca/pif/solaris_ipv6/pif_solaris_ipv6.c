@@ -4,6 +4,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,29 +17,29 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #include <errno.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_SOCKIO_H
-#include <sys/sockio.h>
+#    include <sys/sockio.h>
 #endif
 #ifdef HAVE_SYS_IOCTL_H
-#include <sys/ioctl.h>
+#    include <sys/ioctl.h>
 #endif
 #ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
+#    include <netinet/in.h>
 #endif
 #ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
+#    include <arpa/inet.h>
 #endif
 #ifdef HAVE_NET_IF_H
-#if defined(__APPLE__) && defined(_LP64)
+#    if defined(__APPLE__) && defined(_LP64)
 /* Apple engineering suggested using options align=power as a
    workaround for a bug in OS X 10.4 (Tiger) that prevented ioctl(...,
    SIOCGIFCONF, ...) from working properly in 64 bit mode on Power PC.
@@ -49,24 +50,24 @@
    pack pragma to instruct the compiler to pack on 4 byte words, which
    has the same effect as align=power for our needs and works on both
    Intel and Power PC Macs. */
-#pragma pack(push,4)
-#endif
-#include <net/if.h>
-#if defined(__APPLE__) && defined(_LP64)
-#pragma pack(pop)
-#endif
+#        pragma pack(push, 4)
+#    endif
+#    include <net/if.h>
+#    if defined(__APPLE__) && defined(_LP64)
+#        pragma pack(pop)
+#    endif
 #endif
 #ifdef HAVE_NETDB_H
-#include <netdb.h>
+#    include <netdb.h>
 #endif
 #ifdef HAVE_IFADDRS_H
-#include <ifaddrs.h>
+#    include <ifaddrs.h>
 #endif
 
+#include "src/mca/pif/base/base.h"
+#include "src/mca/pif/pif.h"
 #include "src/util/output.h"
 #include "src/util/pif.h"
-#include "src/mca/pif/pif.h"
-#include "src/mca/pif/base/base.h"
 
 static int if_solaris_ipv6_open(void);
 
@@ -104,9 +105,9 @@ static int if_solaris_ipv6_open(void)
     struct lifconf lifconf;
     struct lifreq *lifreq, lifquery;
 
-    sd = socket (AF_INET6, SOCK_DGRAM, 0);
+    sd = socket(AF_INET6, SOCK_DGRAM, 0);
     if (sd < 0) {
-        pmix_output (0, "pmix_ifinit: unable to open IPv6 socket\n");
+        pmix_output(0, "pmix_ifinit: unable to open IPv6 socket\n");
         return PMIX_ERROR;
     }
 
@@ -116,58 +117,52 @@ static int if_solaris_ipv6_open(void)
     lifnum.lifn_count = 0;
 
     /* get the number of interfaces in the system */
-    error = ioctl (sd, SIOCGLIFNUM, &lifnum);
+    error = ioctl(sd, SIOCGLIFNUM, &lifnum);
     if (error < 0) {
-        pmix_output (0,
-                     "pmix_ifinit: ioctl SIOCGLIFNUM failed with errno=%d\n", errno);
+        pmix_output(0, "pmix_ifinit: ioctl SIOCGLIFNUM failed with errno=%d\n", errno);
         return PMIX_ERROR;
     }
 
-    memset (&lifconf, 0, sizeof (struct lifconf));
-    memset (&lifquery, 0, sizeof (struct lifreq));
+    memset(&lifconf, 0, sizeof(struct lifconf));
+    memset(&lifquery, 0, sizeof(struct lifreq));
     lifconf.lifc_family = AF_INET6;
     lifconf.lifc_flags = 0;
-    lifconf.lifc_len = lifnum.lifn_count * sizeof (struct lifreq) * 2;
-    lifconf.lifc_buf = malloc (lifconf.lifc_len);
+    lifconf.lifc_len = lifnum.lifn_count * sizeof(struct lifreq) * 2;
+    lifconf.lifc_buf = malloc(lifconf.lifc_len);
     if (NULL == lifconf.lifc_buf) {
-        pmix_output (0, "pmix_ifinit: IPv6 discovery: malloc() failed\n");
+        pmix_output(0, "pmix_ifinit: IPv6 discovery: malloc() failed\n");
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    memset (lifconf.lifc_buf, 0, lifconf.lifc_len);
+    memset(lifconf.lifc_buf, 0, lifconf.lifc_len);
 
-    error = ioctl (sd, SIOCGLIFCONF, &lifconf);
+    error = ioctl(sd, SIOCGLIFCONF, &lifconf);
     if (error < 0) {
-        pmix_output (0,
-                     "pmix_ifinit: IPv6 SIOCGLIFCONF failed with errno=%d\n", errno);
+        pmix_output(0, "pmix_ifinit: IPv6 SIOCGLIFCONF failed with errno=%d\n", errno);
     }
 
-    for (i = 0; i + sizeof (struct lifreq) <= lifconf.lifc_len;
-         i += sizeof (*lifreq)) {
+    for (i = 0; i + sizeof(struct lifreq) <= lifconf.lifc_len; i += sizeof(*lifreq)) {
 
-        lifreq = (struct lifreq *)((caddr_t)lifconf.lifc_buf + i);
-        pmix_strncpy (lifquery.lifr_name, lifreq->lifr_name,
-                 sizeof (lifquery.lifr_name)-1);
+        lifreq = (struct lifreq *) ((caddr_t) lifconf.lifc_buf + i);
+        pmix_strncpy(lifquery.lifr_name, lifreq->lifr_name, sizeof(lifquery.lifr_name) - 1);
 
         /* lookup kernel index */
-        error = ioctl (sd, SIOCGLIFINDEX, &lifquery);
+        error = ioctl(sd, SIOCGLIFINDEX, &lifquery);
         if (error < 0) {
-            pmix_output (0,
-                         "pmix_ifinit: SIOCGLIFINDEX failed with errno=%d\n", errno);
+            pmix_output(0, "pmix_ifinit: SIOCGLIFINDEX failed with errno=%d\n", errno);
             return PMIX_ERROR;
         }
         kindex = lifquery.lifr_index;
 
         /* lookup interface flags */
-        error = ioctl (sd, SIOCGLIFFLAGS, &lifquery);
+        error = ioctl(sd, SIOCGLIFFLAGS, &lifquery);
         if (error < 0) {
-            pmix_output (0,
-                         "pmix_ifinit: SIOCGLIFFLAGS failed with errno=%d\n", errno);
+            pmix_output(0, "pmix_ifinit: SIOCGLIFFLAGS failed with errno=%d\n", errno);
             return PMIX_ERROR;
         }
 
         if (AF_INET6 == lifreq->lifr_addr.ss_family) {
-            struct sockaddr_in6* my_addr = (struct sockaddr_in6*) &lifreq->lifr_addr;
+            struct sockaddr_in6 *my_addr = (struct sockaddr_in6 *) &lifreq->lifr_addr;
             /* we surely want to check for sin6_scope_id, but Solaris
                does not set it correctly, so we have to look for
                global scope. For now, global is anything which is
@@ -176,36 +171,34 @@ static int if_solaris_ipv6_open(void)
                Bug, FIXME: site-local, multicast, ... missing
                Check for 2000::/3?
             */
-            if ( (!pmix_if_retain_loopback && !IN6_IS_ADDR_LOOPBACK (&my_addr->sin6_addr)) &&
-                 (! IN6_IS_ADDR_LINKLOCAL (&my_addr->sin6_addr))) {
+            if ((!pmix_if_retain_loopback && !IN6_IS_ADDR_LOOPBACK(&my_addr->sin6_addr))
+                && (!IN6_IS_ADDR_LINKLOCAL(&my_addr->sin6_addr))) {
                 /* create interface for newly found address */
                 pmix_pif_t *intf;
 
                 intf = PMIX_NEW(pmix_pif_t);
                 if (NULL == intf) {
-                    pmix_output (0,
-                                 "pmix_ifinit: unable to allocate %d bytes\n",
-                                 sizeof (pmix_pif_t));
+                    pmix_output(0, "pmix_ifinit: unable to allocate %d bytes\n",
+                                sizeof(pmix_pif_t));
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
                 intf->af_family = AF_INET6;
 
-                pmix_strncpy (intf->if_name, lifreq->lifr_name, PMIX_IF_NAMESIZE-1);
-                intf->if_index = pmix_list_get_size(&pmix_if_list)+1;
-                memcpy(&intf->if_addr, my_addr, sizeof (*my_addr));
+                pmix_strncpy(intf->if_name, lifreq->lifr_name, PMIX_IF_NAMESIZE - 1);
+                intf->if_index = pmix_list_get_size(&pmix_if_list) + 1;
+                memcpy(&intf->if_addr, my_addr, sizeof(*my_addr));
                 intf->if_mask = 64;
                 /* lifrq flags are uint64_t */
-                intf->if_flags =
-                    (uint32_t)(0x00000000ffffffff) & lifquery.lifr_flags;
+                intf->if_flags = (uint32_t)(0x00000000ffffffff) & lifquery.lifr_flags;
 
                 /* append to list */
-                pmix_list_append (&pmix_if_list, &(intf->super));
+                pmix_list_append(&pmix_if_list, &(intf->super));
             }
         }
     } /* for */
 
     if (NULL != lifconf.lifc_buf) {
-        free (lifconf.lifc_buf);
+        free(lifconf.lifc_buf);
     }
 
     return PMIX_SUCCESS;

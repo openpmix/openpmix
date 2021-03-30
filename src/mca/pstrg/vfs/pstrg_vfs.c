@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,50 +14,46 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #include <time.h>
 
 #include "include/pmix_common.h"
 
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/class/pmix_list.h"
-#include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"
-#include "src/class/pmix_list.h"
+#include "src/include/pmix_socket_errno.h"
+#include "src/mca/base/pmix_mca_base_var.h"
+#include "src/mca/preg/preg.h"
 #include "src/util/alfg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/printf.h"
-#include "src/mca/preg/preg.h"
 
-#include "src/mca/pstrg/pstrg.h"
-#include "src/mca/pstrg/base/base.h"
 #include "pstrg_vfs.h"
+#include "src/mca/pstrg/base/base.h"
+#include "src/mca/pstrg/pstrg.h"
 
 static pmix_status_t vfs_init(void);
 static void vfs_finalize(void);
-static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
-                           pmix_list_t *results,
+static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t *results,
                            pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata);
 
-pmix_pstrg_base_module_t pmix_pstrg_vfs_module = {
-    .name = "vfs",
-    .init = vfs_init,
-    .finalize = vfs_finalize,
-    .query = query
-};
+pmix_pstrg_base_module_t pmix_pstrg_vfs_module = {.name = "vfs",
+                                                  .init = vfs_init,
+                                                  .finalize = vfs_finalize,
+                                                  .query = query};
 
 #if 0
 
@@ -85,8 +82,7 @@ static vfs_storage_t availsys[] = {
 
 static pmix_status_t vfs_init(void)
 {
-    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output,
-                        "pstrg: vfs init");
+    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output, "pstrg: vfs init");
 
     /* ADD HERE:
      *
@@ -98,8 +94,7 @@ static pmix_status_t vfs_init(void)
 
 static void vfs_finalize(void)
 {
-    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output,
-                        "pstrg: vfs finalize");
+    pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output, "pstrg: vfs finalize");
 
     /* ADD HERE:
      *
@@ -107,8 +102,7 @@ static void vfs_finalize(void)
      */
 }
 
-static pmix_status_t query(pmix_query_t queries[], size_t nqueries,
-                           pmix_list_t *results,
+static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t *results,
                            pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata)
 {
 #if 0

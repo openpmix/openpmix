@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,8 +27,8 @@
 
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/util/cmd_line.h"
 #include "src/mca/mca.h"
+#include "src/util/cmd_line.h"
 
 BEGIN_C_DECLS
 
@@ -41,7 +42,6 @@ extern pmix_cmd_line_t *pmix_info_cmd_line;
 extern const char *pmix_info_type_base;
 
 extern pmix_pointer_array_t mca_types;
-
 
 /*
  * Parameter/configuration-related functions

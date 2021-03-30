@@ -19,6 +19,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      Mellanox Technologies Ltd. All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,44 +27,45 @@
  * $HEADER$
  */
 
-
 #include "pmix_config.h"
 
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #include <errno.h>
 #include <sys/types.h>
 #ifdef HAVE_SYS_WAIT_H
-#include <sys/wait.h>
+#    include <sys/wait.h>
 #endif
 #include <signal.h>
 #ifdef HAVE_UTIL_H
-#include <util.h>
+#    include <util.h>
 #endif
 #ifdef HAVE_PTY_H
-#include <pty.h>
+#    include <pty.h>
 #endif
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #ifdef HAVE_TERMIOS_H
-#include <termios.h>
-# ifdef HAVE_TERMIO_H
-#  include <termio.h>
-# endif
+#    include <termios.h>
+#    ifdef HAVE_TERMIO_H
+#        include <termio.h>
+#    endif
 #endif
 #ifdef HAVE_LIBUTIL_H
-#include <libutil.h>
+#    include <libutil.h>
 #endif
 
 #include "include/pmix.h"
-#include "include/pmix_server.h"
 #include "include/pmix_common.h"
+#include "include/pmix_server.h"
 
-#include "src/include/pmix_stdint.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_stdint.h"
+#include "src/mca/gds/base/base.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
 #include "src/util/context_fns.h"
@@ -76,17 +78,13 @@
 #include "src/util/pmix_pty.h"
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
-#include "src/mca/gds/base/base.h"
-#include "src/mca/ptl/base/base.h"
 
 #include "src/client/pmix_client_ops.h"
-#include "src/server/pmix_server_ops.h"
 #include "src/mca/pfexec/base/base.h"
+#include "src/server/pmix_server_ops.h"
 
 static pmix_status_t setup_prefork(pmix_pfexec_child_t *child);
-static pmix_status_t register_nspace(char *nspace,
-                                     pmix_pfexec_fork_caddy_t *fcd);
-
+static pmix_status_t register_nspace(char *nspace, pmix_pfexec_fork_caddy_t *fcd);
 
 static pmix_status_t setup_path(pmix_app_t *app)
 {
@@ -127,12 +125,11 @@ static pmix_status_t setup_path(pmix_app_t *app)
     return rc;
 }
 
-
 void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 {
-    (void)sd;
-    (void)args;
-    pmix_pfexec_fork_caddy_t *fcd = (pmix_pfexec_fork_caddy_t*)cbdata;
+    (void) sd;
+    (void) args;
+    pmix_pfexec_fork_caddy_t *fcd = (pmix_pfexec_fork_caddy_t *) cbdata;
     pmix_app_t *app;
     int i, n;
     size_t m, k;
@@ -143,12 +140,11 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     pmix_pfexec_child_t *child;
     pmix_rank_info_t *info;
     pmix_namespace_t *nptr;
-    pmix_rank_t rank=0;
+    pmix_rank_t rank = 0;
     char tmp[2048], *ptr;
     bool nohup = false;
 
-    pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
-                        "%s pfexec:base spawn proc",
+    pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output, "%s pfexec:base spawn proc",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* establish our baseline working directory - we will be potentially
@@ -162,7 +158,8 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
     /* create a namespace for the new job */
     memset(tmp, 0, 2048);
-    (void)snprintf(tmp, 2047, "%s:%lu", pmix_globals.myid.nspace, (unsigned long)pmix_pfexec_globals.nextid);
+    (void) snprintf(tmp, 2047, "%s:%lu", pmix_globals.myid.nspace,
+                    (unsigned long) pmix_pfexec_globals.nextid);
     PMIX_LOAD_NSPACE(nspace, tmp);
     ++pmix_pfexec_globals.nextid;
 
@@ -180,7 +177,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
         goto complete;
     }
 
-    for (k=0; k < fcd->njinfo; k++) {
+    for (k = 0; k < fcd->njinfo; k++) {
         if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_SET_ENVAR)) {
 
         } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_ADD_ENVAR)) {
@@ -195,25 +192,25 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
     /* cycle across the apps to prep their environment and
      * launch their procs */
-    for (m=0; m < fcd->napps; m++) {
-        app = (pmix_app_t*)&fcd->apps[m];
+    for (m = 0; m < fcd->napps; m++) {
+        app = (pmix_app_t *) &fcd->apps[m];
 
         /* merge our launch environment into the app's */
-        for (i=0; NULL != environ[i]; i++) {
+        for (i = 0; NULL != environ[i]; i++) {
             ptr = strchr(environ[i], '=');
             if (NULL == ptr) {
                 continue;
             }
             *ptr = '\0';
             ++ptr;
-            pmix_setenv(environ[i], ptr, false, &app->env);  // do not overwrite a given value
+            pmix_setenv(environ[i], ptr, false, &app->env); // do not overwrite a given value
             --ptr;
             *ptr = '=';
         }
 
         /* process any job-info */
         if (NULL != fcd->jobinfo) {
-            for (k=0; k < fcd->njinfo; k++) {
+            for (k = 0; k < fcd->njinfo; k++) {
                 if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_SET_ENVAR)) {
 
                 } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_ADD_ENVAR)) {
@@ -229,13 +226,13 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
         /* check for a fork/exec agent we should use */
         if (NULL != app->info) {
-            for (k=0; k < app->ninfo; k++) {
+            for (k = 0; k < app->ninfo; k++) {
                 if (PMIX_CHECK_KEY(&app->info[k], PMIX_FORKEXEC_AGENT)) {
                     /* we were given a fork agent - use it. We have to put its
                      * argv at the beginning of the app argv array */
                     argv = pmix_argv_split(app->info[k].value.data.string, ' ');
                     /* add in the argv from the app */
-                    for (i=0; NULL != argv[i]; i++) {
+                    for (i = 0; NULL != argv[i]; i++) {
                         pmix_argv_prepend_nosize(&app->argv, argv[i]);
                     }
                     if (NULL != app->cmd) {
@@ -243,9 +240,8 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                     }
                     app->cmd = pmix_path_findv(argv[0], X_OK, app->env, NULL);
                     if (NULL == app->cmd) {
-                        pmix_show_help("help-pfexec-base.txt",
-                                       "fork-agent-not-found",
-                                       true, pmix_globals.hostname, argv[0]);
+                        pmix_show_help("help-pfexec-base.txt", "fork-agent-not-found", true,
+                                       pmix_globals.hostname, argv[0]);
                         rc = PMIX_ERR_NOT_FOUND;
                         pmix_argv_free(argv);
                         goto complete;
@@ -260,7 +256,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             goto complete;
         }
 
-        for (n=0; n < app->maxprocs; n++) {
+        for (n = 0; n < app->maxprocs; n++) {
             /* create a tracker for this child */
             child = PMIX_NEW(pmix_pfexec_child_t);
             PMIX_LOAD_PROCID(&child->proc, nspace, rank);
@@ -307,7 +303,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
             /* pass the rank */
             memset(tmp, 0, 2048);
-            (void)snprintf(tmp, 2047, "%u", child->proc.rank);
+            (void) snprintf(tmp, 2047, "%u", child->proc.rank);
             pmix_setenv("PMIX_RANK", tmp, true, &env);
             pmix_setenv("PMIX_SERVER_RANK", tmp, true, &env);
 
@@ -350,7 +346,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     }
     rc = PMIX_SUCCESS;
 
-  complete:
+complete:
     /* ensure we reset our working directory back to our default location  */
     if (0 != chdir(basedir)) {
         PMIX_ERROR_LOG(PMIX_ERROR);
@@ -364,14 +360,14 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
 void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
 {
-    (void)sd;
-    (void)args;
-    pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t*)cbdata;
+    (void) sd;
+    (void) args;
+    pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t *) cbdata;
     pmix_pfexec_child_t *child, *cd;
 
     /* find the process */
     child = NULL;
-    PMIX_LIST_FOREACH(cd, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+    PMIX_LIST_FOREACH (cd, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
         if (PMIX_CHECK_PROCID(scd->proc, &cd->proc)) {
             child = cd;
             break;
@@ -401,16 +397,14 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
        If it is in a stopped state and we do not first change it to
        running, then SIGTERM will not get delivered.  Ignore return
        value. */
-    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output,
-                         "%s SENDING SIGCONT",
+    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGCONT",
                          PMIX_NAME_PRINT(&pmix_globals.myid)));
     scd->sigfn(child->pid, SIGCONT);
 
     /* wait a little to give the proc a chance to wakeup */
     sleep(pmix_pfexec_globals.timeout_before_sigkill);
     /* issue a SIGTERM */
-    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output,
-                         "%s SENDING SIGTERM",
+    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGTERM",
                          PMIX_NAME_PRINT(&pmix_globals.myid)));
     scd->lock->status = scd->sigfn(child->pid, SIGTERM);
 
@@ -418,8 +412,7 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
         /* wait a little again */
         sleep(pmix_pfexec_globals.timeout_before_sigkill);
         /* issue a SIGKILL */
-        PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output,
-                             "%s SENDING SIGKILL",
+        PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGKILL",
                              PMIX_NAME_PRINT(&pmix_globals.myid)));
         scd->lock->status = scd->sigfn(child->pid, SIGKILL);
     }
@@ -438,14 +431,14 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
 
 void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
 {
-    (void)sd;
-    (void)args;
-    pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t*)cbdata;
+    (void) sd;
+    (void) args;
+    pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t *) cbdata;
     pmix_pfexec_child_t *child, *cd;
 
     /* find the process */
     child = NULL;
-    PMIX_LIST_FOREACH(cd, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+    PMIX_LIST_FOREACH (cd, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
         if (PMIX_CHECK_PROCID(scd->proc, &cd->proc)) {
             child = cd;
             break;
@@ -457,8 +450,7 @@ void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
         return;
     }
 
-    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output,
-                         "%s SIGNALING %d",
+    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output, "%s SIGNALING %d",
                          PMIX_NAME_PRINT(&pmix_globals.myid), scd->signal));
     scd->lock->status = scd->sigfn(child->pid, scd->signal);
 
@@ -477,8 +469,8 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
     /* first check to make sure we can do ptys */
 #if PMIX_ENABLE_PTY_SUPPORT
     if (opts->usepty) {
-        ret = pmix_openpty(&(opts->p_stdout[0]), &(opts->p_stdout[1]),
-                           (char*)NULL, (struct termios*)NULL, (struct winsize*)NULL);
+        ret = pmix_openpty(&(opts->p_stdout[0]), &(opts->p_stdout[1]), (char *) NULL,
+                           (struct termios *) NULL, (struct winsize *) NULL);
     }
 #else
     opts->usepty = 0;
@@ -514,22 +506,19 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
     }
 #endif
     /* connect read ends to IOF */
-    PMIX_IOF_READ_EVENT(&child->stdoutev,
-                        targets, 0, directives, 0, opts->p_stdout[0],
+    PMIX_IOF_READ_EVENT(&child->stdoutev, targets, 0, directives, 0, opts->p_stdout[0],
                         pmix_iof_read_local_handler, false);
     PMIX_LOAD_PROCID(&child->stdoutev->name, child->proc.nspace, child->proc.rank);
-    child->stdoutev->childproc = (void*)child;
+    child->stdoutev->childproc = (void *) child;
     child->stdoutev->channel = PMIX_FWD_STDOUT_CHANNEL;
-    PMIX_IOF_READ_EVENT(&child->stderrev,
-                        targets, 0, directives, 0, opts->p_stderr[0],
+    PMIX_IOF_READ_EVENT(&child->stderrev, targets, 0, directives, 0, opts->p_stderr[0],
                         pmix_iof_read_local_handler, false);
     PMIX_LOAD_PROCID(&child->stderrev->name, child->proc.nspace, child->proc.rank);
-    child->stderrev->childproc = (void*)child;
+    child->stderrev->childproc = (void *) child;
     child->stderrev->channel = PMIX_FWD_STDERR_CHANNEL;
 
     return PMIX_SUCCESS;
 }
-
 
 pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
 {
@@ -555,10 +544,9 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
         if (tcgetattr(opts->p_stdout[1], &term_attrs) < 0) {
             return PMIX_ERR_SYS_OTHER;
         }
-        term_attrs.c_lflag &= ~ (ECHO | ECHOE | ECHOK |
-                                 ECHOCTL | ECHOKE | ECHONL);
-        term_attrs.c_iflag &= ~ (ICRNL | INLCR | ISTRIP | INPCK | IXON);
-        term_attrs.c_oflag &= ~ (OCRNL | ONLCR);
+        term_attrs.c_lflag &= ~(ECHO | ECHOE | ECHOK | ECHOCTL | ECHOKE | ECHONL);
+        term_attrs.c_iflag &= ~(ICRNL | INLCR | ISTRIP | INPCK | IXON);
+        term_attrs.c_oflag &= ~(OCRNL | ONLCR);
         if (tcsetattr(opts->p_stdout[1], TCSANOW, &term_attrs) == -1) {
             return PMIX_ERR_SYS_OTHER;
         }
@@ -571,7 +559,7 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
             opts->p_stdout[1] = -1;
         }
     } else {
-        if(opts->p_stdout[1] != fileno(stdout)) {
+        if (opts->p_stdout[1] != fileno(stdout)) {
             ret = dup2(opts->p_stdout[1], fileno(stdout));
             if (ret < 0) {
                 return PMIX_ERR_SYS_OTHER;
@@ -583,7 +571,7 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
         }
     }
     if (opts->connect_stdin) {
-        if(opts->p_stdin[0] != fileno(stdin)) {
+        if (opts->p_stdin[0] != fileno(stdin)) {
             ret = dup2(opts->p_stdin[0], fileno(stdin));
             if (ret < 0) {
                 return PMIX_ERR_SYS_OTHER;
@@ -625,8 +613,7 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t register_nspace(char *nspace,
-                                     pmix_pfexec_fork_caddy_t *fcd)
+static pmix_status_t register_nspace(char *nspace, pmix_pfexec_fork_caddy_t *fcd)
 {
     pmix_status_t rc;
     size_t n, ninfo;
@@ -634,7 +621,7 @@ static pmix_status_t register_nspace(char *nspace,
     uint32_t nprocs, u32;
     uint16_t u16;
     pmix_proc_t proc;
-    pmix_rank_t zero=0, rk;
+    pmix_rank_t zero = 0, rk;
     pmix_info_t *info = NULL;
     pmix_namespace_t *nptr, *tmp;
     void *jinfo, *tmpinfo, *pinfo;
@@ -643,7 +630,7 @@ static pmix_status_t register_nspace(char *nspace,
 
     /* quick compute the number of procs to be started */
     nprocs = 0;
-    for (n=0; n < fcd->napps; n++) {
+    for (n = 0; n < fcd->napps; n++) {
         nprocs += fcd->apps[n].maxprocs;
     }
     if (0 == nprocs) {
@@ -652,7 +639,7 @@ static pmix_status_t register_nspace(char *nspace,
 
     /* see if we already have this nspace */
     nptr = NULL;
-    PMIX_LIST_FOREACH(tmp, &pmix_globals.nspaces, pmix_namespace_t) {
+    PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(tmp->nspace, nspace)) {
             nptr = tmp;
             break;
@@ -708,9 +695,9 @@ static pmix_status_t register_nspace(char *nspace,
     }
 
     /* add in any info provided by the caller */
-    for (n=0; n < fcd->njinfo; n++) {
+    for (n = 0; n < fcd->njinfo; n++) {
         if (PMIX_ENVAR == fcd->jobinfo[n].value.type) {
-            continue;  // take care of these elsewhere
+            continue; // take care of these elsewhere
         }
         PMIX_INFO_LIST_XFER(rc, jinfo, &fcd->jobinfo[n]);
     }
@@ -718,7 +705,7 @@ static pmix_status_t register_nspace(char *nspace,
     /* for each app in the job, create an app-array */
     proc.rank = 0;
     rk = 0;
-    for (n=0; n < fcd->napps; n++) {
+    for (n = 0; n < fcd->napps; n++) {
         PMIX_INFO_LIST_START(tmpinfo);
         u32 = n;
         PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_APPNUM, &u32, PMIX_UINT32);
@@ -740,7 +727,7 @@ static pmix_status_t register_nspace(char *nspace,
         /* release the memory - the array was copied */
         PMIX_DATA_ARRAY_DESTRUCT(&darray);
         /* for each proc in this app, create a proc-array */
-        for (m=0; m < fcd->apps[n].maxprocs; m++) {
+        for (m = 0; m < fcd->apps[n].maxprocs; m++) {
             PMIX_INFO_LIST_START(pinfo);
             /* must start with the rank */
             PMIX_INFO_LIST_ADD(rc, pinfo, PMIX_RANK, &rk, PMIX_PROC_RANK);
@@ -766,7 +753,7 @@ static pmix_status_t register_nspace(char *nspace,
     PMIX_INFO_LIST_CONVERT(rc, jinfo, &darray);
     PMIX_INFO_LIST_RELEASE(jinfo);
 
-    info = (pmix_info_t*)darray.array;
+    info = (pmix_info_t *) darray.array;
     ninfo = darray.size;
 
     /* register nspace for each activate components */
@@ -776,8 +763,7 @@ static pmix_status_t register_nspace(char *nspace,
          * it later so it can be passed down to the launched procs
          * once they connect to us and we know what GDS module they
          * are using */
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr,
-                                info, ninfo);
+        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, ninfo);
     }
 
     PMIX_DATA_ARRAY_DESTRUCT(&darray);

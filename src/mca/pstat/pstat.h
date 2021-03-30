@@ -34,8 +34,8 @@
 #include "pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
+#include "src/mca/mca.h"
 
 BEGIN_C_DECLS
 
@@ -44,8 +44,7 @@ BEGIN_C_DECLS
  */
 typedef int (*pmix_pstat_base_module_init_fn_t)(void);
 
-typedef int (*pmix_pstat_base_module_query_fn_t)(pid_t pid,
-                                                 pmix_proc_stats_t *stats,
+typedef int (*pmix_pstat_base_module_query_fn_t)(pid_t pid, pmix_proc_stats_t *stats,
                                                  pmix_node_stats_t *nstats);
 
 typedef int (*pmix_pstat_base_module_fini_fn_t)(void);
@@ -70,9 +69,9 @@ typedef struct pmix_pstat_base_component_2_0_0_t pmix_pstat_base_component_t;
  * Structure for pstat modules
  */
 struct pmix_pstat_base_module_1_0_0_t {
-    pmix_pstat_base_module_init_fn_t    init;
-    pmix_pstat_base_module_query_fn_t   query;
-    pmix_pstat_base_module_fini_fn_t    finalize;
+    pmix_pstat_base_module_init_fn_t init;
+    pmix_pstat_base_module_query_fn_t query;
+    pmix_pstat_base_module_fini_fn_t finalize;
 };
 
 /**
@@ -81,12 +80,10 @@ struct pmix_pstat_base_module_1_0_0_t {
 typedef struct pmix_pstat_base_module_1_0_0_t pmix_pstat_base_module_1_0_0_t;
 typedef struct pmix_pstat_base_module_1_0_0_t pmix_pstat_base_module_t;
 
-
 /**
  * Macro for use in components that are of type pstat
  */
-#define PMIX_PSTAT_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("pstat", 1, 0, 0)
+#define PMIX_PSTAT_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("pstat", 1, 0, 0)
 
 /* Global structure for accessing pstat functions */
 PMIX_EXPORT extern pmix_pstat_base_module_t pmix_pstat;

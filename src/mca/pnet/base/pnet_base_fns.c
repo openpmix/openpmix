@@ -21,29 +21,25 @@
 
 #include "src/class/pmix_list.h"
 #include "src/mca/preg/preg.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/pmix_environ.h"
-#include "src/server/pmix_server_ops.h"
 
 #include "src/mca/pnet/base/base.h"
-
 
 /* NOTE: a tool (e.g., prun) may call this function to
  * harvest local envars for inclusion in a call to
  * PMIx_Spawn, or it might be called in response to
  * a call to PMIx_Allocate_resources */
-pmix_status_t pmix_pnet_base_allocate(char *nspace,
-                                      pmix_info_t info[], size_t ninfo,
+pmix_status_t pmix_pnet_base_allocate(char *nspace, pmix_info_t info[], size_t ninfo,
                                       pmix_list_t *ilist)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;
     pmix_namespace_t *nptr, *ns;
 
-
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:allocate called");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet:allocate called");
 
     /* protect against bozo inputs */
     if (NULL == nspace || NULL == ilist) {
@@ -56,7 +52,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
 
     /* find this proc's nspace object */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(ns->nspace, nspace)) {
             nptr = ns;
             break;
@@ -74,12 +70,11 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
 
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         /* process the allocation request */
-        PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+        PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
             if (NULL != active->module->allocate) {
                 rc = active->module->allocate(nptr, info, ninfo, ilist);
-                if (PMIX_SUCCESS != rc &&
-                    PMIX_ERR_NOT_AVAILABLE != rc &&
-                    PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+                if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc
+                    && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                     /* true error */
                     return rc;
                 }
@@ -91,9 +86,7 @@ pmix_status_t pmix_pnet_base_allocate(char *nspace,
 }
 
 /* can only be called by a server from within an event! */
-pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
-                                                 pmix_info_t info[],
-                                                 size_t ninfo)
+pmix_status_t pmix_pnet_base_setup_local_network(char *nspace, pmix_info_t info[], size_t ninfo)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;
@@ -113,7 +106,7 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
 
     /* find this proc's nspace object */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(ns->nspace, nspace)) {
             nptr = ns;
             break;
@@ -129,12 +122,11 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace,
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
-    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->setup_local_network) {
             rc = active->module->setup_local_network(nptr, info, ninfo);
-            if (PMIX_SUCCESS != rc &&
-                PMIX_ERR_NOT_AVAILABLE != rc &&
-                PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc
+                && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 return rc;
             }
         }
@@ -150,8 +142,7 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
     pmix_status_t rc;
     pmix_namespace_t *nptr, *ns;
 
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet: setup_fork called");
+    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet: setup_fork called");
 
     /* protect against bozo inputs */
     if (NULL == proc || NULL == env) {
@@ -164,7 +155,7 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
 
     /* find this proc's nspace object */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(ns->nspace, proc->nspace)) {
             nptr = ns;
             break;
@@ -180,12 +171,11 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
-    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->setup_fork) {
             rc = active->module->setup_fork(nptr, proc, env);
-            if (PMIX_SUCCESS != rc &&
-                PMIX_ERR_NOT_AVAILABLE != rc &&
-                PMIX_ERR_TAKE_NEXT_OPTION != rc) {
+            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc
+                && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 return rc;
             }
         }
@@ -211,7 +201,7 @@ void pmix_pnet_base_child_finalized(pmix_proc_t *peer)
         return;
     }
 
-    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->child_finalized) {
             active->module->child_finalized(peer);
         }
@@ -236,7 +226,7 @@ void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr)
         return;
     }
 
-    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->local_app_finalized) {
             active->module->local_app_finalized(nptr);
         }
@@ -264,7 +254,7 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
 
     /* find this nspace object */
     nptr = NULL;
-    PMIX_LIST_FOREACH(ns, &pmix_globals.nspaces, pmix_namespace_t) {
+    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(ns->nspace, nspace)) {
             nptr = ns;
             break;
@@ -275,18 +265,16 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
         return;
     }
 
-    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->deregister_nspace) {
             active->module->deregister_nspace(nptr);
         }
     }
 }
 
-static void cicbfunc(pmix_status_t status,
-                     pmix_list_t *inventory,
-                     void *cbdata)
+static void cicbfunc(pmix_status_t status, pmix_list_t *inventory, void *cbdata)
 {
-    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t*)cbdata;
+    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t *) cbdata;
     pmix_kval_t *kv;
 
     PMIX_ACQUIRE_THREAD(&rollup->lock);
@@ -296,7 +284,7 @@ static void cicbfunc(pmix_status_t status,
     }
     /* transfer the inventory */
     if (NULL != inventory) {
-        while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(inventory))) {
+        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(inventory))) {
             pmix_list_append(&rollup->payload, &kv->super);
         }
     }
@@ -354,19 +342,18 @@ void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
      * the requests counter has been fully updated */
     PMIX_ACQUIRE_THREAD(&myrollup->lock);
 
-    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->collect_inventory) {
-            pmix_output_verbose(5, pmix_pnet_base_framework.framework_output,
-                                "COLLECTING %s", active->module->name);
-            rc = active->module->collect_inventory(directives, ndirs, cicbfunc, (void*)myrollup);
+            pmix_output_verbose(5, pmix_pnet_base_framework.framework_output, "COLLECTING %s",
+                                active->module->name);
+            rc = active->module->collect_inventory(directives, ndirs, cicbfunc, (void *) myrollup);
             /* if they return success, then the values were
              * placed directly on the payload - nothing
              * to wait for here */
             if (PMIX_OPERATION_IN_PROGRESS == rc) {
                 myrollup->requests++;
-            } else if (PMIX_SUCCESS != rc &&
-                       PMIX_ERR_TAKE_NEXT_OPTION != rc &&
-                       PMIX_ERR_NOT_SUPPORTED != rc) {
+            } else if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc
+                       && PMIX_ERR_NOT_SUPPORTED != rc) {
                 /* a true error - we need to wait for
                  * all pending requests to complete
                  * and then notify the caller of the error */
@@ -390,10 +377,9 @@ void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
     return;
 }
 
-static void dlcbfunc(pmix_status_t status,
-                     void *cbdata)
+static void dlcbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t*)cbdata;
+    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t *) cbdata;
 
     PMIX_ACQUIRE_THREAD(&rollup->lock);
     /* check if they had an error */
@@ -418,9 +404,8 @@ static void dlcbfunc(pmix_status_t status,
     return;
 }
 
-void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
-                                      pmix_info_t directives[], size_t ndirs,
-                                      pmix_op_cbfunc_t cbfunc, void *cbdata)
+void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_info_t directives[],
+                                      size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_inventory_rollup_t *myrollup;
@@ -455,18 +440,18 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
      * the requests counter has been fully updated */
     PMIX_ACQUIRE_THREAD(&myrollup->lock);
 
-    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->deliver_inventory) {
-            pmix_output_verbose(5, pmix_pnet_base_framework.framework_output,
-                                "DELIVERING TO %s", active->module->name);
-            rc = active->module->deliver_inventory(info, ninfo, directives, ndirs, dlcbfunc, (void*)myrollup);
+            pmix_output_verbose(5, pmix_pnet_base_framework.framework_output, "DELIVERING TO %s",
+                                active->module->name);
+            rc = active->module->deliver_inventory(info, ninfo, directives, ndirs, dlcbfunc,
+                                                   (void *) myrollup);
             /* if they return success, then the values were
              * immediately archived - nothing to wait for here */
             if (PMIX_OPERATION_IN_PROGRESS == rc) {
                 myrollup->requests++;
-            } else if (PMIX_SUCCESS != rc &&
-                       PMIX_ERR_TAKE_NEXT_OPTION != rc &&
-                       PMIX_ERR_NOT_SUPPORTED != rc) {
+            } else if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc
+                       && PMIX_ERR_NOT_SUPPORTED != rc) {
                 /* a true error - we need to wait for
                  * all pending requests to complete
                  * and then notify the caller of the error */
@@ -490,10 +475,8 @@ void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
     return;
 }
 
-pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
-                                             const pmix_info_t directives[],
-                                             size_t ndirs,
-                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
+pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric, const pmix_info_t directives[],
+                                             size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;
@@ -509,7 +492,7 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric,
     }
 
     /* scan across active modules until one returns success */
-    PMIX_LIST_FOREACH(active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->register_fabric) {
             rc = active->module->register_fabric(fabric, directives, ndirs, cbfunc, cbdata);
             if (PMIX_OPERATION_SUCCEEDED == rc) {
@@ -545,7 +528,7 @@ pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric)
         /* this might be a remote request, so look at the
          * list of fabrics we have registered locally and
          * see if we have one with the matching index */
-        PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
+        PMIX_LIST_FOREACH (ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
             if (fabric->index == ft->index) {
                 module = ft->module;
             } else if (NULL != fabric->name && NULL != ft->name
@@ -554,8 +537,8 @@ pmix_status_t pmix_pnet_base_update_fabric(pmix_fabric_t *fabric)
             }
         }
     } else {
-        active = (pmix_pnet_fabric_t*)fabric->module;
-        module = (pmix_pnet_module_t*)active->module;
+        active = (pmix_pnet_fabric_t *) fabric->module;
+        module = (pmix_pnet_module_t *) active->module;
     }
     if (NULL == module) {
         return PMIX_ERR_BAD_PARAM;
@@ -581,7 +564,7 @@ pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric)
         /* this might be a remote request, so look at the
          * list of fabrics we have registered locally and
          * see if we have one with the matching index */
-        PMIX_LIST_FOREACH(ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
+        PMIX_LIST_FOREACH (ft, &pmix_pnet_globals.fabrics, pmix_pnet_fabric_t) {
             if (fabric->index == ft->index) {
                 module = ft->module;
             } else if (NULL != fabric->name && NULL != ft->name
@@ -590,8 +573,8 @@ pmix_status_t pmix_pnet_base_deregister_fabric(pmix_fabric_t *fabric)
             }
         }
     } else {
-        active = (pmix_pnet_fabric_t*)fabric->module;
-        module = (pmix_pnet_module_t*)active->module;
+        active = (pmix_pnet_fabric_t *) fabric->module;
+        module = (pmix_pnet_module_t *) active->module;
     }
     if (NULL == module) {
         return PMIX_ERR_BAD_PARAM;

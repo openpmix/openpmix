@@ -7,6 +7,7 @@
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,8 +27,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/server/pmix_server_ops.h"
 
-
-char* pmix_gds_base_get_available_modules(void)
+char *pmix_gds_base_get_available_modules(void)
 {
     if (!pmix_gds_globals.initialized) {
         return NULL;
@@ -37,7 +37,7 @@ char* pmix_gds_base_get_available_modules(void)
 }
 
 /* Select a gds module per the given directives */
-pmix_gds_base_module_t* pmix_gds_base_assign_module(pmix_info_t *info, size_t ninfo)
+pmix_gds_base_module_t *pmix_gds_base_assign_module(pmix_info_t *info, size_t ninfo)
 {
     pmix_gds_base_active_module_t *active;
     pmix_gds_base_module_t *mod = NULL;
@@ -47,7 +47,7 @@ pmix_gds_base_module_t* pmix_gds_base_assign_module(pmix_info_t *info, size_t ni
         return NULL;
     }
 
-    PMIX_LIST_FOREACH(active, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
         if (NULL == active->module->assign_module) {
             continue;
         }
@@ -66,8 +66,7 @@ pmix_gds_base_module_t* pmix_gds_base_assign_module(pmix_info_t *info, size_t ni
     return mod;
 }
 
-pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
-                                       char ***env)
+pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     pmix_gds_base_active_module_t *active;
     pmix_status_t rc;
@@ -76,7 +75,7 @@ pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
         return PMIX_ERR_INIT;
     }
 
-    PMIX_LIST_FOREACH(active, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
         if (NULL == active->module->setup_fork) {
             continue;
         }
@@ -89,25 +88,23 @@ pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
-                                        pmix_buffer_t * buff,
+pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace, pmix_buffer_t *buff,
                                         pmix_gds_base_ctx_t ctx,
-                                        pmix_gds_base_store_modex_cb_fn_t cb_fn,
-                                        void *cbdata)
+                                        pmix_gds_base_store_modex_cb_fn_t cb_fn, void *cbdata)
 {
-    (void)nspace;
+    (void) nspace;
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_buffer_t bkt;
     pmix_byte_object_t bo, bo2;
     int32_t cnt = 1;
     pmix_collect_t ctype;
-    pmix_server_trkr_t *trk = (pmix_server_trkr_t*)cbdata;
+    pmix_server_trkr_t *trk = (pmix_server_trkr_t *) cbdata;
     pmix_proc_t proc;
     pmix_buffer_t pbkt;
     pmix_rank_t rel_rank;
     pmix_nspace_caddy_t *nm;
     bool found;
-    char  **kmap = NULL;
+    char **kmap = NULL;
     uint32_t kmap_size;
     pmix_gds_modex_key_fmt_t kmap_type;
     pmix_gds_modex_blob_info_t blob_info_byte = 0;
@@ -115,12 +112,11 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
     /* Loop over the enclosed byte object envelopes and
      * store them in our GDS module */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-            buff, &bo, &cnt, PMIX_BYTE_OBJECT);
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buff, &bo, &cnt, PMIX_BYTE_OBJECT);
 
     /* If the collect flag is set, we should have some data for unpacking */
-    if ((PMIX_COLLECT_YES == trk->collect_type) &&
-            (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc)) {
+    if ((PMIX_COLLECT_YES == trk->collect_type)
+        && (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc)) {
         goto exit;
     }
 
@@ -129,8 +125,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
         PMIX_LOAD_BUFFER(pmix_globals.mypeer, &bkt, bo.bytes, bo.size);
         /* unpack the data collection flag */
         cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                &bkt, &blob_info_byte, &cnt, PMIX_BYTE);
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &blob_info_byte, &cnt, PMIX_BYTE);
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
             /* no data was returned, so we are done with this blob */
             PMIX_DESTRUCT(&bkt);
@@ -144,8 +139,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
         }
         /* Check that this blob was accumulated with the same data collection
          * setting */
-        ctype = PMIX_GDS_COLLECT_IS_SET(blob_info_byte) ?
-                    PMIX_COLLECT_YES : PMIX_COLLECT_NO;
+        ctype = PMIX_GDS_COLLECT_IS_SET(blob_info_byte) ? PMIX_COLLECT_YES : PMIX_COLLECT_NO;
         if (trk->collect_type != ctype) {
             rc = PMIX_ERR_INVALID_ARG;
             PMIX_ERROR_LOG(rc);
@@ -153,13 +147,12 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
         }
 
         /* determine the key-map existing flag */
-        kmap_type = PMIX_GDS_KEYMAP_IS_SET(blob_info_byte) ?
-                    PMIX_MODEX_KEY_KEYMAP_FMT : PMIX_MODEX_KEY_NATIVE_FMT;
+        kmap_type = PMIX_GDS_KEYMAP_IS_SET(blob_info_byte) ? PMIX_MODEX_KEY_KEYMAP_FMT
+                                                           : PMIX_MODEX_KEY_NATIVE_FMT;
         if (PMIX_MODEX_KEY_KEYMAP_FMT == kmap_type) {
             /* unpack the size of uniq keys names in the map */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                               &bkt, &kmap_size, &cnt, PMIX_UINT32);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &kmap_size, &cnt, PMIX_UINT32);
             if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
                 rc = PMIX_SUCCESS;
                 PMIX_DESTRUCT(&bkt);
@@ -172,21 +165,20 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
 
             /* init and unpack key names map, the position of the key name
              * in the array determines the unique key index */
-            kmap = (char**)(calloc(kmap_size + 1, sizeof(char*)));
+            kmap = (char **) (calloc(kmap_size + 1, sizeof(char *)));
             if (NULL == kmap) {
                 rc = PMIX_ERR_OUT_OF_RESOURCE;
                 PMIX_ERROR_LOG(rc);
                 goto exit;
             }
             cnt = kmap_size;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt,
-                               kmap, &cnt, PMIX_STRING);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, kmap, &cnt, PMIX_STRING);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&bkt);
                 goto exit;
             }
-            if (pmix_argv_count(kmap) != (int)kmap_size) {
+            if (pmix_argv_count(kmap) != (int) kmap_size) {
                 rc = PMIX_ERR_UNPACK_FAILURE;
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&bkt);
@@ -195,8 +187,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
         }
         /* unpack the enclosed blobs from the various peers */
         cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                &bkt, &bo2, &cnt, PMIX_BYTE_OBJECT);
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &bo2, &cnt, PMIX_BYTE_OBJECT);
         while (PMIX_SUCCESS == rc) {
             /* unpack all the kval's from this peer and store them in
              * our GDS. Note that PMIx by design holds all data at
@@ -210,8 +201,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
             PMIX_LOAD_BUFFER(pmix_globals.mypeer, &pbkt, bo2.bytes, bo2.size);
             /* unload the proc that provided this data */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, &rel_rank, &cnt,
-                               PMIX_PROC_RANK);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, &rel_rank, &cnt, PMIX_PROC_RANK);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 pbkt.base_ptr = NULL;
@@ -222,9 +212,9 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
             /* calculate proc form the relative rank */
             if (pmix_list_get_size(&trk->nslist) == 1) {
                 found = true;
-                nm = (pmix_nspace_caddy_t*)pmix_list_get_first(&trk->nslist);
+                nm = (pmix_nspace_caddy_t *) pmix_list_get_first(&trk->nslist);
             } else {
-                PMIX_LIST_FOREACH(nm, &trk->nslist, pmix_nspace_caddy_t) {
+                PMIX_LIST_FOREACH (nm, &trk->nslist, pmix_nspace_caddy_t) {
                     if (rel_rank < nm->ns->nprocs) {
                         found = true;
                         break;
@@ -255,8 +245,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
             PMIX_BYTE_OBJECT_DESTRUCT(&bo2);
             /* get the next blob */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                    &bkt, &bo2, &cnt, PMIX_BYTE_OBJECT);
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &bo2, &cnt, PMIX_BYTE_OBJECT);
         }
         PMIX_DESTRUCT(&bkt);
 
@@ -268,8 +257,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
         }
         /* unpack and process the next blob */
         cnt = 1;
-        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer,
-                buff, &bo, &cnt, PMIX_BYTE_OBJECT);
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buff, &bo, &cnt, PMIX_BYTE_OBJECT);
     }
 
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
@@ -295,15 +283,14 @@ exit:
  *
  * kv - pmix key-value pair
  */
-pmix_status_t pmix_gds_base_modex_pack_kval(pmix_gds_modex_key_fmt_t key_fmt,
-                                            pmix_buffer_t *buf, char ***kmap,
-                                            pmix_kval_t *kv)
+pmix_status_t pmix_gds_base_modex_pack_kval(pmix_gds_modex_key_fmt_t key_fmt, pmix_buffer_t *buf,
+                                            char ***kmap, pmix_kval_t *kv)
 {
     uint32_t key_idx;
     pmix_status_t rc = PMIX_SUCCESS;
 
     if (PMIX_MODEX_KEY_KEYMAP_FMT == key_fmt) {
-        rc = pmix_argv_append_unique_idx((int*)&key_idx, kmap, kv->key);
+        rc = pmix_argv_append_unique_idx((int *) &key_idx, kmap, kv->key);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -345,9 +332,8 @@ pmix_status_t pmix_gds_base_modex_pack_kval(pmix_gds_modex_key_fmt_t key_fmt,
  *
  * kv - unpacked pmix key-value pair
  */
-pmix_status_t pmix_gds_base_modex_unpack_kval(pmix_gds_modex_key_fmt_t key_fmt,
-                                              pmix_buffer_t *buf, char **kmap,
-                                              pmix_kval_t *kv)
+pmix_status_t pmix_gds_base_modex_unpack_kval(pmix_gds_modex_key_fmt_t key_fmt, pmix_buffer_t *buf,
+                                              char **kmap, pmix_kval_t *kv)
 {
     int32_t cnt;
     uint32_t key_idx;

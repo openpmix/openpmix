@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,7 +20,6 @@
 #ifndef PMIX_SYS_ARCH_TIMER_H
 #define PMIX_SYS_ARCH_TIMER_H 1
 
-
 typedef uint64_t pmix_timer_t;
 
 /* Using RDTSC(P) results in non-monotonic timers across cores */
@@ -28,30 +28,27 @@ typedef uint64_t pmix_timer_t;
 
 #if PMIX_GCC_INLINE_ASSEMBLY
 
-static inline pmix_timer_t
-pmix_sys_timer_get_cycles(void)
+static inline pmix_timer_t pmix_sys_timer_get_cycles(void)
 {
     pmix_timer_t ret;
     int tmp;
 
-    __asm__ __volatile__(
-                         "xchgl %%ebx, %1\n"
+    __asm__ __volatile__("xchgl %%ebx, %1\n"
                          "cpuid\n"
                          "xchgl %%ebx, %1\n"
                          "rdtsc\n"
-                         : "=A"(ret), "=r"(tmp)
-                         :: "ecx");
+                         : "=A"(ret), "=r"(tmp)::"ecx");
 
     return ret;
 }
 
-#define PMIX_HAVE_SYS_TIMER_GET_CYCLES 1
+#    define PMIX_HAVE_SYS_TIMER_GET_CYCLES 1
 
 #else
 
 pmix_timer_t pmix_sys_timer_get_cycles(void);
 
-#define PMIX_HAVE_SYS_TIMER_GET_CYCLES 1
+#    define PMIX_HAVE_SYS_TIMER_GET_CYCLES 1
 
 #endif /* PMIX_GCC_INLINE_ASSEMBLY */
 

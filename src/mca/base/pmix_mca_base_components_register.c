@@ -14,6 +14,7 @@
  * Copyright (c) 2011-2015 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,19 +25,19 @@
 #include "src/include/pmix_config.h"
 
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "include/pmix_common.h"
 #include "src/class/pmix_list.h"
+#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_mca_base_component_repository.h"
+#include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
-#include "src/mca/mca.h"
-#include "src/mca/base/base.h"
-#include "src/mca/base/pmix_mca_base_framework.h"
-#include "src/mca/base/pmix_mca_base_component_repository.h"
-#include "include/pmix_common.h"
 
 /*
  * Local functions
@@ -46,8 +47,8 @@ static int register_components(pmix_mca_base_framework_t *framework);
  * Function for finding and opening either all MCA components, or the
  * one that was specifically requested via a MCA parameter.
  */
-int pmix_mca_base_framework_components_register (pmix_mca_base_framework_t *framework,
-                                            pmix_mca_base_register_flag_t flags)
+int pmix_mca_base_framework_components_register(pmix_mca_base_framework_t *framework,
+                                                pmix_mca_base_register_flag_t flags)
 {
     bool open_dso_components = !(flags & PMIX_MCA_BASE_REGISTER_STATIC_ONLY);
     bool ignore_requested = !!(flags & PMIX_MCA_BASE_REGISTER_ALL);
@@ -78,25 +79,27 @@ static int register_components(pmix_mca_base_framework_t *framework)
     int output_id = framework->framework_output;
 
     /* Announce */
-    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
-                         "pmix:mca: base: components_register: registering framework %s components",
-                         framework->framework_name);
+    pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                        "pmix:mca: base: components_register: registering framework %s components",
+                        framework->framework_name);
 
     /* Traverse the list of found components */
 
-    PMIX_LIST_FOREACH_SAFE(cli, next, &framework->framework_components, pmix_mca_base_component_list_item_t) {
-        component = (pmix_mca_base_component_t *)cli->cli_component;
+    PMIX_LIST_FOREACH_SAFE (cli, next, &framework->framework_components,
+                            pmix_mca_base_component_list_item_t) {
+        component = (pmix_mca_base_component_t *) cli->cli_component;
 
         pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
                             "pmix:mca: base: components_register: found loaded component %s",
                             component->pmix_mca_component_name);
 
-        /* Call the component's MCA parameter registration function (or open if register doesn't exist) */
+        /* Call the component's MCA parameter registration function (or open if register doesn't
+         * exist) */
         if (NULL == component->pmix_mca_register_component_params) {
-            pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
-                                 "pmix:mca: base: components_register: "
-                                 "component %s has no register or open function",
-                                 component->pmix_mca_component_name);
+            pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                                "pmix:mca: base: components_register: "
+                                "component %s has no register or open function",
+                                component->pmix_mca_component_name);
             ret = PMIX_SUCCESS;
         } else {
             ret = component->pmix_mca_register_component_params();
@@ -116,20 +119,20 @@ static int register_components(pmix_mca_base_framework_t *framework)
                    expected. */
 
                 if (pmix_mca_base_component_show_load_errors) {
-                    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_ERROR, output_id,
-                                         "pmix:mca: base: components_register: component %s "
-                                         "/ %s register function failed",
-                                         component->pmix_mca_type_name,
-                                         component->pmix_mca_component_name);
+                    pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_ERROR, output_id,
+                                        "pmix:mca: base: components_register: component %s "
+                                        "/ %s register function failed",
+                                        component->pmix_mca_type_name,
+                                        component->pmix_mca_component_name);
                 }
 
-                pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
-                                     "pmix:mca: base: components_register: "
-                                     "component %s register function failed",
-                                     component->pmix_mca_component_name);
+                pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                                    "pmix:mca: base: components_register: "
+                                    "component %s register function failed",
+                                    component->pmix_mca_component_name);
             }
 
-            pmix_list_remove_item (&framework->framework_components, &cli->super);
+            pmix_list_remove_item(&framework->framework_components, &cli->super);
 
             /* Release this list item */
             PMIX_RELEASE(cli);
@@ -137,24 +140,31 @@ static int register_components(pmix_mca_base_framework_t *framework)
         }
 
         if (NULL != component->pmix_mca_register_component_params) {
-            pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id, "pmix:mca: base: components_register: "
-                                 "component %s register function successful",
-                                 component->pmix_mca_component_name);
+            pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                                "pmix:mca: base: components_register: "
+                                "component %s register function successful",
+                                component->pmix_mca_component_name);
         }
 
         /* Register this component's version */
-        pmix_mca_base_component_var_register (component, "major_version", NULL, PMIX_MCA_BASE_VAR_TYPE_INT, NULL,
-                                         0, PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                         PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
-                                         &component->pmix_mca_component_major_version);
-        pmix_mca_base_component_var_register (component, "minor_version", NULL, PMIX_MCA_BASE_VAR_TYPE_INT, NULL,
-                                         0, PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                         PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
-                                         &component->pmix_mca_component_minor_version);
-        pmix_mca_base_component_var_register (component, "release_version", NULL, PMIX_MCA_BASE_VAR_TYPE_INT, NULL,
-                                         0, PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                         PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
-                                         &component->pmix_mca_component_release_version);
+        pmix_mca_base_component_var_register(component, "major_version", NULL,
+                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                             PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY
+                                                 | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
+                                             PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
+                                             &component->pmix_mca_component_major_version);
+        pmix_mca_base_component_var_register(component, "minor_version", NULL,
+                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                             PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY
+                                                 | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
+                                             PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
+                                             &component->pmix_mca_component_minor_version);
+        pmix_mca_base_component_var_register(component, "release_version", NULL,
+                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                             PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY
+                                                 | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
+                                             PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
+                                             &component->pmix_mca_component_release_version);
     }
 
     /* All done */

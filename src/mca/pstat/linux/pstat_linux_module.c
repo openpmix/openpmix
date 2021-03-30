@@ -28,32 +28,30 @@
 
 /* This component will only be compiled on Linux, where we are
    guaranteed to have <unistd.h> and friends */
-#include <stdio.h>
+#include <ctype.h>
+#include <errno.h>
 #include <fcntl.h>
-#include <unistd.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <ctype.h>
 #include <time.h>
+#include <unistd.h>
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
+#    include <sys/time.h>
 #endif
 
-#include <sys/param.h>  /* for HZ to convert jiffies to actual time */
+#include <sys/param.h> /* for HZ to convert jiffies to actual time */
 
+#include "pstat_linux.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
 #include "src/util/printf.h"
-#include "src/include/pmix_globals.h"
-#include "pstat_linux.h"
 
 /*
  * API functions
  */
 static int linux_module_init(void);
-static int query(pid_t pid,
-                 pmix_proc_stats_t *stats,
-                 pmix_node_stats_t *nstats);
+static int query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats);
 static int linux_module_fini(void);
 
 /*
@@ -61,27 +59,22 @@ static int linux_module_fini(void);
  */
 const pmix_pstat_base_module_t pmix_pstat_linux_module = {
     /* Initialization function */
-    linux_module_init,
-    query,
-    linux_module_fini
-};
+    linux_module_init, query, linux_module_fini};
 
-#define PMIX_STAT_MAX_LENGTH   1024
+#define PMIX_STAT_MAX_LENGTH 1024
 
 /* Local structs */
 typedef struct {
     pmix_list_item_t super;
     pmix_disk_stats_t dstat;
 } dstats_t;
-static PMIX_CLASS_INSTANCE(dstats_t, pmix_list_item_t,
-                            NULL, NULL);
+static PMIX_CLASS_INSTANCE(dstats_t, pmix_list_item_t, NULL, NULL);
 
 typedef struct {
     pmix_list_item_t super;
     pmix_net_stats_t nstat;
 } ndstats_t;
-static PMIX_CLASS_INSTANCE(ndstats_t, pmix_list_item_t,
-                           NULL, NULL);
+static PMIX_CLASS_INSTANCE(ndstats_t, pmix_list_item_t, NULL, NULL);
 
 /* Local functions */
 static char *local_getline(FILE *fp);
@@ -103,13 +96,13 @@ static int linux_module_fini(void)
 
 static char *next_field(char *ptr, int barrier)
 {
-    int i=0;
+    int i = 0;
 
     /* we are probably pointing to the last char
      * of the current field, so look for whitespace
      */
     while (!isspace(*ptr) && i < barrier) {
-        ptr++;  /* step over the current char */
+        ptr++; /* step over the current char */
         i++;
     }
 
@@ -128,7 +121,7 @@ static float convert_value(char *value)
     float fval;
 
     /* compute base value */
-    fval = (float)strtoul(value, &ptr, 10);
+    fval = (float) strtoul(value, &ptr, 10);
     /* get the unit multiplier */
     if (NULL != ptr && NULL != strstr(ptr, "kB")) {
         fval /= 1024.0;
@@ -136,9 +129,7 @@ static float convert_value(char *value)
     return fval;
 }
 
-static int query(pid_t pid,
-                 pmix_proc_stats_t *stats,
-                 pmix_node_stats_t *nstats)
+static int query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats)
 {
     char data[4096];
     int fd;
@@ -190,7 +181,7 @@ static int query(pid_t pid,
          * it once it is in memory for speed
          */
         memset(data, 0, sizeof(data));
-        len = read(fd, data, sizeof(data)-1);
+        len = read(fd, data, sizeof(data) - 1);
         if (len < 0) {
             /* This shouldn't happen! */
             close(fd);
@@ -248,12 +239,12 @@ static int query(pid_t pid,
         ptr = next_field(ptr, len); /* cmajflt */
 
         /* grab the process time usage fields */
-        itime = strtoul(ptr, &ptr, 10);    /* utime */
-        itime += strtoul(ptr, &ptr, 10);   /* add the stime */
+        itime = strtoul(ptr, &ptr, 10);  /* utime */
+        itime += strtoul(ptr, &ptr, 10); /* add the stime */
         /* convert to time in seconds */
-        dtime = (double)itime / (double)HZ;
-        stats->time.tv_sec = (int)dtime;
-        stats->time.tv_usec = (int)(1000000.0 * (dtime - stats->time.tv_sec));
+        dtime = (double) itime / (double) HZ;
+        stats->time.tv_sec = (int) dtime;
+        stats->time.tv_usec = (int) (1000000.0 * (dtime - stats->time.tv_sec));
         /* move to next field */
         ptr = next_field(ptr, len);
 
@@ -275,24 +266,24 @@ static int query(pid_t pid,
         ptr = next_field(ptr, len);
 
         /* skip fields until we get to processor id */
-        ptr = next_field(ptr, len);  /* itrealvalue */
-        ptr = next_field(ptr, len);  /* starttime */
-        ptr = next_field(ptr, len);  /* vsize */
-        ptr = next_field(ptr, len);  /* rss */
-        ptr = next_field(ptr, len);  /* rss limit */
-        ptr = next_field(ptr, len);  /* startcode */
-        ptr = next_field(ptr, len);  /* endcode */
-        ptr = next_field(ptr, len);  /* startstack */
-        ptr = next_field(ptr, len);  /* kstkesp */
-        ptr = next_field(ptr, len);  /* kstkeip */
-        ptr = next_field(ptr, len);  /* signal */
-        ptr = next_field(ptr, len);  /* blocked */
-        ptr = next_field(ptr, len);  /* sigignore */
-        ptr = next_field(ptr, len);  /* sigcatch */
-        ptr = next_field(ptr, len);  /* wchan */
-        ptr = next_field(ptr, len);  /* nswap */
-        ptr = next_field(ptr, len);  /* cnswap */
-        ptr = next_field(ptr, len);  /* exit_signal */
+        ptr = next_field(ptr, len); /* itrealvalue */
+        ptr = next_field(ptr, len); /* starttime */
+        ptr = next_field(ptr, len); /* vsize */
+        ptr = next_field(ptr, len); /* rss */
+        ptr = next_field(ptr, len); /* rss limit */
+        ptr = next_field(ptr, len); /* startcode */
+        ptr = next_field(ptr, len); /* endcode */
+        ptr = next_field(ptr, len); /* startstack */
+        ptr = next_field(ptr, len); /* kstkesp */
+        ptr = next_field(ptr, len); /* kstkeip */
+        ptr = next_field(ptr, len); /* signal */
+        ptr = next_field(ptr, len); /* blocked */
+        ptr = next_field(ptr, len); /* sigignore */
+        ptr = next_field(ptr, len); /* sigcatch */
+        ptr = next_field(ptr, len); /* wchan */
+        ptr = next_field(ptr, len); /* nswap */
+        ptr = next_field(ptr, len); /* cnswap */
+        ptr = next_field(ptr, len); /* exit_signal */
 
         /* finally - get the processor */
         stats->processor = strtol(ptr, NULL, 10);
@@ -369,7 +360,7 @@ static int query(pid_t pid,
          * it once it is in memory for speed
          */
         memset(data, 0, sizeof(data));
-        len = read(fd, data, sizeof(data)-1);
+        len = read(fd, data, sizeof(data) - 1);
         close(fd);
         if (len < 0) {
             goto diskstats;
@@ -461,7 +452,7 @@ static int query(pid_t pid,
         if (0 < (len = pmix_list_get_size(&cache))) {
             PMIX_DISK_STATS_CREATE(nstats->diskstats, len);
             i = 0;
-            PMIX_LIST_FOREACH(ds, &cache, dstats_t) {
+            PMIX_LIST_FOREACH (ds, &cache, dstats_t) {
                 memcpy(&nstats->diskstats[i], &ds->dstat, sizeof(pmix_disk_stats_t));
                 ++i;
             }
@@ -510,7 +501,7 @@ static int query(pid_t pid,
         if (0 < (len = pmix_list_get_size(&cache))) {
             PMIX_NET_STATS_CREATE(nstats->netstats, len);
             i = 0;
-            PMIX_LIST_FOREACH(ns, &cache, ndstats_t) {
+            PMIX_LIST_FOREACH (ns, &cache, ndstats_t) {
                 memcpy(&nstats->netstats[i], &ns->nstat, sizeof(pmix_net_stats_t));
                 ++i;
             }
@@ -518,7 +509,7 @@ static int query(pid_t pid,
         PMIX_LIST_DESTRUCT(&cache);
     }
 
- complete:
+complete:
     return PMIX_SUCCESS;
 }
 
@@ -528,7 +519,7 @@ static char *local_getline(FILE *fp)
 
     ret = fgets(input, PMIX_STAT_MAX_LENGTH, fp);
     if (NULL != ret) {
-        input[strlen(input)-1] = '\0';  /* remove newline */
+        input[strlen(input) - 1] = '\0'; /* remove newline */
         /* strip leading white space */
         ptr = input;
         while (!isalnum(*ptr)) {
@@ -559,7 +550,7 @@ static char *local_stripper(char *data)
     *end = '\0';
     /* now look for value */
     ptr++;
-    enddata = &(data[len-1]);
+    enddata = &(data[len - 1]);
     while (ptr != enddata && !isalnum(*ptr)) {
         ++ptr;
     }
@@ -587,8 +578,8 @@ static void local_getfields(char *dptr, char ***fields)
      * Then shift across the white space to the start
      * of the next one
      */
-    end = ptr;  /* ptr points to an alnum */
-    end++;  /* look at next character */
+    end = ptr; /* ptr points to an alnum */
+    end++;     /* look at next character */
     while ('\0' != *end) {
         /* find the end of this alpha string */
         while ('\0' != *end && isalnum(*end)) {

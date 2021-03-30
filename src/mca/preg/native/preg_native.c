@@ -4,6 +4,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,69 +15,58 @@
 #include "src/include/pmix_config.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include <ctype.h>
 
-
-#include "include/pmix_common.h"
 #include "include/pmix.h"
+#include "include/pmix_common.h"
 
-#include "src/include/pmix_socket_errno.h"
+#include "src/class/pmix_list.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_socket_errno.h"
+#include "src/mca/bfrops/base/base.h"
+#include "src/mca/gds/gds.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
-#include "src/class/pmix_list.h"
-#include "src/mca/bfrops/base/base.h"
-#include "src/mca/gds/gds.h"
-#include "src/client/pmix_client_ops.h"
 
-#include "src/mca/preg/base/base.h"
 #include "preg_native.h"
+#include "src/mca/preg/base/base.h"
 
-static pmix_status_t generate_node_regex(const char *input,
-                                         char **regex);
-static pmix_status_t generate_ppn(const char *input,
-                                  char **ppn);
-static pmix_status_t parse_nodes(const char *regexp,
-                                 char ***names);
-static pmix_status_t parse_procs(const char *regexp,
-                                 char ***procs);
+static pmix_status_t generate_node_regex(const char *input, char **regex);
+static pmix_status_t generate_ppn(const char *input, char **ppn);
+static pmix_status_t parse_nodes(const char *regexp, char ***names);
+static pmix_status_t parse_procs(const char *regexp, char ***procs);
 static pmix_status_t copy(char **dest, size_t *len, const char *input);
 static pmix_status_t pack(pmix_buffer_t *buffer, const char *input);
 static pmix_status_t unpack(pmix_buffer_t *buffer, char **regex);
 
-pmix_preg_module_t pmix_preg_native_module = {
-    .name = "pmix",
-    .generate_node_regex = generate_node_regex,
-    .generate_ppn = generate_ppn,
-    .parse_nodes = parse_nodes,
-    .parse_procs = parse_procs,
-    .copy = copy,
-    .pack = pack,
-    .unpack = unpack
-};
+pmix_preg_module_t pmix_preg_native_module = {.name = "pmix",
+                                              .generate_node_regex = generate_node_regex,
+                                              .generate_ppn = generate_ppn,
+                                              .parse_nodes = parse_nodes,
+                                              .parse_procs = parse_procs,
+                                              .copy = copy,
+                                              .pack = pack,
+                                              .unpack = unpack};
 
-static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
-                                              int num_digits, char *suffix,
-                                              char ***names);
-static pmix_status_t regex_parse_value_range(char *base, char *range,
-                                             int num_digits, char *suffix,
+static pmix_status_t regex_parse_value_ranges(char *base, char *ranges, int num_digits,
+                                              char *suffix, char ***names);
+static pmix_status_t regex_parse_value_range(char *base, char *range, int num_digits, char *suffix,
                                              char ***names);
 static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names);
 static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs);
 
-
-static pmix_status_t generate_node_regex(const char *input,
-                                         char **regexp)
+static pmix_status_t generate_node_regex(const char *input, char **regexp)
 {
     char *vptr, *vsave;
     char prefix[PMIX_MAX_NODE_PREFIX];
@@ -109,7 +99,7 @@ static pmix_status_t generate_node_regex(const char *input,
         len = strlen(vptr);
         startnum = -1;
         memset(prefix, 0, PMIX_MAX_NODE_PREFIX);
-        for (i=0, j=0; i < len; i++) {
+        for (i = 0, j = 0; i < len; i++) {
             if (!isalpha(vptr[i])) {
                 /* found a non-alpha char */
                 if (!isdigit(vptr[i])) {
@@ -148,15 +138,15 @@ static pmix_status_t generate_node_regex(const char *input,
         vnum = strtol(&vptr[startnum], &sfx, 10);
         if (NULL != sfx) {
             suffix = strdup(sfx);
-            numdigits = (int)(sfx - &vptr[startnum]);
+            numdigits = (int) (sfx - &vptr[startnum]);
         } else {
             suffix = NULL;
-            numdigits = (int)strlen(&vptr[startnum]);
+            numdigits = (int) strlen(&vptr[startnum]);
         }
 
         /* is this value already on our list? */
         found = false;
-        PMIX_LIST_FOREACH(vreg, &vids, pmix_regex_value_t) {
+        PMIX_LIST_FOREACH (vreg, &vids, pmix_regex_value_t) {
             // The regex must preserve ordering of the values.
             // If we disqualified this entry in a previous check then exclude it
             // from future checks as well. This will prevent a later entry from
@@ -165,7 +155,7 @@ static pmix_status_t generate_node_regex(const char *input,
             // Without this 'skip' the loop would have 'a28n02' combine with
             // 'a28n01' jumping over the 'a99n02' entry, and thus not preserving
             // the order of the list when the regex is unpacked.
-            if( vreg->skip ) {
+            if (vreg->skip) {
                 continue;
             }
 
@@ -175,8 +165,7 @@ static pmix_status_t generate_node_regex(const char *input,
             if (0 == strlen(prefix) && NULL != vreg->prefix) {
                 continue;
             }
-            if (0 < strlen(prefix) && NULL != vreg->prefix
-                && 0 != strcmp(prefix, vreg->prefix)) {
+            if (0 < strlen(prefix) && NULL != vreg->prefix && 0 != strcmp(prefix, vreg->prefix)) {
                 vreg->skip = true;
                 continue;
             }
@@ -186,8 +175,7 @@ static pmix_status_t generate_node_regex(const char *input,
             if (NULL != suffix && NULL == vreg->suffix) {
                 continue;
             }
-            if (NULL != suffix && NULL != vreg->suffix &&
-                0 != strcmp(suffix, vreg->suffix)) {
+            if (NULL != suffix && NULL != vreg->suffix && 0 != strcmp(suffix, vreg->suffix)) {
                 vreg->skip = true;
                 continue;
             }
@@ -200,7 +188,7 @@ static pmix_status_t generate_node_regex(const char *input,
             /* get the last range on this nodeid - we do this
              * to preserve order
              */
-            range = (pmix_regex_range_t*)pmix_list_get_last(&vreg->ranges);
+            range = (pmix_regex_range_t *) pmix_list_get_last(&vreg->ranges);
             if (NULL == range) {
                 /* first range for this value */
                 range = PMIX_NEW(pmix_regex_range_t);
@@ -253,7 +241,7 @@ static pmix_status_t generate_node_regex(const char *input,
     free(vsave);
 
     /* begin constructing the regular expression */
-    while (NULL != (vreg = (pmix_regex_value_t*)pmix_list_remove_first(&vids))) {
+    while (NULL != (vreg = (pmix_regex_value_t *) pmix_list_remove_first(&vids))) {
         /* if no ranges, then just add the name */
         if (0 == pmix_list_get_size(&vreg->ranges)) {
             if (NULL != vreg->prefix) {
@@ -273,13 +261,14 @@ static pmix_status_t generate_node_regex(const char *input,
             }
         }
         /* add the ranges */
-        while (NULL != (range = (pmix_regex_range_t*)pmix_list_remove_first(&vreg->ranges))) {
+        while (NULL != (range = (pmix_regex_range_t *) pmix_list_remove_first(&vreg->ranges))) {
             if (1 == range->cnt) {
                 if (0 > asprintf(&tmp2, "%s%d,", tmp, range->start)) {
                     return PMIX_ERR_NOMEM;
                 }
             } else {
-                if (0 > asprintf(&tmp2, "%s%d-%d,", tmp, range->start, range->start + range->cnt - 1)) {
+                if (0 > asprintf(&tmp2, "%s%d-%d,", tmp, range->start,
+                                 range->start + range->cnt - 1)) {
                     return PMIX_ERR_NOMEM;
                 }
             }
@@ -288,7 +277,7 @@ static pmix_status_t generate_node_regex(const char *input,
             PMIX_RELEASE(range);
         }
         /* replace the final comma */
-        tmp[strlen(tmp)-1] = ']';
+        tmp[strlen(tmp) - 1] = ']';
         if (NULL != vreg->suffix) {
             /* add in the suffix, if provided */
             if (0 > asprintf(&tmp2, "%s%s", tmp, vreg->suffix)) {
@@ -321,8 +310,7 @@ static pmix_status_t generate_node_regex(const char *input,
     return rc;
 }
 
-static pmix_status_t generate_ppn(const char *input,
-                                  char **regexp)
+static pmix_status_t generate_ppn(const char *input, char **regexp)
 {
     char **ppn, **npn;
     int i, j, start, end;
@@ -342,7 +330,7 @@ static pmix_status_t generate_ppn(const char *input,
     ppn = pmix_argv_split(input, ';');
 
     /* for each node, split the input by comma */
-    for (i=0; NULL != ppn[i]; i++) {
+    for (i = 0; NULL != ppn[i]; i++) {
         rng = NULL;
         /* create a record for this node */
         vreg = PMIX_NEW(pmix_regex_value_t);
@@ -350,7 +338,7 @@ static pmix_status_t generate_ppn(const char *input,
         /* split the input for this node */
         npn = pmix_argv_split(ppn[i], ',');
         /* look at each element */
-        for (j=0; NULL != npn[j]; j++) {
+        for (j = 0; NULL != npn[j]; j++) {
             /* is this a range? */
             if (NULL != (cptr = strchr(npn[j], '-'))) {
                 /* terminate the string */
@@ -407,11 +395,10 @@ static pmix_status_t generate_ppn(const char *input,
     }
     pmix_argv_free(ppn);
 
-
     /* begin constructing the regular expression */
     tmp = strdup("pmix[");
-    PMIX_LIST_FOREACH(vreg, &nodes, pmix_regex_value_t) {
-        while (NULL != (rng = (pmix_regex_range_t*)pmix_list_remove_first(&vreg->ranges))) {
+    PMIX_LIST_FOREACH (vreg, &nodes, pmix_regex_value_t) {
+        while (NULL != (rng = (pmix_regex_range_t *) pmix_list_remove_first(&vreg->ranges))) {
             if (1 == rng->cnt) {
                 if (0 > asprintf(&tmp2, "%s%d,", tmp, rng->start)) {
                     return PMIX_ERR_NOMEM;
@@ -426,11 +413,11 @@ static pmix_status_t generate_ppn(const char *input,
             PMIX_RELEASE(rng);
         }
         /* replace the final comma */
-        tmp[strlen(tmp)-1] = ';';
+        tmp[strlen(tmp) - 1] = ';';
     }
 
     /* replace the final semi-colon */
-    tmp[strlen(tmp)-1] = ']';
+    tmp[strlen(tmp) - 1] = ']';
 
     /* if this results in a longer answer, then don't do it */
     if (strlen(tmp) > strlen(input)) {
@@ -446,8 +433,7 @@ static pmix_status_t generate_ppn(const char *input,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t parse_nodes(const char *regexp,
-                                 char ***names)
+static pmix_status_t parse_nodes(const char *regexp, char ***names)
 {
     char *tmp, *ptr;
     pmix_status_t rc;
@@ -463,7 +449,7 @@ static pmix_status_t parse_nodes(const char *regexp,
     /* protect the input string */
     tmp = strdup(regexp);
     /* strip the trailing bracket */
-    tmp[strlen(tmp)-1] = '\0';
+    tmp[strlen(tmp) - 1] = '\0';
 
     /* the regex generator used to create this regex
      * is tagged at the beginning of the string */
@@ -485,10 +471,8 @@ static pmix_status_t parse_nodes(const char *regexp,
     }
     free(tmp);
     return rc;
-
 }
-static pmix_status_t parse_procs(const char *regexp,
-                                 char ***procs)
+static pmix_status_t parse_procs(const char *regexp, char ***procs)
 {
     char *tmp, *ptr;
     pmix_status_t rc;
@@ -504,7 +488,7 @@ static pmix_status_t parse_procs(const char *regexp,
     /* protect the input string */
     tmp = strdup(regexp);
     /* strip the trailing bracket */
-    tmp[strlen(tmp)-1] = '\0';
+    tmp[strlen(tmp) - 1] = '\0';
 
     /* the regex generator used to create this regex
      * is tagged at the beginning of the string */
@@ -549,7 +533,7 @@ static pmix_status_t pack(pmix_buffer_t *buffer, const char *input)
     }
 
     /* extract the size */
-    slen = strlen(input) + 1;  // retain the NULL terminator
+    slen = strlen(input) + 1; // retain the NULL terminator
 
     /* ensure the buffer has enough space */
     ptr = pmix_bfrop_buffer_extend(buffer, slen);
@@ -642,8 +626,8 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
 
         if (found_range) {
             /* If we found a range, get the number of digits in the numbers */
-            i++;  /* step over the [ */
-            for (j=i; j < len; j++) {
+            i++; /* step over the [ */
+            for (j = i; j < len; j++) {
                 if (base[j] == ':') {
                     base[j] = '\0';
                     break;
@@ -655,7 +639,7 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
                 return PMIX_ERR_BAD_PARAM;
             }
             num_digits = strtol(&base[i], NULL, 10);
-            i = j + 1;  /* step over the : */
+            i = j + 1; /* step over the : */
             /* now find the end of the range */
             for (j = i; j < len; ++j) {
                 if (base[j] == ']') {
@@ -669,23 +653,24 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
                 return PMIX_ERR_BAD_PARAM;
             }
             /* check for a suffix */
-            if (j+1 < len && base[j+1] != ',') {
+            if (j + 1 < len && base[j + 1] != ',') {
                 /* find the next comma, if present */
-                for (k=j+1; k < len && base[k] != ','; k++);
+                for (k = j + 1; k < len && base[k] != ','; k++)
+                    ;
                 if (k < len) {
                     base[k] = '\0';
                 }
-                suffix = strdup(&base[j+1]);
+                suffix = strdup(&base[j + 1]);
                 if (k < len) {
                     base[k] = ',';
                 }
-                j = k-1;
+                j = k - 1;
             } else {
                 suffix = NULL;
             }
             PMIX_OUTPUT_VERBOSE((1, pmix_preg_base_framework.framework_output,
-                                 "regex:extract:nodes: parsing range %s %s %s",
-                                 base, base + i, suffix));
+                                 "regex:extract:nodes: parsing range %s %s %s", base, base + i,
+                                 suffix));
 
             ret = regex_parse_value_ranges(base, base + i, num_digits, suffix, names);
             if (NULL != suffix) {
@@ -695,7 +680,7 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
                 free(orig);
                 return ret;
             }
-            if (j+1 < len && base[j + 1] == ',') {
+            if (j + 1 < len && base[j + 1] == ',') {
                 more_to_come = true;
                 base = &base[j + 2];
             } else {
@@ -703,7 +688,7 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
             }
         } else {
             /* If we didn't find a range, just add the value */
-            if(PMIX_SUCCESS != (ret = pmix_argv_append_nosize(names, base))) {
+            if (PMIX_SUCCESS != (ret = pmix_argv_append_nosize(names, base))) {
                 PMIX_ERROR_LOG(ret);
                 free(orig);
                 return ret;
@@ -713,14 +698,13 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
             /* set base equal to the (possible) next base to look at */
             base = &base[i];
         }
-    } while(more_to_come);
+    } while (more_to_come);
 
     free(orig);
 
     /* All done */
     return ret;
 }
-
 
 /*
  * Parse one or more ranges in a set
@@ -730,9 +714,8 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
  *                 (i.e. "1-3,10" or "5" or "9,0100-0130,250")
  * @param ***names An argv array to add the newly discovered values to
  */
-static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
-                                              int num_digits, char *suffix,
-                                              char ***names)
+static pmix_status_t regex_parse_value_ranges(char *base, char *ranges, int num_digits,
+                                              char *suffix, char ***names)
 {
     int i, len;
     pmix_status_t ret;
@@ -771,7 +754,6 @@ static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
     return PMIX_SUCCESS;
 }
 
-
 /*
  * Parse a single range in a set and add the full names of the values
  * found to the names argv
@@ -780,8 +762,7 @@ static pmix_status_t regex_parse_value_ranges(char *base, char *ranges,
  * @param *ranges  A pointer to a single range. (i.e. "1-3" or "5")
  * @param ***names An argv array to add the newly discovered values to
  */
-static pmix_status_t regex_parse_value_range(char *base, char *range,
-                                             int num_digits, char *suffix,
+static pmix_status_t regex_parse_value_range(char *base, char *range, int num_digits, char *suffix,
                                              char ***names)
 {
     char *str, tmp[132];
@@ -861,20 +842,20 @@ static pmix_status_t regex_parse_value_range(char *base, char *range,
         memset(str, 0, len);
         strcpy(str, base);
         /* we need to zero-pad the digits */
-        for (k=0; k < (size_t)num_digits; k++) {
-            str[k+base_len] = '0';
+        for (k = 0; k < (size_t) num_digits; k++) {
+            str[k + base_len] = '0';
         }
         memset(tmp, 0, 132);
-        snprintf(tmp, 132, "%lu", (unsigned long)i);
-        for (k=0; k < strlen(tmp); k++) {
-            str[base_len + num_digits - k - 1] = tmp[strlen(tmp)-k-1];
+        snprintf(tmp, 132, "%lu", (unsigned long) i);
+        for (k = 0; k < strlen(tmp); k++) {
+            str[base_len + num_digits - k - 1] = tmp[strlen(tmp) - k - 1];
         }
         /* if there is a suffix, add it */
         if (NULL != suffix) {
             strcat(str, suffix);
         }
         ret = pmix_argv_append_nosize(names, str);
-        if(PMIX_SUCCESS != ret) {
+        if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             free(str);
             return ret;
@@ -888,16 +869,16 @@ static pmix_status_t regex_parse_value_range(char *base, char *range,
 
 static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs)
 {
-    char **rngs, **nds, *t, **ps=NULL;
+    char **rngs, **nds, *t, **ps = NULL;
     int i, j, k, start, end;
 
     /* split on semi-colons for nodes */
     nds = pmix_argv_split(regexp, ';');
-    for (j=0; NULL != nds[j]; j++) {
+    for (j = 0; NULL != nds[j]; j++) {
         /* for each node, split it by comma */
         rngs = pmix_argv_split(nds[j], ',');
         /* parse each element */
-        for (i=0; NULL != rngs[i]; i++) {
+        for (i = 0; NULL != rngs[i]; i++) {
             /* look for a range */
             if (NULL == (t = strchr(rngs[i], '-'))) {
                 /* just one value */
@@ -908,7 +889,7 @@ static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs)
                 start = strtol(rngs[i], NULL, 10);
                 ++t;
                 end = strtol(t, NULL, 10);
-                for (k=start; k <= end; k++) {
+                for (k = start; k <= end; k++) {
                     if (0 > asprintf(&t, "%d", k)) {
                         pmix_argv_free(nds);
                         pmix_argv_free(rngs);

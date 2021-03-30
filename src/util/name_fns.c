@@ -27,47 +27,45 @@
 
 #include "include/pmix_common.h"
 
-#include "src/threads/tsd.h"
 #include "src/include/pmix_globals.h"
+#include "src/threads/tsd.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/printf.h"
 
-#define PMIX_PRINT_NAME_ARGS_MAX_SIZE   300
-#define PMIX_PRINT_NAME_ARG_NUM_BUFS    16
+#define PMIX_PRINT_NAME_ARGS_MAX_SIZE 300
+#define PMIX_PRINT_NAME_ARG_NUM_BUFS  16
 
-#define PMIX_SCHEMA_DELIMITER_CHAR      '.'
-#define PMIX_SCHEMA_WILDCARD_CHAR       '*'
-#define PMIX_SCHEMA_WILDCARD_STRING     "*"
-#define PMIX_SCHEMA_INVALID_CHAR        '$'
-#define PMIX_SCHEMA_INVALID_STRING      "$"
+#define PMIX_SCHEMA_DELIMITER_CHAR  '.'
+#define PMIX_SCHEMA_WILDCARD_CHAR   '*'
+#define PMIX_SCHEMA_WILDCARD_STRING "*"
+#define PMIX_SCHEMA_INVALID_CHAR    '$'
+#define PMIX_SCHEMA_INVALID_STRING  "$"
 
-static bool fns_init=false;
+static bool fns_init = false;
 
 static pmix_tsd_key_t print_args_tsd_key;
-char* pmix_print_args_null = "NULL";
+char *pmix_print_args_null = "NULL";
 typedef struct {
     char *buffers[PMIX_PRINT_NAME_ARG_NUM_BUFS];
     int cntr;
 } pmix_print_args_buffers_t;
 
-static void
-buffer_cleanup(void *value)
+static void buffer_cleanup(void *value)
 {
     int i;
     pmix_print_args_buffers_t *ptr;
 
     if (NULL != value) {
-        ptr = (pmix_print_args_buffers_t*)value;
-        for (i=0; i < PMIX_PRINT_NAME_ARG_NUM_BUFS; i++) {
+        ptr = (pmix_print_args_buffers_t *) value;
+        for (i = 0; i < PMIX_PRINT_NAME_ARG_NUM_BUFS; i++) {
             free(ptr->buffers[i]);
         }
-        free (ptr);
+        free(ptr);
     }
 }
 
-static pmix_print_args_buffers_t*
-get_print_name_buffer(void)
+static pmix_print_args_buffers_t *get_print_name_buffer(void)
 {
     pmix_print_args_buffers_t *ptr;
     int ret, i;
@@ -81,22 +79,23 @@ get_print_name_buffer(void)
         fns_init = true;
     }
 
-    ret = pmix_tsd_getspecific(print_args_tsd_key, (void**)&ptr);
-    if (PMIX_SUCCESS != ret) return NULL;
+    ret = pmix_tsd_getspecific(print_args_tsd_key, (void **) &ptr);
+    if (PMIX_SUCCESS != ret)
+        return NULL;
 
     if (NULL == ptr) {
-        ptr = (pmix_print_args_buffers_t*)malloc(sizeof(pmix_print_args_buffers_t));
-        for (i=0; i < PMIX_PRINT_NAME_ARG_NUM_BUFS; i++) {
-            ptr->buffers[i] = (char *) malloc((PMIX_PRINT_NAME_ARGS_MAX_SIZE+1) * sizeof(char));
+        ptr = (pmix_print_args_buffers_t *) malloc(sizeof(pmix_print_args_buffers_t));
+        for (i = 0; i < PMIX_PRINT_NAME_ARG_NUM_BUFS; i++) {
+            ptr->buffers[i] = (char *) malloc((PMIX_PRINT_NAME_ARGS_MAX_SIZE + 1) * sizeof(char));
         }
         ptr->cntr = 0;
-        ret = pmix_tsd_setspecific(print_args_tsd_key, (void*)ptr);
+        ret = pmix_tsd_setspecific(print_args_tsd_key, (void *) ptr);
     }
 
-    return (pmix_print_args_buffers_t*) ptr;
+    return (pmix_print_args_buffers_t *) ptr;
 }
 
-static char* print_args(char *ns, pmix_rank_t rnk)
+static char *print_args(char *ns, pmix_rank_t rnk)
 {
     pmix_print_args_buffers_t *ptr;
     char *rank;
@@ -123,9 +122,7 @@ static char* print_args(char *ns, pmix_rank_t rnk)
     rank = pmix_util_print_rank(rnk);
 
     index = ptr->cntr;
-    snprintf(ptr->buffers[index],
-             PMIX_PRINT_NAME_ARGS_MAX_SIZE,
-             "[%s,%s]", ns, rank);
+    snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "[%s,%s]", ns, rank);
     ptr->cntr++;
     if (PMIX_PRINT_NAME_ARG_NUM_BUFS == ptr->cntr) {
         ptr->cntr = 0;
@@ -134,13 +131,13 @@ static char* print_args(char *ns, pmix_rank_t rnk)
     return ptr->buffers[index];
 }
 
-char* pmix_util_print_name_args(const pmix_proc_t *name)
+char *pmix_util_print_name_args(const pmix_proc_t *name)
 {
     if (NULL == name) {
         return print_args(NULL, PMIX_RANK_UNDEF);
     }
 
-    return print_args((char*)name->nspace, name->rank);
+    return print_args((char *) name->nspace, name->rank);
 }
 
 char *pmix_util_print_pname_args(const pmix_name_t *name)
@@ -149,10 +146,10 @@ char *pmix_util_print_pname_args(const pmix_name_t *name)
         return print_args(NULL, PMIX_RANK_UNDEF);
     }
 
-    return print_args((char*)name->nspace, name->rank);
+    return print_args((char *) name->nspace, name->rank);
 }
 
-char* pmix_util_print_rank(const pmix_rank_t vpid)
+char *pmix_util_print_rank(const pmix_rank_t vpid)
 {
     pmix_print_args_buffers_t *ptr;
     int index;
@@ -170,9 +167,7 @@ char* pmix_util_print_rank(const pmix_rank_t vpid)
     } else if (PMIX_RANK_WILDCARD == vpid) {
         snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "WILDCARD");
     } else {
-        snprintf(ptr->buffers[index],
-                 PMIX_PRINT_NAME_ARGS_MAX_SIZE,
-                 "%ld", (long)vpid);
+        snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "%ld", (long) vpid);
     }
     ptr->cntr++;
     if (PMIX_PRINT_NAME_ARG_NUM_BUFS == ptr->cntr) {

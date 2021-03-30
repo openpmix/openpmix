@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,8 +31,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "src/class/pmix_object.h"
 #include "src/util/output.h"
@@ -53,18 +54,18 @@ int main(int argc, char **argv)
     pmix_byte_object_t *bptr;
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %s",
-                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %s", myproc.nspace, myproc.rank,
+                    PMIx_Error_string(rc));
         exit(rc);
     }
     pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
 
     /* test something */
-    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get failed: %s",
-                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get failed: %s", myproc.nspace, myproc.rank,
+                    PMIx_Error_string(rc));
         exit(rc);
     }
     nprocs = val->data.uint32;
@@ -73,8 +74,8 @@ int main(int argc, char **argv)
 
     /* get our assumed hostname */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_HOSTNAME, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get hostname failed: %s",
-                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get hostname failed: %s", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     hostname = strdup(val->data.string);
@@ -83,22 +84,21 @@ int main(int argc, char **argv)
 
     /* get our assigned fabric endpts */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_ENDPT, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric endpt failed: %s",
-                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric endpt failed: %s", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
         goto nextstep;
     }
-    pmix_output(0, "Client %s:%d was assigned %lu endpts",
-                myproc.nspace, myproc.rank,
-                (unsigned long)val->data.darray->size);
+    pmix_output(0, "Client %s:%d was assigned %lu endpts", myproc.nspace, myproc.rank,
+                (unsigned long) val->data.darray->size);
 
-    bptr = (pmix_byte_object_t*)val->data.darray->array;
+    bptr = (pmix_byte_object_t *) val->data.darray->array;
     ninfo = val->data.darray->size;
     /* print them out for diagnostics - someday we can figure
      * out an automated way of testing the answer. We know that
      * the simptest pnet component returns strings */
     {
         char **foo = NULL;
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             pmix_argv_append_nosize(&foo, bptr[0].bytes);
         }
         tmp = pmix_argv_join(foo, ',');
@@ -107,23 +107,23 @@ int main(int argc, char **argv)
         free(tmp);
     }
 
-  nextstep:
+nextstep:
     /* get our assigned fabric coordinates */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_COORDINATES, NULL, 0, &val)) ||
-        NULL == val) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric coordinate failed: %s",
-                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_COORDINATES, NULL, 0, &val))
+        || NULL == val) {
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric coordinate failed: %s", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     if (PMIX_DATA_ARRAY == val->type) {
-        coords = (pmix_coord_t*)val->data.darray->array;
+        coords = (pmix_coord_t *) val->data.darray->array;
         ninfo = val->data.darray->size;
         /* print them out for diagnostics - someday we can figure
          * out an automated way of testing the answer */
-        for (m=0; m < ninfo; m++) {
+        for (m = 0; m < ninfo; m++) {
             char **foo = NULL;
             char *view;
-            for (n=0; n < coords[m].dims; n++) {
+            for (n = 0; n < coords[m].dims; n++) {
                 asprintf(&tmp, "%d", coords[m].coord[n]);
                 pmix_argv_append_nosize(&foo, tmp);
                 free(tmp);
@@ -135,13 +135,14 @@ int main(int argc, char **argv)
             } else {
                 view = "PHYSICAL";
             }
-            pmix_output(0, "Rank %u[%s]: COORD[%d] VIEW %s: %s", myproc.rank, hostname, (int)m, view, tmp);
+            pmix_output(0, "Rank %u[%s]: COORD[%d] VIEW %s: %s", myproc.rank, hostname, (int) m,
+                        view, tmp);
             free(tmp);
         }
     } else if (PMIX_COORD == val->type) {
         char **foo = NULL;
         char *view;
-        for (n=0; n < val->data.coord->dims; n++) {
+        for (n = 0; n < val->data.coord->dims; n++) {
             asprintf(&tmp, "%d", val->data.coord->coord[n]);
             pmix_argv_append_nosize(&foo, tmp);
             free(tmp);
@@ -153,22 +154,24 @@ int main(int argc, char **argv)
         } else {
             view = "PHYSICAL";
         }
-        pmix_output(0, "Rank %u[%s]: COORD VIEW %s DIMS %lu: %s", myproc.rank, hostname, view, val->data.coord->dims, tmp);
+        pmix_output(0, "Rank %u[%s]: COORD VIEW %s DIMS %lu: %s", myproc.rank, hostname, view,
+                    val->data.coord->dims, tmp);
         free(tmp);
     } else {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric coordinate returned wrong type: %s",
                     myproc.nspace, myproc.rank, PMIx_Data_type_string(val->type));
     }
 
- done:
+done:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return(rc);
+    return (rc);
 }

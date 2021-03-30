@@ -6,6 +6,7 @@
  * Copyright (c) 2016      Broadcom Limited. All rights reserved.
  * Copyright (c) 2016      Los Alamos National Security, LLC. All rights
  *                         reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,23 +21,20 @@
 
 typedef uint64_t pmix_timer_t;
 
-static inline pmix_timer_t
-pmix_sys_timer_get_cycles(void)
+static inline pmix_timer_t pmix_sys_timer_get_cycles(void)
 {
     pmix_timer_t ret;
 
-    __asm__ __volatile__ ("isb" ::: "memory");
-    __asm__ __volatile__ ("mrs %0,  CNTVCT_EL0" : "=r" (ret));
+    __asm__ __volatile__("isb" ::: "memory");
+    __asm__ __volatile__("mrs %0,  CNTVCT_EL0" : "=r"(ret));
 
     return ret;
 }
 
-
-static inline pmix_timer_t
-pmix_sys_timer_freq(void)
+static inline pmix_timer_t pmix_sys_timer_freq(void)
 {
     pmix_timer_t freq;
-    __asm__ __volatile__ ("mrs %0,  CNTFRQ_EL0" : "=r" (freq));
+    __asm__ __volatile__("mrs %0,  CNTFRQ_EL0" : "=r"(freq));
     return (pmix_timer_t)(freq);
 }
 

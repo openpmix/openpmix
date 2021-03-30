@@ -17,6 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,26 +28,25 @@
 
 #include "src/include/pmix_config.h"
 #include "include/pmix_server.h"
-#include "src/include/types.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/types.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <time.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "src/class/pmix_list.h"
-#include "src/util/pmix_environ.h"
-#include "src/util/output.h"
-#include "src/util/printf.h"
 #include "src/util/argv.h"
+#include "src/util/output.h"
+#include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 
 static pmix_server_module_t mymodule = {0};
-
 
 int main(int argc, char **argv)
 {
@@ -54,7 +54,7 @@ int main(int argc, char **argv)
     size_t ninfo;
     pmix_status_t rc;
 
-    fprintf(stderr, "PID: %lu Testing version %s\n", (unsigned long)getpid(), PMIx_Get_version());
+    fprintf(stderr, "PID: %lu Testing version %s\n", (unsigned long) getpid(), PMIx_Get_version());
 
     /* set a known network configuration for the pnet/test component */
     putenv("PMIX_MCA_pnet_sshot_scheduler_pipe=./myfifo");
@@ -69,7 +69,6 @@ int main(int argc, char **argv)
         return rc;
     }
     PMIX_INFO_FREE(info, ninfo);
-
 
     /* finalize the server library */
     if (PMIX_SUCCESS != (rc = PMIx_server_finalize())) {
