@@ -25,9 +25,9 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/util/argv.h"
-#include "src/mca/pmdl/pmdl.h"
 #include "pmdl_oshmem.h"
+#include "src/mca/pmdl/pmdl.h"
+#include "src/util/argv.h"
 
 static pmix_status_t component_register(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
@@ -66,27 +66,25 @@ static pmix_status_t component_register(void)
     pmix_mca_base_component_t *component = &mca_pmdl_oshmem_component.super.base;
 
     mca_pmdl_oshmem_component.incparms = "SHMEM_*,SMA_*";
-    (void)pmix_mca_base_component_var_register(component, "include_envars",
-                                               "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                               PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                               &mca_pmdl_oshmem_component.incparms);
+    (void) pmix_mca_base_component_var_register(
+        component, "include_envars",
+        "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
+        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &mca_pmdl_oshmem_component.incparms);
     if (NULL != mca_pmdl_oshmem_component.incparms) {
-        mca_pmdl_oshmem_component.include = pmix_argv_split(mca_pmdl_oshmem_component.incparms, ',');
+        mca_pmdl_oshmem_component.include = pmix_argv_split(mca_pmdl_oshmem_component.incparms,
+                                                            ',');
     }
 
     mca_pmdl_oshmem_component.excparms = NULL;
-    (void)pmix_mca_base_component_var_register(component, "exclude_envars",
-                                               "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-                                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                               PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                               PMIX_INFO_LVL_2,
-                                               PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                               &mca_pmdl_oshmem_component.excparms);
+    (void) pmix_mca_base_component_var_register(
+        component, "exclude_envars",
+        "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
+        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &mca_pmdl_oshmem_component.excparms);
     if (NULL != mca_pmdl_oshmem_component.excparms) {
-        mca_pmdl_oshmem_component.exclude = pmix_argv_split(mca_pmdl_oshmem_component.excparms, ',');
+        mca_pmdl_oshmem_component.exclude = pmix_argv_split(mca_pmdl_oshmem_component.excparms,
+                                                            ',');
     }
 
     return PMIX_SUCCESS;
@@ -95,6 +93,6 @@ static pmix_status_t component_register(void)
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 30;
-    *module = (pmix_mca_base_module_t *)&pmix_pmdl_oshmem_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pmdl_oshmem_module;
     return PMIX_SUCCESS;
 }

@@ -13,7 +13,6 @@
  * $HEADER$
  */
 
-
 #include "src/include/pmix_config.h"
 
 #include "include/pmix_common.h"
@@ -21,11 +20,11 @@
 #include <pthread.h>
 #include PMIX_EVENT_HEADER
 
-#include "src/mca/mca.h"
-#include "src/mca/base/base.h"
 #include "src/class/pmix_list.h"
-#include "src/runtime/pmix_progress_threads.h"
 #include "src/include/types.h"
+#include "src/mca/base/base.h"
+#include "src/mca/mca.h"
+#include "src/runtime/pmix_progress_threads.h"
 
 #include "src/mca/psensor/base/base.h"
 
@@ -40,27 +39,21 @@
 /*
  * Global variables
  */
-pmix_psensor_base_module_t pmix_psensor = {
-    pmix_psensor_base_start,
-    pmix_psensor_base_stop
-};
+pmix_psensor_base_module_t pmix_psensor = {pmix_psensor_base_start, pmix_psensor_base_stop};
 pmix_psensor_base_t pmix_psensor_base = {{{0}}};
 
 static bool use_separate_thread = false;
 
 static int pmix_psensor_register(pmix_mca_base_register_flag_t flags)
 {
-    (void)flags;
+    (void) flags;
     (void) pmix_mca_base_var_register("pmix", "psensor", "base", "use_separate_thread",
                                       "Use a separate thread for monitoring local procs",
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                      PMIX_INFO_LVL_9,
-                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                      &use_separate_thread);
+                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY, &use_separate_thread);
     return PMIX_SUCCESS;
 }
-
 
 static int pmix_psensor_base_close(void)
 {
@@ -68,7 +61,7 @@ static int pmix_psensor_base_close(void)
     PMIX_LIST_DESTRUCT(&pmix_psensor_base.actives);
 
     if (use_separate_thread && NULL != pmix_psensor_base.evbase) {
-        (void)pmix_progress_thread_stop("PSENSOR");
+        (void) pmix_progress_thread_stop("PSENSOR");
     }
 
     /* Close all remaining available components */
@@ -98,11 +91,9 @@ static int pmix_psensor_base_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_psensor_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psensor, "PMIx Monitoring Sensors",
-                                pmix_psensor_register,
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psensor, "PMIx Monitoring Sensors", pmix_psensor_register,
                                 pmix_psensor_base_open, pmix_psensor_base_close,
-                                mca_psensor_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+                                mca_psensor_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-PMIX_CLASS_INSTANCE(pmix_psensor_active_module_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_psensor_active_module_t, pmix_list_item_t, NULL, NULL);

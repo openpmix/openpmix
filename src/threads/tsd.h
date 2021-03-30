@@ -5,13 +5,13 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
  *
  * $HEADER$
  */
-
 
 #ifndef PMIX_THREADS_TSD_H
 #define PMIX_THREADS_TSD_H
@@ -32,29 +32,24 @@ BEGIN_C_DECLS
  * Functions for providing thread-specific datastore capabilities.
  */
 
-
 /**
  * Prototype for callback when tsd data is being destroyed
  */
 typedef void (*pmix_tsd_destructor_t)(void *value);
 
-
 typedef pthread_key_t pmix_tsd_key_t;
 
-static inline int
-pmix_tsd_key_delete(pmix_tsd_key_t key)
+static inline int pmix_tsd_key_delete(pmix_tsd_key_t key)
 {
     return pthread_key_delete(key);
 }
 
-static inline int
-pmix_tsd_setspecific(pmix_tsd_key_t key, void *value)
+static inline int pmix_tsd_setspecific(pmix_tsd_key_t key, void *value)
 {
     return pthread_setspecific(key, value);
 }
 
-static inline int
-pmix_tsd_getspecific(pmix_tsd_key_t key, void **valuep)
+static inline int pmix_tsd_getspecific(pmix_tsd_key_t key, void **valuep)
 {
     *valuep = pthread_getspecific(key);
     return PMIX_SUCCESS;
@@ -86,9 +81,7 @@ pmix_tsd_getspecific(pmix_tsd_key_t key, void **valuep)
  *                       create another thread specific data key
  * @retval ENOMEM        Insufficient memory exists to create the key
  */
-PMIX_EXPORT int pmix_tsd_key_create(pmix_tsd_key_t *key,
-                                      pmix_tsd_destructor_t destructor);
-
+PMIX_EXPORT int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor);
 
 /**
  * Destruct all thread-specific data keys

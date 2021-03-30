@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,30 +25,29 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_UTIL_H
-#include <util.h>
+#    include <util.h>
 #endif
 #ifdef HAVE_LIBUTIL_H
-#include <libutil.h>
+#    include <libutil.h>
 #endif
 #ifdef HAVE_TERMIOS_H
-# include <termios.h>
+#    include <termios.h>
 #else
-# ifdef HAVE_TERMIO_H
-#  include <termio.h>
-# endif
+#    ifdef HAVE_TERMIO_H
+#        include <termio.h>
+#    endif
 #endif
 
 BEGIN_C_DECLS
 
 #if PMIX_ENABLE_PTY_SUPPORT
 
-PMIX_EXPORT int pmix_openpty(int *amaster, int *aslave, char *name,
-                             struct termios *termp, struct winsize *winp);
+PMIX_EXPORT int pmix_openpty(int *amaster, int *aslave, char *name, struct termios *termp,
+                             struct winsize *winp);
 
 #else
 
-PMIX_EXPORT int pmix_openpty(int *amaster, int *aslave, char *name,
-                             void *termp, void *winpp);
+PMIX_EXPORT int pmix_openpty(int *amaster, int *aslave, char *name, void *termp, void *winpp);
 
 #endif
 

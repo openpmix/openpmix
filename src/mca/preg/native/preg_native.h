@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,7 +13,6 @@
 #define PMIX_PREG_NATIVE_H
 
 #include "src/include/pmix_config.h"
-
 
 #include "src/mca/preg/preg.h"
 

@@ -18,56 +18,53 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix.h"
 
-#include "src/include/types.h"
-#include "src/include/pmix_stdint.h"
 #include "src/include/pmix_socket_errno.h"
+#include "src/include/pmix_stdint.h"
+#include "src/include/types.h"
 
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_UN_H
-#include <sys/un.h>
+#    include <sys/un.h>
 #endif
 #ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
+#    include <sys/uio.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
+#include "src/client/pmix_client_ops.h"
 #include "src/mca/ploc/ploc.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/client/pmix_client_ops.h"
 
-static void fcb(pmix_status_t status,
-                pmix_info_t *info, size_t ninfo,
-                void *cbdata,
-                pmix_release_cbfunc_t release_fn,
-                void *release_cbdata)
+static void fcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     size_t n;
 
     cb->status = status;
     if (PMIX_SUCCESS == status && 0 < ninfo) {
         PMIX_INFO_CREATE(cb->fabric->info, ninfo);
         cb->fabric->ninfo = ninfo;
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             PMIX_INFO_XFER(&cb->fabric->info[n], &info[n]);
         }
     }
@@ -83,17 +80,14 @@ static void fcb(pmix_status_t status,
     }
 }
 
-static void frecv(struct pmix_peer_t *peer,
-                  pmix_ptl_hdr_t *hdr,
-                  pmix_buffer_t *buf, void *cbdata)
+static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
     int cnt;
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric recv from server with %d bytes",
-                        (int)buf->bytes_used);
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric recv from server with %d bytes",
+                        (int) buf->bytes_used);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -130,9 +124,8 @@ static void frecv(struct pmix_peer_t *peer,
         }
     }
 
-  complete:
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric recv from server releasing");
+complete:
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric recv from server releasing");
     /* release the caller */
     if (NULL != cb->cbfunc.opfn) {
         cb->cbfunc.opfn(rc, cb->cbdata);
@@ -142,10 +135,9 @@ static void frecv(struct pmix_peer_t *peer,
     }
 }
 
-
 static void mycbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
     PMIX_ACQUIRE_OBJECT(cb);
     cb->status = status;
@@ -155,8 +147,7 @@ static void mycbfunc(pmix_status_t status, void *cbdata)
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
-                                               const pmix_info_t directives[],
-                                               size_t ndirs)
+                                               const pmix_info_t directives[], size_t ndirs)
 {
     pmix_cb_t cb;
     pmix_status_t rc;
@@ -169,8 +160,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric register");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric register");
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
@@ -192,16 +182,13 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     /* the fabric info was directly filled into the fabric object */
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric register completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric register completed");
 
     return rc;
 }
 
-
 PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
-                                                  const pmix_info_t directives[],
-                                                  size_t ndirs,
+                                                  const pmix_info_t directives[], size_t ndirs,
                                                   pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_cb_t *cb;
@@ -233,11 +220,10 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
             cb->cbfunc.opfn = cbfunc;
             cb->cbdata = cbdata;
         } else {
-            cb = (pmix_cb_t*)cbdata;
+            cb = (pmix_cb_t *) cbdata;
         }
-        rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_REQUEST_INFO,
-                                     directives, ndirs,
-                                     fcb, (void*)cb);
+        rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_REQUEST_INFO, directives,
+                                     ndirs, fcb, (void *) cb);
         if (PMIX_SUCCESS != rc && NULL != cbfunc) {
             PMIX_RELEASE(cb);
         }
@@ -256,8 +242,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -265,16 +250,14 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
     }
 
     /* pack the directives */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ndirs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ndirs, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     if (NULL != directives && 0 < ndirs) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, directives, ndirs, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, directives, ndirs, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -291,12 +274,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
         cb->cbfunc.opfn = cbfunc;
         cb->cbdata = cbdata;
     } else {
-        cb = (pmix_cb_t*)cbdata;
+        cb = (pmix_cb_t *) cbdata;
     }
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, frecv, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, frecv, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         if (NULL != cbfunc) {
@@ -319,8 +301,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric)
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric update");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric update");
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
@@ -337,14 +318,13 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric)
     /* the fabric info was directly filled into the fabric object */
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric update completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric update completed");
 
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric,
-                                                pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_cbfunc_t cbfunc,
+                                                void *cbdata)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -375,14 +355,14 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric,
             cb->cbfunc.opfn = cbfunc;
             cb->cbdata = cbdata;
         } else {
-            cb = (pmix_cb_t*)cbdata;
+            cb = (pmix_cb_t *) cbdata;
         }
         cb->infocopy = true;
         PMIX_INFO_CREATE(cb->info, 1);
         cb->ninfo = 1;
         PMIX_INFO_LOAD(&cb->info[0], PMIX_FABRIC_INDEX, &fabric->index, PMIX_SIZE);
-        rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_UPDATE_INFO,
-                                     cb->info, 1, fcb, (void*)cb);
+        rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_UPDATE_INFO, cb->info, 1, fcb,
+                                     (void *) cb);
         if (PMIX_SUCCESS != rc && NULL != cbfunc) {
             PMIX_INFO_DESTRUCT(&info);
             PMIX_RELEASE(cb);
@@ -401,16 +381,14 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric,
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     /* pack the fabric index */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &fabric->index, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &fabric->index, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -426,12 +404,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric,
         cb->cbfunc.opfn = cbfunc;
         cb->cbdata = cbdata;
     } else {
-        cb = (pmix_cb_t*)cbdata;
+        cb = (pmix_cb_t *) cbdata;
     }
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, frecv, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, frecv, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         if (NULL != cbfunc) {
@@ -440,7 +417,6 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric,
     }
     return rc;
 }
-
 
 PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister(pmix_fabric_t *fabric)
 {
@@ -453,8 +429,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister(pmix_fabric_t *fabric)
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
-                                                    pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric, pmix_op_cbfunc_t cbfunc,
+                                                    void *cbdata)
 {
     pmix_status_t rc;
 

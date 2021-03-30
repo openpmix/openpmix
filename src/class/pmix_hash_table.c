@@ -12,6 +12,7 @@
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,13 +22,13 @@
 
 #include "src/include/pmix_config.h"
 
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
-#include "src/util/output.h"
-#include "src/util/crc.h"
-#include "src/class/pmix_list.h"
 #include "src/class/pmix_hash_table.h"
+#include "src/class/pmix_list.h"
+#include "src/util/crc.h"
+#include "src/util/output.h"
 
 #include "include/pmix_common.h"
 
@@ -42,16 +43,16 @@
  */
 
 struct pmix_hash_element_t {
-    int         valid;          /* whether this element is valid */
-    union {                     /* the key, in its various forms */
-        uint32_t        u32;
-        uint64_t        u64;
+    int valid; /* whether this element is valid */
+    union {    /* the key, in its various forms */
+        uint32_t u32;
+        uint64_t u64;
         struct {
-            const void * key;
-            size_t      key_size;
-        }       ptr;
-    }           key;
-    void *      value;          /* the value */
+            const void *key;
+            size_t key_size;
+        } ptr;
+    } key;
+    void *value; /* the value */
 };
 typedef struct pmix_hash_element_t pmix_hash_element_t;
 
@@ -60,35 +61,29 @@ struct pmix_hash_type_methods_t {
      * The value is not owned by the hash table
      * The key,key_size of pointer keys is
      */
-    void        (*elt_destructor)(pmix_hash_element_t * elt);
+    void (*elt_destructor)(pmix_hash_element_t *elt);
     /* Hash the key of the element -- for growing and adjusting-after-removal */
-    uint64_t    (*hash_elt)(pmix_hash_element_t * elt);
+    uint64_t (*hash_elt)(pmix_hash_element_t *elt);
 };
 
 /* interact with the class-like mechanism */
 
-static void pmix_hash_table_construct(pmix_hash_table_t* ht);
-static void pmix_hash_table_destruct(pmix_hash_table_t* ht);
+static void pmix_hash_table_construct(pmix_hash_table_t *ht);
+static void pmix_hash_table_destruct(pmix_hash_table_t *ht);
 
-PMIX_CLASS_INSTANCE(
-    pmix_hash_table_t,
-    pmix_object_t,
-    pmix_hash_table_construct,
-    pmix_hash_table_destruct
-);
+PMIX_CLASS_INSTANCE(pmix_hash_table_t, pmix_object_t, pmix_hash_table_construct,
+                    pmix_hash_table_destruct);
 
-static void
-pmix_hash_table_construct(pmix_hash_table_t* ht)
+static void pmix_hash_table_construct(pmix_hash_table_t *ht)
 {
-  ht->ht_table = NULL;
-  ht->ht_capacity = ht->ht_size = ht->ht_growth_trigger = 0;
-  ht->ht_density_numer = ht->ht_density_denom = 0;
-  ht->ht_growth_numer = ht->ht_growth_denom = 0;
-  ht->ht_type_methods = NULL;
+    ht->ht_table = NULL;
+    ht->ht_capacity = ht->ht_size = ht->ht_growth_trigger = 0;
+    ht->ht_density_numer = ht->ht_density_denom = 0;
+    ht->ht_growth_numer = ht->ht_growth_denom = 0;
+    ht->ht_type_methods = NULL;
 }
 
-static void
-pmix_hash_table_destruct(pmix_hash_table_t* ht)
+static void pmix_hash_table_destruct(pmix_hash_table_t *ht)
 {
     pmix_hash_table_remove_all(ht);
     free(ht->ht_table);
@@ -98,49 +93,47 @@ pmix_hash_table_destruct(pmix_hash_table_t* ht)
  * Init, etc
  */
 
-static size_t
-pmix_hash_round_capacity_up(size_t capacity)
+static size_t pmix_hash_round_capacity_up(size_t capacity)
 {
     /* round up to (1 mod 30) */
-    return ((capacity+29)/30*30 + 1);
+    return ((capacity + 29) / 30 * 30 + 1);
 }
 
 /* this could be the new init if people wanted a more general API */
 /* (that's why it isn't static) */
-int                             /* PMIX_ return code */
-pmix_hash_table_init2(pmix_hash_table_t* ht, size_t estimated_max_size,
-                      int density_numer, int density_denom,
-                      int growth_numer, int growth_denom)
+int /* PMIX_ return code */
+pmix_hash_table_init2(pmix_hash_table_t *ht, size_t estimated_max_size, int density_numer,
+                      int density_denom, int growth_numer, int growth_denom)
 {
     size_t est_capacity = estimated_max_size * density_denom / density_numer;
     size_t capacity = pmix_hash_round_capacity_up(est_capacity);
-    ht->ht_table = (pmix_hash_element_t*) calloc(capacity, sizeof(pmix_hash_element_t));
+    ht->ht_table = (pmix_hash_element_t *) calloc(capacity, sizeof(pmix_hash_element_t));
     if (NULL == ht->ht_table) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    ht->ht_capacity       = capacity;
-    ht->ht_density_numer  = density_numer;
-    ht->ht_density_denom  = density_denom;
-    ht->ht_growth_numer   = growth_numer;
-    ht->ht_growth_denom   = growth_denom;
+    ht->ht_capacity = capacity;
+    ht->ht_density_numer = density_numer;
+    ht->ht_density_denom = density_denom;
+    ht->ht_growth_numer = growth_numer;
+    ht->ht_growth_denom = growth_denom;
     ht->ht_growth_trigger = capacity * density_numer / density_denom;
-    ht->ht_type_methods   = NULL;
+    ht->ht_type_methods = NULL;
     return PMIX_SUCCESS;
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_init(pmix_hash_table_t* ht, size_t table_size)
+int /* PMIX_ return code */
+pmix_hash_table_init(pmix_hash_table_t *ht, size_t table_size)
 {
     /* default to density of 1/2 and growth of 2/1 */
     return pmix_hash_table_init2(ht, table_size, 1, 2, 2, 1);
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_remove_all(pmix_hash_table_t* ht)
+int /* PMIX_ return code */
+pmix_hash_table_remove_all(pmix_hash_table_t *ht)
 {
     size_t ii;
     for (ii = 0; ii < ht->ht_capacity; ii += 1) {
-        pmix_hash_element_t * elt = &ht->ht_table[ii];
+        pmix_hash_element_t *elt = &ht->ht_table[ii];
         if (elt->valid && ht->ht_type_methods && ht->ht_type_methods->elt_destructor) {
             ht->ht_type_methods->elt_destructor(elt);
         }
@@ -154,22 +147,22 @@ pmix_hash_table_remove_all(pmix_hash_table_t* ht)
     return PMIX_SUCCESS;
 }
 
-static int                      /* PMIX_ return code */
-pmix_hash_grow(pmix_hash_table_t * ht)
+static int /* PMIX_ return code */
+pmix_hash_grow(pmix_hash_table_t *ht)
 {
     size_t jj, ii;
-    pmix_hash_element_t* old_table;
-    pmix_hash_element_t* new_table;
+    pmix_hash_element_t *old_table;
+    pmix_hash_element_t *new_table;
     size_t old_capacity;
     size_t new_capacity;
 
-    old_table    = ht->ht_table;
+    old_table = ht->ht_table;
     old_capacity = ht->ht_capacity;
 
     new_capacity = old_capacity * ht->ht_growth_numer / ht->ht_growth_denom;
     new_capacity = pmix_hash_round_capacity_up(new_capacity);
 
-    new_table    = (pmix_hash_element_t*) calloc(new_capacity, sizeof(new_table[0]));
+    new_table = (pmix_hash_element_t *) calloc(new_capacity, sizeof(new_table[0]));
     if (NULL == new_table) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -183,14 +176,16 @@ pmix_hash_grow(pmix_hash_table_t * ht)
        deleted, so we still own the ptr key storage, just in the new
        table now */
     for (jj = 0; jj < old_capacity; jj += 1) {
-        pmix_hash_element_t * old_elt;
-        pmix_hash_element_t * new_elt;
-        old_elt =  &old_table[jj];
+        pmix_hash_element_t *old_elt;
+        pmix_hash_element_t *new_elt;
+        old_elt = &old_table[jj];
         if (old_elt->valid) {
-            for (ii = (ht->ht_type_methods->hash_elt(old_elt)%new_capacity); ; ii += 1) {
-                if (ii == new_capacity) { ii = 0; }
+            for (ii = (ht->ht_type_methods->hash_elt(old_elt) % new_capacity);; ii += 1) {
+                if (ii == new_capacity) {
+                    ii = 0;
+                }
                 new_elt = &new_table[ii];
-                if (! new_elt->valid) {
+                if (!new_elt->valid) {
                     *new_elt = *old_elt;
                     break;
                 }
@@ -209,16 +204,16 @@ pmix_hash_grow(pmix_hash_table_t * ht)
    removed.  With the help of the type methods this can be generic.
    The important thing is to rehash any valid elements immediately
    following the element-being-removed */
-static int                      /* PMIX_ return code */
-pmix_hash_table_remove_elt_at(pmix_hash_table_t * ht, size_t ii)
+static int /* PMIX_ return code */
+pmix_hash_table_remove_elt_at(pmix_hash_table_t *ht, size_t ii)
 {
     size_t jj, capacity = ht->ht_capacity;
-    pmix_hash_element_t* elts = ht->ht_table;
-    pmix_hash_element_t * elt;
+    pmix_hash_element_t *elts = ht->ht_table;
+    pmix_hash_element_t *elt;
 
     elt = &elts[ii];
 
-    if (! elt->valid) {
+    if (!elt->valid) {
         /* huh?  removing a not-valid element? */
         return PMIX_ERROR;
     }
@@ -238,19 +233,23 @@ pmix_hash_table_remove_elt_at(pmix_hash_table_t * ht, size_t ii)
      * then  z moves down a little:                  XYyabCz..
      * then  . means we're done
      */
-    for (ii = ii+1; ; ii += 1) { /* scan immediately following elements */
-        if (ii == capacity) { ii = 0; }
+    for (ii = ii + 1;; ii += 1) { /* scan immediately following elements */
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &elts[ii];
-        if (! elt->valid) {
-            break;              /* done */
+        if (!elt->valid) {
+            break; /* done */
         }
         /* rehash it and move it if necessary */
-        for (jj = ht->ht_type_methods->hash_elt(elt)%capacity; ; jj += 1) {
-            if (jj == capacity) { jj = 0; }
+        for (jj = ht->ht_type_methods->hash_elt(elt) % capacity;; jj += 1) {
+            if (jj == capacity) {
+                jj = 0;
+            }
             if (jj == ii) {
                 /* already in place, either ideal or best-for-now */
                 break;
-            } else if (! elts[jj].valid) {
+            } else if (!elts[jj].valid) {
                 /* move it down, and invaildate where it came from */
                 elts[jj] = elts[ii];
                 elts[ii].valid = 0;
@@ -264,46 +263,42 @@ pmix_hash_table_remove_elt_at(pmix_hash_table_t * ht, size_t ii)
     return PMIX_SUCCESS;
 }
 
-
 /***************************************************************************/
 
-static uint64_t
-pmix_hash_hash_elt_uint32(pmix_hash_element_t * elt)
+static uint64_t pmix_hash_hash_elt_uint32(pmix_hash_element_t *elt)
 {
-  return elt->key.u32;
+    return elt->key.u32;
 }
 
-static const struct pmix_hash_type_methods_t
-pmix_hash_type_methods_uint32 = {
-    NULL,
-    pmix_hash_hash_elt_uint32
-};
+static const struct pmix_hash_type_methods_t pmix_hash_type_methods_uint32
+    = {NULL, pmix_hash_hash_elt_uint32};
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_value_uint32(pmix_hash_table_t* ht, uint32_t key, void * *value)
+int /* PMIX_ return code */
+pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **value)
 {
     size_t ii, capacity = ht->ht_capacity;
-    pmix_hash_element_t * elt;
+    pmix_hash_element_t *elt;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
-                    "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint32;
-    for (ii = key%capacity; ; ii += 1) {
-        if (ii == capacity) { ii = 0; }
+    for (ii = key % capacity;; ii += 1) {
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.u32 == key) {
             *value = elt->value;
@@ -312,35 +307,35 @@ pmix_hash_table_get_value_uint32(pmix_hash_table_t* ht, uint32_t key, void * *va
             /* keey looking */
         }
     }
-
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_set_value_uint32(pmix_hash_table_t * ht, uint32_t key, void * value)
+int /* PMIX_ return code */
+pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *value)
 {
     int rc;
     size_t ii, capacity = ht->ht_capacity;
-    pmix_hash_element_t * elt;
+    pmix_hash_element_t *elt;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_uint32:"
-                   "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_uint32:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint32;
-    for (ii = key%capacity; ; ii += 1) {
-        if (ii == capacity) { ii = 0; }
+    for (ii = key % capacity;; ii += 1) {
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             /* new entry */
             elt->key.u32 = key;
             elt->value = value;
@@ -362,31 +357,30 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t * ht, uint32_t key, void * va
     }
 }
 
-int
-pmix_hash_table_remove_value_uint32(pmix_hash_table_t * ht, uint32_t key)
+int pmix_hash_table_remove_value_uint32(pmix_hash_table_t *ht, uint32_t key)
 {
     size_t ii, capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
-                    "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_uint32:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint32;
-    for (ii = key%capacity; ; ii += 1) {
-        pmix_hash_element_t * elt;
-        if (ii == capacity) ii = 0;
+    for (ii = key % capacity;; ii += 1) {
+        pmix_hash_element_t *elt;
+        if (ii == capacity)
+            ii = 0;
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.u32 == key) {
             return pmix_hash_table_remove_elt_at(ht, ii);
@@ -396,48 +390,43 @@ pmix_hash_table_remove_value_uint32(pmix_hash_table_t * ht, uint32_t key)
     }
 }
 
-
 /***************************************************************************/
 
-
-static uint64_t
-pmix_hash_hash_elt_uint64(pmix_hash_element_t * elt)
+static uint64_t pmix_hash_hash_elt_uint64(pmix_hash_element_t *elt)
 {
-  return elt->key.u64;
+    return elt->key.u64;
 }
 
-static const struct pmix_hash_type_methods_t
-pmix_hash_type_methods_uint64 = {
-    NULL,
-    pmix_hash_hash_elt_uint64
-};
+static const struct pmix_hash_type_methods_t pmix_hash_type_methods_uint64
+    = {NULL, pmix_hash_hash_elt_uint64};
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_value_uint64(pmix_hash_table_t * ht, uint64_t key, void * *value)
+int /* PMIX_ return code */
+pmix_hash_table_get_value_uint64(pmix_hash_table_t *ht, uint64_t key, void **value)
 {
     size_t ii;
     size_t capacity = ht->ht_capacity;
-    pmix_hash_element_t * elt;
+    pmix_hash_element_t *elt;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
-                   "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint64;
-    for (ii = key%capacity; ; ii += 1) {
-        if (ii == capacity) { ii = 0; }
+    for (ii = key % capacity;; ii += 1) {
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.u64 == key) {
             *value = elt->value;
@@ -446,35 +435,35 @@ pmix_hash_table_get_value_uint64(pmix_hash_table_t * ht, uint64_t key, void * *v
             /* keep looking */
         }
     }
-
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_set_value_uint64(pmix_hash_table_t * ht, uint64_t key, void * value)
+int /* PMIX_ return code */
+pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *value)
 {
     int rc;
     size_t ii, capacity = ht->ht_capacity;
-    pmix_hash_element_t * elt;
+    pmix_hash_element_t *elt;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_uint64:"
-                   "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_uint64:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint64;
-    for (ii = key%capacity; ; ii += 1) {
-        if (ii == capacity) { ii = 0; }
+    for (ii = key % capacity;; ii += 1) {
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             /* new entry */
             elt->key.u64 = key;
             elt->value = value;
@@ -495,32 +484,32 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t * ht, uint64_t key, void * va
     }
 }
 
-
-int                             /* PMIX_ return code */
-pmix_hash_table_remove_value_uint64(pmix_hash_table_t * ht, uint64_t key)
+int /* PMIX_ return code */
+pmix_hash_table_remove_value_uint64(pmix_hash_table_t *ht, uint64_t key)
 {
     size_t ii, capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
-                    "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_uint64:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_uint64;
-    for (ii = key%capacity; ; ii += 1) {
-        pmix_hash_element_t * elt;
-        if (ii == capacity) { ii = 0; }
+    for (ii = key % capacity;; ii += 1) {
+        pmix_hash_element_t *elt;
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.u64 == key) {
             return pmix_hash_table_remove_elt_at(ht, ii);
@@ -530,80 +519,72 @@ pmix_hash_table_remove_value_uint64(pmix_hash_table_t * ht, uint64_t key)
     }
 }
 
-
 /***************************************************************************/
 
 /* helper function used in several places */
-static uint64_t
-pmix_hash_hash_key_ptr(const void * key, size_t key_size)
+static uint64_t pmix_hash_hash_key_ptr(const void *key, size_t key_size)
 {
     uint64_t hash;
     const unsigned char *scanner;
     size_t ii;
 
     hash = 0;
-    scanner = (const unsigned char *)key;
+    scanner = (const unsigned char *) key;
     for (ii = 0; ii < key_size; ii += 1) {
-        hash = HASH_MULTIPLIER*hash + *scanner++;
+        hash = HASH_MULTIPLIER * hash + *scanner++;
     }
     return hash;
 }
 
 /* ptr methods */
 
-static void
-pmix_hash_destruct_elt_ptr(pmix_hash_element_t * elt)
+static void pmix_hash_destruct_elt_ptr(pmix_hash_element_t *elt)
 {
     elt->key.ptr.key_size = 0;
-    void * key = (void *) elt->key.ptr.key; /* cast away const so we can free it */
+    void *key = (void *) elt->key.ptr.key; /* cast away const so we can free it */
     if (NULL != key) {
         elt->key.ptr.key = NULL;
         free(key);
     }
 }
 
-static uint64_t
-pmix_hash_hash_elt_ptr(pmix_hash_element_t * elt)
+static uint64_t pmix_hash_hash_elt_ptr(pmix_hash_element_t *elt)
 {
     return pmix_hash_hash_key_ptr(elt->key.ptr.key, elt->key.ptr.key_size);
 }
 
-static const struct pmix_hash_type_methods_t
-pmix_hash_type_methods_ptr = {
-    pmix_hash_destruct_elt_ptr,
-    pmix_hash_hash_elt_ptr
-};
+static const struct pmix_hash_type_methods_t pmix_hash_type_methods_ptr
+    = {pmix_hash_destruct_elt_ptr, pmix_hash_hash_elt_ptr};
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_value_ptr(pmix_hash_table_t * ht,
-                              const void * key, size_t key_size,
-                              void * *value)
+int /* PMIX_ return code */
+pmix_hash_table_get_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key_size, void **value)
 {
     size_t ii, capacity = ht->ht_capacity;
-    pmix_hash_element_t * elt;
+    pmix_hash_element_t *elt;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
-                   "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_ptr;
-    for (ii = pmix_hash_hash_key_ptr(key, key_size)%capacity; ; ii += 1) {
-        if (ii == capacity) { ii = 0; }
+    for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             return PMIX_ERR_NOT_FOUND;
-        } else if (elt->key.ptr.key_size == key_size &&
-                   0 == memcmp(elt->key.ptr.key, key, key_size)) {
+        } else if (elt->key.ptr.key_size == key_size
+                   && 0 == memcmp(elt->key.ptr.key, key, key_size)) {
             *value = elt->value;
             return PMIX_SUCCESS;
         } else {
@@ -612,38 +593,37 @@ pmix_hash_table_get_value_ptr(pmix_hash_table_t * ht,
     }
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_set_value_ptr(pmix_hash_table_t * ht,
-                              const void * key, size_t key_size,
-                              void * value)
+int /* PMIX_ return code */
+pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key_size, void *value)
 {
     int rc;
     size_t ii, capacity = ht->ht_capacity;
-    pmix_hash_element_t * elt;
+    pmix_hash_element_t *elt;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_ptr:"
-                   "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_ptr:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_ptr;
-    for (ii = pmix_hash_hash_key_ptr(key, key_size)%capacity; ; ii += 1) {
-        if (ii == capacity) { ii = 0; }
+    for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             /* new entry */
-            void * key_local = malloc(key_size);
+            void *key_local = malloc(key_size);
             memcpy(key_local, key, key_size);
-            elt->key.ptr.key      = key_local;
+            elt->key.ptr.key = key_local;
             elt->key.ptr.key_size = key_size;
             elt->value = value;
             elt->valid = 1;
@@ -654,8 +634,8 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t * ht,
                 }
             }
             return PMIX_SUCCESS;
-        } else if (elt->key.ptr.key_size == key_size &&
-                   0 == memcmp(elt->key.ptr.key, key, key_size)) {
+        } else if (elt->key.ptr.key_size == key_size
+                   && 0 == memcmp(elt->key.ptr.key, key, key_size)) {
             /* replace existing value */
             elt->value = value;
             return PMIX_SUCCESS;
@@ -665,35 +645,35 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t * ht,
     }
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_remove_value_ptr(pmix_hash_table_t * ht,
-                                 const void * key, size_t key_size)
+int /* PMIX_ return code */
+pmix_hash_table_remove_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key_size)
 {
     size_t ii, capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
-    if(capacity == 0) {
+    if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
-                    "pmix_hash_table_init() has not been called");
+                       "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods &&
-        &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
+    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_ptr:"
-                    "hash table is for a different key type");
-            return PMIX_ERROR;
+                       "hash table is for a different key type");
+        return PMIX_ERROR;
     }
 #endif
 
     ht->ht_type_methods = &pmix_hash_type_methods_ptr;
-    for (ii = pmix_hash_hash_key_ptr(key, key_size)%capacity; ; ii += 1) {
-        pmix_hash_element_t * elt;
-        if (ii == capacity) { ii = 0; }
+    for (ii = pmix_hash_hash_key_ptr(key, key_size) % capacity;; ii += 1) {
+        pmix_hash_element_t *elt;
+        if (ii == capacity) {
+            ii = 0;
+        }
         elt = &ht->ht_table[ii];
-        if (! elt->valid) {
+        if (!elt->valid) {
             return PMIX_ERR_NOT_FOUND;
-        } else if (elt->key.ptr.key_size == key_size &&
-                   0 == memcmp(elt->key.ptr.key, key, key_size)) {
+        } else if (elt->key.ptr.key_size == key_size
+                   && 0 == memcmp(elt->key.ptr.key, key, key_size)) {
             return pmix_hash_table_remove_elt_at(ht, ii);
         } else {
             /* keep looking */
@@ -704,92 +684,86 @@ pmix_hash_table_remove_value_ptr(pmix_hash_table_t * ht,
 /***************************************************************************/
 /* Traversals */
 
-static int                      /* PMIX_ return code */
+static int /* PMIX_ return code */
 pmix_hash_table_get_next_elt(pmix_hash_table_t *ht,
-                             pmix_hash_element_t * prev_elt, /* NULL means find first */
-                             pmix_hash_element_t * *next_elt)
+                             pmix_hash_element_t *prev_elt, /* NULL means find first */
+                             pmix_hash_element_t **next_elt)
 {
-  pmix_hash_element_t* elts = ht->ht_table;
-  size_t ii, capacity = ht->ht_capacity;
+    pmix_hash_element_t *elts = ht->ht_table;
+    size_t ii, capacity = ht->ht_capacity;
 
-  for (ii = (NULL == prev_elt ? 0 : (prev_elt-elts)+1); ii < capacity; ii += 1) {
-    pmix_hash_element_t * elt = &elts[ii];
-    if (elt->valid) {
-      *next_elt = elt;
-      return PMIX_SUCCESS;
+    for (ii = (NULL == prev_elt ? 0 : (prev_elt - elts) + 1); ii < capacity; ii += 1) {
+        pmix_hash_element_t *elt = &elts[ii];
+        if (elt->valid) {
+            *next_elt = elt;
+            return PMIX_SUCCESS;
+        }
     }
-  }
-  return PMIX_ERROR;
+    return PMIX_ERROR;
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_first_key_uint32(pmix_hash_table_t * ht,
-                                     uint32_t *key, void * *value,
-                                     void * *node)
+int /* PMIX_ return code */
+pmix_hash_table_get_first_key_uint32(pmix_hash_table_t *ht, uint32_t *key, void **value,
+                                     void **node)
 {
-  return pmix_hash_table_get_next_key_uint32(ht, key, value, NULL, node);
+    return pmix_hash_table_get_next_key_uint32(ht, key, value, NULL, node);
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_next_key_uint32(pmix_hash_table_t * ht,
-                                    uint32_t *key, void * *value,
-                                    void * in_node, void * *out_node)
+int /* PMIX_ return code */
+pmix_hash_table_get_next_key_uint32(pmix_hash_table_t *ht, uint32_t *key, void **value,
+                                    void *in_node, void **out_node)
 {
-  pmix_hash_element_t * elt;
-  if (PMIX_SUCCESS == pmix_hash_table_get_next_elt(ht, (pmix_hash_element_t *) in_node, &elt)) {
-    *key       = elt->key.u32;
-    *value     = elt->value;
-    *out_node  = elt;
-    return PMIX_SUCCESS;
-  }
-  return PMIX_ERROR;
+    pmix_hash_element_t *elt;
+    if (PMIX_SUCCESS == pmix_hash_table_get_next_elt(ht, (pmix_hash_element_t *) in_node, &elt)) {
+        *key = elt->key.u32;
+        *value = elt->value;
+        *out_node = elt;
+        return PMIX_SUCCESS;
+    }
+    return PMIX_ERROR;
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_first_key_ptr(pmix_hash_table_t * ht,
-                                  void * *key, size_t *key_size, void * *value,
-                                  void * *node)
+int /* PMIX_ return code */
+pmix_hash_table_get_first_key_ptr(pmix_hash_table_t *ht, void **key, size_t *key_size, void **value,
+                                  void **node)
 {
-  return pmix_hash_table_get_next_key_ptr(ht, key, key_size, value, NULL, node);
+    return pmix_hash_table_get_next_key_ptr(ht, key, key_size, value, NULL, node);
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_next_key_ptr(pmix_hash_table_t * ht,
-                                 void * *key, size_t *key_size, void * *value,
-                                 void * in_node, void * *out_node)
+int /* PMIX_ return code */
+pmix_hash_table_get_next_key_ptr(pmix_hash_table_t *ht, void **key, size_t *key_size, void **value,
+                                 void *in_node, void **out_node)
 {
-  pmix_hash_element_t * elt;
-  if (PMIX_SUCCESS == pmix_hash_table_get_next_elt(ht, (pmix_hash_element_t *) in_node, &elt)) {
-    *key       = (void *)elt->key.ptr.key;
-    *key_size  = elt->key.ptr.key_size;
-    *value     = elt->value;
-    *out_node  = elt;
-    return PMIX_SUCCESS;
-  }
-  return PMIX_ERROR;
+    pmix_hash_element_t *elt;
+    if (PMIX_SUCCESS == pmix_hash_table_get_next_elt(ht, (pmix_hash_element_t *) in_node, &elt)) {
+        *key = (void *) elt->key.ptr.key;
+        *key_size = elt->key.ptr.key_size;
+        *value = elt->value;
+        *out_node = elt;
+        return PMIX_SUCCESS;
+    }
+    return PMIX_ERROR;
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_first_key_uint64(pmix_hash_table_t * ht,
-                                     uint64_t *key, void * *value,
-                                     void * *node)
+int /* PMIX_ return code */
+pmix_hash_table_get_first_key_uint64(pmix_hash_table_t *ht, uint64_t *key, void **value,
+                                     void **node)
 {
-  return pmix_hash_table_get_next_key_uint64(ht, key, value, NULL, node);
+    return pmix_hash_table_get_next_key_uint64(ht, key, value, NULL, node);
 }
 
-int                             /* PMIX_ return code */
-pmix_hash_table_get_next_key_uint64(pmix_hash_table_t * ht,
-                                    uint64_t *key, void * *value,
-                                    void * in_node, void * *out_node)
+int /* PMIX_ return code */
+pmix_hash_table_get_next_key_uint64(pmix_hash_table_t *ht, uint64_t *key, void **value,
+                                    void *in_node, void **out_node)
 {
-  pmix_hash_element_t * elt;
-  if (PMIX_SUCCESS == pmix_hash_table_get_next_elt(ht, (pmix_hash_element_t *) in_node, &elt)) {
-    *key       = elt->key.u64;
-    *value     = elt->value;
-    *out_node  = elt;
-    return PMIX_SUCCESS;
-  }
-  return PMIX_ERROR;
+    pmix_hash_element_t *elt;
+    if (PMIX_SUCCESS == pmix_hash_table_get_next_elt(ht, (pmix_hash_element_t *) in_node, &elt)) {
+        *key = elt->key.u64;
+        *value = elt->value;
+        *out_node = elt;
+        return PMIX_SUCCESS;
+    }
+    return PMIX_ERROR;
 }
 
 /* there was/is no traversal for the ptr case; it would go here */

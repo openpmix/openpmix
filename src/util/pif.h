@@ -14,6 +14,7 @@
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2013      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,28 +30,26 @@
 #include "pmix_config.h"
 
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
+#    include <netinet/in.h>
 #endif
 
 #define PMIX_IF_NAMESIZE 256
 
 BEGIN_C_DECLS
 
-#define PMIX_PIF_FORMAT_ADDR(n)                              \
-    (((n) >> 24) & 0x000000FF), (((n) >> 16) & 0x000000FF), \
-    (((n) >> 8) & 0x000000FF), ((n) & 0x000000FF)
+#define PMIX_PIF_FORMAT_ADDR(n)                                                        \
+    (((n) >> 24) & 0x000000FF), (((n) >> 16) & 0x000000FF), (((n) >> 8) & 0x000000FF), \
+        ((n) &0x000000FF)
 
-#define PMIX_PIF_ASSEMBLE_FABRIC(n1, n2, n3, n4)    \
-    (((n1) << 24) & 0xFF000000) |                   \
-    (((n2) << 16) & 0x00FF0000) |                   \
-    (((n3) <<  8) & 0x0000FF00) |                   \
-    ( (n4)        & 0x000000FF)
+#define PMIX_PIF_ASSEMBLE_FABRIC(n1, n2, n3, n4)                                           \
+    (((n1) << 24) & 0xFF000000) | (((n2) << 16) & 0x00FF0000) | (((n3) << 8) & 0x0000FF00) \
+        | ((n4) &0x000000FF)
 
 /**
  *  Lookup an interface by name and return its primary address.
@@ -59,9 +58,7 @@ BEGIN_C_DECLS
  *  @param if_addr (OUT)  Interface address buffer
  *  @param size    (IN)   Interface address buffer size
  */
-PMIX_EXPORT int pmix_ifnametoaddr(const char* if_name,
-                                  struct sockaddr* if_addr,
-                                  int size);
+PMIX_EXPORT int pmix_ifnametoaddr(const char *if_name, struct sockaddr *if_addr, int size);
 
 /**
  *  Lookup an interface by address and return its name.
@@ -70,8 +67,7 @@ PMIX_EXPORT int pmix_ifnametoaddr(const char* if_name,
  *  @param if_name (OUT)  Interface name buffer
  *  @param size    (IN)   Interface name buffer size
  */
-PMIX_EXPORT int pmix_ifaddrtoname(const char* if_addr,
-                                  char* if_name, int size);
+PMIX_EXPORT int pmix_ifaddrtoname(const char *if_addr, char *if_name, int size);
 
 /**
  *  Lookup an interface by name and return its pmix_list index.
@@ -79,7 +75,7 @@ PMIX_EXPORT int pmix_ifaddrtoname(const char* if_addr,
  *  @param if_name (IN)  Interface name
  *  @return              Interface pmix_list index
  */
-PMIX_EXPORT int pmix_ifnametoindex(const char* if_name);
+PMIX_EXPORT int pmix_ifnametoindex(const char *if_name);
 
 /**
  *  Lookup an interface by name and return its kernel index.
@@ -87,14 +83,14 @@ PMIX_EXPORT int pmix_ifnametoindex(const char* if_name);
  *  @param if_name (IN)  Interface name
  *  @return              Interface kernel index
  */
-PMIX_EXPORT int16_t pmix_ifnametokindex(const char* if_name);
+PMIX_EXPORT int16_t pmix_ifnametokindex(const char *if_name);
 
 /*
  *  Attempt to resolve an address (given as either IPv4/IPv6 string
  *  or hostname) and return the kernel index of the interface
  *  that is on the same network as the specified address
  */
-PMIX_EXPORT int16_t pmix_ifaddrtokindex(const char* if_addr);
+PMIX_EXPORT int16_t pmix_ifaddrtokindex(const char *if_addr);
 
 /**
  *  Lookup an interface by pmix_list index and return its kernel index.
@@ -130,7 +126,7 @@ PMIX_EXPORT int pmix_ifnext(int if_index);
  *  @param if_name (OUT)  Interface name buffer
  *  @param size (IN)      Interface name buffer size
  */
-PMIX_EXPORT int pmix_ifindextoname(int if_index, char* if_name, int);
+PMIX_EXPORT int pmix_ifindextoname(int if_index, char *if_name, int);
 
 /**
  *  Lookup an interface by kernel index and return its name.
@@ -139,7 +135,7 @@ PMIX_EXPORT int pmix_ifindextoname(int if_index, char* if_name, int);
  *  @param if_name (OUT)  Interface name buffer
  *  @param size (IN)      Interface name buffer size
  */
-PMIX_EXPORT int pmix_ifkindextoname(int if_kindex, char* if_name, int);
+PMIX_EXPORT int pmix_ifkindextoname(int if_kindex, char *if_name, int);
 
 /**
  *  Lookup an interface by index and return its primary address.
@@ -148,11 +144,8 @@ PMIX_EXPORT int pmix_ifkindextoname(int if_kindex, char* if_name, int);
  *  @param if_name (OUT)  Interface address buffer
  *  @param size (IN)      Interface address buffer size
  */
-PMIX_EXPORT int pmix_ifindextoaddr(int if_index, struct sockaddr*,
-                                   unsigned int);
-PMIX_EXPORT int pmix_ifkindextoaddr(int if_kindex,
-                                    struct sockaddr* if_addr,
-                                    unsigned int length);
+PMIX_EXPORT int pmix_ifindextoaddr(int if_index, struct sockaddr *, unsigned int);
+PMIX_EXPORT int pmix_ifkindextoaddr(int if_kindex, struct sockaddr *if_addr, unsigned int length);
 
 /**
  *  Lookup an interface by index and return its network mask (in CIDR
@@ -162,7 +155,7 @@ PMIX_EXPORT int pmix_ifkindextoaddr(int if_kindex,
  *  @param if_name (OUT)  Interface address buffer
  *  @param size (IN)      Interface address buffer size
  */
-PMIX_EXPORT int pmix_ifindextomask(int if_index, uint32_t*, int);
+PMIX_EXPORT int pmix_ifindextomask(int if_index, uint32_t *, int);
 
 /**
  *  Lookup an interface by index and return its MAC address.
@@ -186,7 +179,7 @@ PMIX_EXPORT int pmix_ifindextomtu(int if_index, int *mtu);
  *  @param if_index (IN)  Interface index
  *  @param if_flags (OUT) Interface flags
  */
-PMIX_EXPORT int pmix_ifindextoflags(int if_index, uint32_t*);
+PMIX_EXPORT int pmix_ifindextoflags(int if_index, uint32_t *);
 
 /**
  * Determine if given hostname / IP address is a local address

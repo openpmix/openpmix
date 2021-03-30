@@ -15,6 +15,7 @@
  *                         All rights reserved.
  * Copyright (c) 2014      Hochschule Esslingen.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,16 +26,16 @@
 #include "src/include/pmix_config.h"
 
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include "include/pmix_common.h"
 #include "src/class/pmix_list.h"
+#include "src/mca/base/base.h"
+#include "src/mca/mca.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
-#include "src/mca/mca.h"
-#include "src/mca/base/base.h"
-#include "include/pmix_common.h"
 
 /*
  * Local functions
@@ -50,8 +51,8 @@ struct pmix_mca_base_dummy_framework_list_item_t {
  * Function for finding and opening either all MCA components, or the
  * one that was specifically requested via a MCA parameter.
  */
-int pmix_mca_base_framework_components_open (pmix_mca_base_framework_t *framework,
-                                        pmix_mca_base_open_flag_t flags)
+int pmix_mca_base_framework_components_open(pmix_mca_base_framework_t *framework,
+                                            pmix_mca_base_open_flag_t flags)
 {
     /* Open flags are not used at this time. Suppress compiler warning. */
     if (flags & PMIX_MCA_BASE_OPEN_FIND_COMPONENTS) {
@@ -64,7 +65,7 @@ int pmix_mca_base_framework_components_open (pmix_mca_base_framework_t *framewor
     }
 
     /* Open all registered components */
-    return open_components (framework);
+    return open_components(framework);
 }
 
 /*
@@ -95,35 +96,35 @@ static int open_components(pmix_mca_base_framework_t *framework)
      * NTH: Logic moved to pmix_mca_base_components_filter.
      */
 
-    /* If pmix_mca_base_framework_register_components was called with the MCA_BASE_COMPONENTS_ALL flag
-       we need to trim down and close any extra components we do not want open */
-    ret = pmix_mca_base_components_filter (framework, open_only_flags);
+    /* If pmix_mca_base_framework_register_components was called with the MCA_BASE_COMPONENTS_ALL
+       flag we need to trim down and close any extra components we do not want open */
+    ret = pmix_mca_base_components_filter(framework, open_only_flags);
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
 
     /* Announce */
-    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
-                         "mca: base: components_open: opening %s components",
-                         framework->framework_name);
+    pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                        "mca: base: components_open: opening %s components",
+                        framework->framework_name);
 
     /* Traverse the list of components */
-    PMIX_LIST_FOREACH_SAFE(cli, next, components, pmix_mca_base_component_list_item_t) {
+    PMIX_LIST_FOREACH_SAFE (cli, next, components, pmix_mca_base_component_list_item_t) {
         const pmix_mca_base_component_t *component = cli->cli_component;
 
-        pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
-                             "mca: base: components_open: found loaded component %s",
-                             component->pmix_mca_component_name);
+        pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                            "mca: base: components_open: found loaded component %s",
+                            component->pmix_mca_component_name);
 
         if (NULL != component->pmix_mca_open_component) {
             /* Call open if register didn't call it already */
             ret = component->pmix_mca_open_component();
 
             if (PMIX_SUCCESS == ret) {
-                pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
-                                     "mca: base: components_open: "
-                                     "component %s open function successful",
-                                     component->pmix_mca_component_name);
+                pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                                    "mca: base: components_open: "
+                                    "component %s open function successful",
+                                    component->pmix_mca_component_name);
             } else {
                 if (PMIX_ERR_NOT_AVAILABLE != ret) {
                     /* If the component returns PMIX_ERR_NOT_AVAILABLE,
@@ -138,21 +139,21 @@ static int open_components(pmix_mca_base_framework_t *framework)
                        expected. */
 
                     if (pmix_mca_base_component_show_load_errors) {
-                        pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_ERROR, output_id,
-                                             "mca: base: components_open: component %s "
-                                             "/ %s open function failed",
-                                             component->pmix_mca_type_name,
-                                             component->pmix_mca_component_name);
+                        pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_ERROR, output_id,
+                                            "mca: base: components_open: component %s "
+                                            "/ %s open function failed",
+                                            component->pmix_mca_type_name,
+                                            component->pmix_mca_component_name);
                     }
-                    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
-                                         "mca: base: components_open: "
-                                         "component %s open function failed",
-                                         component->pmix_mca_component_name);
+                    pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
+                                        "mca: base: components_open: "
+                                        "component %s open function failed",
+                                        component->pmix_mca_component_name);
                 }
 
-                pmix_mca_base_component_close (component, output_id);
+                pmix_mca_base_component_close(component, output_id);
 
-                pmix_list_remove_item (components, &cli->super);
+                pmix_list_remove_item(components, &cli->super);
                 PMIX_RELEASE(cli);
             }
         }

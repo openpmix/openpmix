@@ -5,6 +5,7 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +19,6 @@
 #define PMIX_UTIL_FD_H_
 
 #include "src/include/pmix_config.h"
-
 
 BEGIN_C_DECLS
 
@@ -96,7 +96,6 @@ PMIX_EXPORT bool pmix_fd_is_chardev(int fd);
  * @returns false otherwise.
  */
 PMIX_EXPORT bool pmix_fd_is_blkdev(int fd);
-
 
 END_C_DECLS
 

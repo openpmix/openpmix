@@ -4,6 +4,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,10 +26,10 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/mca/mca.h"
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/bfrops_types.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/preg/preg_types.h"
 
@@ -36,7 +37,7 @@ BEGIN_C_DECLS
 
 /******    MODULE DEFINITION    ******/
 
-#define PMIX_MAX_NODE_PREFIX        50
+#define PMIX_MAX_NODE_PREFIX 50
 
 /* given a semicolon-separated list of input values, generate
  * a regex that can be passed down to a client for parsing.
@@ -69,17 +70,14 @@ typedef pmix_status_t (*pmix_preg_base_module_generate_node_regex_fn_t)(const ch
  * parsing the provided regex. Other parsers may be supported - see
  * the pmix_client.h header for a list.
  */
-typedef pmix_status_t (*pmix_preg_base_module_generate_ppn_fn_t)(const char *input,
-                                                                 char **ppn);
+typedef pmix_status_t (*pmix_preg_base_module_generate_ppn_fn_t)(const char *input, char **ppn);
 
+typedef pmix_status_t (*pmix_preg_base_module_parse_nodes_fn_t)(const char *regexp, char ***names);
 
-typedef pmix_status_t (*pmix_preg_base_module_parse_nodes_fn_t)(const char *regexp,
-                                                                char ***names);
+typedef pmix_status_t (*pmix_preg_base_module_parse_procs_fn_t)(const char *regexp, char ***procs);
 
-typedef pmix_status_t (*pmix_preg_base_module_parse_procs_fn_t)(const char *regexp,
-                                                                char ***procs);
-
-typedef pmix_status_t (*pmix_preg_base_module_copy_fn_t)(char **dest, size_t *len, const char *input);
+typedef pmix_status_t (*pmix_preg_base_module_copy_fn_t)(char **dest, size_t *len,
+                                                         const char *input);
 
 typedef pmix_status_t (*pmix_preg_base_module_pack_fn_t)(pmix_buffer_t *buffer, const char *regex);
 
@@ -90,13 +88,13 @@ typedef pmix_status_t (*pmix_preg_base_module_unpack_fn_t)(pmix_buffer_t *buffer
  */
 typedef struct {
     char *name;
-    pmix_preg_base_module_generate_node_regex_fn_t      generate_node_regex;
-    pmix_preg_base_module_generate_ppn_fn_t             generate_ppn;
-    pmix_preg_base_module_parse_nodes_fn_t              parse_nodes;
-    pmix_preg_base_module_parse_procs_fn_t              parse_procs;
-    pmix_preg_base_module_copy_fn_t                     copy;
-    pmix_preg_base_module_pack_fn_t                     pack;
-    pmix_preg_base_module_unpack_fn_t                   unpack;
+    pmix_preg_base_module_generate_node_regex_fn_t generate_node_regex;
+    pmix_preg_base_module_generate_ppn_fn_t generate_ppn;
+    pmix_preg_base_module_parse_nodes_fn_t parse_nodes;
+    pmix_preg_base_module_parse_procs_fn_t parse_procs;
+    pmix_preg_base_module_copy_fn_t copy;
+    pmix_preg_base_module_pack_fn_t pack;
+    pmix_preg_base_module_unpack_fn_t unpack;
 } pmix_preg_module_t;
 
 /* we just use the standard component definition */
@@ -106,8 +104,7 @@ PMIX_EXPORT extern pmix_preg_module_t pmix_preg;
 /*
  * Macro for use in components that are of type preg
  */
-#define PMIX_PREG_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("preg", 1, 0, 0)
+#define PMIX_PREG_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("preg", 1, 0, 0)
 
 END_C_DECLS
 

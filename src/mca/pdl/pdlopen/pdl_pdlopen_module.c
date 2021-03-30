@@ -5,6 +5,7 @@
  *                         reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,11 +15,11 @@
 
 #include "src/include/pmix_config.h"
 
-#include <stdlib.h>
-#include <dlfcn.h>
-#include <sys/types.h>
 #include <dirent.h>
+#include <dlfcn.h>
+#include <stdlib.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include "include/pmix_common.h"
@@ -28,12 +29,10 @@
 
 #include "pdl_pdlopen.h"
 
-
 /*
  * Trivial helper function to avoid replicating code
  */
-static void do_pdlopen(const char *fname, int flags,
-                      void **handle, char **err_msg)
+static void do_pdlopen(const char *fname, int flags, void **handle, char **err_msg)
 {
     assert(handle);
 
@@ -48,9 +47,8 @@ static void do_pdlopen(const char *fname, int flags,
     }
 }
 
-
 static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
-                       pmix_pdl_handle_t **handle, char **err_msg)
+                        pmix_pdl_handle_t **handle, char **err_msg)
 {
     int rc;
 
@@ -73,8 +71,7 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
         int i;
         char *ext;
 
-        for (i = 0, ext = mca_pdl_pdlopen_component.filename_suffixes[i];
-             NULL != ext;
+        for (i = 0, ext = mca_pdl_pdlopen_component.filename_suffixes[i]; NULL != ext;
              ext = mca_pdl_pdlopen_component.filename_suffixes[++i]) {
             char *name;
 
@@ -120,10 +117,9 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
         (*handle)->dlopen_handle = local_handle;
 
 #if PMIX_ENABLE_DEBUG
-        if( NULL != fname ) {
+        if (NULL != fname) {
             (*handle)->filename = strdup(fname);
-        }
-        else {
+        } else {
             (*handle)->filename = strdup("(null)");
         }
 #endif
@@ -131,9 +127,7 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
     return (NULL != local_handle) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
-
-static int pdlopen_lookup(pmix_pdl_handle_t *handle, const char *symbol,
-                         void **ptr, char **err_msg)
+static int pdlopen_lookup(pmix_pdl_handle_t *handle, const char *symbol, void **ptr, char **err_msg)
 {
     assert(handle);
     assert(handle->dlopen_handle);
@@ -150,7 +144,6 @@ static int pdlopen_lookup(pmix_pdl_handle_t *handle, const char *symbol,
     }
     return PMIX_ERROR;
 }
-
 
 static int pdlopen_close(pmix_pdl_handle_t *handle)
 {
@@ -172,8 +165,7 @@ static int pdlopen_close(pmix_pdl_handle_t *handle)
  * on each one.
  */
 static int pdlopen_foreachfile(const char *search_path,
-                              int (*func)(const char *filename, void *data),
-                              void *data)
+                               int (*func)(const char *filename, void *data), void *data)
 {
     int ret;
     DIR *dp = NULL;
@@ -223,9 +215,8 @@ static int pdlopen_foreachfile(const char *search_path,
             if (NULL != ptr) {
 
                 /* Skip libtool files */
-                if (strcmp(ptr, ".la") == 0 ||
-                    strcmp(ptr, ".lo") == 0) {
-                    free (abs_name);
+                if (strcmp(ptr, ".la") == 0 || strcmp(ptr, ".lo") == 0) {
+                    free(abs_name);
                     continue;
                 }
 
@@ -235,8 +226,7 @@ static int pdlopen_foreachfile(const char *search_path,
             /* Have we already found this file?  Or already found a
                file with the same basename (but different suffix)? */
             bool found = false;
-            for (int j = 0; NULL != good_files &&
-                     NULL != good_files[j]; ++j) {
+            for (int j = 0; NULL != good_files && NULL != good_files[j]; ++j) {
                 if (strcmp(good_files[j], abs_name) == 0) {
                     found = true;
                     break;
@@ -264,7 +254,7 @@ static int pdlopen_foreachfile(const char *search_path,
 
     ret = PMIX_SUCCESS;
 
- error:
+error:
     if (NULL != dp) {
         closedir(dp);
     }
@@ -278,13 +268,10 @@ static int pdlopen_foreachfile(const char *search_path,
     return ret;
 }
 
-
 /*
  * Module definition
  */
-pmix_pdl_base_module_t pmix_pdl_pdlopen_module = {
-    .open = pdlopen_open,
-    .lookup = pdlopen_lookup,
-    .close = pdlopen_close,
-    .foreachfile = pdlopen_foreachfile
-};
+pmix_pdl_base_module_t pmix_pdl_pdlopen_module = {.open = pdlopen_open,
+                                                  .lookup = pdlopen_lookup,
+                                                  .close = pdlopen_close,
+                                                  .foreachfile = pdlopen_foreachfile};

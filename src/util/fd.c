@@ -4,6 +4,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,20 +17,19 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #include <errno.h>
 #include <fcntl.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 
 #include "src/util/error.h"
 #include "src/util/fd.h"
-
 
 /*
  * Simple loop over reading from a fd
@@ -55,7 +55,6 @@ pmix_status_t pmix_fd_read(int fd, int len, void *buffer)
     return PMIX_SUCCESS;
 }
 
-
 /*
  * Simple loop over writing to an fd
  */
@@ -79,7 +78,6 @@ pmix_status_t pmix_fd_write(int fd, int len, const void *buffer)
     return PMIX_SUCCESS;
 }
 
-
 pmix_status_t pmix_fd_set_cloexec(int fd)
 {
 #ifdef FD_CLOEXEC
@@ -99,7 +97,6 @@ pmix_status_t pmix_fd_set_cloexec(int fd)
 
     return PMIX_SUCCESS;
 }
-
 
 bool pmix_fd_is_regular(int fd)
 {

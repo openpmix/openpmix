@@ -16,6 +16,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,15 +29,15 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/class/pmix_object.h"
 #include "src/class/pmix_list.h"
+#include "src/class/pmix_object.h"
 
 /*
  * These units are large enough to warrant their own .h files
  */
-#include "src/mca/mca.h"
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/base/pmix_mca_base_var.h"
+#include "src/mca/mca.h"
 #include "src/util/cmd_line.h"
 #include "src/util/output.h"
 
@@ -79,23 +80,23 @@ PMIX_EXPORT extern char *pmix_mca_base_user_default_path;
  */
 enum {
     /** total silence */
-    PMIX_MCA_BASE_VERBOSE_NONE  = -1,
+    PMIX_MCA_BASE_VERBOSE_NONE = -1,
     /** only errors are printed */
     PMIX_MCA_BASE_VERBOSE_ERROR = 0,
     /** emit messages about component selection, open, and unloading */
     PMIX_MCA_BASE_VERBOSE_COMPONENT = 10,
     /** also emit warnings */
-    PMIX_MCA_BASE_VERBOSE_WARN  = 20,
+    PMIX_MCA_BASE_VERBOSE_WARN = 20,
     /** also emit general, user-relevant information, such as rationale as to why certain choices
      * or code paths were taken, information gleaned from probing the local system, etc. */
-    PMIX_MCA_BASE_VERBOSE_INFO  = 40,
+    PMIX_MCA_BASE_VERBOSE_INFO = 40,
     /** also emit relevant tracing information (e.g., which functions were invoked /
      * call stack entry/exit info) */
     PMIX_MCA_BASE_VERBOSE_TRACE = 60,
     /** also emit PMIX-developer-level (i.e,. highly detailed) information */
     PMIX_MCA_BASE_VERBOSE_DEBUG = 80,
     /** also output anything else that might be useful */
-    PMIX_MCA_BASE_VERBOSE_MAX   = 100,
+    PMIX_MCA_BASE_VERBOSE_MAX = 100,
 };
 
 /*
@@ -139,8 +140,7 @@ PMIX_EXPORT int pmix_mca_base_close(void);
 PMIX_EXPORT int pmix_mca_base_select(const char *type_name, int output_id,
                                      pmix_list_t *components_available,
                                      pmix_mca_base_module_t **best_module,
-                                     pmix_mca_base_component_t **best_component,
-                                     int *priority_out);
+                                     pmix_mca_base_component_t **best_component, int *priority_out);
 
 /**
  * A function for component query functions to discover if they have
@@ -152,38 +152,38 @@ PMIX_EXPORT int pmix_mca_base_select(const char *type_name, int output_id,
  */
 PMIX_EXPORT int pmix_mca_base_is_component_required(pmix_list_t *components_available,
                                                     pmix_mca_base_component_t *component,
-                                                    bool exclusive,
-                                                    bool *is_required);
+                                                    bool exclusive, bool *is_required);
 
 /* mca_base_cmd_line.c */
 
 PMIX_EXPORT int pmix_mca_base_cmd_line_setup(pmix_cmd_line_t *cmd);
-PMIX_EXPORT int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd,
-                                                 char ***app_env,
-                                                 char ***global_env);
+PMIX_EXPORT int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd, char ***app_env,
+                                                    char ***global_env);
 PMIX_EXPORT void pmix_mca_base_cmd_line_wrap_args(char **args);
 
 /* pmix_mca_base_component_compare.c */
 
-PMIX_EXPORT int pmix_mca_base_component_compare_priority(pmix_mca_base_component_priority_list_item_t *a,
-                                                         pmix_mca_base_component_priority_list_item_t *b);
+PMIX_EXPORT int
+pmix_mca_base_component_compare_priority(pmix_mca_base_component_priority_list_item_t *a,
+                                         pmix_mca_base_component_priority_list_item_t *b);
 PMIX_EXPORT int pmix_mca_base_component_compare(const pmix_mca_base_component_t *a,
                                                 const pmix_mca_base_component_t *b);
 PMIX_EXPORT int pmix_mca_base_component_compatible(const pmix_mca_base_component_t *a,
                                                    const pmix_mca_base_component_t *b);
-PMIX_EXPORT char * pmix_mca_base_component_to_string(const pmix_mca_base_component_t *a);
+PMIX_EXPORT char *pmix_mca_base_component_to_string(const pmix_mca_base_component_t *a);
 
 /* pmix_mca_base_component_find.c */
 
-PMIX_EXPORT int pmix_mca_base_component_find (const char *directory, pmix_mca_base_framework_t *framework,
-                                              bool ignore_requested, bool open_dso_components);
+PMIX_EXPORT int pmix_mca_base_component_find(const char *directory,
+                                             pmix_mca_base_framework_t *framework,
+                                             bool ignore_requested, bool open_dso_components);
 
 /**
  * Parse the requested component string and return an pmix_argv of the requested
  * (or not requested) components.
  */
-PMIX_EXPORT int pmix_mca_base_component_parse_requested (const char *requested, bool *include_mode,
-                                                         char ***requested_component_names);
+PMIX_EXPORT int pmix_mca_base_component_parse_requested(const char *requested, bool *include_mode,
+                                                        char ***requested_component_names);
 
 /**
  * Filter a list of components based on a comma-delimted list of names and/or
@@ -203,9 +203,8 @@ PMIX_EXPORT int pmix_mca_base_component_parse_requested (const char *requested, 
  * This function closes and releases any components that do not match the filter_name and
  * filter flags.
  */
-PMIX_EXPORT int pmix_mca_base_components_filter (pmix_mca_base_framework_t *framework, uint32_t filter_flags);
-
-
+PMIX_EXPORT int pmix_mca_base_components_filter(pmix_mca_base_framework_t *framework,
+                                                uint32_t filter_flags);
 
 /* Safely release some memory allocated by pmix_mca_base_component_find()
    (i.e., is safe to call even if you never called
@@ -213,12 +212,13 @@ PMIX_EXPORT int pmix_mca_base_components_filter (pmix_mca_base_framework_t *fram
 PMIX_EXPORT int pmix_mca_base_component_find_finalize(void);
 
 /* pmix_mca_base_components_register.c */
-PMIX_EXPORT int pmix_mca_base_framework_components_register (struct pmix_mca_base_framework_t *framework,
-                                                             pmix_mca_base_register_flag_t flags);
+PMIX_EXPORT int
+pmix_mca_base_framework_components_register(struct pmix_mca_base_framework_t *framework,
+                                            pmix_mca_base_register_flag_t flags);
 
 /* pmix_mca_base_components_open.c */
-PMIX_EXPORT int pmix_mca_base_framework_components_open (struct pmix_mca_base_framework_t *framework,
-                                                         pmix_mca_base_open_flag_t flags);
+PMIX_EXPORT int pmix_mca_base_framework_components_open(struct pmix_mca_base_framework_t *framework,
+                                                        pmix_mca_base_open_flag_t flags);
 
 PMIX_EXPORT int pmix_mca_base_components_open(const char *type_name, int output_id,
                                               const pmix_mca_base_component_t **static_components,
@@ -234,7 +234,8 @@ PMIX_EXPORT int pmix_mca_base_components_open(const char *type_name, int output_
  *
  * After calling this function the component may no longer be used.
  */
-PMIX_EXPORT void pmix_mca_base_component_close (const pmix_mca_base_component_t *component, int output_id);
+PMIX_EXPORT void pmix_mca_base_component_close(const pmix_mca_base_component_t *component,
+                                               int output_id);
 
 /**
  * Release a component without closing it.
@@ -243,13 +244,15 @@ PMIX_EXPORT void pmix_mca_base_component_close (const pmix_mca_base_component_t 
  *
  * After calling this function the component may no longer be used.
  */
-PMIX_EXPORT void pmix_mca_base_component_unload (const pmix_mca_base_component_t *component, int output_id);
+PMIX_EXPORT void pmix_mca_base_component_unload(const pmix_mca_base_component_t *component,
+                                                int output_id);
 
 PMIX_EXPORT int pmix_mca_base_components_close(int output_id, pmix_list_t *components_available,
                                                const pmix_mca_base_component_t *skip);
 
-PMIX_EXPORT int pmix_mca_base_framework_components_close (struct pmix_mca_base_framework_t *framework,
-                                                          const pmix_mca_base_component_t *skip);
+PMIX_EXPORT int
+pmix_mca_base_framework_components_close(struct pmix_mca_base_framework_t *framework,
+                                         const pmix_mca_base_component_t *skip);
 
 END_C_DECLS
 

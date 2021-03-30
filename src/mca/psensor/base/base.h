@@ -4,6 +4,7 @@
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,8 +20,8 @@
 #include "src/include/pmix_config.h"
 
 #include "src/class/pmix_list.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/psensor/psensor.h"
 
@@ -54,8 +55,7 @@ PMIX_EXPORT pmix_status_t pmix_psensor_base_start(pmix_peer_t *requestor, pmix_s
                                                   const pmix_info_t *monitor,
                                                   const pmix_info_t directives[], size_t ndirs);
 
-PMIX_EXPORT pmix_status_t pmix_psensor_base_stop(pmix_peer_t *requestor,
-                                                 char *id);
+PMIX_EXPORT pmix_status_t pmix_psensor_base_stop(pmix_peer_t *requestor, char *id);
 
 END_C_DECLS
 #endif

@@ -19,14 +19,14 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix.h"
 
-#include "src/include/pmix_globals.h"
-#include "src/util/error.h"
 #include "src/client/pmix_client_ops.h"
+#include "src/include/pmix_globals.h"
 #include "src/mca/ploc/ploc.h"
+#include "src/util/error.h"
 
 static void _loadtp(int sd, short args, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
     cb->pstatus = pmix_ploc.load_topology(cb->topo);
     PMIX_WAKEUP_THREAD(&cb->lock);
@@ -57,9 +57,7 @@ PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo)
     return rc;
 }
 
-
-PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string,
-                                                   pmix_cpuset_t *cpuset)
+PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string, pmix_cpuset_t *cpuset)
 {
     pmix_status_t rc;
 
@@ -91,8 +89,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envel
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1,
-                                                     const char *locality2,
+PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1, const char *locality2,
                                                      pmix_locality_t *locality)
 {
     pmix_status_t rc;
@@ -111,17 +108,14 @@ PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1,
 
 static void icbrelfn(void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     PMIX_RELEASE(cb);
 }
 
-static void distcb(pmix_status_t status,
-                   pmix_device_distance_t *dist, size_t ndist,
-                   void *cbdata,
-                   pmix_release_cbfunc_t release_fn,
-                   void *release_cbdata)
+static void distcb(pmix_status_t status, pmix_device_distance_t *dist, size_t ndist, void *cbdata,
+                   pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     size_t n;
 
     cb->status = status;
@@ -129,7 +123,7 @@ static void distcb(pmix_status_t status,
 
     if (PMIX_SUCCESS == status && 0 < ndist) {
         PMIX_DEVICE_DIST_CREATE(cb->dist, cb->nvals);
-        for (n=0; n < cb->nvals; n++) {
+        for (n = 0; n < cb->nvals; n++) {
             if (NULL != dist[n].uuid) {
                 cb->dist[n].uuid = strdup(dist[n].uuid);
             }
@@ -148,11 +142,9 @@ static void distcb(pmix_status_t status,
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo,
-                                     pmix_cpuset_t *cpuset,
+pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuset,
                                      pmix_info_t info[], size_t ninfo,
-                                     pmix_device_distance_t *distances[],
-                                     size_t *ndist)
+                                     pmix_device_distance_t *distances[], size_t *ndist)
 {
     pmix_cb_t cb;
     pmix_status_t rc;
@@ -165,8 +157,7 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric update_distances");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric update_distances");
 
     *distances = NULL;
     *ndist = 0;
@@ -192,36 +183,31 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo,
     }
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric update_distances completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric update_distances completed");
 
     return rc;
 }
 
 static void dcbfunc(int sd, short args, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
     if (NULL != cb->cbfunc.distfn) {
-        cb->cbfunc.distfn(cb->status, cb->dist, cb->nvals, cb->cbdata,
-                          icbrelfn, cb);
+        cb->cbfunc.distfn(cb->status, cb->dist, cb->nvals, cb->cbdata, icbrelfn, cb);
         return;
     }
 
     PMIX_RELEASE(cb);
 }
 
-static void direcv(struct pmix_peer_t *peer,
-                   pmix_ptl_hdr_t *hdr,
-                   pmix_buffer_t *buf, void *cbdata)
+static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
     int cnt;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric direcv from server with %d bytes",
-                        (int)buf->bytes_used);
+                        "pmix:fabric direcv from server with %d bytes", (int) buf->bytes_used);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -259,18 +245,15 @@ static void direcv(struct pmix_peer_t *peer,
         }
     }
 
-  complete:
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric ifrecv from server releasing");
+complete:
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric ifrecv from server releasing");
     /* release the caller */
-    cb->cbfunc.distfn(rc, cb->dist, cb->nvals, cb->cbdata, icbrelfn, (void*)cb);
+    cb->cbfunc.distfn(rc, cb->dist, cb->nvals, cb->cbdata, icbrelfn, (void *) cb);
 }
 
-pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
-                                        pmix_cpuset_t *cpuset,
+pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo, pmix_cpuset_t *cpuset,
                                         pmix_info_t info[], size_t ninfo,
-                                        pmix_device_dist_cbfunc_t cbfunc,
-                                        void *cbdata)
+                                        pmix_device_dist_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -303,8 +286,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
     /* if we are a tool or client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -313,8 +295,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
     }
 
     /* pack the topology we want them to use */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, topo, 1, PMIX_TOPO);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, topo, 1, PMIX_TOPO);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -322,8 +303,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
         return rc;
     }
     /* pack the cpuset */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, cpuset, 1, PMIX_PROC_CPUSET);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, cpuset, 1, PMIX_PROC_CPUSET);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -332,8 +312,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
     }
 
     /* pack the directives */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -341,8 +320,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
         return rc;
     }
     if (0 < ninfo) {
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, info, ninfo, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -352,8 +330,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
     }
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, direcv, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, direcv, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);

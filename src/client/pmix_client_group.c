@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,34 +26,34 @@
 #include "src/mca/gds/base/base.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_UN_H
-#include <sys/un.h>
+#    include <sys/un.h>
 #endif
 #ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
+#    include <sys/uio.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/gds/gds.h"
+#include "src/mca/ptl/ptl.h"
+#include "src/threads/threads.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
-#include "src/threads/threads.h"
-#include "src/mca/gds/gds.h"
-#include "src/mca/ptl/ptl.h"
 
 #include "pmix_client_ops.h"
 
@@ -100,35 +101,27 @@ static void gtdes(pmix_group_tracker_t *p)
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_group_tracker_t,
-                    pmix_object_t,
-                    gtcon, gtdes);
+PMIX_CLASS_INSTANCE(pmix_group_tracker_t, pmix_object_t, gtcon, gtdes);
 
 /* callback for wait completion */
-static void grp_cbfunc(struct pmix_peer_t *pr,
-                        pmix_ptl_hdr_t *hdr,
-                        pmix_buffer_t *buf, void *cbdata);
+static void grp_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                       void *cbdata);
 static void op_cbfunc(pmix_status_t status, void *cbdata);
 
-static void info_cbfunc(pmix_status_t status,
-                        pmix_info_t *info, size_t ninfo,
-                        void *cbdata,
-                        pmix_release_cbfunc_t release_fn,
-                        void *release_cbdata);
+static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                        pmix_release_cbfunc_t release_fn, void *release_cbdata);
 
-
-PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[],
-                                               const pmix_proc_t procs[], size_t nprocs,
-                                               const pmix_info_t info[], size_t ninfo,
-                                               pmix_info_t **results, size_t *nresults)
+PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc_t procs[],
+                                               size_t nprocs, const pmix_info_t info[],
+                                               size_t ninfo, pmix_info_t **results,
+                                               size_t *nresults)
 {
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix: group_construct called");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix: group_construct called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -148,7 +141,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[],
     cb = PMIX_NEW(pmix_group_tracker_t);
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Group_construct_nb(grp, procs, nprocs, info, ninfo, info_cbfunc, cb))) {
+    if (PMIX_SUCCESS
+        != (rc = PMIx_Group_construct_nb(grp, procs, nprocs, info, ninfo, info_cbfunc, cb))) {
         PMIX_RELEASE(cb);
         return rc;
     }
@@ -158,19 +152,18 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[],
     rc = cb->status;
     /* user takes responsibility for releasing any results */
     *results = cb->results;
-    *nresults =  cb->nresults;
+    *nresults = cb->nresults;
     PMIX_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: group construct completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: group construct completed");
 
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
-                                                  const pmix_proc_t procs[], size_t nprocs,
-                                                  const pmix_info_t info[], size_t ninfo,
-                                                  pmix_info_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_proc_t procs[],
+                                                  size_t nprocs, const pmix_info_t info[],
+                                                  size_t ninfo, pmix_info_cbfunc_t cbfunc,
+                                                  void *cbdata)
 {
     pmix_buffer_t *msg = NULL;
     pmix_cmd_t cmd = PMIX_GROUP_CONSTRUCT_CMD;
@@ -182,8 +175,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix:group_construct_nb called");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix:group_construct_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -205,7 +197,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
     /* need to add the fence request to the provided info
      * structs as this is a blocking operation - only add
      * it if the user didn't specify this themselves */
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_EMBED_BARRIER)) {
             embed = PMIX_INFO_TRUE(&info[n]);
             break;
@@ -214,57 +206,51 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
     if (embed) {
         PMIX_INFO_CREATE(iptr, ninfo + 1);
         num = ninfo + 1;
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             PMIX_INFO_XFER(&iptr[n], &info[n]);
         }
         PMIX_INFO_LOAD(&iptr[ninfo], PMIX_EMBED_BARRIER, &embed, PMIX_BOOL);
     } else {
-        iptr = (pmix_info_t*)info;
+        iptr = (pmix_info_t *) info;
         num = ninfo;
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
 
     /* pack the group ID */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &grp, 1, PMIX_STRING);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &grp, 1, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
 
     /* pack the number of procs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &nprocs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nprocs, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, procs, nprocs, PMIX_PROC);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, procs, nprocs, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
 
     /* pack the info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &num, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &num, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         goto done;
     }
     if (0 < num) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, iptr, num, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, iptr, num, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -280,13 +266,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, grp_cbfunc, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, grp_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
 
-  done:
+done:
     if (embed && NULL != iptr) {
         PMIX_INFO_FREE(iptr, num);
     }
@@ -296,16 +281,15 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[],
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
-                                              const pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[], const pmix_info_t info[],
+                                              size_t ninfo)
 {
     pmix_status_t rc;
     pmix_group_tracker_t cb;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix: group_destruct called");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix: group_destruct called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -325,7 +309,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
     PMIX_CONSTRUCT(&cb, pmix_group_tracker_t);
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Group_destruct_nb(grp, info, ninfo, op_cbfunc, (void*)&cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Group_destruct_nb(grp, info, ninfo, op_cbfunc, (void *) &cb))) {
         PMIX_ERROR_LOG(rc);
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -336,15 +320,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
     rc = cb.status;
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix: group destruct completed");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix: group destruct completed");
 
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
-                                                 const pmix_info_t info[], size_t ninfo,
-                                                 pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[], const pmix_info_t info[],
+                                                 size_t ninfo, pmix_op_cbfunc_t cbfunc,
+                                                 void *cbdata)
 {
     pmix_buffer_t *msg = NULL;
     pmix_cmd_t cmd = PMIX_GROUP_DESTRUCT_CMD;
@@ -353,8 +336,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix:group_destruct_nb called");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix:group_destruct_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -375,32 +357,28 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
 
     /* pack the group ID */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &grp, 1, PMIX_STRING);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &grp, 1, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
 
     /* pack the info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         goto done;
     }
     if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, info, ninfo, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -416,13 +394,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, grp_cbfunc, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, grp_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
 
-  done:
+done:
     if (PMIX_SUCCESS != rc && NULL != msg) {
         PMIX_RELEASE(msg);
     }
@@ -431,7 +408,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[],
 
 static void chaincbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_group_tracker_t *cb = (pmix_group_tracker_t*)cbdata;
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
 
     if (NULL != cb) {
         PMIX_RELEASE(cb);
@@ -440,18 +417,15 @@ static void chaincbfunc(pmix_status_t status, void *cbdata)
 
 static void relcbfunc(void *cbdata)
 {
-    pmix_group_tracker_t *cb = (pmix_group_tracker_t*)cbdata;
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
 
     PMIX_RELEASE(cb);
 }
 
-static void invite_handler(size_t evhdlr_registration_id,
-                           pmix_status_t status,
-                           const pmix_proc_t *source,
-                           pmix_info_t info[], size_t ninfo,
+static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
+                           const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                            pmix_info_t *results, size_t nresults,
-                           pmix_event_notification_cbfunc_fn_t cbfunc,
-                           void *cbdata)
+                           pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     pmix_group_tracker_t *cb = NULL;
     pmix_proc_t *affected = NULL;
@@ -460,23 +434,24 @@ static void invite_handler(size_t evhdlr_registration_id,
     size_t contextid = SIZE_MAX;
 
     /* find the object we asked to be returned with event */
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_RETURN_OBJECT)) {
             if (PMIX_POINTER != info[n].value.type) {
                 /* this is an unrecoverable error - need to abort */
             }
-            cb = (pmix_group_tracker_t*)info[n].value.data.ptr;
+            cb = (pmix_group_tracker_t *) info[n].value.data.ptr;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_AFFECTED_PROC)) {
             if (PMIX_PROC != info[n].value.type) {
                 /* this is an unrecoverable error - need to abort */
             }
             affected = info[n].value.data.proc;
-        }  else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
             PMIX_VALUE_GET_NUMBER(rc, &info[n].value, contextid, size_t);
         }
     }
     if (NULL == cb) {
-        pmix_output(0, "[%s:%d] INVITE HANDLER NULL OBJECT", pmix_globals.myid.nspace, pmix_globals.myid.rank);
+        pmix_output(0, "[%s:%d] INVITE HANDLER NULL OBJECT", pmix_globals.myid.nspace,
+                    pmix_globals.myid.rank);
         /* this is an unrecoverable error - need to abort */
         /* always must continue the chain */
         cbfunc(rc, NULL, 0, chaincbfunc, NULL, cbdata);
@@ -498,14 +473,12 @@ static void invite_handler(size_t evhdlr_registration_id,
         PMIX_INFO_CREATE(cb->info, cb->ninfo);
         PMIX_INFO_LOAD(&cb->info[0], PMIX_EVENT_AFFECTED_PROC, affected, PMIX_PROC);
         PMIX_INFO_LOAD(&cb->info[1], PMIX_GROUP_CONTEXT_ID, &contextid, PMIX_SIZE);
-        rc = PMIx_Notify_event(PMIX_GROUP_INVITE_FAILED,
-                               &pmix_globals.myid,
-                               PMIX_RANGE_PROC_LOCAL,
-                               cb->info, cb->ninfo,
-                               chaincbfunc, (void*)cb);
+        rc = PMIx_Notify_event(PMIX_GROUP_INVITE_FAILED, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
+                               cb->info, cb->ninfo, chaincbfunc, (void *) cb);
         if (PMIX_SUCCESS != rc) {
             /* this is an unrecoverable error - need to abort */
-            pmix_output(0, "[%s:%d] INVITE HANDLER ERROR", pmix_globals.myid.nspace, pmix_globals.myid.rank);
+            pmix_output(0, "[%s:%d] INVITE HANDLER ERROR", pmix_globals.myid.nspace,
+                        pmix_globals.myid.rank);
         }
         PMIX_INFO_FREE(cb->info, cb->ninfo);
         goto complete;
@@ -516,7 +489,7 @@ static void invite_handler(size_t evhdlr_registration_id,
      * case, then the chain will eventually call it
      */
 
-  complete:
+complete:
     /* check for complete */
     if (cb->accepted == cb->nmembers) {
         /* execute the completion callback */
@@ -531,20 +504,17 @@ static void invite_handler(size_t evhdlr_registration_id,
     return;
 }
 
-static void regcbfunc(pmix_status_t status,
-                      size_t refid,
-                      void *cbdata)
+static void regcbfunc(pmix_status_t status, size_t refid, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
     cb->status = status;
     cb->errhandler_ref = refid;
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[],
-                                            const pmix_proc_t procs[], size_t nprocs,
-                                            const pmix_info_t info[], size_t ninfo,
+PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t procs[],
+                                            size_t nprocs, const pmix_info_t info[], size_t ninfo,
                                             pmix_info_t **results, size_t *nresults)
 {
     pmix_group_tracker_t cb;
@@ -571,7 +541,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[],
 
     PMIX_CONSTRUCT(&cb, pmix_group_tracker_t);
 
-    rc = PMIx_Group_invite_nb(grp, procs, nprocs, info, ninfo, info_cbfunc, (void*)&cb);
+    rc = PMIx_Group_invite_nb(grp, procs, nprocs, info, ninfo, info_cbfunc, (void *) &cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -595,11 +565,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[],
     }
     cb.ninfo = 3;
     n = 0;
-    (void)strncpy(cb.info[n].key, PMIX_EVENT_CUSTOM_RANGE, PMIX_MAX_KEYLEN);
+    (void) strncpy(cb.info[n].key, PMIX_EVENT_CUSTOM_RANGE, PMIX_MAX_KEYLEN);
     cb.info[n].value.type = PMIX_DATA_ARRAY;
     PMIX_DATA_ARRAY_CREATE(cb.info[n].value.data.darray, nprocs, PMIX_PROC);
-    if (NULL == cb.info[n].value.data.darray ||
-        NULL == cb.info[n].value.data.darray->array) {
+    if (NULL == cb.info[n].value.data.darray || NULL == cb.info[n].value.data.darray->array) {
         PMIX_DESTRUCT(&cb);
         return PMIX_ERR_NOMEM;
     }
@@ -612,11 +581,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[],
     PMIX_INFO_LOAD(&cb.info[n], PMIX_GROUP_ID, grp, PMIX_STRING);
 
     /* notify members */
-    rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_COMPLETE,
-                           &pmix_globals.myid,
-                           PMIX_RANGE_CUSTOM,
-                           cb.info, cb.ninfo,
-                           op_cbfunc, (void*)&cb);
+    rc = PMIx_Notify_event(PMIX_GROUP_CONSTRUCT_COMPLETE, &pmix_globals.myid, PMIX_RANGE_CUSTOM,
+                           cb.info, cb.ninfo, op_cbfunc, (void *) &cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -629,18 +595,15 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[],
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
-                                               const pmix_proc_t procs[], size_t nprocs,
-                                               const pmix_info_t info[], size_t ninfo,
-                                               pmix_info_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc_t procs[],
+                                               size_t nprocs, const pmix_info_t info[],
+                                               size_t ninfo, pmix_info_cbfunc_t cbfunc,
+                                               void *cbdata)
 {
     pmix_group_tracker_t *cb;
     pmix_cb_t lock;
-    pmix_status_t codes[] = {
-        PMIX_GROUP_INVITE_ACCEPTED,
-        PMIX_GROUP_INVITE_DECLINED,
-        PMIX_PROC_TERMINATED
-    };
+    pmix_status_t codes[] = {PMIX_GROUP_INVITE_ACCEPTED, PMIX_GROUP_INVITE_DECLINED,
+                             PMIX_PROC_TERMINATED};
     size_t ncodes, n;
     pmix_info_t myinfo[2];
     pmix_status_t rc;
@@ -669,10 +632,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
     }
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
-    cb->accepted = 1;  // obviously, we accept
+    cb->accepted = 1; // obviously, we accept
 
     /* compute the number of proposed members */
-    for (n=0; n < nprocs; n++) {
+    for (n = 0; n < nprocs; n++) {
         if (PMIX_RANK_WILDCARD == procs[n].rank) {
             /* must get the number of procs in this nspace */
         } else {
@@ -684,10 +647,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
      * to accept responses */
     PMIX_INFO_LOAD(&myinfo[0], PMIX_EVENT_RETURN_OBJECT, cb, PMIX_POINTER);
     PMIX_INFO_LOAD(&myinfo[1], PMIX_EVENT_HDLR_PREPEND, NULL, PMIX_BOOL);
-    ncodes = sizeof(codes)/sizeof(pmix_status_t);
+    ncodes = sizeof(codes) / sizeof(pmix_status_t);
     PMIX_CONSTRUCT(&lock, pmix_cb_t);
-    PMIx_Register_event_handler(codes, ncodes, myinfo, 2,
-                                invite_handler, regcbfunc, &lock);
+    PMIx_Register_event_handler(codes, ncodes, myinfo, 2, invite_handler, regcbfunc, &lock);
     PMIX_WAIT_THREAD(&lock.lock);
     rc = lock.status;
     cb->ref = lock.errhandler_ref;
@@ -701,7 +663,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
 
     /* check for directives */
     if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
                 /* setup a timer */
                 break;
@@ -713,8 +675,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
     PMIX_INFO_CREATE(cb->info, 3);
     if (NULL == cb->info) {
         PMIX_CONSTRUCT(&lock, pmix_cb_t);
-        PMIx_Deregister_event_handler(cb->ref,
-                                      op_cbfunc, &lock);
+        PMIx_Deregister_event_handler(cb->ref, op_cbfunc, &lock);
         PMIX_WAIT_THREAD(&lock.lock);
         PMIX_DESTRUCT(&lock);
         PMIX_RELEASE(cb);
@@ -722,14 +683,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
     }
     cb->ninfo = 3;
     n = 0;
-    (void)strncpy(cb->info[n].key, PMIX_EVENT_CUSTOM_RANGE, PMIX_MAX_KEYLEN);
+    (void) strncpy(cb->info[n].key, PMIX_EVENT_CUSTOM_RANGE, PMIX_MAX_KEYLEN);
     cb->info[n].value.type = PMIX_DATA_ARRAY;
     PMIX_DATA_ARRAY_CREATE(cb->info[n].value.data.darray, nprocs, PMIX_PROC);
-    if (NULL == cb->info[n].value.data.darray ||
-        NULL == cb->info[n].value.data.darray->array) {
+    if (NULL == cb->info[n].value.data.darray || NULL == cb->info[n].value.data.darray->array) {
         PMIX_CONSTRUCT(&lock, pmix_cb_t);
-        PMIx_Deregister_event_handler(cb->ref,
-                                      op_cbfunc, &lock);
+        PMIx_Deregister_event_handler(cb->ref, op_cbfunc, &lock);
         PMIX_WAIT_THREAD(&lock.lock);
         PMIX_DESTRUCT(&lock);
         PMIX_RELEASE(cb);
@@ -745,18 +704,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
 
     /* notify everyone of the invitation */
     PMIX_CONSTRUCT(&lock, pmix_cb_t);
-    rc = PMIx_Notify_event(PMIX_GROUP_INVITED,
-                           &pmix_globals.myid,
-                           PMIX_RANGE_CUSTOM,
-                           cb->info, cb->ninfo,
-                           op_cbfunc, (void*)&lock);
+    rc = PMIx_Notify_event(PMIX_GROUP_INVITED, &pmix_globals.myid, PMIX_RANGE_CUSTOM, cb->info,
+                           cb->ninfo, op_cbfunc, (void *) &lock);
     PMIX_WAIT_THREAD(&lock.lock);
     rc = lock.status;
     PMIX_DESTRUCT(&lock);
     if (PMIX_SUCCESS != rc) {
         PMIX_CONSTRUCT(&lock, pmix_cb_t);
-        PMIx_Deregister_event_handler(cb->ref,
-                                      op_cbfunc, &lock);
+        PMIx_Deregister_event_handler(cb->ref, op_cbfunc, &lock);
         PMIX_WAIT_THREAD(&lock.lock);
         PMIX_DESTRUCT(&lock);
         PMIX_RELEASE(cb);
@@ -765,11 +720,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[],
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[],
-                                          const pmix_proc_t *leader,
-                                          pmix_group_opt_t opt,
-                                          const pmix_info_t info[], size_t ninfo,
-                                          pmix_info_t **results, size_t *nresults)
+PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *leader,
+                                          pmix_group_opt_t opt, const pmix_info_t info[],
+                                          size_t ninfo, pmix_info_t **results, size_t *nresults)
 {
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
@@ -808,11 +761,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[],
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[],
-                                             const pmix_proc_t *leader,
-                                             pmix_group_opt_t opt,
-                                             const pmix_info_t info[], size_t ninfo,
-                                             pmix_info_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t *leader,
+                                             pmix_group_opt_t opt, const pmix_info_t info[],
+                                             size_t ninfo, pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
@@ -822,8 +773,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[],
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "[%s:%d] pmix: join nb called",
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "[%s:%d] pmix: join nb called",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
 
     if (pmix_globals.init_cntr <= 0) {
@@ -846,7 +796,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[],
 
     /* check for directives */
     if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
                 /* setup a timer */
                 break;
@@ -875,32 +825,26 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[],
         range = PMIX_RANGE_SESSION;
     }
 
-    rc = PMIx_Notify_event(code,
-                           &pmix_globals.myid,
-                           range,
-                           cb->info, cb->ninfo,
-                           op_cbfunc, (void*)cb);
+    rc = PMIx_Notify_event(code, &pmix_globals.myid, range, cb->info, cb->ninfo, op_cbfunc,
+                           (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "[%s:%d] pmix: group invite %s",
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "[%s:%d] pmix: group invite %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
                         (PMIX_GROUP_INVITE_ACCEPTED == code) ? "ACCEPTED" : "DECLINED");
 
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
-                                           const pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[], const pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc;
     pmix_group_tracker_t cb;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix: group_leave called");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix: group_leave called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -920,7 +864,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
     PMIX_CONSTRUCT(&cb, pmix_group_tracker_t);
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Group_leave_nb(grp, info, ninfo, op_cbfunc, (void*)&cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Group_leave_nb(grp, info, ninfo, op_cbfunc, (void *) &cb))) {
         PMIX_ERROR_LOG(rc);
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -931,15 +875,13 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
     rc = cb.status;
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix: group leave completed");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix: group leave completed");
 
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
-                                              const pmix_info_t info[], size_t ninfo,
-                                              pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[], const pmix_info_t info[],
+                                              size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg = NULL;
     pmix_cmd_t cmd = PMIX_GROUP_LEAVE_CMD;
@@ -948,8 +890,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
-                        "pmix:group_leave_nb called");
+    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix:group_leave_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -970,32 +911,28 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
 
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
 
     /* pack the group ID */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &grp, 1, PMIX_STRING);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &grp, 1, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
     }
 
     /* pack the info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         goto done;
     }
     if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, info, ninfo, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -1011,13 +948,12 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, grp_cbfunc, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, grp_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
 
-  done:
+done:
     if (PMIX_SUCCESS != rc && NULL != msg) {
         PMIX_RELEASE(msg);
     }
@@ -1026,7 +962,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
 
 static void op_cbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_group_tracker_t *cb = (pmix_group_tracker_t*)cbdata;
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
 
     cb->status = status;
     if (NULL != cb->opcbfunc) {
@@ -1038,23 +974,22 @@ static void op_cbfunc(pmix_status_t status, void *cbdata)
 
 static void relfn(void *cbdata)
 {
-    pmix_group_tracker_t *cb = (pmix_group_tracker_t*)cbdata;
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
     PMIX_RELEASE(cb);
 }
-static void grp_cbfunc(struct pmix_peer_t *pr,
-                        pmix_ptl_hdr_t *hdr,
-                        pmix_buffer_t *buf, void *cbdata)
+static void grp_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                       void *cbdata)
 {
-    pmix_group_tracker_t *cb = (pmix_group_tracker_t*)cbdata;
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
     pmix_status_t rc;
     pmix_status_t ret;
     int32_t cnt;
-    size_t ctxid, ninfo=0;
-    pmix_info_t info, *iptr=NULL;
+    size_t ctxid, ninfo = 0;
+    pmix_info_t info, *iptr = NULL;
 
     pmix_output_verbose(2, pmix_client_globals.connect_output,
                         "pmix:client recv callback activated with %d bytes",
-                        (NULL == buf) ? -1 : (int)buf->bytes_used);
+                        (NULL == buf) ? -1 : (int) buf->bytes_used);
 
     if (NULL == buf) {
         ret = PMIX_ERR_BAD_PARAM;
@@ -1070,8 +1005,7 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
 
     /* unpack the returned status */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                       buf, &ret, &cnt, PMIX_STATUS);
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
@@ -1079,8 +1013,7 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
     /* unpack any ctxid that was provided - it is okay if
      * this attempts to unpack past end of buffer */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                       buf, &ctxid, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ctxid, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
@@ -1090,7 +1023,7 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
         ninfo = 1;
     }
 
-  report:
+report:
     if (NULL != cb->cbfunc) {
         cb->cbfunc(ret, iptr, ninfo, cb->cbdata, relfn, cb);
         return;
@@ -1101,13 +1034,10 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
     PMIX_RELEASE(cb);
 }
 
-static void info_cbfunc(pmix_status_t status,
-                        pmix_info_t *info, size_t ninfo,
-                        void *cbdata,
-                        pmix_release_cbfunc_t release_fn,
-                        void *release_cbdata)
+static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                        pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_group_tracker_t *cb = (pmix_group_tracker_t*)cbdata;
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
     size_t n;
 
     /* see if anything was returned - e.g., a context id */
@@ -1116,7 +1046,7 @@ static void info_cbfunc(pmix_status_t status,
     if (NULL != info) {
         cb->nresults = ninfo;
         PMIX_INFO_CREATE(cb->results, cb->nresults);
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             PMIX_INFO_XFER(&cb->results[n], &info[n]);
         }
     }

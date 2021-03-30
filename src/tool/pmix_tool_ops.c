@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,16 +20,15 @@
 
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/error.h"
-#include "src/util/name_fns.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/ptl/ptl.h"
+#include "src/util/error.h"
+#include "src/util/name_fns.h"
 
 #include "pmix_tool_ops.h"
 
-static void tool_switchyard(struct pmix_peer_t *pr,
-                            pmix_ptl_hdr_t *hdr,
-                            pmix_buffer_t *buf, void *cbdata);
+static void tool_switchyard(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                            void *cbdata);
 
 /* the following function is used by the PMIx server
  * switchyard to process commands sent to one tool by
@@ -53,16 +53,14 @@ static void tool_switchyard(struct pmix_peer_t *pr,
  *
  * bfr - the buffer containing the request
  */
-pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer,
-                                 pmix_buffer_t *bfr, uint32_t tag)
+pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer, pmix_buffer_t *bfr,
+                                 uint32_t tag)
 {
     pmix_shift_caddy_t *s;
     pmix_status_t rc;
     pmix_buffer_t *relay;
-    pmix_cmd_t relaycmds[] = {
-        PMIX_SPAWNNB_CMD
-    };
-    bool found=false;
+    pmix_cmd_t relaycmds[] = {PMIX_SPAWNNB_CMD};
+    bool found = false;
     size_t nrelaycmds, n;
 
     /***** IF IT IS THE SPAWN COMMAND, WE SEND IT WITH A
@@ -71,7 +69,7 @@ pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer,
     /* there are some commands we just cannot relay as
      * it makes no sense to do so */
     nrelaycmds = sizeof(relaycmds) / sizeof(pmix_cmd_t);
-    for (n=0; n < nrelaycmds; n++) {
+    for (n = 0; n < nrelaycmds; n++) {
         if (cmd == relaycmds[n]) {
             found = true;
             break;
@@ -100,8 +98,7 @@ pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer,
         return rc;
     }
 
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, relay,
-                           tool_switchyard, (void*)s);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, relay, tool_switchyard, (void *) s);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(relay);
         PMIX_RELEASE(s);
@@ -110,14 +107,13 @@ pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer,
     return PMIX_SUCCESS;
 }
 
-static void tool_switchyard(struct pmix_peer_t *pr,
-                            pmix_ptl_hdr_t *hdr,
-                            pmix_buffer_t *buf, void *cbdata)
+static void tool_switchyard(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                            void *cbdata)
 {
-    pmix_shift_caddy_t *s = (pmix_shift_caddy_t*)cbdata;
+    pmix_shift_caddy_t *s = (pmix_shift_caddy_t *) cbdata;
     pmix_buffer_t *relay;
     pmix_status_t rc;
-    uint32_t tag = (uint32_t)s->ncodes;
+    uint32_t tag = (uint32_t) s->ncodes;
 
     /* the tag for the original sender was stored in ncodes, and
      * the server would have packed the buffer using my

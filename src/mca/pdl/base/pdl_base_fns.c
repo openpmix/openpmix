@@ -3,6 +3,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,27 +21,22 @@
 
 #include "include/pmix_common.h"
 
-#include "src/util/output.h"
 #include "src/mca/pdl/base/base.h"
+#include "src/util/output.h"
 
-
-int pmix_pdl_open(const char *fname,
-                 bool use_ext, bool private_namespace,
-                 pmix_pdl_handle_t **handle, char **err_msg)
+int pmix_pdl_open(const char *fname, bool use_ext, bool private_namespace,
+                  pmix_pdl_handle_t **handle, char **err_msg)
 {
     *handle = NULL;
 
     if (NULL != pmix_pdl && NULL != pmix_pdl->open) {
-        return pmix_pdl->open(fname, use_ext, private_namespace,
-                             handle, err_msg);
+        return pmix_pdl->open(fname, use_ext, private_namespace, handle, err_msg);
     }
 
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-int pmix_pdl_lookup(pmix_pdl_handle_t *handle,
-                   const char *symbol,
-                   void **ptr, char **err_msg)
+int pmix_pdl_lookup(pmix_pdl_handle_t *handle, const char *symbol, void **ptr, char **err_msg)
 {
     if (NULL != pmix_pdl && NULL != pmix_pdl->lookup) {
         return pmix_pdl->lookup(handle, symbol, ptr, err_msg);
@@ -59,11 +55,10 @@ int pmix_pdl_close(pmix_pdl_handle_t *handle)
 }
 
 int pmix_pdl_foreachfile(const char *search_path,
-                        int (*cb_func)(const char *filename, void *context),
-                        void *context)
+                         int (*cb_func)(const char *filename, void *context), void *context)
 {
     if (NULL != pmix_pdl && NULL != pmix_pdl->foreachfile) {
-       return pmix_pdl->foreachfile(search_path, cb_func, context);
+        return pmix_pdl->foreachfile(search_path, cb_func, context);
     }
 
     return PMIX_ERR_NOT_SUPPORTED;

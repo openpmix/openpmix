@@ -24,43 +24,38 @@
 
 #include <string.h>
 #ifdef HAVE_TIME_H
-#include <time.h>
+#    include <time.h>
 #endif
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
-#endif  /* HAVE_SYS_TIME_H */
+#    include <sys/time.h>
+#endif /* HAVE_SYS_TIME_H */
 #ifdef HAVE_SYSLOG_H
-#include <syslog.h>
+#    include <syslog.h>
 #endif
 #include <stdarg.h>
 
+#include "src/mca/bfrops/bfrops.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/show_help.h"
-#include "src/mca/bfrops/bfrops.h"
-#include "src/server/pmix_server_ops.h"
 
-#include "src/mca/plog/base/base.h"
 #include "plog_syslog.h"
-
+#include "src/mca/plog/base/base.h"
 
 /* Static API's */
 static pmix_status_t init(void);
 static void finalize(void);
-static pmix_status_t mylog(const pmix_proc_t *source,
-                           const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs,
-                           pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
+                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
+                           void *cbdata);
 
 /* Module def */
-pmix_plog_module_t pmix_plog_syslog_module = {
-    .name = "syslog",
-    .init = init,
-    .finalize = finalize,
-    .log = mylog
-};
-
+pmix_plog_module_t pmix_plog_syslog_module = {.name = "syslog",
+                                              .init = init,
+                                              .finalize = finalize,
+                                              .log = mylog};
 
 static pmix_status_t init(void)
 {
@@ -81,16 +76,13 @@ static void finalize(void)
     pmix_argv_free(pmix_plog_syslog_module.channels);
 }
 
-static pmix_status_t write_local(const pmix_proc_t *source,
-                                 time_t timestamp,
-                                 int severity, char *msg,
-                                 const pmix_info_t *data, size_t ndata);
+static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp, int severity,
+                                 char *msg, const pmix_info_t *data, size_t ndata);
 
 /* we only get called if we are a SERVER */
-static pmix_status_t mylog(const pmix_proc_t *source,
-                           const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs,
-                           pmix_op_cbfunc_t cbfunc, void *cbdata)
+static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
+                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
+                           void *cbdata)
 {
     size_t n;
     int pri = mca_plog_syslog_component.level;
@@ -104,7 +96,7 @@ static pmix_status_t mylog(const pmix_proc_t *source,
 
     /* check directives */
     if (NULL != directives) {
-        for (n=0; n < ndirs; n++) {
+        for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_LOG_SYSLOG_PRI, PMIX_MAX_KEYLEN)) {
                 pri = directives[n].value.data.integer;
             } else if (0 == strncmp(directives[n].key, PMIX_LOG_TIMESTAMP, PMIX_MAX_KEYLEN)) {
@@ -114,7 +106,7 @@ static pmix_status_t mylog(const pmix_proc_t *source,
     }
 
     /* check to see if there are any syslog entries */
-    for (n=0; n < ndata; n++) {
+    for (n = 0; n < ndata; n++) {
         if (0 == strncmp(data[n].key, PMIX_LOG_SYSLOG, PMIX_MAX_KEYLEN)) {
             /* we default to using the local syslog */
             rc = write_local(source, timestamp, pri, data[n].value.data.string, data, ndata);
@@ -143,45 +135,43 @@ static pmix_status_t mylog(const pmix_proc_t *source,
     return PMIX_SUCCESS;
 }
 
-static char* sev2str(int severity)
+static char *sev2str(int severity)
 {
     switch (severity) {
-        case LOG_EMERG:
-            return "EMERGENCY";
-        case LOG_ALERT:
-            return "ALERT";
-        case LOG_CRIT:
-            return "CRITICAL";
-        case LOG_ERR:
-            return "ERROR";
-        case LOG_WARNING:
-            return "WARNING";
-        case LOG_NOTICE:
-            return "NOTICE";
-        case LOG_INFO:
-            return "INFO";
-        case LOG_DEBUG:
-            return "DEBUG";
-        default:
-            return "UNKNOWN SEVERITY";
+    case LOG_EMERG:
+        return "EMERGENCY";
+    case LOG_ALERT:
+        return "ALERT";
+    case LOG_CRIT:
+        return "CRITICAL";
+    case LOG_ERR:
+        return "ERROR";
+    case LOG_WARNING:
+        return "WARNING";
+    case LOG_NOTICE:
+        return "NOTICE";
+    case LOG_INFO:
+        return "INFO";
+    case LOG_DEBUG:
+        return "DEBUG";
+    default:
+        return "UNKNOWN SEVERITY";
     }
 }
 
-static pmix_status_t write_local(const pmix_proc_t *source,
-                                 time_t timestamp,
-                                 int severity, char *msg,
-                                 const pmix_info_t *data, size_t ndata)
+static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp, int severity,
+                                 char *msg, const pmix_info_t *data, size_t ndata)
 {
     char tod[48], *datastr, *tmp, *tmp2;
     pmix_status_t rc;
     size_t n;
 
     pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
-                           "plog:syslog:mylog function called with severity %d", severity);
+                        "plog:syslog:mylog function called with severity %d", severity);
 
     if (0 < timestamp) {
         /* If there was a message, output it */
-        (void)ctime_r(&timestamp, tod);
+        (void) ctime_r(&timestamp, tod);
         /* trim the newline */
         tod[strlen(tod)] = '\0';
     } else {
@@ -189,10 +179,8 @@ static pmix_status_t write_local(const pmix_proc_t *source,
     }
 
     if (NULL == data) {
-        syslog(severity, "%s [%s:%d]%s PROC %s:%d REPORTS: %s",
-               tod, pmix_globals.myid.nspace, pmix_globals.myid.rank,
-               sev2str(severity),
-               source->nspace, source->rank,
+        syslog(severity, "%s [%s:%d]%s PROC %s:%d REPORTS: %s", tod, pmix_globals.myid.nspace,
+               pmix_globals.myid.rank, sev2str(severity), source->nspace, source->rank,
                (NULL == msg) ? "<N/A>" : msg);
     } else {
         /* need to print the info from the data, starting
@@ -204,9 +192,9 @@ static pmix_status_t write_local(const pmix_proc_t *source,
                 return PMIX_ERR_NOMEM;
             }
         }
-        for (n=0; n < ndata; n++) {
-            PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
-                              &tmp, "\t", (pmix_info_t*)&data[n], PMIX_INFO);
+        for (n = 0; n < ndata; n++) {
+            PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer, &tmp, "\t", (pmix_info_t *) &data[n],
+                              PMIX_INFO);
             if (PMIX_SUCCESS != rc) {
                 free(datastr);
                 return rc;
@@ -220,9 +208,8 @@ static pmix_status_t write_local(const pmix_proc_t *source,
             datastr = tmp2;
         }
         /* print out the consolidated msg */
-        syslog(severity, "%s [%s:%d]%s PROC %s:%d REPORTS: %s",
-               tod, pmix_globals.myid.nspace, pmix_globals.myid.rank,
-               sev2str(severity), source->nspace, source->rank, datastr);
+        syslog(severity, "%s [%s:%d]%s PROC %s:%d REPORTS: %s", tod, pmix_globals.myid.nspace,
+               pmix_globals.myid.rank, sev2str(severity), source->nspace, source->rank, datastr);
         free(datastr);
     }
 

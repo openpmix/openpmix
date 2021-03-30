@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,8 +28,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <pmi.h>
 
@@ -49,7 +50,6 @@ int main(int argc, char **argv)
         exit(0);
     }
     fprintf(stderr, "Client: Running\n");
-
 
     /* check to see if we have been instructed to wait for a debugger
      * to attach to us. We won't get both a stop-in-init AND a
@@ -74,5 +74,5 @@ int main(int argc, char **argv)
         fprintf(stderr, "Client %d: PMI_Finalize failed: %d\n", rank, rc);
     }
     fflush(stderr);
-    return(0);
+    return (0);
 }

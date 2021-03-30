@@ -30,7 +30,7 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
@@ -47,15 +47,13 @@
 
 /* Instantiate the global vars */
 pmix_preg_globals_t pmix_preg_globals = {{{0}}};
-pmix_preg_module_t pmix_preg = {
-    .generate_node_regex = pmix_preg_base_generate_node_regex,
-    .generate_ppn = pmix_preg_base_generate_ppn,
-    .parse_nodes = pmix_preg_base_parse_nodes,
-    .parse_procs = pmix_preg_base_parse_procs,
-    .copy = pmix_preg_base_copy,
-    .pack = pmix_preg_base_pack,
-    .unpack = pmix_preg_base_unpack
-};
+pmix_preg_module_t pmix_preg = {.generate_node_regex = pmix_preg_base_generate_node_regex,
+                                .generate_ppn = pmix_preg_base_generate_ppn,
+                                .parse_nodes = pmix_preg_base_parse_nodes,
+                                .parse_procs = pmix_preg_base_parse_procs,
+                                .copy = pmix_preg_base_copy,
+                                .pack = pmix_preg_base_pack,
+                                .unpack = pmix_preg_base_unpack};
 
 static pmix_status_t pmix_preg_close(void)
 {
@@ -80,22 +78,18 @@ static pmix_status_t pmix_preg_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_preg_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, preg, "PMIx Regex Operations",
-                                NULL, pmix_preg_open, pmix_preg_close,
-                                mca_preg_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, preg, "PMIx Regex Operations", NULL, pmix_preg_open,
+                                pmix_preg_close, mca_preg_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-PMIX_CLASS_INSTANCE(pmix_preg_base_active_module_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_preg_base_active_module_t, pmix_list_item_t, NULL, NULL);
 
 static void rcon(pmix_regex_range_t *p)
 {
     p->start = 0;
     p->cnt = 0;
 }
-PMIX_CLASS_INSTANCE(pmix_regex_range_t,
-                    pmix_list_item_t,
-                    rcon, NULL);
+PMIX_CLASS_INSTANCE(pmix_regex_range_t, pmix_list_item_t, rcon, NULL);
 
 static void rvcon(pmix_regex_value_t *p)
 {
@@ -115,6 +109,4 @@ static void rvdes(pmix_regex_value_t *p)
     }
     PMIX_LIST_DESTRUCT(&p->ranges);
 }
-PMIX_CLASS_INSTANCE(pmix_regex_value_t,
-                    pmix_list_item_t,
-                    rvcon, rvdes);
+PMIX_CLASS_INSTANCE(pmix_regex_value_t, pmix_list_item_t, rvcon, rvdes);

@@ -3,6 +3,7 @@
  *                         All rights reserved.
  * Copyright (c) 2014      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,14 +19,12 @@
 
 #include "src/include/pmix_stdint.h"
 
-
 struct pmix_rng_buff_t {
     uint32_t alfg[127];
     int tap1;
     int tap2;
 };
 typedef struct pmix_rng_buff_t pmix_rng_buff_t;
-
 
 /* NOTE: UNLIKE OTHER PMIX FUNCTIONS, THIS FUNCTION RETURNS A 1 IF
  * SUCCESSFUL INSTEAD OF PMIX_SUCCESS */

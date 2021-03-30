@@ -12,6 +12,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,8 +25,8 @@
 
 #include <string.h>
 
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/psensor/base/base.h"
 
@@ -47,7 +48,8 @@ int pmix_psensor_base_select(void)
     pmix_psensor_base.selected = true;
 
     /* Query all available components and ask if they have a module */
-    PMIX_LIST_FOREACH(cli, &pmix_psensor_base_framework.framework_components, pmix_mca_base_component_list_item_t) {
+    PMIX_LIST_FOREACH (cli, &pmix_psensor_base_framework.framework_components,
+                       pmix_mca_base_component_list_item_t) {
         component = (pmix_psensor_base_component_t *) cli->cli_component;
 
         pmix_output_verbose(5, pmix_psensor_base_framework.framework_output,
@@ -63,14 +65,14 @@ int pmix_psensor_base_select(void)
         newactive = PMIX_NEW(pmix_psensor_active_module_t);
         newactive->priority = pri;
         newactive->component = component;
-        newactive->module = (pmix_psensor_base_module_t*)mod;
+        newactive->module = (pmix_psensor_base_module_t *) mod;
 
         /* maintain priority order */
         inserted = false;
-        PMIX_LIST_FOREACH(active, &pmix_psensor_base.actives, pmix_psensor_active_module_t) {
+        PMIX_LIST_FOREACH (active, &pmix_psensor_base.actives, pmix_psensor_active_module_t) {
             if (newactive->priority > active->priority) {
-                pmix_list_insert_pos(&pmix_psensor_base.actives,
-                                     (pmix_list_item_t*)active, &newactive->super);
+                pmix_list_insert_pos(&pmix_psensor_base.actives, (pmix_list_item_t *) active,
+                                     &newactive->super);
                 inserted = true;
                 break;
             }
@@ -84,11 +86,12 @@ int pmix_psensor_base_select(void)
     if (4 < pmix_output_get_verbosity(pmix_psensor_base_framework.framework_output)) {
         pmix_output(0, "Final PSENSOR priorities");
         /* show the prioritized list */
-        PMIX_LIST_FOREACH(active, &pmix_psensor_base.actives, pmix_psensor_active_module_t) {
+        PMIX_LIST_FOREACH (active, &pmix_psensor_base.actives, pmix_psensor_active_module_t) {
             pmix_output(0, "\tPSENSOR: %s Priority: %d",
                         active->component->base.pmix_mca_component_name, active->priority);
         }
     }
 
-    return PMIX_SUCCESS;;
+    return PMIX_SUCCESS;
+    ;
 }

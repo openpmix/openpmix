@@ -12,6 +12,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,8 +25,8 @@
 
 #include <string.h>
 
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
+#include "src/mca/mca.h"
 #include "src/util/error.h"
 #include "src/util/show_help.h"
 
@@ -39,7 +40,8 @@ int pmix_ptl_base_select(void)
     pmix_ptl_base_component_t *component = NULL;
     pmix_mca_base_module_t *mod;
     pmix_ptl_module_t *pmod;
-    int rc, pri, best_pri = -1;;
+    int rc, pri, best_pri = -1;
+    ;
     bool inserted = false;
 
     if (pmix_ptl_base.selected) {
@@ -49,7 +51,8 @@ int pmix_ptl_base_select(void)
     pmix_ptl_base.selected = true;
 
     /* Query all available components and ask if they have a module */
-    PMIX_LIST_FOREACH(cli, &pmix_ptl_base_framework.framework_components, pmix_mca_base_component_list_item_t) {
+    PMIX_LIST_FOREACH (cli, &pmix_ptl_base_framework.framework_components,
+                       pmix_mca_base_component_list_item_t) {
         component = (pmix_ptl_base_component_t *) cli->cli_component;
 
         pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
@@ -57,13 +60,13 @@ int pmix_ptl_base_select(void)
                             component->base.pmix_mca_component_name);
 
         /* get the module for this component */
-        rc =component->base.pmix_mca_query_component(&mod, &pri);
+        rc = component->base.pmix_mca_query_component(&mod, &pri);
         if (PMIX_SUCCESS != rc || NULL == mod) {
             continue;
         }
 
         /* If we got a module, try to initialize it */
-        pmod = (pmix_ptl_module_t*)mod;
+        pmod = (pmix_ptl_module_t *) mod;
         if (NULL != pmod->init && PMIX_SUCCESS != pmod->init()) {
             continue;
         }
@@ -78,7 +81,6 @@ int pmix_ptl_base_select(void)
             pmix_ptl = *pmod;
             inserted = true;
         }
-
     }
 
     /* if no modules were found, then that's an error as we require at least one */
@@ -88,8 +90,8 @@ int pmix_ptl_base_select(void)
     }
 
     pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                        "mca:ptl:select: using component %s",
-                        pmix_ptl.name);
+                        "mca:ptl:select: using component %s", pmix_ptl.name);
 
-    return PMIX_SUCCESS;;
+    return PMIX_SUCCESS;
+    ;
 }

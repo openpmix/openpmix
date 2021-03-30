@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2010      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -64,7 +65,7 @@ PMIX_CLASS_DECLARATION(pmix_ring_buffer_t);
  * @return PMIX_SUCCESS if all initializations were succesful. Otherwise,
  *  the error indicate what went wrong in the function.
  */
-PMIX_EXPORT int pmix_ring_buffer_init(pmix_ring_buffer_t* ring, int size);
+PMIX_EXPORT int pmix_ring_buffer_init(pmix_ring_buffer_t *ring, int size);
 
 /**
  * Push an item onto the ring buffer, displacing the oldest
@@ -76,8 +77,7 @@ PMIX_EXPORT int pmix_ring_buffer_init(pmix_ring_buffer_t* ring, int size);
  * @return Pointer to displaced item, NULL if ring
  *         is not yet full
  */
-PMIX_EXPORT void* pmix_ring_buffer_push(pmix_ring_buffer_t *ring, void *ptr);
-
+PMIX_EXPORT void *pmix_ring_buffer_push(pmix_ring_buffer_t *ring, void *ptr);
 
 /**
  * Pop an item off of the ring. The oldest entry on the ring will be
@@ -88,14 +88,14 @@ PMIX_EXPORT void* pmix_ring_buffer_push(pmix_ring_buffer_t *ring, void *ptr);
  * @return Error code.  NULL indicates an error.
  */
 
-PMIX_EXPORT void* pmix_ring_buffer_pop(pmix_ring_buffer_t *ring);
+PMIX_EXPORT void *pmix_ring_buffer_pop(pmix_ring_buffer_t *ring);
 
 /*
  * Access an element of the ring, without removing it, indexed
  * starting at the tail - a value of -1 will return the element
  * at the head of the ring
  */
-PMIX_EXPORT void* pmix_ring_buffer_poke(pmix_ring_buffer_t *ring, int i);
+PMIX_EXPORT void *pmix_ring_buffer_poke(pmix_ring_buffer_t *ring, int i);
 
 END_C_DECLS
 

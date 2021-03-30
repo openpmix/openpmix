@@ -16,6 +16,7 @@
  * Copyright (c) 2015-2018 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2018      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,9 +31,8 @@
  * On ia32, we use cmpxchg.
  */
 
-#define SMPLOCK "lock; "
-#define PMIXMB() __asm__ __volatile__("": : :"memory")
-
+#define SMPLOCK  "lock; "
+#define PMIXMB() __asm__ __volatile__("" : : : "memory")
 
 /**********************************************************************
  *
@@ -44,8 +44,8 @@
 #define PMIX_HAVE_ATOMIC_COMPARE_EXCHANGE_32 1
 
 #define PMIX_HAVE_ATOMIC_MATH_32 1
-#define PMIX_HAVE_ATOMIC_ADD_32 1
-#define PMIX_HAVE_ATOMIC_SUB_32 1
+#define PMIX_HAVE_ATOMIC_ADD_32  1
+#define PMIX_HAVE_ATOMIC_SUB_32  1
 
 /**********************************************************************
  *
@@ -59,12 +59,10 @@ static inline void pmix_atomic_mb(void)
     PMIXMB();
 }
 
-
 static inline void pmix_atomic_rmb(void)
 {
     PMIXMB();
 }
-
 
 static inline void pmix_atomic_wmb(void)
 {
@@ -77,7 +75,6 @@ static inline void pmix_atomic_isync(void)
 
 #endif /* PMIX_GCC_INLINE_ASSEMBLY */
 
-
 /**********************************************************************
  *
  * Atomic math operations
@@ -85,17 +82,17 @@ static inline void pmix_atomic_isync(void)
  *********************************************************************/
 #if PMIX_GCC_INLINE_ASSEMBLY
 
-static inline bool pmix_atomic_compare_exchange_strong_32 (pmix_atomic_int32_t *addr, int32_t *oldval, int32_t newval)
+static inline bool pmix_atomic_compare_exchange_strong_32(pmix_atomic_int32_t *addr,
+                                                          int32_t *oldval, int32_t newval)
 {
-   unsigned char ret;
-   __asm__ __volatile__ (
-                       SMPLOCK "cmpxchgl %3,%2   \n\t"
-                               "sete     %0      \n\t"
-                       : "=qm" (ret), "+a" (*oldval), "+m" (*addr)
-                       : "q"(newval)
-                       : "memory", "cc");
+    unsigned char ret;
+    __asm__ __volatile__(SMPLOCK "cmpxchgl %3,%2   \n\t"
+                                 "sete     %0      \n\t"
+                         : "=qm"(ret), "+a"(*oldval), "+m"(*addr)
+                         : "q"(newval)
+                         : "memory", "cc");
 
-   return (bool) ret;
+    return (bool) ret;
 }
 
 #endif /* PMIX_GCC_INLINE_ASSEMBLY */
@@ -105,22 +102,20 @@ static inline bool pmix_atomic_compare_exchange_strong_32 (pmix_atomic_int32_t *
 
 #if PMIX_GCC_INLINE_ASSEMBLY
 
-#define PMIX_HAVE_ATOMIC_SWAP_32 1
+#    define PMIX_HAVE_ATOMIC_SWAP_32 1
 
-static inline int32_t pmix_atomic_swap_32( pmix_atomic_int32_t *addr,
-					   int32_t newval)
+static inline int32_t pmix_atomic_swap_32(pmix_atomic_int32_t *addr, int32_t newval)
 {
     int32_t oldval;
 
-    __asm__ __volatile__("xchg %1, %0" :
-			 "=r" (oldval), "=m" (*addr) :
-			 "0" (newval), "m" (*addr) :
-			 "memory");
+    __asm__ __volatile__("xchg %1, %0"
+                         : "=r"(oldval), "=m"(*addr)
+                         : "0"(newval), "m"(*addr)
+                         : "memory");
     return oldval;
 }
 
 #endif /* PMIX_GCC_INLINE_ASSEMBLY */
-
 
 #if PMIX_GCC_INLINE_ASSEMBLY
 
@@ -131,18 +126,12 @@ static inline int32_t pmix_atomic_swap_32( pmix_atomic_int32_t *addr,
  *
  * Atomically adds @i to @v.
  */
-static inline int32_t pmix_atomic_fetch_add_32(pmix_atomic_int32_t* v, int i)
+static inline int32_t pmix_atomic_fetch_add_32(pmix_atomic_int32_t *v, int i)
 {
     int ret = i;
-   __asm__ __volatile__(
-                        SMPLOCK "xaddl %1,%0"
-                        :"+m" (*v), "+r" (ret)
-                        :
-                        :"memory", "cc"
-                        );
-   return ret;
+    __asm__ __volatile__(SMPLOCK "xaddl %1,%0" : "+m"(*v), "+r"(ret) : : "memory", "cc");
+    return ret;
 }
-
 
 /**
  * atomic_sub - subtract the atomic variable
@@ -151,16 +140,11 @@ static inline int32_t pmix_atomic_fetch_add_32(pmix_atomic_int32_t* v, int i)
  *
  * Atomically subtracts @i from @v.
  */
-static inline int32_t pmix_atomic_fetch_sub_32(pmix_atomic_int32_t* v, int i)
+static inline int32_t pmix_atomic_fetch_sub_32(pmix_atomic_int32_t *v, int i)
 {
     int ret = -i;
-   __asm__ __volatile__(
-                        SMPLOCK "xaddl %1,%0"
-                        :"+m" (*v), "+r" (ret)
-                        :
-                        :"memory", "cc"
-                        );
-   return ret;
+    __asm__ __volatile__(SMPLOCK "xaddl %1,%0" : "+m"(*v), "+r"(ret) : : "memory", "cc");
+    return ret;
 }
 
 #endif /* PMIX_GCC_INLINE_ASSEMBLY */

@@ -4,6 +4,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,54 +15,46 @@
 #include "src/include/pmix_config.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include <ctype.h>
 
-
-#include "include/pmix_common.h"
 #include "include/pmix.h"
+#include "include/pmix_common.h"
 
+#include "src/mca/bfrops/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/printf.h"
-#include "src/mca/bfrops/base/base.h"
 
-#include "src/mca/preg/base/base.h"
 #include "preg_raw.h"
+#include "src/mca/preg/base/base.h"
 
-static pmix_status_t generate_node_regex(const char *input,
-                                         char **regex);
-static pmix_status_t generate_ppn(const char *input,
-                                  char **ppn);
-static pmix_status_t parse_nodes(const char *regexp,
-                                 char ***names);
-static pmix_status_t parse_procs(const char *regexp,
-                                 char ***procs);
+static pmix_status_t generate_node_regex(const char *input, char **regex);
+static pmix_status_t generate_ppn(const char *input, char **ppn);
+static pmix_status_t parse_nodes(const char *regexp, char ***names);
+static pmix_status_t parse_procs(const char *regexp, char ***procs);
 static pmix_status_t copy(char **dest, size_t *len, const char *input);
 static pmix_status_t pack(pmix_buffer_t *buffer, const char *input);
 static pmix_status_t unpack(pmix_buffer_t *buffer, char **regex);
 
-pmix_preg_module_t pmix_preg_raw_module = {
-    .name = "raw",
-    .generate_node_regex = generate_node_regex,
-    .generate_ppn = generate_ppn,
-    .parse_nodes = parse_nodes,
-    .parse_procs = parse_procs,
-    .copy = copy,
-    .pack = pack,
-    .unpack = unpack
-};
+pmix_preg_module_t pmix_preg_raw_module = {.name = "raw",
+                                           .generate_node_regex = generate_node_regex,
+                                           .generate_ppn = generate_ppn,
+                                           .parse_nodes = parse_nodes,
+                                           .parse_procs = parse_procs,
+                                           .copy = copy,
+                                           .pack = pack,
+                                           .unpack = unpack};
 
-static pmix_status_t generate_node_regex(const char *input,
-                                         char **regexp)
+static pmix_status_t generate_node_regex(const char *input, char **regexp)
 {
     if (0 == strncmp(input, "raw:", 4)) {
         *regexp = strdup(input);
@@ -72,8 +65,7 @@ static pmix_status_t generate_node_regex(const char *input,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t generate_ppn(const char *input,
-                                  char **regexp)
+static pmix_status_t generate_ppn(const char *input, char **regexp)
 {
     if (0 == strncmp(input, "raw:", 4)) {
         *regexp = strdup(input);
@@ -84,8 +76,7 @@ static pmix_status_t generate_ppn(const char *input,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t parse_nodes(const char *regexp,
-                                 char ***names)
+static pmix_status_t parse_nodes(const char *regexp, char ***names)
 {
     if (0 != strncmp(regexp, "raw:", 4)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
@@ -93,10 +84,8 @@ static pmix_status_t parse_nodes(const char *regexp,
 
     *names = pmix_argv_split(&regexp[4], ',');
     return PMIX_SUCCESS;
-
 }
-static pmix_status_t parse_procs(const char *regexp,
-                                 char ***procs)
+static pmix_status_t parse_procs(const char *regexp, char ***procs)
 {
     if (0 != strncmp(regexp, "raw:", 4)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
@@ -127,7 +116,7 @@ static pmix_status_t pack(pmix_buffer_t *buffer, const char *input)
     }
 
     /* extract the size */
-    slen = strlen(input) + 1;  // retain the NULL terminator
+    slen = strlen(input) + 1; // retain the NULL terminator
 
     /* ensure the buffer has enough space */
     ptr = pmix_bfrop_buffer_extend(buffer, slen);

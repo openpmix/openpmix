@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,8 +22,7 @@
 
 #include "src/class/pmix_value_array.h"
 
-
-static void pmix_value_array_construct(pmix_value_array_t* array)
+static void pmix_value_array_construct(pmix_value_array_t *array)
 {
     array->array_items = NULL;
     array->array_size = 0;
@@ -30,34 +30,30 @@ static void pmix_value_array_construct(pmix_value_array_t* array)
     array->array_alloc_size = 0;
 }
 
-static void pmix_value_array_destruct(pmix_value_array_t* array)
+static void pmix_value_array_destruct(pmix_value_array_t *array)
 {
     if (NULL != array->array_items)
         free(array->array_items);
 }
 
-PMIX_CLASS_INSTANCE(
-    pmix_value_array_t,
-    pmix_object_t,
-    pmix_value_array_construct,
-    pmix_value_array_destruct
-);
+PMIX_CLASS_INSTANCE(pmix_value_array_t, pmix_object_t, pmix_value_array_construct,
+                    pmix_value_array_destruct);
 
-
-int pmix_value_array_set_size(pmix_value_array_t* array, size_t size)
+int pmix_value_array_set_size(pmix_value_array_t *array, size_t size)
 {
 #if PMIX_ENABLE_DEBUG
-    if(array->array_item_sizeof == 0) {
+    if (array->array_item_sizeof == 0) {
         pmix_output(0, "pmix_value_array_set_size: item size must be initialized");
         return PMIX_ERR_BAD_PARAM;
     }
 #endif
 
-    if(size > array->array_alloc_size) {
-        while(array->array_alloc_size < size)
+    if (size > array->array_alloc_size) {
+        while (array->array_alloc_size < size)
             array->array_alloc_size <<= 1;
-        array->array_items = (unsigned char *)realloc(array->array_items,
-            array->array_alloc_size * array->array_item_sizeof);
+        array->array_items = (unsigned char *) realloc(array->array_items,
+                                                       array->array_alloc_size
+                                                           * array->array_item_sizeof);
         if (NULL == array->array_items)
             return PMIX_ERR_OUT_OF_RESOURCE;
     }

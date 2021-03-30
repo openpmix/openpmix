@@ -4,6 +4,7 @@
  *                         All rights reserve
  *
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,7 +16,6 @@
 #define PMIX_NATIVE_H
 
 #include "src/include/pmix_config.h"
-
 
 #include "src/mca/psquash/psquash.h"
 

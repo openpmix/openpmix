@@ -30,8 +30,8 @@
 #include "src/class/pmix_object.h"
 
 #include <stdio.h>
-#include <unistd.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include PMIX_EVENT_HEADER
 
 #include "src/include/pmix_globals.h"
@@ -60,8 +60,7 @@ extern const char pmix_version_string[];
  * @retval PMIX_ERROR Upon failure.
  *
  */
-PMIX_EXPORT pmix_status_t pmix_rte_init(uint32_t type,
-                                        pmix_info_t info[], size_t ninfo,
+PMIX_EXPORT pmix_status_t pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo,
                                         pmix_ptl_cbfunc_t cbfunc);
 
 /**

@@ -1,6 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,11 +18,10 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/mca/prm/prm.h"
 #include "prm_default.h"
+#include "src/mca/prm/prm.h"
 
-static pmix_status_t component_query(pmix_mca_base_module_t **module,
-                                     int *priority);
+static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 
 /*
  * Instantiate the public struct with all of our public information
@@ -47,10 +47,9 @@ pmix_prm_base_component_t mca_prm_default_component = {
     }
 };
 
-static pmix_status_t component_query(pmix_mca_base_module_t **module,
-                                     int *priority)
+static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 5;
-    *module = (pmix_mca_base_module_t *)&pmix_prm_default_module;
+    *module = (pmix_mca_base_module_t *) &pmix_prm_default_module;
     return PMIX_SUCCESS;
 }
