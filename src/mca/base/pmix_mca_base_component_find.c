@@ -17,6 +17,7 @@
  * Copyright (c) 2014-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,37 +27,37 @@
 
 #include "src/include/pmix_config.h"
 
-#include <stdio.h>
-#include <string.h>
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_PARAM_H
-#include <sys/param.h>
+#    include <sys/param.h>
 #endif
 #ifdef HAVE_NETDB_H
-#include <netdb.h>
+#    include <netdb.h>
 #endif
 
-#include "src/mca/pinstalldirs/pinstalldirs.h"
-#include "src/util/pmix_environ.h"
-#include "src/util/output.h"
-#include "src/util/argv.h"
-#include "src/util/show_help.h"
+#include "include/pmix_common.h"
 #include "src/class/pmix_list.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
-#include "include/pmix_common.h"
+#include "src/mca/mca.h"
 #include "src/mca/pdl/base/base.h"
+#include "src/mca/pinstalldirs/pinstalldirs.h"
+#include "src/util/argv.h"
+#include "src/util/output.h"
+#include "src/util/pmix_environ.h"
+#include "src/util/show_help.h"
 
 #if PMIX_HAVE_PDL_SUPPORT
 /*
@@ -67,7 +68,8 @@ static void find_dyn_components(const char *path, pmix_mca_base_framework_t *fra
 
 #endif /* PMIX_HAVE_PDL_SUPPORT */
 
-static int component_find_check (pmix_mca_base_framework_t *framework, char **requested_component_names);
+static int component_find_check(pmix_mca_base_framework_t *framework,
+                                char **requested_component_names);
 
 /*
  * Dummy structure for casting for open_only logic
@@ -82,10 +84,8 @@ typedef struct pmix_mca_base_open_only_dummy_component_t pmix_mca_base_open_only
 
 static char negate[] = "^";
 
-static bool use_component(const bool include_mode,
-                          const char **requested_component_names,
+static bool use_component(const bool include_mode, const char **requested_component_names,
                           const char *component_name);
-
 
 /*
  * Function to find as many components of a given type as possible.  This
@@ -96,8 +96,8 @@ static bool use_component(const bool include_mode,
  * Return one consolidated array of (pmix_mca_base_component_t*) pointing to all
  * available components.
  */
-int pmix_mca_base_component_find (const char *directory, pmix_mca_base_framework_t *framework,
-                                  bool ignore_requested, bool open_dso_components)
+int pmix_mca_base_component_find(const char *directory, pmix_mca_base_framework_t *framework,
+                                 bool ignore_requested, bool open_dso_components)
 {
     const pmix_mca_base_component_t **static_components = framework->framework_static_components;
     char **requested_component_names = NULL;
@@ -105,13 +105,13 @@ int pmix_mca_base_component_find (const char *directory, pmix_mca_base_framework
     bool include_mode = true;
     int ret;
 
-    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, framework->framework_output,
-                         "mca: base: component_find: searching %s for %s components",
-                         directory, framework->framework_name);
+    pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, framework->framework_output,
+                        "mca: base: component_find: searching %s for %s components", directory,
+                        framework->framework_name);
 
     if (!ignore_requested) {
-        ret = pmix_mca_base_component_parse_requested (framework->framework_selection, &include_mode,
-                                                       &requested_component_names);
+        ret = pmix_mca_base_component_parse_requested(framework->framework_selection, &include_mode,
+                                                      &requested_component_names);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
@@ -119,10 +119,9 @@ int pmix_mca_base_component_find (const char *directory, pmix_mca_base_framework
 
     /* Find all the components that were statically linked in */
     if (static_components) {
-        for (int i = 0 ; NULL != static_components[i]; ++i) {
-            if ( use_component(include_mode,
-                               (const char**)requested_component_names,
-                               static_components[i]->pmix_mca_component_name) ) {
+        for (int i = 0; NULL != static_components[i]; ++i) {
+            if (use_component(include_mode, (const char **) requested_component_names,
+                              static_components[i]->pmix_mca_component_name)) {
                 cli = PMIX_NEW(pmix_mca_base_component_list_item_t);
                 if (NULL == cli) {
                     ret = PMIX_ERR_OUT_OF_RESOURCE;
@@ -137,17 +136,18 @@ int pmix_mca_base_component_find (const char *directory, pmix_mca_base_framework
 #if PMIX_HAVE_PDL_SUPPORT
     /* Find any available dynamic components in the specified directory */
     if (open_dso_components && !pmix_mca_base_component_disable_dlopen) {
-        find_dyn_components(directory, framework, (const char**)requested_component_names,
+        find_dyn_components(directory, framework, (const char **) requested_component_names,
                             include_mode);
     } else {
-        pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_INFO, 0,
-                            "pmix:mca: base: component_find: dso loading for %s MCA components disabled",
-                            framework->framework_name);
+        pmix_output_verbose(
+            PMIX_MCA_BASE_VERBOSE_INFO, 0,
+            "pmix:mca: base: component_find: dso loading for %s MCA components disabled",
+            framework->framework_name);
     }
 #endif
 
     if (include_mode) {
-        ret = component_find_check (framework, requested_component_names);
+        ret = component_find_check(framework, requested_component_names);
     } else {
         ret = PMIX_SUCCESS;
     }
@@ -168,7 +168,7 @@ int pmix_mca_base_component_find_finalize(void)
     return PMIX_SUCCESS;
 }
 
-int pmix_mca_base_components_filter (pmix_mca_base_framework_t *framework, uint32_t filter_flags)
+int pmix_mca_base_components_filter(pmix_mca_base_framework_t *framework, uint32_t filter_flags)
 {
     pmix_list_t *components = &framework->framework_components;
     int output_id = framework->framework_output;
@@ -177,34 +177,33 @@ int pmix_mca_base_components_filter (pmix_mca_base_framework_t *framework, uint3
     bool include_mode, can_use;
     int ret;
 
-    assert (NULL != components);
+    assert(NULL != components);
 
     if (0 == filter_flags && NULL == framework->framework_selection) {
         return PMIX_SUCCESS;
     }
 
-    ret = pmix_mca_base_component_parse_requested (framework->framework_selection, &include_mode,
-                                              &requested_component_names);
+    ret = pmix_mca_base_component_parse_requested(framework->framework_selection, &include_mode,
+                                                  &requested_component_names);
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
 
-    PMIX_LIST_FOREACH_SAFE(cli, next, components, pmix_mca_base_component_list_item_t) {
+    PMIX_LIST_FOREACH_SAFE (cli, next, components, pmix_mca_base_component_list_item_t) {
         const pmix_mca_base_component_t *component = cli->cli_component;
-        pmix_mca_base_open_only_dummy_component_t *dummy =
-            (pmix_mca_base_open_only_dummy_component_t *) cli->cli_component;
+        pmix_mca_base_open_only_dummy_component_t *dummy
+            = (pmix_mca_base_open_only_dummy_component_t *) cli->cli_component;
 
         can_use = use_component(include_mode, (const char **) requested_component_names,
                                 cli->cli_component->pmix_mca_component_name);
 
         if (!can_use || (filter_flags & dummy->data.param_field) != filter_flags) {
-            if (can_use && (filter_flags & PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT) &&
-                !(PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT & dummy->data.param_field)) {
+            if (can_use && (filter_flags & PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT)
+                && !(PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT & dummy->data.param_field)) {
                 pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
                                     "pmix:mca: base: components_filter: "
                                     "(%s) Component %s is *NOT* Checkpointable - Disabled",
-                                    component->reserved,
-                                    component->pmix_mca_component_name);
+                                    component->reserved, component->pmix_mca_component_name);
             }
 
             pmix_list_remove_item(components, &cli->super);
@@ -216,8 +215,7 @@ int pmix_mca_base_components_filter (pmix_mca_base_framework_t *framework, uint3
             pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, output_id,
                                 "pmix:mca: base: components_filter: "
                                 "(%s) Component %s is Checkpointable",
-                                component->reserved,
-                                component->pmix_mca_component_name);
+                                component->reserved, component->pmix_mca_component_name);
         }
     }
 
@@ -251,9 +249,9 @@ static void find_dyn_components(const char *path, pmix_mca_base_framework_t *fra
     pmix_list_t *dy_components;
     int ret;
 
-    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, framework->framework_output,
-                         "mca: base: find_dyn_components: checking %s for %s components",
-                         path, framework->framework_name);
+    pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, framework->framework_output,
+                        "mca: base: find_dyn_components: checking %s for %s components", path,
+                        framework->framework_name);
 
     if (NULL != path) {
         ret = pmix_mca_base_component_repository_add(path);
@@ -268,7 +266,7 @@ static void find_dyn_components(const char *path, pmix_mca_base_framework_t *fra
     }
 
     /* Iterate through the repository and find components that can be included */
-    PMIX_LIST_FOREACH(ri, dy_components, pmix_mca_base_component_repository_item_t) {
+    PMIX_LIST_FOREACH (ri, dy_components, pmix_mca_base_component_repository_item_t) {
         if (use_component(include_mode, names, ri->ri_name)) {
             pmix_mca_base_component_repository_open(framework, ri);
         }
@@ -277,8 +275,7 @@ static void find_dyn_components(const char *path, pmix_mca_base_framework_t *fra
 
 #endif /* PMIX_HAVE_PDL_SUPPORT */
 
-static bool use_component(const bool include_mode,
-                          const char **requested_component_names,
+static bool use_component(const bool include_mode, const char **requested_component_names,
                           const char *component_name)
 {
     bool found = false;
@@ -292,8 +289,8 @@ static bool use_component(const bool include_mode,
         return true;
     }
 
-    while ( *req_comp_name != NULL ) {
-        if ( strcmp(component_name, *req_comp_name) == 0 ) {
+    while (*req_comp_name != NULL) {
+        if (strcmp(component_name, *req_comp_name) == 0) {
             found = true;
             break;
         }
@@ -318,7 +315,8 @@ static bool use_component(const bool include_mode,
 
 /* Ensure that *all* requested components exist.  Print a warning
    and abort if they do not. */
-static int component_find_check (pmix_mca_base_framework_t *framework, char **requested_component_names)
+static int component_find_check(pmix_mca_base_framework_t *framework,
+                                char **requested_component_names)
 {
     pmix_list_t *components = &framework->framework_components;
     pmix_mca_base_component_list_item_t *cli;
@@ -330,9 +328,10 @@ static int component_find_check (pmix_mca_base_framework_t *framework, char **re
     for (int i = 0; NULL != requested_component_names[i]; ++i) {
         bool found = false;
 
-        PMIX_LIST_FOREACH(cli, components, pmix_mca_base_component_list_item_t) {
-            if (0 == strcmp(requested_component_names[i],
-                            cli->cli_component->pmix_mca_component_name)) {
+        PMIX_LIST_FOREACH (cli, components, pmix_mca_base_component_list_item_t) {
+            if (0
+                == strcmp(requested_component_names[i],
+                          cli->cli_component->pmix_mca_component_name)) {
                 found = true;
                 break;
             }
@@ -340,18 +339,17 @@ static int component_find_check (pmix_mca_base_framework_t *framework, char **re
 
         if (!found && pmix_mca_base_component_show_load_errors) {
             char h[PMIX_MAXHOSTNAMELEN] = {0};
-            gethostname(h, sizeof(h)-1);
-            pmix_show_help("help-pmix-mca-base.txt",
-                           "find-available:not-valid", true,
-                           h, framework->framework_name, requested_component_names[i]);
+            gethostname(h, sizeof(h) - 1);
+            pmix_show_help("help-pmix-mca-base.txt", "find-available:not-valid", true, h,
+                           framework->framework_name, requested_component_names[i]);
         }
     }
 
     return PMIX_SUCCESS;
 }
 
-int pmix_mca_base_component_parse_requested (const char *requested, bool *include_mode,
-                                        char ***requested_component_names)
+int pmix_mca_base_component_parse_requested(const char *requested, bool *include_mode,
+                                            char ***requested_component_names)
 {
     const char *requested_orig = requested;
 
@@ -359,7 +357,7 @@ int pmix_mca_base_component_parse_requested (const char *requested, bool *includ
     *include_mode = true;
 
     /* See if the user requested anything */
-    if (NULL == requested || 0 == strlen (requested)) {
+    if (NULL == requested || 0 == strlen(requested)) {
         return PMIX_SUCCESS;
     }
 
@@ -369,14 +367,13 @@ int pmix_mca_base_component_parse_requested (const char *requested, bool *includ
     *include_mode = requested[0] != negate[0];
 
     /* skip over all negate symbols at the beginning */
-    requested += strspn (requested, negate);
+    requested += strspn(requested, negate);
 
     /* Double check to ensure that the user did not specify the negate
        character anywhere else in the value. */
-    if (NULL != strstr (requested, negate)) {
-        pmix_show_help("help-pmix-mca-base.txt",
-                       "framework-param:too-many-negates",
-                       true, requested_orig);
+    if (NULL != strstr(requested, negate)) {
+        pmix_show_help("help-pmix-mca-base.txt", "framework-param:too-many-negates", true,
+                       requested_orig);
         return PMIX_ERROR;
     }
 

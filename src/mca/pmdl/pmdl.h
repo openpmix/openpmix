@@ -5,6 +5,7 @@
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,10 +31,10 @@
 #include "include/pmix.h"
 
 #include "src/class/pmix_list.h"
-#include "src/mca/mca.h"
-#include "src/mca/base/pmix_mca_base_var.h"
-#include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/base/pmix_mca_base_var.h"
+#include "src/mca/mca.h"
 #include "src/server/pmix_server_ops.h"
 
 BEGIN_C_DECLS
@@ -55,8 +56,8 @@ typedef void (*pmix_pmdl_base_module_fini_fn_t)(void);
 /* Harvest envars for this programming model so they can be forwarded
  * to backend processes */
 typedef pmix_status_t (*pmix_pmdl_base_module_harvest_envars_fn_t)(pmix_namespace_t *nptr,
-                                                                   const pmix_info_t info[], size_t ninfo,
-                                                                   pmix_list_t *ilist,
+                                                                   const pmix_info_t info[],
+                                                                   size_t ninfo, pmix_list_t *ilist,
                                                                    char ***priors);
 /**
  * Setup any programming model specific support for the given nspace
@@ -80,8 +81,7 @@ typedef pmix_status_t (*pmix_pmdl_base_module_setup_client_fn_t)(pmix_namespace_
  * Give the plugins an opportunity to add any envars to the
  * environment of a local application process prior to fork/exec
  */
-typedef pmix_status_t (*pmix_pmdl_base_module_setup_fork_fn_t)(const pmix_proc_t *peer,
-                                                               char ***env,
+typedef pmix_status_t (*pmix_pmdl_base_module_setup_fork_fn_t)(const pmix_proc_t *peer, char ***env,
                                                                char ***priors);
 
 /**
@@ -96,38 +96,36 @@ typedef void (*pmix_pmdl_base_module_dregister_nspace_fn_t)(pmix_namespace_t *np
  */
 typedef struct {
     char *name;
-    pmix_pmdl_base_module_init_fn_t                 init;
-    pmix_pmdl_base_module_fini_fn_t                 finalize;
-    pmix_pmdl_base_module_harvest_envars_fn_t       harvest_envars;
-    pmix_pmdl_base_module_setup_ns_fn_t             setup_nspace;
-    pmix_pmdl_base_module_setup_ns_kv_fn_t          setup_nspace_kv;
-    pmix_pmdl_base_module_reg_nspace_fn_t           register_nspace;
-    pmix_pmdl_base_module_setup_client_fn_t         setup_client;
-    pmix_pmdl_base_module_setup_fork_fn_t           setup_fork;
-    pmix_pmdl_base_module_dregister_nspace_fn_t     deregister_nspace;
+    pmix_pmdl_base_module_init_fn_t init;
+    pmix_pmdl_base_module_fini_fn_t finalize;
+    pmix_pmdl_base_module_harvest_envars_fn_t harvest_envars;
+    pmix_pmdl_base_module_setup_ns_fn_t setup_nspace;
+    pmix_pmdl_base_module_setup_ns_kv_fn_t setup_nspace_kv;
+    pmix_pmdl_base_module_reg_nspace_fn_t register_nspace;
+    pmix_pmdl_base_module_setup_client_fn_t setup_client;
+    pmix_pmdl_base_module_setup_fork_fn_t setup_fork;
+    pmix_pmdl_base_module_dregister_nspace_fn_t deregister_nspace;
 } pmix_pmdl_module_t;
 
 /* define a public API */
 
 typedef pmix_status_t (*pmix_pmdl_base_API_harvest_envars_fn_t)(char *nspace,
-                                                                const pmix_info_t info[], size_t ninfo,
-                                                                pmix_list_t *ilist);
-typedef pmix_status_t (*pmix_pmdl_base_API_setup_fork_fn_t)(const pmix_proc_t *peer,
-                                                            char ***env);
+                                                                const pmix_info_t info[],
+                                                                size_t ninfo, pmix_list_t *ilist);
+typedef pmix_status_t (*pmix_pmdl_base_API_setup_fork_fn_t)(const pmix_proc_t *peer, char ***env);
 typedef void (*pmix_pmdl_base_API_dregister_nspace_fn_t)(const char *nptr);
 typedef struct {
     char *name;
-    pmix_pmdl_base_module_init_fn_t                 init;
-    pmix_pmdl_base_module_fini_fn_t                 finalize;
-    pmix_pmdl_base_API_harvest_envars_fn_t          harvest_envars;
-    pmix_pmdl_base_module_setup_ns_fn_t             setup_nspace;
-    pmix_pmdl_base_module_setup_ns_kv_fn_t          setup_nspace_kv;
-    pmix_pmdl_base_module_reg_nspace_fn_t           register_nspace;
-    pmix_pmdl_base_module_setup_client_fn_t         setup_client;
-    pmix_pmdl_base_API_setup_fork_fn_t              setup_fork;
-    pmix_pmdl_base_API_dregister_nspace_fn_t        deregister_nspace;
+    pmix_pmdl_base_module_init_fn_t init;
+    pmix_pmdl_base_module_fini_fn_t finalize;
+    pmix_pmdl_base_API_harvest_envars_fn_t harvest_envars;
+    pmix_pmdl_base_module_setup_ns_fn_t setup_nspace;
+    pmix_pmdl_base_module_setup_ns_kv_fn_t setup_nspace_kv;
+    pmix_pmdl_base_module_reg_nspace_fn_t register_nspace;
+    pmix_pmdl_base_module_setup_client_fn_t setup_client;
+    pmix_pmdl_base_API_setup_fork_fn_t setup_fork;
+    pmix_pmdl_base_API_dregister_nspace_fn_t deregister_nspace;
 } pmix_pmdl_API_module_t;
-
 
 /* declare the global APIs */
 PMIX_EXPORT extern pmix_pmdl_API_module_t pmix_pmdl;
@@ -136,16 +134,15 @@ PMIX_EXPORT extern pmix_pmdl_API_module_t pmix_pmdl;
  * the standard component data structure
  */
 struct pmix_pmdl_base_component_t {
-    pmix_mca_base_component_t                        base;
-    pmix_mca_base_component_data_t                   data;
+    pmix_mca_base_component_t base;
+    pmix_mca_base_component_data_t data;
 };
 typedef struct pmix_pmdl_base_component_t pmix_pmdl_base_component_t;
 
 /*
  * Macro for use in components that are of type pmdl
  */
-#define PMIX_PMDL_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("pmdl", 1, 0, 0)
+#define PMIX_PMDL_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("pmdl", 1, 0, 0)
 
 END_C_DECLS
 

@@ -26,33 +26,32 @@
 
 #include "pmix_config.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_NETDB_H
-#include <netdb.h>
+#    include <netdb.h>
 #endif
 #ifdef HAVE_SYS_PARAM_H
-#include <sys/param.h>
+#    include <sys/param.h>
 #endif
 #include <errno.h>
 #include <signal.h>
 
-#include "src/mca/pinstalldirs/base/base.h"
 #include "src/class/pmix_object.h"
 #include "src/class/pmix_pointer_array.h"
+#include "src/mca/base/base.h"
+#include "src/mca/pinstalldirs/base/base.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/util/argv.h"
 #include "src/util/cmd_line.h"
-#include "src/util/error.h"
 #include "src/util/error.h"
 #include "src/util/keyval_parse.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
-#include "src/mca/base/base.h"
-#include "src/runtime/pmix_rte.h"
 
 #include "pinfo.h"
 #include "support.h"
@@ -85,13 +84,19 @@ int main(int argc, char *argv[])
     }
 
     /* initialize install dirs code */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT))) {
-        fprintf(stderr, "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
+    if (PMIX_SUCCESS
+        != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
+                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+        fprintf(stderr,
+                "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
+                "returned %d instead of PMIX_SUCCESS)\n",
                 __FILE__, __LINE__, ret);
         return ret;
     }
     if (PMIX_SUCCESS != (ret = pmix_pinstall_dirs_base_init(NULL, 0))) {
-        fprintf(stderr, "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, returned %d instead of PMIX_SUCCESS)\n",
+        fprintf(stderr,
+                "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, "
+                "returned %d instead of PMIX_SUCCESS)\n",
                 __FILE__, __LINE__, ret);
         return ret;
     }
@@ -120,8 +125,8 @@ int main(int argc, char *argv[])
     pmix_info_cmd_line = PMIX_NEW(pmix_cmd_line_t);
     if (NULL == pmix_info_cmd_line) {
         ret = errno;
-        pmix_show_help("help-pmix-info.txt", "lib-call-fail", true,
-                       "pmix_cmd_line_create", __FILE__, __LINE__, NULL);
+        pmix_show_help("help-pmix-info.txt", "lib-call-fail", true, "pmix_cmd_line_create",
+                       __FILE__, __LINE__, NULL);
         exit(ret);
     }
 
@@ -147,7 +152,6 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-
     /* Execute the desired action(s) */
     want_all = pmix_cmd_line_is_taken(pmix_info_cmd_line, "all");
     if (want_all) {
@@ -170,8 +174,8 @@ int main(int argc, char *argv[])
         pmix_info_do_config(true);
         acted = true;
     }
-    if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, "param") ||
-        pmix_cmd_line_is_taken(pmix_info_cmd_line, "params")) {
+    if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, "param")
+        || pmix_cmd_line_is_taken(pmix_info_cmd_line, "params")) {
         pmix_info_do_params(want_all, pmix_cmd_line_is_taken(pmix_info_cmd_line, "internal"));
         acted = true;
     }
@@ -189,18 +193,18 @@ int main(int argc, char *argv[])
         pmix_info_do_arch();
         pmix_info_do_hostname();
         pmix_info_do_config(false);
-        pmix_info_show_component_version(pmix_info_type_all,
-                                         pmix_info_component_all, pmix_info_ver_full,
-                                         pmix_info_ver_all);
+        pmix_info_show_component_version(pmix_info_type_all, pmix_info_component_all,
+                                         pmix_info_ver_full, pmix_info_ver_all);
     }
-
 
     /* All done */
     pmix_info_close_components();
     PMIX_RELEASE(pmix_info_cmd_line);
     PMIX_DESTRUCT(&mca_types);
-    for (i=0; i < pmix_component_map.size; i++) {
-        if (NULL != (map = (pmix_info_component_map_t*)pmix_pointer_array_get_item(&pmix_component_map, i))) {
+    for (i = 0; i < pmix_component_map.size; i++) {
+        if (NULL
+            != (map = (pmix_info_component_map_t *) pmix_pointer_array_get_item(&pmix_component_map,
+                                                                                i))) {
             PMIX_RELEASE(map);
         }
     }

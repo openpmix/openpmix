@@ -17,6 +17,7 @@
  * Copyright (c) 2017      Mellanox Technologies. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,16 +36,16 @@
 #include "src/include/pmix_config.h"
 
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
+#    include <sys/uio.h>
 #endif
 #ifdef HAVE_NET_UIO_H
-#include <net/uio.h>
+#    include <net/uio.h>
 #endif
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 
 #include "src/class/pmix_list.h"
@@ -59,17 +60,16 @@ PMIX_EXPORT pmix_status_t pmix_register_tool_attrs(void);
 PMIX_EXPORT pmix_status_t pmix_register_client_attrs(void);
 PMIX_EXPORT pmix_status_t pmix_register_server_attrs(void);
 
-PMIX_EXPORT char** pmix_attributes_print_functions(char *level);
-PMIX_EXPORT char** pmix_attributes_print_attr(char *level, char *function);
-PMIX_EXPORT void pmix_attributes_print_attrs(char ***ans, char *function,
-                                 pmix_regattr_t *attrs,
-                                 size_t nattrs);
+PMIX_EXPORT char **pmix_attributes_print_functions(char *level);
+PMIX_EXPORT char **pmix_attributes_print_attr(char *level, char *function);
+PMIX_EXPORT void pmix_attributes_print_attrs(char ***ans, char *function, pmix_regattr_t *attrs,
+                                             size_t nattrs);
 PMIX_EXPORT void pmix_attributes_print_headers(char ***ans, char *level);
 
 PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata);
-PMIX_EXPORT const char* pmix_attributes_lookup(char *name);
-PMIX_EXPORT const char* pmix_attributes_reverse_lookup(char *name);
-PMIX_EXPORT const pmix_regattr_input_t* pmix_attributes_lookup_term(char *attr);
+PMIX_EXPORT const char *pmix_attributes_lookup(char *name);
+PMIX_EXPORT const char *pmix_attributes_reverse_lookup(char *name);
+PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr);
 
 END_C_DECLS
 

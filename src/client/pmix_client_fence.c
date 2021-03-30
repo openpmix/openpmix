@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,43 +25,41 @@
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_UN_H
-#include <sys/un.h>
+#    include <sys/un.h>
 #endif
 #ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
+#    include <sys/uio.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include PMIX_EVENT_HEADER
 
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/ptl/ptl.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/output.h"
-#include "src/mca/ptl/ptl.h"
 
 #include "pmix_client_ops.h"
 
 static pmix_status_t unpack_return(pmix_buffer_t *data);
-static pmix_status_t pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd,
-                                const pmix_proc_t *procs, size_t nprocs,
-                                const pmix_info_t *info, size_t ninfo);
-static void wait_cbfunc(struct pmix_peer_t *pr,
-                        pmix_ptl_hdr_t *hdr,
-                        pmix_buffer_t *buf, void *cbdata);
+static pmix_status_t pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd, const pmix_proc_t *procs,
+                                size_t nprocs, const pmix_info_t *info, size_t ninfo);
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                        void *cbdata);
 static void op_cbfunc(pmix_status_t status, void *cbdata);
 
 PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
@@ -71,8 +70,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output,
-                        "pmix: executing fence");
+    pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: executing fence");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -98,8 +96,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
     cb = PMIX_NEW(pmix_cb_t);
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(procs, nprocs, info, ninfo,
-                                            op_cbfunc, cb))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(procs, nprocs, info, ninfo, op_cbfunc, cb))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
         return rc;
@@ -110,8 +107,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
     rc = cb->status;
     PMIX_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output,
-                        "pmix: fence released");
+    pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: fence released");
 
     return rc;
 }
@@ -129,8 +125,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output,
-                        "pmix: fence_nb called");
+    pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: fence_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -156,7 +151,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
         rgs = &rg;
         nrg = 1;
     } else {
-        rgs = (pmix_proc_t*)procs;
+        rgs = (pmix_proc_t *) procs;
         nrg = nprocs;
     }
 
@@ -174,8 +169,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, wait_cbfunc, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
@@ -189,13 +183,11 @@ static pmix_status_t unpack_return(pmix_buffer_t *data)
     pmix_status_t ret;
     int32_t cnt;
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output,
-                        "client:unpack fence called");
+    pmix_output_verbose(2, pmix_client_globals.fence_output, "client:unpack fence called");
 
     /* unpack the status code */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver,
-                       data, &ret, &cnt, PMIX_STATUS);
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, data, &ret, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -205,45 +197,39 @@ static pmix_status_t unpack_return(pmix_buffer_t *data)
     return ret;
 }
 
-static pmix_status_t pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd,
-                                const pmix_proc_t *procs, size_t nprocs,
-                                const pmix_info_t *info, size_t ninfo)
+static pmix_status_t pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd, const pmix_proc_t *procs,
+                                size_t nprocs, const pmix_info_t *info, size_t ninfo)
 {
     pmix_status_t rc;
 
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     /* pack the number of procs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &nprocs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nprocs, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* pack any provided procs - must always be at least one (our own) */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, procs, nprocs, PMIX_PROC);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, procs, nprocs, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* pack the number of info */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     /* pack any provided info - may be NULL */
     if (NULL != info && 0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, info, ninfo, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -253,14 +239,13 @@ static pmix_status_t pack_fence(pmix_buffer_t *msg, pmix_cmd_t cmd,
     return PMIX_SUCCESS;
 }
 
-static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
-                        pmix_buffer_t *buf, void *cbdata)
+static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                        void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output,
-                        "pmix: fence_nb callback recvd");
+    pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: fence_nb callback recvd");
 
     if (NULL == cb) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -283,7 +268,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 
 static void op_cbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
     cb->status = status;
     PMIX_WAKEUP_THREAD(&cb->lock);

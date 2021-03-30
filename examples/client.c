@@ -16,6 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,11 +29,11 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
-#include <pmix.h>
 #include "examples.h"
+#include <pmix.h>
 
 static pmix_proc_t myproc;
 
@@ -40,13 +41,10 @@ static pmix_proc_t myproc;
  * when registering for general events - i.e.,, the default
  * handler. We don't technically need to register one, but it
  * is usually good practice to catch any events that occur */
-static void notification_fn(size_t evhdlr_registration_id,
-                            pmix_status_t status,
-                            const pmix_proc_t *source,
-                            pmix_info_t info[], size_t ninfo,
+static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
+                            const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                             pmix_info_t results[], size_t nresults,
-                            pmix_event_notification_cbfunc_fn_t cbfunc,
-                            void *cbdata)
+                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -59,22 +57,19 @@ static void notification_fn(size_t evhdlr_registration_id,
  * the status to see if it was "debugger release", but it often is simpler
  * to declare a use-specific notification callback point. In this case,
  * we are asking to know when we are told the debugger released us */
-static void release_fn(size_t evhdlr_registration_id,
-                       pmix_status_t status,
-                       const pmix_proc_t *source,
-                       pmix_info_t info[], size_t ninfo,
+static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
+                       const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                        pmix_info_t results[], size_t nresults,
-                       pmix_event_notification_cbfunc_fn_t cbfunc,
-                       void *cbdata)
+                       pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     myrel_t *lock;
     size_t n;
 
     /* find the return object */
     lock = NULL;
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_EVENT_RETURN_OBJECT, PMIX_MAX_KEYLEN)) {
-            lock = (myrel_t*)info[n].value.data.ptr;
+            lock = (myrel_t *) info[n].value.data.ptr;
             break;
         }
     }
@@ -106,15 +101,13 @@ static void release_fn(size_t evhdlr_registration_id,
  * to the registered event. The index is used later on to deregister
  * an event handler - if we don't explicitly deregister it, then the
  * PMIx server will do so when it see us exit */
-static void evhandler_reg_callbk(pmix_status_t status,
-                                 size_t evhandler_ref,
-                                 void *cbdata)
+static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
 
     if (PMIX_SUCCESS != status) {
         fprintf(stderr, "Client %s:%d EVENT HANDLER REGISTRATION FAILED WITH STATUS %d, ref=%lu\n",
-                   myproc.nspace, myproc.rank, status, (unsigned long)evhandler_ref);
+                myproc.nspace, myproc.rank, status, (unsigned long) evhandler_ref);
     }
     lock->status = status;
     lock->evhandler_ref = evhandler_ref;
@@ -138,7 +131,7 @@ int main(int argc, char **argv)
     pmix_topology_t mytopo;
 
     pid = getpid();
-    fprintf(stderr, "Client %lu: Running\n", (unsigned long)pid);
+    fprintf(stderr, "Client %lu: Running\n", (unsigned long) pid);
 
     /* init us - note that the call to "init" includes the return of
      * any job-related info provided by the RM. This includes any
@@ -146,23 +139,25 @@ int main(int argc, char **argv)
      * is included, then the process will be stopped in this call until
      * the "debugger release" notification arrives */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
         exit(0);
     }
-    fprintf(stderr, "Client ns %s rank %d pid %lu: Running\n", myproc.nspace, myproc.rank, (unsigned long)pid);
-
+    fprintf(stderr, "Client ns %s rank %d pid %lu: Running\n", myproc.nspace, myproc.rank,
+            (unsigned long) pid);
 
     /* register our default event handler - again, this isn't strictly
      * required, but is generally good practice */
     DEBUG_CONSTRUCT_LOCK(&mylock);
-    PMIx_Register_event_handler(NULL, 0, NULL, 0,
-                                notification_fn, evhandler_reg_callbk, (void*)&mylock);
+    PMIx_Register_event_handler(NULL, 0, NULL, 0, notification_fn, evhandler_reg_callbk,
+                                (void *) &mylock);
     DEBUG_WAIT_THREAD(&mylock);
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
 
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "[%s:%d] Default handler registration failed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "[%s:%d] Default handler registration failed\n", myproc.nspace,
+                myproc.rank);
         goto done;
     }
 
@@ -184,15 +179,16 @@ int main(int argc, char **argv)
         PMIX_INFO_CREATE(info, 1);
         DEBUG_CONSTRUCT_MYREL(&myrel);
         PMIX_INFO_LOAD(&info[0], PMIX_EVENT_RETURN_OBJECT, &myrel, PMIX_POINTER);
-        PMIx_Register_event_handler(&dbg, 1, info, 1,
-                                    release_fn, evhandler_reg_callbk, (void*)&mylock);
+        PMIx_Register_event_handler(&dbg, 1, info, 1, release_fn, evhandler_reg_callbk,
+                                    (void *) &mylock);
         /* wait for registration to complete */
         DEBUG_WAIT_THREAD(&mylock);
         rc = mylock.status;
         DEBUG_DESTRUCT_LOCK(&mylock);
         PMIX_INFO_FREE(info, 1);
         if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "[%s:%d] Debug handler registration failed\n", myproc.nspace, myproc.rank);
+            fprintf(stderr, "[%s:%d] Debug handler registration failed\n", myproc.nspace,
+                    myproc.rank);
             goto done;
         }
         /* wait for debugger release */
@@ -205,24 +201,27 @@ int main(int argc, char **argv)
     /* check for local topology info */
     PMIX_TOPOLOGY_CONSTRUCT(&mytopo);
     if (PMIX_SUCCESS != (rc = PMIx_Load_topology(&mytopo))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Load_topology failed: %s\n", myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Load_topology failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     fprintf(stderr, "Client %s:%d topology loaded\n", myproc.nspace, myproc.rank);
 
-
     /* get our universe size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
-    fprintf(stderr, "Client %s:%d universe size %d\n", myproc.nspace, myproc.rank, val->data.uint32);
+    fprintf(stderr, "Client %s:%d universe size %d\n", myproc.nspace, myproc.rank,
+            val->data.uint32);
     PMIX_VALUE_RELEASE(val);
 
     /* get the number of procs in our job - univ size is the total number of allocated
      * slots, not the number of procs in the job */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
     nprocs = val->data.uint32;
@@ -237,7 +236,8 @@ int main(int argc, char **argv)
     value.type = PMIX_UINT32;
     value.data.uint32 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Store_internal(&myproc, tmp, &value))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Store_internal failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Store_internal failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
     free(tmp);
@@ -248,7 +248,8 @@ int main(int argc, char **argv)
     value.type = PMIX_UINT64;
     value.data.uint64 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, tmp, &value))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
     free(tmp);
@@ -259,14 +260,16 @@ int main(int argc, char **argv)
     value.type = PMIX_STRING;
     value.data.string = "1234";
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, tmp, &value))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
     free(tmp);
 
     /* push the data to our PMIx server */
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
     if (0 == myproc.rank) {
@@ -280,69 +283,80 @@ int main(int argc, char **argv)
     flag = true;
     PMIX_INFO_LOAD(info, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, info, 1))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
         goto done;
     }
     PMIX_INFO_FREE(info, 1);
 
     /* check the returned data */
-    for (n=0; n < nprocs; n++) {
+    for (n = 0; n < nprocs; n++) {
         if (0 > asprintf(&tmp, "%s-%d-local", myproc.nspace, myproc.rank)) {
             exit(1);
         }
         if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, tmp, NULL, 0, &val))) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace, myproc.rank, tmp, rc);
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace,
+                    myproc.rank, tmp, rc);
             free(tmp);
             goto done;
         }
         if (PMIX_UINT64 != val->type) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned wrong type: %d\n", myproc.nspace, myproc.rank, tmp, val->type);
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned wrong type: %d\n",
+                    myproc.nspace, myproc.rank, tmp, val->type);
             PMIX_VALUE_RELEASE(val);
             free(tmp);
             goto done;
         }
         if (1234 != val->data.uint64) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned wrong value: %d\n", myproc.nspace, myproc.rank, tmp, (int)val->data.uint64);
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned wrong value: %d\n",
+                    myproc.nspace, myproc.rank, tmp, (int) val->data.uint64);
             PMIX_VALUE_RELEASE(val);
             free(tmp);
             goto done;
         }
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned correct\n", myproc.nspace, myproc.rank, tmp);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned correct\n", myproc.nspace,
+                myproc.rank, tmp);
         PMIX_VALUE_RELEASE(val);
         free(tmp);
         if (0 > asprintf(&tmp, "%s-%d-remote", myproc.nspace, myproc.rank)) {
             exit(1);
         }
         if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, tmp, NULL, 0, &val))) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace, myproc.rank, tmp, rc);
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace,
+                    myproc.rank, tmp, rc);
             free(tmp);
             goto done;
         }
         if (PMIX_STRING != val->type) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned wrong type: %d\n", myproc.nspace, myproc.rank, tmp, val->type);
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned wrong type: %d\n",
+                    myproc.nspace, myproc.rank, tmp, val->type);
             PMIX_VALUE_RELEASE(val);
             free(tmp);
             goto done;
         }
         if (0 != strcmp(val->data.string, "1234")) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned wrong value: %s\n", myproc.nspace, myproc.rank, tmp, val->data.string);
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned wrong value: %s\n",
+                    myproc.nspace, myproc.rank, tmp, val->data.string);
             PMIX_VALUE_RELEASE(val);
             free(tmp);
             goto done;
         }
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned correct\n", myproc.nspace, myproc.rank, tmp);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s returned correct\n", myproc.nspace,
+                myproc.rank, tmp);
         PMIX_VALUE_RELEASE(val);
         free(tmp);
     }
 
- done:
+done:
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return(0);
+    return (0);
 }

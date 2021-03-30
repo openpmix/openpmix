@@ -17,6 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,21 +27,20 @@
 
 #include "pmix_config.h"
 
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 
-#include "src/class/pmix_object.h"
 #include "src/class/pmix_list.h"
+#include "src/class/pmix_object.h"
 #include "src/threads/mutex.h"
 #include "src/util/argv.h"
 #include "src/util/cmd_line.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 
-#include "src/mca/base/pmix_mca_base_var.h"
 #include "include/pmix_common.h"
-
+#include "src/mca/base/pmix_mca_base_var.h"
 
 /*
  * Some usage message constants
@@ -77,9 +77,8 @@ typedef struct pmix_cmd_line_option_t pmix_cmd_line_option_t;
 static void option_constructor(pmix_cmd_line_option_t *cmd);
 static void option_destructor(pmix_cmd_line_option_t *cmd);
 
-PMIX_CLASS_INSTANCE(pmix_cmd_line_option_t,
-                    pmix_list_item_t,
-                    option_constructor, option_destructor);
+PMIX_CLASS_INSTANCE(pmix_cmd_line_option_t, pmix_list_item_t, option_constructor,
+                    option_destructor);
 
 /*
  * An option that was used in the argv that was parsed
@@ -108,50 +107,39 @@ struct pmix_cmd_line_param_t {
 typedef struct pmix_cmd_line_param_t pmix_cmd_line_param_t;
 static void param_constructor(pmix_cmd_line_param_t *cmd);
 static void param_destructor(pmix_cmd_line_param_t *cmd);
-PMIX_CLASS_INSTANCE(pmix_cmd_line_param_t,
-                    pmix_list_item_t,
-                    param_constructor, param_destructor);
+PMIX_CLASS_INSTANCE(pmix_cmd_line_param_t, pmix_list_item_t, param_constructor, param_destructor);
 
 /*
  * Instantiate the pmix_cmd_line_t class
  */
 static void cmd_line_constructor(pmix_cmd_line_t *cmd);
 static void cmd_line_destructor(pmix_cmd_line_t *cmd);
-PMIX_CLASS_INSTANCE(pmix_cmd_line_t,
-                    pmix_object_t,
-                    cmd_line_constructor,
-                    cmd_line_destructor);
+PMIX_CLASS_INSTANCE(pmix_cmd_line_t, pmix_object_t, cmd_line_constructor, cmd_line_destructor);
 
 /*
  * Private variables
  */
-static char special_empty_token[] = {
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, '\0'
-};
+static char special_empty_token[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, '\0'};
 
 /*
  * Private functions
  */
 static int make_opt(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *e);
 static void free_parse_results(pmix_cmd_line_t *cmd);
-static int split_shorts(pmix_cmd_line_t *cmd,
-                        char *token, char **args,
-                        int *output_argc, char ***output_argv,
-                        int *num_args_used, bool ignore_unknown);
-static pmix_cmd_line_option_t *find_option(pmix_cmd_line_t *cmd,
-                                           const char *option_name) __pmix_attribute_nonnull__(1) __pmix_attribute_nonnull__(2);
+static int split_shorts(pmix_cmd_line_t *cmd, char *token, char **args, int *output_argc,
+                        char ***output_argv, int *num_args_used, bool ignore_unknown);
+static pmix_cmd_line_option_t *find_option(pmix_cmd_line_t *cmd, const char *option_name)
+    __pmix_attribute_nonnull__(1) __pmix_attribute_nonnull__(2);
 static int set_dest(pmix_cmd_line_option_t *option, char *sval);
 static void fill(const pmix_cmd_line_option_t *a, char result[3][BUFSIZ]);
 static int qsort_callback(const void *a, const void *b);
 static pmix_cmd_line_otype_t get_help_otype(pmix_cmd_line_t *cmd);
 static char *build_parsable(pmix_cmd_line_option_t *option);
 
-
 /*
  * Create an entire command line handle from a table
  */
-int pmix_cmd_line_create(pmix_cmd_line_t *cmd,
-                         pmix_cmd_line_init_t *table)
+int pmix_cmd_line_create(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *table)
 {
     int ret = PMIX_SUCCESS;
 
@@ -169,8 +157,7 @@ int pmix_cmd_line_create(pmix_cmd_line_t *cmd,
 }
 
 /* Add a table to an existing cmd line object */
-int pmix_cmd_line_add(pmix_cmd_line_t *cmd,
-                      pmix_cmd_line_init_t *table)
+int pmix_cmd_line_add(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *table)
 {
     int i, ret;
 
@@ -181,11 +168,10 @@ int pmix_cmd_line_add(pmix_cmd_line_t *cmd,
 
     /* Loop through the table */
 
-    for (i = 0; ; ++i) {
+    for (i = 0;; ++i) {
         /* Is this the end? */
-        if ('\0' == table[i].ocl_cmd_short_name &&
-            NULL == table[i].ocl_cmd_single_dash_name &&
-            NULL == table[i].ocl_cmd_long_name) {
+        if ('\0' == table[i].ocl_cmd_short_name && NULL == table[i].ocl_cmd_single_dash_name
+            && NULL == table[i].ocl_cmd_long_name) {
             break;
         }
 
@@ -201,26 +187,22 @@ int pmix_cmd_line_add(pmix_cmd_line_t *cmd,
 /*
  * Append a command line entry to the previously constructed command line
  */
-int pmix_cmd_line_make_opt_mca(pmix_cmd_line_t *cmd,
-                               pmix_cmd_line_init_t entry)
+int pmix_cmd_line_make_opt_mca(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t entry)
 {
     /* Ensure we got an entry */
-    if ('\0' == entry.ocl_cmd_short_name &&
-        NULL == entry.ocl_cmd_single_dash_name &&
-        NULL == entry.ocl_cmd_long_name) {
+    if ('\0' == entry.ocl_cmd_short_name && NULL == entry.ocl_cmd_single_dash_name
+        && NULL == entry.ocl_cmd_long_name) {
         return PMIX_SUCCESS;
     }
 
     return make_opt(cmd, &entry);
 }
 
-
 /*
  * Create a command line option, --long-name and/or -s (short name).
  */
-int pmix_cmd_line_make_opt3(pmix_cmd_line_t *cmd, char short_name,
-                            const char *sd_name, const char *long_name,
-                            int num_params, const char *desc)
+int pmix_cmd_line_make_opt3(pmix_cmd_line_t *cmd, char short_name, const char *sd_name,
+                            const char *long_name, int num_params, const char *desc)
 {
     pmix_cmd_line_init_t e;
 
@@ -239,7 +221,6 @@ int pmix_cmd_line_make_opt3(pmix_cmd_line_t *cmd, char short_name,
 
     return make_opt(cmd, &e);
 }
-
 
 /*
  * Parse a command line according to a pre-built PMIX command line
@@ -293,7 +274,7 @@ int pmix_cmd_line_parse(pmix_cmd_line_t *cmd, bool ignore_unknown, bool ignore_u
 
     param = NULL;
     option = NULL;
-    for (i = 1; i < cmd->lcl_argc; ) {
+    for (i = 1; i < cmd->lcl_argc;) {
         is_unknown_option = false;
         is_unknown_token = false;
         is_option = false;
@@ -305,8 +286,7 @@ int pmix_cmd_line_parse(pmix_cmd_line_t *cmd, bool ignore_unknown, bool ignore_u
         if (0 == strcmp(cmd->lcl_argv[i], "--")) {
             ++i;
             while (i < cmd->lcl_argc) {
-                pmix_argv_append(&cmd->lcl_tail_argc, &cmd->lcl_tail_argv,
-                                 cmd->lcl_argv[i]);
+                pmix_argv_append(&cmd->lcl_tail_argc, &cmd->lcl_tail_argv, cmd->lcl_argv[i]);
                 ++i;
             }
 
@@ -343,17 +323,13 @@ int pmix_cmd_line_parse(pmix_cmd_line_t *cmd, bool ignore_unknown, bool ignore_u
             if (NULL == option) {
                 shortsv = NULL;
                 shortsc = 0;
-                ret = split_shorts(cmd, cmd->lcl_argv[i] + 1,
-                                   &(cmd->lcl_argv[i + 1]),
-                                   &shortsc, &shortsv,
-                                   &num_args_used, ignore_unknown);
+                ret = split_shorts(cmd, cmd->lcl_argv[i] + 1, &(cmd->lcl_argv[i + 1]), &shortsc,
+                                   &shortsv, &num_args_used, ignore_unknown);
                 if (PMIX_SUCCESS == ret) {
                     option = find_option(cmd, shortsv[0] + 1);
 
                     if (NULL != option) {
-                        pmix_argv_delete(&cmd->lcl_argc,
-                                         &cmd->lcl_argv, i,
-                                         1 + num_args_used);
+                        pmix_argv_delete(&cmd->lcl_argc, &cmd->lcl_argv, i, 1 + num_args_used);
                         pmix_argv_insert(&cmd->lcl_argv, i, shortsv);
                         cmd->lcl_argc = pmix_argv_count(cmd->lcl_argv);
                     } else {
@@ -402,37 +378,32 @@ int pmix_cmd_line_parse(pmix_cmd_line_t *cmd, bool ignore_unknown, bool ignore_u
                     /* If we run out of parameters, error, unless its a help request
                        which can have 0 or 1 arguments */
                     if (i >= cmd->lcl_argc) {
-                    /* If this is a help request, can have no arguments */
-                        if((NULL != option->clo_single_dash_name &&
-                           0 == strcmp(option->clo_single_dash_name, "h")) ||
-                           (NULL != option->clo_long_name &&
-                           0 == strcmp(option->clo_long_name, "help"))) {
+                        /* If this is a help request, can have no arguments */
+                        if ((NULL != option->clo_single_dash_name
+                             && 0 == strcmp(option->clo_single_dash_name, "h"))
+                            || (NULL != option->clo_long_name
+                                && 0 == strcmp(option->clo_long_name, "help"))) {
                             help_without_arg = true;
                             continue;
                         }
-                        fprintf(stderr, "%s: Error: option \"%s\" did not "
+                        fprintf(stderr,
+                                "%s: Error: option \"%s\" did not "
                                 "have enough parameters (%d)\n",
-                                cmd->lcl_argv[0],
-                                cmd->lcl_argv[orig],
-                                option->clo_num_params);
+                                cmd->lcl_argv[0], cmd->lcl_argv[orig], option->clo_num_params);
                         if (have_help_option) {
-                            fprintf(stderr, "Type '%s --help' for usage.\n",
-                                    cmd->lcl_argv[0]);
+                            fprintf(stderr, "Type '%s --help' for usage.\n", cmd->lcl_argv[0]);
                         }
                         PMIX_RELEASE(param);
                         printed_error = true;
                         goto error;
                     } else {
-                        if (0 == strcmp(cmd->lcl_argv[i],
-                                        special_empty_token)) {
-                            fprintf(stderr, "%s: Error: option \"%s\" did not "
+                        if (0 == strcmp(cmd->lcl_argv[i], special_empty_token)) {
+                            fprintf(stderr,
+                                    "%s: Error: option \"%s\" did not "
                                     "have enough parameters (%d)\n",
-                                    cmd->lcl_argv[0],
-                                    cmd->lcl_argv[orig],
-                                    option->clo_num_params);
+                                    cmd->lcl_argv[0], cmd->lcl_argv[orig], option->clo_num_params);
                             if (have_help_option) {
-                                fprintf(stderr, "Type '%s --help' for usage.\n",
-                                        cmd->lcl_argv[0]);
+                                fprintf(stderr, "Type '%s --help' for usage.\n", cmd->lcl_argv[0]);
                             }
                             if (NULL != param->clp_argv) {
                                 pmix_argv_free(param->clp_argv);
@@ -447,16 +418,14 @@ int pmix_cmd_line_parse(pmix_cmd_line_t *cmd, bool ignore_unknown, bool ignore_u
                         else {
                             /* Save in the argv on the param entry */
 
-                            pmix_argv_append(&param->clp_argc,
-                                             &param->clp_argv,
-                                             cmd->lcl_argv[i]);
+                            pmix_argv_append(&param->clp_argc, &param->clp_argv, cmd->lcl_argv[i]);
 
                             /* If it's the first, save it in the
                                variable dest and/or MCA parameter */
 
-                            if (0 == j &&
-                                (NULL != option->clo_mca_param_env_var ||
-                                 NULL != option->clo_variable_dest)) {
+                            if (0 == j
+                                && (NULL != option->clo_mca_param_env_var
+                                    || NULL != option->clo_variable_dest)) {
                                 if (PMIX_SUCCESS != (ret = set_dest(option, cmd->lcl_argv[i]))) {
                                     pmix_mutex_unlock(&cmd->lcl_mutex);
                                     return ret;
@@ -492,18 +461,16 @@ int pmix_cmd_line_parse(pmix_cmd_line_t *cmd, bool ignore_unknown, bool ignore_u
            an error and return. */
         if (is_unknown_option || is_unknown_token) {
             if (!ignore_unknown || (is_unknown_option && !ignore_unknown_option)) {
-                fprintf(stderr, "%s: Error: unknown option \"%s\"\n",
-                        cmd->lcl_argv[0], cmd->lcl_argv[i]);
+                fprintf(stderr, "%s: Error: unknown option \"%s\"\n", cmd->lcl_argv[0],
+                        cmd->lcl_argv[i]);
                 printed_error = true;
                 if (have_help_option) {
-                    fprintf(stderr, "Type '%s --help' for usage.\n",
-                            cmd->lcl_argv[0]);
+                    fprintf(stderr, "Type '%s --help' for usage.\n", cmd->lcl_argv[0]);
                 }
             }
         error:
             while (i < cmd->lcl_argc) {
-                pmix_argv_append(&cmd->lcl_tail_argc, &cmd->lcl_tail_argv,
-                                 cmd->lcl_argv[i]);
+                pmix_argv_append(&cmd->lcl_tail_argc, &cmd->lcl_tail_argv, cmd->lcl_argv[i]);
                 ++i;
             }
 
@@ -522,7 +489,6 @@ int pmix_cmd_line_parse(pmix_cmd_line_t *cmd, bool ignore_unknown, bool ignore_u
 
     return PMIX_SUCCESS;
 }
-
 
 /*
  * Return a consolidated "usage" message for a PMIX command line handle.
@@ -551,17 +517,17 @@ char *pmix_cmd_line_get_usage_msg(pmix_cmd_line_t *cmd)
 
     /* First, take the original list and sort it */
 
-    sorted = (pmix_cmd_line_option_t**)malloc(sizeof(pmix_cmd_line_option_t *) *
-                                         pmix_list_get_size(&cmd->lcl_options));
+    sorted = (pmix_cmd_line_option_t **) malloc(sizeof(pmix_cmd_line_option_t *)
+                                                * pmix_list_get_size(&cmd->lcl_options));
     if (NULL == sorted) {
         pmix_mutex_unlock(&cmd->lcl_mutex);
         return NULL;
     }
     i = 0;
-    PMIX_LIST_FOREACH(item, &cmd->lcl_options, pmix_list_item_t) {
+    PMIX_LIST_FOREACH (item, &cmd->lcl_options, pmix_list_item_t) {
         sorted[i++] = (pmix_cmd_line_option_t *) item;
     }
-    qsort(sorted, i, sizeof(pmix_cmd_line_option_t*), qsort_callback);
+    qsort(sorted, i, sizeof(pmix_cmd_line_option_t *), qsort_callback);
 
     /* Find if a help argument was passed, and return its type if it was. */
 
@@ -571,12 +537,12 @@ char *pmix_cmd_line_get_usage_msg(pmix_cmd_line_t *cmd)
 
     for (j = 0; j < pmix_list_get_size(&cmd->lcl_options); ++j) {
         option = sorted[j];
-        if(otype == PMIX_CMD_LINE_OTYPE_PARSABLE) {
+        if (otype == PMIX_CMD_LINE_OTYPE_PARSABLE) {
             ret = build_parsable(option);
             pmix_argv_append(&argc, &argv, ret);
             free(ret);
             ret = NULL;
-        } else if(otype == PMIX_CMD_LINE_OTYPE_NULL || option->clo_otype == otype) {
+        } else if (otype == PMIX_CMD_LINE_OTYPE_NULL || option->clo_otype == otype) {
             if (NULL != option->clo_description) {
                 bool filled = false;
 
@@ -607,9 +573,9 @@ char *pmix_cmd_line_get_usage_msg(pmix_cmd_line_t *cmd)
                     strncat(line, option->clo_long_name, sizeof(line) - 1);
                 }
                 strncat(line, " ", sizeof(line) - 1);
-                for (i = 0; (int)i < option->clo_num_params; ++i) {
+                for (i = 0; (int) i < option->clo_num_params; ++i) {
                     len = sizeof(temp);
-                    snprintf(temp, len, "<arg%d> ", (int)i);
+                    snprintf(temp, len, "<arg%d> ", (int) i);
                     strncat(line, temp, sizeof(line) - 1);
                 }
                 if (option->clo_num_params > 0) {
@@ -678,8 +644,7 @@ char *pmix_cmd_line_get_usage_msg(pmix_cmd_line_t *cmd)
                        line's worth and add it to the array.  Then reset
                        and loop around to get the next line's worth. */
 
-                    for (ptr = start + (MAX_WIDTH - PARAM_WIDTH);
-                         ptr > start; --ptr) {
+                    for (ptr = start + (MAX_WIDTH - PARAM_WIDTH); ptr > start; --ptr) {
                         if (isspace(*ptr)) {
                             *ptr = '\0';
                             strncat(line, start, sizeof(line) - 1);
@@ -697,8 +662,7 @@ char *pmix_cmd_line_get_usage_msg(pmix_cmd_line_t *cmd)
                        and break there. */
 
                     if (ptr == start) {
-                        for (ptr = start + (MAX_WIDTH - PARAM_WIDTH);
-                             ptr < start + len; ++ptr) {
+                        for (ptr = start + (MAX_WIDTH - PARAM_WIDTH); ptr < start + len; ++ptr) {
                             if (isspace(*ptr)) {
                                 *ptr = '\0';
 
@@ -741,7 +705,6 @@ char *pmix_cmd_line_get_usage_msg(pmix_cmd_line_t *cmd)
     return ret;
 }
 
-
 /*
  * Test if a given option was taken on the parsed command line.
  */
@@ -749,7 +712,6 @@ bool pmix_cmd_line_is_taken(pmix_cmd_line_t *cmd, const char *opt)
 {
     return (pmix_cmd_line_get_ninsts(cmd, opt) > 0);
 }
-
 
 /*
  * Return the number of instances of an option found during parsing.
@@ -770,7 +732,7 @@ int pmix_cmd_line_get_ninsts(pmix_cmd_line_t *cmd, const char *opt)
     ret = 0;
     option = find_option(cmd, opt);
     if (NULL != option) {
-        PMIX_LIST_FOREACH(param, &cmd->lcl_params, pmix_cmd_line_param_t) {
+        PMIX_LIST_FOREACH (param, &cmd->lcl_params, pmix_cmd_line_param_t) {
             if (param->clp_option == option) {
                 ++ret;
             }
@@ -786,13 +748,11 @@ int pmix_cmd_line_get_ninsts(pmix_cmd_line_t *cmd, const char *opt)
     return ret;
 }
 
-
 /*
  * Return a specific parameter for a specific instance of a option
  * from the parsed command line.
  */
-char *pmix_cmd_line_get_param(pmix_cmd_line_t *cmd, const char *opt, int inst,
-                              int idx)
+char *pmix_cmd_line_get_param(pmix_cmd_line_t *cmd, const char *opt, int inst, int idx)
 {
     int num_found;
     pmix_cmd_line_param_t *param;
@@ -813,7 +773,7 @@ char *pmix_cmd_line_get_param(pmix_cmd_line_t *cmd, const char *opt, int inst,
            parameter index greater than we will have */
 
         if (idx < option->clo_num_params) {
-            PMIX_LIST_FOREACH(param, &cmd->lcl_params, pmix_cmd_line_param_t) {
+            PMIX_LIST_FOREACH (param, &cmd->lcl_params, pmix_cmd_line_param_t) {
                 if (param->clp_argc > 0 && param->clp_option == option) {
                     if (num_found == inst) {
                         pmix_mutex_unlock(&cmd->lcl_mutex);
@@ -834,7 +794,6 @@ char *pmix_cmd_line_get_param(pmix_cmd_line_t *cmd, const char *opt, int inst,
     return NULL;
 }
 
-
 /*
  * Return the number of arguments parsed on a PMIX command line handle.
  */
@@ -843,16 +802,15 @@ int pmix_cmd_line_get_argc(pmix_cmd_line_t *cmd)
     return (NULL != cmd) ? cmd->lcl_argc : PMIX_ERROR;
 }
 
-
 /*
  * Return a string argument parsed on a PMIX command line handle.
  */
 char *pmix_cmd_line_get_argv(pmix_cmd_line_t *cmd, int index)
 {
-    return (NULL == cmd) ? NULL :
-        (index >= cmd->lcl_argc || index < 0) ? NULL : cmd->lcl_argv[index];
+    return (NULL == cmd)                           ? NULL
+           : (index >= cmd->lcl_argc || index < 0) ? NULL
+                                                   : cmd->lcl_argv[index];
 }
-
 
 /*
  * Return the entire "tail" of unprocessed argv from a PMIX command
@@ -870,7 +828,6 @@ int pmix_cmd_line_get_tail(pmix_cmd_line_t *cmd, int *tailc, char ***tailv)
         return PMIX_ERROR;
     }
 }
-
 
 /**************************************************************************
  * Static functions
@@ -891,7 +848,6 @@ static void option_constructor(pmix_cmd_line_option_t *o)
     o->clo_otype = PMIX_CMD_LINE_OTYPE_NULL;
 }
 
-
 static void option_destructor(pmix_cmd_line_option_t *o)
 {
     if (NULL != o->clo_single_dash_name) {
@@ -908,7 +864,6 @@ static void option_destructor(pmix_cmd_line_option_t *o)
     }
 }
 
-
 static void param_constructor(pmix_cmd_line_param_t *p)
 {
     p->clp_arg = NULL;
@@ -917,14 +872,12 @@ static void param_constructor(pmix_cmd_line_param_t *p)
     p->clp_argv = NULL;
 }
 
-
 static void param_destructor(pmix_cmd_line_param_t *p)
 {
     if (NULL != p->clp_argv) {
         pmix_argv_free(p->clp_argv);
     }
 }
-
 
 static void cmd_line_constructor(pmix_cmd_line_t *cmd)
 {
@@ -947,7 +900,6 @@ static void cmd_line_constructor(pmix_cmd_line_t *cmd)
     cmd->lcl_tail_argv = NULL;
 }
 
-
 static void cmd_line_destructor(pmix_cmd_line_t *cmd)
 {
     pmix_list_item_t *item;
@@ -955,8 +907,7 @@ static void cmd_line_destructor(pmix_cmd_line_t *cmd)
     /* Free the contents of the options list (do not free the list
        itself; it was not allocated from the heap) */
 
-    for (item = pmix_list_remove_first(&cmd->lcl_options);
-         NULL != item;
+    for (item = pmix_list_remove_first(&cmd->lcl_options); NULL != item;
          item = pmix_list_remove_first(&cmd->lcl_options)) {
         PMIX_RELEASE(item);
     }
@@ -975,7 +926,6 @@ static void cmd_line_destructor(pmix_cmd_line_t *cmd)
     PMIX_DESTRUCT(&cmd->lcl_mutex);
 }
 
-
 static int make_opt(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *e)
 {
     pmix_cmd_line_option_t *option;
@@ -984,22 +934,20 @@ static int make_opt(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *e)
 
     if (NULL == cmd) {
         return PMIX_ERR_BAD_PARAM;
-    } else if ('\0' == e->ocl_cmd_short_name &&
-               NULL == e->ocl_cmd_single_dash_name &&
-               NULL == e->ocl_cmd_long_name) {
+    } else if ('\0' == e->ocl_cmd_short_name && NULL == e->ocl_cmd_single_dash_name
+               && NULL == e->ocl_cmd_long_name) {
         return PMIX_ERR_BAD_PARAM;
     } else if (e->ocl_num_params < 0) {
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* see if the option already exists */
-    if (NULL != e->ocl_cmd_single_dash_name &&
-        NULL != find_option(cmd, e->ocl_cmd_single_dash_name)) {
+    if (NULL != e->ocl_cmd_single_dash_name
+        && NULL != find_option(cmd, e->ocl_cmd_single_dash_name)) {
         pmix_output(0, "Duplicate cmd line entry %s", e->ocl_cmd_single_dash_name);
         return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != e->ocl_cmd_long_name &&
-        NULL != find_option(cmd, e->ocl_cmd_long_name)) {
+    if (NULL != e->ocl_cmd_long_name && NULL != find_option(cmd, e->ocl_cmd_long_name)) {
         pmix_output(0, "Duplicate cmd line entry %s", e->ocl_cmd_long_name);
         return PMIX_ERR_BAD_PARAM;
     }
@@ -1025,8 +973,7 @@ static int make_opt(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *e)
     option->clo_type = e->ocl_variable_type;
     option->clo_variable_dest = e->ocl_variable_dest;
     if (NULL != e->ocl_mca_param_name) {
-        (void) pmix_mca_base_var_env_name (e->ocl_mca_param_name,
-                                           &option->clo_mca_param_env_var);
+        (void) pmix_mca_base_var_env_name(e->ocl_mca_param_name, &option->clo_mca_param_env_var);
     }
 
     option->clo_otype = e->ocl_otype;
@@ -1042,7 +989,6 @@ static int make_opt(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *e)
     return PMIX_SUCCESS;
 }
 
-
 static void free_parse_results(pmix_cmd_line_t *cmd)
 {
     pmix_list_item_t *item;
@@ -1050,8 +996,7 @@ static void free_parse_results(pmix_cmd_line_t *cmd)
     /* Free the contents of the params list (do not free the list
        itself; it was not allocated from the heap) */
 
-    for (item = pmix_list_remove_first(&cmd->lcl_params);
-         NULL != item;
+    for (item = pmix_list_remove_first(&cmd->lcl_params); NULL != item;
          item = pmix_list_remove_first(&cmd->lcl_params)) {
         PMIX_RELEASE(item);
     }
@@ -1071,16 +1016,14 @@ static void free_parse_results(pmix_cmd_line_t *cmd)
     cmd->lcl_tail_argc = 0;
 }
 
-
 /*
  * Traverse a token and split it into individual letter options (the
  * token has already been certified to not be a long name and not be a
  * short name).  Ensure to differentiate the resulting options from
  * "single dash" names.
  */
-static int split_shorts(pmix_cmd_line_t *cmd, char *token, char **args,
-                        int *output_argc, char ***output_argv,
-                        int *num_args_used, bool ignore_unknown)
+static int split_shorts(pmix_cmd_line_t *cmd, char *token, char **args, int *output_argc,
+                        char ***output_argv, int *num_args_used, bool ignore_unknown)
 {
     int i, j, len;
     pmix_cmd_line_option_t *option;
@@ -1097,7 +1040,7 @@ static int split_shorts(pmix_cmd_line_t *cmd, char *token, char **args,
        (argv[i] + 1), will be empty by the time it gets down here),
        just return that we didn't find a short option. */
 
-    len = (int)strlen(token);
+    len = (int) strlen(token);
     if (0 == len) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -1127,12 +1070,10 @@ static int split_shorts(pmix_cmd_line_t *cmd, char *token, char **args,
             pmix_argv_append(output_argc, output_argv, fake_token);
             for (j = 0; j < option->clo_num_params; ++j) {
                 if (*num_args_used < num_args) {
-                    pmix_argv_append(output_argc, output_argv,
-                                     args[*num_args_used]);
+                    pmix_argv_append(output_argc, output_argv, args[*num_args_used]);
                     ++(*num_args_used);
                 } else {
-                    pmix_argv_append(output_argc, output_argv,
-                                     special_empty_token);
+                    pmix_argv_append(output_argc, output_argv, special_empty_token);
                 }
             }
         }
@@ -1143,9 +1084,7 @@ static int split_shorts(pmix_cmd_line_t *cmd, char *token, char **args,
     return PMIX_SUCCESS;
 }
 
-
-static pmix_cmd_line_option_t *find_option(pmix_cmd_line_t *cmd,
-                                           const char *option_name)
+static pmix_cmd_line_option_t *find_option(pmix_cmd_line_t *cmd, const char *option_name)
 {
     pmix_cmd_line_option_t *option;
 
@@ -1153,13 +1092,11 @@ static pmix_cmd_line_option_t *find_option(pmix_cmd_line_t *cmd,
        pmix_cmd_line_t and see if we find a match in either the short
        or long names */
 
-    PMIX_LIST_FOREACH(option, &cmd->lcl_options, pmix_cmd_line_option_t) {
-        if ((NULL != option->clo_long_name &&
-             0 == strcmp(option_name, option->clo_long_name)) ||
-            (NULL != option->clo_single_dash_name &&
-             0 == strcmp(option_name, option->clo_single_dash_name)) ||
-            (strlen(option_name) == 1 &&
-             option_name[0] == option->clo_short_name)) {
+    PMIX_LIST_FOREACH (option, &cmd->lcl_options, pmix_cmd_line_option_t) {
+        if ((NULL != option->clo_long_name && 0 == strcmp(option_name, option->clo_long_name))
+            || (NULL != option->clo_single_dash_name
+                && 0 == strcmp(option_name, option->clo_single_dash_name))
+            || (strlen(option_name) == 1 && option_name[0] == option->clo_short_name)) {
             return option;
         }
     }
@@ -1168,7 +1105,6 @@ static pmix_cmd_line_option_t *find_option(pmix_cmd_line_t *cmd,
 
     return NULL;
 }
-
 
 static int set_dest(pmix_cmd_line_option_t *option, char *sval)
 {
@@ -1187,7 +1123,7 @@ static int set_dest(pmix_cmd_line_option_t *option, char *sval)
        during a nromal parameter lookup, and all will be well. */
 
     if (NULL != option->clo_mca_param_env_var) {
-        switch(option->clo_type) {
+        switch (option->clo_type) {
         case PMIX_CMD_LINE_TYPE_STRING:
         case PMIX_CMD_LINE_TYPE_INT:
         case PMIX_CMD_LINE_TYPE_SIZE_T:
@@ -1204,19 +1140,21 @@ static int set_dest(pmix_cmd_line_option_t *option, char *sval)
     /* Set variable */
 
     if (NULL != option->clo_variable_dest) {
-        switch(option->clo_type) {
+        switch (option->clo_type) {
         case PMIX_CMD_LINE_TYPE_STRING:
-            *((char**) option->clo_variable_dest) = strdup(sval);
+            *((char **) option->clo_variable_dest) = strdup(sval);
             break;
         case PMIX_CMD_LINE_TYPE_INT:
             /* check to see that the value given to us truly is an int */
-            for (i=0; i < strlen(sval); i++) {
+            for (i = 0; i < strlen(sval); i++) {
                 if (!isdigit(sval[i]) && '-' != sval[i]) {
                     /* show help isn't going to be available yet, so just
                      * print the msg
                      */
-                    fprintf(stderr, "----------------------------------------------------------------------------\n");
-                    fprintf(stderr, "Open MPI has detected that a parameter given to a command line\n");
+                    fprintf(stderr, "--------------------------------------------------------------"
+                                    "--------------\n");
+                    fprintf(stderr,
+                            "Open MPI has detected that a parameter given to a command line\n");
                     fprintf(stderr, "option does not match the expected format:\n\n");
                     if (NULL != option->clo_long_name) {
                         fprintf(stderr, "  Option: %s\n", option->clo_long_name);
@@ -1226,23 +1164,28 @@ static int set_dest(pmix_cmd_line_option_t *option, char *sval)
                         fprintf(stderr, "  Option: <unknown>\n");
                     }
                     fprintf(stderr, "  Param:  %s\n\n", sval);
-                    fprintf(stderr, "This is frequently caused by omitting to provide the parameter\n");
-                    fprintf(stderr, "to an option that requires one. Please check the command line and try again.\n");
-                    fprintf(stderr, "----------------------------------------------------------------------------\n");
+                    fprintf(stderr,
+                            "This is frequently caused by omitting to provide the parameter\n");
+                    fprintf(stderr, "to an option that requires one. Please check the command line "
+                                    "and try again.\n");
+                    fprintf(stderr, "--------------------------------------------------------------"
+                                    "--------------\n");
                     return PMIX_ERR_SILENT;
                 }
             }
-            *((int*) option->clo_variable_dest) = ival;
+            *((int *) option->clo_variable_dest) = ival;
             break;
         case PMIX_CMD_LINE_TYPE_SIZE_T:
             /* check to see that the value given to us truly is a size_t */
-            for (i=0; i < strlen(sval); i++) {
+            for (i = 0; i < strlen(sval); i++) {
                 if (!isdigit(sval[i]) && '-' != sval[i]) {
                     /* show help isn't going to be available yet, so just
                      * print the msg
                      */
-                    fprintf(stderr, "----------------------------------------------------------------------------\n");
-                    fprintf(stderr, "Open MPI has detected that a parameter given to a command line\n");
+                    fprintf(stderr, "--------------------------------------------------------------"
+                                    "--------------\n");
+                    fprintf(stderr,
+                            "Open MPI has detected that a parameter given to a command line\n");
                     fprintf(stderr, "option does not match the expected format:\n\n");
                     if (NULL != option->clo_long_name) {
                         fprintf(stderr, "  Option: %s\n", option->clo_long_name);
@@ -1252,16 +1195,19 @@ static int set_dest(pmix_cmd_line_option_t *option, char *sval)
                         fprintf(stderr, "  Option: <unknown>\n");
                     }
                     fprintf(stderr, "  Param:  %s\n\n", sval);
-                    fprintf(stderr, "This is frequently caused by omitting to provide the parameter\n");
-                    fprintf(stderr, "to an option that requires one. Please check the command line and try again.\n");
-                    fprintf(stderr, "----------------------------------------------------------------------------\n");
+                    fprintf(stderr,
+                            "This is frequently caused by omitting to provide the parameter\n");
+                    fprintf(stderr, "to an option that requires one. Please check the command line "
+                                    "and try again.\n");
+                    fprintf(stderr, "--------------------------------------------------------------"
+                                    "--------------\n");
                     return PMIX_ERR_SILENT;
                 }
             }
-            *((size_t*) option->clo_variable_dest) = lval;
+            *((size_t *) option->clo_variable_dest) = lval;
             break;
         case PMIX_CMD_LINE_TYPE_BOOL:
-            *((bool*) option->clo_variable_dest) = 1;
+            *((bool *) option->clo_variable_dest) = 1;
             break;
         default:
             break;
@@ -1269,7 +1215,6 @@ static int set_dest(pmix_cmd_line_option_t *option, char *sval)
     }
     return PMIX_SUCCESS;
 }
-
 
 /*
  * Helper function to qsort_callback
@@ -1296,13 +1241,12 @@ static void fill(const pmix_cmd_line_option_t *a, char result[3][BUFSIZ])
     }
 }
 
-
 static int qsort_callback(const void *aa, const void *bb)
 {
     int ret, i;
     char str1[3][BUFSIZ], str2[3][BUFSIZ];
-    const pmix_cmd_line_option_t *a = *((const pmix_cmd_line_option_t**) aa);
-    const pmix_cmd_line_option_t *b = *((const pmix_cmd_line_option_t**) bb);
+    const pmix_cmd_line_option_t *a = *((const pmix_cmd_line_option_t **) aa);
+    const pmix_cmd_line_option_t *b = *((const pmix_cmd_line_option_t **) bb);
 
     /* Icky comparison of command line options.  There are multiple
        forms of each command line option, so we first have to check
@@ -1323,7 +1267,6 @@ static int qsort_callback(const void *aa, const void *bb)
     return 0;
 }
 
-
 /*
  * Helper function to find the option type specified in the help
  * command.
@@ -1338,12 +1281,12 @@ static pmix_cmd_line_otype_t get_help_otype(pmix_cmd_line_t *cmd)
     arg = pmix_cmd_line_get_param(cmd, "help", 0, 0);
 
     /* If not "help", check for "h" */
-    if(NULL == arg) {
+    if (NULL == arg) {
         arg = pmix_cmd_line_get_param(cmd, "h", 0, 0);
     }
 
     /* If arg is still NULL, give them the General info by default */
-    if(NULL == arg) {
+    if (NULL == arg) {
         arg = "general";
     }
 
@@ -1380,21 +1323,24 @@ static pmix_cmd_line_otype_t get_help_otype(pmix_cmd_line_t *cmd)
  * Helper function to build a parsable string for the help
  * output.
  */
-static char *build_parsable(pmix_cmd_line_option_t *option) {
+static char *build_parsable(pmix_cmd_line_option_t *option)
+{
     char *line;
     int length;
 
-    length = snprintf(NULL, 0, "%c:%s:%s:%d:%s\n", option->clo_short_name, option->clo_single_dash_name,
-                      option->clo_long_name, option->clo_num_params, option->clo_description);
+    length = snprintf(NULL, 0, "%c:%s:%s:%d:%s\n", option->clo_short_name,
+                      option->clo_single_dash_name, option->clo_long_name, option->clo_num_params,
+                      option->clo_description);
 
-    line = (char *)malloc(length * sizeof(char));
+    line = (char *) malloc(length * sizeof(char));
 
-    if('\0' == option->clo_short_name) {
-        snprintf(line, length, "0:%s:%s:%d:%s\n", option->clo_single_dash_name, option->clo_long_name,
-                 option->clo_num_params, option->clo_description);
-    } else {
-        snprintf(line, length, "%c:%s:%s:%d:%s\n", option->clo_short_name, option->clo_single_dash_name,
+    if ('\0' == option->clo_short_name) {
+        snprintf(line, length, "0:%s:%s:%d:%s\n", option->clo_single_dash_name,
                  option->clo_long_name, option->clo_num_params, option->clo_description);
+    } else {
+        snprintf(line, length, "%c:%s:%s:%d:%s\n", option->clo_short_name,
+                 option->clo_single_dash_name, option->clo_long_name, option->clo_num_params,
+                 option->clo_description);
     }
 
     return line;

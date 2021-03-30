@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,12 +25,12 @@
 
 #include <string.h>
 #ifdef HAVE_STRINGS_H
-#include <strings.h>
+#    include <strings.h>
 #endif /* HAVE_STRINGS_H */
 
 #include "src/class/pmix_object.h"
 #if PMIX_ENABLE_DEBUG
-#include "src/util/output.h"
+#    include "src/util/output.h"
 #endif
 #include "include/pmix_common.h"
 
@@ -39,13 +40,12 @@ BEGIN_C_DECLS
  *  @file  Array of elements maintained by value.
  */
 
-struct pmix_value_array_t
-{
-    pmix_object_t    super;
-    unsigned char*  array_items;
-    size_t          array_item_sizeof;
-    size_t          array_size;
-    size_t          array_alloc_size;
+struct pmix_value_array_t {
+    pmix_object_t super;
+    unsigned char *array_items;
+    size_t array_item_sizeof;
+    size_t array_size;
+    size_t array_alloc_size;
 };
 typedef struct pmix_value_array_t pmix_value_array_t;
 
@@ -69,10 +69,10 @@ static inline int pmix_value_array_init(pmix_value_array_t *array, size_t item_s
     array->array_item_sizeof = item_sizeof;
     array->array_alloc_size = 1;
     array->array_size = 0;
-    array->array_items = (unsigned char*)realloc(array->array_items, item_sizeof * array->array_alloc_size);
+    array->array_items = (unsigned char *) realloc(array->array_items,
+                                                   item_sizeof * array->array_alloc_size);
     return (NULL != array->array_items) ? PMIX_SUCCESS : PMIX_ERR_OUT_OF_RESOURCE;
 }
-
 
 /**
  *  Reserve space in the array for new elements, but do not change the size.
@@ -82,21 +82,20 @@ static inline int pmix_value_array_init(pmix_value_array_t *array, size_t item_s
  *  @return  PMIX error code.
  */
 
-static inline int pmix_value_array_reserve(pmix_value_array_t* array, size_t size)
+static inline int pmix_value_array_reserve(pmix_value_array_t *array, size_t size)
 {
-     if(size > array->array_alloc_size) {
-         array->array_items = (unsigned char*)realloc(array->array_items, array->array_item_sizeof * size);
-         if(NULL == array->array_items) {
-             array->array_size = 0;
-             array->array_alloc_size = 0;
-             return PMIX_ERR_OUT_OF_RESOURCE;
-         }
-         array->array_alloc_size = size;
-     }
-     return PMIX_SUCCESS;
+    if (size > array->array_alloc_size) {
+        array->array_items = (unsigned char *) realloc(array->array_items,
+                                                       array->array_item_sizeof * size);
+        if (NULL == array->array_items) {
+            array->array_size = 0;
+            array->array_alloc_size = 0;
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        array->array_alloc_size = size;
+    }
+    return PMIX_SUCCESS;
 }
-
-
 
 /**
  *  Retreives the number of elements in the array.
@@ -105,11 +104,10 @@ static inline int pmix_value_array_reserve(pmix_value_array_t* array, size_t siz
  *  @return  The number of elements currently in use.
  */
 
-static inline size_t pmix_value_array_get_size(pmix_value_array_t* array)
+static inline size_t pmix_value_array_get_size(pmix_value_array_t *array)
 {
     return array->array_size;
 }
-
 
 /**
  *  Set the number of elements in the array.
@@ -126,8 +124,7 @@ static inline size_t pmix_value_array_get_size(pmix_value_array_t* array)
  *  return the new size.
  */
 
-PMIX_EXPORT int pmix_value_array_set_size(pmix_value_array_t* array, size_t size);
-
+PMIX_EXPORT int pmix_value_array_set_size(pmix_value_array_t *array, size_t size);
 
 /**
  *  Macro to retrieve an item from the array by value.
@@ -144,7 +141,7 @@ PMIX_EXPORT int pmix_value_array_set_size(pmix_value_array_t* array, size_t size
  */
 
 #define PMIX_VALUE_ARRAY_GET_ITEM(array, item_type, item_index) \
-    ((item_type*)((array)->array_items))[item_index]
+    ((item_type *) ((array)->array_items))[item_index]
 
 /**
  *  Retrieve an item from the array by reference.
@@ -158,9 +155,10 @@ PMIX_EXPORT int pmix_value_array_set_size(pmix_value_array_t* array, size_t size
  *  array size, the array is grown to satisfy the request.
  */
 
-static inline void* pmix_value_array_get_item(pmix_value_array_t *array, size_t item_index)
+static inline void *pmix_value_array_get_item(pmix_value_array_t *array, size_t item_index)
 {
-    if(item_index >= array->array_size && pmix_value_array_set_size(array, item_index+1) != PMIX_SUCCESS)
+    if (item_index >= array->array_size
+        && pmix_value_array_set_size(array, item_index + 1) != PMIX_SUCCESS)
         return NULL;
     return array->array_items + (item_index * array->array_item_sizeof);
 }
@@ -182,7 +180,7 @@ static inline void* pmix_value_array_get_item(pmix_value_array_t *array, size_t 
  */
 
 #define PMIX_VALUE_ARRAY_SET_ITEM(array, item_type, item_index, item_value) \
-    (((item_type*)((array)->array_items))[item_index] = item_value)
+    (((item_type *) ((array)->array_items))[item_index] = item_value)
 
 /**
  *  Set an array element by value.
@@ -198,16 +196,17 @@ static inline void* pmix_value_array_get_item(pmix_value_array_t *array, size_t 
  * copied into the array by value.
  */
 
-static inline int pmix_value_array_set_item(pmix_value_array_t *array, size_t item_index, const void* item)
+static inline int pmix_value_array_set_item(pmix_value_array_t *array, size_t item_index,
+                                            const void *item)
 {
     int rc;
-    if(item_index >= array->array_size &&
-       (rc = pmix_value_array_set_size(array, item_index+1)) != PMIX_SUCCESS)
+    if (item_index >= array->array_size
+        && (rc = pmix_value_array_set_size(array, item_index + 1)) != PMIX_SUCCESS)
         return rc;
-    memcpy(array->array_items + (item_index * array->array_item_sizeof), item, array->array_item_sizeof);
+    memcpy(array->array_items + (item_index * array->array_item_sizeof), item,
+           array->array_item_sizeof);
     return PMIX_SUCCESS;
 }
-
 
 /**
  *  Appends an item to the end of the array.
@@ -228,7 +227,6 @@ static inline int pmix_value_array_append_item(pmix_value_array_t *array, const 
     return pmix_value_array_set_item(array, array->array_size, item);
 }
 
-
 /**
  *  Remove a specific item from the array.
  *
@@ -245,12 +243,13 @@ static inline int pmix_value_array_remove_item(pmix_value_array_t *array, size_t
 {
 #if PMIX_ENABLE_DEBUG
     if (item_index >= array->array_size) {
-        pmix_output(0, "pmix_value_array_remove_item: invalid index %lu\n", (unsigned long)item_index);
+        pmix_output(0, "pmix_value_array_remove_item: invalid index %lu\n",
+                    (unsigned long) item_index);
         return PMIX_ERR_BAD_PARAM;
     }
 #endif
-    memmove(array->array_items+(array->array_item_sizeof * item_index),
-            array->array_items+(array->array_item_sizeof * (item_index+1)),
+    memmove(array->array_items + (array->array_item_sizeof * item_index),
+            array->array_items + (array->array_item_sizeof * (item_index + 1)),
             array->array_item_sizeof * (array->array_size - item_index - 1));
     array->array_size--;
     return PMIX_SUCCESS;
@@ -272,8 +271,7 @@ static inline int pmix_value_array_remove_item(pmix_value_array_t *array, size_t
  * number of pointer dereferences.
  */
 
-#define PMIX_VALUE_ARRAY_GET_BASE(array, item_type) \
-  ((item_type*) ((array)->array_items))
+#define PMIX_VALUE_ARRAY_GET_BASE(array, item_type) ((item_type *) ((array)->array_items))
 
 END_C_DECLS
 

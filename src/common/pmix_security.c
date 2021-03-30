@@ -6,6 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,30 +15,29 @@
  */
 #include "src/include/pmix_config.h"
 
-#include "src/include/pmix_stdint.h"
 #include "src/include/pmix_socket_errno.h"
+#include "src/include/pmix_stdint.h"
 
 #include "include/pmix.h"
 #include "include/pmix_common.h"
 #include "include/pmix_server.h"
 
+#include "src/mca/bfrops/bfrops.h"
+#include "src/mca/psec/psec.h"
+#include "src/mca/ptl/ptl.h"
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
-#include "src/mca/bfrops/bfrops.h"
-#include "src/mca/psec/psec.h"
-#include "src/mca/ptl/ptl.h"
 
 #include "src/client/pmix_client_ops.h"
-#include "src/server/pmix_server_ops.h"
 #include "src/include/pmix_globals.h"
+#include "src/server/pmix_server_ops.h"
 
-static void getcbfunc(struct pmix_peer_t *peer,
-                      pmix_ptl_hdr_t *hdr,
-                      pmix_buffer_t *buf, void *cbdata)
+static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                      void *cbdata)
 {
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_status_t rc, status;
     int cnt;
     pmix_byte_object_t cred;
@@ -45,8 +45,7 @@ static void getcbfunc(struct pmix_peer_t *peer,
     size_t ninfo = 0;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:security cback from server with %d bytes",
-                        (int)buf->bytes_used);
+                        "pmix:security cback from server with %d bytes", (int) buf->bytes_used);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -95,9 +94,8 @@ static void getcbfunc(struct pmix_peer_t *peer,
         }
     }
 
-  complete:
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:security cback from server releasing");
+complete:
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:security cback from server releasing");
     /* release the caller */
     if (NULL != cd->credcbfunc) {
         cd->credcbfunc(status, &cred, info, ninfo, cd->cbdata);
@@ -109,12 +107,10 @@ static void getcbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(cd);
 }
 
-static void mycdcb(pmix_status_t status,
-                   pmix_byte_object_t *credential,
-                   pmix_info_t info[], size_t ninfo,
-                   void *cbdata)
+static void mycdcb(pmix_status_t status, pmix_byte_object_t *credential, pmix_info_t info[],
+                   size_t ninfo, void *cbdata)
 {
-    pmix_query_caddy_t *cb = (pmix_query_caddy_t*)cbdata;
+    pmix_query_caddy_t *cb = (pmix_query_caddy_t *) cbdata;
 
     PMIX_ACQUIRE_OBJECT(cb);
     cb->status = status;
@@ -160,8 +156,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: Get_credential called with %d info", (int)ninfo);
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: Get_credential called with %d info",
+                        (int) ninfo);
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -169,15 +165,13 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     }
 
     /* if we are the server */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         /* if the host doesn't support this operation,
          * see if we can generate it ourselves */
         if (NULL == pmix_host_server.get_credential) {
             PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
-            PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo,
-                                  &results, &nresults, &cred);
+            PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo, &results, &nresults, &cred);
             if (PMIX_SUCCESS == rc) {
                 /* pass it back in the callback function */
                 if (NULL != cbfunc) {
@@ -191,11 +185,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
             return rc;
         }
         /* the host is available, so let them try to create it */
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:get_credential handed to RM");
-        rc = pmix_host_server.get_credential(&pmix_globals.myid,
-                                             info, ninfo,
-                                             cbfunc, cbdata);
+        pmix_output_verbose(2, pmix_globals.debug_output, "pmix:get_credential handed to RM");
+        rc = pmix_host_server.get_credential(&pmix_globals.myid, info, ninfo, cbfunc, cbdata);
         return rc;
     }
 
@@ -204,8 +195,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     if (!pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
-        PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo,
-                              &results, &nresults, &cred);
+        PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo, &results, &nresults, &cred);
         if (PMIX_SUCCESS == rc) {
             /* pass it back in the callback function */
             if (NULL != cbfunc) {
@@ -223,8 +213,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -232,16 +221,14 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     }
 
     /* pack the directives */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, info, ninfo, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -257,8 +244,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, getcbfunc, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, getcbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
@@ -267,19 +253,17 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     return rc;
 }
 
-static void valid_cbfunc(struct pmix_peer_t *peer,
-                         pmix_ptl_hdr_t *hdr,
-                         pmix_buffer_t *buf, void *cbdata)
+static void valid_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+                         void *cbdata)
 {
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_status_t rc, status;
     int cnt;
     pmix_info_t *info = NULL;
     size_t ninfo = 0;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:security cback from server with %d bytes",
-                        (int)buf->bytes_used);
+                        "pmix:security cback from server with %d bytes", (int) buf->bytes_used);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -320,9 +304,8 @@ static void valid_cbfunc(struct pmix_peer_t *peer,
         }
     }
 
-  complete:
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:security cback from server releasing");
+complete:
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:security cback from server releasing");
     /* release the caller */
     if (NULL != cd->validcbfunc) {
         cd->validcbfunc(status, info, ninfo, cd->cbdata);
@@ -333,11 +316,9 @@ static void valid_cbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(cd);
 }
 
-static void myvalcb(pmix_status_t status,
-                    pmix_info_t info[], size_t ninfo,
-                    void *cbdata)
+static void myvalcb(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata)
 {
-    pmix_query_caddy_t *cb = (pmix_query_caddy_t*)cbdata;
+    pmix_query_caddy_t *cb = (pmix_query_caddy_t *) cbdata;
     size_t n;
 
     PMIX_ACQUIRE_OBJECT(cb);
@@ -345,7 +326,7 @@ static void myvalcb(pmix_status_t status,
     if (PMIX_SUCCESS == status && NULL != info) {
         cb->ninfo = ninfo;
         PMIX_INFO_CREATE(cb->info, cb->ninfo);
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             PMIX_INFO_XFER(&cb->info[n], &info[n]);
         }
     }
@@ -375,7 +356,6 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cre
     return rc;
 }
 
-
 PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *cred,
                                                       const pmix_info_t directives[], size_t ndirs,
                                                       pmix_validation_cbfunc_t cbfunc, void *cbdata)
@@ -389,8 +369,7 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: monitor called");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: monitor called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -398,15 +377,13 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
     }
 
     /* if we are the server */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         /* if the host doesn't support this operation,
          * see if we can validate it ourselves */
         if (NULL == pmix_host_server.validate_credential) {
-            PMIX_PSEC_VALIDATE_CRED(rc, pmix_globals.mypeer,
-                                    directives, ndirs,
-                                    &results, &nresults, cred);
+            PMIX_PSEC_VALIDATE_CRED(rc, pmix_globals.mypeer, directives, ndirs, &results, &nresults,
+                                    cred);
             if (PMIX_SUCCESS == rc) {
                 /* pass it back in the callback function */
                 if (NULL != cbfunc) {
@@ -419,10 +396,9 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
             return rc;
         }
         /* the host is available, so let them try to validate it */
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:get_credential handed to RM");
-        rc = pmix_host_server.validate_credential(&pmix_globals.myid, cred,
-                                                  directives, ndirs, cbfunc, cbdata);
+        pmix_output_verbose(2, pmix_globals.debug_output, "pmix:get_credential handed to RM");
+        rc = pmix_host_server.validate_credential(&pmix_globals.myid, cred, directives, ndirs,
+                                                  cbfunc, cbdata);
         return rc;
     }
 
@@ -430,9 +406,8 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
      * if one of our internal plugins is capable of meeting the request */
     if (!pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        PMIX_PSEC_VALIDATE_CRED(rc, pmix_globals.mypeer,
-                                directives, ndirs,
-                                &results, &nresults, cred);
+        PMIX_PSEC_VALIDATE_CRED(rc, pmix_globals.mypeer, directives, ndirs, &results, &nresults,
+                                cred);
         if (PMIX_SUCCESS == rc) {
             /* pass it back in the callback function */
             if (NULL != cbfunc) {
@@ -449,8 +424,7 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &cmd, 1, PMIX_COMMAND);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -458,8 +432,7 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
     }
 
     /* pack the credential */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, cred, 1, PMIX_BYTE_OBJECT);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, cred, 1, PMIX_BYTE_OBJECT);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
@@ -467,16 +440,14 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
     }
 
     /* pack the directives */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ndirs, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ndirs, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
     }
     if (0 < ndirs) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, directives, ndirs, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, directives, ndirs, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -492,8 +463,7 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver,
-                       msg, valid_cbfunc, (void*)cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, valid_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);

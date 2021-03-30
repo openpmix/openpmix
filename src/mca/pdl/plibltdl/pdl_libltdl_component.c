@@ -4,6 +4,7 @@
  * Copyright (c) 2015       Los Alamos National Security, Inc.  All rights
  *                          reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,19 +15,17 @@
 #include "pmix_config.h"
 
 #include "include/pmix_common.h"
-#include "pmix/mca/pdl/pdl.h"
 #include "pmix/mca/base/pmix_mca_base_var.h"
+#include "pmix/mca/pdl/pdl.h"
 #include "pmix/util/argv.h"
 
 #include "pdl_libltdl.h"
 
-
 /*
  * Public string showing the sysinfo ompi_linux component version number
  */
-const char *pmix_pdl_plibltpdl_component_version_string =
-    "PMIX pdl plibltdl MCA component version " PMIX_VERSION;
-
+const char *pmix_pdl_plibltpdl_component_version_string
+    = "PMIX pdl plibltdl MCA component version " PMIX_VERSION;
 
 /*
  * Local functions
@@ -75,7 +74,6 @@ pmix_pdl_plibltpdl_component_t mca_pdl_plibltpdl_component = {
     /* Now fill in the plibltdl component-specific members */
 };
 
-
 static int plibltpdl_component_register(void)
 {
     /* Register an info param indicating whether we have lt_dladvise
@@ -83,14 +81,10 @@ static int plibltpdl_component_register(void)
     bool supported = PMIX_INT_TO_BOOL(PMIX_DL_LIBLTDL_HAVE_LT_DLADVISE);
     mca_base_component_var_register(&mca_pdl_plibltpdl_component.base.base_version,
                                     "have_lt_dladvise",
-                                    "Whether the version of plibltdl that this component is built against supports lt_dladvise functionality or not",
-                                    MCA_BASE_VAR_TYPE_BOOL,
-                                    NULL,
-                                    0,
-                                    MCA_BASE_VAR_FLAG_DEFAULT_ONLY,
-                                    PMIX_INFO_LVL_7,
-                                    MCA_BASE_VAR_SCOPE_CONSTANT,
-                                    &supported);
+                                    "Whether the version of plibltdl that this component is built "
+                                    "against supports lt_dladvise functionality or not",
+                                    MCA_BASE_VAR_TYPE_BOOL, NULL, 0, MCA_BASE_VAR_FLAG_DEFAULT_ONLY,
+                                    PMIX_INFO_LVL_7, MCA_BASE_VAR_SCOPE_CONSTANT, &supported);
 
     return PMIX_SUCCESS;
 }
@@ -108,26 +102,22 @@ static int plibltpdl_component_open(void)
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    if (lt_dladvise_init(&c->advise_private_ext) ||
-        lt_dladvise_ext(&c->advise_private_ext)) {
+    if (lt_dladvise_init(&c->advise_private_ext) || lt_dladvise_ext(&c->advise_private_ext)) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    if (lt_dladvise_init(&c->advise_public_noext) ||
-        lt_dladvise_global(&c->advise_public_noext)) {
+    if (lt_dladvise_init(&c->advise_public_noext) || lt_dladvise_global(&c->advise_public_noext)) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    if (lt_dladvise_init(&c->advise_public_ext) ||
-        lt_dladvise_global(&c->advise_public_ext) ||
-        lt_dladvise_ext(&c->advise_public_ext)) {
+    if (lt_dladvise_init(&c->advise_public_ext) || lt_dladvise_global(&c->advise_public_ext)
+        || lt_dladvise_ext(&c->advise_public_ext)) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 #endif
 
     return PMIX_SUCCESS;
 }
-
 
 static int plibltpdl_component_close(void)
 {
@@ -144,7 +134,6 @@ static int plibltpdl_component_close(void)
 
     return PMIX_SUCCESS;
 }
-
 
 static int plibltpdl_component_query(mca_base_module_t **module, int *priority)
 {

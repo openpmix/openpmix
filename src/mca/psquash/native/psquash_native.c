@@ -4,6 +4,7 @@
  *                         All rights reserved.
  *
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,19 +16,19 @@
 
 #include "include/pmix_common.h"
 
-#include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_socket_errno.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 
-#include "src/mca/psquash/base/base.h"
 #include "psquash_native.h"
+#include "src/mca/psquash/base/base.h"
 
 static pmix_status_t native_init(void);
 
@@ -35,94 +36,88 @@ static void native_finalize(void);
 
 static pmix_status_t native_get_max_size(pmix_data_type_t type, size_t *size);
 
-static pmix_status_t native_encode_int(pmix_data_type_t type, void *src,
-                                       void *dst, size_t *size);
+static pmix_status_t native_encode_int(pmix_data_type_t type, void *src, void *dst, size_t *size);
 
-static pmix_status_t native_decode_int(pmix_data_type_t type, void *src,
-                                       size_t src_len, void *dest,
+static pmix_status_t native_decode_int(pmix_data_type_t type, void *src, size_t src_len, void *dest,
                                        size_t *dst_size);
 
-pmix_psquash_base_module_t pmix_psquash_native_module = {
-    .name = "native",
-    .int_type_is_encoded = false,
-    .init = native_init,
-    .finalize = native_finalize,
-    .get_max_size = native_get_max_size,
-    .encode_int = native_encode_int,
-    .decode_int = native_decode_int
-};
+pmix_psquash_base_module_t pmix_psquash_native_module = {.name = "native",
+                                                         .int_type_is_encoded = false,
+                                                         .init = native_init,
+                                                         .finalize = native_finalize,
+                                                         .get_max_size = native_get_max_size,
+                                                         .encode_int = native_encode_int,
+                                                         .decode_int = native_decode_int};
 
-#define NATIVE_PACK_CONVERT(ret, type, val)         \
-do {                                                \
-    (ret) = PMIX_SUCCESS;                           \
-    switch(type) {                                  \
-        case PMIX_INT16:                            \
-        case PMIX_UINT16:{                          \
-            uint16_t __tmp = (uint16_t)val;         \
-            val = pmix_htons(__tmp);                \
-            break;                                  \
-        }                                           \
-        case PMIX_INT:                              \
-        case PMIX_UINT:                             \
-        case PMIX_INT32:                            \
-        case PMIX_UINT32:{                          \
-            uint32_t __tmp = (uint32_t)val;         \
-            val = htonl(__tmp);                     \
-            break;                                  \
-        }                                           \
-        case PMIX_SIZE:                             \
-        case PMIX_INT64:                            \
-        case PMIX_UINT64:{                          \
-            uint64_t __tmp = (uint64_t)val;         \
-            val = pmix_hton64(__tmp);               \
-            break;                                  \
-        }                                           \
-        default:                                    \
-            (ret) = PMIX_ERR_BAD_PARAM;             \
-    }                                               \
-} while (0)
+#define NATIVE_PACK_CONVERT(ret, type, val)  \
+    do {                                     \
+        (ret) = PMIX_SUCCESS;                \
+        switch (type) {                      \
+        case PMIX_INT16:                     \
+        case PMIX_UINT16: {                  \
+            uint16_t __tmp = (uint16_t) val; \
+            val = pmix_htons(__tmp);         \
+            break;                           \
+        }                                    \
+        case PMIX_INT:                       \
+        case PMIX_UINT:                      \
+        case PMIX_INT32:                     \
+        case PMIX_UINT32: {                  \
+            uint32_t __tmp = (uint32_t) val; \
+            val = htonl(__tmp);              \
+            break;                           \
+        }                                    \
+        case PMIX_SIZE:                      \
+        case PMIX_INT64:                     \
+        case PMIX_UINT64: {                  \
+            uint64_t __tmp = (uint64_t) val; \
+            val = pmix_hton64(__tmp);        \
+            break;                           \
+        }                                    \
+        default:                             \
+            (ret) = PMIX_ERR_BAD_PARAM;      \
+        }                                    \
+    } while (0)
 
-#define NATIVE_UNPACK_CONVERT(ret, type, val)       \
-do {                                                \
-    (ret) = PMIX_SUCCESS;                           \
-    switch(type) {                                  \
-        case PMIX_INT16:                            \
-        case PMIX_UINT16:{                          \
-            uint16_t __tmp = (uint16_t)val;         \
-            val = pmix_ntohs(__tmp);                \
-            break;                                  \
-        }                                           \
-        case PMIX_INT:                              \
-        case PMIX_UINT:                             \
-        case PMIX_INT32:                            \
-        case PMIX_UINT32:{                          \
-            uint32_t __tmp = (uint32_t)val;         \
-            val = ntohl(__tmp);                     \
-            break;                                  \
-        }                                           \
-        case PMIX_INT64:                            \
-        case PMIX_SIZE:                             \
-        case PMIX_UINT64:{                          \
-            uint64_t __tmp = (uint64_t)val;         \
-            val = pmix_ntoh64(__tmp);               \
-            break;                                  \
-        }                                           \
-        default:                                    \
-            (ret) = PMIX_ERR_BAD_PARAM;             \
-    }                                               \
-} while (0)
+#define NATIVE_UNPACK_CONVERT(ret, type, val) \
+    do {                                      \
+        (ret) = PMIX_SUCCESS;                 \
+        switch (type) {                       \
+        case PMIX_INT16:                      \
+        case PMIX_UINT16: {                   \
+            uint16_t __tmp = (uint16_t) val;  \
+            val = pmix_ntohs(__tmp);          \
+            break;                            \
+        }                                     \
+        case PMIX_INT:                        \
+        case PMIX_UINT:                       \
+        case PMIX_INT32:                      \
+        case PMIX_UINT32: {                   \
+            uint32_t __tmp = (uint32_t) val;  \
+            val = ntohl(__tmp);               \
+            break;                            \
+        }                                     \
+        case PMIX_INT64:                      \
+        case PMIX_SIZE:                       \
+        case PMIX_UINT64: {                   \
+            uint64_t __tmp = (uint64_t) val;  \
+            val = pmix_ntoh64(__tmp);         \
+            break;                            \
+        }                                     \
+        default:                              \
+            (ret) = PMIX_ERR_BAD_PARAM;       \
+        }                                     \
+    } while (0)
 
 static pmix_status_t native_init(void)
 {
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psquash: native init");
+    pmix_output_verbose(2, pmix_globals.debug_output, "psquash: native init");
     return PMIX_SUCCESS;
 }
 
 static void native_finalize(void)
 {
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "psquash: native finalize");
+    pmix_output_verbose(2, pmix_globals.debug_output, "psquash: native finalize");
 }
 
 static pmix_status_t native_get_max_size(pmix_data_type_t type, size_t *size)
@@ -133,8 +128,7 @@ static pmix_status_t native_get_max_size(pmix_data_type_t type, size_t *size)
     return rc;
 }
 
-static pmix_status_t native_encode_int(pmix_data_type_t type, void *src,
-                                       void *dst, size_t *size)
+static pmix_status_t native_encode_int(pmix_data_type_t type, void *src, void *dst, size_t *size)
 {
     pmix_status_t rc;
     uint64_t tmp = 0;
@@ -157,8 +151,7 @@ static pmix_status_t native_encode_int(pmix_data_type_t type, void *src,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t native_decode_int(pmix_data_type_t type, void *src,
-                                       size_t src_len, void *dst,
+static pmix_status_t native_decode_int(pmix_data_type_t type, void *src, size_t src_len, void *dst,
                                        size_t *dst_size)
 {
     pmix_status_t rc;

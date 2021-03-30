@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,36 +24,31 @@
 
 #include <string.h>
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
-#endif  /* HAVE_SYS_TIME_H */
+#    include <sys/time.h>
+#endif /* HAVE_SYS_TIME_H */
 #include <stdarg.h>
 
+#include "src/common/pmix_iof.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/show_help.h"
-#include "src/common/pmix_iof.h"
 
-#include "src/mca/plog/base/base.h"
 #include "plog_stdfd.h"
-
+#include "src/mca/plog/base/base.h"
 
 /* Static API's */
 static int init(void);
 static void finalize(void);
-static pmix_status_t mylog(const pmix_proc_t *source,
-                           const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs,
-                           pmix_op_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
+                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
+                           void *cbdata);
 
 /* Module def */
-pmix_plog_module_t pmix_plog_stdfd_module = {
-    .name = "stdfd",
-    .init = init,
-    .finalize = finalize,
-    .log = mylog
-};
-
+pmix_plog_module_t pmix_plog_stdfd_module = {.name = "stdfd",
+                                             .init = init,
+                                             .finalize = finalize,
+                                             .log = mylog};
 
 static int init(void)
 {
@@ -67,15 +63,14 @@ static void finalize(void)
     pmix_argv_free(pmix_plog_stdfd_module.channels);
 }
 
-static pmix_status_t mylog(const pmix_proc_t *source,
-                           const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs,
-                           pmix_op_cbfunc_t cbfunc, void *cbdata)
+static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
+                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
+                           void *cbdata)
 {
     size_t n;
     pmix_status_t rc;
     pmix_byte_object_t bo;
-    pmix_iof_flags_t flags= {0};
+    pmix_iof_flags_t flags = {0};
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
@@ -88,7 +83,7 @@ static pmix_status_t mylog(const pmix_proc_t *source,
     }
 
     /* check to see if there are any relevant directives */
-    for (n=0; n < ndirs; n++) {
+    for (n = 0; n < ndirs; n++) {
         if (0 == strncmp(directives[n].key, PMIX_LOG_TIMESTAMP, PMIX_MAX_KEYLEN)) {
             flags.timestamp = directives[n].value.data.time;
         } else if (0 == strncmp(directives[n].key, PMIX_LOG_XML_OUTPUT, PMIX_MAX_KEYLEN)) {
@@ -100,7 +95,7 @@ static pmix_status_t mylog(const pmix_proc_t *source,
 
     /* check to see if there are any stdfd entries */
     rc = PMIX_ERR_TAKE_NEXT_OPTION;
-    for (n=0; n < ndata; n++) {
+    for (n = 0; n < ndata; n++) {
         if (PMIX_INFO_OP_IS_COMPLETE(&data[n])) {
             continue;
         }

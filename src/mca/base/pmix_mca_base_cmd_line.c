@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,13 +24,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "src/util/cmd_line.h"
+#include "include/pmix_common.h"
+#include "src/mca/base/base.h"
 #include "src/util/argv.h"
+#include "src/util/cmd_line.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
-#include "src/mca/base/base.h"
-#include "include/pmix_common.h"
-
 
 /*
  * Private variables
@@ -38,10 +38,8 @@
 /*
  * Private functions
  */
-static int process_arg(const char *param, const char *value,
-                       char ***params, char ***values);
+static int process_arg(const char *param, const char *value, char ***params, char ***values);
 static void add_to_env(char **params, char **values, char ***env);
-
 
 /*
  * Add -mca to the possible command line options list
@@ -51,25 +49,32 @@ int pmix_mca_base_cmd_line_setup(pmix_cmd_line_t *cmd)
     int ret = PMIX_SUCCESS;
 
     ret = pmix_cmd_line_make_opt3(cmd, '\0', PMIX_MCA_CMD_LINE_ID, PMIX_MCA_CMD_LINE_ID, 2,
-                                  "Pass context-specific MCA parameters; they are considered global if --g"PMIX_MCA_CMD_LINE_ID" is not used and only one context is specified (arg0 is the parameter name; arg1 is the parameter value)");
+                                  "Pass context-specific MCA parameters; they are considered "
+                                  "global if --g" PMIX_MCA_CMD_LINE_ID
+                                  " is not used and only one context is specified (arg0 is the "
+                                  "parameter name; arg1 is the parameter value)");
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
 
-    ret = pmix_cmd_line_make_opt3(cmd, '\0', "g"PMIX_MCA_CMD_LINE_ID, "g"PMIX_MCA_CMD_LINE_ID, 2,
-                                  "Pass global MCA parameters that are applicable to all contexts (arg0 is the parameter name; arg1 is the parameter value)");
+    ret = pmix_cmd_line_make_opt3(cmd, '\0', "g" PMIX_MCA_CMD_LINE_ID, "g" PMIX_MCA_CMD_LINE_ID, 2,
+                                  "Pass global MCA parameters that are applicable to all contexts "
+                                  "(arg0 is the parameter name; arg1 is the parameter value)");
 
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
 
     {
-        pmix_cmd_line_init_t entry =
-            {"mca_base_param_file_prefix", '\0', "am", NULL, 1,
-             NULL, PMIX_CMD_LINE_TYPE_STRING,
-             "Aggregate MCA parameter set file list",
-             PMIX_CMD_LINE_OTYPE_LAUNCH
-            };
+        pmix_cmd_line_init_t entry = {"mca_base_param_file_prefix",
+                                      '\0',
+                                      "am",
+                                      NULL,
+                                      1,
+                                      NULL,
+                                      PMIX_CMD_LINE_TYPE_STRING,
+                                      "Aggregate MCA parameter set file list",
+                                      PMIX_CMD_LINE_OTYPE_LAUNCH};
         ret = pmix_cmd_line_make_opt_mca(cmd, entry);
         if (PMIX_SUCCESS != ret) {
             return ret;
@@ -77,12 +82,15 @@ int pmix_mca_base_cmd_line_setup(pmix_cmd_line_t *cmd)
     }
 
     {
-        pmix_cmd_line_init_t entry =
-            {"mca_base_envar_file_prefix", '\0', "tune", NULL, 1,
-             NULL, PMIX_CMD_LINE_TYPE_STRING,
-             "Application profile options file list",
-             PMIX_CMD_LINE_OTYPE_DEBUG
-            };
+        pmix_cmd_line_init_t entry = {"mca_base_envar_file_prefix",
+                                      '\0',
+                                      "tune",
+                                      NULL,
+                                      1,
+                                      NULL,
+                                      PMIX_CMD_LINE_TYPE_STRING,
+                                      "Application profile options file list",
+                                      PMIX_CMD_LINE_OTYPE_DEBUG};
         ret = pmix_cmd_line_make_opt_mca(cmd, entry);
         if (PMIX_SUCCESS != ret) {
             return ret;
@@ -92,12 +100,11 @@ int pmix_mca_base_cmd_line_setup(pmix_cmd_line_t *cmd)
     return ret;
 }
 
-
 /*
  * Look for and handle any -mca options on the command line
  */
-int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd,
-                                        char ***context_env, char ***global_env)
+int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd, char ***context_env,
+                                        char ***global_env)
 {
     int i, num_insts, rc;
     char **params;
@@ -105,8 +112,8 @@ int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd,
 
     /* If no relevant parameters were given, just return */
 
-    if (!pmix_cmd_line_is_taken(cmd, PMIX_MCA_CMD_LINE_ID) &&
-        !pmix_cmd_line_is_taken(cmd, "g"PMIX_MCA_CMD_LINE_ID)) {
+    if (!pmix_cmd_line_is_taken(cmd, PMIX_MCA_CMD_LINE_ID)
+        && !pmix_cmd_line_is_taken(cmd, "g" PMIX_MCA_CMD_LINE_ID)) {
         return PMIX_SUCCESS;
     }
 
@@ -115,9 +122,10 @@ int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd,
     num_insts = pmix_cmd_line_get_ninsts(cmd, PMIX_MCA_CMD_LINE_ID);
     params = values = NULL;
     for (i = 0; i < num_insts; ++i) {
-        if (PMIX_SUCCESS != (rc = process_arg(pmix_cmd_line_get_param(cmd, PMIX_MCA_CMD_LINE_ID, i, 0),
-                                              pmix_cmd_line_get_param(cmd, PMIX_MCA_CMD_LINE_ID, i, 1),
-                                              &params, &values))) {
+        if (PMIX_SUCCESS
+            != (rc = process_arg(pmix_cmd_line_get_param(cmd, PMIX_MCA_CMD_LINE_ID, i, 0),
+                                 pmix_cmd_line_get_param(cmd, PMIX_MCA_CMD_LINE_ID, i, 1), &params,
+                                 &values))) {
             return rc;
         }
     }
@@ -129,12 +137,13 @@ int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd,
 
     /* Handle global parameters */
 
-    num_insts = pmix_cmd_line_get_ninsts(cmd, "g"PMIX_MCA_CMD_LINE_ID);
+    num_insts = pmix_cmd_line_get_ninsts(cmd, "g" PMIX_MCA_CMD_LINE_ID);
     params = values = NULL;
     for (i = 0; i < num_insts; ++i) {
-        if (PMIX_SUCCESS != (rc = process_arg(pmix_cmd_line_get_param(cmd, "g"PMIX_MCA_CMD_LINE_ID, i, 0),
-                                              pmix_cmd_line_get_param(cmd, "g"PMIX_MCA_CMD_LINE_ID, i, 1),
-                                              &params, &values))) {
+        if (PMIX_SUCCESS
+            != (rc = process_arg(pmix_cmd_line_get_param(cmd, "g" PMIX_MCA_CMD_LINE_ID, i, 0),
+                                 pmix_cmd_line_get_param(cmd, "g" PMIX_MCA_CMD_LINE_ID, i, 1),
+                                 &params, &values))) {
             return rc;
         }
     }
@@ -149,21 +158,18 @@ int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd,
     return PMIX_SUCCESS;
 }
 
-
-
 /*
  * Process a single MCA argument.
  */
-static int process_arg(const char *param, const char *value,
-                       char ***params, char ***values)
+static int process_arg(const char *param, const char *value, char ***params, char ***values)
 {
     int i;
     char *p1;
 
     /* check for quoted value */
-    if ('\"' == value[0] && '\"' == value[strlen(value)-1]) {
+    if ('\"' == value[0] && '\"' == value[strlen(value) - 1]) {
         p1 = strdup(&value[1]);
-        p1[strlen(p1)-1] = '\0';
+        p1[strlen(p1) - 1] = '\0';
     } else {
         p1 = strdup(value);
     }
@@ -200,7 +206,6 @@ static int process_arg(const char *param, const char *value,
     return PMIX_SUCCESS;
 }
 
-
 static void add_to_env(char **params, char **values, char ***env)
 {
     int i;
@@ -210,7 +215,7 @@ static void add_to_env(char **params, char **values, char ***env)
        vars of the form PMIX_MCA_PREFIX*=value. */
 
     for (i = 0; NULL != params && NULL != params[i]; ++i) {
-        (void) pmix_mca_base_var_env_name (params[i], &name);
+        (void) pmix_mca_base_var_env_name(params[i], &name);
         pmix_setenv(name, values[i], true, env);
         free(name);
     }
@@ -221,10 +226,10 @@ void pmix_mca_base_cmd_line_wrap_args(char **args)
     int i;
     char *tstr;
 
-    for (i=0; NULL != args && NULL != args[i]; i++) {
-        if (0 == strcmp(args[i], "-"PMIX_MCA_CMD_LINE_ID) ||
-            0 == strcmp(args[i], "--"PMIX_MCA_CMD_LINE_ID)) {
-            if (NULL == args[i+1] || NULL == args[i+2]) {
+    for (i = 0; NULL != args && NULL != args[i]; i++) {
+        if (0 == strcmp(args[i], "-" PMIX_MCA_CMD_LINE_ID)
+            || 0 == strcmp(args[i], "--" PMIX_MCA_CMD_LINE_ID)) {
+            if (NULL == args[i + 1] || NULL == args[i + 2]) {
                 /* this should be impossible as the error would
                  * have been detected well before here, but just
                  * be safe */

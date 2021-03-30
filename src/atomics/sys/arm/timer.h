@@ -2,6 +2,7 @@
  * Copyright (c) 2008      The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,8 +17,7 @@
 
 typedef uint64_t pmix_timer_t;
 
-static inline pmix_timer_t
-pmix_sys_timer_get_cycles(void)
+static inline pmix_timer_t pmix_sys_timer_get_cycles(void)
 {
     pmix_timer_t ret;
     struct tms accurate_clock;

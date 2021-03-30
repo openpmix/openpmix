@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,15 +25,15 @@
  */
 
 #define _GNU_SOURCE
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
-#include <signal.h>
+#include <unistd.h>
 
-#include <pmix.h>
 #include "examples.h"
+#include <pmix.h>
 
 static pmix_proc_t myproc;
 
@@ -42,20 +43,21 @@ int main(int argc, char **argv)
     pmix_info_t *info, *directives;
     bool flag;
     pmix_proc_t proc;
-    bool syslog=false, global=false;
+    bool syslog = false, global = false;
 
     /* check for CLI directives */
     if (1 < argc) {
-        if (0 == strcmp(argv[argc-1], "--syslog")) {
+        if (0 == strcmp(argv[argc - 1], "--syslog")) {
             syslog = true;
-        } else if (0 == strcmp(argv[argc-1], "--global-syslog")) {
+        } else if (0 == strcmp(argv[argc - 1], "--global-syslog")) {
             global = true;
         }
     }
     /* init us - note that the call to "init" includes the return of
      * any job-related info provided by the RM. */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
         exit(0);
     }
     fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
@@ -69,8 +71,8 @@ int main(int argc, char **argv)
         PMIX_INFO_LOAD(&directives[0], PMIX_LOG_GENERATE_TIMESTAMP, NULL, PMIX_BOOL);
         rc = PMIx_Log(info, 1, directives, 1);
         if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Log stderr failed: %s\n",
-                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Log stderr failed: %s\n", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
             goto fence;
         }
         /* if requested, output one to syslog */
@@ -80,15 +82,16 @@ int main(int argc, char **argv)
             PMIX_INFO_LOAD(&info[0], PMIX_LOG_LOCAL_SYSLOG, "SYSLOG message\n", PMIX_STRING);
             rc = PMIx_Log(info, 1, NULL, 0);
             if (PMIX_SUCCESS != rc) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Log syslog failed: %s\n",
-                        myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+                fprintf(stderr, "Client ns %s rank %d: PMIx_Log syslog failed: %s\n", myproc.nspace,
+                        myproc.rank, PMIx_Error_string(rc));
                 goto fence;
             }
         }
         if (global) {
             fprintf(stderr, "LOG TO GLOBAL SYSLOG\n");
             PMIX_INFO_CREATE(info, 1);
-            PMIX_INFO_LOAD(&info[0], PMIX_LOG_GLOBAL_SYSLOG, "GLOBAL SYSLOG message\n", PMIX_STRING);
+            PMIX_INFO_LOAD(&info[0], PMIX_LOG_GLOBAL_SYSLOG, "GLOBAL SYSLOG message\n",
+                           PMIX_STRING);
             rc = PMIx_Log(info, 1, NULL, 0);
             if (PMIX_SUCCESS != rc) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Log GLOBAL syslog failed: %s\n",
@@ -98,7 +101,7 @@ int main(int argc, char **argv)
         }
     }
 
-  fence:
+fence:
     fprintf(stderr, "%s:%d Calling Fence\n", myproc.nspace, myproc.rank);
     /* call fence to synchronize with our peers - no need to
      * collect any info as we didn't "put" anything */
@@ -107,20 +110,22 @@ int main(int argc, char **argv)
     PMIX_INFO_LOAD(info, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
     PMIX_PROC_LOAD(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, info, 1))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
         goto done;
     }
     PMIX_INFO_FREE(info, 1);
 
-
-  done:
+done:
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return(0);
+    return (0);
 }

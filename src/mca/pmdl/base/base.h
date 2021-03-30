@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,21 +27,19 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_SYS_TIME_H
-#include <sys/time.h> /* for struct timeval */
+#    include <sys/time.h> /* for struct timeval */
 #endif
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/pmdl/pmdl.h"
-
 
 BEGIN_C_DECLS
 
@@ -79,16 +78,12 @@ typedef struct pmix_pmdl_globals_t pmix_pmdl_globals_t;
 
 PMIX_EXPORT extern pmix_pmdl_globals_t pmix_pmdl_globals;
 
-PMIX_EXPORT pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace,
-                                                        const pmix_info_t info[], size_t ninfo,
-                                                        pmix_list_t *ilist);
-PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_nspace(pmix_namespace_t *nptr,
-                                                      pmix_info_t *info);
-PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_nspace_kv(pmix_namespace_t *nptr,
-                                                         pmix_kval_t *kv);
+PMIX_EXPORT pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info[],
+                                                        size_t ninfo, pmix_list_t *ilist);
+PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info);
+PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv);
 PMIX_EXPORT pmix_status_t pmix_pmdl_base_register_nspace(pmix_namespace_t *nptr);
-PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_client(pmix_namespace_t *nptr,
-                                                      pmix_rank_t rank,
+PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_client(pmix_namespace_t *nptr, pmix_rank_t rank,
                                                       uint32_t appnum);
 PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_fork(const pmix_proc_t *peer, char ***env);
 PMIX_EXPORT void pmix_pmdl_base_deregister_nspace(const char *nptr);

@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,15 +32,15 @@
 
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #include <ctype.h>
 
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
+#include "src/mca/mca.h"
 
-#include "src/mca/pfexec/pfexec.h"
 #include "src/mca/pfexec/linux/pfexec_linux.h"
+#include "src/mca/pfexec/pfexec.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -68,8 +69,6 @@ pmix_pfexec_base_component_t mca_pfexec_linux_component = {
         .pmix_mca_query_component = component_query,
     },
 };
-
-
 
 static pmix_status_t component_open(void)
 {

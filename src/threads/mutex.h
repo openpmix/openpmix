@@ -17,6 +17,7 @@
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  *
  * Copyright (c) 2017      Intel, Inc. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,8 +25,8 @@
  * $HEADER$
  */
 
-#ifndef  PMIX_MUTEX_H
-#define  PMIX_MUTEX_H 1
+#ifndef PMIX_MUTEX_H
+#define PMIX_MUTEX_H 1
 
 #include "pmix_config.h"
 
@@ -55,7 +56,6 @@ typedef struct pmix_mutex_t pmix_recursive_mutex_t;
  */
 static inline int pmix_mutex_trylock(pmix_mutex_t *mutex);
 
-
 /**
  * Acquire a mutex.
  *
@@ -63,14 +63,12 @@ static inline int pmix_mutex_trylock(pmix_mutex_t *mutex);
  */
 static inline void pmix_mutex_lock(pmix_mutex_t *mutex);
 
-
 /**
  * Release a mutex.
  *
  * @param mutex         Address of the mutex.
  */
 static inline void pmix_mutex_unlock(pmix_mutex_t *mutex);
-
 
 /**
  * Try to acquire a mutex using atomic operations.
@@ -80,14 +78,12 @@ static inline void pmix_mutex_unlock(pmix_mutex_t *mutex);
  */
 static inline int pmix_mutex_atomic_trylock(pmix_mutex_t *mutex);
 
-
 /**
  * Acquire a mutex using atomic operations.
  *
  * @param mutex         Address of the mutex.
  */
 static inline void pmix_mutex_atomic_lock(pmix_mutex_t *mutex);
-
 
 /**
  * Release a mutex using atomic operations.
@@ -100,4 +96,4 @@ END_C_DECLS
 
 #include "mutex_unix.h"
 
-#endif                          /* PMIX_MUTEX_H */
+#endif /* PMIX_MUTEX_H */

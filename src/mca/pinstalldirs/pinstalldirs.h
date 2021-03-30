@@ -3,6 +3,7 @@
  * Copyright (c) 2006-2015 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,8 +18,8 @@
 
 #include "include/pmix_common.h"
 
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
+#include "src/mca/mca.h"
 
 BEGIN_C_DECLS
 
@@ -27,20 +28,20 @@ BEGIN_C_DECLS
  * once pmix_init has been called is the pmix_pinstall_dirs structure
  * and the pmix_pinstall_dirs_expand() call */
 struct pmix_pinstall_dirs_t {
-    char* prefix;
-    char* exec_prefix;
-    char* bindir;
-    char* sbindir;
-    char* libexecdir;
-    char* datarootdir;
-    char* datadir;
-    char* sysconfdir;
-    char* sharedstatedir;
-    char* localstatedir;
-    char* libdir;
-    char* includedir;
-    char* infodir;
-    char* mandir;
+    char *prefix;
+    char *exec_prefix;
+    char *bindir;
+    char *sbindir;
+    char *libexecdir;
+    char *datarootdir;
+    char *datadir;
+    char *sysconfdir;
+    char *sharedstatedir;
+    char *localstatedir;
+    char *libdir;
+    char *includedir;
+    char *infodir;
+    char *mandir;
 
     /* Rather than using pkg{data,lib,includedir}, use our own
        pmix{data,lib,includedir}, which is always set to
@@ -49,9 +50,9 @@ struct pmix_pinstall_dirs_t {
        Note that these field names match macros set by configure that
        are used in Makefile.am files.  E.g., project help files are
        installed into $(pmixdatadir). */
-    char* pmixdatadir;
-    char* pmixlibdir;
-    char* pmixincludedir;
+    char *pmixdatadir;
+    char *pmixlibdir;
+    char *pmixincludedir;
 };
 typedef struct pmix_pinstall_dirs_t pmix_pinstall_dirs_t;
 
@@ -61,8 +62,7 @@ PMIX_EXPORT extern pmix_pinstall_dirs_t pmix_pinstall_dirs;
 /**
  * Expand out path variables (such as ${prefix}) in the input string
  * using the current pmix_pinstall_dirs structure */
-PMIX_EXPORT char * pmix_pinstall_dirs_expand(const char* input);
-
+PMIX_EXPORT char *pmix_pinstall_dirs_expand(const char *input);
 
 /* optional initialization function */
 typedef void (*pmix_install_dirs_init_fn_t)(pmix_info_t info[], size_t ninfo);
@@ -88,8 +88,7 @@ typedef struct pmix_pinstalldirs_base_component_2_0_0_t pmix_pinstalldirs_base_c
 /*
  * Macro for use in components that are of type pinstalldirs
  */
-#define PMIX_PINSTALLDIRS_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("pinstalldirs", 1, 0, 0)
+#define PMIX_PINSTALLDIRS_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("pinstalldirs", 1, 0, 0)
 
 END_C_DECLS
 

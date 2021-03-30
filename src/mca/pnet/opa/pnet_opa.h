@@ -14,7 +14,6 @@
 
 #include "src/include/pmix_config.h"
 
-
 #include "src/mca/pnet/pnet.h"
 
 BEGIN_C_DECLS
@@ -33,10 +32,10 @@ PMIX_EXPORT extern pmix_pnet_opa_component_t mca_pnet_opa_component;
 extern pmix_pnet_module_t pmix_opa_module;
 
 /* define a key for any blob we need to send in a launch msg */
-#define PMIX_PNET_OPA_BLOB  "pmix.pnet.opa.blob"
+#define PMIX_PNET_OPA_BLOB "pmix.pnet.opa.blob"
 
 /* define an inventory key */
-#define PMIX_OPA_INVENTORY_KEY  "pmix.opa.inventory"
+#define PMIX_OPA_INVENTORY_KEY "pmix.opa.inventory"
 
 END_C_DECLS
 

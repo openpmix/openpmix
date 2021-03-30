@@ -28,20 +28,20 @@
 
 #include "include/pmix_common.h"
 
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pwd.h>
 
 #include "src/class/pmix_list.h"
-#include "src/util/printf.h"
-#include "src/util/error.h"
-#include "src/util/argv.h"
-#include "src/util/pmix_environ.h"
 #include "src/include/pmix_globals.h"
+#include "src/util/argv.h"
+#include "src/util/error.h"
+#include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 
-#define PMIX_DEFAULT_TMPDIR "/tmp"
-#define PMIX_MAX_ENVAR_LENGTH   100000
+#define PMIX_DEFAULT_TMPDIR   "/tmp"
+#define PMIX_MAX_ENVAR_LENGTH 100000
 
 /*
  * Merge two environ-like char arrays, ensuring that there are no
@@ -101,8 +101,7 @@ char **pmix_environ_merge(char **minor, char **major)
  * Portable version of setenv(), allowing editing of any environ-like
  * array
  */
- pmix_status_t pmix_setenv(const char *name, const char *value, bool overwrite,
-                char ***env)
+pmix_status_t pmix_setenv(const char *name, const char *value, bool overwrite, char ***env)
 {
     int i;
     char *newvalue, *compare;
@@ -110,7 +109,7 @@ char **pmix_environ_merge(char **minor, char **major)
     bool valid;
 
     /* Check the bozo case */
-    if( NULL == env ) {
+    if (NULL == env) {
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -118,7 +117,7 @@ char **pmix_environ_merge(char **minor, char **major)
         /* check the string for unacceptable length - i.e., ensure
          * it is NULL-terminated */
         valid = false;
-        for (i=0; i < PMIX_MAX_ENVAR_LENGTH; i++) {
+        for (i = 0; i < PMIX_MAX_ENVAR_LENGTH; i++) {
             if ('\0' == value[i]) {
                 valid = true;
                 break;
@@ -137,7 +136,7 @@ char **pmix_environ_merge(char **minor, char **major)
            astonishmet for PMIX developers (i.e., those that don't
            check the return code of pmix_setenv() and notice that we
            returned an error if you passed in the real environ) */
-#if defined (HAVE_SETENV)
+#if defined(HAVE_SETENV)
         if (NULL == value) {
             /* this is actually an unsetenv request */
             unsetenv(name);
@@ -215,12 +214,11 @@ char **pmix_environ_merge(char **minor, char **major)
     return PMIX_SUCCESS;
 }
 
-
 /*
  * Portable version of unsetenv(), allowing editing of any
  * environ-like array
  */
- pmix_status_t pmix_unsetenv(const char *name, char ***env)
+pmix_status_t pmix_unsetenv(const char *name, char ***env)
 {
     int i;
     char *compare;
@@ -264,9 +262,9 @@ char **pmix_environ_merge(char **minor, char **major)
     return (found) ? PMIX_SUCCESS : PMIX_ERR_NOT_FOUND;
 }
 
-const char* pmix_tmp_directory(void)
+const char *pmix_tmp_directory(void)
 {
-    const char* str;
+    const char *str;
 
     if (NULL == (str = getenv("TMPDIR")))
         if (NULL == (str = getenv("TEMP")))
@@ -275,7 +273,7 @@ const char* pmix_tmp_directory(void)
     return str;
 }
 
-const char* pmix_home_directory(uid_t uid)
+const char *pmix_home_directory(uid_t uid)
 {
     const char *home = NULL;
 
@@ -290,8 +288,7 @@ const char* pmix_home_directory(uid_t uid)
     return home;
 }
 
-pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars,
-                                       pmix_list_t *ilist)
+pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list_t *ilist)
 {
     int i, j;
     size_t len;
@@ -300,9 +297,9 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars,
     bool duplicate;
 
     /* harvest envars to pass along */
-    for (j=0; NULL != incvars[j]; j++) {
+    for (j = 0; NULL != incvars[j]; j++) {
         len = strlen(incvars[j]);
-        if ('*' == incvars[j][len-1]) {
+        if ('*' == incvars[j][len - 1]) {
             --len;
         }
         for (i = 0; NULL != environ[i]; ++i) {
@@ -317,7 +314,7 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars,
                 ++string_key;
                 /* see if we already have this envar on the list */
                 duplicate = false;
-                PMIX_LIST_FOREACH(kv, ilist, pmix_kval_t) {
+                PMIX_LIST_FOREACH (kv, ilist, pmix_kval_t) {
                     if (PMIX_ENVAR != kv->value->type) {
                         continue;
                     }
@@ -354,12 +351,12 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars,
 
     /* now check the exclusions and remove any that match */
     if (NULL != excvars) {
-        for (j=0; NULL != excvars[j]; j++) {
+        for (j = 0; NULL != excvars[j]; j++) {
             len = strlen(excvars[j]);
-            if ('*' == excvars[j][len-1]) {
+            if ('*' == excvars[j][len - 1]) {
                 --len;
             }
-            PMIX_LIST_FOREACH_SAFE(kv, next, ilist, pmix_kval_t) {
+            PMIX_LIST_FOREACH_SAFE (kv, next, ilist, pmix_kval_t) {
                 if (0 == strncmp(kv->value->data.envar.envar, excvars[j], len)) {
                     pmix_list_remove_item(ilist, &kv->super);
                     PMIX_RELEASE(kv);

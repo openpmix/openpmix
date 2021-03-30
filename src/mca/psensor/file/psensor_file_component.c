@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,18 +44,16 @@ pmix_psensor_file_component_t mca_psensor_file_component = {
     }
 };
 
-
 static int psensor_file_open(void)
 {
     PMIX_CONSTRUCT(&mca_psensor_file_component.trackers, pmix_list_t);
     return PMIX_SUCCESS;
 }
 
-
 static int psensor_file_query(pmix_mca_base_module_t **module, int *priority)
 {
-    *priority = 20;  /* irrelevant */
-    *module = (pmix_mca_base_module_t *)&pmix_psensor_file_module;
+    *priority = 20; /* irrelevant */
+    *module = (pmix_mca_base_module_t *) &pmix_psensor_file_module;
     return PMIX_SUCCESS;
 }
 

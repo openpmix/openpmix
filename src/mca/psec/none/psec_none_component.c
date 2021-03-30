@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,14 +30,14 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
+#include "psec_none.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/psec/psec.h"
-#include "psec_none.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
-static pmix_psec_module_t* assign_module(void);
+static pmix_psec_module_t *assign_module(void);
 
 /*
  * Instantiate the public struct with all of our public information
@@ -65,18 +66,17 @@ pmix_psec_base_component_t mca_psec_none_component = {
     .assign_module = assign_module
 };
 
-
 static int component_open(void)
 {
     int index;
-    const pmix_mca_base_var_storage_t *value=NULL;
+    const pmix_mca_base_var_storage_t *value = NULL;
 
     /* we only allow ourselves to be considered IF the user
      * specifically requested so */
     if (0 > (index = pmix_mca_base_var_find("pmix", "psec", NULL, NULL))) {
         return PMIX_ERROR;
     }
-    pmix_mca_base_var_get_value (index, &value, NULL, NULL);
+    pmix_mca_base_var_get_value(index, &value, NULL, NULL);
     if (NULL != value && NULL != value->stringval && '\0' != value->stringval[0]) {
         if (NULL != strstr(value->stringval, "none")) {
             return PMIX_SUCCESS;
@@ -85,21 +85,19 @@ static int component_open(void)
     return PMIX_ERROR;
 }
 
-
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 0;
-    *module = (pmix_mca_base_module_t *)&pmix_none_module;
+    *module = (pmix_mca_base_module_t *) &pmix_none_module;
     return PMIX_SUCCESS;
 }
-
 
 static int component_close(void)
 {
     return PMIX_SUCCESS;
 }
 
-static pmix_psec_module_t* assign_module(void)
+static pmix_psec_module_t *assign_module(void)
 {
     return &pmix_none_module;
 }

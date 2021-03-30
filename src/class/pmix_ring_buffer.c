@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2010      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,9 +22,9 @@
 
 #include "src/include/pmix_config.h"
 
-#include <stdlib.h>
-#include <stdio.h>
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "include/pmix_common.h"
 #include "src/class/pmix_ring_buffer.h"
@@ -32,8 +33,7 @@
 static void pmix_ring_buffer_construct(pmix_ring_buffer_t *);
 static void pmix_ring_buffer_destruct(pmix_ring_buffer_t *);
 
-PMIX_CLASS_INSTANCE(pmix_ring_buffer_t, pmix_object_t,
-                    pmix_ring_buffer_construct,
+PMIX_CLASS_INSTANCE(pmix_ring_buffer_t, pmix_object_t, pmix_ring_buffer_construct,
                     pmix_ring_buffer_destruct);
 
 /*
@@ -52,7 +52,7 @@ static void pmix_ring_buffer_construct(pmix_ring_buffer_t *ring)
  */
 static void pmix_ring_buffer_destruct(pmix_ring_buffer_t *ring)
 {
-    if( NULL != ring->addr) {
+    if (NULL != ring->addr) {
         free(ring->addr);
         ring->addr = NULL;
     }
@@ -63,7 +63,7 @@ static void pmix_ring_buffer_destruct(pmix_ring_buffer_t *ring)
 /**
  * initialize a ring object
  */
-int pmix_ring_buffer_init(pmix_ring_buffer_t* ring, int size)
+int pmix_ring_buffer_init(pmix_ring_buffer_t *ring, int size)
 {
     /* check for errors */
     if (NULL == ring) {
@@ -71,7 +71,7 @@ int pmix_ring_buffer_init(pmix_ring_buffer_t* ring, int size)
     }
 
     /* Allocate and set the ring to NULL */
-    ring->addr = (char **)calloc(size * sizeof(char*), 1);
+    ring->addr = (char **) calloc(size * sizeof(char *), 1);
     if (NULL == ring->addr) { /* out of memory */
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -80,19 +80,19 @@ int pmix_ring_buffer_init(pmix_ring_buffer_t* ring, int size)
     return PMIX_SUCCESS;
 }
 
-void* pmix_ring_buffer_push(pmix_ring_buffer_t *ring, void *ptr)
+void *pmix_ring_buffer_push(pmix_ring_buffer_t *ring, void *ptr)
 {
-    char *p=NULL;
+    char *p = NULL;
 
     if (NULL != ring->addr[ring->head]) {
-        p = (char*)ring->addr[ring->head];
+        p = (char *) ring->addr[ring->head];
         if (ring->tail == ring->size - 1) {
             ring->tail = 0;
         } else {
             ring->tail = ring->head + 1;
         }
     }
-    ring->addr[ring->head] = (char*)ptr;
+    ring->addr[ring->head] = (char *) ptr;
     if (ring->tail < 0) {
         ring->tail = ring->head;
     }
@@ -101,20 +101,20 @@ void* pmix_ring_buffer_push(pmix_ring_buffer_t *ring, void *ptr)
     } else {
         ring->head++;
     }
-    return (void*)p;
+    return (void *) p;
 }
 
-void* pmix_ring_buffer_pop(pmix_ring_buffer_t *ring)
+void *pmix_ring_buffer_pop(pmix_ring_buffer_t *ring)
 {
-    char *p=NULL;
+    char *p = NULL;
 
     if (-1 == ring->tail) {
         /* nothing has been put on the ring yet */
         p = NULL;
     } else {
-        p = (char*)ring->addr[ring->tail];
+        p = (char *) ring->addr[ring->tail];
         ring->addr[ring->tail] = NULL;
-        if (ring->tail == ring->size-1) {
+        if (ring->tail == ring->size - 1) {
             ring->tail = 0;
         } else {
             ring->tail++;
@@ -124,12 +124,12 @@ void* pmix_ring_buffer_pop(pmix_ring_buffer_t *ring)
             ring->tail = -1;
         }
     }
-    return (void*)p;
+    return (void *) p;
 }
 
- void* pmix_ring_buffer_poke(pmix_ring_buffer_t *ring, int i)
- {
-    char *p=NULL;
+void *pmix_ring_buffer_poke(pmix_ring_buffer_t *ring, int i)
+{
+    char *p = NULL;
     int offset;
 
     if (ring->size <= i || -1 == ring->tail) {
@@ -150,5 +150,5 @@ void* pmix_ring_buffer_pop(pmix_ring_buffer_t *ring)
         }
         p = ring->addr[offset];
     }
-    return (void*)p;
+    return (void *) p;
 }

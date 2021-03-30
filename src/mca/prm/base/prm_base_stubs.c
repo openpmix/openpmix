@@ -6,6 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,19 +18,19 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #ifdef HAVE_SYS_UTSNAME_H
-#include <sys/utsname.h>
+#    include <sys/utsname.h>
 #endif
 #include <time.h>
 
@@ -38,17 +39,16 @@
 
 #include "src/class/pmix_list.h"
 #include "src/mca/preg/preg.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/pmix_environ.h"
-#include "src/server/pmix_server_ops.h"
 
 #include "src/mca/prm/base/base.h"
 
-static void cicbfunc(pmix_status_t status,
-                     void *cbdata)
+static void cicbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_prm_rollup_t *rollup = (pmix_prm_rollup_t*)cbdata;
+    pmix_prm_rollup_t *rollup = (pmix_prm_rollup_t *) cbdata;
 
     PMIX_ACQUIRE_THREAD(&rollup->lock);
     /* check if they had an error */
@@ -73,10 +73,8 @@ static void cicbfunc(pmix_status_t status,
     return;
 }
 
-pmix_status_t pmix_prm_base_notify(pmix_status_t status,
-                                   const pmix_proc_t *source,
-                                   pmix_data_range_t range,
-                                   const pmix_info_t info[], size_t ninfo,
+pmix_status_t pmix_prm_base_notify(pmix_status_t status, const pmix_proc_t *source,
+                                   pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_prm_base_active_module_t *active;
@@ -107,18 +105,18 @@ pmix_status_t pmix_prm_base_notify(pmix_status_t status,
      * the requests counter has been fully updated */
     PMIX_ACQUIRE_THREAD(&myrollup->lock);
 
-    PMIX_LIST_FOREACH(active, &pmix_prm_globals.actives, pmix_prm_base_active_module_t) {
+    PMIX_LIST_FOREACH (active, &pmix_prm_globals.actives, pmix_prm_base_active_module_t) {
         if (NULL != active->module->notify) {
-            pmix_output_verbose(5, pmix_prm_base_framework.framework_output,
-                                "NOTIFYING %s", active->module->name);
-            rc = active->module->notify(status, source, range, info, ninfo, cicbfunc, (void*)myrollup);
+            pmix_output_verbose(5, pmix_prm_base_framework.framework_output, "NOTIFYING %s",
+                                active->module->name);
+            rc = active->module->notify(status, source, range, info, ninfo, cicbfunc,
+                                        (void *) myrollup);
             /* if they return succeeded, then nothing
              * to wait for here */
             if (PMIX_OPERATION_IN_PROGRESS == rc) {
                 myrollup->requests++;
-            } else if (PMIX_OPERATION_SUCCEEDED == rc ||
-                       PMIX_ERR_TAKE_NEXT_OPTION == rc ||
-                       PMIX_ERR_NOT_SUPPORTED == rc) {
+            } else if (PMIX_OPERATION_SUCCEEDED == rc || PMIX_ERR_TAKE_NEXT_OPTION == rc
+                       || PMIX_ERR_NOT_SUPPORTED == rc) {
                 continue;
             } else {
                 /* a true error - we need to wait for

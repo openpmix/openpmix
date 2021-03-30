@@ -4,6 +4,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,13 +20,11 @@
 
 #include "pdl_pdlopen.h"
 
-
 /*
  * Public string showing the sysinfo ompi_linux component version number
  */
-const char *pmix_pdl_pdlopen_component_version_string =
-    "PMIX pdl pdlopen MCA component version " PMIX_VERSION;
-
+const char *pmix_pdl_pdlopen_component_version_string
+    = "PMIX pdl pdlopen MCA component version " PMIX_VERSION;
 
 /*
  * Local functions
@@ -72,29 +71,21 @@ pmix_pdl_pdlopen_component_t mca_pdl_pdlopen_component = {
     },
 };
 
-
 static int pdlopen_component_register(void)
 {
     int ret;
 
     mca_pdl_pdlopen_component.filename_suffixes_mca_storage = ".so,.dylib,.dll,.sl";
-    ret =
-        pmix_mca_base_component_var_register(&mca_pdl_pdlopen_component.base.base_version,
-                                             "filename_suffixes",
-                                             "Comma-delimited list of filename suffixes that the pdlopen component will try",
-                                             PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                             NULL,
-                                             0,
-                                             PMIX_MCA_BASE_VAR_FLAG_SETTABLE,
-                                             PMIX_INFO_LVL_5,
-                                             PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                             &mca_pdl_pdlopen_component.filename_suffixes_mca_storage);
+    ret = pmix_mca_base_component_var_register(
+        &mca_pdl_pdlopen_component.base.base_version, "filename_suffixes",
+        "Comma-delimited list of filename suffixes that the pdlopen component will try",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_5,
+        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &mca_pdl_pdlopen_component.filename_suffixes_mca_storage);
     if (ret < 0) {
         return ret;
     }
-    mca_pdl_pdlopen_component.filename_suffixes =
-        pmix_argv_split(mca_pdl_pdlopen_component.filename_suffixes_mca_storage,
-                        ',');
+    mca_pdl_pdlopen_component.filename_suffixes
+        = pmix_argv_split(mca_pdl_pdlopen_component.filename_suffixes_mca_storage, ',');
 
     return PMIX_SUCCESS;
 }
@@ -103,7 +94,6 @@ static int pdlopen_component_open(void)
 {
     return PMIX_SUCCESS;
 }
-
 
 static int pdlopen_component_close(void)
 {
@@ -114,7 +104,6 @@ static int pdlopen_component_close(void)
 
     return PMIX_SUCCESS;
 }
-
 
 static int pdlopen_component_query(pmix_mca_base_module_t **module, int *priority)
 {

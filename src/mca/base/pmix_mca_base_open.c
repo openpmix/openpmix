@@ -27,20 +27,20 @@
 #include <stdio.h>
 #include <string.h>
 #ifdef HAVE_SYSLOG_H
-#include <syslog.h>
+#    include <syslog.h>
 #endif
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 
-#include "src/mca/pinstalldirs/pinstalldirs.h"
-#include "src/util/output.h"
-#include "src/util/printf.h"
-#include "src/mca/mca.h"
+#include "include/pmix_common.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
-#include "include/pmix_common.h"
+#include "src/mca/mca.h"
+#include "src/mca/pinstalldirs/pinstalldirs.h"
+#include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 
 /*
  * Public variables
@@ -61,7 +61,6 @@ static char *pmix_mca_base_verbose = NULL;
 static void set_defaults(pmix_output_stream_t *lds);
 static void parse_verbose(char *e, pmix_output_stream_t *lds);
 
-
 /*
  * Main MCA initialization.
  */
@@ -80,20 +79,20 @@ int pmix_mca_base_open(void)
     /* define the system and user default paths */
     pmix_mca_base_system_default_path = strdup(pmix_pinstall_dirs.pmixlibdir);
 #if PMIX_WANT_HOME_CONFIG_FILES
-    value = (char*)pmix_home_directory(geteuid());
-    rc = asprintf(&pmix_mca_base_user_default_path, "%s"PMIX_PATH_SEP".pmix"PMIX_PATH_SEP"components", value);
+    value = (char *) pmix_home_directory(geteuid());
+    rc = asprintf(&pmix_mca_base_user_default_path,
+                  "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "components", value);
     if (0 > rc) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 #endif
 
-
     /* see if the user wants to override the defaults */
     if (NULL == pmix_mca_base_user_default_path) {
         value = strdup(pmix_mca_base_system_default_path);
     } else {
-        rc = asprintf(&value, "%s%c%s", pmix_mca_base_system_default_path,
-                      PMIX_ENV_SEP, pmix_mca_base_user_default_path);
+        rc = asprintf(&value, "%s%c%s", pmix_mca_base_system_default_path, PMIX_ENV_SEP,
+                      pmix_mca_base_user_default_path);
         if (0 > rc) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
@@ -101,51 +100,55 @@ int pmix_mca_base_open(void)
 
     pmix_mca_base_component_path = value;
     var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_path",
-                                   "Path where to look for additional components",
-                                   PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                   PMIX_INFO_LVL_9,
-                                   PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                   &pmix_mca_base_component_path);
+                                        "Path where to look for additional components",
+                                        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                        PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+                                        PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                        &pmix_mca_base_component_path);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "component_path",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     free(value);
 
-    pmix_mca_base_component_show_load_errors = (bool) PMIX_SHOW_LOAD_ERRORS_DEFAULT;;
-    var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_show_load_errors",
-                                   "Whether to show errors for components that failed to load or not",
-                                   PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                   PMIX_INFO_LVL_9,
-                                   PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                   &pmix_mca_base_component_show_load_errors);
-    (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "component_show_load_errors",
+    pmix_mca_base_component_show_load_errors = (bool) PMIX_SHOW_LOAD_ERRORS_DEFAULT;
+    ;
+    var_id = pmix_mca_base_var_register(
+        "pmix", "mca", "base", "component_show_load_errors",
+        "Whether to show errors for components that failed to load or not",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_component_show_load_errors);
+    (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL,
+                                              "component_show_load_errors",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     pmix_mca_base_component_track_load_errors = false;
-    var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_track_load_errors",
-                                        "Whether to track errors for components that failed to load or not",
-                                        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                        PMIX_INFO_LVL_9,
-                                        PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                        &pmix_mca_base_component_track_load_errors);
+    var_id = pmix_mca_base_var_register(
+        "pmix", "mca", "base", "component_track_load_errors",
+        "Whether to track errors for components that failed to load or not",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_component_track_load_errors);
 
     pmix_mca_base_component_disable_dlopen = false;
-    var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_disable_dlopen",
-                                   "Whether to attempt to disable opening dynamic components or not",
-                                   PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                   PMIX_INFO_LVL_9,
-                                   PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                   &pmix_mca_base_component_disable_dlopen);
-    (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "component_disable_dlopen",
+    var_id = pmix_mca_base_var_register(
+        "pmix", "mca", "base", "component_disable_dlopen",
+        "Whether to attempt to disable opening dynamic components or not",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_component_disable_dlopen);
+    (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL,
+                                              "component_disable_dlopen",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
     /* What verbosity level do we want for the default 0 stream? */
     pmix_mca_base_verbose = "stderr";
-    var_id = pmix_mca_base_var_register("pmix", "mca", "base", "verbose",
-                                   "Specifies where the default error output stream goes (this is separate from distinct help messages).  Accepts a comma-delimited list of: stderr, stdout, syslog, syslogpri:<notice|info|debug>, syslogid:<str> (where str is the prefix string for all syslog notices), file[:filename] (if filename is not specified, a default filename is used), fileappend (if not specified, the file is opened for truncation), level[:N] (if specified, integer verbose level; otherwise, 0 is implied)",
-                                   PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                   PMIX_INFO_LVL_9,
-                                   PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                   &pmix_mca_base_verbose);
+    var_id = pmix_mca_base_var_register(
+        "pmix", "mca", "base", "verbose",
+        "Specifies where the default error output stream goes (this is separate from distinct help "
+        "messages).  Accepts a comma-delimited list of: stderr, stdout, syslog, "
+        "syslogpri:<notice|info|debug>, syslogid:<str> (where str is the prefix string for all "
+        "syslog notices), file[:filename] (if filename is not specified, a default filename is "
+        "used), fileappend (if not specified, the file is opened for truncation), level[:N] (if "
+        "specified, integer verbose level; otherwise, 0 is implied)",
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_verbose);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "verbose",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
@@ -155,21 +158,20 @@ int pmix_mca_base_open(void)
     } else {
         set_defaults(&lds);
     }
-    gethostname(hostname, PMIX_MAXHOSTNAMELEN-1);
+    gethostname(hostname, PMIX_MAXHOSTNAMELEN - 1);
     rc = asprintf(&lds.lds_prefix, "[%s:%05d] ", hostname, getpid());
     if (0 > rc) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     pmix_output_reopen(0, &lds);
-    pmix_output_verbose (PMIX_MCA_BASE_VERBOSE_COMPONENT, 0,
-                         "mca: base: opening components at %s", pmix_mca_base_component_path);
+    pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, 0, "mca: base: opening components at %s",
+                        pmix_mca_base_component_path);
     free(lds.lds_prefix);
 
     /* Open up the component repository */
 
     return pmix_mca_base_component_repository_init();
 }
-
 
 /*
  * Set sane default values for the lds
@@ -182,11 +184,10 @@ static void set_defaults(pmix_output_stream_t *lds)
     PMIX_CONSTRUCT(lds, pmix_output_stream_t);
 #if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
     lds->lds_syslog_priority = LOG_INFO;
-#endif  /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
+#endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
     lds->lds_syslog_ident = "ompi";
     lds->lds_want_stderr = true;
 }
-
 
 /*
  * Parse the value of an environment variable describing verbosity
@@ -218,9 +219,8 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds)
             have_output = true;
 #else
             pmix_output(0, "syslog support requested but not available on this system");
-#endif  /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
-        }
-        else if (strncasecmp(ptr, "syslogpri:", 10) == 0) {
+#endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
+        } else if (strncasecmp(ptr, "syslogpri:", 10) == 0) {
 #if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
             lds->lds_want_syslog = true;
             have_output = true;
@@ -232,14 +232,14 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds)
                 lds->lds_syslog_priority = LOG_DEBUG;
 #else
             pmix_output(0, "syslog support requested but not available on this system");
-#endif  /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
+#endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
         } else if (strncasecmp(ptr, "syslogid:", 9) == 0) {
 #if defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H)
             lds->lds_want_syslog = true;
             lds->lds_syslog_ident = ptr + 9;
 #else
             pmix_output(0, "syslog support requested but not available on this system");
-#endif  /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
+#endif /* defined(HAVE_SYSLOG) && defined(HAVE_SYSLOG_H) */
         }
 
         else if (strcasecmp(ptr, "stdout") == 0) {

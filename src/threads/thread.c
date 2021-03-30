@@ -13,6 +13,7 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,9 +23,9 @@
 
 #include "pmix_config.h"
 
+#include "include/pmix_common.h"
 #include "src/threads/threads.h"
 #include "src/threads/tsd.h"
-#include "include/pmix_common.h"
 
 bool pmix_debug_threads = false;
 
@@ -40,10 +41,7 @@ struct pmix_tsd_key_value {
 static struct pmix_tsd_key_value *pmix_tsd_key_values = NULL;
 static int pmix_tsd_key_values_count = 0;
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_thread_t,
-                                pmix_object_t,
-                                pmix_thread_construct, NULL);
-
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_thread_t, pmix_object_t, pmix_thread_construct, NULL);
 
 /*
  * Constructor
@@ -64,11 +62,10 @@ int pmix_thread_start(pmix_thread_t *t)
         }
     }
 
-    rc = pthread_create(&t->t_handle, NULL, (void*(*)(void*)) t->t_run, t);
+    rc = pthread_create(&t->t_handle, NULL, (void *(*) (void *) ) t->t_run, t);
 
     return (rc == 0) ? PMIX_SUCCESS : PMIX_ERROR;
 }
-
 
 int pmix_thread_join(pmix_thread_t *t, void **thr_return)
 {
@@ -77,12 +74,10 @@ int pmix_thread_join(pmix_thread_t *t, void **thr_return)
     return (rc == 0) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
-
 bool pmix_thread_self_compare(pmix_thread_t *t)
 {
     return t->t_handle == pthread_self();
 }
-
 
 pmix_thread_t *pmix_thread_get_self(void)
 {
@@ -96,16 +91,17 @@ void pmix_thread_kill(pmix_thread_t *t, int sig)
     pthread_kill(t->t_handle, sig);
 }
 
-int pmix_tsd_key_create(pmix_tsd_key_t *key,
-                    pmix_tsd_destructor_t destructor)
+int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor)
 {
     int rc;
     rc = pthread_key_create(key, destructor);
     if ((0 == rc) && (pthread_self() == pmix_main_thread)) {
-        pmix_tsd_key_values = (struct pmix_tsd_key_value *)realloc(pmix_tsd_key_values, (pmix_tsd_key_values_count+1) * sizeof(struct pmix_tsd_key_value));
+        pmix_tsd_key_values = (struct pmix_tsd_key_value *)
+            realloc(pmix_tsd_key_values,
+                    (pmix_tsd_key_values_count + 1) * sizeof(struct pmix_tsd_key_value));
         pmix_tsd_key_values[pmix_tsd_key_values_count].key = *key;
         pmix_tsd_key_values[pmix_tsd_key_values_count].destructor = destructor;
-        pmix_tsd_key_values_count ++;
+        pmix_tsd_key_values_count++;
     }
     return rc;
 }
@@ -113,9 +109,9 @@ int pmix_tsd_key_create(pmix_tsd_key_t *key,
 int pmix_tsd_keys_destruct()
 {
     int i;
-    void * ptr;
-    for (i=0; i<pmix_tsd_key_values_count; i++) {
-        if(PMIX_SUCCESS == pmix_tsd_getspecific(pmix_tsd_key_values[i].key, &ptr)) {
+    void *ptr;
+    for (i = 0; i < pmix_tsd_key_values_count; i++) {
+        if (PMIX_SUCCESS == pmix_tsd_getspecific(pmix_tsd_key_values[i].key, &ptr)) {
             if (NULL != pmix_tsd_key_values[i].destructor) {
                 pmix_tsd_key_values[i].destructor(ptr);
                 pmix_tsd_setspecific(pmix_tsd_key_values[i].key, NULL);
@@ -129,6 +125,7 @@ int pmix_tsd_keys_destruct()
     return PMIX_SUCCESS;
 }
 
-void pmix_thread_set_main() {
+void pmix_thread_set_main()
+{
     pmix_main_thread = pthread_self();
 }

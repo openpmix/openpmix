@@ -21,22 +21,22 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <errno.h>
 #include <stdio.h>
 #ifdef HAVE_STDLIB_H
-#include <stdlib.h>
+#    include <stdlib.h>
 #endif
 
 #include "include/pmix.h"
 
+#include "src/client/pmix_client_ops.h"
+#include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/client/pmix_client_ops.h"
 
 #define PMIX_EMBED_DATA_BUFFER(b, db)                       \
     do {                                                    \
@@ -53,28 +53,28 @@
         (db)->bytes_used = 0;                               \
     } while (0)
 
-#define PMIX_EXTRACT_DATA_BUFFER(b, db)                 \
-    do {                                                \
-        (db)->base_ptr = (b)->base_ptr;                 \
-        (db)->pack_ptr = (b)->pack_ptr;                 \
-        (db)->unpack_ptr = (b)->unpack_ptr;             \
-        (db)->bytes_allocated = (b)->bytes_allocated;   \
-        (db)->bytes_used = (b)->bytes_used;             \
-        (b)->base_ptr = NULL;                           \
-        (b)->pack_ptr = NULL;                           \
-        (b)->unpack_ptr = NULL;                         \
-        (b)->bytes_allocated = 0;                       \
-        (b)->bytes_used = 0;                            \
+#define PMIX_EXTRACT_DATA_BUFFER(b, db)               \
+    do {                                              \
+        (db)->base_ptr = (b)->base_ptr;               \
+        (db)->pack_ptr = (b)->pack_ptr;               \
+        (db)->unpack_ptr = (b)->unpack_ptr;           \
+        (db)->bytes_allocated = (b)->bytes_allocated; \
+        (db)->bytes_used = (b)->bytes_used;           \
+        (b)->base_ptr = NULL;                         \
+        (b)->pack_ptr = NULL;                         \
+        (b)->unpack_ptr = NULL;                       \
+        (b)->bytes_allocated = 0;                     \
+        (b)->bytes_used = 0;                          \
     } while (0)
 
-static pmix_peer_t* find_peer(const pmix_proc_t *proc)
+static pmix_peer_t *find_peer(const pmix_proc_t *proc)
 {
     pmix_peer_t *peer;
     pmix_proc_t wildcard;
     pmix_value_t *value;
     int i;
 
-    if (NULL == proc ) {
+    if (NULL == proc) {
         return pmix_globals.mypeer;
     }
 
@@ -85,8 +85,10 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
 
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         /* see if we know this proc */
-        for (i=0; i < pmix_server_globals.clients.size; i++) {
-            if (NULL == (peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i))) {
+        for (i = 0; i < pmix_server_globals.clients.size; i++) {
+            if (NULL
+                == (peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
+                                                                       i))) {
                 continue;
             }
             if (0 == strncmp(proc->nspace, peer->nptr->nspace, PMIX_MAX_NSLEN)) {
@@ -131,7 +133,9 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
 
     /* If the target is for the server, then
      * pack it using that peer. */
-    if (0 == strncmp(proc->nspace, pmix_client_globals.myserver->info->pname.nspace, PMIX_MAX_NSLEN)) {
+    if (0
+        == strncmp(proc->nspace, pmix_client_globals.myserver->info->pname.nspace,
+                   PMIX_MAX_NSLEN)) {
         return pmix_client_globals.myserver;
     }
 
@@ -168,10 +172,8 @@ static pmix_peer_t* find_peer(const pmix_proc_t *proc)
     return peer;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target,
-                                         pmix_data_buffer_t *buffer,
-                                         void *src, int32_t num_vals,
-                                         pmix_data_type_t type)
+PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_buffer_t *buffer,
+                                         void *src, int32_t num_vals, pmix_data_type_t type)
 {
     pmix_status_t rc;
     pmix_buffer_t buf;
@@ -188,8 +190,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target,
     PMIX_EMBED_DATA_BUFFER(&buf, buffer);
 
     /* pack the value */
-    PMIX_BFROPS_PACK(rc, peer,
-                     &buf, src, num_vals, type);
+    PMIX_BFROPS_PACK(rc, peer, &buf, src, num_vals, type);
 
     /* extract the data buffer - the pointers may have changed */
     PMIX_EXTRACT_DATA_BUFFER(&buf, buffer);
@@ -198,10 +199,8 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target,
     return rc;
 }
 
-
-PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *source,
-                                           pmix_data_buffer_t *buffer, void *dest,
-                                           int32_t *max_num_values,
+PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *source, pmix_data_buffer_t *buffer,
+                                           void *dest, int32_t *max_num_values,
                                            pmix_data_type_t type)
 {
     pmix_status_t rc;
@@ -219,8 +218,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *source,
     PMIX_EMBED_DATA_BUFFER(&buf, buffer);
 
     /* unpack the value */
-    PMIX_BFROPS_UNPACK(rc, peer,
-                       &buf, dest, max_num_values, type);
+    PMIX_BFROPS_UNPACK(rc, peer, &buf, dest, max_num_values, type);
 
     /* extract the data buffer - the pointers may have changed */
     PMIX_EXTRACT_DATA_BUFFER(&buf, buffer);
@@ -229,32 +227,28 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *source,
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Data_copy(void **dest, void *src,
-                                         pmix_data_type_t type)
+PMIX_EXPORT pmix_status_t PMIx_Data_copy(void **dest, void *src, pmix_data_type_t type)
 {
     pmix_status_t rc;
 
     /* copy the value */
-    PMIX_BFROPS_COPY(rc, pmix_globals.mypeer,
-                     dest, src, type);
+    PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, dest, src, type);
 
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Data_print(char **output, char *prefix,
-                                          void *src, pmix_data_type_t type)
+PMIX_EXPORT pmix_status_t PMIx_Data_print(char **output, char *prefix, void *src,
+                                          pmix_data_type_t type)
 {
     pmix_status_t rc;
 
     /* print the value */
-    PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
-                      output, prefix, src, type);
+    PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer, output, prefix, src, type);
 
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
-                                                 pmix_data_buffer_t *src)
+PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest, pmix_data_buffer_t *src)
 {
     pmix_status_t rc;
     pmix_buffer_t buf1, buf2;
@@ -268,13 +262,130 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
     PMIX_EMBED_DATA_BUFFER(&buf2, src);
 
     /* copy payload */
-    PMIX_BFROPS_COPY_PAYLOAD(rc, pmix_globals.mypeer,
-                             &buf1, &buf2);
+    PMIX_BFROPS_COPY_PAYLOAD(rc, pmix_globals.mypeer, &buf1, &buf2);
 
     /* extract the dest data buffer - the pointers may have changed */
     PMIX_EXTRACT_DATA_BUFFER(&buf1, dest);
     PMIX_EXTRACT_DATA_BUFFER(&buf2, src);
 
     /* no need to cleanup as all storage was xfered */
+    return rc;
+}
+
+pmix_status_t PMIx_Data_unload(pmix_data_buffer_t *buffer,
+                               pmix_byte_object_t *payload)
+{
+    /* check that buffer is not null */
+    if (!buffer) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* were we given someplace to point to the payload */
+    if (NULL == payload) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* init default response */
+    PMIX_BYTE_OBJECT_CONSTRUCT(payload);
+
+    /* anything in the buffer - if not, nothing to do */
+    if (NULL == buffer->base_ptr || 0 == buffer->bytes_used) {
+        return PMIX_SUCCESS;
+    }
+
+    /* if nothing has been unpacked, we can pass the entire
+     * region back and protect it - no need to copy. This is
+     * an optimization */
+    if (buffer->unpack_ptr == buffer->base_ptr) {
+        payload->bytes = buffer->base_ptr;
+        payload->size = buffer->bytes_used;
+        buffer->base_ptr = NULL;
+        buffer->bytes_used = 0;
+        goto cleanup;
+    }
+
+    /* okay, we have something to provide - pass it back */
+    payload->size = buffer->bytes_used - (buffer->unpack_ptr - buffer->base_ptr);
+    if (0 < payload->size) {
+        /* we cannot just set the pointer as it might be
+         * partway in a malloc'd region */
+        payload->bytes = (char*)malloc(payload->size);
+        memcpy(payload->bytes, buffer->unpack_ptr, payload->size);
+    }
+
+cleanup:
+    /* All done - reset the buffer */
+    PMIX_DATA_BUFFER_DESTRUCT(buffer);
+    PMIX_DATA_BUFFER_CONSTRUCT(buffer);
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t PMIx_Data_load(pmix_data_buffer_t *buffer,
+                             pmix_byte_object_t *payload)
+{
+    /* check to see if the buffer has been initialized */
+    if (NULL == buffer) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* check if buffer already has payload - free it if so */
+    PMIX_DATA_BUFFER_DESTRUCT(buffer);
+    PMIX_DATA_BUFFER_CONSTRUCT(buffer);
+
+    /* if it's a NULL payload, just set things and return */
+    if (NULL == payload) {
+        return PMIX_SUCCESS;
+    }
+
+    /* populate the buffer */
+    buffer->base_ptr = payload->bytes;
+
+    /* set pack/unpack pointers */
+    buffer->pack_ptr = ((char*)buffer->base_ptr) + payload->size;
+    buffer->unpack_ptr = buffer->base_ptr;
+
+    /* set counts for size and space */
+    buffer->bytes_allocated = buffer->bytes_used = payload->size;
+
+    /* protect the payload */
+    payload->bytes = NULL;
+    payload->size = 0;
+
+    /* All done */
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
+                              const pmix_byte_object_t *payload)
+{
+    pmix_data_buffer_t src;
+    pmix_status_t rc;
+
+    /* check to see if the buffer has been initialized */
+    if (NULL == buffer) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* check if buffer already has payload - free it if so */
+    PMIX_DATA_BUFFER_DESTRUCT(buffer);
+    PMIX_DATA_BUFFER_CONSTRUCT(buffer);
+
+    /* if it's a NULL payload, we are done */
+    if (NULL == payload) {
+        return PMIX_SUCCESS;
+    }
+
+    /* setup the source */
+    src.base_ptr = payload->bytes;
+    src.pack_ptr = ((char*)src.base_ptr) + payload->size;
+    src.unpack_ptr = src.base_ptr;
+    src.bytes_allocated =src.bytes_used = payload->size;
+
+    /* execute a copy operation */
+    rc = PMIx_Data_copy_payload(buffer, &src);
+    /* do NOT destruct the source as that would release
+     * data in the payload */
+
     return rc;
 }

@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,10 +28,10 @@
 #include "src/include/pmix_socket_errno.h"
 
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 
 #include "src/include/pmix_globals.h"
@@ -42,13 +43,13 @@
 pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid)
 {
 #if defined(SO_PEERCRED)
-#ifdef HAVE_STRUCT_SOCKPEERCRED_UID
-#define HAVE_STRUCT_UCRED_UID
+#    ifdef HAVE_STRUCT_SOCKPEERCRED_UID
+#        define HAVE_STRUCT_UCRED_UID
     struct sockpeercred ucred;
-#else
+#    else
     struct ucred ucred;
-#endif
-    socklen_t crlen = sizeof (ucred);
+#    endif
+    socklen_t crlen = sizeof(ucred);
 #endif
 
 #if defined(SO_PEERCRED) && (defined(HAVE_STRUCT_UCRED_UID) || defined(HAVE_STRUCT_UCRED_CR_UID))
@@ -58,24 +59,23 @@ pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid)
     if (getsockopt(sd, SOL_SOCKET, SO_PEERCRED, &ucred, &crlen) < 0) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "getid: getsockopt SO_PEERCRED failed: %s",
-                            strerror (pmix_socket_errno));
+                            strerror(pmix_socket_errno));
         return PMIX_ERR_INVALID_CRED;
     }
-#if defined(HAVE_STRUCT_UCRED_UID)
+#    if defined(HAVE_STRUCT_UCRED_UID)
     *uid = ucred.uid;
     *gid = ucred.gid;
-#else
+#    else
     *uid = ucred.cr_uid;
     *gid = ucred.cr_gid;
-#endif
+#    endif
 
 #elif defined(HAVE_GETPEEREID)
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "getid: checking getpeereid for peer credentials");
     if (0 != getpeereid(sd, uid, gid)) {
-        pmix_output_verbose(2, pmix_globals.debug_output,
-                            "getid: getsockopt getpeereid failed: %s",
-                            strerror (pmix_socket_errno));
+        pmix_output_verbose(2, pmix_globals.debug_output, "getid: getsockopt getpeereid failed: %s",
+                            strerror(pmix_socket_errno));
         return PMIX_ERR_INVALID_CRED;
     }
 #else
