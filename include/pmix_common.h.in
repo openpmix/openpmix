@@ -684,9 +684,16 @@ typedef uint32_t pmix_rank_t;
 
 
 /* debugger attributes */
-#define PMIX_DEBUG_STOP_ON_EXEC             "pmix.dbg.exec"         // (bool) job is being spawned under debugger - instruct it to pause on start
-#define PMIX_DEBUG_STOP_IN_INIT             "pmix.dbg.init"         // (bool) instruct job to stop during PMIx init
-#define PMIX_DEBUG_WAIT_FOR_NOTIFY          "pmix.dbg.notify"       // (bool) block at desired point until receiving debugger release notification
+#define PMIX_DEBUG_STOP_ON_EXEC             "pmix.dbg.exec"         // (pmix_rank_t) stop specified rank(s) on exec and notify ready-to-debug
+                                                                    //        Can be a pmix_data_array_t if an array of individual processes are
+                                                                    //        specified
+#define PMIX_DEBUG_STOP_IN_INIT             "pmix.dbg.init"         // (pmix_rank_t) stop specified rank(s) in PMIx_Init and notify ready-to-debug
+                                                                    //        Can be a pmix_data_array_t if an array of individual processes are
+                                                                    //        specified
+#define PMIX_DEBUG_STOP_IN_APP              "pmix.dbg.notify"       // (pmix_rank_t) direct specified ranks to stop at application-specific point and
+                                                                    //        notify ready-to-debug. Can be a pmix_data_array_t if an array of individual
+                                                                    //        processes are specified
+#define PMIX_BREAKPOINT                     "pmix.brkpnt"           // (char*) string ID of the breakpoint where the process(es) is(are) waiting
 #define PMIX_DEBUG_TARGET                   "pmix.dbg.tgt"          // (pmix_proc_t*) Identifier of proc(s) to be debugged
 #define PMIX_DEBUG_DAEMONS_PER_PROC         "pmix.dbg.dpproc"       // (uint16_t) Number of debugger daemons to be spawned per application
                                                                     //        process. The launcher is to pass the identifier of the namespace to
@@ -1164,7 +1171,7 @@ typedef int pmix_status_t;
 
 /* Debugger ops */
 #define PMIX_DEBUGGER_RELEASE                       -3      // replaced deprecated PMIX_ERR_DEBUGGER_RELEASE
-#define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
+#define PMIX_READY_FOR_DEBUG                        -58     // accompanied by PMIX_BREAKPOINT indicating where proc is waiting
 
 /* query errors */
 #define PMIX_QUERY_PARTIAL_SUCCESS                  -104
