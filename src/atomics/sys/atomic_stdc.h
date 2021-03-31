@@ -4,6 +4,8 @@
  *                         reserved.
  * Copyright (c) 2018-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -73,11 +75,11 @@ static inline void pmix_atomic_wmb(void)
 
 static inline void pmix_atomic_rmb(void)
 {
-#    if PMIX_ASSEMBLY_ARCH == PMIX_X86_64
+#    if defined(PMIX_ATOMIC_X86_64)
     /* work around a bug in older gcc versions (observed in gcc 6.x)
      * where acquire seems to get treated as a no-op instead of being
      * equivalent to __asm__ __volatile__("": : :"memory") on x86_64 */
-    pmix_atomic_mb();
+    __asm__ __volatile__("" : : : "memory");
 #    else
     atomic_thread_fence(memory_order_acquire);
 #    endif
@@ -293,34 +295,5 @@ static inline void pmix_atomic_unlock(pmix_atomic_lock_t *lock)
     atomic_flag_clear((volatile void *) lock);
 #    endif
 }
-
-#    if PMIX_HAVE_C11_CSWAP_INT128
-
-/* the C11 atomic compare-exchange is lock free so use it */
-#        define pmix_atomic_compare_exchange_strong_128 atomic_compare_exchange_strong
-
-#        define PMIX_HAVE_ATOMIC_COMPARE_EXCHANGE_128 1
-
-#    elif PMIX_HAVE_SYNC_BUILTIN_CSWAP_INT128
-
-/* fall back on the __sync builtin if available since it will emit the expected instruction on
- * x86_64 (cmpxchng16b) */
-__pmix_attribute_always_inline__ static inline bool
-pmix_atomic_compare_exchange_strong_128(pmix_atomic_int128_t *addr, pmix_int128_t *oldval,
-                                        pmix_int128_t newval)
-{
-    pmix_int128_t prev = __sync_val_compare_and_swap(addr, *oldval, newval);
-    bool ret = prev == *oldval;
-    *oldval = prev;
-    return ret;
-}
-
-#        define PMIX_HAVE_ATOMIC_COMPARE_EXCHANGE_128 1
-
-#    else
-
-#        define PMIX_HAVE_ATOMIC_COMPARE_EXCHANGE_128 0
-
-#    endif
 
 #endif /* !defined(PMIX_ATOMIC_STDC_H) */

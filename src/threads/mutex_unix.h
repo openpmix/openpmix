@@ -58,8 +58,6 @@ struct pmix_mutex_t {
     const char *m_lock_file;
     int m_lock_line;
 #endif
-
-    pmix_atomic_lock_t m_lock_atomic;
 };
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mutex_t);
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_recursive_mutex_t);
@@ -75,13 +73,13 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_recursive_mutex_t);
         {                                                                                        \
             .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),                                         \
             .m_lock_pthread = PTHREAD_MUTEX_INITIALIZER, .m_lock_debug = 0, .m_lock_file = NULL, \
-            .m_lock_line = 0, .m_lock_atomic = PMIX_ATOMIC_LOCK_INIT,                            \
+            .m_lock_line = 0,                                                                    \
         }
 #else
 #    define PMIX_MUTEX_STATIC_INIT                                                               \
         {                                                                                        \
             .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),                                         \
-            .m_lock_pthread = PTHREAD_MUTEX_INITIALIZER, .m_lock_atomic = PMIX_ATOMIC_LOCK_INIT, \
+            .m_lock_pthread = PTHREAD_MUTEX_INITIALIZER,                                         \
         }
 #endif
 
@@ -92,14 +90,13 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_recursive_mutex_t);
             {                                                                                  \
                 .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),                                   \
                 .m_lock_pthread = PMIX_PTHREAD_RECURSIVE_MUTEX_INITIALIZER, .m_lock_debug = 0, \
-                .m_lock_file = NULL, .m_lock_line = 0, .m_lock_atomic = PMIX_ATOMIC_LOCK_INIT, \
+                .m_lock_file = NULL, .m_lock_line = 0,                                         \
             }
 #    else
 #        define PMIX_RECURSIVE_MUTEX_STATIC_INIT                            \
             {                                                               \
                 .super = PMIX_OBJ_STATIC_INIT(pmix_mutex_t),                \
                 .m_lock_pthread = PMIX_PTHREAD_RECURSIVE_MUTEX_INITIALIZER, \
-                .m_lock_atomic = PMIX_ATOMIC_LOCK_INIT,                     \
             }
 #    endif
 
@@ -154,34 +151,6 @@ static inline void pmix_mutex_unlock(pmix_mutex_t *m)
 #endif
 }
 
-/************************************************************************
- *
- * mutex operations (atomic versions)
- *
- ************************************************************************/
-
-#if PMIX_HAVE_ATOMIC_SPINLOCKS
-
-/************************************************************************
- * Spin Locks
- ************************************************************************/
-
-static inline int pmix_mutex_atomic_trylock(pmix_mutex_t *m)
-{
-    return pmix_atomic_trylock(&m->m_lock_atomic);
-}
-
-static inline void pmix_mutex_atomic_lock(pmix_mutex_t *m)
-{
-    pmix_atomic_lock(&m->m_lock_atomic);
-}
-
-static inline void pmix_mutex_atomic_unlock(pmix_mutex_t *m)
-{
-    pmix_atomic_unlock(&m->m_lock_atomic);
-}
-
-#else
 
 /************************************************************************
  * Standard locking
@@ -201,8 +170,6 @@ static inline void pmix_mutex_atomic_unlock(pmix_mutex_t *m)
 {
     pmix_mutex_unlock(m);
 }
-
-#endif
 
 END_C_DECLS
 
