@@ -120,3 +120,6 @@ is made to a desirable server. Guidance can be in the form
 of the namespace or PID of a specific server, a directive to
 connect to a system server, a specific URI to use, or the name
 of a rendezvous file.
+
+Some connection handles have been read from files named pmix.*
+in subdirectories of $TMPDIR; delete them if they are stale.
