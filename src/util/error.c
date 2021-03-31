@@ -48,8 +48,8 @@ PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
 
     case PMIX_DEBUGGER_RELEASE:
         return "DEBUGGER-RELEASE";
-    case PMIX_DEBUG_WAITING_FOR_NOTIFY:
-        return "DEBUG-WAITING-FOR-NOTIFY";
+    case PMIX_READY_FOR_DEBUG:
+        return "READY-FOR-DEBUG";
 
     case PMIX_ERR_PROC_RESTART:
         return "PROC_RESTART";

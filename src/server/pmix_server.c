@@ -284,15 +284,12 @@ static void debugger_aggregator(size_t evhdlr_registration_id, pmix_status_t sta
     }
 
     /* track the number of waiting-for-notify alerts we get */
-    nptr->num_waiting++;
+    nptr->num_waiting--;
 
-    /* if one local proc called us, then we assume all must - this
-     * is probably not a fully accurate assumption, but the best
-     * we can do at the moment */
-    if (nptr->num_waiting == nptr->nlocalprocs) {
+    if (nptr->num_waiting <= 0) {
         PMIX_LOAD_PROCID(&proc, source->nspace, PMIX_RANK_LOCAL_PEERS);
         /* pass an event to our host */
-        rc = pmix_prm.notify(status, &proc, PMIX_RANGE_RM, NULL, 0, NULL, NULL);
+        rc = pmix_prm.notify(status, &proc, PMIX_RANGE_RM, info, ninfo, NULL, NULL);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             PMIX_ERROR_LOG(rc);
         }

@@ -173,7 +173,7 @@ int main(int argc, char **argv)
      * directive is provided so that something like an MPI implementation
      * can do some initial setup in MPI_Init prior to pausing for the
      * debugger */
-    if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, PMIX_DEBUG_WAIT_FOR_NOTIFY, NULL, 0, &val))) {
+    if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, PMIX_DEBUG_STOP_IN_APP, NULL, 0, &val))) {
         /* register for debugger release */
         DEBUG_CONSTRUCT_LOCK(&mylock);
         PMIX_INFO_CREATE(info, 1);

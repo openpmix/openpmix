@@ -819,32 +819,37 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
     wildcard.rank = PMIX_RANK_WILDCARD;
     PMIX_INFO_LOAD(&ginfo, PMIX_OPTIONAL, NULL, PMIX_BOOL);
     if (PMIX_SUCCESS == PMIx_Get(&wildcard, PMIX_DEBUG_STOP_IN_INIT, &ginfo, 1, &val)) {
+        /* are we one of the procs to stop? */
+        if (PMIX_CHECK_RANK(val->data.rank, pmix_globals.myid.rank)) {
+            /* if the value was found, then we need to wait for debugger attach here */
+            /* register for the debugger release notification */
+            PMIX_CONSTRUCT_LOCK(&reglock);
+            PMIX_CONSTRUCT_LOCK(&releaselock);
+            PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
+            PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-DEBUGGER", PMIX_STRING);
+            pmix_output_verbose(2, pmix_client_globals.event_output,
+                                "[%s:%d] REGISTERING WAIT FOR DEBUGGER", pmix_globals.myid.nspace,
+                                pmix_globals.myid.rank);
+            code = PMIX_DEBUGGER_RELEASE;
+            PMIx_Register_event_handler(&code, 1, evinfo, 2, notification_fn, evhandler_reg_callbk,
+                                        (void *) &reglock);
+            /* wait for registration to complete */
+            PMIX_WAIT_THREAD(&reglock);
+            PMIX_DESTRUCT_LOCK(&reglock);
+            PMIX_INFO_DESTRUCT(&evinfo[0]);
+            PMIX_INFO_DESTRUCT(&evinfo[1]);
+            /* notify the host that we are waiting */
+            PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+            PMIX_INFO_LOAD(&evinfo[1], PMIX_BREAKPOINT, "pmix-init", PMIX_STRING);
+            PMIx_Notify_event(PMIX_READY_FOR_DEBUG, &pmix_globals.myid, PMIX_RANGE_RM,
+                              evinfo, 2, NULL, NULL);
+            PMIX_INFO_DESTRUCT(&evinfo[0]);
+            PMIX_INFO_DESTRUCT(&evinfo[1]);
+            /* wait for release to arrive */
+            PMIX_WAIT_THREAD(&releaselock);
+            PMIX_DESTRUCT_LOCK(&releaselock);
+        }
         PMIX_VALUE_FREE(val, 1); // cleanup memory
-        /* if the value was found, then we need to wait for debugger attach here */
-        /* register for the debugger release notification */
-        PMIX_CONSTRUCT_LOCK(&reglock);
-        PMIX_CONSTRUCT_LOCK(&releaselock);
-        PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
-        PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-DEBUGGER", PMIX_STRING);
-        pmix_output_verbose(2, pmix_client_globals.event_output,
-                            "[%s:%d] REGISTERING WAIT FOR DEBUGGER", pmix_globals.myid.nspace,
-                            pmix_globals.myid.rank);
-        code = PMIX_DEBUGGER_RELEASE;
-        PMIx_Register_event_handler(&code, 1, evinfo, 2, notification_fn, evhandler_reg_callbk,
-                                    (void *) &reglock);
-        /* wait for registration to complete */
-        PMIX_WAIT_THREAD(&reglock);
-        PMIX_DESTRUCT_LOCK(&reglock);
-        PMIX_INFO_DESTRUCT(&evinfo[0]);
-        PMIX_INFO_DESTRUCT(&evinfo[1]);
-        /* notify the host that we are waiting */
-        PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-        PMIx_Notify_event(PMIX_DEBUG_WAITING_FOR_NOTIFY, &pmix_globals.myid, PMIX_RANGE_RM,
-                          &evinfo[0], 1, NULL, NULL);
-        PMIX_INFO_DESTRUCT(&evinfo[0]);
-        /* wait for release to arrive */
-        PMIX_WAIT_THREAD(&releaselock);
-        PMIX_DESTRUCT_LOCK(&releaselock);
     }
     PMIX_INFO_DESTRUCT(&ginfo);
 
