@@ -401,10 +401,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Assembler Configuration
     ##################################
 
-    pmix_show_subtitle "Assembler"
+    pmix_show_subtitle "Atomics"
 
-    AM_PROG_AS
-    AC_PATH_PROG(PERL, perl, perl)
     PMIX_CONFIG_ASM
 
 
