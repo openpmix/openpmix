@@ -15,6 +15,7 @@
 BEGIN_C_DECLS
 
 #include "src/include/pmix_config.h"
+#include "src/mca/psec/psec.h"
 
 /* the component must be visible data for the linker to find it */
 PMIX_EXPORT extern pmix_psec_base_component_t mca_psec_munge_component;
