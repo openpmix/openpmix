@@ -21,6 +21,8 @@
 # Copyright (c) 2015      Intel, Inc. All rights reserved.
 #########################
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
+#                         reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -62,7 +64,7 @@ AC_DEFUN([_PMIX_CHECK_SPECIFIC_ATTRIBUTE], [
         #
         # Try to compile using the C compiler
         #
-        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([], [$2])],
+        AC_COMPILE_IFELSE([AC_LANG_SOURCE([$2])],
                        [
                         #
                         # In case we did succeed: Fine, but was this due to the
@@ -112,32 +114,15 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
   AC_MSG_CHECKING(for __attribute__)
 
   AC_CACHE_VAL(pmix_cv___attribute__, [
-    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],
-      [#include <stdlib.h>
-       /* Check for the longest available __attribute__ (since gcc-2.3) */
+    AC_COMPILE_IFELSE([AC_LANG_PROGRAM([#include <stdlib.h>],
+      [/* Check for the longest available __attribute__ (since gcc-2.3) */
        struct foo {
            char a;
            int x[2] __attribute__ ((__packed__));
         };
       ])],
       [pmix_cv___attribute__=1],
-      [pmix_cv___attribute__=0],
-    )
-
-    if test "$pmix_cv___attribute__" = "1" ; then
-        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([],
-          [#include <stdlib.h>
-           /* Check for the longest available __attribute__ (since gcc-2.3) */
-           struct foo {
-               char a;
-               int x[2] __attribute__ ((__packed__));
-            };
-          ])],
-          [pmix_cv___attribute__=1],
-          [pmix_cv___attribute__=0],
-        )
-    fi
-    ])
+      [pmix_cv___attribute__=0])])
   AC_DEFINE_UNQUOTED(PMIX_HAVE_ATTRIBUTE, [$pmix_cv___attribute__],
                      [Whether your compiler has __attribute__ or not])
 
