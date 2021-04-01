@@ -100,6 +100,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_ERR_INVALID_NAMESPACE                  -44
 #define PMIX_ERR_SERVER_NOT_AVAIL                   -45
 #define PMIX_ERR_NOT_IMPLEMENTED                    -48
+#define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
 #define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
 #define PMIX_ERR_LOST_PEER_CONNECTION               -102
 #define PMIX_ERR_LOST_CONNECTION_TO_CLIENT          -103
