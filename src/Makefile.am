@@ -12,6 +12,8 @@
 # Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -51,7 +53,9 @@ libpmix_la_LIBADD = \
 	mca/base/libpmix_mca_base.la \
 	$(MCA_pmix_FRAMEWORK_LIBS) \
 	$(PMIX_EXTRA_LIB)
-libpmix_la_DEPENDENCIES = $(libpmix_la_LIBADD)
+libpmix_la_DEPENDENCIES = \
+	mca/base/libpmix_mca_base.la \
+	$(MCA_pmix_FRAMEWORK_LIBS)
 
 if PMIX_EMBEDDED_MODE
 
