@@ -1189,7 +1189,6 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                 /* mark that we sent it upstairs so we don't release
                  * the caddy until we return from the host RM */
                 holdcd = true;
-                pmix_output(0, "SERVER UPCALLING %s FOR SOURCE %s.%lu", PMIx_Error_string(cd->status), cd->source.nspace, cd->source.rank);
                 pmix_host_server.notify_event(cd->status, &cd->source, cd->range, cd->info,
                                               cd->ninfo, local_cbfunc, cd);
             }
