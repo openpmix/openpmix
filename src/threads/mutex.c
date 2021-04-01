@@ -52,10 +52,6 @@ static void pmix_mutex_construct(pmix_mutex_t *m)
     pthread_mutex_init(&m->m_lock_pthread, NULL);
 
 #endif /* PMIX_ENABLE_DEBUG */
-
-#if PMIX_HAVE_ATOMIC_SPINLOCKS
-    pmix_atomic_lock_init(&m->m_lock_atomic, PMIX_ATOMIC_LOCK_UNLOCKED);
-#endif
 }
 
 static void pmix_mutex_destruct(pmix_mutex_t *m)
@@ -80,10 +76,6 @@ static void pmix_recursive_mutex_construct(pmix_recursive_mutex_t *m)
 
     pthread_mutex_init(&m->m_lock_pthread, &attr);
     pthread_mutexattr_destroy(&attr);
-
-#if PMIX_HAVE_ATOMIC_SPINLOCKS
-    pmix_atomic_lock_init(&m->m_lock_atomic, PMIX_ATOMIC_LOCK_UNLOCKED);
-#endif
 }
 
 PMIX_CLASS_INSTANCE(pmix_recursive_mutex_t, pmix_object_t, pmix_recursive_mutex_construct,
