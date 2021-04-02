@@ -583,6 +583,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
+    /* setup the IO Forwarding recv */
+    req = PMIX_NEW(pmix_ptl_posted_recv_t);
+    req->tag = PMIX_PTL_TAG_IOF;
+    req->cbfunc = server_iof_handler;
+    /* add it to the end of the list of recvs */
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &req->super);
 
     if (nspace_given) {
         PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, nspace);
@@ -4489,7 +4495,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_IOF_DEREG_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_iofdereg(peer, buf, op_cbfunc, cd))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_iofdereg(peer, buf, iofdereg, cd))) {
             PMIX_RELEASE(cd);
         }
         return rc;

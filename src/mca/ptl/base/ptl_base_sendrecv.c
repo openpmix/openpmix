@@ -7,6 +7,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -609,6 +610,7 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     (void) args;
     pmix_ptl_queue_t *queue = (pmix_ptl_queue_t *) cbdata;
     pmix_ptl_send_t *snd;
+    pmix_ptl_recv_t *msg;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(queue);
@@ -700,6 +702,7 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     pmix_ptl_posted_recv_t *req;
     pmix_ptl_send_t *snd;
     uint32_t tag;
+    pmix_ptl_recv_t *msg;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(ms);
