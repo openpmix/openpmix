@@ -8,6 +8,7 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -225,11 +226,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                         PMIX_NAME_PRINT(&p), (NULL == key) ? "NULL" : key);
 
     if (!PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
-        /* don't consider the fastpath option
-         * for undefined rank or NULL keys */
-        if (PMIX_RANK_UNDEF == p.rank || NULL == key) {
-            goto doget;
-        }
         /* if they passed our nspace and an INVALID rank, and are asking
          * for PMIX_RANK, then they are asking for our process rank */
         if (PMIX_RANK_INVALID == p.rank &&
@@ -250,6 +246,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
             cb->cbdata = cbdata;
             PMIX_THREADSHIFT(cb, gcbfn);
             return PMIX_SUCCESS;
+        }
+        /* if the key is NULL, then move along */
+        if (NULL == key) {
+            goto doget;
         }
         /* see if they are asking about a node-level piece of info */
         if (pmix_check_node_info(key)) {
@@ -288,54 +288,25 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                 }
                 PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
                 copy = true;
-                goto doget;
             }
             if (NULL != hostname || UINT32_MAX != nodeid) {
-                /* they provided the "node-info" attribute. if they also
-                 * specified the target node and it is NOT us, then dstore cannot
-                 * resolve it and we need the rank to be undefined */
+                /* if they specified the target node and it is us, then dstore can
+                 * resolve it and we need the rank to be wildcard */
                 if ((NULL != hostname && 0 == strcmp(hostname, pmix_globals.hostname)) ||
                     nodeid == pmix_globals.nodeid) {
+                    if (PMIX_RANK_UNDEF == p.rank) {
+                        p.rank = PMIX_RANK_WILDCARD;
+                    }
                     goto fastpath;
                 }
+                /* ask the hash to resolve it */
+                if (PMIX_RANK_UNDEF == p.rank) {
+                    p.rank = PMIX_RANK_WILDCARD;
+                }
                 goto doget;
-            } else if (NULL != hostname) {
-                /* they did not provide the "node-info" attribute but did specify
-                 * a hostname - if the ID is other than us, then we just need to
-                 * flag it as "node-info" and mark it for the undefined rank so
-                 * the GDS will know where to look */
-                if (0 == strcmp(hostname, pmix_globals.hostname)) {
-                    goto fastpath;
-                }
-                nfo = ninfo + 1;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
-                copy = true;
-                goto doget;
-            } else if (UINT32_MAX != nodeid) {
-                /* they did not provide the "node-info" attribute but did specify
-                 * the nodeid - if the ID is other than us, then we just need to
-                 * flag it as "node-info" and mark it for the undefined rank so
-                 * the GDS will know where to look */
-                if (nodeid == pmix_globals.nodeid) {
-                    goto fastpath;
-                }
-                nfo = ninfo + 1;
-                PMIX_INFO_CREATE(iptr, nfo);
-                for (n=0; n < ninfo; n++) {
-                    PMIX_INFO_XFER(&iptr[n], &info[n]);
-                }
-                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
-                copy = true;
-                goto doget;
-            } else {
-                /* nothing was given, so assume this is about our node and
-                 * pass it along */
-                goto fastpath;
             }
+            /* if they didn't specify a node, then assume it is us and let the dstore handle it */
+            goto fastpath;
         }
 
         /* see if they are asking about an app-level piece of info */
@@ -429,6 +400,11 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
                 goto doget;
             }
         }
+    }
+    /* don't consider the fastpath option
+     * for undefined rank or NULL keys */
+    if (PMIX_RANK_UNDEF == p.rank || NULL == key) {
+        goto doget;
     }
 
   fastpath:

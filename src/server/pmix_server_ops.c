@@ -574,10 +574,8 @@ static void fence_timeout(int sd, short args, void *cbdata)
         trk->modexcbfunc(PMIX_ERR_TIMEOUT, NULL, 0, trk, NULL, NULL);
         return; // the cbfunc will have cleaned up the tracker
     }
-    cd->event_active = false;
-    /* remove it from the list */
-    pmix_list_remove_item(&cd->trk->local_cbs, &cd->super);
-    PMIX_RELEASE(cd);
+    trk->event_active = false;
+    PMIX_RELEASE(trk);
 }
 
 static pmix_status_t _collect_data(pmix_server_trkr_t *trk, pmix_buffer_t *buf)
@@ -1824,10 +1822,8 @@ static void connect_timeout(int sd, short args, void *cbdata)
         trk->op_cbfunc(PMIX_ERR_TIMEOUT, trk);
         return; // the cbfunc will have cleaned up the tracker
     }
-    cd->event_active = false;
-    /* remove it from the list */
-    pmix_list_remove_item(&cd->trk->local_cbs, &cd->super);
-    PMIX_RELEASE(cd);
+    trk->event_active = false;
+    PMIX_RELEASE(trk);
 }
 
 pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
