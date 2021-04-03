@@ -3,6 +3,7 @@
  * Copyright (c) 2012      Los Alamos National Security, Inc. All rights reserved.
  *
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,8 +36,7 @@ typedef struct {
 PMIX_EXPORT extern pmix_psensor_heartbeat_component_t mca_psensor_heartbeat_component;
 extern pmix_psensor_base_module_t pmix_psensor_heartbeat_module;
 
-void pmix_psensor_heartbeat_recv_beats(struct pmix_peer_t *peer,
-                                       pmix_ptl_hdr_t *hdr,
+void pmix_psensor_heartbeat_recv_beats(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                                        pmix_buffer_t *buf, void *cbdata);
 
 END_C_DECLS

@@ -14,6 +14,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,7 +48,6 @@ struct pmix_mca_base_module_2_0_0_t {
 typedef struct pmix_mca_base_module_2_0_0_t pmix_mca_base_module_t;
 /** Versioned convenience typedef */
 typedef struct pmix_mca_base_module_2_0_0_t pmix_mca_base_module_2_0_0_t;
-
 
 /**
  * MCA component open function.
@@ -130,7 +130,8 @@ typedef int (*pmix_mca_base_close_component_1_0_0_fn_t)(void);
  * implement their own query function, but must also implment their
  * own select function as a result.
  */
-typedef int (*pmix_mca_base_query_component_2_0_0_fn_t)(pmix_mca_base_module_2_0_0_t **module, int *priority);
+typedef int (*pmix_mca_base_query_component_2_0_0_fn_t)(pmix_mca_base_module_2_0_0_t **module,
+                                                        int *priority);
 
 /**
  * MCA component parameter registration function.
@@ -181,7 +182,6 @@ typedef int (*pmix_mca_base_query_component_2_0_0_fn_t)(pmix_mca_base_module_2_0
  */
 typedef int (*pmix_mca_base_register_component_params_2_0_0_fn_t)(void);
 
-
 /**
  * Maximum length of MCA project string names.
  */
@@ -205,58 +205,58 @@ typedef int (*pmix_mca_base_register_component_params_2_0_0_fn_t)(void);
  */
 struct pmix_mca_base_component_2_1_0_t {
 
-  int pmix_mca_major_version;
-  /**< Major number of the MCA. */
-  int pmix_mca_minor_version;
-  /**< Minor number of the MCA. */
-  int pmix_mca_release_version;
-  /**< Release number of the MCA. */
+    int pmix_mca_major_version;
+    /**< Major number of the MCA. */
+    int pmix_mca_minor_version;
+    /**< Minor number of the MCA. */
+    int pmix_mca_release_version;
+    /**< Release number of the MCA. */
 
-  char pmix_mca_project_name[PMIX_MCA_BASE_MAX_PROJECT_NAME_LEN + 1];
-  /**< String name of the project that this component belongs to. */
-  int pmix_mca_project_major_version;
-  /**< Major version number of the project that this component
-     belongs to. */
-  int pmix_mca_project_minor_version;
-  /**< Minor version number of the project that this component
-     belongs to. */
-  int pmix_mca_project_release_version;
-  /**< Release version number of the project that this component
-     belongs to. */
+    char pmix_mca_project_name[PMIX_MCA_BASE_MAX_PROJECT_NAME_LEN + 1];
+    /**< String name of the project that this component belongs to. */
+    int pmix_mca_project_major_version;
+    /**< Major version number of the project that this component
+       belongs to. */
+    int pmix_mca_project_minor_version;
+    /**< Minor version number of the project that this component
+       belongs to. */
+    int pmix_mca_project_release_version;
+    /**< Release version number of the project that this component
+       belongs to. */
 
-  char pmix_mca_type_name[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN + 1];
-  /**< String name of the framework that this component belongs to. */
-  int pmix_mca_type_major_version;
-  /**< Major version number of the framework that this component
-     belongs to. */
-  int pmix_mca_type_minor_version;
-  /**< Minor version number of the framework that this component
-     belongs to. */
-  int pmix_mca_type_release_version;
-  /**< Release version number of the framework that this component
-     belongs to. */
+    char pmix_mca_type_name[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN + 1];
+    /**< String name of the framework that this component belongs to. */
+    int pmix_mca_type_major_version;
+    /**< Major version number of the framework that this component
+       belongs to. */
+    int pmix_mca_type_minor_version;
+    /**< Minor version number of the framework that this component
+       belongs to. */
+    int pmix_mca_type_release_version;
+    /**< Release version number of the framework that this component
+       belongs to. */
 
-  char pmix_mca_component_name[PMIX_MCA_BASE_MAX_COMPONENT_NAME_LEN + 1];
-  /**< This comopnent's string name. */
-  int pmix_mca_component_major_version;
-  /**< This component's major version number. */
-  int pmix_mca_component_minor_version;
-  /**< This component's minor version number. */
-  int pmix_mca_component_release_version;
-  /**< This component's release version number. */
+    char pmix_mca_component_name[PMIX_MCA_BASE_MAX_COMPONENT_NAME_LEN + 1];
+    /**< This comopnent's string name. */
+    int pmix_mca_component_major_version;
+    /**< This component's major version number. */
+    int pmix_mca_component_minor_version;
+    /**< This component's minor version number. */
+    int pmix_mca_component_release_version;
+    /**< This component's release version number. */
 
-  pmix_mca_base_open_component_1_0_0_fn_t pmix_mca_open_component;
-  /**< Method for opening this component. */
-  pmix_mca_base_close_component_1_0_0_fn_t pmix_mca_close_component;
-  /**< Method for closing this component. */
-  pmix_mca_base_query_component_2_0_0_fn_t pmix_mca_query_component;
-  /**< Method for querying this component. */
-  pmix_mca_base_register_component_params_2_0_0_fn_t pmix_mca_register_component_params;
-  /**< Method for registering the component's MCA parameters */
+    pmix_mca_base_open_component_1_0_0_fn_t pmix_mca_open_component;
+    /**< Method for opening this component. */
+    pmix_mca_base_close_component_1_0_0_fn_t pmix_mca_close_component;
+    /**< Method for closing this component. */
+    pmix_mca_base_query_component_2_0_0_fn_t pmix_mca_query_component;
+    /**< Method for querying this component. */
+    pmix_mca_base_register_component_params_2_0_0_fn_t pmix_mca_register_component_params;
+    /**< Method for registering the component's MCA parameters */
 
-  /** Extra space to allow for expansion in the future without
-      breaking older components. */
-  char reserved[32];
+    /** Extra space to allow for expansion in the future without
+        breaking older components. */
+    char reserved[32];
 };
 /** Unversioned convenience typedef; use this name in
     frameworks/components to stay forward source-compatible */
@@ -267,9 +267,10 @@ typedef struct pmix_mca_base_component_2_1_0_t pmix_mca_base_component_2_1_0_t;
 /*
  * Metadata Bit field parameters
  */
-#define PMIX_MCA_BASE_METADATA_PARAM_NONE        (uint32_t)0x00 /**< No Metadata flags */
-#define PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT  (uint32_t)0x02 /**< Checkpoint enabled Component */
-#define PMIX_MCA_BASE_METADATA_PARAM_DEBUG       (uint32_t)0x04 /**< Debug enabled/only Component */
+#define PMIX_MCA_BASE_METADATA_PARAM_NONE       (uint32_t) 0x00 /**< No Metadata flags */
+#define PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT (uint32_t) 0x02 /**< Checkpoint enabled Component \
+                                                                 */
+#define PMIX_MCA_BASE_METADATA_PARAM_DEBUG (uint32_t) 0x04      /**< Debug enabled/only Component */
 
 /**
  * Meta data for MCA v2.0.0 components.
@@ -296,29 +297,25 @@ typedef struct pmix_mca_base_component_data_2_0_0_t pmix_mca_base_component_data
  * indicating that they subscribe to the MCA version 2.0.0.  See
  * component header files (e.g., coll.h) for examples of its usage.
  */
-#define PMIX_MCA_BASE_VERSION_MAJOR 2
-#define PMIX_MCA_BASE_VERSION_MINOR 1
+#define PMIX_MCA_BASE_VERSION_MAJOR   2
+#define PMIX_MCA_BASE_VERSION_MINOR   1
 #define PMIX_MCA_BASE_VERSION_RELEASE 0
 
-#define PMIX_MCA_BASE_MAKE_VERSION(level, MAJOR, MINOR, RELEASE) \
-    .pmix_mca_## level ##_major_version = MAJOR,                 \
-    .pmix_mca_## level ##_minor_version = MINOR,                 \
-    .pmix_mca_## level ##_release_version = RELEASE
+#define PMIX_MCA_BASE_MAKE_VERSION(level, MAJOR, MINOR, RELEASE)                          \
+    .pmix_mca_##level##_major_version = MAJOR, .pmix_mca_##level##_minor_version = MINOR, \
+    .pmix_mca_##level##_release_version = RELEASE
 
-
-#define PMIX_MCA_BASE_VERSION_2_1_0(PROJECT, project_major, project_minor, project_release, TYPE, type_major, type_minor, type_release) \
-    .pmix_mca_major_version = PMIX_MCA_BASE_VERSION_MAJOR,                        \
-    .pmix_mca_minor_version = PMIX_MCA_BASE_VERSION_MINOR,                        \
-    .pmix_mca_release_version = PMIX_MCA_BASE_VERSION_RELEASE,                    \
-    .pmix_mca_project_name = PROJECT,                                        \
-    PMIX_MCA_BASE_MAKE_VERSION(project, project_major, project_minor, project_release), \
-    .pmix_mca_type_name = TYPE,                                              \
+#define PMIX_MCA_BASE_VERSION_2_1_0(PROJECT, project_major, project_minor, project_release, TYPE, \
+                                    type_major, type_minor, type_release)                         \
+    .pmix_mca_major_version = PMIX_MCA_BASE_VERSION_MAJOR,                                        \
+    .pmix_mca_minor_version = PMIX_MCA_BASE_VERSION_MINOR,                                        \
+    .pmix_mca_release_version = PMIX_MCA_BASE_VERSION_RELEASE, .pmix_mca_project_name = PROJECT,  \
+    PMIX_MCA_BASE_MAKE_VERSION(project, project_major, project_minor, project_release),           \
+    .pmix_mca_type_name = TYPE,                                                                   \
     PMIX_MCA_BASE_MAKE_VERSION(type, type_major, type_minor, type_release)
 
-
 #define PMIX_MCA_BASE_VERSION_1_0_0(type, type_major, type_minor, type_release) \
-    PMIX_MCA_BASE_VERSION_2_1_0("pmix", PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,      \
-                                PMIX_RELEASE_VERSION, type, type_major, type_minor, \
-                                type_release)
+    PMIX_MCA_BASE_VERSION_2_1_0("pmix", PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION, \
+                                PMIX_RELEASE_VERSION, type, type_major, type_minor, type_release)
 
 #endif /* PMIX_MCA_H */

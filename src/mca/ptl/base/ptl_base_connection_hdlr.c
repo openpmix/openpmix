@@ -23,43 +23,41 @@
 
 #include <stdio.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 
 #include "include/pmix_socket_errno.h"
+#include "src/client/pmix_client_ops.h"
+#include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/base/base.h"
+#include "src/mca/gds/base/base.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/getid.h"
 #include "src/util/strnlen.h"
-#include "src/include/pmix_globals.h"
-#include "src/client/pmix_client_ops.h"
-#include "src/server/pmix_server_ops.h"
-#include "src/mca/bfrops/base/base.h"
-#include "src/mca/gds/base/base.h"
 
-#include "src/mca/ptl/base/ptl_base_handshake.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/mca/ptl/base/ptl_base_handshake.h"
 
 static void process_cbfunc(int sd, short args, void *cbdata);
-static void cnct_cbfunc(pmix_status_t status,
-                        pmix_proc_t *proc, void *cbdata);
+static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata);
 static void _check_cached_events(pmix_peer_t *peer);
-static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
-                                          char *mg, size_t cnt);
+static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd, char *mg, size_t cnt);
 
 void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 {
-    pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cbdata;
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
     pmix_ptl_hdr_t hdr;
     pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
-    char *msg = NULL, *mg, *p;
+    char *msg = NULL, *mg, *p, *blob = NULL;
     uint32_t u32;
     size_t cnt;
     pmix_namespace_t *nptr, *tmp;
@@ -73,8 +71,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(pnd);
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                        "ptl:base:connection_handler: new connection: %d",
-                        pnd->sd);
+                        "ptl:base:connection_handler: new connection: %d", pnd->sd);
 
     /* ensure the socket is in blocking mode */
     pmix_ptl_base_set_blocking(pnd->sd);
@@ -83,7 +80,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     memset(&hdr, 0, sizeof(pmix_ptl_hdr_t));
 
     /* get the header */
-    if (PMIX_SUCCESS != pmix_ptl_base_recv_blocking(pnd->sd, (char*)&hdr, sizeof(pmix_ptl_hdr_t))) {
+    if (PMIX_SUCCESS
+        != pmix_ptl_base_recv_blocking(pnd->sd, (char *) &hdr, sizeof(pmix_ptl_hdr_t))) {
         goto error;
     }
 
@@ -93,13 +91,14 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (PMIX_MAX_CRED_SIZE < hdr.nbytes) {
         goto error;
     }
-    if (NULL == (msg = (char*)malloc(hdr.nbytes))) {
+    if (NULL == (msg = (char *) malloc(hdr.nbytes))) {
         goto error;
     }
     if (PMIX_SUCCESS != pmix_ptl_base_recv_blocking(pnd->sd, msg, hdr.nbytes)) {
         /* unable to complete the recv */
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool:connection_handler unable to complete recv of connect-ack with client ON SOCKET %d",
+                            "ptl:tool:connection_handler unable to complete recv of connect-ack "
+                            "with client ON SOCKET %d",
                             pnd->sd);
         goto error;
     }
@@ -120,79 +119,80 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* get the process type of the connecting peer */
     PMIX_PTL_GET_U8(pnd->flag);
 
-    switch(pnd->flag) {
-        case 0:
-            /* simple client process */
-            PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_CLIENT);
-            /* get their identifier */
-            PMIX_PTL_GET_PROCID(pnd->proc);
-            break;
+    switch (pnd->flag) {
+    case PMIX_SIMPLE_CLIENT:
+        /* simple client process */
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_CLIENT);
+        /* get their identifier */
+        PMIX_PTL_GET_PROCID(pnd->proc);
+        break;
 
-        case 1:
-            /* legacy tool - may or may not have an identifier */
+    case PMIX_LEGACY_TOOL:
+        /* legacy tool - may or may not have an identifier */
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
+        /* get their uid/gid */
+        PMIX_PTL_GET_U32(pnd->uid);
+        PMIX_PTL_GET_U32(pnd->gid);
+        break;
+
+    case PMIX_LEGACY_LAUNCHER:
+        /* legacy launcher - may or may not have an identifier */
+        PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
+        /* get their uid/gid */
+        PMIX_PTL_GET_U32(pnd->uid);
+        PMIX_PTL_GET_U32(pnd->gid);
+        break;
+
+    case PMIX_TOOL_NEEDS_ID:
+    case PMIX_LAUNCHER_NEEDS_ID:
+        /* self-started tool/launcher process that needs an identifier */
+        if (3 == pnd->flag) {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
-            /* get their uid/gid */
-            PMIX_PTL_GET_U32(pnd->uid);
-            PMIX_PTL_GET_U32(pnd->gid);
-            break;
-
-        case 2:
-            /* legacy launcher - may or may not have an identifier */
+        } else {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
-            /* get their uid/gid */
-            PMIX_PTL_GET_U32(pnd->uid);
-            PMIX_PTL_GET_U32(pnd->gid);
-            break;
+        }
+        /* get their uid/gid */
+        PMIX_PTL_GET_U32(pnd->uid);
+        PMIX_PTL_GET_U32(pnd->gid);
+        /* they need an id */
+        pnd->need_id = true;
+        break;
 
-        case 3:
-        case 6:
-            /* self-started tool/launcher process that needs an identifier */
-            if (3 == pnd->flag) {
-                PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
-            } else {
-                PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
-            }
-            /* get their uid/gid */
-            PMIX_PTL_GET_U32(pnd->uid);
-            PMIX_PTL_GET_U32(pnd->gid);
-            /* they need an id */
-            pnd->need_id = true;
-            break;
+    case PMIX_TOOL_GIVEN_ID:
+    case PMIX_LAUNCHER_GIVEN_ID:
+    case PMIX_SINGLETON_CLIENT:
+        /* self-started tool/launcher process that was given an identifier by caller */
+        if (4 == pnd->flag) {
+            PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
+        } else {
+            PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
+        }
+        /* get their uid/gid */
+        PMIX_PTL_GET_U32(pnd->uid);
+        PMIX_PTL_GET_U32(pnd->gid);
+        /* get their identifier */
+        PMIX_PTL_GET_PROCID(pnd->proc);
+        break;
 
-        case 4:
-        case 7:
-            /* self-started tool/launcher process that was given an identifier by caller */
-            if (4 == pnd->flag) {
-                PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
-            } else {
-                PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
-            }
-            /* get their uid/gid */
-            PMIX_PTL_GET_U32(pnd->uid);
-            PMIX_PTL_GET_U32(pnd->gid);
-            /* get their identifier */
-            PMIX_PTL_GET_PROCID(pnd->proc);
-            break;
+    case PMIX_TOOL_CLIENT:
+    case PMIX_LAUNCHER_CLIENT:
+        /* tool/launcher that was started by a PMIx server - identifier specified by server */
+        if (5 == pnd->flag) {
+            PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
+        } else {
+            PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
+        }
+        /* get their uid/gid */
+        PMIX_PTL_GET_U32(pnd->uid);
+        PMIX_PTL_GET_U32(pnd->gid);
+        /* get their identifier */
+        PMIX_PTL_GET_PROCID(pnd->proc);
+        break;
 
-        case 5:
-        case 8:
-            /* tool/launcher that was started by a PMIx server - identifier specified by server */
-            if (5 == pnd->flag) {
-                PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
-            } else {
-                PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
-            }
-            /* get their uid/gid */
-            PMIX_PTL_GET_U32(pnd->uid);
-            PMIX_PTL_GET_U32(pnd->gid);
-            /* get their identifier */
-            PMIX_PTL_GET_PROCID(pnd->proc);
-            break;
-
-        default:
-            /* we don't know what they are! */
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            goto error;
+    default:
+        /* we don't know what they are! */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        goto error;
     }
 
     /* extract their VERSION */
@@ -209,8 +209,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (2 == major && 0 == minor) {
         /* the 2.0 release handshake ends with the version string */
         pnd->bfrops = strdup("v20");
-        pnd->buffer_type = pmix_bfrops_globals.default_type;  // we can't know any better
+        pnd->buffer_type = pmix_bfrops_globals.default_type; // we can't know any better
         pnd->gds = strdup("ds12,hash");
+        cnt = 0;
     } else {
         /* extract the name of the bfrops module they used */
         PMIX_PTL_GET_STRING(pnd->bfrops);
@@ -220,16 +221,24 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
         /* extract the name of the gds module they used */
         PMIX_PTL_GET_STRING(pnd->gds);
+
+        /* extract the blob */
+        if (0 < cnt) {
+            PMIX_PTL_GET_BLOB(blob, cnt);
+        }
     }
 
     /* see if this is a tool connection request */
-    if (0 != pnd->flag) {
+    if (PMIX_SIMPLE_CLIENT != pnd->flag) {
         /* nope, it's for a tool, so process it
          * separately - it is a 2-step procedure */
-        rc = process_tool_request(pnd, mg, cnt);
+        rc = process_tool_request(pnd, blob, cnt);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto error;
+        }
+        if (NULL != blob) {
+            free(blob);
         }
         return;
     }
@@ -238,7 +247,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
      * been registered with us prior to being started.
      * See if we know this nspace */
     nptr = NULL;
-    PMIX_LIST_FOREACH(tmp, &pmix_globals.nspaces, pmix_namespace_t) {
+    PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
         if (0 == strcmp(tmp->nspace, pnd->proc.nspace)) {
             nptr = tmp;
             break;
@@ -252,7 +261,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     /* likewise, we should have this peer in our list */
     info = NULL;
-    PMIX_LIST_FOREACH(iptr, &nptr->ranks, pmix_rank_info_t) {
+    PMIX_LIST_FOREACH (iptr, &nptr->ranks, pmix_rank_info_t) {
         if (iptr->pname.rank == pnd->proc.rank) {
             info = iptr;
             break;
@@ -328,7 +337,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         nptr->version_stored = true;
     }
 
-    free(msg);  // can now release the data buffer
+    free(msg); // can now release the data buffer
     msg = NULL;
 
     /* validate the connection */
@@ -341,12 +350,12 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         goto error;
     }
 
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "client connection validated");
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "client connection validated");
 
     /* tell the client all is good */
     u32 = htonl(reply);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+    if (PMIX_SUCCESS
+        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -362,18 +371,20 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     /* send the client's array index */
     u32 = htonl(peer->index);
-      if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
-          PMIX_ERROR_LOG(rc);
-          goto error;
-      }
+    if (PMIX_SUCCESS
+        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
 
-      pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                          "connect-ack from client completed");
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "connect-ack from client completed");
 
     /* let the host server know that this client has connected */
     if (NULL != pmix_host_server.client_connected2) {
         PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        rc = pmix_host_server.client_connected2(&proc, peer->info->server_object, NULL, 0, NULL, NULL);
+        rc = pmix_host_server.client_connected2(&proc, peer->info->server_object, NULL, 0, NULL,
+                                                NULL);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -384,17 +395,17 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             PMIX_ERROR_LOG(rc);
             goto error;
         }
-      }
+    }
 
     pmix_ptl_base_set_nonblocking(pnd->sd);
 
     /* start the events for this client */
-    pmix_event_assign(&peer->recv_event, pmix_globals.evbase, pnd->sd,
-                      EV_READ|EV_PERSIST, pmix_ptl_base_recv_handler, peer);
+    pmix_event_assign(&peer->recv_event, pmix_globals.evbase, pnd->sd, EV_READ | EV_PERSIST,
+                      pmix_ptl_base_recv_handler, peer);
     pmix_event_add(&peer->recv_event, NULL);
     peer->recv_ev_active = true;
-    pmix_event_assign(&peer->send_event, pmix_globals.evbase, pnd->sd,
-                      EV_WRITE|EV_PERSIST, pmix_ptl_base_send_handler, peer);
+    pmix_event_assign(&peer->send_event, pmix_globals.evbase, pnd->sd, EV_WRITE | EV_PERSIST,
+                      pmix_ptl_base_send_handler, peer);
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:server client %s:%u has connected on socket %d",
                         peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
@@ -405,7 +416,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     return;
 
-  error:
+error:
     if (NULL != info) {
         info->proc_cnt--;
         PMIX_RELEASE(info);
@@ -425,8 +436,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 /* process the host's callback with tool connection info */
 static void process_cbfunc(int sd, short args, void *cbdata)
 {
-    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
-    pmix_pending_connection_t *pnd = (pmix_pending_connection_t*)cd->cbdata;
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+    pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cd->cbdata;
     pmix_namespace_t *nptr;
     pmix_rank_info_t *info;
     pmix_peer_t *peer;
@@ -439,12 +450,13 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(cd);
     /* shortcuts */
-    peer = (pmix_peer_t*)pnd->peer;
+    peer = (pmix_peer_t *) pnd->peer;
     nptr = peer->nptr;
 
     /* send this status so they don't hang */
     u32 = ntohl(cd->status);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+    if (PMIX_SUCCESS
+        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -457,35 +469,40 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* if we got an identifier, send it back to the tool */
     if (pnd->need_id) {
         /* start with the nspace */
-        if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, cd->proc.nspace, PMIX_MAX_NSLEN+1))) {
+        if (PMIX_SUCCESS
+            != (rc = pmix_ptl_base_send_blocking(pnd->sd, cd->proc.nspace, PMIX_MAX_NSLEN + 1))) {
             PMIX_ERROR_LOG(rc);
             goto error;
         }
 
         /* now the rank, suitably converted */
         u32 = ntohl(cd->proc.rank);
-        if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+        if (PMIX_SUCCESS
+            != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
             PMIX_ERROR_LOG(rc);
             goto error;
         }
     }
 
     /* send my nspace back to the tool */
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, pmix_globals.myid.nspace, PMIX_MAX_NSLEN+1))) {
+    if (PMIX_SUCCESS
+        != (rc = pmix_ptl_base_send_blocking(pnd->sd, pmix_globals.myid.nspace,
+                                             PMIX_MAX_NSLEN + 1))) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
 
     /* send my rank back to the tool */
     u32 = ntohl(pmix_globals.myid.rank);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+    if (PMIX_SUCCESS
+        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
 
     /* if this tool wasn't initially registered as a client,
      * then add some required structures */
-    if (5 != pnd->flag && 8 != pnd->flag) {
+    if (PMIX_TOOL_CLIENT != pnd->flag && PMIX_LAUNCHER_CLIENT != pnd->flag) {
         PMIX_RETAIN(nptr);
         nptr->nspace = strdup(cd->proc.nspace);
         pmix_list_append(&pmix_globals.nspaces, &nptr->super);
@@ -545,7 +562,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     PMIX_PROC_CREATE(req->procs, req->nprocs);
     PMIX_LOAD_PROCID(&req->procs[0], pmix_globals.myid.nspace, pmix_globals.myid.rank);
     req->channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL;
-    req->remote_id = 0;     // default ID for tool during init
+    req->remote_id = 0; // default ID for tool during init
     req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
 
     /* validate the connection */
@@ -554,7 +571,8 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
     /* communicate the result to the other side */
     u32 = htonl(reply);
-    if (PMIX_SUCCESS != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char*)&u32, sizeof(uint32_t)))) {
+    if (PMIX_SUCCESS
+        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -565,8 +583,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* If verification wasn't successful - stop here */
     if (PMIX_SUCCESS != reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of tool credentials failed: %s",
-                            PMIx_Error_string(rc));
+                            "validation of tool credentials failed: %s", PMIx_Error_string(rc));
         goto error;
     }
 
@@ -579,12 +596,12 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     peer->info->peerid = peer->index;
 
     /* start the events for this tool */
-    pmix_event_assign(&peer->recv_event, pmix_globals.evbase, peer->sd,
-                      EV_READ|EV_PERSIST, pmix_ptl_base_recv_handler, peer);
+    pmix_event_assign(&peer->recv_event, pmix_globals.evbase, peer->sd, EV_READ | EV_PERSIST,
+                      pmix_ptl_base_recv_handler, peer);
     pmix_event_add(&peer->recv_event, NULL);
     peer->recv_ev_active = true;
-    pmix_event_assign(&peer->send_event, pmix_globals.evbase, peer->sd,
-                      EV_WRITE|EV_PERSIST, pmix_ptl_base_send_handler, peer);
+    pmix_event_assign(&peer->send_event, pmix_globals.evbase, peer->sd, EV_WRITE | EV_PERSIST,
+                      pmix_ptl_base_send_handler, peer);
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:server tool %s:%d has connected on socket %d",
                         peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
@@ -595,12 +612,12 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     PMIX_RELEASE(cd);
     return;
 
-  error:
+error:
     CLOSE_THE_SOCKET(pnd->sd);
     PMIX_RELEASE(pnd);
     PMIX_RELEASE(peer);
     pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
-    PMIX_RELEASE(nptr);  // will release the info object
+    PMIX_RELEASE(nptr); // will release the info object
     PMIX_RELEASE(cd);
     if (NULL != req) {
         pmix_pointer_array_set_item(&pmix_globals.iof_requests, req->local_id, NULL);
@@ -610,14 +627,13 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 
 /* receive a callback from the host RM with an nspace
  * for a connecting tool */
-static void cnct_cbfunc(pmix_status_t status,
-                        pmix_proc_t *proc, void *cbdata)
+static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata)
 {
     pmix_setup_caddy_t *cd;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "pmix:tool:cnct_cbfunc returning %s:%d %s",
-                        proc->nspace, proc->rank, PMIx_Error_string(status));
+                        "pmix:tool:cnct_cbfunc returning %s:%d %s", proc->nspace, proc->rank,
+                        PMIx_Error_string(status));
 
     /* need to thread-shift this into our context */
     cd = PMIX_NEW(pmix_setup_caddy_t);
@@ -631,8 +647,7 @@ static void cnct_cbfunc(pmix_status_t status,
     PMIX_THREADSHIFT(cd, process_cbfunc);
 }
 
-static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
-                                          char *mg, size_t cnt)
+static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd, char *mg, size_t cnt)
 {
     pmix_peer_t *peer;
     pmix_namespace_t *nptr, *tmp;
@@ -651,13 +666,13 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     /* if this is a tool we launched, then the host may
      * have already registered it as a client - so check
      * to see if we already have a peer for it */
-    if (5 == pnd->flag || 8 == pnd->flag) {
+    if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
         /* registration only adds the nspace and a rank in that
          * nspace - it doesn't add the peer object to our array
          * of local clients. So let's start by searching for
          * the nspace object */
         nptr = NULL;
-        PMIX_LIST_FOREACH(tmp, &pmix_globals.nspaces, pmix_namespace_t) {
+        PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
             if (0 == strcmp(tmp->nspace, pnd->proc.nspace)) {
                 nptr = tmp;
                 break;
@@ -683,7 +698,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         /* now look for the rank */
         info = NULL;
         found = false;
-        PMIX_LIST_FOREACH(info, &nptr->ranks, pmix_rank_info_t) {
+        PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
             if (info->pname.rank == pnd->proc.rank) {
                 found = true;
                 break;
@@ -735,7 +750,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             PMIX_DESTRUCT(&buf);
             return rc;
         }
-        foo = (int32_t)pnd->ninfo;
+        foo = (int32_t) pnd->ninfo;
         /* if we have an identifier, then we leave room to pass it */
         if (!pnd->need_id) {
             pnd->ninfo += 5;
@@ -770,7 +785,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             return PMIX_ERR_NOT_SUPPORTED;
         } else {
             /* just process it locally */
-            cnct_cbfunc(PMIX_SUCCESS, &pnd->proc, (void*)pnd);
+            cnct_cbfunc(PMIX_SUCCESS, &pnd->proc, (void *) pnd);
             /* release the msg */
             return PMIX_SUCCESS;
         }
@@ -814,8 +829,8 @@ static void _check_cached_events(pmix_peer_t *peer)
 
     PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
 
-    for (i=0; i < pmix_globals.max_events; i++) {
-        pmix_hotel_knock(&pmix_globals.notifications, i, (void**)&cd);
+    for (i = 0; i < pmix_globals.max_events; i++) {
+        pmix_hotel_knock(&pmix_globals.notifications, i, (void **) &cd);
         if (NULL == cd) {
             continue;
         }
@@ -835,7 +850,7 @@ static void _check_cached_events(pmix_peer_t *peer)
         /* if we were given specific targets, check if this is one */
         if (NULL != cd->targets) {
             matched = false;
-            for (n=0; n < cd->ntargets; n++) {
+            for (n = 0; n < cd->ntargets; n++) {
                 if (PMIX_CHECK_PROCID(&proc, &cd->targets[n])) {
                     matched = true;
                     /* track the number of targets we have left to notify */
@@ -844,7 +859,7 @@ static void _check_cached_events(pmix_peer_t *peer)
                      * from the cache */
                     if (0 == cd->nleft) {
                         pmix_hotel_checkout(&pmix_globals.notifications, cd->room);
-                        found = true;  // mark that we should release cd
+                        found = true; // mark that we should release cd
                     }
                     break;
                 }

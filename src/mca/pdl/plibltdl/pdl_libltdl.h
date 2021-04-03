@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2017      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,7 +17,6 @@
 #include "pmix/mca/dl/dl.h"
 
 #include <ltdl.h>
-
 
 PMIX_DECLSPEC extern pmix_pdl_base_module_t pmix_pdl_plibltpdl_module;
 

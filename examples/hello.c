@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,8 +30,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include <pmix.h>
 #include "examples.h"
+#include <pmix.h>
 
 static pmix_proc_t myproc;
 
@@ -46,22 +47,19 @@ static pmix_proc_t myproc;
  * Once we have dealt with the returned data, we must
  * call the release_fn so that the PMIx library can
  * cleanup */
-static void cbfunc(pmix_status_t status,
-                   pmix_info_t *info, size_t ninfo,
-                   void *cbdata,
-                   pmix_release_cbfunc_t release_fn,
-                   void *release_cbdata)
+static void cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                   pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
     size_t n;
     char *tmp;
     pmix_status_t rc;
 
     lock->status = status;
 
-    fprintf(stderr, "Query returned %d values status %s\n", (int)ninfo, PMIx_Error_string(status));
+    fprintf(stderr, "Query returned %d values status %s\n", (int) ninfo, PMIx_Error_string(status));
     /* print out the returned keys and pmix_info_t structs */
-    for (n=0; n < ninfo; n++) {
+    for (n = 0; n < ninfo; n++) {
         fprintf(stderr, "KEY: %s\n", info[n].key);
         rc = PMIx_Data_print(&tmp, NULL, &info[n].value, info[n].value.type);
         if (PMIX_SUCCESS != rc) {
@@ -73,11 +71,12 @@ static void cbfunc(pmix_status_t status,
             lock->status = rc;
             goto done;
         }
-        fprintf(stderr, "Key %s Type %s(%d)\n", info[n].key, PMIx_Data_type_string(info[n].value.type), info[n].value.type);
+        fprintf(stderr, "Key %s Type %s(%d)\n", info[n].key,
+                PMIx_Data_type_string(info[n].value.type), info[n].value.type);
         free(tmp);
     }
 
-  done:
+done:
     /* let the library release the data and cleanup from
      * the operation */
     if (NULL != release_fn) {
@@ -115,21 +114,21 @@ int main(int argc, char **argv)
      * is included, then the process will be stopped in this call until
      * the "debugger release" notification arrives */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
+                PMIx_Error_string(rc));
         exit(0);
     }
     /* get our local rank */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_LOCAL_RANK, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get local rank failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get local rank failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     localrank = val->data.uint16;
     PMIX_VALUE_RELEASE(val);
 
     fprintf(stderr, "Client ns %s rank %d pid %lu: Running on host %s localrank %d\n",
-            myproc.nspace, myproc.rank, (unsigned long)pid, hostname , (int)localrank);
+            myproc.nspace, myproc.rank, (unsigned long) pid, hostname, (int) localrank);
 
 #if PMIX_VERSION_MAJOR >= 4
     n = 1;
@@ -144,7 +143,7 @@ int main(int argc, char **argv)
     /* setup the caddy to retrieve the data */
     DEBUG_CONSTRUCT_LOCK(&mylock);
     /* execute the query */
-    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(&query, 1, cbfunc, (void*)&mylock))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(&query, 1, cbfunc, (void *) &mylock))) {
         fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
         goto done;
     }
@@ -153,15 +152,16 @@ int main(int argc, char **argv)
 
 #endif
 
-  done:
+done:
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return(0);
+    return (0);
 }

@@ -22,23 +22,22 @@
 
 #include "src/include/pmix_config.h"
 
-
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <errno.h>
 #include <stdio.h>
 #ifdef HAVE_STDLIB_H
-#include <stdlib.h>
+#    include <stdlib.h>
 #endif
 
 #include "include/pmix_common.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
 
-PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
+PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
 {
-    switch(errnum) {
+    switch (errnum) {
 
     case PMIX_SUCCESS:
         return "SUCCESS";
@@ -47,12 +46,10 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_ERR_SILENT:
         return "SILENT_ERROR";
 
-
     case PMIX_DEBUGGER_RELEASE:
         return "DEBUGGER-RELEASE";
-    case PMIX_DEBUG_WAITING_FOR_NOTIFY:
-        return "DEBUG-WAITING-FOR-NOTIFY";
-
+    case PMIX_READY_FOR_DEBUG:
+        return "READY-FOR-DEBUG";
 
     case PMIX_ERR_PROC_RESTART:
         return "PROC_RESTART";
@@ -61,14 +58,12 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
     case PMIX_ERR_PROC_MIGRATE:
         return "PROC-MIGRATE";
 
-
     case PMIX_ERR_PROC_ABORTED:
         return "PROC-ABORTED";
     case PMIX_ERR_PROC_REQUESTED_ABORT:
         return "PROC-ABORT-REQUESTED";
     case PMIX_ERR_PROC_ABORTING:
         return "PROC-ABORTING";
-
 
     case PMIX_ERR_SERVER_FAILED_REQUEST:
         return "SERVER FAILED REQUEST";
@@ -269,7 +264,6 @@ PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t errnum)
         return "EVENT-ACTION-DEFERRED";
     case PMIX_EVENT_ACTION_COMPLETE:
         return "EVENT-ACTION-COMPLETE";
-
 
     case PMIX_ERR_NOT_AVAILABLE:
         return "PMIX_ERR_NOT_AVAILABLE";

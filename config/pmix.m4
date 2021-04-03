@@ -24,6 +24,8 @@ dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
 dnl
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
+dnl                         All Rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -399,10 +401,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Assembler Configuration
     ##################################
 
-    pmix_show_subtitle "Assembler"
+    pmix_show_subtitle "Atomics"
 
-    AM_PROG_AS
-    AC_PATH_PROG(PERL, perl, perl)
     PMIX_CONFIG_ASM
 
 
@@ -1004,9 +1004,7 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
            AC_MSG_WARN([This is an internal error that should be reported to PMIx developers])
            AC_MSG_ERROR([Cannot continue])])
     AS_IF([test "$enable_dlopen" = "no"],
-          [enable_mca_dso="no"
-           enable_mca_static="yes"
-           PMIX_ENABLE_DLOPEN_SUPPORT=0
+          [PMIX_ENABLE_DLOPEN_SUPPORT=0
            AC_MSG_RESULT([no])],
           [PMIX_ENABLE_DLOPEN_SUPPORT=1
            AC_MSG_RESULT([yes])])

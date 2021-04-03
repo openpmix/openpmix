@@ -14,6 +14,7 @@
  *                         All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,47 +29,46 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STDINT_H
-#include <stdint.h>
+#    include <stdint.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_SELECT_H
-#include <sys/select.h>
+#    include <sys/select.h>
 #endif
 #ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
+#    include <netinet/in.h>
 #endif
 #ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
+#    include <arpa/inet.h>
 #endif
 #include PMIX_EVENT_HEADER
-#if ! PMIX_HAVE_LIBEV
-#include PMIX_EVENT2_THREAD_HEADER
+#if !PMIX_HAVE_LIBEV
+#    include PMIX_EVENT2_THREAD_HEADER
 #endif
 
 #if PMIX_ENABLE_DEBUG
-#include "src/util/output.h"
+#    include "src/util/output.h"
 #endif
 
 #include <pthread.h>
-
 
 /*
  * portable assignment of pointer to int
  */
 
 typedef union {
-   uint64_t lval;
-   uint32_t ival;
-   void*    pval;
-   struct {
-       uint32_t uval;
-       uint32_t lval;
-   } sval;
+    uint64_t lval;
+    uint32_t ival;
+    void *pval;
+    struct {
+        uint32_t uval;
+        uint32_t lval;
+    } sval;
 } pmix_ptr_t;
 
 /*
@@ -76,11 +76,11 @@ typedef union {
  */
 
 #if defined(__APPLE__) || defined(__WINDOWS__)
-typedef char* pmix_iov_base_ptr_t;
-#define PMIX_IOVBASE char
+typedef char *pmix_iov_base_ptr_t;
+#    define PMIX_IOVBASE char
 #else
-#define PMIX_IOVBASE void
-typedef void* pmix_iov_base_ptr_t;
+#    define PMIX_IOVBASE void
+typedef void *pmix_iov_base_ptr_t;
 #endif
 
 /*
@@ -93,10 +93,8 @@ typedef socklen_t pmix_socklen_t;
 typedef int pmix_socklen_t;
 #endif
 
-
 #define pmix_htons htons
 #define pmix_ntohs ntohs
-
 
 /*
  * Convert a 64 bit value to network byte order.
@@ -105,12 +103,13 @@ static inline uint64_t pmix_hton64(uint64_t val) __pmix_attribute_const__;
 static inline uint64_t pmix_hton64(uint64_t val)
 {
 #ifdef HAVE_UNIX_BYTESWAP
-    union { uint64_t ll;
-            uint32_t l[2];
+    union {
+        uint64_t ll;
+        uint32_t l[2];
     } w, r;
 
     /* platform already in network byte order? */
-    if(htonl(1) == 1L)
+    if (htonl(1) == 1L)
         return val;
     w.ll = val;
     r.l[0] = htonl(w.l[1]);
@@ -129,12 +128,13 @@ static inline uint64_t pmix_ntoh64(uint64_t val) __pmix_attribute_const__;
 static inline uint64_t pmix_ntoh64(uint64_t val)
 {
 #ifdef HAVE_UNIX_BYTESWAP
-    union { uint64_t ll;
-            uint32_t l[2];
+    union {
+        uint64_t ll;
+        uint32_t l[2];
     } w, r;
 
     /* platform already in network byte order? */
-    if(htonl(1) == 1L)
+    if (htonl(1) == 1L)
         return val;
     w.ll = val;
     r.l[0] = ntohl(w.l[1]);
@@ -148,42 +148,43 @@ static inline uint64_t pmix_ntoh64(uint64_t val)
 /* Convert size_t value from host to network byte order and back */
 #if SIZEOF_SIZE_T == 4
 
-#define pmix_htonsizet(x) htonl(x)
-#define pmix_ntohsizet(x) ntohl(x)
+#    define pmix_htonsizet(x) htonl(x)
+#    define pmix_ntohsizet(x) ntohl(x)
 
 #elif SIZEOF_SIZE_T == 8
 
-#define pmix_htonsizet(x) pmix_hton64(x)
-#define pmix_ntohsizet(x) pmix_ntoh64(x)
+#    define pmix_htonsizet(x) pmix_hton64(x)
+#    define pmix_ntohsizet(x) pmix_ntoh64(x)
 
 #endif
 
 /**
  * Convert between a local representation of pointer and a 64 bits value.
  */
-static inline uint64_t pmix_ptr_ptol( void* ptr ) __pmix_attribute_const__;
-static inline uint64_t pmix_ptr_ptol( void* ptr )
+static inline uint64_t pmix_ptr_ptol(void *ptr) __pmix_attribute_const__;
+static inline uint64_t pmix_ptr_ptol(void *ptr)
 {
     return (uint64_t)(uintptr_t) ptr;
 }
 
-static inline void* pmix_ptr_ltop( uint64_t value ) __pmix_attribute_const__;
-static inline void* pmix_ptr_ltop( uint64_t value )
+static inline void *pmix_ptr_ltop(uint64_t value) __pmix_attribute_const__;
+static inline void *pmix_ptr_ltop(uint64_t value)
 {
 #if SIZEOF_VOID_P == 4 && PMIX_ENABLE_DEBUG
     if (value > ((1ULL << 32) - 1ULL)) {
         pmix_output(0, "Warning: truncating value in pmix_ptr_ltop");
     }
 #endif
-    return (void*)(uintptr_t) value;
+    return (void *) (uintptr_t) value;
 }
 
 #if defined(WORDS_BIGENDIAN) || !defined(HAVE_UNIX_BYTESWAP)
 static inline uint16_t pmix_swap_bytes2(uint16_t val) __pmix_attribute_const__;
 static inline uint16_t pmix_swap_bytes2(uint16_t val)
 {
-    union { uint16_t bigval;
-            uint8_t  arrayval[2];
+    union {
+        uint16_t bigval;
+        uint8_t arrayval[2];
     } w, r;
 
     w.bigval = val;
@@ -196,8 +197,9 @@ static inline uint16_t pmix_swap_bytes2(uint16_t val)
 static inline uint32_t pmix_swap_bytes4(uint32_t val) __pmix_attribute_const__;
 static inline uint32_t pmix_swap_bytes4(uint32_t val)
 {
-    union { uint32_t bigval;
-            uint8_t  arrayval[4];
+    union {
+        uint32_t bigval;
+        uint8_t arrayval[4];
     } w, r;
 
     w.bigval = val;
@@ -212,8 +214,9 @@ static inline uint32_t pmix_swap_bytes4(uint32_t val)
 static inline uint64_t pmix_swap_bytes8(uint64_t val) __pmix_attribute_const__;
 static inline uint64_t pmix_swap_bytes8(uint64_t val)
 {
-    union { uint64_t bigval;
-            uint8_t  arrayval[8];
+    union {
+        uint64_t bigval;
+        uint8_t arrayval[8];
     } w, r;
 
     w.bigval = val;
@@ -230,9 +233,9 @@ static inline uint64_t pmix_swap_bytes8(uint64_t val)
 }
 
 #else
-#define pmix_swap_bytes2 htons
-#define pmix_swap_bytes4 htonl
-#define pmix_swap_bytes8 hton64
+#    define pmix_swap_bytes2 htons
+#    define pmix_swap_bytes4 htonl
+#    define pmix_swap_bytes8 hton64
 #endif /* WORDS_BIGENDIAN || !HAVE_UNIX_BYTESWAP */
 
 #define PMIX_EV_TIMEOUT EV_TIMEOUT
@@ -242,10 +245,10 @@ static inline uint64_t pmix_swap_bytes8(uint64_t val)
 /* Persistent event: won't get removed automatically when activated. */
 #define PMIX_EV_PERSIST EV_PERSIST
 
-#define PMIX_EVLOOP_ONCE     EVLOOP_ONCE        /**< Block at most once. */
-#define PMIX_EVLOOP_NONBLOCK EVLOOP_NONBLOCK    /**< Do not block. */
+#define PMIX_EVLOOP_ONCE     EVLOOP_ONCE     /**< Block at most once. */
+#define PMIX_EVLOOP_NONBLOCK EVLOOP_NONBLOCK /**< Do not block. */
 
-#define PMIX_EVENT_SIGNAL(ev)   pmix_event_get_signal(ev)
+#define PMIX_EVENT_SIGNAL(ev) pmix_event_get_signal(ev)
 
 typedef struct event_base pmix_event_base_t;
 typedef struct event pmix_event_t;
@@ -254,41 +257,41 @@ typedef struct event pmix_event_t;
 
 #define pmix_event_base_free(b) event_base_free(b)
 
-
 #if PMIX_HAVE_LIBEV
-#define pmix_event_use_threads()
-#define pmix_event_free(b) free(b)
-#define pmix_event_get_signal(x) (x)->ev_fd
+#    define pmix_event_use_threads()
+#    define pmix_event_free(b)       free(b)
+#    define pmix_event_get_signal(x) (x)->ev_fd
 #else
 
 /* thread support APIs */
-#define pmix_event_use_threads() evthread_use_pthreads()
-#define pmix_event_free(x) event_free(x)
-#define pmix_event_get_signal(x) event_get_signal(x)
+#    define pmix_event_use_threads() evthread_use_pthreads()
+#    define pmix_event_free(x)       event_free(x)
+#    define pmix_event_get_signal(x) event_get_signal(x)
 #endif
 
 /* Basic event APIs */
 #define pmix_event_enable_debug_mode() event_enable_debug_mode()
 
-PMIX_EXPORT int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase,
-                                  int fd, short arg, event_callback_fn cbfn, void *cbd);
+PMIX_EXPORT int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase, int fd, short arg,
+                                  event_callback_fn cbfn, void *cbd);
 
-#define pmix_event_set(b, x, fd, fg, cb, arg) pmix_event_assign((x), (b), (fd), (fg), (event_callback_fn) (cb), (arg))
+#define pmix_event_set(b, x, fd, fg, cb, arg) \
+    pmix_event_assign((x), (b), (fd), (fg), (event_callback_fn)(cb), (arg))
 
 #if PMIX_HAVE_LIBEV
 PMIX_EXPORT int pmix_event_add(struct event *ev, struct timeval *tv);
 PMIX_EXPORT int pmix_event_del(struct event *ev);
-PMIX_EXPORT void pmix_event_active (struct event *ev, int res, short ncalls);
-PMIX_EXPORT void pmix_event_base_loopexit (pmix_event_base_t *b);
+PMIX_EXPORT void pmix_event_active(struct event *ev, int res, short ncalls);
+PMIX_EXPORT void pmix_event_base_loopexit(pmix_event_base_t *b);
 #else
-#define pmix_event_add(ev, tv) event_add((ev), (tv))
-#define pmix_event_del(ev) event_del((ev))
-#define pmix_event_active(x, y, z) event_active((x), (y), (z))
-#define pmix_event_base_loopexit(b) event_base_loopexit(b, NULL)
+#    define pmix_event_add(ev, tv)      event_add((ev), (tv))
+#    define pmix_event_del(ev)          event_del((ev))
+#    define pmix_event_active(x, y, z)  event_active((x), (y), (z))
+#    define pmix_event_base_loopexit(b) event_base_loopexit(b, NULL)
 #endif
 
-PMIX_EXPORT pmix_event_t* pmix_event_new(pmix_event_base_t *b, int fd,
-                                         short fg, event_callback_fn cbfn, void *cbd);
+PMIX_EXPORT pmix_event_t *pmix_event_new(pmix_event_base_t *b, int fd, short fg,
+                                         event_callback_fn cbfn, void *cbd);
 
 #define pmix_event_loop(b, fg) event_base_loop((b), (fg))
 
@@ -296,10 +299,12 @@ PMIX_EXPORT pmix_event_t* pmix_event_new(pmix_event_base_t *b, int fd,
 
 #define pmix_event_evtimer_add(x, tv) pmix_event_add((x), (tv))
 
-#define pmix_event_evtimer_set(b, x, cb, arg) pmix_event_assign((x), (b), -1, 0, (event_callback_fn) (cb), (arg))
+#define pmix_event_evtimer_set(b, x, cb, arg) \
+    pmix_event_assign((x), (b), -1, 0, (event_callback_fn)(cb), (arg))
 
 #define pmix_event_evtimer_del(x) pmix_event_del((x))
 
-#define pmix_event_signal_set(b, x, fd, cb, arg) pmix_event_assign((x), (b), (fd), EV_SIGNAL|EV_PERSIST, (event_callback_fn) (cb), (arg))
+#define pmix_event_signal_set(b, x, fd, cb, arg) \
+    pmix_event_assign((x), (b), (fd), EV_SIGNAL | EV_PERSIST, (event_callback_fn)(cb), (arg))
 
 #endif /* PMIX_TYPES_H */

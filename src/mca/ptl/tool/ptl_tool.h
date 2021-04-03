@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,13 +23,13 @@
 #define PMIX_PTL_TOOL_H
 
 #ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
+#    include <netinet/in.h>
 #endif
 #ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
+#    include <arpa/inet.h>
 #endif
 #ifdef HAVE_NETDB_H
-#include <netdb.h>
+#    include <netdb.h>
 #endif
 
 #include "src/mca/ptl/ptl.h"

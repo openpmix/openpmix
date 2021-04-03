@@ -29,7 +29,7 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
@@ -46,19 +46,17 @@
 
 /* Instantiate the global vars */
 pmix_pmdl_globals_t pmix_pmdl_globals = {{0}};
-pmix_pmdl_API_module_t pmix_pmdl = {
-    .harvest_envars = pmix_pmdl_base_harvest_envars,
-    .setup_nspace = pmix_pmdl_base_setup_nspace,
-    .setup_nspace_kv = pmix_pmdl_base_setup_nspace_kv,
-    .register_nspace = pmix_pmdl_base_register_nspace,
-    .setup_client = pmix_pmdl_base_setup_client,
-    .setup_fork = pmix_pmdl_base_setup_fork,
-    .deregister_nspace = pmix_pmdl_base_deregister_nspace
-};
+pmix_pmdl_API_module_t pmix_pmdl = {.harvest_envars = pmix_pmdl_base_harvest_envars,
+                                    .setup_nspace = pmix_pmdl_base_setup_nspace,
+                                    .setup_nspace_kv = pmix_pmdl_base_setup_nspace_kv,
+                                    .register_nspace = pmix_pmdl_base_register_nspace,
+                                    .setup_client = pmix_pmdl_base_setup_client,
+                                    .setup_fork = pmix_pmdl_base_setup_fork,
+                                    .deregister_nspace = pmix_pmdl_base_deregister_nspace};
 
 static pmix_status_t pmix_pmdl_close(void)
 {
-  pmix_pmdl_base_active_module_t *active, *prev;
+    pmix_pmdl_base_active_module_t *active, *prev;
 
     if (!pmix_pmdl_globals.initialized) {
         return PMIX_SUCCESS;
@@ -66,12 +64,13 @@ static pmix_status_t pmix_pmdl_close(void)
     pmix_pmdl_globals.initialized = false;
     pmix_pmdl_globals.selected = false;
 
-    PMIX_LIST_FOREACH_SAFE(active, prev, &pmix_pmdl_globals.actives, pmix_pmdl_base_active_module_t) {
-      pmix_list_remove_item(&pmix_pmdl_globals.actives, &active->super);
-      if (NULL != active->module->finalize) {
-        active->module->finalize();
-      }
-      PMIX_RELEASE(active);
+    PMIX_LIST_FOREACH_SAFE (active, prev, &pmix_pmdl_globals.actives,
+                            pmix_pmdl_base_active_module_t) {
+        pmix_list_remove_item(&pmix_pmdl_globals.actives, &active->super);
+        if (NULL != active->module->finalize) {
+            active->module->finalize();
+        }
+        PMIX_RELEASE(active);
     }
     PMIX_DESTRUCT(&pmix_pmdl_globals.actives);
 
@@ -91,10 +90,8 @@ static pmix_status_t pmix_pmdl_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_pmdl_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pmdl, "PMIx Network Operations",
-                                NULL, pmix_pmdl_open, pmix_pmdl_close,
-                                mca_pmdl_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pmdl, "PMIx Network Operations", NULL, pmix_pmdl_open,
+                                pmix_pmdl_close, mca_pmdl_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-PMIX_CLASS_INSTANCE(pmix_pmdl_base_active_module_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_pmdl_base_active_module_t, pmix_list_item_t, NULL, NULL);

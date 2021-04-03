@@ -26,13 +26,13 @@
 #include "include/pmix_common.h"
 
 #ifdef malloc
-#undef malloc
+#    undef malloc
 #endif
 #ifdef realloc
-#undef realloc
+#    undef realloc
 #endif
 #ifdef free
-#undef free
+#    undef free
 #endif
 
 #include <stdio.h>
@@ -49,12 +49,12 @@ PMIX_EXPORT extern int pmix_show_help_yynewlines;
 /*
  * Make lex-generated files not issue compiler warnings
  */
-#define YY_STACK_USED 0
+#define YY_STACK_USED         0
 #define YY_ALWAYS_INTERACTIVE 0
-#define YY_NEVER_INTERACTIVE 0
-#define YY_MAIN 0
-#define YY_NO_UNPUT 1
-#define YY_SKIP_YYWRAP 1
+#define YY_NEVER_INTERACTIVE  0
+#define YY_MAIN               0
+#define YY_NO_UNPUT           1
+#define YY_SKIP_YYWRAP        1
 
 enum {
     PMIX_SHOW_HELP_PARSE_DONE,

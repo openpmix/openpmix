@@ -15,19 +15,19 @@
 #include "pmix_config.h"
 
 #include "include/pmix_common.h"
-#include "src/util/output.h"
 #include "src/mca/mca.h"
-#include "src/mca/pif/pif.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pif/base/static-components.h"
+#include "src/mca/pif/pif.h"
+#include "src/util/output.h"
 
 /* instantiate the global list of interfaces */
 pmix_list_t pmix_if_list = {{0}};
 bool pmix_if_do_not_resolve = false;
 bool pmix_if_retain_loopback = false;
 
-static int pmix_pif_base_register (pmix_mca_base_register_flag_t flags);
-static int pmix_pif_base_open (pmix_mca_base_open_flag_t flags);
+static int pmix_pif_base_register(pmix_mca_base_register_flag_t flags);
+static int pmix_pif_base_open(pmix_mca_base_open_flag_t flags);
 static int pmix_pif_base_close(void);
 static void pmix_pif_construct(pmix_pif_t *obj);
 
@@ -36,31 +36,33 @@ static bool frameopen = false;
 /* instance the pmix_pif_t object */
 PMIX_CLASS_INSTANCE(pmix_pif_t, pmix_list_item_t, pmix_pif_construct, NULL);
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pif, NULL, pmix_pif_base_register, pmix_pif_base_open, pmix_pif_base_close,
-                                mca_pif_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pif, NULL, pmix_pif_base_register, pmix_pif_base_open,
+                                pmix_pif_base_close, mca_pif_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-static int pmix_pif_base_register (pmix_mca_base_register_flag_t flags)
+static int pmix_pif_base_register(pmix_mca_base_register_flag_t flags)
 {
-    (void)flags;
+    (void) flags;
     pmix_if_do_not_resolve = false;
-    (void) pmix_mca_base_framework_var_register (&pmix_pif_base_framework, "do_not_resolve",
-                                                 "If nonzero, do not attempt to resolve interfaces",
-                                                 PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_SETTABLE,
-                                                 PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
-                                                 &pmix_if_do_not_resolve);
+    (void) pmix_mca_base_framework_var_register(&pmix_pif_base_framework, "do_not_resolve",
+                                                "If nonzero, do not attempt to resolve interfaces",
+                                                PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
+                                                PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_9,
+                                                PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
+                                                &pmix_if_do_not_resolve);
 
     pmix_if_retain_loopback = false;
-    (void) pmix_mca_base_framework_var_register (&pmix_pif_base_framework, "retain_loopback",
-                                                 "If nonzero, retain loopback interfaces",
-                                                 PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_SETTABLE,
-                                                 PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
-                                                 &pmix_if_retain_loopback);
+    (void) pmix_mca_base_framework_var_register(&pmix_pif_base_framework, "retain_loopback",
+                                                "If nonzero, retain loopback interfaces",
+                                                PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
+                                                PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_9,
+                                                PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
+                                                &pmix_if_retain_loopback);
 
     return PMIX_SUCCESS;
 }
 
-
-static int pmix_pif_base_open (pmix_mca_base_open_flag_t flags)
+static int pmix_pif_base_open(pmix_mca_base_open_flag_t flags)
 {
     if (frameopen) {
         return PMIX_SUCCESS;
@@ -72,7 +74,6 @@ static int pmix_pif_base_open (pmix_mca_base_open_flag_t flags)
 
     return pmix_mca_base_framework_components_open(&pmix_pif_base_framework, flags);
 }
-
 
 static int pmix_pif_base_close(void)
 {

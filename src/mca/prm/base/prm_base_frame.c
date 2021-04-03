@@ -29,7 +29,7 @@
 #include "include/pmix_common.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 
 #include "src/class/pmix_list.h"
@@ -46,13 +46,11 @@
 
 /* Instantiate the global vars */
 pmix_prm_globals_t pmix_prm_globals = {{0}};
-pmix_prm_API_module_t pmix_prm = {
-    .notify = pmix_prm_base_notify
-};
+pmix_prm_API_module_t pmix_prm = {.notify = pmix_prm_base_notify};
 
 static pmix_status_t pmix_prm_close(void)
 {
-  pmix_prm_base_active_module_t *active, *prev;
+    pmix_prm_base_active_module_t *active, *prev;
 
     if (!pmix_prm_globals.initialized) {
         return PMIX_SUCCESS;
@@ -60,12 +58,13 @@ static pmix_status_t pmix_prm_close(void)
     pmix_prm_globals.initialized = false;
     pmix_prm_globals.selected = false;
 
-    PMIX_LIST_FOREACH_SAFE(active, prev, &pmix_prm_globals.actives, pmix_prm_base_active_module_t) {
-      pmix_list_remove_item(&pmix_prm_globals.actives, &active->super);
-      if (NULL != active->module->finalize) {
-        active->module->finalize();
-      }
-      PMIX_RELEASE(active);
+    PMIX_LIST_FOREACH_SAFE (active, prev, &pmix_prm_globals.actives,
+                            pmix_prm_base_active_module_t) {
+        pmix_list_remove_item(&pmix_prm_globals.actives, &active->super);
+        if (NULL != active->module->finalize) {
+            active->module->finalize();
+        }
+        PMIX_RELEASE(active);
     }
     PMIX_DESTRUCT(&pmix_prm_globals.actives);
 
@@ -85,13 +84,11 @@ static pmix_status_t pmix_prm_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_prm_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, prm, "PMIx Network Operations",
-                                NULL, pmix_prm_open, pmix_prm_close,
-                                mca_prm_base_static_components, PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, prm, "PMIx Network Operations", NULL, pmix_prm_open,
+                                pmix_prm_close, mca_prm_base_static_components,
+                                PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
-PMIX_CLASS_INSTANCE(pmix_prm_base_active_module_t,
-                    pmix_list_item_t,
-                    NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_prm_base_active_module_t, pmix_list_item_t, NULL, NULL);
 
 static void rlcon(pmix_prm_rollup_t *p)
 {
@@ -107,6 +104,4 @@ static void rldes(pmix_prm_rollup_t *p)
 {
     PMIX_DESTRUCT_LOCK(&p->lock);
 }
-PMIX_CLASS_INSTANCE(pmix_prm_rollup_t,
-                    pmix_object_t,
-                    rlcon, rldes);
+PMIX_CLASS_INSTANCE(pmix_prm_rollup_t, pmix_object_t, rlcon, rldes);

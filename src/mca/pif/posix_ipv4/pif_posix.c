@@ -5,6 +5,7 @@
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,41 +18,41 @@
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #include <errno.h>
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_SOCKIO_H
-#include <sys/sockio.h>
+#    include <sys/sockio.h>
 #endif
 #ifdef HAVE_SYS_IOCTL_H
-#include <sys/ioctl.h>
+#    include <sys/ioctl.h>
 #endif
 #ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
+#    include <netinet/in.h>
 #endif
 #ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
+#    include <arpa/inet.h>
 #endif
 #ifdef HAVE_NET_IF_H
-#include <net/if.h>
+#    include <net/if.h>
 #endif
 #ifdef HAVE_NETDB_H
-#include <netdb.h>
+#    include <netdb.h>
 #endif
 #ifdef HAVE_IFADDRS_H
-#include <ifaddrs.h>
+#    include <ifaddrs.h>
 #endif
 
+#include "src/mca/pif/base/base.h"
+#include "src/mca/pif/pif.h"
 #include "src/util/output.h"
 #include "src/util/pif.h"
-#include "src/mca/pif/pif.h"
-#include "src/mca/pif/base/base.h"
 
 static int if_posix_open(void);
 
@@ -81,7 +82,7 @@ pmix_pif_base_component_t mca_pif_posix_ipv4_component = {
 };
 
 /* convert a netmask (in network byte order) to CIDR notation */
-static int prefix (uint32_t netmask)
+static int prefix(uint32_t netmask)
 {
     uint32_t mask = ntohl(netmask);
     int plen = 0;
@@ -112,8 +113,7 @@ static int if_posix_open(void)
        using AF_UNSPEC or AF_INET6 will cause everything to
        fail. */
     if ((sd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-        pmix_output(0, "pmix_ifinit: socket() failed with errno=%d\n",
-                    errno);
+        pmix_output(0, "pmix_ifinit: socket() failed with errno=%d\n", errno);
         return PMIX_ERROR;
     }
 
@@ -188,12 +188,12 @@ static int if_posix_open(void)
     /*
      * Setup indexes
      */
-    ptr = (char*) ifconf.ifc_req;
+    ptr = (char *) ifconf.ifc_req;
     rem = ifconf.ifc_len;
 
     /* loop through all interfaces */
     while (rem > 0) {
-        struct ifreq* ifr = (struct ifreq*) ptr;
+        struct ifreq *ifr = (struct ifreq *) ptr;
         pmix_pif_t *intf;
         int length;
 
@@ -240,7 +240,8 @@ static int if_posix_open(void)
 
         intf = PMIX_NEW(pmix_pif_t);
         if (NULL == intf) {
-            pmix_output(0, "pmix_ifinit: unable to allocated %lu bytes\n", (unsigned long)sizeof(pmix_pif_t));
+            pmix_output(0, "pmix_ifinit: unable to allocated %lu bytes\n",
+                        (unsigned long) sizeof(pmix_pif_t));
             free(ifconf.ifc_req);
             close(sd);
             return PMIX_ERR_OUT_OF_RESOURCE;
@@ -253,27 +254,27 @@ static int if_posix_open(void)
         intf->if_flags = ifr->ifr_flags;
 
         /* every new address gets its own internal if_index */
-        intf->if_index = pmix_list_get_size(&pmix_if_list)+1;
+        intf->if_index = pmix_list_get_size(&pmix_if_list) + 1;
 
-        pmix_output_verbose(1, pmix_pif_base_framework.framework_output,
-                            "found interface %s", intf->if_name);
+        pmix_output_verbose(1, pmix_pif_base_framework.framework_output, "found interface %s",
+                            intf->if_name);
 
         /* assign the kernel index to distinguish different NICs */
 #ifndef SIOCGIFINDEX
         intf->if_kernel_index = intf->if_index;
 #else
         if (ioctl(sd, SIOCGIFINDEX, ifr) < 0) {
-            pmix_output(0,"pmix_ifinit: ioctl(SIOCGIFINDEX) failed with errno=%d", errno);
+            pmix_output(0, "pmix_ifinit: ioctl(SIOCGIFINDEX) failed with errno=%d", errno);
             PMIX_RELEASE(intf);
             continue;
         }
-#if defined(ifr_ifindex)
+#    if defined(ifr_ifindex)
         intf->if_kernel_index = ifr->ifr_ifindex;
-#elif defined(ifr_index)
+#    elif defined(ifr_index)
         intf->if_kernel_index = ifr->ifr_index;
-#else
+#    else
         intf->if_kernel_index = -1;
-#endif
+#    endif
 #endif /* SIOCGIFINDEX */
 
         /* This call returns IPv4 addresses only. Use SIOCGLIFADDR
@@ -298,7 +299,7 @@ static int if_posix_open(void)
         }
 
         /* generate CIDR and assign to netmask */
-        intf->if_mask = prefix(((struct sockaddr_in*) &ifr->ifr_addr)->sin_addr.s_addr);
+        intf->if_mask = prefix(((struct sockaddr_in *) &ifr->ifr_addr)->sin_addr.s_addr);
 
 #if defined(SIOCGIFHWADDR) && defined(HAVE_STRUCT_IFREQ_IFR_HWADDR)
         /* get the MAC address */
@@ -317,8 +318,8 @@ static int if_posix_open(void)
         }
         intf->ifmtu = ifr->ifr_mtu;
 #endif
-        pmix_output_verbose(1, pmix_pif_base_framework.framework_output,
-                            "adding interface %s", intf->if_name);
+        pmix_output_verbose(1, pmix_pif_base_framework.framework_output, "adding interface %s",
+                            intf->if_name);
         pmix_list_append(&pmix_if_list, &(intf->super));
     }
     free(ifconf.ifc_req);

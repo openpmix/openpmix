@@ -17,6 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,33 +35,28 @@
 #include "include/pmix_common.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/tool/ptl_tool.h"
+#include "src/util/error.h"
+#include "src/util/output.h"
 
 static int component_query(pmix_mca_base_module_t **module, int *priority);
 /*
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
- PMIX_EXPORT pmix_ptl_base_component_t mca_ptl_tool_component = {
-    .base = {
-        PMIX_PTL_BASE_VERSION_2_0_0,
+PMIX_EXPORT pmix_ptl_base_component_t mca_ptl_tool_component
+    = {.base = {PMIX_PTL_BASE_VERSION_2_0_0,
 
-        /* Component name and version */
-        .pmix_mca_component_name = "tool",
-        PMIX_MCA_BASE_MAKE_VERSION(component,
-                                   PMIX_MAJOR_VERSION,
-                                   PMIX_MINOR_VERSION,
-                                   PMIX_RELEASE_VERSION),
+                /* Component name and version */
+                .pmix_mca_component_name = "tool",
+                PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                                           PMIX_RELEASE_VERSION),
 
-        /* Component open and close functions */
-        .pmix_mca_query_component = component_query
-    },
-    .priority = 40,
-    .uri = NULL
-};
+                /* Component open and close functions */
+                .pmix_mca_query_component = component_query},
+       .priority = 40,
+       .uri = NULL};
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
@@ -71,7 +67,7 @@ static int component_query(pmix_mca_base_module_t **module, int *priority)
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    *module = (pmix_mca_base_module_t*)&pmix_ptl_tool_module;
+    *module = (pmix_mca_base_module_t *) &pmix_ptl_tool_module;
     *priority = mca_ptl_tool_component.priority;
     return PMIX_SUCCESS;
 }

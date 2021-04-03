@@ -15,6 +15,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,11 +34,11 @@ static void pmix_mutex_construct(pmix_mutex_t *m)
     pthread_mutexattr_init(&attr);
 
     /* set type to ERRORCHECK so that we catch recursive locks */
-#if PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP
+#    if PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK_NP);
-#elif PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK
+#    elif PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
-#endif /* PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP */
+#    endif /* PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP */
 
     pthread_mutex_init(&m->m_lock_pthread, &attr);
     pthread_mutexattr_destroy(&attr);
@@ -51,10 +52,6 @@ static void pmix_mutex_construct(pmix_mutex_t *m)
     pthread_mutex_init(&m->m_lock_pthread, NULL);
 
 #endif /* PMIX_ENABLE_DEBUG */
-
-#if PMIX_HAVE_ATOMIC_SPINLOCKS
-    pmix_atomic_lock_init( &m->m_lock_atomic, PMIX_ATOMIC_LOCK_UNLOCKED );
-#endif
 }
 
 static void pmix_mutex_destruct(pmix_mutex_t *m)
@@ -62,10 +59,7 @@ static void pmix_mutex_destruct(pmix_mutex_t *m)
     pthread_mutex_destroy(&m->m_lock_pthread);
 }
 
-PMIX_CLASS_INSTANCE(pmix_mutex_t,
-                   pmix_object_t,
-                   pmix_mutex_construct,
-                   pmix_mutex_destruct);
+PMIX_CLASS_INSTANCE(pmix_mutex_t, pmix_object_t, pmix_mutex_construct, pmix_mutex_destruct);
 
 static void pmix_recursive_mutex_construct(pmix_recursive_mutex_t *m)
 {
@@ -82,13 +76,7 @@ static void pmix_recursive_mutex_construct(pmix_recursive_mutex_t *m)
 
     pthread_mutex_init(&m->m_lock_pthread, &attr);
     pthread_mutexattr_destroy(&attr);
-
-#if PMIX_HAVE_ATOMIC_SPINLOCKS
-    pmix_atomic_lock_init( &m->m_lock_atomic, PMIX_ATOMIC_LOCK_UNLOCKED );
-#endif
 }
 
-PMIX_CLASS_INSTANCE(pmix_recursive_mutex_t,
-                   pmix_object_t,
-                   pmix_recursive_mutex_construct,
-                   pmix_mutex_destruct);
+PMIX_CLASS_INSTANCE(pmix_recursive_mutex_t, pmix_object_t, pmix_recursive_mutex_construct,
+                    pmix_mutex_destruct);

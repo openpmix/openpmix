@@ -23,26 +23,26 @@
 
 #include "src/include/pmix_config.h"
 
+#include <errno.h>
+#include <locale.h>
 #include <stdio.h>
 #include <string.h>
-#include <locale.h>
-#include <errno.h>
 
+#include "include/pmix_common.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
-#include "src/util/show_help.h"
-#include "src/util/show_help_lex.h"
-#include "src/util/printf.h"
 #include "src/util/argv.h"
 #include "src/util/os_path.h"
 #include "src/util/output.h"
-#include "include/pmix_common.h"
-
+#include "src/util/printf.h"
+#include "src/util/show_help.h"
+#include "src/util/show_help_lex.h"
 
 /*
  * Private variables
  */
 static const char *default_filename = "help-messages";
-static const char *dash_line = "--------------------------------------------------------------------------\n";
+static const char *dash_line
+    = "--------------------------------------------------------------------------\n";
 static int output_stream = -1;
 static char **search_dirs = NULL;
 
@@ -81,8 +81,7 @@ int pmix_show_help_finalize(void)
  * efficient method in the world, but we're going for clarity here --
  * not optimization.  :-)
  */
-static int array2string(char **outstring,
-                        int want_error_header, char **lines)
+static int array2string(char **outstring, int want_error_header, char **lines)
 {
     int i, count;
     size_t len;
@@ -100,7 +99,7 @@ static int array2string(char **outstring,
 
     /* Malloc it out */
 
-    (*outstring) = (char*) malloc(len + 1);
+    (*outstring) = (char *) malloc(len + 1);
     if (NULL == *outstring) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -125,7 +124,6 @@ static int array2string(char **outstring,
     return PMIX_SUCCESS;
 }
 
-
 /*
  * Find the right file to open
  */
@@ -149,8 +147,8 @@ static int open_file(const char *base, const char *topic)
         /* Try to open the file.  If we can't find it, try it with a .txt
          * extension.
          */
-        for (i=0; NULL != search_dirs[i]; i++) {
-            filename = pmix_os_path( false, search_dirs[i], base, NULL );
+        for (i = 0; NULL != search_dirs[i]; i++) {
+            filename = pmix_os_path(false, search_dirs[i], base, NULL);
             pmix_show_help_yyin = fopen(filename, "r");
             if (NULL == pmix_show_help_yyin) {
                 if (0 > asprintf(&err_msg, "%s: %s", filename, strerror(errno))) {
@@ -159,7 +157,8 @@ static int open_file(const char *base, const char *topic)
                 base_len = strlen(base);
                 if (4 > base_len || 0 != strcmp(base + base_len - 4, ".txt")) {
                     free(filename);
-                    if (0 > asprintf(&filename, "%s%s%s.txt", search_dirs[i], PMIX_PATH_SEP, base)) {
+                    if (0
+                        > asprintf(&filename, "%s%s%s.txt", search_dirs[i], PMIX_PATH_SEP, base)) {
                         return PMIX_ERR_OUT_OF_RESOURCE;
                     }
                     pmix_show_help_yyin = fopen(filename, "r");
@@ -174,7 +173,10 @@ static int open_file(const char *base, const char *topic)
 
     /* If we still couldn't open it, then something is wrong */
     if (NULL == pmix_show_help_yyin) {
-        pmix_output(output_stream, "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open the help file:\n    %s.  Sorry!\n%s", dash_line, topic, err_msg, dash_line);
+        pmix_output(output_stream,
+                    "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
+                    "the help file:\n    %s.  Sorry!\n%s",
+                    dash_line, topic, err_msg, dash_line);
         free(err_msg);
         return PMIX_ERR_NOT_FOUND;
     }
@@ -191,7 +193,6 @@ static int open_file(const char *base, const char *topic)
 
     return PMIX_SUCCESS;
 }
-
 
 /*
  * In the file that has already been opened, find the topic that we're
@@ -224,7 +225,10 @@ static int find_topic(const char *base, const char *topic)
             break;
 
         case PMIX_SHOW_HELP_PARSE_DONE:
-            pmix_output(output_stream, "%sSorry!  You were supposed to get help about:\n    %s\nfrom the file:\n    %s\nBut I couldn't find that topic in the file.  Sorry!\n%s", dash_line, topic, base, dash_line);
+            pmix_output(output_stream,
+                        "%sSorry!  You were supposed to get help about:\n    %s\nfrom the file:\n  "
+                        "  %s\nBut I couldn't find that topic in the file.  Sorry!\n%s",
+                        dash_line, topic, base, dash_line);
             return PMIX_ERR_NOT_FOUND;
 
         default:
@@ -234,7 +238,6 @@ static int find_topic(const char *base, const char *topic)
 
     /* Never get here */
 }
-
 
 /*
  * We have an open file, and we're pointed at the right topic.  So
@@ -263,7 +266,6 @@ static int read_topic(char ***array)
     /* Never get here */
 }
 
-
 static int load_array(char ***array, const char *filename, const char *topic)
 {
     int ret;
@@ -278,7 +280,7 @@ static int load_array(char ***array, const char *filename, const char *topic)
     }
 
     fclose(pmix_show_help_yyin);
-    pmix_show_help_yylex_destroy ();
+    pmix_show_help_yylex_destroy();
 
     if (PMIX_SUCCESS != ret) {
         pmix_argv_free(*array);
@@ -287,8 +289,8 @@ static int load_array(char ***array, const char *filename, const char *topic)
     return ret;
 }
 
-char *pmix_show_help_vstring(const char *filename, const char *topic,
-                             int want_error_header, va_list arglist)
+char *pmix_show_help_vstring(const char *filename, const char *topic, int want_error_header,
+                             va_list arglist)
 {
     int rc;
     char *single_string, *output, **array = NULL;
@@ -313,28 +315,24 @@ char *pmix_show_help_vstring(const char *filename, const char *topic,
     return (PMIX_SUCCESS == rc) ? output : NULL;
 }
 
-char *pmix_show_help_string(const char *filename, const char *topic,
-                            int want_error_handler, ...)
+char *pmix_show_help_string(const char *filename, const char *topic, int want_error_handler, ...)
 {
     char *output;
     va_list arglist;
 
     va_start(arglist, want_error_handler);
-    output = pmix_show_help_vstring(filename, topic, want_error_handler,
-                                    arglist);
+    output = pmix_show_help_vstring(filename, topic, want_error_handler, arglist);
     va_end(arglist);
 
     return output;
 }
 
-int pmix_show_vhelp(const char *filename, const char *topic,
-                    int want_error_header, va_list arglist)
+int pmix_show_vhelp(const char *filename, const char *topic, int want_error_header, va_list arglist)
 {
     char *output;
 
     /* Convert it to a single string */
-    output = pmix_show_help_vstring(filename, topic, want_error_header,
-                                    arglist);
+    output = pmix_show_help_vstring(filename, topic, want_error_header, arglist);
 
     /* If we got a single string, output it with formatting */
     if (NULL != output) {
@@ -345,15 +343,13 @@ int pmix_show_vhelp(const char *filename, const char *topic,
     return (NULL == output) ? PMIX_ERROR : PMIX_SUCCESS;
 }
 
-int pmix_show_help(const char *filename, const char *topic,
-                   int want_error_header, ...)
+int pmix_show_help(const char *filename, const char *topic, int want_error_header, ...)
 {
     va_list arglist;
     char *output;
 
     va_start(arglist, want_error_header);
-    output = pmix_show_help_vstring(filename, topic, want_error_header,
-                                    arglist);
+    output = pmix_show_help_vstring(filename, topic, want_error_header, arglist);
     va_end(arglist);
 
     /* If nothing came back, there's nothing to do */

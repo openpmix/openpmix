@@ -6,6 +6,8 @@ dnl Copyright (c) 2019      Research Organization for Information Science
 dnl                         and Technology (RIST).  All rights reserved.
 dnl
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
+dnl                         reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -35,7 +37,7 @@ AC_DEFUN([PMIX_CHECK_COMPILER], [
     [
             CPPFLAGS_orig=$CPPFLAGS
             CPPFLAGS="-I${top_srcdir}/src/include $CPPFLAGS"
-AC_RUN_IFELSE([AC_LANG_SOURCE([
+AC_RUN_IFELSE([AC_LANG_SOURCE([[
 #include <stdio.h>
 #include <stdlib.h>
 #include "pmix_portable_platform.h"
@@ -49,7 +51,7 @@ int main (int argc, char * argv[])
     fclose(f);
     return 0;
 }
-            ])],
+            ]])],
             [
                 eval pmix_cv_compiler_$1=`cat conftestval`;
             ],
@@ -71,7 +73,7 @@ AC_DEFUN([PMIX_CHECK_COMPILER_STRING], [
     [
             CPPFLAGS_orig=$CPPFLAGS
             CPPFLAGS="-I${top_srcdir}/src/include $CPPFLAGS"
-AC_RUN_IFELSE([AC_LANG_SOURCE([
+AC_RUN_IFELSE([AC_LANG_SOURCE([[
 #include <stdio.h>
 #include <stdlib.h>
 #include "pmix_portable_platform.h"
@@ -85,7 +87,7 @@ int main (int argc, char * argv[])
     fclose(f);
     return 0;
 }
-            ])],
+            ]])],
             [
                 eval pmix_cv_compiler_$1=`cat conftestval`;
             ],
@@ -110,7 +112,7 @@ AC_DEFUN([PMIX_CHECK_COMPILER_STRINGIFY], [
     [
             CPPFLAGS_orig=$CPPFLAGS
             CPPFLAGS="-I${top_srcdir}/src/include $CPPFLAGS"
-            AC_RUN_IFELSE([AC_LANG_SOURCE([
+            AC_RUN_IFELSE([AC_LANG_SOURCE([[
 #include <stdio.h>
 #include <stdlib.h>
 #include "pmix_portable_platform.h"
@@ -124,7 +126,7 @@ int main (int argc, char * argv[])
     fclose(f);
     return 0;
 }
-            ])], [
+            ]])], [
                 eval pmix_cv_compiler_$1=`cat conftestval`;
             ], [
                 eval pmix_cv_compiler_$1=UNKNOWN

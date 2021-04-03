@@ -14,6 +14,7 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -50,7 +51,6 @@ struct pmix_mca_base_var_group_t {
 
     /** Integer array of group variables */
     pmix_value_array_t group_vars;
-
 };
 
 typedef struct pmix_mca_base_var_group_t pmix_mca_base_var_group_t;
@@ -89,8 +89,9 @@ PMIX_EXPORT int pmix_mca_base_var_group_register(const char *project_name,
  * @retval index Unique group index
  * @return pmix error code on Error
  */
-PMIX_EXPORT int pmix_mca_base_var_group_component_register (const pmix_mca_base_component_t *component,
-                                                            const char *description);
+PMIX_EXPORT int
+pmix_mca_base_var_group_component_register(const pmix_mca_base_component_t *component,
+                                           const char *description);
 
 /**
  * Deregister an MCA param group
@@ -100,7 +101,7 @@ PMIX_EXPORT int pmix_mca_base_var_group_component_register (const pmix_mca_base_
  *
  * This call deregisters all associated variables and subgroups.
  */
-PMIX_EXPORT int pmix_mca_base_var_group_deregister (int group_index);
+PMIX_EXPORT int pmix_mca_base_var_group_deregister(int group_index);
 
 /**
  * Find an MCA group
@@ -112,9 +113,8 @@ PMIX_EXPORT int pmix_mca_base_var_group_deregister (int group_index);
  * @returns PMIX_SUCCESS if found
  * @returns PMIX_ERR_NOT_FOUND if not found
  */
-PMIX_EXPORT int pmix_mca_base_var_group_find (const char *project_name,
-                                              const char *framework_name,
-                                              const char *component_name);
+PMIX_EXPORT int pmix_mca_base_var_group_find(const char *project_name, const char *framework_name,
+                                             const char *component_name);
 
 /**
  * Find an MCA group by its full name
@@ -125,7 +125,7 @@ PMIX_EXPORT int pmix_mca_base_var_group_find (const char *project_name,
  * @returns PMIX_SUCCESS if found
  * @returns PMIX_ERR_NOT_FOUND if not found
  */
-PMIX_EXPORT int pmix_mca_base_var_group_find_by_name (const char *full_name, int *index);
+PMIX_EXPORT int pmix_mca_base_var_group_find_by_name(const char *full_name, int *index);
 
 /**
  * Get the group at a specified index
@@ -139,8 +139,8 @@ PMIX_EXPORT int pmix_mca_base_var_group_find_by_name (const char *full_name, int
  * The returned pointer belongs to the MCA variable system. Do not modify/release/retain
  * the pointer.
  */
-PMIX_EXPORT int pmix_mca_base_var_group_get (const int group_index,
-                                             const pmix_mca_base_var_group_t **group);
+PMIX_EXPORT int pmix_mca_base_var_group_get(const int group_index,
+                                            const pmix_mca_base_var_group_t **group);
 
 /**
  * Set/unset a flags for all variables in a group.
@@ -151,15 +151,14 @@ PMIX_EXPORT int pmix_mca_base_var_group_get (const int group_index,
  *
  * Set a flag for every variable in a group. See pmix_mca_base_var_set_flag() for more info.
  */
-PMIX_EXPORT int pmix_mca_base_var_group_set_var_flag (const int group_index, int flags,
-                                                      bool set);
+PMIX_EXPORT int pmix_mca_base_var_group_set_var_flag(const int group_index, int flags, bool set);
 
 /**
  * Get the number of registered MCA groups
  *
  * @retval count Number of registered MCA groups
  */
-PMIX_EXPORT int pmix_mca_base_var_group_get_count (void);
+PMIX_EXPORT int pmix_mca_base_var_group_get_count(void);
 
 /**
  * Get a relative timestamp for the MCA group system
@@ -168,6 +167,6 @@ PMIX_EXPORT int pmix_mca_base_var_group_get_count (void);
  *
  * This value will change if groups or variables are either added or removed.
  */
-PMIX_EXPORT int pmix_mca_base_var_group_get_stamp (void);
+PMIX_EXPORT int pmix_mca_base_var_group_get_stamp(void);
 
 #endif /* PMIX_MCA_BASE_VAR_GROUP_H */

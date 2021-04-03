@@ -13,6 +13,7 @@
  * Copyright (c) 2011-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -44,9 +45,9 @@ BEGIN_C_DECLS
 /**
  * Locally fork/exec the provided job
  */
-typedef pmix_status_t (*pmix_pfexec_base_module_spawn_job_fn_t)(const pmix_info_t job_info[], size_t ninfo,
-                                                                const pmix_app_t apps[], size_t napps,
-                                                                pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+typedef pmix_status_t (*pmix_pfexec_base_module_spawn_job_fn_t)(
+    const pmix_info_t job_info[], size_t ninfo, const pmix_app_t apps[], size_t napps,
+    pmix_spawn_cbfunc_t cbfunc, void *cbdata);
 
 /**
  * Kill the local process we started
@@ -62,9 +63,9 @@ typedef pmix_status_t (*pmix_pfexec_base_module_signal_process_fn_t)(pmix_proc_t
  * pfexec module version
  */
 typedef struct {
-    pmix_pfexec_base_module_spawn_job_fn_t           spawn_job;
-    pmix_pfexec_base_module_kill_process_fn_t        kill_proc;
-    pmix_pfexec_base_module_signal_process_fn_t      signal_proc;
+    pmix_pfexec_base_module_spawn_job_fn_t spawn_job;
+    pmix_pfexec_base_module_kill_process_fn_t kill_proc;
+    pmix_pfexec_base_module_signal_process_fn_t signal_proc;
 } pmix_pfexec_base_module_t;
 
 /**
@@ -77,16 +78,15 @@ typedef struct {
     pmix_mca_base_component_data_t base_data;
 } pmix_pfexec_base_component_t;
 
-
 /**
  * Macro for use in modules that are of type pfexec
  */
-#define PMIX_PFEXEC_BASE_VERSION_1_0_0 \
-    PMIX_MCA_BASE_VERSION_1_0_0("pfexec", 1, 0, 0)
+#define PMIX_PFEXEC_BASE_VERSION_1_0_0 PMIX_MCA_BASE_VERSION_1_0_0("pfexec", 1, 0, 0)
 
 /* Global structure for accessing PFEXEC functions
-*/
-PMIX_EXPORT extern pmix_pfexec_base_module_t pmix_pfexec;  /* holds selected module's function pointers */
+ */
+PMIX_EXPORT extern pmix_pfexec_base_module_t
+    pmix_pfexec; /* holds selected module's function pointers */
 
 END_C_DECLS
 

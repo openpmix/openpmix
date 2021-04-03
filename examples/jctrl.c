@@ -16,6 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,15 +26,15 @@
  */
 
 #define _GNU_SOURCE
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
-#include <signal.h>
+#include <unistd.h>
 
-#include <pmix.h>
 #include "examples.h"
+#include <pmix.h>
 
 static pmix_proc_t myproc;
 
@@ -41,13 +42,10 @@ static pmix_proc_t myproc;
  * when registering for general events - i.e.,, the default
  * handler. We don't technically need to register one, but it
  * is usually good practice to catch any events that occur */
-static void notification_fn(size_t evhdlr_registration_id,
-                            pmix_status_t status,
-                            const pmix_proc_t *source,
-                            pmix_info_t info[], size_t ninfo,
+static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
+                            const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                             pmix_info_t results[], size_t nresults,
-                            pmix_event_notification_cbfunc_fn_t cbfunc,
-                            void *cbdata)
+                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -61,28 +59,23 @@ static void notification_fn(size_t evhdlr_registration_id,
  * to the registered event. The index is used later on to deregister
  * an event handler - if we don't explicitly deregister it, then the
  * PMIx server will do so when it see us exit */
-static void evhandler_reg_callbk(pmix_status_t status,
-                                 size_t evhandler_ref,
-                                 void *cbdata)
+static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
 
     if (PMIX_SUCCESS != status) {
         fprintf(stderr, "Client %s:%d EVENT HANDLER REGISTRATION FAILED WITH STATUS %d, ref=%lu\n",
-                   myproc.nspace, myproc.rank, status, (unsigned long)evhandler_ref);
+                myproc.nspace, myproc.rank, status, (unsigned long) evhandler_ref);
     }
     lock->status = status;
     lock->evhandler_ref = evhandler_ref;
     DEBUG_WAKEUP_THREAD(lock);
 }
 
-static void infocbfunc(pmix_status_t status,
-                       pmix_info_t *info, size_t ninfo,
-                       void *cbdata,
-                       pmix_release_cbfunc_t release_fn,
-                       void *release_cbdata)
+static void infocbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                       pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
 
     /* release the caller */
     if (NULL != release_fn) {
@@ -107,23 +100,24 @@ int main(int argc, char **argv)
     /* init us - note that the call to "init" includes the return of
      * any job-related info provided by the RM. */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
         exit(0);
     }
     fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
 
-
     /* register our default event handler - again, this isn't strictly
      * required, but is generally good practice */
     DEBUG_CONSTRUCT_LOCK(&mylock);
-    PMIx_Register_event_handler(NULL, 0, NULL, 0,
-                                notification_fn, evhandler_reg_callbk, (void*)&mylock);
+    PMIx_Register_event_handler(NULL, 0, NULL, 0, notification_fn, evhandler_reg_callbk,
+                                (void *) &mylock);
     /* wait for registration to complete */
     DEBUG_WAIT_THREAD(&mylock);
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "[%s:%d] Default handler registration failed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "[%s:%d] Default handler registration failed\n", myproc.nspace,
+                myproc.rank);
         goto done;
     }
 
@@ -135,7 +129,8 @@ int main(int argc, char **argv)
 
     /* get our universe size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
     nprocs = val->data.uint32;
@@ -146,13 +141,13 @@ int main(int argc, char **argv)
      * "signal" on SIGUSR2 and event on PMIX_JCTRL_CHECKPOINT */
     PMIX_INFO_CREATE(info, 2);
     flag = true;
-    PMIX_INFO_LOAD(&info[0], PMIX_JOB_CTRL_PREEMPTIBLE, (void*)&flag, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[0], PMIX_JOB_CTRL_PREEMPTIBLE, (void *) &flag, PMIX_BOOL);
     /* can't use "load" to load a pmix_data_array_t */
-    (void)strncpy(info[1].key, PMIX_JOB_CTRL_CHECKPOINT_METHOD, PMIX_MAX_KEYLEN);
+    (void) strncpy(info[1].key, PMIX_JOB_CTRL_CHECKPOINT_METHOD, PMIX_MAX_KEYLEN);
     PMIX_DATA_ARRAY_CREATE(info[1].value.data.darray, 2, PMIX_INFO);
     dptr = info[1].value.data.darray;
     rc = SIGUSR2;
-    iptr = (pmix_info_t*)dptr->array;
+    iptr = (pmix_info_t *) dptr->array;
     PMIX_INFO_LOAD(&iptr[0], PMIX_JOB_CTRL_CHECKPOINT_SIGNAL, &rc, PMIX_INT);
     rc = PMIX_JCTRL_CHECKPOINT;
     PMIX_INFO_LOAD(&iptr[1], PMIX_JOB_CTRL_CHECKPOINT_EVENT, &rc, PMIX_STATUS);
@@ -160,8 +155,10 @@ int main(int argc, char **argv)
     /* since this is informational and not a requested operation, the target parameter
      * doesn't mean anything and can be ignored */
     DEBUG_CONSTRUCT_LOCK(&mylock);
-    if (PMIX_SUCCESS != (rc = PMIx_Job_control_nb(NULL, 0, info, 2, infocbfunc, (void*)&mylock))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Job_control_nb failed: %d\n", myproc.nspace, myproc.rank, rc);
+    if (PMIX_SUCCESS
+        != (rc = PMIx_Job_control_nb(NULL, 0, info, 2, infocbfunc, (void *) &mylock))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Job_control_nb failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         DEBUG_DESTRUCT_LOCK(&mylock);
         goto done;
     }
@@ -170,7 +167,8 @@ int main(int argc, char **argv)
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Job_control_nb failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Job_control_nb failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
 
@@ -180,16 +178,18 @@ int main(int argc, char **argv)
 
     PMIX_INFO_CREATE(info, 3);
     PMIX_INFO_LOAD(&info[0], PMIX_MONITOR_ID, "MONITOR1", PMIX_STRING);
-    n = 5;  // require a heartbeat every 5 seconds
+    n = 5; // require a heartbeat every 5 seconds
     PMIX_INFO_LOAD(&info[1], PMIX_MONITOR_HEARTBEAT_TIME, &n, PMIX_UINT32);
-    n = 2;  // two heartbeats can be missed before declaring us "stalled"
+    n = 2; // two heartbeats can be missed before declaring us "stalled"
     PMIX_INFO_LOAD(&info[2], PMIX_MONITOR_HEARTBEAT_DROPS, &n, PMIX_UINT32);
 
     /* make the request */
     DEBUG_CONSTRUCT_LOCK(&mylock);
-    if (PMIX_SUCCESS != (rc = PMIx_Process_monitor_nb(iptr, PMIX_MONITOR_HEARTBEAT_ALERT,
-                                                      info, 3, infocbfunc, (void*)&mylock))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor_nb failed: %d\n", myproc.nspace, myproc.rank, rc);
+    if (PMIX_SUCCESS
+        != (rc = PMIx_Process_monitor_nb(iptr, PMIX_MONITOR_HEARTBEAT_ALERT, info, 3, infocbfunc,
+                                         (void *) &mylock))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor_nb failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         DEBUG_DESTRUCT_LOCK(&mylock);
         goto done;
     }
@@ -199,7 +199,8 @@ int main(int argc, char **argv)
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor_nb failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor_nb failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
         goto done;
     }
 
@@ -212,20 +213,22 @@ int main(int argc, char **argv)
     flag = false;
     PMIX_INFO_LOAD(info, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, info, 1))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
         goto done;
     }
     PMIX_INFO_FREE(info, 1);
 
-
-  done:
+done:
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return(0);
+    return (0);
 }

@@ -4,6 +4,7 @@
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,17 +21,14 @@
 
 #include "src/mca/base/base.h"
 
-
 BEGIN_C_DECLS
 
 /**
  * Globals
  */
 PMIX_EXPORT extern pmix_mca_base_framework_t pmix_pdl_base_framework;
-extern pmix_pdl_base_component_t
-*pmix_pdl_base_selected_component;
+extern pmix_pdl_base_component_t *pmix_pdl_base_selected_component;
 extern pmix_pdl_base_module_t *pmix_pdl;
-
 
 /**
  * Initialize the PDL MCA framework
@@ -68,9 +66,8 @@ int pmix_pdl_base_close(void);
  * (see pmix_pdl_base_module_open_ft_t in pmix/mca/pdl/pdl.h for
  * documentation of this function)
  */
-int pmix_pdl_open(const char *fname,
-                 bool use_ext, bool private_namespace,
-                 pmix_pdl_handle_t **handle, char **err_msg);
+int pmix_pdl_open(const char *fname, bool use_ext, bool private_namespace,
+                  pmix_pdl_handle_t **handle, char **err_msg);
 
 /**
  * Lookup a symbol in a DSO
@@ -78,9 +75,7 @@ int pmix_pdl_open(const char *fname,
  * (see pmix_pdl_base_module_lookup_ft_t in pmix/mca/pdl/pdl.h for
  * documentation of this function)
  */
-int pmix_pdl_lookup(pmix_pdl_handle_t *handle,
-                   const char *symbol,
-                   void **ptr, char **err_msg);
+int pmix_pdl_lookup(pmix_pdl_handle_t *handle, const char *symbol, void **ptr, char **err_msg);
 
 /**
  * Close a DSO
@@ -97,8 +92,7 @@ int pmix_pdl_close(pmix_pdl_handle_t *handle);
  * documentation of this function)
  */
 int pmix_pdl_foreachfile(const char *search_path,
-                        int (*cb_func)(const char *filename, void *context),
-                        void *context);
+                         int (*cb_func)(const char *filename, void *context), void *context);
 
 END_C_DECLS
 

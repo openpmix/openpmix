@@ -12,6 +12,7 @@
  * Copyright (c) 2006      Voltaire All rights reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,8 +23,8 @@
 #ifndef PMIX_ALIGN_H
 #define PMIX_ALIGN_H
 
-#define PMIX_ALIGN(x,a,t) (((x)+((t)(a)-1)) & ~(((t)(a)-1)))
-#define PMIX_ALIGN_PTR(x,a,t) ((t)PMIX_ALIGN((uintptr_t)x, a, uintptr_t))
-#define PMIX_ALIGN_PAD_AMOUNT(x,s) ((~((uintptr_t)(x))+1) & ((uintptr_t)(s)-1))
+#define PMIX_ALIGN(x, a, t)         (((x) + ((t)(a) -1)) & ~(((t)(a) -1)))
+#define PMIX_ALIGN_PTR(x, a, t)     ((t) PMIX_ALIGN((uintptr_t) x, a, uintptr_t))
+#define PMIX_ALIGN_PAD_AMOUNT(x, s) ((~((uintptr_t)(x)) + 1) & ((uintptr_t)(s) -1))
 
 #endif /* PMIX_ALIGN_H */

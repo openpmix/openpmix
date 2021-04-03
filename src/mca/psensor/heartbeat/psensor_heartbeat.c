@@ -2,8 +2,9 @@
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved.
-  *
+ *
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,36 +17,34 @@
 
 #include <errno.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif  /* HAVE_UNISTD_H */
+#    include <unistd.h>
+#endif /* HAVE_UNISTD_H */
 #ifdef HAVE_STRING_H
-#include <string.h>
-#endif  /* HAVE_STRING_H */
-#include <stdio.h>
+#    include <string.h>
+#endif /* HAVE_STRING_H */
 #include <pthread.h>
+#include <stdio.h>
 #include PMIX_EVENT_HEADER
 
+#include "src/include/pmix_globals.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
-#include "src/include/pmix_globals.h"
-#include "src/mca/ptl/base/base.h"
 
-#include "src/mca/psensor/base/base.h"
 #include "psensor_heartbeat.h"
+#include "src/mca/psensor/base/base.h"
 
 /* declare the API functions */
 static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error,
-                                     const pmix_info_t *monitor,
-                                     const pmix_info_t directives[], size_t ndirs);
+                                     const pmix_info_t *monitor, const pmix_info_t directives[],
+                                     size_t ndirs);
 static pmix_status_t heartbeat_stop(pmix_peer_t *requestor, char *id);
 
 /* instantiate the module */
-pmix_psensor_base_module_t pmix_psensor_heartbeat_module = {
-    .start = heartbeat_start,
-    .stop = heartbeat_stop
-};
+pmix_psensor_base_module_t pmix_psensor_heartbeat_module = {.start = heartbeat_start,
+                                                            .stop = heartbeat_stop};
 
 /* tracker object */
 typedef struct {
@@ -97,9 +96,7 @@ static void ft_destructor(pmix_heartbeat_trkr_t *ft)
         PMIX_INFO_FREE(ft->info, ft->ninfo);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_heartbeat_trkr_t,
-                    pmix_list_item_t,
-                    ft_constructor, ft_destructor);
+PMIX_CLASS_INSTANCE(pmix_heartbeat_trkr_t, pmix_list_item_t, ft_constructor, ft_destructor);
 
 /* define a local caddy */
 typedef struct {
@@ -122,9 +119,7 @@ static void cd_des(heartbeat_caddy_t *p)
         free(p->id);
     }
 }
-PMIX_CLASS_INSTANCE(heartbeat_caddy_t,
-                    pmix_object_t,
-                    cd_con, cd_des);
+PMIX_CLASS_INSTANCE(heartbeat_caddy_t, pmix_object_t, cd_con, cd_des);
 
 typedef struct {
     pmix_object_t super;
@@ -142,15 +137,13 @@ static void bdes(pmix_psensor_beat_t *p)
         PMIX_RELEASE(p->peer);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_psensor_beat_t,
-                    pmix_object_t,
-                    bcon, bdes);
+PMIX_CLASS_INSTANCE(pmix_psensor_beat_t, pmix_object_t, bcon, bdes);
 
 static void check_heartbeat(int fd, short dummy, void *arg);
 
 static void add_tracker(int sd, short flags, void *cbdata)
 {
-    pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t*)cbdata;
+    pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cbdata;
 
     PMIX_ACQUIRE_OBJECT(ft);
 
@@ -158,15 +151,14 @@ static void add_tracker(int sd, short flags, void *cbdata)
     pmix_list_append(&mca_psensor_heartbeat_component.trackers, &ft->super);
 
     /* setup the timer event */
-    pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev,
-                           check_heartbeat, ft);
+    pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev, check_heartbeat, ft);
     pmix_event_evtimer_add(&ft->ev, &ft->tv);
     ft->event_active = true;
 }
 
 static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error,
-                                     const pmix_info_t *monitor,
-                                     const pmix_info_t directives[], size_t ndirs)
+                                     const pmix_info_t *monitor, const pmix_info_t directives[],
+                                     size_t ndirs)
 {
     pmix_heartbeat_trkr_t *ft;
     size_t n;
@@ -189,7 +181,7 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
     ft->error = error;
 
     /* check the directives to see what they want monitored */
-    for (n=0; n < ndirs; n++) {
+    for (n = 0; n < ndirs; n++) {
         if (0 == strcmp(directives[n].key, PMIX_MONITOR_HEARTBEAT_TIME)) {
             ft->tv.tv_sec = directives[n].value.data.uint32;
         } else if (0 == strcmp(directives[n].key, PMIX_MONITOR_HEARTBEAT_DROPS)) {
@@ -217,8 +209,7 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
     }
 
     /* need to push into our event base to add this to our trackers */
-    pmix_event_assign(&ft->cdev, pmix_psensor_base.evbase, -1,
-                      EV_WRITE, add_tracker, ft);
+    pmix_event_assign(&ft->cdev, pmix_psensor_base.evbase, -1, EV_WRITE, add_tracker, ft);
     PMIX_POST_OBJECT(ft);
     pmix_event_active(&ft->cdev, EV_WRITE, 1);
 
@@ -227,18 +218,18 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
 
 static void del_tracker(int sd, short flags, void *cbdata)
 {
-    heartbeat_caddy_t *cd = (heartbeat_caddy_t*)cbdata;
+    heartbeat_caddy_t *cd = (heartbeat_caddy_t *) cbdata;
     pmix_heartbeat_trkr_t *ft, *ftnext;
 
     PMIX_ACQUIRE_OBJECT(cd);
 
     /* remove the tracker from our list */
-    PMIX_LIST_FOREACH_SAFE(ft, ftnext, &mca_psensor_heartbeat_component.trackers, pmix_heartbeat_trkr_t) {
+    PMIX_LIST_FOREACH_SAFE (ft, ftnext, &mca_psensor_heartbeat_component.trackers,
+                            pmix_heartbeat_trkr_t) {
         if (ft->requestor != cd->requestor) {
             continue;
         }
-        if (NULL == cd->id ||
-            (NULL != ft->id && 0 == strcmp(ft->id, cd->id))) {
+        if (NULL == cd->id || (NULL != ft->id && 0 == strcmp(ft->id, cd->id))) {
             pmix_list_remove_item(&mca_psensor_heartbeat_component.trackers, &ft->super);
             PMIX_RELEASE(ft);
         }
@@ -258,8 +249,7 @@ static pmix_status_t heartbeat_stop(pmix_peer_t *requestor, char *id)
     }
 
     /* need to push into our event base to remove this from our trackers */
-    pmix_event_assign(&cd->ev, pmix_psensor_base.evbase, -1,
-                      EV_WRITE, del_tracker, cd);
+    pmix_event_assign(&cd->ev, pmix_psensor_base.evbase, -1, EV_WRITE, del_tracker, cd);
     PMIX_POST_OBJECT(cd);
     pmix_event_active(&cd->ev, EV_WRITE, 1);
 
@@ -268,9 +258,9 @@ static pmix_status_t heartbeat_stop(pmix_peer_t *requestor, char *id)
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t*)cbdata;
+    pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cbdata;
 
-    PMIX_RELEASE(ft);  // maintain accounting
+    PMIX_RELEASE(ft); // maintain accounting
 }
 
 /* this function automatically gets periodically called
@@ -279,16 +269,16 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
  */
 static void check_heartbeat(int fd, short dummy, void *cbdata)
 {
-    pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t*)cbdata;
+    pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cbdata;
     pmix_status_t rc;
     pmix_proc_t source;
 
     PMIX_ACQUIRE_OBJECT(ft);
 
     PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
-                         "[%s:%d] sensor:check_heartbeat for proc %s:%d",
-                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        ft->requestor->info->pname.nspace, ft->requestor->info->pname.rank));
+                         "[%s:%d] sensor:check_heartbeat for proc %s:%d", pmix_globals.myid.nspace,
+                         pmix_globals.myid.rank, ft->requestor->info->pname.nspace,
+                         ft->requestor->info->pname.rank));
 
     if (0 == ft->nbeats && !ft->stopped) {
         /* no heartbeat recvd in last window */
@@ -304,8 +294,8 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
         /* mark that the process appears stopped so we don't
          * continue to report it */
         ft->stopped = true;
-        rc = PMIx_Notify_event(PMIX_MONITOR_HEARTBEAT_ALERT, &source,
-                               ft->range, ft->info, ft->ninfo, opcbfunc, ft);
+        rc = PMIx_Notify_event(PMIX_MONITOR_HEARTBEAT_ALERT, &source, ft->range, ft->info,
+                               ft->ninfo, opcbfunc, ft);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -324,13 +314,13 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
 
 static void add_beat(int sd, short args, void *cbdata)
 {
-    pmix_psensor_beat_t *b = (pmix_psensor_beat_t*)cbdata;
+    pmix_psensor_beat_t *b = (pmix_psensor_beat_t *) cbdata;
     pmix_heartbeat_trkr_t *ft;
 
     PMIX_ACQUIRE_OBJECT(b);
 
     /* find this peer in our trackers */
-    PMIX_LIST_FOREACH(ft, &mca_psensor_heartbeat_component.trackers, pmix_heartbeat_trkr_t) {
+    PMIX_LIST_FOREACH (ft, &mca_psensor_heartbeat_component.trackers, pmix_heartbeat_trkr_t) {
         if (ft->requestor == b->peer) {
             /* increment the beat count */
             ++ft->nbeats;
@@ -343,8 +333,7 @@ static void add_beat(int sd, short args, void *cbdata)
     PMIX_RELEASE(b);
 }
 
-void pmix_psensor_heartbeat_recv_beats(struct pmix_peer_t *peer,
-                                       pmix_ptl_hdr_t *hdr,
+void pmix_psensor_heartbeat_recv_beats(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                                        pmix_buffer_t *buf, void *cbdata)
 {
     pmix_psensor_beat_t *b;
@@ -354,8 +343,7 @@ void pmix_psensor_heartbeat_recv_beats(struct pmix_peer_t *peer,
     b->peer = peer;
 
     /* shift this to our thread for processing */
-    pmix_event_assign(&b->ev, pmix_psensor_base.evbase, -1,
-                      EV_WRITE, add_beat, b);
+    pmix_event_assign(&b->ev, pmix_psensor_base.evbase, -1, EV_WRITE, add_beat, b);
     PMIX_POST_OBJECT(b);
     pmix_event_active(&b->ev, EV_WRITE, 1);
 }

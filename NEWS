@@ -1,6 +1,8 @@
 Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2020 IBM Corporation.  All rights reserved.
 Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+                        All Rights reserved.
 $COPYRIGHT$
 
 Additional copyrights may follow
@@ -26,6 +28,100 @@ Master (not on release branches yet)
 
 4.0.1 -- TBD
 ----------------------
+ - PR #2154: Cherry-pick updates from master branch
+     - Spawn needs to do a little checking of the app
+     - build: Allow autogen.pl to be run from a tarball
+     - Enable singletons to connect to system servers
+     - Fix compile error in ptl_base_connect.c
+     - Update ptl_base_connect.c
+     - build: Change default build mode for components
+     - build: Remove options around mca direct calling
+     - Setup clients to output forwarded IO
+     - Set the default for enable-mca-dso
+     - Tool finalize crash due to ref count issue
+     - Reject ambiguous connection options
+     - ptl: prevent free of uninited suri variable
+     - Clang-format the code
+     - psec: include missing psec.h
+     - ptl: help on too-many-conns: mention conn handle files
+     - Some mods/cleanup of debugger definitions and handling
+     - build: Explicitly list libpmix dependencies
+     - build: Fix compiler attribute detection
+     - build: Fix compiler family detection
+     - atomics: Only support C11 and GCC builtin atomics
+     - Clean out unneeded test directory
+ - PR #2112: Add a bfrops 4.0.1 component
+ - PR #2111: Cherry-pick updates from master branch
+     - Add missing items
+     - Add missing PMIx_Data... functions
+     - Fix signature of new compression APIs
+     - Add compress/decompress APIs
+     - Update clang format
+     - Slight touchups on event notification and name print
+ - PR #2108: Cherry-pick updates from master branch
+     - leak: Free items in nslist for fence tracker
+     - Update src/common/pmix_iof.c
+     - Properly handle stdin forwarding
+     - Eliminate shadow variables
+     - leak: Fix case where buffer was unloaded, losing the pointer
+     - Leak: Always free ns->jobbkt in pmix_nspace_caddy_t destructor.
+     - Add clang format support
+ - PR #2105: Add zlib warning and compression checks
+ - PR #2100: Cherry-pick updates from master branch
+     - Correct listener - this is a PMIx v4 (not 4.1) server
+     - Purge shadowing as reported by gcc.
+     - Add -Wshadow to --picky-compiler
+     - Avoid zero byte malloc in argv_join_range
+     - Minor fix to libevent configury
+     - Minor configure cleanups
+     - Use LT_PATH_NM instead of AC_PATH_PROG to find nm
+     - Update to Autoconf 2.7x
+     - Enable singleton "comm_spawn" operations
+     - Link against libz when testing for TM
+     - Initialize myproc structure before calling PMIx_tool_set_server
+     - Py: Open files as UTF-8 while processing
+     - Fix Python binding build
+     - Correctly pass the right object to dereg cbfunc
+     - Extend check for empty buffer
+     - Correct miscast of object type
+     - Validate CFLAGS individually
+     - Use the provided caddy instead of creating a new one
+     - Silence -qinline xlc compiler warning
+     - Fix case where var->mbv_enumerator can be released when static
+     - Cleanup several places based on testing with PRRTE
+     - Ensure proper handling of IOF pull requests
+     - Protect against empty message
+     - Remove PMIX_BUFFER datatype and extend macro definition
+     - Fix stale definition for PMIX_HAVE_ATOMIC_LLSC_PTR
+     - Add datatype support for new types
+     - configury: fix _PMIX_CHECK_PACKAGE_LIB() macro
+     - Missed a spot - check for HWLOC_VERSION defined
+     - Protect HWLOC_VERSION
+     - Fix configury where most compilers will get mislabeled as 'gnu'
+     - Ensure the topology support matches the Standard
+     - Fix check for IBM xl compilers for v13.1 and later
+     - Cleanup the IOF register/dereg response code path
+     - Fix clang compliler regression
+     - Have developer builds use -O3 by default
+     - Silence PGI atomics warnings, while not breaking clang
+     - Update the new hybrid test a bit
+     - Fix build failure on Apple silicon
+     - Correctly handle precedence for first/last overall events
+     - Fix various PGI warnings
+     - Fix bugs in OFI configure and HWLOC component
+     - Add the local reference ID to iof/pull request
+     - Add a couple of useful macros
+     - Correct name of PSM2 envar
+     - configury: fix --with-ofi=DIR handling
+     - Add the psm2 auth_key to the job info and silence warning
+     - Update the pnet/opa component to current architecture
+     - Ensure the data array always gets initialized in PMIX_INFO_LIST_CONVERT
+     - Cleanup indirect debugger launch against mpirun
+ - PR #2014: Silence a couple of Coverity warnings
+ - PR #2013: Add the PMIx Standard version level to the version string
+ - PR #2012: Fix Python binding build for VPATH
+ - PR #2007: Disable IPv6 by default
+ - PR #2000: Set hostname in global to NULL on finalize
  - PR #1998: Specify Python 3 for the configure check
 
 
@@ -61,7 +157,8 @@ and macros, changes to the library include:
  - Detect/avoid conflict with LSF version of "libevent"
  - Auto-detect and forward envars from various identified programming models
    (e.g., OpenMPI, OpenSHMEM) and fabrics
-
+ - Change the default component build behavior to prefer building components
+   as part of libpmix.so instead of individual DSOs.
 
 3.2.2 -- 7 Dec 2020
 ----------------------

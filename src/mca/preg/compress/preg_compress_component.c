@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,9 +30,9 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
+#include "preg_compress.h"
 #include "src/mca/pcompress/pcompress.h"
 #include "src/mca/preg/preg.h"
-#include "preg_compress.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -46,9 +47,7 @@ pmix_mca_base_component_t mca_preg_compress_component = {
 
     /* Component name and version */
     .pmix_mca_component_name = "compress",
-    PMIX_MCA_BASE_MAKE_VERSION(component,
-                               PMIX_MAJOR_VERSION,
-                               PMIX_MINOR_VERSION,
+    PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
                                PMIX_RELEASE_VERSION),
 
     /* Component open and close functions */
@@ -57,12 +56,10 @@ pmix_mca_base_component_t mca_preg_compress_component = {
     .pmix_mca_query_component = component_query,
 };
 
-
 static int component_open(void)
 {
     return PMIX_SUCCESS;
 }
-
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
@@ -71,10 +68,9 @@ static int component_query(pmix_mca_base_module_t **module, int *priority)
     }
     /* we should always be first in priority */
     *priority = 100;
-    *module = (pmix_mca_base_module_t *)&pmix_preg_compress_module;
+    *module = (pmix_mca_base_module_t *) &pmix_preg_compress_module;
     return PMIX_SUCCESS;
 }
-
 
 static int component_close(void)
 {

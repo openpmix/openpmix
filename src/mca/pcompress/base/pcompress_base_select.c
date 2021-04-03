@@ -8,6 +8,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,14 +19,14 @@
 #include "pmix_config.h"
 
 #ifdef HAVE_UNISTD_H
-#include "unistd.h"
+#    include "unistd.h"
 #endif
 
 #include "include/pmix_common.h"
-#include "src/util/output.h"
-#include "src/mca/mca.h"
 #include "src/mca/base/base.h"
+#include "src/mca/mca.h"
 #include "src/mca/pcompress/base/base.h"
+#include "src/util/output.h"
 
 int pmix_compress_base_select(void)
 {
@@ -41,10 +42,11 @@ int pmix_compress_base_select(void)
     /*
      * Select the best component
      */
-    if( PMIX_SUCCESS != pmix_mca_base_select("pcompress", pmix_pcompress_base_framework.framework_output,
-                                             &pmix_pcompress_base_framework.framework_components,
-                                             (pmix_mca_base_module_t **) &best_module,
-                                             (pmix_mca_base_component_t **) &best_component, NULL) ) {
+    if (PMIX_SUCCESS
+        != pmix_mca_base_select("pcompress", pmix_pcompress_base_framework.framework_output,
+                                &pmix_pcompress_base_framework.framework_components,
+                                (pmix_mca_base_module_t **) &best_module,
+                                (pmix_mca_base_component_t **) &best_component, NULL)) {
         /* This will only happen if no component was selected,
          * in which case we use the default one */
         goto cleanup;
@@ -53,13 +55,13 @@ int pmix_compress_base_select(void)
     /* Initialize the winner */
     if (NULL != best_module) {
         if (NULL != best_module->init) {
-            if (PMIX_SUCCESS != (ret = best_module->init()) ) {
+            if (PMIX_SUCCESS != (ret = best_module->init())) {
                 goto cleanup;
             }
         }
         pmix_compress = *best_module;
     }
 
- cleanup:
+cleanup:
     return ret;
 }

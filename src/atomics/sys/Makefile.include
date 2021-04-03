@@ -16,6 +16,8 @@
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
+#                         reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -26,16 +28,6 @@
 # This makefile.include does not stand on its own - it is included from src/Makefile.am
 
 headers += \
-	atomics/sys/architecture.h \
 	atomics/sys/atomic.h \
-	atomics/sys/atomic_impl.h \
-	atomics/sys/timer.h \
-    atomics/sys/cma.h \
-    atomics/sys/atomic_stdc.h
-
-include atomics/sys/x86_64/Makefile.include
-include atomics/sys/arm/Makefile.include
-include atomics/sys/arm64/Makefile.include
-include atomics/sys/ia32/Makefile.include
-include atomics/sys/powerpc/Makefile.include
-include atomics/sys/gcc_builtin/Makefile.include
+	atomics/sys/atomic_stdc.h
+	atomics/sys/atomic_gcc_builtin.h

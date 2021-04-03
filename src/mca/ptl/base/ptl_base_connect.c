@@ -22,59 +22,57 @@
 #include "include/pmix_stdint.h"
 
 #ifdef HAVE_FCNTL_H
-#include <fcntl.h>
+#    include <fcntl.h>
 #endif
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
+#    include <sys/uio.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
+#    include <sys/stat.h>
 #endif
 #ifdef HAVE_DIRENT_H
-#include <dirent.h>
+#    include <dirent.h>
 #endif
 #ifdef HAVE_SYS_SYSCTL_H
-#include <sys/sysctl.h>
+#    include <sys/sysctl.h>
 #endif
 
+#include "src/client/pmix_client_ops.h"
+#include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
+#include "src/mca/bfrops/base/base.h"
+#include "src/mca/gds/gds.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/getid.h"
 #include "src/util/os_path.h"
 #include "src/util/show_help.h"
 #include "src/util/strnlen.h"
-#include "src/include/pmix_globals.h"
-#include "src/client/pmix_client_ops.h"
-#include "src/server/pmix_server_ops.h"
-#include "src/mca/bfrops/base/base.h"
-#include "src/mca/gds/gds.h"
 
 #include "src/mca/ptl/base/base.h"
 
 pmix_status_t pmix_ptl_base_set_nonblocking(int sd)
 {
     int flags;
-     /* setup the socket as non-blocking */
+    /* setup the socket as non-blocking */
     if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
         pmix_output(0, "ptl:base:set_nonblocking: fcntl(F_GETFL) failed: %s (%d)\n",
-                    strerror(pmix_socket_errno),
-                    pmix_socket_errno);
+                    strerror(pmix_socket_errno), pmix_socket_errno);
     } else {
         flags |= O_NONBLOCK;
-        if(fcntl(sd, F_SETFL, flags) < 0)
+        if (fcntl(sd, F_SETFL, flags) < 0)
             pmix_output(0, "ptl:base:set_nonblocking: fcntl(F_SETFL) failed: %s (%d)\n",
-                        strerror(pmix_socket_errno),
-                        pmix_socket_errno);
+                        strerror(pmix_socket_errno), pmix_socket_errno);
     }
     return PMIX_SUCCESS;
 }
@@ -82,17 +80,15 @@ pmix_status_t pmix_ptl_base_set_nonblocking(int sd)
 pmix_status_t pmix_ptl_base_set_blocking(int sd)
 {
     int flags;
-     /* setup the socket as non-blocking */
+    /* setup the socket as non-blocking */
     if ((flags = fcntl(sd, F_GETFL, 0)) < 0) {
         pmix_output(0, "ptl:base:set_blocking: fcntl(F_GETFL) failed: %s (%d)\n",
-                    strerror(pmix_socket_errno),
-                    pmix_socket_errno);
+                    strerror(pmix_socket_errno), pmix_socket_errno);
     } else {
         flags &= ~(O_NONBLOCK);
-        if(fcntl(sd, F_SETFL, flags) < 0)
+        if (fcntl(sd, F_SETFL, flags) < 0)
             pmix_output(0, "ptl:base:set_blocking: fcntl(F_SETFL) failed: %s (%d)\n",
-                        strerror(pmix_socket_errno),
-                        pmix_socket_errno);
+                        strerror(pmix_socket_errno), pmix_socket_errno);
     }
     return PMIX_SUCCESS;
 }
@@ -107,13 +103,11 @@ pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size)
     int retval;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                        "send blocking of %"PRIsize_t" bytes to socket %d",
-                        size, sd );
+                        "send blocking of %" PRIsize_t " bytes to socket %d", size, sd);
     while (cnt < size) {
-        retval = send(sd, (char*)ptr+cnt, size-cnt, 0);
+        retval = send(sd, (char *) ptr + cnt, size - cnt, 0);
         if (retval < 0) {
-            if (EAGAIN == pmix_socket_errno ||
-                EWOULDBLOCK == pmix_socket_errno) {
+            if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno) {
                 /* just cycle and let it try again */
                 pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                                     "blocking_send received error %d:%s from remote - cycling",
@@ -121,10 +115,10 @@ pmix_status_t pmix_ptl_base_send_blocking(int sd, char *ptr, size_t size)
                 continue;
             }
             if (pmix_socket_errno != EINTR) {
-                pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                                    "ptl:base:peer_send_blocking: send() to socket %d failed: %s (%d)\n",
-                                    sd, strerror(pmix_socket_errno),
-                                    pmix_socket_errno);
+                pmix_output_verbose(
+                    8, pmix_ptl_base_framework.framework_output,
+                    "ptl:base:peer_send_blocking: send() to socket %d failed: %s (%d)\n", sd,
+                    strerror(pmix_socket_errno), pmix_socket_errno);
                 return PMIX_ERR_UNREACH;
             }
             continue;
@@ -146,10 +140,10 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
     size_t cnt = 0;
 
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                        "waiting for blocking recv of %"PRIsize_t" bytes", size);
+                        "waiting for blocking recv of %" PRIsize_t " bytes", size);
 
     while (cnt < size) {
-        int retval = recv(sd, (char *)data+cnt, size-cnt, MSG_WAITALL);
+        int retval = recv(sd, (char *) data + cnt, size - cnt, MSG_WAITALL);
 
         /* remote closed connection */
         if (retval == 0) {
@@ -160,15 +154,14 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
 
         /* handle errors */
         if (retval < 0) {
-            if (EAGAIN == pmix_socket_errno ||
-                EWOULDBLOCK == pmix_socket_errno) {
+            if (EAGAIN == pmix_socket_errno || EWOULDBLOCK == pmix_socket_errno) {
                 /* just cycle and let it try again */
                 pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                                     "blocking_recv received error %d:%s from remote - cycling",
                                     pmix_socket_errno, strerror(pmix_socket_errno));
                 return PMIX_ERR_TEMP_UNAVAILABLE;
             }
-            if (pmix_socket_errno != EINTR ) {
+            if (pmix_socket_errno != EINTR) {
                 /* If we overflow the listen backlog, it's
                    possible that even though we finished the three
                    way handshake, the remote host was unable to
@@ -200,8 +193,7 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
 
 #define PMIX_MAX_RETRIES 10
 
-pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
-                                    pmix_socklen_t addrlen, int *fd)
+pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr, pmix_socklen_t addrlen, int *fd)
 {
     int sd = -1, sd2;
     int retries = 0;
@@ -215,14 +207,14 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
         sd = socket(addr->ss_family, SOCK_STREAM, 0);
         if (sd < 0) {
             pmix_output(0, "pmix:create_socket: socket() failed: %s (%d)\n",
-                        strerror(pmix_socket_errno),
-                        pmix_socket_errno);
+                        strerror(pmix_socket_errno), pmix_socket_errno);
             continue;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "pmix_ptl_base_connect: attempting to connect to server on socket %d", sd);
+                            "pmix_ptl_base_connect: attempting to connect to server on socket %d",
+                            sd);
         /* try to connect */
-        if (connect(sd, (struct sockaddr*)addr, addrlen) < 0) {
+        if (connect(sd, (struct sockaddr *) addr, addrlen) < 0) {
             if (pmix_socket_errno == ETIMEDOUT) {
                 /* The server may be too busy to accept new connections */
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -266,7 +258,7 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
         }
     }
 
-    if (retries == PMIX_MAX_RETRIES || sd < 0){
+    if (retries == PMIX_MAX_RETRIES || sd < 0) {
         /* We were unsuccessful in establishing this connection, and are
          * not likely to suddenly become successful */
         if (0 <= sd) {
@@ -279,14 +271,128 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
-                                            pmix_info_t *info, size_t ninfo)
+char *pmix_ptl_base_get_cmd_line(void)
+{
+    char *p = NULL;
+
+#if PMIX_HAVE_APPLE
+    int mib[3], argmax, nargs, num;
+    size_t size;
+    char *procargs = NULL, *cp, *cptr;
+    char **stack = NULL;
+
+    /* Get the maximum process arguments size. */
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_ARGMAX;
+    size = sizeof(argmax);
+
+    if (sysctl(mib, 2, &argmax, &size, NULL, 0) == -1) {
+        fprintf(stderr, "sysctl() argmax failed\n");
+        return NULL;
+    }
+
+    /* Allocate space for the arguments. */
+    procargs = (char *) malloc(argmax);
+    if (procargs == NULL) {
+        return NULL;
+    }
+
+    /* Make a sysctl() call to get the raw argument space of the process. */
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_PROCARGS2;
+    mib[2] = getpid();
+
+    size = (size_t) argmax;
+
+    if (sysctl(mib, 3, procargs, &size, NULL, 0) == -1) {
+        fprintf(stderr, "Lacked permissions\n");
+        ;
+        free(procargs);
+        return NULL;
+    }
+
+    memcpy(&nargs, procargs, sizeof(nargs));
+    /* this points to the executable - skip over that to get the rest */
+    cp = procargs + sizeof(nargs);
+    cp += strlen(cp);
+    /* this is the first argv */
+    pmix_argv_append_nosize(&stack, cp);
+    /* skip any embedded NULLs */
+    while (cp < &procargs[size] && '\0' == *cp) {
+        ++cp;
+    }
+    if (cp != &procargs[size]) {
+        /* from this point, we have the argv separated by NULLs - split them out */
+        cptr = cp;
+        num = 0;
+        while (cp < &procargs[size] && num < nargs) {
+            if ('\0' == *cp) {
+                pmix_argv_append_nosize(&stack, cptr);
+                ++cp; // skip over the NULL
+                cptr = cp;
+                ++num;
+            } else {
+                ++cp;
+            }
+        }
+    }
+
+    p = pmix_argv_join(stack, ' ');
+    pmix_argv_free(stack);
+    free(procargs);
+#else
+    char tmp[512];
+    FILE *fp;
+    pid_t mypid;
+
+    /* open the pid's info file */
+    mypid = getpid();
+    snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long) mypid);
+    fp = fopen(tmp, "r");
+    if (NULL != fp) {
+        /* read the cmd line */
+        fgets(tmp, 512, fp);
+        fclose(fp);
+        p = strdup(tmp);
+    }
+#endif
+    return p;
+}
+
+static pmix_status_t check_connections(pmix_list_t *connections)
+{
+    size_t len;
+    pmix_connection_t *cn, *cnbase;
+
+    len = pmix_list_get_size(connections);
+    if (0 == len) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+    if (1 == len) {
+        return PMIX_SUCCESS;
+    }
+    /* check to see if all the connections are to the same target */
+    cnbase = (pmix_connection_t *) pmix_list_get_first(connections);
+    PMIX_LIST_FOREACH (cn, connections, pmix_connection_t) {
+        if (cn == cnbase) {
+            continue;
+        }
+        if (0 != strcmp(cn->uri, cnbase->uri)) { // contains nspace and rank plus port
+            pmix_show_help("help-ptl-base.txt", "too-many-conns", true);
+            return PMIX_ERR_UNREACH;
+        }
+    }
+    /* they are all to the same server */
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, size_t ninfo)
 {
     char *suri = NULL, *st, *evar;
-    char *filename, *nspace=NULL;
+    char *filename, *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
     char *p = NULL, *server_nspace = NULL, *rendfile = NULL;
-    int sd, rc;
+    int rc;
     size_t n;
     bool system_level = false;
     bool system_level_only = false;
@@ -295,10 +401,12 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     pmix_info_caddy_t *kv;
     pmix_info_t *iptr = NULL, mypidinfo, mycmdlineinfo, launcher;
     size_t niptr = 0;
-    pmix_peer_t *peer = (pmix_peer_t*)pr;
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
+    pmix_list_t connections;
+    pmix_connection_t *cn = NULL;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "ptl:tool: connecting to server");
+                        "ptl:base: connecting to server");
 
     /* check for common directives */
     rc = pmix_ptl_base_check_directives(info, ninfo);
@@ -310,7 +418,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
      * to see where they want us to connect to */
     PMIX_CONSTRUCT(&ilist, pmix_list_t);
     if (NULL != info) {
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM)) {
                 system_level_only = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_SYSTEM_FIRST)) {
@@ -335,8 +443,8 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                     free(rendfile);
                 }
                 rendfile = strdup(info[n].value.data.string);
-            } else if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
-                       PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
+            } else if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)
+                       && PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
                 if (NULL != pmix_ptl_base.rendezvous_filename) {
                     free(pmix_ptl_base.rendezvous_filename);
                 }
@@ -366,97 +474,21 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     }
 
     /* add our cmd line to the array */
-#if PMIX_HAVE_APPLE
-    int mib[3], argmax, nargs, num;
-    size_t size;
-    char *procargs, *cp, *cptr;
-    char **stack = NULL;
-
-    /* Get the maximum process arguments size. */
-    mib[0] = CTL_KERN;
-    mib[1] = KERN_ARGMAX;
-    size = sizeof(argmax);
-
-    if (sysctl(mib, 2, &argmax, &size, NULL, 0) == -1) {
-        fprintf(stderr, "sysctl() argmax failed\n");
-        rc = PMIX_ERR_NO_PERMISSIONS;
-        goto cleanup;
+    p = pmix_ptl_base_get_cmd_line();
+    if (NULL != p) {
+        /* pass it along */
+        kv = PMIX_NEW(pmix_info_caddy_t);
+        PMIX_INFO_LOAD(&mycmdlineinfo, PMIX_CMD_LINE, p, PMIX_STRING);
+        kv->info = &mycmdlineinfo;
+        pmix_list_append(&ilist, &kv->super);
+        free(p);
     }
-
-    /* Allocate space for the arguments. */
-    procargs = (char *)malloc(argmax);
-    if (procargs == NULL) {
-        rc = -1;
-        goto cleanup;
-    }
-
-    /* Make a sysctl() call to get the raw argument space of the process. */
-    mib[0] = CTL_KERN;
-    mib[1] = KERN_PROCARGS2;
-    mib[2] = getpid();
-
-    size = (size_t)argmax;
-
-    if (sysctl(mib, 3, procargs, &size, NULL, 0) == -1) {
-        fprintf(stderr, "Lacked permissions\n");;
-        rc = PMIX_ERR_NO_PERMISSIONS;
-        goto cleanup;
-    }
-
-    memcpy(&nargs, procargs, sizeof(nargs));
-    /* this points to the executable - skip over that to get the rest */
-    cp = procargs + sizeof(nargs);
-    cp += strlen(cp);
-    /* this is the first argv */
-    pmix_argv_append_nosize(&stack, cp);
-    /* skip any embedded NULLs */
-    while (cp < &procargs[size] && '\0' == *cp) {
-        ++cp;
-    }
-    if (cp != &procargs[size]) {
-        /* from this point, we have the argv separated by NULLs - split them out */
-        cptr = cp;
-        num = 0;
-        while (cp < &procargs[size] && num < nargs) {
-            if ('\0' == *cp) {
-                pmix_argv_append_nosize(&stack, cptr);
-                ++cp;  // skip over the NULL
-                cptr = cp;
-                ++num;
-            } else {
-                ++cp;
-            }
-        }
-    }
-    p = pmix_argv_join(stack, ' ');
-    pmix_argv_free(stack);
-    free(procargs);
-#else
-    char tmp[512];
-    FILE *fp;
-
-    /* open the pid's info file */
-    snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long)mypid);
-    fp = fopen(tmp, "r");
-    if (NULL != fp) {
-        /* read the cmd line */
-        fgets(tmp, 512, fp);
-        fclose(fp);
-        p = strdup(tmp);
-    }
-#endif
-    /* pass it along */
-    kv = PMIX_NEW(pmix_info_caddy_t);
-    PMIX_INFO_LOAD(&mycmdlineinfo, PMIX_CMD_LINE, p, PMIX_STRING);
-    kv->info = &mycmdlineinfo;
-    pmix_list_append(&ilist, &kv->super);
-    free(p);
 
     /* if we need to pass anything, setup an array */
     if (0 < (niptr = pmix_list_get_size(&ilist))) {
         PMIX_INFO_CREATE(iptr, niptr);
         n = 0;
-        while (NULL != (kv = (pmix_info_caddy_t*)pmix_list_remove_first(&ilist))) {
+        while (NULL != (kv = (pmix_info_caddy_t *) pmix_list_remove_first(&ilist))) {
             PMIX_INFO_XFER(&iptr[n], kv->info);
             PMIX_RELEASE(kv);
             ++n;
@@ -472,14 +504,29 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
          * us to a file we need to read to get the URI itself */
         if (0 == strncmp(pmix_ptl_base.uri, "file:", 5)) {
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:tool:tool getting connection info from %s",
-                                pmix_ptl_base.uri);
-            nspace = NULL;
-            rc = pmix_ptl_base_parse_uri_file(&pmix_ptl_base.uri[5], &suri, &nspace, &rank, peer);
+                                "ptl:tool:tool getting connection info from %s", pmix_ptl_base.uri);
+            PMIX_CONSTRUCT(&connections, pmix_list_t);
+            rc = pmix_ptl_base_parse_uri_file(&pmix_ptl_base.uri[5], &connections);
             if (PMIX_SUCCESS != rc) {
                 rc = PMIX_ERR_UNREACH;
+                PMIX_LIST_DESTRUCT(&connections);
                 goto cleanup;
             }
+            rc = check_connections(&connections);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_LIST_DESTRUCT(&connections);
+                goto cleanup;
+            }
+            cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+            nspace = cn->nspace;
+            cn->nspace = NULL;
+            rank = cn->rank;
+            suri = cn->uri;
+            cn->uri = NULL;
+            peer->protocol = PMIX_PROTOCOL_V2;
+            PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+            PMIX_LIST_DESTRUCT(&connections);
+            goto complete;
         } else {
             st = strdup(pmix_ptl_base.uri);
             /* we need to extract the nspace/rank of the server from the string */
@@ -507,34 +554,35 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
             /* now update the URI */
             free(st);
         }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool:tool attempt connect using given URI %s", suri);
-        /* go ahead and try to connect */
-        rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
-        if (PMIX_SUCCESS != rc) {
-            goto cleanup;
-        }
-        /* cleanup */
         goto complete;
     }
 
     /* if they gave us a rendezvous file, use it */
     if (NULL != rendfile) {
         /* try to read the file */
-        rc = pmix_ptl_base_parse_uri_file(rendfile, &suri, &nspace, &rank, peer);
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_parse_uri_file(rendfile, &connections);
         if (PMIX_SUCCESS == rc) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:tool:tool attempt connect to rendezvous server at %s", suri);
-            /* go ahead and try to connect */
-            rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
-            if (PMIX_SUCCESS == rc) {
-                /* don't free nspace - we will use it below */
-                if (NULL != iptr) {
-                    PMIX_INFO_FREE(iptr, niptr);
-                }
-                goto complete;
+            rc = check_connections(&connections);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_LIST_DESTRUCT(&connections);
+                goto cleanup;
             }
+            cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "ptl:tool:tool attempt connect to rendezvous server at %s",
+                                cn->uri);
+            nspace = cn->nspace;
+            cn->nspace = NULL;
+            rank = cn->rank;
+            suri = cn->uri;
+            cn->uri = NULL;
+            peer->protocol = PMIX_PROTOCOL_V2;
+            PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+            PMIX_LIST_DESTRUCT(&connections);
+            goto complete;
         }
+        PMIX_LIST_DESTRUCT(&connections);
         /* since they gave us a specific rendfile and we couldn't
          * connect to it, return an error */
         rc = PMIX_ERR_UNREACH;
@@ -543,28 +591,35 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
 
     /* if they asked for system-level first or only, we start there */
     if (system_level || system_level_only) {
-        if (0 > asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
+        if (0 > asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
+                         pmix_globals.hostname)) {
             rc = PMIX_ERR_NOMEM;
             goto cleanup;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool:tool looking for system server at %s",
-                            filename);
+                            "ptl:tool:tool looking for system server at %s", filename);
         /* try to read the file */
-        rc = pmix_ptl_base_parse_uri_file(filename, &suri, &nspace, &rank, peer);
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_parse_uri_file(filename, &connections);
         free(filename);
         if (PMIX_SUCCESS == rc) {
-            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                "ptl:tool:tool attempt connect to system server at %s", suri);
-            /* go ahead and try to connect */
-            rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
-            if (PMIX_SUCCESS == rc) {
-                /* don't free nspace - we will use it below */
-                goto complete;
+            rc = check_connections(&connections);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_LIST_DESTRUCT(&connections);
+                goto cleanup;
             }
-            free(nspace);
-            nspace = NULL;
+            cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+            nspace = cn->nspace;
+            cn->nspace = NULL;
+            rank = cn->rank;
+            suri = cn->uri;
+            cn->uri = NULL;
+            peer->protocol = PMIX_PROTOCOL_V2;
+            PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+            PMIX_LIST_DESTRUCT(&connections);
+            goto complete;
         }
+        PMIX_LIST_DESTRUCT(&connections);
     }
 
     /* we get here if they either didn't ask for a system-level connection,
@@ -584,16 +639,30 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
             goto cleanup;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool:tool searching for given session server %s",
-                            filename);
+                            "ptl:tool:tool searching for given session server %s", filename);
         nspace = NULL;
-        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir,
-                                     filename, iptr, niptr, &sd, &nspace,
-                                     &rank, &suri, peer);
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, iptr, niptr,
+                                     &connections);
         free(filename);
         if (PMIX_SUCCESS == rc) {
+            rc = check_connections(&connections);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_LIST_DESTRUCT(&connections);
+                goto cleanup;
+            }
+            cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+            peer->protocol = PMIX_PROTOCOL_V2;
+            PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+            nspace = cn->nspace;
+            cn->nspace = NULL;
+            rank = cn->rank;
+            suri = cn->uri;
+            cn->uri = NULL;
+            PMIX_LIST_DESTRUCT(&connections);
             goto complete;
         }
+        PMIX_LIST_DESTRUCT(&connections);
         /* since they gave us a specific pid and we couldn't
          * connect to it, return an error */
         rc = PMIX_ERR_UNREACH;
@@ -607,19 +676,33 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
             goto cleanup;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool:tool searching for given session server %s",
-                            filename);
+                            "ptl:tool:tool searching for given nspace server %s", filename);
         nspace = NULL;
-        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir,
-                                     filename, iptr, niptr, &sd, &nspace,
-                                     &rank, &suri, peer);
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, iptr, niptr,
+                                     &connections);
         free(filename);
         if (PMIX_SUCCESS == rc) {
+            rc = check_connections(&connections);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_LIST_DESTRUCT(&connections);
+                goto cleanup;
+            }
+            cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+            peer->protocol = PMIX_PROTOCOL_V2;
+            PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+            nspace = cn->nspace;
+            cn->nspace = NULL;
+            rank = cn->rank;
+            suri = cn->uri;
+            cn->uri = NULL;
+            PMIX_LIST_DESTRUCT(&connections);
             goto complete;
         }
         /* since they gave us a specific nspace and we couldn't
          * connect to it, return an error */
         rc = PMIX_ERR_UNREACH;
+        PMIX_LIST_DESTRUCT(&connections);
         goto cleanup;
     }
 
@@ -631,12 +714,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
-        rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
-        if (PMIX_SUCCESS != rc) {
-            goto cleanup;
-        }
-    } else if (PMIX_ERR_UNREACH != rc) {
-        goto cleanup;
+        goto complete;
     } else {
         /* we aren't a client, so we will search to see what session-level
          * tools are available to this user. We will take the first connection
@@ -648,20 +726,42 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
             goto cleanup;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool:tool searching for session server %s",
-                            filename);
+                            "ptl:tool:tool searching for session server %s", filename);
         nspace = NULL;
-        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir,
-                                     filename, iptr, niptr, &sd, &nspace,
-                                     &rank, &suri, peer);
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_df_search(pmix_ptl_base.system_tmpdir, filename, iptr, niptr,
+                                     &connections);
         free(filename);
-        if (PMIX_SUCCESS != rc) {
-            rc = PMIX_ERR_UNREACH;
-            goto cleanup;
+        if (PMIX_SUCCESS == rc) {
+            rc = check_connections(&connections);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_LIST_DESTRUCT(&connections);
+                goto cleanup;
+            }
+            cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+            peer->protocol = PMIX_PROTOCOL_V2;
+            PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+            nspace = cn->nspace;
+            cn->nspace = NULL;
+            rank = cn->rank;
+            suri = cn->uri;
+            cn->uri = NULL;
+            PMIX_LIST_DESTRUCT(&connections);
+            goto complete;
+        } else if (1 < pmix_list_get_size(&connections)) {
+            pmix_show_help("help-ptl-base.txt", "too-many-conns", true);
         }
+        PMIX_LIST_DESTRUCT(&connections);
+        rc = PMIX_ERR_UNREACH;
+        goto cleanup;
     }
 
 complete:
+    rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
+    if (PMIX_SUCCESS != rc) {
+        goto cleanup;
+    }
+
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "tool_peer_try_connect: Connection across to server succeeded");
 
@@ -677,10 +777,11 @@ cleanup:
     if (NULL != rendfile) {
         free(rendfile);
     }
-    free(suri);
+    if (NULL != suri) {
+        free(suri);
+    }
     if (NULL != server_nspace) {
         free(server_nspace);
     }
     return rc;
 }
-

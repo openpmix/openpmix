@@ -4,6 +4,7 @@
  *                         reserved.
  * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,49 +21,48 @@
 #include "pmix_mca_base_var.h"
 #include "src/mca/base/base.h"
 
-bool pmix_mca_base_framework_is_registered (struct pmix_mca_base_framework_t *framework)
+bool pmix_mca_base_framework_is_registered(struct pmix_mca_base_framework_t *framework)
 {
     return !!(framework->framework_flags & PMIX_MCA_BASE_FRAMEWORK_FLAG_REGISTERED);
 }
 
-bool pmix_mca_base_framework_is_open (struct pmix_mca_base_framework_t *framework)
+bool pmix_mca_base_framework_is_open(struct pmix_mca_base_framework_t *framework)
 {
     return !!(framework->framework_flags & PMIX_MCA_BASE_FRAMEWORK_FLAG_OPEN);
 }
 
-static void framework_open_output (struct pmix_mca_base_framework_t *framework)
+static void framework_open_output(struct pmix_mca_base_framework_t *framework)
 {
     if (0 < framework->framework_verbose) {
         if (-1 == framework->framework_output) {
-            framework->framework_output = pmix_output_open (NULL);
+            framework->framework_output = pmix_output_open(NULL);
         }
-        pmix_output_set_verbosity(framework->framework_output,
-                                  framework->framework_verbose);
+        pmix_output_set_verbosity(framework->framework_output, framework->framework_verbose);
     } else if (-1 != framework->framework_output) {
-        pmix_output_close (framework->framework_output);
+        pmix_output_close(framework->framework_output);
         framework->framework_output = -1;
     }
 }
 
-static void framework_close_output (struct pmix_mca_base_framework_t *framework)
+static void framework_close_output(struct pmix_mca_base_framework_t *framework)
 {
     if (-1 != framework->framework_output) {
-        pmix_output_close (framework->framework_output);
+        pmix_output_close(framework->framework_output);
         framework->framework_output = -1;
     }
 }
 
-int pmix_mca_base_framework_register (struct pmix_mca_base_framework_t *framework,
-                                 pmix_mca_base_register_flag_t flags)
+int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework,
+                                     pmix_mca_base_register_flag_t flags)
 {
     char *desc;
     int ret;
 
-    assert (NULL != framework);
+    assert(NULL != framework);
 
     framework->framework_refcnt++;
 
-    if (pmix_mca_base_framework_is_registered (framework)) {
+    if (pmix_mca_base_framework_is_registered(framework)) {
         return PMIX_SUCCESS;
     }
 
@@ -75,43 +75,45 @@ int pmix_mca_base_framework_register (struct pmix_mca_base_framework_t *framewor
 
     if (!(PMIX_MCA_BASE_FRAMEWORK_FLAG_NOREGISTER & framework->framework_flags)) {
         /* register this framework with the MCA variable system */
-        ret = pmix_mca_base_var_group_register (framework->framework_project,
-                                           framework->framework_name,
-                                           NULL, framework->framework_description);
+        ret = pmix_mca_base_var_group_register(framework->framework_project,
+                                               framework->framework_name, NULL,
+                                               framework->framework_description);
         if (0 > ret) {
             return ret;
         }
 
-        ret = asprintf (&desc, "Default selection set of components for the %s framework (<none>"
-                        " means use all components that can be found)", framework->framework_name);
+        ret = asprintf(&desc,
+                       "Default selection set of components for the %s framework (<none>"
+                       " means use all components that can be found)",
+                       framework->framework_name);
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
-        ret = pmix_mca_base_var_register (framework->framework_project, framework->framework_name,
-                                     NULL, NULL, desc, PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                     PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_2,
-                                     PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ, &framework->framework_selection);
-        free (desc);
+        ret = pmix_mca_base_var_register(framework->framework_project, framework->framework_name,
+                                         NULL, NULL, desc, PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                         PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_2,
+                                         PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
+                                         &framework->framework_selection);
+        free(desc);
         if (0 > ret) {
             return ret;
         }
 
         /* register a verbosity variable for this framework */
-        ret = asprintf (&desc, "Verbosity level for the %s framework (default: 0)",
-                        framework->framework_name);
+        ret = asprintf(&desc, "Verbosity level for the %s framework (default: 0)",
+                       framework->framework_name);
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
         framework->framework_verbose = PMIX_MCA_BASE_VERBOSE_ERROR;
-        ret = pmix_mca_base_framework_var_register (framework, "verbose", desc,
-                                               PMIX_MCA_BASE_VAR_TYPE_INT,
-                                               &pmix_mca_base_var_enum_verbose, 0,
-                                               PMIX_MCA_BASE_VAR_FLAG_SETTABLE,
-                                               PMIX_INFO_LVL_8,
-                                               PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                               &framework->framework_verbose);
+        ret = pmix_mca_base_framework_var_register(framework, "verbose", desc,
+                                                   PMIX_MCA_BASE_VAR_TYPE_INT,
+                                                   &pmix_mca_base_var_enum_verbose, 0,
+                                                   PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_8,
+                                                   PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+                                                   &framework->framework_verbose);
         free(desc);
         if (0 > ret) {
             return ret;
@@ -119,18 +121,18 @@ int pmix_mca_base_framework_register (struct pmix_mca_base_framework_t *framewor
 
         /* check the initial verbosity and open the output if necessary. we
            will recheck this on open */
-        framework_open_output (framework);
+        framework_open_output(framework);
 
         /* register framework variables */
         if (NULL != framework->framework_register) {
-            ret = framework->framework_register (flags);
+            ret = framework->framework_register(flags);
             if (PMIX_SUCCESS != ret) {
                 return ret;
             }
         }
 
         /* register components variables */
-        ret = pmix_mca_base_framework_components_register (framework, flags);
+        ret = pmix_mca_base_framework_components_register(framework, flags);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
@@ -142,20 +144,21 @@ int pmix_mca_base_framework_register (struct pmix_mca_base_framework_t *framewor
     return PMIX_SUCCESS;
 }
 
-int pmix_mca_base_framework_open (struct pmix_mca_base_framework_t *framework,
-                             pmix_mca_base_open_flag_t flags) {
+int pmix_mca_base_framework_open(struct pmix_mca_base_framework_t *framework,
+                                 pmix_mca_base_open_flag_t flags)
+{
     int ret;
 
-    assert (NULL != framework);
+    assert(NULL != framework);
 
     /* register this framework before opening it */
-    ret = pmix_mca_base_framework_register (framework, PMIX_MCA_BASE_REGISTER_DEFAULT);
+    ret = pmix_mca_base_framework_register(framework, PMIX_MCA_BASE_REGISTER_DEFAULT);
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
 
     /* check if this framework is already open */
-    if (pmix_mca_base_framework_is_open (framework)) {
+    if (pmix_mca_base_framework_is_open(framework)) {
         return PMIX_SUCCESS;
     }
 
@@ -168,18 +171,17 @@ int pmix_mca_base_framework_open (struct pmix_mca_base_framework_t *framework,
     }
 
     /* lock all of this frameworks's variables */
-    ret = pmix_mca_base_var_group_find (framework->framework_project,
-                                   framework->framework_name,
-                                   NULL);
-    pmix_mca_base_var_group_set_var_flag (ret, PMIX_MCA_BASE_VAR_FLAG_SETTABLE, false);
+    ret = pmix_mca_base_var_group_find(framework->framework_project, framework->framework_name,
+                                       NULL);
+    pmix_mca_base_var_group_set_var_flag(ret, PMIX_MCA_BASE_VAR_FLAG_SETTABLE, false);
 
     /* check the verbosity level and open (or close) the output */
-    framework_open_output (framework);
+    framework_open_output(framework);
 
     if (NULL != framework->framework_open) {
-        ret = framework->framework_open (flags);
+        ret = framework->framework_open(flags);
     } else {
-        ret = pmix_mca_base_framework_components_open (framework, flags);
+        ret = pmix_mca_base_framework_components_open(framework, flags);
     }
 
     if (PMIX_SUCCESS != ret) {
@@ -191,35 +193,36 @@ int pmix_mca_base_framework_open (struct pmix_mca_base_framework_t *framework,
     return ret;
 }
 
-int pmix_mca_base_framework_close (struct pmix_mca_base_framework_t *framework) {
-    bool is_open = pmix_mca_base_framework_is_open (framework);
-    bool is_registered = pmix_mca_base_framework_is_registered (framework);
+int pmix_mca_base_framework_close(struct pmix_mca_base_framework_t *framework)
+{
+    bool is_open = pmix_mca_base_framework_is_open(framework);
+    bool is_registered = pmix_mca_base_framework_is_registered(framework);
     int ret, group_id;
 
-    assert (NULL != framework);
+    assert(NULL != framework);
 
     if (!(is_open || is_registered)) {
         return PMIX_SUCCESS;
     }
 
-    assert (framework->framework_refcnt);
+    assert(framework->framework_refcnt);
     if (--framework->framework_refcnt) {
         return PMIX_SUCCESS;
     }
 
     /* find and deregister all component groups and variables */
-    group_id = pmix_mca_base_var_group_find (framework->framework_project,
-                                        framework->framework_name, NULL);
+    group_id = pmix_mca_base_var_group_find(framework->framework_project, framework->framework_name,
+                                            NULL);
     if (0 <= group_id) {
-        (void) pmix_mca_base_var_group_deregister (group_id);
+        (void) pmix_mca_base_var_group_deregister(group_id);
     }
 
     /* close the framework and all of its components */
     if (is_open) {
         if (NULL != framework->framework_close) {
-            ret = framework->framework_close ();
+            ret = framework->framework_close();
         } else {
-            ret = pmix_mca_base_framework_components_close (framework, NULL);
+            ret = pmix_mca_base_framework_components_close(framework, NULL);
         }
 
         if (PMIX_SUCCESS != ret) {
@@ -227,22 +230,22 @@ int pmix_mca_base_framework_close (struct pmix_mca_base_framework_t *framework) 
         }
     } else {
         pmix_list_item_t *item;
-        while (NULL != (item = pmix_list_remove_first (&framework->framework_components))) {
+        while (NULL != (item = pmix_list_remove_first(&framework->framework_components))) {
             pmix_mca_base_component_list_item_t *cli;
-            cli = (pmix_mca_base_component_list_item_t*) item;
-            pmix_mca_base_component_unload(cli->cli_component,
-                                           framework->framework_output);
+            cli = (pmix_mca_base_component_list_item_t *) item;
+            pmix_mca_base_component_unload(cli->cli_component, framework->framework_output);
             PMIX_RELEASE(item);
         }
         ret = PMIX_SUCCESS;
     }
 
-    framework->framework_flags &= ~(PMIX_MCA_BASE_FRAMEWORK_FLAG_REGISTERED | PMIX_MCA_BASE_FRAMEWORK_FLAG_OPEN);
+    framework->framework_flags &= ~(PMIX_MCA_BASE_FRAMEWORK_FLAG_REGISTERED
+                                    | PMIX_MCA_BASE_FRAMEWORK_FLAG_OPEN);
 
     PMIX_DESTRUCT(&framework->framework_components);
     PMIX_LIST_DESTRUCT(&framework->framework_failed_components);
 
-    framework_close_output (framework);
+    framework_close_output(framework);
 
     return ret;
 }

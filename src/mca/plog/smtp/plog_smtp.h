@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009 Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,7 +55,6 @@ typedef struct {
     /* Priority of this component */
     int priority;
 } pmix_plog_smtp_component_t;
-
 
 /*
  * Plog interfaces

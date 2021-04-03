@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -45,8 +46,8 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include <stdio.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 BEGIN_C_DECLS
 
@@ -69,14 +70,15 @@ BEGIN_C_DECLS
  * passing a parameter that undergoes default argument promotion to
  * va_start() has undefined behavior (according to clang warnings on
  * MacOS High Sierra).
-*/
-PMIX_EXPORT char *pmix_os_path(int relative, ...) __pmix_attribute_malloc__ __pmix_attribute_sentinel__ __pmix_attribute_warn_unused_result__;
+ */
+PMIX_EXPORT char *pmix_os_path(int relative, ...)
+    __pmix_attribute_malloc__ __pmix_attribute_sentinel__ __pmix_attribute_warn_unused_result__;
 
 /**
  * Convert the path to be OS friendly. On UNIX this function will
  * be empty.
  */
-#define pmix_make_filename_os_friendly(PATH)   (PATH)
+#define pmix_make_filename_os_friendly(PATH) (PATH)
 
 END_C_DECLS
 

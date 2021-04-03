@@ -12,6 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2015-2020 Cisco Systems, Inc.  All rights reserved
+# Copyright (c) 2021      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -111,3 +112,14 @@ The connection was rejected.
 [no-listeners]
 No sockets were able to be opened on the available protocols
 (IPv4 and/or IPv6). Please check your network and retry.
+#
+[too-many-conns]
+PMIx has found multiple possible servers to which it could
+connect. Further guidance is required to ensure the connection
+is made to a desirable server. Guidance can be in the form
+of the namespace or PID of a specific server, a directive to
+connect to a system server, a specific URI to use, or the name
+of a rendezvous file.
+
+Some connection handles have been read from files named pmix.*
+in subdirectories of $TMPDIR; delete them if they are stale.

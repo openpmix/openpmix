@@ -18,30 +18,30 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/include/pmix_stdint.h"
 #include "src/include/pmix_socket_errno.h"
+#include "src/include/pmix_stdint.h"
 
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
 
 #ifdef HAVE_STRING_H
-#include <string.h>
+#    include <string.h>
 #endif
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#    include <unistd.h>
 #endif
 #ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
+#    include <sys/socket.h>
 #endif
 #ifdef HAVE_SYS_UN_H
-#include <sys/un.h>
+#    include <sys/un.h>
 #endif
 #ifdef HAVE_SYS_UIO_H
-#include <sys/uio.h>
+#    include <sys/uio.h>
 #endif
 #ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#    include <sys/types.h>
 #endif
 #include <ctype.h>
 #include <sys/stat.h>
@@ -53,17 +53,17 @@
 #include "src/util/error.h"
 #include "src/util/fd.h"
 #include "src/util/net.h"
-#include "src/util/output.h"
 #include "src/util/os_dirpath.h"
+#include "src/util/output.h"
 #include "src/util/pif.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
 
- #include "src/mca/ptl/base/base.h"
+#include "src/mca/ptl/base/base.h"
 
 // local functions for connection support
-static void* listen_thread(void *obj);
+static void *listen_thread(void *obj);
 static pthread_t engine;
 static bool setup_complete = false;
 
@@ -90,8 +90,8 @@ pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size_t ninfo)
     }
     /* Make sure the pipe FDs are set to close-on-exec so that
        they don't leak into children */
-    if (pmix_fd_set_cloexec(pmix_ptl_base.stop_thread[0]) != PMIX_SUCCESS ||
-        pmix_fd_set_cloexec(pmix_ptl_base.stop_thread[1]) != PMIX_SUCCESS) {
+    if (pmix_fd_set_cloexec(pmix_ptl_base.stop_thread[0]) != PMIX_SUCCESS
+        || pmix_fd_set_cloexec(pmix_ptl_base.stop_thread[1]) != PMIX_SUCCESS) {
         PMIX_ERROR_LOG(PMIX_ERR_IN_ERRNO);
         close(pmix_ptl_base.stop_thread[0]);
         close(pmix_ptl_base.stop_thread[1]);
@@ -112,8 +112,7 @@ void pmix_ptl_base_stop_listening(void)
     int i;
     pmix_listener_t *lt = &pmix_ptl_base.listener;
 
-    pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                        "listen_thread: shutdown");
+    pmix_output_verbose(8, pmix_ptl_base_framework.framework_output, "listen_thread: shutdown");
 
     if (!pmix_ptl_base.listen_thread_active) {
         /* nothing we can do */
@@ -125,7 +124,7 @@ void pmix_ptl_base_stop_listening(void)
     /* use the block to break it loose just in
      * case the thread is blocked in a call to select for
      * a long time */
-    i=1;
+    i = 1;
     if (0 > write(pmix_ptl_base.stop_thread[1], &i, sizeof(int))) {
         return;
     }
@@ -136,9 +135,9 @@ void pmix_ptl_base_stop_listening(void)
     lt->socket = -1;
 }
 
-static void* listen_thread(void *obj)
+static void *listen_thread(void *obj)
 {
-    (void)obj;
+    (void) obj;
     int rc, max;
     socklen_t addrlen = sizeof(struct sockaddr_storage);
     pmix_pending_connection_t *pending_connection;
@@ -146,9 +145,7 @@ static void* listen_thread(void *obj)
     fd_set readfds;
     pmix_listener_t *lt = &pmix_ptl_base.listener;
 
-    pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                        "listen_thread: active");
-
+    pmix_output_verbose(8, pmix_ptl_base_framework.framework_output, "listen_thread: active");
 
     while (pmix_ptl_base.listen_thread_active) {
         FD_ZERO(&readfds);
@@ -177,7 +174,6 @@ static void* listen_thread(void *obj)
             continue;
         }
 
-
         /* according to the man pages, select replaces the given descriptor
          * set with a subset consisting of those descriptors that are ready
          * for the specified operation - in this case, a read. So we need to
@@ -198,21 +194,17 @@ static void* listen_thread(void *obj)
          */
         pending_connection = PMIX_NEW(pmix_pending_connection_t);
         pending_connection->protocol = lt->protocol;
-        pmix_event_assign(&pending_connection->ev, pmix_globals.evbase, -1,
-                          EV_WRITE, lt->cbfunc, pending_connection);
-        pending_connection->sd = accept(lt->socket,
-                                        (struct sockaddr*)&(pending_connection->addr),
+        pmix_event_assign(&pending_connection->ev, pmix_globals.evbase, -1, EV_WRITE, lt->cbfunc,
+                          pending_connection);
+        pending_connection->sd = accept(lt->socket, (struct sockaddr *) &(pending_connection->addr),
                                         &addrlen);
         if (pending_connection->sd < 0) {
             PMIX_RELEASE(pending_connection);
-            if (pmix_socket_errno != EAGAIN ||
-                pmix_socket_errno != EWOULDBLOCK) {
-                if (EMFILE == pmix_socket_errno ||
-                    ENOBUFS == pmix_socket_errno ||
-                    ENOMEM == pmix_socket_errno) {
+            if (pmix_socket_errno != EAGAIN || pmix_socket_errno != EWOULDBLOCK) {
+                if (EMFILE == pmix_socket_errno || ENOBUFS == pmix_socket_errno
+                    || ENOMEM == pmix_socket_errno) {
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-                } else if (EINVAL == pmix_socket_errno ||
-                           EINTR == pmix_socket_errno) {
+                } else if (EINVAL == pmix_socket_errno || EINTR == pmix_socket_errno) {
                     /* race condition at finalize */
                     goto done;
                 } else if (ECONNABORTED == pmix_socket_errno) {
@@ -228,15 +220,15 @@ static void* listen_thread(void *obj)
         }
 
         pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
-                            "listen_thread: new connection: (%d, %d)",
-                            pending_connection->sd, pmix_socket_errno);
+                            "listen_thread: new connection: (%d, %d)", pending_connection->sd,
+                            pmix_socket_errno);
         /* post the object */
         PMIX_POST_OBJECT(pending_connection);
         /* activate the event */
         pmix_event_active(&pending_connection->ev, EV_WRITE, 1);
     }
 
- done:
+done:
     pmix_ptl_base.listen_thread_active = false;
     return NULL;
 }
@@ -273,9 +265,9 @@ pmix_status_t pmix_base_write_rndz_file(char *filename, char *uri, bool *created
     /* add the version */
     fprintf(fp, "%s\n", PMIX_VERSION);
     /* output our pid */
-    fprintf(fp, "%lu\n", (unsigned long)getpid());
+    fprintf(fp, "%lu\n", (unsigned long) getpid());
     /* output our effective uid and gid */
-    fprintf(fp, "%lu:%lu\n", (unsigned long)geteuid(), (unsigned long)getegid());
+    fprintf(fp, "%lu:%lu\n", (unsigned long) geteuid(), (unsigned long) getegid());
     /* output the time */
     mytime = time(NULL);
     fprintf(fp, "%s\n", ctime(&mytime));
@@ -307,7 +299,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
 {
     int flags = 0;
     pmix_listener_t *lt;
-    int i, rc=0, saveindex = -1;
+    int i, rc = 0, saveindex = -1;
     char **interfaces = NULL;
     bool including = false;
     char name[32];
@@ -322,8 +314,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     int outpipe;
     char *leftover;
 
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "ptl:tool setup_listener");
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "ptl:tool setup_listener");
 
     lt = &pmix_ptl_base.listener;
 
@@ -344,14 +335,13 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
      * loopback interface if available, but otherwise pick the first
      * available interface since we are only talking locally */
     for (i = pmix_ifbegin(); i >= 0; i = pmix_ifnext(i)) {
-        if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr*)&my_ss, sizeof(my_ss))) {
-            pmix_output (0, "ptl_tool: problems getting address for index %i (kernel index %i)\n",
-                         i, pmix_ifindextokindex(i));
+        if (PMIX_SUCCESS != pmix_ifindextoaddr(i, (struct sockaddr *) &my_ss, sizeof(my_ss))) {
+            pmix_output(0, "ptl_tool: problems getting address for index %i (kernel index %i)\n", i,
+                        pmix_ifindextokindex(i));
             continue;
         }
         /* ignore non-ip4/6 interfaces */
-        if (AF_INET != my_ss.ss_family &&
-            AF_INET6 != my_ss.ss_family) {
+        if (AF_INET != my_ss.ss_family && AF_INET6 != my_ss.ss_family) {
             continue;
         }
         /* get the name for diagnostic purposes */
@@ -398,15 +388,17 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
             /* if we are including, then ignore this if not present */
             if (including) {
                 if (PMIX_SUCCESS != rc) {
-                    pmix_output_verbose(10, pmix_ptl_base_framework.framework_output,
-                                        "ptl:tool:init rejecting interface %s (not in include list)", name);
+                    pmix_output_verbose(
+                        10, pmix_ptl_base_framework.framework_output,
+                        "ptl:tool:init rejecting interface %s (not in include list)", name);
                     continue;
                 }
             } else {
                 /* we are excluding, so ignore if present */
                 if (PMIX_SUCCESS == rc) {
                     pmix_output_verbose(10, pmix_ptl_base_framework.framework_output,
-                                        "ptl:tool:init rejecting interface %s (in exclude list)", name);
+                                        "ptl:tool:init rejecting interface %s (in exclude list)",
+                                        name);
                     continue;
                 }
             }
@@ -443,23 +435,25 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     }
 
     /* save the connection */
-    if (PMIX_SUCCESS != pmix_ifindextoaddr(saveindex,
-                                           (struct sockaddr*)&pmix_ptl_base.connection,
-                                           sizeof(struct sockaddr))) {
-        pmix_output (0, "ptl:base: problems getting address for kernel index %i\n",
-                     pmix_ifindextokindex(saveindex));
+    if (PMIX_SUCCESS
+        != pmix_ifindextoaddr(saveindex, (struct sockaddr *) &pmix_ptl_base.connection,
+                              sizeof(struct sockaddr))) {
+        pmix_output(0, "ptl:base: problems getting address for kernel index %i\n",
+                    pmix_ifindextokindex(saveindex));
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* set the port */
     if (AF_INET == pmix_ptl_base.connection.ss_family) {
-        ((struct sockaddr_in*) &pmix_ptl_base.connection)->sin_port = htons(pmix_ptl_base.ipv4_port);
+        ((struct sockaddr_in *) &pmix_ptl_base.connection)->sin_port = htons(
+            pmix_ptl_base.ipv4_port);
         addrlen = sizeof(struct sockaddr_in);
         if (0 != pmix_ptl_base.ipv4_port) {
             flags = 1;
         }
     } else if (AF_INET6 == pmix_ptl_base.connection.ss_family) {
-       ((struct sockaddr_in6*) &pmix_ptl_base.connection)->sin6_port = htons(pmix_ptl_base.ipv6_port);
+        ((struct sockaddr_in6 *) &pmix_ptl_base.connection)->sin6_port = htons(
+            pmix_ptl_base.ipv6_port);
         addrlen = sizeof(struct sockaddr_in6);
         if (0 != pmix_ptl_base.ipv6_port) {
             flags = 1;
@@ -483,8 +477,10 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     }
 
     /* set reusing ports flag */
-    if (setsockopt (lt->socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&flags, sizeof(flags)) < 0) {
-        pmix_output(0, "ptl:base:create_listen: unable to set the "
+    if (setsockopt(lt->socket, SOL_SOCKET, SO_REUSEADDR, (const char *) &flags, sizeof(flags))
+        < 0) {
+        pmix_output(0,
+                    "ptl:base:create_listen: unable to set the "
                     "SO_REUSEADDR option (%s:%d)\n",
                     strerror(pmix_socket_errno), pmix_socket_errno);
         goto sockerror;
@@ -496,14 +492,14 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         goto sockerror;
     }
 
-    if (bind(lt->socket, (struct sockaddr*)&pmix_ptl_base.connection, addrlen) < 0) {
-        printf("[%u] %s:%d bind() failed for socket %d storage size %u: %s\n",
-               (unsigned)getpid(), __FILE__, __LINE__, lt->socket, (unsigned)addrlen, strerror(errno));
+    if (bind(lt->socket, (struct sockaddr *) &pmix_ptl_base.connection, addrlen) < 0) {
+        printf("[%u] %s:%d bind() failed for socket %d storage size %u: %s\n", (unsigned) getpid(),
+               __FILE__, __LINE__, lt->socket, (unsigned) addrlen, strerror(errno));
         goto sockerror;
     }
 
     /* resolve assigned port */
-    if (getsockname(lt->socket, (struct sockaddr*)&pmix_ptl_base.connection, &addrlen) < 0) {
+    if (getsockname(lt->socket, (struct sockaddr *) &pmix_ptl_base.connection, &addrlen) < 0) {
         pmix_output(0, "ptl:tool:create_listen: getsockname(): %s (%d)",
                     strerror(pmix_socket_errno), pmix_socket_errno);
         goto sockerror;
@@ -528,34 +524,32 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
 
     if (AF_INET == pmix_ptl_base.connection.ss_family) {
         prefix = "tcp4://";
-        myport = ntohs(((struct sockaddr_in*) &pmix_ptl_base.connection)->sin_port);
-        inet_ntop(AF_INET, &((struct sockaddr_in*) &pmix_ptl_base.connection)->sin_addr,
-                  myconnhost, PMIX_MAXHOSTNAMELEN-1);
+        myport = ntohs(((struct sockaddr_in *) &pmix_ptl_base.connection)->sin_port);
+        inet_ntop(AF_INET, &((struct sockaddr_in *) &pmix_ptl_base.connection)->sin_addr,
+                  myconnhost, PMIX_MAXHOSTNAMELEN - 1);
     } else if (AF_INET6 == pmix_ptl_base.connection.ss_family) {
         prefix = "tcp6://";
-        myport = ntohs(((struct sockaddr_in6*) &pmix_ptl_base.connection)->sin6_port);
-        inet_ntop(AF_INET6, &((struct sockaddr_in6*) &pmix_ptl_base.connection)->sin6_addr,
-                  myconnhost, PMIX_MAXHOSTNAMELEN-1);
+        myport = ntohs(((struct sockaddr_in6 *) &pmix_ptl_base.connection)->sin6_port);
+        inet_ntop(AF_INET6, &((struct sockaddr_in6 *) &pmix_ptl_base.connection)->sin6_addr,
+                  myconnhost, PMIX_MAXHOSTNAMELEN - 1);
     } else {
         goto sockerror;
     }
 
-    rc = asprintf(&lt->uri, "%s.%d;%s%s:%d", pmix_globals.myid.nspace, pmix_globals.myid.rank, prefix, myconnhost, myport);
+    rc = asprintf(&lt->uri, "%s.%u;%s%s:%d", pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                  prefix, myconnhost, myport);
     if (0 > rc || NULL == lt->uri) {
         goto sockerror;
     }
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "ptl:base URI %s", lt->uri);
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "ptl:base URI %s", lt->uri);
 
     /* save the URI internally so we can report it */
     urikv = PMIX_NEW(pmix_kval_t);
     urikv->key = strdup(PMIX_SERVER_URI);
     PMIX_VALUE_CREATE(urikv->value, 1);
     PMIX_VALUE_LOAD(urikv->value, lt->uri, PMIX_STRING);
-    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer,
-                      &pmix_globals.myid, PMIX_INTERNAL,
-                      urikv);
-    PMIX_RELEASE(urikv);  // maintain accounting
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
+    PMIX_RELEASE(urikv); // maintain accounting
 
     if (NULL != pmix_ptl_base.report_uri) {
         /* if the string is a "-", then output to stdout */
@@ -572,7 +566,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
                 /* stitch together the var names and URI */
                 pmix_asprintf(&leftover, "%s;%s", lt->varname, lt->uri);
                 /* output to the pipe */
-                rc = pmix_fd_write(outpipe, strlen(leftover)+1, leftover);
+                rc = pmix_fd_write(outpipe, strlen(leftover) + 1, leftover);
                 free(leftover);
                 close(outpipe);
             } else {
@@ -580,7 +574,8 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
                 FILE *fp;
                 fp = fopen(pmix_ptl_base.report_uri, "w");
                 if (NULL == fp) {
-                    pmix_output(0, "Impossible to open the file %s in write mode\n", pmix_ptl_base.report_uri);
+                    pmix_output(0, "Impossible to open the file %s in write mode\n",
+                                pmix_ptl_base.report_uri);
                     PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
                     goto sockerror;
                 }
@@ -607,8 +602,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
             }
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "WRITING RENDEZVOUS FILE %s",
-                            pmix_ptl_base.rendezvous_filename);
+                            "WRITING RENDEZVOUS FILE %s", pmix_ptl_base.rendezvous_filename);
         rc = pmix_base_write_rndz_file(pmix_ptl_base.rendezvous_filename, lt->uri,
                                        &pmix_ptl_base.created_rendezvous_file);
         if (PMIX_SUCCESS != rc) {
@@ -616,7 +610,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         }
     }
 
-  nextstep:
+nextstep:
     /* if we are going to support tools, then drop contact file(s) */
     if (pmix_ptl_base.system_tool) {
         if (0 > asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",
@@ -638,8 +632,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
             goto sockerror;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "WRITING SESSION TOOL FILE %s",
-                            pmix_ptl_base.session_filename);
+                            "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
         rc = pmix_base_write_rndz_file(pmix_ptl_base.session_filename, lt->uri,
                                        &pmix_ptl_base.created_session_tmpdir);
         if (PMIX_SUCCESS != rc) {
@@ -655,8 +648,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
                          pmix_ptl_base.session_tmpdir, pmix_globals.hostname, mypid)) {
             goto sockerror;
         }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "WRITING PID TOOL FILE %s",
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "WRITING PID TOOL FILE %s",
                             pmix_ptl_base.pid_filename);
         rc = pmix_base_write_rndz_file(pmix_ptl_base.pid_filename, lt->uri,
                                        &pmix_ptl_base.created_session_tmpdir);
@@ -667,12 +659,12 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
 
         /* now output it into a file based on my nspace */
         if (0 > asprintf(&pmix_ptl_base.nspace_filename, "%s/pmix.%s.tool.%s",
-                         pmix_ptl_base.session_tmpdir, pmix_globals.hostname, pmix_globals.myid.nspace)) {
+                         pmix_ptl_base.session_tmpdir, pmix_globals.hostname,
+                         pmix_globals.myid.nspace)) {
             goto sockerror;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "WRITING NSPACE TOOL FILE %s",
-                            pmix_ptl_base.nspace_filename);
+                            "WRITING NSPACE TOOL FILE %s", pmix_ptl_base.nspace_filename);
         rc = pmix_base_write_rndz_file(pmix_ptl_base.nspace_filename, lt->uri,
                                        &pmix_ptl_base.created_session_tmpdir);
         if (PMIX_SUCCESS != rc) {
@@ -683,7 +675,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
 
     return PMIX_SUCCESS;
 
-  sockerror:
+sockerror:
     CLOSE_THE_SOCKET(lt->socket);
     return rc;
 }
