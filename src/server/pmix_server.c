@@ -571,11 +571,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     }
     PMIX_INFO_DESTRUCT(&ginfo);
 
-    /* copy needed parts over to the client_globals.myserver field
-     * so that calls into client-side functions will use our peer */
-    pmix_client_globals.myserver = PMIX_NEW(pmix_peer_t);
-    PMIX_RETAIN(pmix_globals.mypeer->nptr);
-    pmix_client_globals.myserver->nptr = pmix_globals.mypeer->nptr;
+    /* we are our own server until something else happens */
+    PMIX_RETAIN(pmix_globals.mypeer);
+    pmix_client_globals.myserver = pmix_globals.mypeer;
 
     /* setup the server-specific globals */
     if (PMIX_SUCCESS != (rc = pmix_server_initialize())) {

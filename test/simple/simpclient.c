@@ -175,10 +175,11 @@ int main(int argc, char **argv)
     PMIX_VALUE_RELEASE(val);
 
     /* check if a security credential was given */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_CREDENTIAL, NULL, 0, &val))) {
+    rc = PMIx_Get(&proc, PMIX_CREDENTIAL, NULL, 0, &val);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get CREDENTIAL failed: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-    } else {
+    } else if (NULL != val) {
         pmix_output(0, "CREDENTIAL: %s", val->data.string);
         PMIX_VALUE_RELEASE(val);
     }
@@ -186,13 +187,13 @@ int main(int argc, char **argv)
     /* get our topology */
     PMIX_TOPOLOGY_CONSTRUCT(&topo);
     rc = PMIx_Load_topology(&topo);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_SUPPORTED != rc) {
         pmix_output(0, "Client ns %s rank %d: Failed to load topology: %s",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        exit(rc);
+    } else if (PMIX_SUCCESS == rc) {
+        pmix_output(0, "Client ns %s rank %d: Topology source: %s",
+                    myproc.nspace, myproc.rank, topo.source);
     }
-    pmix_output(0, "Client ns %s rank %d: Topology source: %s",
-                myproc.nspace, myproc.rank, topo.source);
 
     /* register a handler specifically for when models declare */
     ninfo = 1;
