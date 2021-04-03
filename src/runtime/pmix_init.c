@@ -344,7 +344,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             }
             pmix_globals.hostname = strdup(hostname);
         }
-        pmix_globals.hostname = strdup(hostname);
     }
 
     /* the choice of modules to use when communicating with a peer
