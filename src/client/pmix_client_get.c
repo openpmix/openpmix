@@ -574,6 +574,9 @@ static pmix_status_t get_data(const char *key, const pmix_info_t info[], size_t 
         cb->key = strdup(key);
     }
     cb->proc = &lg->p;
+    cb->scope = lg->scope;
+    cb->info = (pmix_info_t*)info;
+    cb->ninfo = ninfo;
 
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
     if (PMIX_SUCCESS == rc) {
@@ -625,7 +628,7 @@ static pmix_status_t get_data(const char *key, const pmix_info_t info[], size_t 
             || !PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace)) {
             /* flag that we want all of the job-level info */
             proc.rank = PMIX_RANK_WILDCARD;
-        } else if (NULL != cb->key) {
+        } else if (NULL != cb->key && !PMIX_CHECK_KEY(cb, PMIX_GROUP_CONTEXT_ID)) {
             /* this is a reserved key - we should have had this info, so
              * respond with the error - if they want us to check with the
              * server, they should ask us to refresh the cache */
