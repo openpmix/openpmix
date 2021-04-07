@@ -29,5 +29,5 @@
 
 headers += \
 	atomics/sys/atomic.h \
-	atomics/sys/atomic_stdc.h
+	atomics/sys/atomic_stdc.h \
 	atomics/sys/atomic_gcc_builtin.h
