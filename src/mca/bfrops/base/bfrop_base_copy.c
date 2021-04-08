@@ -31,6 +31,11 @@
 
 #include "src/mca/bfrops/base/base.h"
 
+static void _populate_pstats(pmix_proc_stats_t *p, pmix_proc_stats_t *src);
+static void _populate_dkstats(pmix_disk_stats_t *p, pmix_disk_stats_t *src);
+static void _populate_netstats(pmix_net_stats_t *p, pmix_net_stats_t *src);
+static void _populate_ndstats(pmix_node_stats_t *p, pmix_node_stats_t *src);
+
 pmix_status_t pmix_bfrops_base_copy(pmix_pointer_array_t *regtypes, void **dest, void *src,
                                     pmix_data_type_t type)
 {
@@ -438,6 +443,12 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
     pmix_cpuset_t *pcpuset, *scpuset;
     pmix_geometry_t *pgeoset, *sgeoset;
     pmix_device_distance_t *pdevdist, *sdevdist;
+    pmix_endpoint_t *pendpt, *sendpt;
+    pmix_nspace_t *pns, *sns;
+    pmix_proc_stats_t *pstats, *sstats;
+    pmix_disk_stats_t *dkdest, *dksrc;
+    pmix_net_stats_t *ntdest, *ntsrc;
+    pmix_node_stats_t *nddest, *ndsrc;
 
     if (PMIX_DATA_ARRAY != type) {
         return PMIX_ERR_BAD_PARAM;
@@ -962,6 +973,86 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
             pdevdist[n].maxdist = sdevdist[n].maxdist;
         }
         break;
+    case PMIX_ENDPOINT:
+        PMIX_ENDPOINT_CREATE(p->array, src->size);
+        if (NULL == p->array) {
+            free(p);
+            return PMIX_ERR_NOMEM;
+        }
+        pendpt = (pmix_endpoint_t *) p->array;
+        sendpt = (pmix_endpoint_t *) src->array;
+        for (n = 0; n < src->size; n++) {
+            if (NULL != sendpt[n].uuid) {
+                pendpt[n].uuid = strdup(sendpt[n].uuid);
+            }
+            if (NULL != sendpt[n].endpt.bytes) {
+                pendpt[n].endpt.bytes = (char *) malloc(sendpt[n].endpt.size);
+                memcpy(pendpt[n].endpt.bytes, sendpt[n].endpt.bytes, sendpt[n].endpt.size);
+                pendpt[n].endpt.size = sendpt[n].endpt.size;
+            }
+        }
+        break;
+    case PMIX_PROC_NSPACE:
+        p->array = malloc(src->size * sizeof(pmix_nspace_t));
+        if (NULL == p->array) {
+            free(p);
+            return PMIX_ERR_NOMEM;
+        }
+        p->size = src->size;
+        pns = (pmix_nspace_t *) p->array;
+        sns = (pmix_nspace_t *) src->array;
+        for (n = 0; n < src->size; n++) {
+            PMIX_LOAD_NSPACE(&pns[n], sns[n]);
+        }
+        break;
+    case PMIX_PROC_STATS:
+        PMIX_PROC_STATS_CREATE(p->array, src->size);
+        if (NULL == p->array) {
+            free(p);
+            return PMIX_ERR_NOMEM;
+        }
+        pstats = (pmix_proc_stats_t *) p->array;
+        sstats = (pmix_proc_stats_t *) src->array;
+        for (n = 0; n < src->size; n++) {
+            _populate_pstats(&pstats[n], &sstats[n]);
+        }
+        break;
+    case PMIX_DISK_STATS:
+        PMIX_DISK_STATS_CREATE(p->array, src->size);
+        if (NULL == p->array) {
+            free(p);
+            return PMIX_ERR_NOMEM;
+        }
+        dkdest = (pmix_disk_stats_t *) p->array;
+        dksrc = (pmix_disk_stats_t *) src->array;
+        for (n = 0; n < src->size; n++) {
+            _populate_dkstats(&dkdest[n], &dksrc[n]);
+        }
+        break;
+    case PMIX_NET_STATS:
+        PMIX_NET_STATS_CREATE(p->array, src->size);
+        if (NULL == p->array) {
+            free(p);
+            return PMIX_ERR_NOMEM;
+        }
+        ntdest = (pmix_net_stats_t *) p->array;
+        ntsrc = (pmix_net_stats_t *) src->array;
+        for (n = 0; n < src->size; n++) {
+            _populate_netstats(&ntdest[n], &ntsrc[n]);
+        }
+        break;
+    case PMIX_NODE_STATS:
+        PMIX_NODE_STATS_CREATE(p->array, src->size);
+        if (NULL == p->array) {
+            free(p);
+            return PMIX_ERR_NOMEM;
+        }
+        nddest = (pmix_node_stats_t *) p->array;
+        ndsrc = (pmix_node_stats_t *) src->array;
+        for (n = 0; n < src->size; n++) {
+            _populate_ndstats(&nddest[n], &ndsrc[n]);
+        }
+        break;
     default:
         free(p);
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
@@ -1223,18 +1314,8 @@ pmix_status_t pmix_bfrops_base_copy_nspace(pmix_nspace_t **dest, pmix_nspace_t *
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_bfrops_base_copy_pstats(pmix_proc_stats_t **dest, pmix_proc_stats_t *src,
-                                           pmix_data_type_t type)
+static void _populate_pstats(pmix_proc_stats_t *p, pmix_proc_stats_t *src)
 {
-    pmix_proc_stats_t *p;
-
-    /* create the new object */
-    PMIX_PROC_STATS_CREATE(p, 1);
-    if (NULL == p) {
-        return PMIX_ERR_NOMEM;
-    }
-    *dest = p;
-
     /* copy the individual fields */
     if (NULL != src->node) {
         p->node = strdup(src->node);
@@ -1255,6 +1336,20 @@ pmix_status_t pmix_bfrops_base_copy_pstats(pmix_proc_stats_t **dest, pmix_proc_s
     p->processor = src->processor;
     p->sample_time.tv_sec = src->sample_time.tv_sec;
     p->sample_time.tv_usec = src->sample_time.tv_usec;
+}
+
+pmix_status_t pmix_bfrops_base_copy_pstats(pmix_proc_stats_t **dest, pmix_proc_stats_t *src,
+                                           pmix_data_type_t type)
+{
+    pmix_proc_stats_t *p;
+
+    /* create the new object */
+    PMIX_PROC_STATS_CREATE(p, 1);
+    if (NULL == p) {
+        return PMIX_ERR_NOMEM;
+    }
+    *dest = p;
+    _populate_pstats(p, src);
     return PMIX_SUCCESS;
 }
 
@@ -1319,18 +1414,9 @@ pmix_status_t pmix_bfrops_base_copy_netstats(pmix_net_stats_t **dest, pmix_net_s
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_bfrops_base_copy_ndstats(pmix_node_stats_t **dest, pmix_node_stats_t *src,
-                                            pmix_data_type_t type)
+static void _populate_ndstats(pmix_node_stats_t *p, pmix_node_stats_t *src)
 {
-    pmix_node_stats_t *p;
     size_t n;
-
-    /* create the new object */
-    PMIX_NODE_STATS_CREATE(p, 1);
-    if (NULL == p) {
-        return PMIX_ERR_NOMEM;
-    }
-    *dest = p;
 
     /* copy the individual fields */
     if (NULL != src->node) {
@@ -1363,6 +1449,20 @@ pmix_status_t pmix_bfrops_base_copy_ndstats(pmix_node_stats_t **dest, pmix_node_
             _populate_netstats(&p->netstats[n], &src->netstats[n]);
         }
     }
+}
+
+pmix_status_t pmix_bfrops_base_copy_ndstats(pmix_node_stats_t **dest, pmix_node_stats_t *src,
+                                            pmix_data_type_t type)
+{
+    pmix_node_stats_t *p;
+
+    /* create the new object */
+    PMIX_NODE_STATS_CREATE(p, 1);
+    if (NULL == p) {
+        return PMIX_ERR_NOMEM;
+    }
+    *dest = p;
+    _populate_ndstats(p, src);
     return PMIX_SUCCESS;
 }
 
