@@ -1313,6 +1313,7 @@ pmix_status_t pmix_bfrops_base_unpack_darray(pmix_pointer_array_t *regtypes, pmi
     int32_t i, n, m;
     pmix_status_t ret;
     pmix_data_type_t t;
+    size_t sm;
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrop_unpack: %d data arrays", *num_vals);
@@ -1342,13 +1343,14 @@ pmix_status_t pmix_bfrops_base_unpack_darray(pmix_pointer_array_t *regtypes, pmi
             continue;
         }
         /* allocate storage for the array and unpack the array elements */
-        m = ptr[i].size;
+        sm = ptr[i].size;
         t = ptr[i].type;
 
-        PMIX_DATA_ARRAY_CONSTRUCT(&ptr[i], m, t);
+        PMIX_DATA_ARRAY_CONSTRUCT(&ptr[i], sm, t);
         if (NULL == ptr[i].array) {
             return PMIX_ERR_NOMEM;
         }
+        m = sm;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].array, &m, t, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
