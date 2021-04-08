@@ -458,6 +458,12 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
     pmix_cpuset_t *pcpuset, *scpuset;
     pmix_geometry_t *pgeoset, *sgeoset;
     pmix_device_distance_t *pdevdist, *sdevdist;
+    pmix_endpoint_t *pendpt, *sendpt;
+    pmix_nspace_t *pns, *sns;
+    pmix_proc_stats_t *pstats, *sstats;
+    pmix_disk_stats_t *dkdest, *dksrc;
+    pmix_net_stats_t *ntdest, *ntsrc;
+    pmix_node_stats_t *nddest, *ndsrc;
 
     if (PMIX_DATA_ARRAY != type) {
         return PMIX_ERR_BAD_PARAM;
@@ -981,9 +987,41 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 pdevdist[n].maxdist = sdevdist[n].maxdist;
             }
             break;
-        default:
+    case PMIX_ENDPOINT:
+        PMIX_ENDPOINT_CREATE(p->array, src->size);
+        if (NULL == p->array) {
             free(p);
-            return PMIX_ERR_UNKNOWN_DATA_TYPE;
+            return PMIX_ERR_NOMEM;
+        }
+        pendpt = (pmix_endpoint_t *) p->array;
+        sendpt = (pmix_endpoint_t *) src->array;
+        for (n = 0; n < src->size; n++) {
+            if (NULL != sendpt[n].uuid) {
+                pendpt[n].uuid = strdup(sendpt[n].uuid);
+            }
+            if (NULL != sendpt[n].endpt.bytes) {
+                pendpt[n].endpt.bytes = (char *) malloc(sendpt[n].endpt.size);
+                memcpy(pendpt[n].endpt.bytes, sendpt[n].endpt.bytes, sendpt[n].endpt.size);
+                pendpt[n].endpt.size = sendpt[n].endpt.size;
+            }
+        }
+        break;
+    case PMIX_PROC_NSPACE:
+        p->array = malloc(src->size * sizeof(pmix_nspace_t));
+        if (NULL == p->array) {
+            free(p);
+            return PMIX_ERR_NOMEM;
+        }
+        p->size = src->size;
+        pns = (pmix_nspace_t *) p->array;
+        sns = (pmix_nspace_t *) src->array;
+        for (n = 0; n < src->size; n++) {
+            PMIX_LOAD_NSPACE(&pns[n], sns[n]);
+        }
+        break;
+    default:
+        free(p);
+        return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
 
     (*dest) = p;
