@@ -684,15 +684,24 @@ typedef uint32_t pmix_rank_t;
 
 
 /* debugger attributes */
-#define PMIX_DEBUG_STOP_ON_EXEC             "pmix.dbg.exec"         // (pmix_rank_t) stop specified rank(s) on exec and notify ready-to-debug
-                                                                    //        Can be a pmix_data_array_t if an array of individual processes are
-                                                                    //        specified
-#define PMIX_DEBUG_STOP_IN_INIT             "pmix.dbg.init"         // (pmix_rank_t) stop specified rank(s) in PMIx_Init and notify ready-to-debug
-                                                                    //        Can be a pmix_data_array_t if an array of individual processes are
-                                                                    //        specified
-#define PMIX_DEBUG_STOP_IN_APP              "pmix.dbg.notify"       // (pmix_rank_t) direct specified ranks to stop at application-specific point and
-                                                                    //        notify ready-to-debug. Can be a pmix_data_array_t if an array of individual
-                                                                    //        processes are specified
+#define PMIX_DEBUG_STOP_ON_EXEC             "pmix.dbg.exec"         // (varies) stop specified rank(s) on exec and notify ready-to-debug
+                                                                    //        Can be any of three data types:
+                                                                    //           (a) bool - true indicating all ranks, false indicating none
+                                                                    //           (b) pmix_rank_t - the rank of one proc, or WILDCARD for all
+                                                                    //           (c) a pmix_data_array_t if an array of individual processes
+                                                                    //               are specified
+#define PMIX_DEBUG_STOP_IN_INIT             "pmix.dbg.init"         // (varies) stop specified rank(s) in PMIx_Init and notify ready-to-debug
+                                                                    //        Can be any of three data types:
+                                                                    //           (a) bool - true indicating all ranks, false indicating none
+                                                                    //           (b) pmix_rank_t - the rank of one proc, or WILDCARD for all
+                                                                    //           (c) a pmix_data_array_t if an array of individual processes
+                                                                    //               are specified
+#define PMIX_DEBUG_STOP_IN_APP              "pmix.dbg.notify"       // (varies) direct specified ranks to stop at application-specific point and
+                                                                    //        notify ready-to-debug. Can be any of three data types:
+                                                                    //           (a) bool - true indicating all ranks, false indicating none
+                                                                    //           (b) pmix_rank_t - the rank of one proc, or WILDCARD for all
+                                                                    //           (c) a pmix_data_array_t if an array of individual processes
+                                                                    //               are specified
 #define PMIX_BREAKPOINT                     "pmix.brkpnt"           // (char*) string ID of the breakpoint where the process(es) is(are) waiting
 #define PMIX_DEBUG_TARGET                   "pmix.dbg.tgt"          // (pmix_proc_t*) Identifier of proc(s) to be debugged
 #define PMIX_DEBUG_DAEMONS_PER_PROC         "pmix.dbg.dpproc"       // (uint16_t) Number of debugger daemons to be spawned per application
