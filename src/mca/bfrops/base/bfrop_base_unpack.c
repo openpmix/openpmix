@@ -1760,8 +1760,8 @@ pmix_status_t pmix_bfrops_base_unpack_geometry(pmix_pointer_array_t *regtypes,
             /* allocate the coords */
             ptr[i].coordinates = (pmix_coord_t*)calloc(ptr[i].ncoords, sizeof(pmix_coord_t));
             /* unpack them */
-            m=ptr[i].ncoords;
-            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].coordinates, &m, PMIX_COORD, regtypes);
+            m = ptr[i].ncoords;
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].coordinates, &m, PMIX_COORD, regtypes);
             if (PMIX_SUCCESS != ret) {
                 PMIX_ERROR_LOG(ret);
                 return ret;
