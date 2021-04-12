@@ -300,9 +300,6 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     pmix_topology_t *topo;
     char *file;
     pmix_status_t rc;
-#if HWLOC_API_VERSION >= 0x20000
-    char *tmp;
-#endif
 
     /* only go thru here ONCE! */
     if (passed_thru) {
