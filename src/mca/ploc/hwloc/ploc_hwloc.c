@@ -300,9 +300,6 @@ pmix_status_t setup_topology(pmix_info_t *info, size_t ninfo)
     pmix_topology_t *topo;
     char *file;
     pmix_status_t rc;
-#if HWLOC_API_VERSION >= 0x20000
-    char *tmp;
-#endif
 
     /* only go thru here ONCE! */
     if (passed_thru) {
@@ -739,12 +736,6 @@ sharetopo:
     PMIX_VALUE_LOAD(kv->value, &shmemsize, PMIX_SIZE);
     pmix_list_append(&pmix_server_globals.gdata, &kv->super);
 
-    /* and add them to the global cache of envars as well */
-    pmix_setenv("PMIX_HWLOC_SHMEM_FILE", shmemfile, true, &pmix_server_globals.genvars);
-    pmix_asprintf(&tmp, "%" PRIsize_t, shmemaddr);
-    pmix_setenv("PMIX_HWLOC_SHMEM_ADDR", tmp, true, &pmix_server_globals.genvars);
-    pmix_asprintf(&tmp, "%" PRIsize_t, shmemsize);
-    pmix_setenv("PMIX_HWLOC_SHMEM_SIZE", tmp, true, &pmix_server_globals.genvars);
 #endif
 
     return PMIX_SUCCESS;
