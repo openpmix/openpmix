@@ -3184,18 +3184,6 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
             } else if (PMIX_PROC_NSPACE == (t)) {                         \
                 (m)->array = pmix_calloc((n), sizeof(pmix_nspace_t));     \
                                                                     \
-            } else if (PMIX_PROC_STATS == (t)) {                         \
-                PMIX_PROC_STATS_CREATE((m)->array, n);                   \
-                                                                    \
-            } else if (PMIX_DISK_STATS == (t)) {                         \
-                PMIX_DISK_STATS_CREATE((m)->array, n);                   \
-                                                                    \
-            } else if (PMIX_NET_STATS == (t)) {                         \
-                PMIX_NET_STATS_CREATE((m)->array, n);                   \
-                                                                    \
-            } else if (PMIX_NODE_STATS == (t)) {                         \
-                PMIX_NODE_STATS_CREATE((m)->array, n);                   \
-                                                                    \
             } else if (PMIX_DEVICE_DIST == (t)) {                         \
                 PMIX_DEVICE_DIST_CREATE((m)->array, n);                   \
                                                                     \
