@@ -461,10 +461,6 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
     pmix_device_distance_t *pdevdist, *sdevdist;
     pmix_endpoint_t *pendpt, *sendpt;
     pmix_nspace_t *pns, *sns;
-    pmix_proc_stats_t *pstats, *sstats;
-    pmix_disk_stats_t *dkdest, *dksrc;
-    pmix_net_stats_t *ntdest, *ntsrc;
-    pmix_node_stats_t *nddest, *ndsrc;
 
     if (PMIX_DATA_ARRAY != type) {
         return PMIX_ERR_BAD_PARAM;
