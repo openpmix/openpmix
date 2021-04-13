@@ -18,6 +18,7 @@
 
 #include "src/threads/threads.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -473,7 +474,8 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(cd);
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
-                        "pmix: register event_hdlr with %d infos", (int) cd->ninfo);
+                        "[%s]: register event_hdlr with %d infos",
+                        PMIX_NAME_PRINT(&pmix_globals.myid), (int) cd->ninfo);
 
     PMIX_CONSTRUCT(&xfer, pmix_list_t);
 
