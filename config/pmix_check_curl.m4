@@ -34,7 +34,8 @@ AC_DEFUN([PMIX_CHECK_CURL],[
     PMIX_VAR_SCOPE_PUSH(pmix_check_curl_save_CPPFLAGS pmix_check_curl_save_LDFLAGS pmix_check_curl_save_LIBS)
 	AC_ARG_WITH([curl],
 		    [AS_HELP_STRING([--with-curl(=DIR)],
-				    [Build curl support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
+				    [Build curl support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])],
+            [], [with_curl=no])
 
     AC_ARG_WITH([curl-libdir],
             [AS_HELP_STRING([--with-curl-libdir=DIR],

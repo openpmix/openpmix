@@ -34,7 +34,8 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
     PMIX_VAR_SCOPE_PUSH(pmix_check_jansson_save_CPPFLAGS pmix_check_jansson_save_LDFLAGS pmix_check_jansson_save_LIBS)
 	AC_ARG_WITH([jansson],
 		    [AS_HELP_STRING([--with-jansson(=DIR)],
-				    [Build jansson support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
+				    [Build jansson support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])],
+            [], [with_jansson=no])
 
     AC_ARG_WITH([jansson-libdir],
             [AS_HELP_STRING([--with-jansson-libdir=DIR],
