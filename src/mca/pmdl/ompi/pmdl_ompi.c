@@ -48,12 +48,12 @@
 #include "src/util/pmix_environ.h"
 #include "src/util/printf.h"
 
-#include "pmdl_ompi5.h"
+#include "pmdl_ompi.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pmdl/pmdl.h"
 
-static pmix_status_t ompi5_init(void);
-static void ompi5_finalize(void);
+static pmix_status_t ompi_init(void);
+static void ompi_finalize(void);
 static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t info[], size_t ninfo,
                                     pmix_list_t *ilist, char ***priors);
 static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info);
@@ -62,9 +62,9 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr);
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***priors);
 static void deregister_nspace(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
-pmix_pmdl_module_t pmix_pmdl_ompi5_module = {.name = "ompi5",
-    .init = ompi5_init,
-    .finalize = ompi5_finalize,
+pmix_pmdl_module_t pmix_pmdl_ompi_module = {.name = "ompi",
+    .init = ompi_init,
+    .finalize = ompi_finalize,
     .harvest_envars = harvest_envars,
     .setup_nspace = setup_nspace,
     .setup_nspace_kv = setup_nspace_kv,
@@ -93,16 +93,16 @@ static PMIX_CLASS_INSTANCE(pmdl_nspace_t, pmix_list_item_t, nscon, NULL);
 /* internal variables */
 static pmix_list_t mynspaces;
 
-static pmix_status_t ompi5_init(void)
+static pmix_status_t ompi_init(void)
 {
-    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output, "pmdl: ompi5 init");
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output, "pmdl: ompi init");
 
     PMIX_CONSTRUCT(&mynspaces, pmix_list_t);
 
     return PMIX_SUCCESS;
 }
 
-static void ompi5_finalize(void)
+static void ompi_finalize(void)
 {
     PMIX_LIST_DESTRUCT(&mynspaces);
 }
@@ -110,9 +110,7 @@ static void ompi5_finalize(void)
 static bool checkus(const pmix_info_t info[], size_t ninfo)
 {
     bool takeus = false;
-    char **tmp, *ptr;
-    size_t n, m;
-    uint vers;
+    size_t n;
 
     if (NULL == info) {
         return false;
@@ -123,26 +121,10 @@ static bool checkus(const pmix_info_t info[], size_t ninfo)
         /* check the attribute */
         if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL)
             || PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
-            tmp = pmix_argv_split(info[n].value.data.string, ',');
-            for (m = 0; NULL != tmp[m]; m++) {
-                if (0 == strcmp(tmp[m], "ompi")) {
-                    /* they didn't specify a level, so we will service
-                     * them just in case */
-                    takeus = true;
-                    break;
-                }
-                if (0 == strncmp(tmp[m], "ompi", 4)) {
-                    /* if they specifically requested an ompi level greater
-                     * than or equal to us, then we service it */
-                    ptr = &tmp[m][4];
-                    vers = strtoul(ptr, NULL, 10);
-                    if (vers >= 5) {
-                        takeus = true;
-                    }
-                    break;
-                }
+            if (NULL != strstr(info[n].value.data.string, "ompi")) {
+                takeus = true;
+                break;
             }
-            pmix_argv_free(tmp);
         }
     }
 
@@ -162,7 +144,7 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
     size_t n;
     char *file, *tmp, *evar;
 
-    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output, "pmdl:ompi5:harvest envars");
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output, "pmdl:ompi:harvest envars");
 
     if (!checkus(info, ninfo)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
@@ -178,7 +160,7 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
         }
     }
     /* flag that we worked on this */
-    pmix_argv_append_nosize(priors, "ompi5");
+    pmix_argv_append_nosize(priors, "ompi");
 
     if (NULL != nptr) {
         /* see if we already have this nspace */
@@ -302,17 +284,17 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
     }
 
     /* harvest our local envars */
-    if (NULL != mca_pmdl_ompi5_component.include) {
+    if (NULL != mca_pmdl_ompi_component.include) {
         pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                            "pmdl: ompi5 harvesting envars %s excluding %s",
-                            (NULL == mca_pmdl_ompi5_component.incparms)
+                            "pmdl: ompi harvesting envars %s excluding %s",
+                            (NULL == mca_pmdl_ompi_component.incparms)
                             ? "NONE"
-                            : mca_pmdl_ompi5_component.incparms,
-                            (NULL == mca_pmdl_ompi5_component.excparms)
+                            : mca_pmdl_ompi_component.incparms,
+                            (NULL == mca_pmdl_ompi_component.excparms)
                             ? "NONE"
-                            : mca_pmdl_ompi5_component.excparms);
-        rc = pmix_util_harvest_envars(mca_pmdl_ompi5_component.include,
-                                      mca_pmdl_ompi5_component.exclude, ilist);
+                            : mca_pmdl_ompi_component.excparms);
+        rc = pmix_util_harvest_envars(mca_pmdl_ompi_component.include,
+                                      mca_pmdl_ompi_component.exclude, ilist);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
@@ -326,7 +308,7 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info)
     pmdl_nspace_t *ns, *ns2;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi5: setup nspace for nspace %s with %s", nptr->nspace,
+                        "pmdl:ompi: setup nspace for nspace %s with %s", nptr->nspace,
                         info->value.data.string);
 
     if (!checkus(info, 1)) {
@@ -359,7 +341,7 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv)
     bool takeus = false;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi5: setup nspace_kv for nspace %s with %s", nptr->nspace,
+                        "pmdl:ompi: setup nspace_kv for nspace %s with %s", nptr->nspace,
                         kv->value->data.string);
 
     /* check the attribute */
@@ -418,7 +400,7 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     pmix_cb_t cb;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi5: register_nspace for %s", nptr->nspace);
+                        "pmdl:ompi: register_nspace for %s", nptr->nspace);
 
     /* see if we already have this nspace */
     ns = NULL;
@@ -645,7 +627,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     pmix_cb_t cb;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:ompi5: setup fork for %s", PMIX_NAME_PRINT(proc));
+                        "pmdl:ompi: setup fork for %s", PMIX_NAME_PRINT(proc));
 
     /* don't do OMPI again if already done */
     if (NULL != *priors) {
@@ -657,7 +639,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
         }
     }
     /* flag that we worked on this */
-    pmix_argv_append_nosize(priors, "ompi5");
+    pmix_argv_append_nosize(priors, "ompi");
 
     /* see if we already have this nspace */
     ns = NULL;
