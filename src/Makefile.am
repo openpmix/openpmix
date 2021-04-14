@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,6 +24,7 @@
 
 SUBDIRS = \
     include \
+    mca/common/sse \
     util/keyval \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
@@ -32,6 +34,7 @@ SUBDIRS = \
 
 DIST_SUBDIRS = \
     include \
+    mca/common/sse \
     util/keyval \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \

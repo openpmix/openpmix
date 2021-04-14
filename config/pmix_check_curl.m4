@@ -69,7 +69,7 @@ AC_DEFUN([PMIX_CHECK_CURL],[
         AC_MSG_RESULT([$pmix_check_curl_dir])
 
         AS_IF([test -z "$with_curl_libdir" || test "$with_curl_libdir" = "yes"],
-              [pmix_check_curl_libdir=$pmix_check_curl_basedir],
+              [pmix_check_curl_libdir=$pmix_check_curl_basedir/lib],
     	      [PMIX_CHECK_WITHDIR([curl-libdir], [$with_curl_libdir], [libcurl.*])
                pmix_check_curl_libdir=$with_curl_libdir])
 
