@@ -4,6 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -805,7 +806,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size
                                                         pmix_info_t directives[], size_t ndirs,
                                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-\
+
 /******      ATTRIBUTE REGISTRATION      ******/
 /**
  * This function is used by the host environment to register with its

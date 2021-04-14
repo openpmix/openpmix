@@ -801,6 +801,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                                         "pmix:client old server - fetching data");
                     proc.rank = PMIX_RANK_WILDCARD;
                     goto request;
+                } else if (PMIX_CHECK_KEY(cb, PMIX_GROUP_CONTEXT_ID)) {
+                    goto request;
                 }
                 /* we should have had this info, so respond with the error - if
                  * they want us to check with the server, they should ask us to
