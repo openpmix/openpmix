@@ -22,7 +22,7 @@
 
 BEGIN_C_DECLS
 
-PMIX_EXPORT extern pmix_prm_base_component_t pmix_prm_slurm_component;
+PMIX_EXPORT extern pmix_prm_base_component_t mca_prm_slurm_component;
 extern pmix_prm_module_t pmix_prm_slurm_module;
 
 END_C_DECLS
