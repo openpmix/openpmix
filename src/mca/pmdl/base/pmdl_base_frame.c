@@ -34,6 +34,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/mca/base/base.h"
+#include "src/mca/base/pmix_mca_base_alias.h"
 #include "src/mca/pmdl/base/base.h"
 
 /*
@@ -53,6 +54,34 @@ pmix_pmdl_API_module_t pmix_pmdl = {.harvest_envars = pmix_pmdl_base_harvest_env
                                     .setup_client = pmix_pmdl_base_setup_client,
                                     .setup_fork = pmix_pmdl_base_setup_fork,
                                     .deregister_nspace = pmix_pmdl_base_deregister_nspace};
+
+static int pmix_pmdl_register(pmix_mca_base_register_flag_t flags)
+{
+    /* Note that we break abstraction rules here by listing a
+     specific PMDL here in the base.  This is necessary, however,
+     due to extraordinary circumstances:
+
+     1. In PMIx v4.0.1, we want to unify the "ompi5" and "ompi4"
+     components to be "ompi" to more closely represent its usage.
+
+     2. The MCA aliasing mechanism was therefore ported from
+     OMPI for this purpose. Both the component itself and
+     all of its MCA vars are aliased.
+
+     3. However -- at least as currently implemented -- by the time
+     individual components are registered, it's too late to make
+     aliases.  Hence, if we want to preserve the prior names for
+     some sembalance of backwards compatibility (and we do!), we
+     have to register "ompi" as an "alias for xxx" up here in
+     the PMDL base, before any PMDL components are registered.
+
+     This is why we tolerate this abstraction break up here in the
+     PMDL component base. */
+    (void) pmix_mca_base_alias_register("pmix", "pmdl", "ompi", "ompi5", PMIX_MCA_BASE_ALIAS_FLAG_NONE);
+    (void) pmix_mca_base_alias_register("pmix", "pmdl", "ompi", "ompi4", PMIX_MCA_BASE_ALIAS_FLAG_NONE);
+
+    return PMIX_SUCCESS;
+}
 
 static pmix_status_t pmix_pmdl_close(void)
 {
@@ -90,8 +119,8 @@ static pmix_status_t pmix_pmdl_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_pmdl_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pmdl, "PMIx Network Operations", NULL, pmix_pmdl_open,
-                                pmix_pmdl_close, mca_pmdl_base_static_components,
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pmdl, "PMIx Network Operations", pmix_pmdl_register,
+                                pmix_pmdl_open, pmix_pmdl_close, mca_pmdl_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 PMIX_CLASS_INSTANCE(pmix_pmdl_base_active_module_t, pmix_list_item_t, NULL, NULL);
