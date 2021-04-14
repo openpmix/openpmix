@@ -829,7 +829,7 @@ static pmix_status_t generate_cpuset_string(const pmix_cpuset_t *cpuset, char **
     }
 
     /* if we aren't the source, then nothing we can do */
-    if (0 != strcasecmp(cpuset->source, "hwloc")) {
+    if (0 != strncasecmp(cpuset->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -851,7 +851,7 @@ static pmix_status_t parse_cpuset_string(const char *cpuset_string, pmix_cpuset_
         return PMIX_ERR_BAD_PARAM;
     }
     *src = '\0';
-    if (0 != strcasecmp(cpuset_string, "hwloc")) {
+    if (0 != strncasecmp(cpuset_string, "hwloc", 5)) {
         *src = ':';
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
@@ -899,7 +899,7 @@ static pmix_status_t generate_locality_string(const pmix_cpuset_t *cpuset, char 
     hwloc_obj_type_t type;
 
     /* if we aren't the source, then pass */
-    if (0 != strcasecmp(cpuset->source, "hwloc")) {
+    if (0 != strncasecmp(cpuset->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1130,7 +1130,7 @@ static pmix_status_t get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t ref)
 {
     int rc, flag;
 
-    if (NULL != cpuset->source && 0 != strcasecmp(cpuset->source, "hwloc")) {
+    if (NULL != cpuset->source && 0 != strncasecmp(cpuset->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1263,7 +1263,8 @@ static pmix_status_t compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpu
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (0 != strcasecmp(topo->source, "hwloc") || 0 != strcasecmp(cpuset->source, "hwloc")) {
+    if (0 != strncasecmp(topo->source, "hwloc", 5)
+        || 0 != strncasecmp(cpuset->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1507,7 +1508,7 @@ static pmix_status_t pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,
     char *tmp;
     pmix_status_t rc;
 
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1548,7 +1549,7 @@ static pmix_status_t unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest,
 
 static pmix_status_t copy_cpuset(pmix_cpuset_t *dest, pmix_cpuset_t *src)
 {
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     if (NULL == src->bitmap) {
@@ -1566,7 +1567,7 @@ static char *print_cpuset(pmix_cpuset_t *src)
 {
     char *tmp;
 
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return NULL;
     }
     if (NULL == src->bitmap) {
@@ -1583,7 +1584,7 @@ static char *print_cpuset(pmix_cpuset_t *src)
 
 static pmix_status_t destruct_cpuset(pmix_cpuset_t *src)
 {
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     if (NULL == src->bitmap) {
@@ -1601,7 +1602,7 @@ static pmix_status_t release_cpuset(pmix_cpuset_t *src, size_t ncpu)
 {
     size_t n;
 
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1622,7 +1623,7 @@ static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     int len;
     struct hwloc_topology_support *support;
 
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1762,7 +1763,7 @@ static pmix_status_t unpack_topology(pmix_buffer_t *buf, pmix_topology_t *dest,
 
 static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src)
 {
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1881,7 +1882,7 @@ static char *print_topology(pmix_topology_t *src)
     hwloc_obj_t obj;
     char *tmp = NULL;
 
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return NULL;
     }
 
@@ -1894,7 +1895,7 @@ static char *print_topology(pmix_topology_t *src)
 
 static pmix_status_t destruct_topology(pmix_topology_t *src)
 {
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     if (NULL == src->topology) {
@@ -1910,7 +1911,7 @@ static pmix_status_t release_topology(pmix_topology_t *src, size_t ncpu)
 {
     size_t n;
 
-    if (NULL == src->source || 0 != strcasecmp(src->source, "hwloc")) {
+    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
