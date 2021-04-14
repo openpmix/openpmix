@@ -91,9 +91,12 @@ typedef struct pmix_prm_globals_t pmix_prm_globals_t;
 
 PMIX_EXPORT extern pmix_prm_globals_t pmix_prm_globals;
 
-PMIX_EXPORT pmix_status_t pmix_prm_base_notify(pmix_status_t status, const pmix_proc_t *source,
-                                               pmix_data_range_t range, const pmix_info_t info[],
-                                               size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_prm_base_notify(pmix_status_t status,
+                                               const pmix_proc_t *source,
+                                               pmix_data_range_t range,
+                                               const pmix_info_t info[], size_t ninfo,
+                                               pmix_op_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT int pmix_prm_base_get_remaining_time(uint32_t *timeleft);
 
 END_C_DECLS
 
