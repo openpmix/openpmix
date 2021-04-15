@@ -930,16 +930,23 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_STORAGE_OBJECT_LIMIT           "pmix.strg.objlim"      // (uint64_t) overall limit on number of objects (e.g., inodes) for the storage system
 #define PMIX_STORAGE_OBJECTS_USED           "pmix.strg.objuse"      // (uint64_t) overall used number of objects (e.g., inodes) for the storage system
 
-#define PMIX_STORAGE_MINIMAL_XFER_SIZE      "pmix.strg.minxfer"     // (double) minimal transfer size (in bytes) for the storage system - this is the storage system’s atomic unit of transfer (e.g., block size)
+#define PMIX_STORAGE_MINIMAL_XFER_SIZE      "pmix.strg.minxfer"     // (double) minimal transfer size (in bytes) for the storage system - this is the storage
+                                                                    //      system’s atomic unit of transfer (e.g., block size)
 #define PMIX_STORAGE_SUGGESTED_XFER_SIZE    "pmix.strg.sxfer"       // (double) suggested transfer size (in bytes) for the storage system
 
-#define PMIX_STORAGE_BW_MAX                 "pmix.strg.bwmax"       // (double) maximum bandwidth (in bytes/sec) for storage system - provided as the theoretical maximum or the maximum observed bandwidth value
-#define PMIX_STORAGE_BW_CUR                 "pmix.strg.bwcur"       // (double) observed bandwidth (in bytes/sec) for storage system - provided as a recently observed bandwidth value
+#define PMIX_STORAGE_BW_MAX                 "pmix.strg.bwmax"       // (double) maximum bandwidth (in bytes/sec) for storage system - provided as the
+                                                                    //      theoretical maximum or the maximum observed bandwidth value
+#define PMIX_STORAGE_BW_CUR                 "pmix.strg.bwcur"       // (double) observed bandwidth (in bytes/sec) for storage system - provided as a
+                                                                    //      recently observed bandwidth value
 
-#define PMIX_STORAGE_IOPS_MAX               "pmix.strg.iopsmax"     // (double) maximum IOPS (in I/O operations per second) for storage system - provided as the theoretical maximum or the maximum observed IOPS value
-#define PMIX_STORAGE_IOPS_CUR               "pmix.strg.iopscur"     // (double) observed IOPS (in I/O operations per second) for storage system - provided as a recently observed IOPS value
+#define PMIX_STORAGE_IOPS_MAX               "pmix.strg.iopsmax"     // (double) maximum IOPS (in I/O operations per second) for storage system - provided
+                                                                    //      as the theoretical maximum or the maximum observed IOPS value
+#define PMIX_STORAGE_IOPS_CUR               "pmix.strg.iopscur"     // (double) observed IOPS (in I/O operations per second) for storage system - provided
+                                                                    //      as a recently observed IOPS value
 
-#define PMIX_STORAGE_ACCESS_TYPE            "pmix.strg.atype"       // (pmix_storage_access_type_t) qualifier describing the type of storage access to return information for (e.g., for qualifying PMIX_STORAGE_BW_CUR , PMIX_STORAGE_IOPS_CUR , or PMIX_STORAGE_SUGGESTED_XFER_SIZE attributes)
+#define PMIX_STORAGE_ACCESS_TYPE            "pmix.strg.atype"       // (pmix_storage_access_type_t) qualifier describing the type of storage access to
+                                                                    //      return information for (e.g., for qualifying PMIX_STORAGE_BW_CUR ,
+                                                                    //      PMIX_STORAGE_IOPS_CUR , or PMIX_STORAGE_SUGGESTED_XFER_SIZE attributes)
 
 /* Fabric-related Attributes */
 #define PMIX_FABRIC_COST_MATRIX             "pmix.fab.cm"          // (pointer) Pointer to a two-dimensional array of point-to-point relative
@@ -1355,6 +1362,10 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_NET_STATS                  63
 #define PMIX_NODE_STATS                 64
 #define PMIX_DATA_BUFFER                65
+#define PMIX_STRG_MEDIUM                66
+#define PMIX_STRG_ACCESSIBILITY         67
+#define PMIX_STRG_PERSISTENCE           68
+#define PMIX_STRG_ACCESS                69
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1451,6 +1462,45 @@ typedef enum {
     PMIX_GROUP_CONSTRUCT,
     PMIX_GROUP_DESTRUCT
 } pmix_group_operation_t;
+
+/* define a set of storage medium bit-mask values */
+typedef uint64_t pmix_storage_medium_t;
+#define PMIX_STORAGE_MEDIUM_UNKNOWN     0x0000000000000000      // The storage medium type is unknown
+#define PMIX_STORAGE_MEDIUM_TAPE        0x0000000000000001      // The storage system uses tape media.
+#define PMIX_STORAGE_MEDIUM_HDD         0x0000000000000002      // The storage system uses HDDs with traditional SAS, SATA interfaces.
+#define PMIX_STORAGE_MEDIUM_SSD         0x0000000000000004      // The storage system uses SSDs with traditional SAS, SATA interfaces.
+#define PMIX_STORAGE_MEDIUM_NVME        0x0000000000000008      // The storage system uses SSDs with NVMe interface
+#define PMIX_STORAGE_MEDIUM_PMEM        0x0000000000000010      // The storage system uses persistent memory
+#define PMIX_STORAGE_MEDIUM_RAM         0x0000000000000020      // The storage system is volatile (e.g., tmpfs).
+
+/* define a set of storage accessibility bit-mask values */
+typedef uint64_t pmix_storage_accessibility_t;
+#define PMIX_STORAGE_ACCESSIBILITY_NODE         0x0000000000000000      // The storage system resources are accessible within the same node.
+#define PMIX_STORAGE_ACCESSIBILITY_SESSION      0x0000000000000001      // The storage system resources are accessible within the same session.
+#define PMIX_STORAGE_ACCESSIBILITY_JOB          0x0000000000000002      // The storage system resources are accessible within the same job.
+#define PMIX_STORAGE_ACCESSIBILITY_RACK         0x0000000000000004      // The storage system resources are accessible within the same rack.
+#define PMIX_STORAGE_ACCESSIBILITY_CLUSTER      0x0000000000000008      // The storage system resources are accessible within the same cluster.
+#define PMIX_STORAGE_ACCESSIBILITY_REMOTE       0x0000000000000010      // The storage system resources are remote.
+
+/* define a set of storage persistence values */
+typedef uint16_t pmix_storage_persistence_t;
+#define PMIX_STORAGE_PERSISTENCE_TEMPORARY      0       // Data on the storage system is persisted only temporarily (i.e, it does not survive
+                                                        //      across sessions or node reboots).
+#define PMIX_STORAGE_PERSISTENCE_NODE           1       // Data on the storage system is persisted on the node.
+#define PMIX_STORAGE_PERSISTENCE_SESSION        2       // Data on the storage system is persisted for the duration of the session.
+#define PMIX_STORAGE_PERSISTENCE_JOB            3       // Data on the storage system is persisted for the duration of the job.
+#define PMIX_STORAGE_PERSISTENCE_SCRATCH        4       // Data on the storage system is persisted according to scratch storage policies
+                                                        //      (short-term storage, typically persisted for days to weeks).
+#define PMIX_STORAGE_PERSISTENCE_PROJECT        5       // Data on the storage system is persisted according to project storage policies
+                                                        //      (long-term storage, typically persisted for the duration of a project).
+#define PMIX_STORAGE_PERSISTENCE_ARCHIVE        6       //Data on the storage system is persisted according to archive storage policies
+                                                        //      (long-term storage, typically persisted indefinitely).
+
+/* define a set of storage access type bit-mask values */
+typedef uint16_t pmix_storage_access_type_t;
+#define PMIX_STORAGE_ACCESS_RD      0x0001  // Provide information on storage system read operations.
+#define PMIX_STORAGE_ACCESS_WR      0x0002  // Provide information on storage system write operations.
+#define PMIX_STORAGE_ACCESS_RDWR    0x0003  // Provide information on storage system read and write operations.
 
 
 /* define some "hooks" external libraries can use to
@@ -2363,6 +2413,10 @@ typedef struct pmix_value {
         pmix_disk_stats_t *dkstats;
         pmix_net_stats_t *netstats;
         pmix_node_stats_t *ndstats;
+        pmix_storage_medium_t storage_medium;
+        pmix_storage_accessibility_t storage_accessibility;
+        pmix_storage_persistence_t storage_persistence;
+        pmix_storage_access_type_t storage_access;
     } data;
 } pmix_value_t;
 /* allocate and initialize a specified number of value structs */
@@ -3411,55 +3465,59 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
                        PMIX_INT8 == (t) ||                          \
                        PMIX_UINT8 == (t) ||                         \
                        PMIX_POINTER == (t)) {                       \
-                (m)->array = pmix_calloc((n), sizeof(int8_t));           \
+                (m)->array = pmix_calloc((n), sizeof(int8_t));      \
                                                                     \
             } else if (PMIX_STRING == (t)) {                        \
-                (m)->array = pmix_calloc((n), sizeof(char*));            \
+                (m)->array = pmix_calloc((n), sizeof(char*));       \
                                                                     \
             } else if (PMIX_SIZE == (t)) {                          \
-                (m)->array = pmix_calloc((n), sizeof(size_t));           \
+                (m)->array = pmix_calloc((n), sizeof(size_t));      \
                                                                     \
             } else if (PMIX_PID == (t)) {                           \
-                (m)->array = pmix_calloc((n), sizeof(pid_t));            \
+                (m)->array = pmix_calloc((n), sizeof(pid_t));       \
                                                                     \
             } else if (PMIX_INT == (t) ||                           \
                        PMIX_UINT == (t) ||                          \
                        PMIX_STATUS == (t)) {                        \
-                (m)->array = pmix_calloc((n), sizeof(int));              \
+                (m)->array = pmix_calloc((n), sizeof(int));         \
                                                                     \
             } else if (PMIX_IOF_CHANNEL == (t) ||                   \
                        PMIX_DATA_TYPE == (t) ||                     \
                        PMIX_INT16 == (t) ||                         \
-                       PMIX_UINT16 == (t)) {                        \
-                (m)->array = pmix_calloc((n), sizeof(int16_t));          \
+                       PMIX_UINT16 == (t) ||                        \
+                       PMIX_STRG_PERSISTENCE == (t) ||              \
+                       PMIX_STRG_ACCESS == (t)) {                   \
+                (m)->array = pmix_calloc((n), sizeof(int16_t));     \
                                                                     \
             } else if (PMIX_PROC_RANK == (t) ||                     \
                        PMIX_INFO_DIRECTIVES == (t) ||               \
                        PMIX_INT32 == (t) ||                         \
                        PMIX_UINT32 == (t)) {                        \
-                (m)->array = pmix_calloc((n), sizeof(int32_t));          \
+                (m)->array = pmix_calloc((n), sizeof(int32_t));     \
                                                                     \
             } else if (PMIX_INT64 == (t) ||                         \
-                       PMIX_UINT64 == (t)) {                        \
-                (m)->array = pmix_calloc((n), sizeof(int64_t));          \
+                       PMIX_UINT64 == (t) ||                        \
+                       PMIX_STRG_MEDIUM == (t) ||                   \
+                       PMIX_STRG_ACCESSIBILITY == (t)) {            \
+                (m)->array = pmix_calloc((n), sizeof(int64_t));     \
                                                                     \
             } else if (PMIX_FLOAT == (t)) {                         \
-                (m)->array = pmix_calloc((n), sizeof(float));            \
+                (m)->array = pmix_calloc((n), sizeof(float));       \
                                                                     \
             } else if (PMIX_DOUBLE == (t)) {                        \
-                (m)->array = pmix_calloc((n), sizeof(double));           \
+                (m)->array = pmix_calloc((n), sizeof(double));      \
                                                                     \
             } else if (PMIX_TIMEVAL == (t)) {                       \
                 (m)->array = pmix_calloc((n), sizeof(struct timeval));   \
                                                                     \
             } else if (PMIX_TIME == (t)) {                          \
-                (m)->array = pmix_calloc((n), sizeof(time_t));           \
+                (m)->array = pmix_calloc((n), sizeof(time_t));      \
                                                                     \
             } else if (PMIX_REGATTR == (t)) {                       \
                 PMIX_REGATTR_CREATE((m)->array, (n));               \
                                                                     \
             } else if (PMIX_BOOL == (t)) {                          \
-                (m)->array = pmix_calloc((n), sizeof(bool));             \
+                (m)->array = pmix_calloc((n), sizeof(bool));        \
                                                                     \
             } else if (PMIX_COORD == (t)) {                         \
                 (m)->array = pmix_calloc((n), sizeof(pmix_coord_t));  \
@@ -3467,35 +3525,35 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
             } else if (PMIX_LINK_STATE == (t)) {                    \
                 (m)->array = pmix_calloc((n), sizeof(pmix_link_state_t));  \
                                                                     \
-            } else if (PMIX_ENDPOINT == (t)) {                         \
-                PMIX_ENDPOINT_CREATE((m)->array, n);                   \
+            } else if (PMIX_ENDPOINT == (t)) {                      \
+                PMIX_ENDPOINT_CREATE((m)->array, n);                \
                                                                     \
-            } else if (PMIX_PROC_NSPACE == (t)) {                         \
+            } else if (PMIX_PROC_NSPACE == (t)) {                   \
                 (m)->array = pmix_calloc((n), sizeof(pmix_nspace_t));     \
                                                                     \
-            } else if (PMIX_PROC_STATS == (t)) {                         \
-                PMIX_PROC_STATS_CREATE((m)->array, n);                   \
+            } else if (PMIX_PROC_STATS == (t)) {                    \
+                PMIX_PROC_STATS_CREATE((m)->array, n);              \
                                                                     \
-            } else if (PMIX_DISK_STATS == (t)) {                         \
-                PMIX_DISK_STATS_CREATE((m)->array, n);                   \
+            } else if (PMIX_DISK_STATS == (t)) {                    \
+                PMIX_DISK_STATS_CREATE((m)->array, n);              \
                                                                     \
-            } else if (PMIX_NET_STATS == (t)) {                         \
-                PMIX_NET_STATS_CREATE((m)->array, n);                   \
+            } else if (PMIX_NET_STATS == (t)) {                     \
+                PMIX_NET_STATS_CREATE((m)->array, n);               \
                                                                     \
-            } else if (PMIX_NODE_STATS == (t)) {                         \
-                PMIX_NODE_STATS_CREATE((m)->array, n);                   \
+            } else if (PMIX_NODE_STATS == (t)) {                    \
+                PMIX_NODE_STATS_CREATE((m)->array, n);              \
                                                                     \
-            } else if (PMIX_DEVICE_DIST == (t)) {                         \
-                PMIX_DEVICE_DIST_CREATE((m)->array, n);                   \
+            } else if (PMIX_DEVICE_DIST == (t)) {                   \
+                PMIX_DEVICE_DIST_CREATE((m)->array, n);             \
                                                                     \
-            } else if (PMIX_GEOMETRY == (t)) {                         \
-                PMIX_GEOMETRY_CREATE((m)->array, n);                   \
+            } else if (PMIX_GEOMETRY == (t)) {                      \
+                PMIX_GEOMETRY_CREATE((m)->array, n);                \
                                                                     \
-            } else if (PMIX_REGATTR == (t)) {                         \
-                PMIX_REGATTR_CREATE((m)->array, n);                   \
+            } else if (PMIX_REGATTR == (t)) {                       \
+                PMIX_REGATTR_CREATE((m)->array, n);                 \
                                                                     \
-            } else if (PMIX_PROC_CPUSET == (t)) {                         \
-                PMIX_CPUSET_CREATE((m)->array, n);                   \
+            } else if (PMIX_PROC_CPUSET == (t)) {                   \
+                PMIX_CPUSET_CREATE((m)->array, n);                  \
             } else {                                                \
                 (m)->array = NULL;                                  \
                 (m)->size = 0;                                      \

@@ -1,6 +1,7 @@
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Construct a dictionary for translating attributes to/from
@@ -100,6 +101,8 @@ def harvest_constants(options, path, constants):
                             datatype = "PMIX_UINT8"
                         elif tokens[3] == "(float)":
                             datatype = "PMIX_FLOAT"
+                        elif tokens[3] == "(double)":
+                            datatype = "PMIX_DOUBLE"
                         elif tokens[3] == "(pmix_byte_object_t)":
                             datatype = "PMIX_BYTE_OBJECT"
                         elif tokens[3] == "(hwloc_topology_t)":
@@ -142,6 +145,14 @@ def harvest_constants(options, path, constants):
                             datatype = "PMIX_ENDPOINT"
                         elif tokens[3] == "(pmix_device_type_t)":
                             datatype = "PMIX_DEVTYPE"
+                        elif tokens[3] == "(pmix_storage_medium_t)":
+                            datatype = "PMIX_STRG_MEDIUM"
+                        elif tokens[3] == "(pmix_storage_accessibility_t)":
+                            datatype = "PMIX_STRG_ACCESSIBILTY"
+                        elif tokens[3] == "(pmix_storage_persistence_t)":
+                            datatype = "PMIX_STRG_PERSISTENCE"
+                        elif tokens[3] == "(pmix_storage_access_type_t)":
+                            datatype = "PMIX_STRG_ACCESS"
                         elif tokens[3] == "(varies)":
                             datatype = "PMIX_INT"
                         else:
@@ -273,6 +284,7 @@ def main():
 
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
+#include "include/pmix_common.h"
 
 pmix_regattr_input_t dictionary[] = {
 """)
