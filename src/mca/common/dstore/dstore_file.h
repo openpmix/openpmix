@@ -114,13 +114,11 @@ __pmix_attribute_extension__ ({                                     \
     __size;                                                         \
 })
 
-#define PMIX_DS_KEY_HASH(ctx, key)                                  \
+#define PMIX_DS_KEY_HASH(ctx, key, kh)                                  \
 __pmix_attribute_extension__ ({                                     \
-    size_t keyhash = 0;                                             \
     if ((ctx)->file_cbs && (ctx)->file_cbs->key_hash) {             \
-        keyhash = (ctx)->file_cbs->key_hash(key);                   \
+        kh = (ctx)->file_cbs->key_hash(key);                   \
     }                                                               \
-    keyhash;                                                        \
 })
 
 #define PMIX_DS_KEY_MATCH(ctx, addr, key, hash)                     \

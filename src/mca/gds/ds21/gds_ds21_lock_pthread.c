@@ -2,6 +2,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -188,18 +189,18 @@ pmix_status_t pmix_gds_ds21_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
             goto error;
         }
 
-        segment_hdr_t *seg_hdr = (segment_hdr_t*)lock_item->seg_desc->seg_info.seg_base_addr;
-        seg_hdr->num_locks = local_size;
-        seg_hdr->seg_size = size;
-        seg_hdr->align_size = seg_align_size;
-        seg_hdr->mutex_offs = seg_hdr_size;
+        segment_hdr_t *sg = (segment_hdr_t*)lock_item->seg_desc->seg_info.seg_base_addr;
+        sg->num_locks = local_size;
+        sg->seg_size = size;
+        sg->align_size = seg_align_size;
+        sg->mutex_offs = seg_hdr_size;
 
         lock_item->lockfile = strdup(lock_item->seg_desc->seg_info.seg_name);
         lock_item->num_locks = local_size;
-        lock_item->mutex = _GET_MUTEX_ARR_PTR(seg_hdr);
+        lock_item->mutex = _GET_MUTEX_ARR_PTR(sg);
 
         for(i = 0; i < local_size * 2; i++) {
-            pthread_mutex_t *mutex = _GET_MUTEX_PTR(seg_hdr, i);
+            pthread_mutex_t *mutex = _GET_MUTEX_PTR(sg, i);
             if (0 != pthread_mutex_init(mutex, &attr)) {
                 pthread_mutexattr_destroy(&attr);
                 rc = PMIX_ERR_INIT;
