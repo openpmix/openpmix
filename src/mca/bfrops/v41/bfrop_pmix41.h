@@ -1,13 +1,13 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 20041-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 20041-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
+ * Copyright (c) 20041-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
- * Copyright (c) 2004-2005 The Regents of the University of California.
+ * Copyright (c) 20041-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
@@ -18,18 +18,18 @@
  * $HEADER$
  */
 
-#ifndef PMIX_BFROPS_PMIX401_H
-#define PMIX_BFROPS_PMIX401_H
+#ifndef PMIX_BFROPS_PMIX41_H
+#define PMIX_BFROPS_PMIX41_H
 
 #include "src/mca/bfrops/bfrops.h"
 
 BEGIN_C_DECLS
 
 /* the component must be visible data for the linker to find it */
- PMIX_EXPORT extern pmix_bfrops_base_component_t mca_bfrops_v401_component;
+PMIX_EXPORT extern pmix_bfrops_base_component_t mca_bfrops_v41_component;
 
-extern pmix_bfrops_module_t pmix_bfrops_pmix401_module;
+extern pmix_bfrops_module_t pmix_bfrops_pmix41_module;
 
 END_C_DECLS
 
-#endif /* PMIX_BFROPS_PMIX401_H */
+#endif /* PMIX_BFROPS_PMIX41_H */

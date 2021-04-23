@@ -29,31 +29,31 @@
 
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
-#include "src/include/types.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/types.h"
 
-#include "src/util/error.h"
-#include "src/server/pmix_server_ops.h"
+#include "bfrop_pmix41.h"
 #include "src/mca/bfrops/base/base.h"
-#include "bfrop_pmix401.h"
+#include "src/server/pmix_server_ops.h"
+#include "src/util/error.h"
 
-extern pmix_bfrops_module_t pmix_bfrops_pmix401_module;
+extern pmix_bfrops_module_t pmix_bfrops_pmix41_module;
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 static pmix_status_t component_close(void);
-static pmix_bfrops_module_t* assign_module(void);
+static pmix_bfrops_module_t *assign_module(void);
 
 /*
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_bfrops_base_component_t mca_bfrops_v401_component = {
+pmix_bfrops_base_component_t mca_bfrops_v41_component = {
     .base = {
         PMIX_BFROPS_BASE_VERSION_1_0_0,
 
         /* Component name and version */
-        .pmix_mca_component_name = "v401",
+        .pmix_mca_component_name = "v41",
         PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
                                    PMIX_RELEASE_VERSION),
 
@@ -62,39 +62,36 @@ pmix_bfrops_base_component_t mca_bfrops_v401_component = {
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
     },
-    .priority = 55,
+    .priority = 58,
     .assign_module = assign_module
 };
-
 
 pmix_status_t component_open(void)
 {
     /* setup the types array */
-    PMIX_CONSTRUCT(&mca_bfrops_v401_component.types, pmix_pointer_array_t);
-    pmix_pointer_array_init(&mca_bfrops_v401_component.types, 50, INT_MAX, 16);
+    PMIX_CONSTRUCT(&mca_bfrops_v41_component.types, pmix_pointer_array_t);
+    pmix_pointer_array_init(&mca_bfrops_v41_component.types, 50, INT_MAX, 16);
 
     return PMIX_SUCCESS;
 }
-
 
 pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
 
-    *priority = mca_bfrops_v401_component.priority;
-    *module = (pmix_mca_base_module_t *)&pmix_bfrops_pmix401_module;
+    *priority = mca_bfrops_v41_component.priority;
+    *module = (pmix_mca_base_module_t *) &pmix_bfrops_pmix41_module;
     return PMIX_SUCCESS;
 }
-
 
 pmix_status_t component_close(void)
 {
-    PMIX_DESTRUCT(&mca_bfrops_v401_component.types);
+    PMIX_DESTRUCT(&mca_bfrops_v41_component.types);
     return PMIX_SUCCESS;
 }
 
-static pmix_bfrops_module_t* assign_module(void)
+static pmix_bfrops_module_t *assign_module(void)
 {
     pmix_output_verbose(10, pmix_bfrops_base_framework.framework_output,
-                        "bfrops:pmix401 assigning module");
-    return &pmix_bfrops_pmix401_module;
+                        "bfrops:pmix41 assigning module");
+    return &pmix_bfrops_pmix41_module;
 }
