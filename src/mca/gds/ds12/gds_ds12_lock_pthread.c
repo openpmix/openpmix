@@ -6,6 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,27 +39,26 @@
 #include "gds_ds12_lock.h"
 #include "src/mca/common/dstore/dstore_segment.h"
 
-#define _ESH_12_PTHREAD_LOCK(rwlock, func)                  \
-__pmix_attribute_extension__ ({                             \
-    pmix_status_t ret = PMIX_SUCCESS;                       \
-    int rc;                                                 \
-    rc = pthread_rwlock_##func(rwlock);                     \
-    if (0 != rc) {                                          \
+#define _ESH_12_PTHREAD_LOCK(r, rwlock, func)                  \
+do {                             \
+    r = PMIX_SUCCESS;                       \
+    int _r;                                                 \
+    _r = pthread_rwlock_##func(rwlock);                     \
+    if (0 != _r) {                                          \
         switch (errno) {                                    \
             case EINVAL:                                    \
-                ret = PMIX_ERR_INIT;                        \
+                r = PMIX_ERR_INIT;                        \
                 break;                                      \
             case EPERM:                                     \
-                ret = PMIX_ERR_NO_PERMISSIONS;              \
+                r = PMIX_ERR_NO_PERMISSIONS;              \
                 break;                                      \
         }                                                   \
     }                                                       \
-    if (ret) {                                              \
+    if (r) {                                              \
         pmix_output(0, "%s %d:%s lock failed: %s",          \
             __FILE__, __LINE__, __func__, strerror(errno)); \
     }                                                       \
-    ret;                                                    \
-})
+} while(0)
 
 typedef struct {
     char *lockfile;
@@ -237,7 +237,7 @@ pmix_status_t pmix_ds12_lock_rd_get(pmix_common_dstor_lock_ctx_t lock_ctx)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    rc = _ESH_12_PTHREAD_LOCK(pthread_lock->rwlock, rdlock);
+    _ESH_12_PTHREAD_LOCK(rc, pthread_lock->rwlock, rdlock);
 
     return rc;
 }
@@ -252,7 +252,7 @@ pmix_status_t pmix_ds12_lock_wr_get(pmix_common_dstor_lock_ctx_t lock_ctx)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    rc = _ESH_12_PTHREAD_LOCK(pthread_lock->rwlock, wrlock);
+    _ESH_12_PTHREAD_LOCK(rc, pthread_lock->rwlock, wrlock);
 
     return rc;
 }
@@ -267,7 +267,7 @@ pmix_status_t pmix_ds12_lock_rw_rel(pmix_common_dstor_lock_ctx_t lock_ctx)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    rc = _ESH_12_PTHREAD_LOCK(pthread_lock->rwlock, unlock);
+    _ESH_12_PTHREAD_LOCK(rc, pthread_lock->rwlock, unlock);
 
     return rc;
 }
