@@ -26,7 +26,7 @@ multiple release branches.
 Master (not on release branches yet)
 ------------------------------------
 
-4.0.1 -- TBD
+4.1.0 -- TBD
 ----------------------
  - PR #2154: Cherry-pick updates from master branch
      - Spawn needs to do a little checking of the app

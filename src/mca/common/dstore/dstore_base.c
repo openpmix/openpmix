@@ -6,6 +6,7 @@
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -159,12 +160,10 @@ ns_map_data_t * (*_esh_session_map_search)(const char *nspace) = NULL;
 #define _ESH_SESSION_lock(tbl_idx)         _ESH_SESSION_lockfd(tbl_idx)
 #endif
 
-#define _ESH_LOCK(ds_ctx, session_id, operation)                               \
+#define _ESH_LOCK(r, ds_ctx, session_id, operation)                               \
 __pmix_attribute_extension__ ({                                                \
-    pmix_status_t rc = PMIX_SUCCESS;                                           \
-    rc = ds_ctx->lock_cbs->operation(_ESH_SESSION_lock(ds_ctx->session_array,  \
+    r = ds_ctx->lock_cbs->operation(_ESH_SESSION_lock(ds_ctx->session_array,  \
                                                     session_id));              \
-    rc;                                                                        \
 })
 
 static void ncon(ns_track_elem_t *p) {
@@ -1174,11 +1173,11 @@ static size_t put_data_to_the_end(pmix_common_dstore_ctx_t *ds_ctx, ns_track_ele
 static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_info,
                          pmix_rank_t rank, pmix_kval_t *kval, rank_meta_info **rinfo, int data_exist)
 {
-    size_t offset, size, kval_cnt;
+    size_t offset, size, kval_cnt, sz;
     pmix_buffer_t buffer;
     pmix_status_t rc;
     pmix_dstore_seg_desc_t *datadesc;
-    uint8_t *addr;
+    uint8_t *addr, *dptr;
 
     PMIX_OUTPUT_VERBOSE((2, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s: for rank %u, replace flag %d",
@@ -1277,7 +1276,17 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                             "%s:%d:%s: for rank %u, replace flag %d found target key %s",
                             __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
                 /* target key is found, compare value sizes */
-                if (PMIX_DS_DATA_SIZE(ds_ctx, addr, PMIX_DS_DATA_PTR(ds_ctx, addr)) != size) {
+                sz = 0;
+                if (NULL != ds_ctx->file_cbs) {
+                    dptr = NULL;
+                    if (NULL != ds_ctx->file_cbs->data_ptr) {
+                        dptr = ds_ctx->file_cbs->data_ptr(addr);
+                    }
+                    if (NULL != ds_ctx->file_cbs->data_size) {
+                        sz = ds_ctx->file_cbs->data_size(addr, dptr);
+                    }
+                }
+                if (sz != size) {
                 //if (1) { /* if we want to test replacing values for existing keys. */
                     /* invalidate current value and store another one at the end of data region. */
                     PMIX_DS_KEY_SET_INVALID(ds_ctx, addr);
@@ -1285,7 +1294,9 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                     (*rinfo)->count--;
                     kval_cnt--;
                     /* go to next item, updating address */
-                    addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
+                    if (ds_ctx->file_cbs && ds_ctx->file_cbs->kval_size) {
+                        addr += ds_ctx->file_cbs->kval_size(addr);
+                    }
                     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                                 "%s:%d:%s: for rank %u, replace flag %d mark key %s regions as invalidated. put new data at the end.",
                                 __FILE__, __LINE__, __func__, rank, data_exist, kval->key));
@@ -1294,10 +1305,16 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                                 "%s:%d:%s: for rank %u, replace flag %d replace data for key %s type %d in place",
                                 __FILE__, __LINE__, __func__, rank, data_exist, kval->key, kval->value->type));
                     /* replace old data with new one. */
-                    memset(PMIX_DS_DATA_PTR(ds_ctx, addr), 0,
-                           PMIX_DS_DATA_SIZE(ds_ctx, addr, PMIX_DS_DATA_PTR(ds_ctx, addr)));
-                    memcpy(PMIX_DS_DATA_PTR(ds_ctx, addr), buffer.base_ptr, size);
-                    addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
+                    dptr = NULL;
+                    if (ds_ctx->file_cbs && ds_ctx->file_cbs->data_ptr) {
+                        dptr = ds_ctx->file_cbs->data_ptr(addr);
+                    }
+                    if (ds_ctx->file_cbs && ds_ctx->file_cbs->data_size) {
+                        size = ds_ctx->file_cbs->data_size(addr, dptr);
+                    }
+                    memset(dptr, 0, size);
+                    memcpy(dptr, buffer.base_ptr, size);
+                    addr += size;
                     add_to_the_end = 0;
                     break;
                 }
@@ -1312,7 +1329,9 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                     kval_cnt--;
                 }
                 /* go to next item, updating address */
-                addr += PMIX_DS_KV_SIZE(ds_ctx, addr);
+                if (ds_ctx->file_cbs && ds_ctx->file_cbs->kval_size) {
+                    addr += ds_ctx->file_cbs->kval_size(addr);
+                }
             }
         }
         if (1 == add_to_the_end) {
@@ -1360,7 +1379,11 @@ static int pmix_sm_store(pmix_common_dstore_ctx_t *ds_ctx, ns_track_elem_t *ns_i
                 /* Calculate the offset of the end of the extension slot */
                 offs_cur_segment = free_offset % ds_ctx->data_segment_size;
                 segstart = ldesc->seg_info.seg_base_addr;
-                offs_past_extslot = (addr + PMIX_DS_KV_SIZE(ds_ctx, addr)) - segstart;
+                sz = 0;
+                if (ds_ctx->file_cbs && ds_ctx->file_cbs->kval_size) {
+                    sz = ds_ctx->file_cbs->kval_size(addr);
+                }
+                offs_past_extslot = (addr + sz) - segstart;
 
                 /* We can erase extension slot if:
                  *  - address of the ext slot belongs to the occupied part of the
@@ -1924,7 +1947,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_c
     }
 
     /* set exclusive lock */
-    rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_lock);
+    _ESH_LOCK(rc, ds_ctx, ns_map->tbl_idx, wr_lock);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1937,7 +1960,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store(pmix_common_dstore_ctx_t *ds_c
     }
 
     /* unset lock */
-    rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_unlock);
+    _ESH_LOCK(rc, ds_ctx, ns_map->tbl_idx, wr_unlock);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -2022,7 +2045,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     }
 
     /* grab shared lock */
-    lock_rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, rd_lock);
+    _ESH_LOCK(lock_rc, ds_ctx, ns_map->tbl_idx, rd_lock);
     if (PMIX_SUCCESS != lock_rc) {
         /* Something wrong with the lock. The error is fatal */
         rc = lock_rc;
@@ -2077,7 +2100,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
     data_seg = elem->data_seg;
 
     if( NULL != key ) {
-        keyhash = PMIX_DS_KEY_HASH(ds_ctx, key);
+        PMIX_DS_KEY_HASH(ds_ctx, key, keyhash);
     }
 
     /* all segment data updated, ctx lock may released */
@@ -2185,8 +2208,14 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                             "%s:%d:%s: for rank %s:%u, found target key %s",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, kname_ptr));
 
-                uint8_t *data_ptr = PMIX_DS_DATA_PTR(ds_ctx, addr);
-                size_t data_size = PMIX_DS_DATA_SIZE(ds_ctx, addr, data_ptr);
+                uint8_t *data_ptr = NULL;
+                if (ds_ctx->file_cbs && ds_ctx->file_cbs->data_ptr) {
+                    data_ptr = ds_ctx->file_cbs->data_ptr(addr);
+                }
+                size_t data_size = 0;
+                if (ds_ctx->file_cbs && ds_ctx->file_cbs->data_size) {
+                    data_size = ds_ctx->file_cbs->data_size(addr, data_ptr);
+                }
                 PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(_client_peer(ds_ctx), &buffer, data_ptr, data_size);
                 int cnt = 1;
@@ -2213,8 +2242,14 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                             "%s:%d:%s: for rank %s:%u, found target key %s",
                             __FILE__, __LINE__, __func__, nspace, cur_rank, key));
                 /* target key is found, get value */
-                uint8_t *data_ptr = PMIX_DS_DATA_PTR(ds_ctx, addr);
-                size_t data_size = PMIX_DS_DATA_SIZE(ds_ctx, addr, data_ptr);
+                uint8_t *data_ptr = NULL;
+                if (ds_ctx->file_cbs && ds_ctx->file_cbs->data_ptr) {
+                    data_ptr = ds_ctx->file_cbs->data_ptr(addr);
+                }
+                size_t data_size = 0;
+                if (ds_ctx->file_cbs && ds_ctx->file_cbs->data_size) {
+                    data_size = ds_ctx->file_cbs->data_size(addr, data_ptr);
+                }
                 PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
                 PMIX_LOAD_BUFFER(_client_peer(ds_ctx), &buffer, data_ptr, data_size);
                 int cnt = 1;
@@ -2248,7 +2283,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
 
 done:
     /* unset lock */
-    lock_rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, rd_unlock);
+    _ESH_LOCK(lock_rc, ds_ctx, ns_map->tbl_idx, rd_unlock);
     if (PMIX_SUCCESS != lock_rc) {
         PMIX_ERROR_LOG(lock_rc);
     }
@@ -2310,8 +2345,8 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_fetch(pmix_common_dstore_ctx_t *ds_c
     rc = _dstore_fetch(ds_ctx, proc->nspace, proc->rank, key, &val);
     if (PMIX_SUCCESS == rc) {
         if( NULL == key ) {
-            pmix_info_t *info;
-            size_t n, ninfo;
+            pmix_info_t *iptr;
+            size_t n, niptr;
 
             if (NULL == val->data.darray ||
                 PMIX_INFO != val->data.darray->type ||
@@ -2319,18 +2354,18 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_fetch(pmix_common_dstore_ctx_t *ds_c
                 PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
                 return PMIX_ERR_NOT_FOUND;
             }
-            info = (pmix_info_t*)val->data.darray->array;
-            ninfo = val->data.darray->size;
+            iptr = (pmix_info_t*)val->data.darray->array;
+            niptr = val->data.darray->size;
 
-            for (n = 0; n < ninfo; n++){
+            for (n = 0; n < niptr; n++){
                 kv = PMIX_NEW(pmix_kval_t);
                 if (NULL == kv) {
                     rc = PMIX_ERR_NOMEM;
                     PMIX_VALUE_RELEASE(val);
                     return rc;
                 }
-                kv->key = strdup(info[n].key);
-                PMIX_VALUE_XFER(rc, kv->value, &info[n].value);
+                kv->key = strdup(iptr[n].key);
+                PMIX_VALUE_XFER(rc, kv->value, &iptr[n].value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(kv);
@@ -2568,7 +2603,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t
     }
 
     /* set exclusive lock */
-    rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_lock);
+    _ESH_LOCK(rc, ds_ctx, ns_map->tbl_idx, wr_lock);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -2582,7 +2617,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_modex(pmix_common_dstore_ctx_t
     }
 
     /* unset lock */
-    rc1 = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_unlock);
+    _ESH_LOCK(rc1, ds_ctx, ns_map->tbl_idx, wr_unlock);
     if (PMIX_SUCCESS != rc1) {
         PMIX_ERROR_LOG(rc1);
         if (PMIX_SUCCESS == rc) {
@@ -2882,7 +2917,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore
         }
 
         /* set exclusive lock */
-        rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_lock);
+        _ESH_LOCK(rc, ds_ctx, ns_map->tbl_idx, wr_lock);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -2905,7 +2940,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_register_job_info(pmix_common_dstore
             }
         }
         /* unset lock */
-        rc = _ESH_LOCK(ds_ctx, ns_map->tbl_idx, wr_unlock);
+        _ESH_LOCK(rc, ds_ctx, ns_map->tbl_idx, wr_unlock);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;

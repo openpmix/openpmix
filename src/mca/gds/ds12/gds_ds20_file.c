@@ -3,6 +3,7 @@
  *                         All rights reserved.
  *
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,61 +19,57 @@
 #include "src/mca/common/dstore/dstore_file.h"
 #include "gds_ds12_file.h"
 
-#define ESH_KV_SIZE_V20(addr)                               \
-__pmix_attribute_extension__ ({                             \
-    size_t sz;                                              \
-    memcpy(&sz, addr, sizeof(size_t));                      \
-    sz;                                                     \
-})
-
 #define ESH_KNAME_PTR_V20(addr)                             \
     ((char *)addr + sizeof(size_t))
 
-#define ESH_KNAME_LEN_V20(key)                              \
-__pmix_attribute_extension__ ({                             \
-    size_t kname_len = strlen(key) + 1;                     \
-    size_t len = (kname_len < ESH_MIN_KEY_LEN) ?            \
-    ESH_MIN_KEY_LEN : kname_len;                            \
-    len;                                                    \
-})
+#define ESH_KNAME_LEN_V20(kl, key)      \
+do {                             \
+    size_t _klen = strlen(key) + 1;                     \
+    kl = (_klen < ESH_MIN_KEY_LEN) ?            \
+    ESH_MIN_KEY_LEN : _klen;                            \
+} while(0)
 
-#define ESH_DATA_PTR_V20(addr)                              \
-__pmix_attribute_extension__ ({                             \
-    size_t kname_len =                                      \
-        ESH_KNAME_LEN_V20(ESH_KNAME_PTR_V20(addr));         \
-    uint8_t *data_ptr = addr + sizeof(size_t) + kname_len;  \
-    data_ptr;                                               \
-})
+#define ESH_DATA_PTR_V20(dp, addr)                              \
+do {                             \
+    size_t kl;              \
+    ESH_KNAME_LEN_V20(kl, ESH_KNAME_PTR_V20(addr));         \
+    dp = addr + sizeof(size_t) + kl;  \
+} while(0)
 
-#define ESH_DATA_SIZE_V20(addr, data_ptr)                   \
-__pmix_attribute_extension__ ({                             \
-    size_t __sz = ESH_KV_SIZE_V20(addr);                      \
-    size_t data_size = __sz - (data_ptr - addr);              \
-    data_size;                                              \
-})
+#define ESH_DATA_SIZE_V20(dsz, addr, data_ptr)                   \
+do {                             \
+    size_t __sz;                                            \
+    memcpy(&__sz, addr, sizeof(size_t));                \
+    dsz = __sz - (data_ptr - addr);              \
+} while(0)
 
-#define ESH_KEY_SIZE_V20(key, size)                         \
-    (sizeof(size_t) + ESH_KNAME_LEN_V20((char*)key) + size)
+#define ESH_KEY_SIZE_V20(ks, key, size)                         \
+do {                \
+    size_t kl;                      \
+    ESH_KNAME_LEN_V20(kl, (char*)key);              \
+    ks = sizeof(size_t) + kl + size;    \
+} while(0)
 
 /* in ext slot new offset will be stored in case if
  * new data were added for the same process during
  * next commit
  */
-#define EXT_SLOT_SIZE_V20()                                 \
-    (ESH_KEY_SIZE_V20(ESH_REGION_EXTENSION, sizeof(size_t)))
+#define EXT_SLOT_SIZE_V20(ssz)                                 \
+    ESH_KEY_SIZE_V20(ssz, ESH_REGION_EXTENSION, sizeof(size_t))
 
 
 #define ESH_PUT_KEY_V20(addr, key, buffer, size)            \
-__pmix_attribute_extension__ ({                             \
-    size_t sz = ESH_KEY_SIZE_V20(key, size);                \
+do {                             \
+    size_t sz, ksz;                      \
+    ESH_KEY_SIZE_V20(sz, key, size);                \
+    ESH_KNAME_LEN_V20(ksz, key);                    \
     memcpy(addr, &sz, sizeof(size_t));                      \
-    memset(addr + sizeof(size_t), 0,                        \
-        ESH_KNAME_LEN_V20(key));                            \
+    memset(addr + sizeof(size_t), 0, ksz);                            \
     strncpy((char *)addr + sizeof(size_t),                  \
-            key, ESH_KNAME_LEN_V20(key));                   \
-    memcpy(addr + sizeof(size_t) + ESH_KNAME_LEN_V20(key),  \
+            key, ksz);                   \
+    memcpy(addr + sizeof(size_t) + ksz,  \
             buffer, size);                                  \
-})
+} while(0)
 
 static size_t pmix_ds20_kv_size(uint8_t *key)
 {
@@ -89,27 +86,37 @@ static char* pmix_ds20_key_name_ptr(uint8_t *addr)
 
 static size_t pmix_ds20_key_name_len(char *key)
 {
-    return ESH_KNAME_LEN_V20(key);
+    size_t sz;
+    ESH_KNAME_LEN_V20(sz, key);
+    return sz;
 }
 
 static uint8_t* pmix_ds20_data_ptr(uint8_t *addr)
 {
-    return ESH_DATA_PTR_V20(addr);
+    uint8_t *dptr;
+    ESH_DATA_PTR_V20(dptr, addr);
+    return dptr;
 }
 
 static size_t pmix_ds20_data_size(uint8_t *addr, uint8_t* data_ptr)
 {
-    return ESH_DATA_SIZE_V20(addr, data_ptr);
+    size_t dsize;
+    ESH_DATA_SIZE_V20(dsize, addr, data_ptr);
+    return dsize;
 }
 
 static size_t pmix_ds20_key_size(char *addr, size_t data_size)
 {
-    return ESH_KEY_SIZE_V20(addr, data_size);
+    size_t sz;
+    ESH_KEY_SIZE_V20(sz, addr, data_size);
+    return sz;
 }
 
 static size_t pmix_ds20_ext_slot_size(void)
 {
-    return EXT_SLOT_SIZE_V20();
+    size_t sz;
+    EXT_SLOT_SIZE_V20(sz);
+    return sz;
 }
 
 static int pmix_ds20_put_key(uint8_t *addr, char *key, void *buf, size_t size)
@@ -120,31 +127,38 @@ static int pmix_ds20_put_key(uint8_t *addr, char *key, void *buf, size_t size)
 
 static bool pmix_ds20_is_invalid(uint8_t *addr)
 {
+    size_t klen;
+    ESH_KNAME_LEN_V20(klen, ESH_KNAME_PTR_V20(addr));
     bool ret = (0 == strncmp(ESH_REGION_INVALIDATED, ESH_KNAME_PTR_V20(addr),
-                            ESH_KNAME_LEN_V20(ESH_KNAME_PTR_V20(addr))));
+                            klen));
     return ret;
 }
 
 static void pmix_ds20_set_invalid(uint8_t *addr)
 {
+    size_t klen;
+    ESH_KNAME_LEN_V20(klen, ESH_REGION_INVALIDATED);
     strncpy(ESH_KNAME_PTR_V20(addr), ESH_REGION_INVALIDATED,
-            ESH_KNAME_LEN_V20(ESH_REGION_INVALIDATED));
+            klen);
 }
 
 static bool pmix_ds20_is_ext_slot(uint8_t *addr)
 {
     bool ret;
+    size_t klen;
+    ESH_KNAME_LEN_V20(klen, ESH_KNAME_PTR_V20(addr));
     ret = (0 == strncmp(ESH_REGION_EXTENSION, ESH_KNAME_PTR_V20(addr),
-                        ESH_KNAME_LEN_V20(ESH_KNAME_PTR_V20(addr))));
+                        klen));
     return ret;
 }
 
 static bool pmix_ds20_kname_match(uint8_t *addr, const char *key, size_t key_hash)
 {
     bool ret = 0;
-
+    size_t klen;
+    ESH_KNAME_LEN_V20(klen, key);
     ret = (0 == strncmp(ESH_KNAME_PTR_V20(addr),
-                        key, ESH_KNAME_LEN_V20(key)));
+                        key, klen));
     return ret;
 }
 

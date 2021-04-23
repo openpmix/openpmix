@@ -4,6 +4,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,13 +30,12 @@
 #define ESH_REGION_SIZE_MASK        0x3FFFFFFFFFFFFFFF
 #endif
 
-#define ESH_KV_SIZE_V21(addr)                               \
-__pmix_attribute_extension__ ({                             \
-    size_t sz;                                              \
-    memcpy(&sz, addr, sizeof(size_t));                      \
+#define ESH_KV_SIZE_V21(s, addr)                               \
+do {                             \
+    memcpy(&s, addr, sizeof(size_t));                      \
     /* drop flags in lsb's */                               \
-    (sz & ESH_REGION_SIZE_MASK);                            \
-})
+    s = (s & ESH_REGION_SIZE_MASK);                            \
+} while(0)
 
 #define ESH_KNAME_PTR_V21(addr)                             \
     ((char *)addr + 2 * sizeof(size_t))
@@ -54,7 +54,8 @@ __pmix_attribute_extension__ ({                             \
 
 #define ESH_DATA_SIZE_V21(addr, data_ptr)                   \
 __pmix_attribute_extension__ ({                             \
-    size_t sz = ESH_KV_SIZE_V21(addr);                      \
+    size_t sz;                  \
+    ESH_KV_SIZE_V21(sz, addr);                      \
     size_t data_size = sz - (data_ptr - addr);              \
     data_size;                                              \
 })
@@ -114,7 +115,9 @@ static bool pmix_ds21_kname_match(uint8_t *addr, const char *key, size_t key_has
 
 static size_t pmix_ds21_kval_size(uint8_t *key)
 {
-    return ESH_KV_SIZE_V21(key); ;
+    size_t mysz;
+    ESH_KV_SIZE_V21(mysz, key);
+    return mysz;
 }
 
 static char* pmix_ds21_key_name_ptr(uint8_t *addr)
