@@ -12,6 +12,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -459,7 +460,6 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
     pmix_geometry_t *pgeoset, *sgeoset;
     pmix_device_distance_t *pdevdist, *sdevdist;
     pmix_endpoint_t *pendpt, *sendpt;
-    pmix_nspace_t *pns, *sns;
 
     if (PMIX_DATA_ARRAY != type) {
         return PMIX_ERR_BAD_PARAM;
@@ -1000,19 +1000,6 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest,
                 memcpy(pendpt[n].endpt.bytes, sendpt[n].endpt.bytes, sendpt[n].endpt.size);
                 pendpt[n].endpt.size = sendpt[n].endpt.size;
             }
-        }
-        break;
-    case PMIX_PROC_NSPACE:
-        p->array = malloc(src->size * sizeof(pmix_nspace_t));
-        if (NULL == p->array) {
-            free(p);
-            return PMIX_ERR_NOMEM;
-        }
-        p->size = src->size;
-        pns = (pmix_nspace_t *) p->array;
-        sns = (pmix_nspace_t *) src->array;
-        for (n = 0; n < src->size; n++) {
-            PMIX_LOAD_NSPACE(&pns[n], sns[n]);
         }
         break;
     default:

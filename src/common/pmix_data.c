@@ -12,6 +12,7 @@
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -269,123 +270,5 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest, pmix_
     PMIX_EXTRACT_DATA_BUFFER(&buf2, src);
 
     /* no need to cleanup as all storage was xfered */
-    return rc;
-}
-
-pmix_status_t PMIx_Data_unload(pmix_data_buffer_t *buffer,
-                               pmix_byte_object_t *payload)
-{
-    /* check that buffer is not null */
-    if (!buffer) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* were we given someplace to point to the payload */
-    if (NULL == payload) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* init default response */
-    PMIX_BYTE_OBJECT_CONSTRUCT(payload);
-
-    /* anything in the buffer - if not, nothing to do */
-    if (NULL == buffer->base_ptr || 0 == buffer->bytes_used) {
-        return PMIX_SUCCESS;
-    }
-
-    /* if nothing has been unpacked, we can pass the entire
-     * region back and protect it - no need to copy. This is
-     * an optimization */
-    if (buffer->unpack_ptr == buffer->base_ptr) {
-        payload->bytes = buffer->base_ptr;
-        payload->size = buffer->bytes_used;
-        buffer->base_ptr = NULL;
-        buffer->bytes_used = 0;
-        goto cleanup;
-    }
-
-    /* okay, we have something to provide - pass it back */
-    payload->size = buffer->bytes_used - (buffer->unpack_ptr - buffer->base_ptr);
-    if (0 < payload->size) {
-        /* we cannot just set the pointer as it might be
-         * partway in a malloc'd region */
-        payload->bytes = (char*)malloc(payload->size);
-        memcpy(payload->bytes, buffer->unpack_ptr, payload->size);
-    }
-
-cleanup:
-    /* All done - reset the buffer */
-    PMIX_DATA_BUFFER_DESTRUCT(buffer);
-    PMIX_DATA_BUFFER_CONSTRUCT(buffer);
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t PMIx_Data_load(pmix_data_buffer_t *buffer,
-                             pmix_byte_object_t *payload)
-{
-    /* check to see if the buffer has been initialized */
-    if (NULL == buffer) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* check if buffer already has payload - free it if so */
-    PMIX_DATA_BUFFER_DESTRUCT(buffer);
-    PMIX_DATA_BUFFER_CONSTRUCT(buffer);
-
-    /* if it's a NULL payload, just set things and return */
-    if (NULL == payload) {
-        return PMIX_SUCCESS;
-    }
-
-    /* populate the buffer */
-    buffer->base_ptr = payload->bytes;
-
-    /* set pack/unpack pointers */
-    buffer->pack_ptr = ((char*)buffer->base_ptr) + payload->size;
-    buffer->unpack_ptr = buffer->base_ptr;
-
-    /* set counts for size and space */
-    buffer->bytes_allocated = buffer->bytes_used = payload->size;
-
-    /* protect the payload */
-    payload->bytes = NULL;
-    payload->size = 0;
-
-    /* All done */
-
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
-                              const pmix_byte_object_t *payload)
-{
-    pmix_data_buffer_t src;
-    pmix_status_t rc;
-
-    /* check to see if the buffer has been initialized */
-    if (NULL == buffer) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* check if buffer already has payload - free it if so */
-    PMIX_DATA_BUFFER_DESTRUCT(buffer);
-    PMIX_DATA_BUFFER_CONSTRUCT(buffer);
-
-    /* if it's a NULL payload, we are done */
-    if (NULL == payload) {
-        return PMIX_SUCCESS;
-    }
-
-    /* setup the source */
-    src.base_ptr = payload->bytes;
-    src.pack_ptr = ((char*)src.base_ptr) + payload->size;
-    src.unpack_ptr = src.base_ptr;
-    src.bytes_allocated =src.bytes_used = payload->size;
-
-    /* execute a copy operation */
-    rc = PMIx_Data_copy_payload(buffer, &src);
-    /* do NOT destruct the source as that would release
-     * data in the payload */
-
     return rc;
 }

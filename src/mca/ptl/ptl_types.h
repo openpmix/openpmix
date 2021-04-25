@@ -13,6 +13,7 @@
  * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -151,6 +152,13 @@ typedef struct {
             PMIX_SET_PEER_MINOR((p), (b));    \
         }                                     \
     } while (0)
+
+#define PMIX_SET_PEER_MAJOR(p, a)   (p)->proc_type.major = (a)
+#define PMIX_SET_PEER_MINOR(p, a)   (p)->proc_type.minor = (a)
+#define PMIX_SET_PEER_RELEASE(p, a) (p)->proc_type.release = (a)
+#define PMIX_SET_PROC_MAJOR(p, a)   (p)->major = (a)
+#define PMIX_SET_PROC_MINOR(p, a)   (p)->minor = (a)
+#define PMIX_SET_PROC_RELEASE(p, a) (p)->release = (a)
 
 /* define some convenience macros for testing version */
 #define PMIX_PEER_MAJOR_VERSION(p)     (p)->proc_type.major
