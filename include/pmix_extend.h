@@ -4,6 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -104,7 +105,7 @@ void pmix_ploc_base_release_topology(pmix_topology_t *topo, size_t n);
 
 void* pmix_info_list_start(void);
 
-pmix_status_t pmix_info_list_add(void *ptr, pmix_key_t key, void *value, pmix_data_type_t type);
+pmix_status_t pmix_info_list_add(void *ptr, const char *key, void *value, pmix_data_type_t type);
 
 pmix_status_t pmix_info_list_xfer(void *ptr, const pmix_info_t *info);
 

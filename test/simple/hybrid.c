@@ -8,7 +8,7 @@ static void model_declared_cb(size_t evhdlr_registration_id, pmix_status_t statu
                               pmix_info_t results[], size_t nresults,
                               pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    printf("Entered %s\n", __FUNCTION__);
+    printf("Entered %s\n", __func__);
     size_t n;
 
     for (n = 0; n < ninfo; n++) {
@@ -33,7 +33,7 @@ static void parallel_region_OMP_cb(size_t evhdlr_registration_id, pmix_status_t 
                                    pmix_info_t results[], size_t nresults,
                                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    printf("Entered %s\n", __FUNCTION__);
+    printf("Entered %s\n", __func__);
     /* do what we need OpenMP to do on entering a parallel region */
     if (NULL != cbfunc) {
         /* tell the event handler that we are only a partial step */
@@ -48,7 +48,7 @@ static void parallel_region_MPI_cb(size_t evhdlr_registration_id, pmix_status_t 
                                    pmix_info_t results[], size_t nresults,
                                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    printf("Entered %s\n", __FUNCTION__);
+    printf("Entered %s\n", __func__);
     /* do what we need MPI to do on entering a parallel region */
     if (NULL != cbfunc) {
         /* do what we need MPI to do on entering a parallel region */
@@ -57,12 +57,12 @@ static void parallel_region_MPI_cb(size_t evhdlr_registration_id, pmix_status_t 
 }
 //<EG END ID="mpi_thread">
 
-static int openmp_handler()
+static int openmp_handler(void)
 {
     pmix_info_t *info;
     int rc;
 
-    printf("Entered %s\n", __FUNCTION__);
+    printf("Entered %s\n", __func__);
 
     //<EG BEGIN ID="omp_thread">
     bool is_true = true;
@@ -73,7 +73,7 @@ static int openmp_handler()
     rc = PMIx_Register_event_handler(&code, 1, info, 2, parallel_region_OMP_cb, NULL, NULL);
     if (rc < 0)
         fprintf(stderr, "%s: Failed to register event handler for OpenMP region entrance\n",
-                __FUNCTION__);
+                __func__);
     PMIX_INFO_FREE(info, 2);
     //<EG END ID="omp_thread">
     printf("Registered OpenMP event handler for OpenMP parallel region entered\n");
@@ -81,12 +81,12 @@ static int openmp_handler()
     return rc;
 }
 
-static int mpi_handler()
+static int mpi_handler(void)
 {
     pmix_info_t *info;
     int rc;
 
-    printf("Entered %s\n", __FUNCTION__);
+    printf("Entered %s\n", __func__);
 
     //<EG BEGIN ID="mpi_thread">
     pmix_status_t code = PMIX_OPENMP_PARALLEL_ENTERED;
@@ -96,7 +96,7 @@ static int mpi_handler()
     rc = PMIx_Register_event_handler(&code, 1, info, 2, parallel_region_MPI_cb, NULL, NULL);
     if (rc < 0)
         fprintf(stderr, "%s: Failed to register event handler for OpenMP region entrance\n",
-                __FUNCTION__);
+                __func__);
     PMIX_INFO_FREE(info, 2);
     //<EG END ID="mpi_thread">
     printf("Registered MPI event handler for OpenMP parallel region entered\n");
@@ -110,7 +110,7 @@ static void notify_complete(pmix_status_t status, void *cbdata)
     *flag = true;
 }
 
-int main()
+int main(int argc, char **argv)
 {
     //<EG BEGIN ID="declare_model">
     pmix_proc_t myproc;

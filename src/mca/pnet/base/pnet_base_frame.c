@@ -45,7 +45,9 @@
 #include "src/mca/pnet/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_pnet_globals_t pmix_pnet_globals = {{0}};
+pmix_pnet_globals_t pmix_pnet_globals = {.actives = PMIX_LIST_STATIC_INIT,
+                                         .fabrics = PMIX_LIST_STATIC_INIT
+};
 pmix_pnet_API_module_t pmix_pnet = {.allocate = pmix_pnet_base_allocate,
                                     .setup_local_network = pmix_pnet_base_setup_local_network,
                                     .setup_fork = pmix_pnet_base_setup_fork,
