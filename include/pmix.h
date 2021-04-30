@@ -201,7 +201,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
  *     an error. The timeout parameter can help avoid "hangs" due to programming
  *     errors that prevent the target proc from ever exposing its data.
  */
-PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
+PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const pmix_key_t key,
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_value_t **val);
 
