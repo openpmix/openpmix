@@ -132,7 +132,7 @@ static void gcbfn(int sd, short args, void *cbdata)
     PMIX_RELEASE(cb);
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t key,
+PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
                                       const pmix_info_t info[], size_t ninfo,
                                       pmix_value_cbfunc_t cbfunc, void *cbdata)
 {
