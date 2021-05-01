@@ -284,13 +284,15 @@ pmix_status_t spawn_fn(const pmix_proc_t *proc, const pmix_info_t job_info[], si
                        void *cbdata)
 {
     release_cbdata *cb = malloc(sizeof(release_cbdata));
+    pmix_nspace_t foobar;
 
     cb->status = PMIX_SUCCESS;
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
 
     spawn_wait = true;
-    PMIx_server_register_nspace("foobar", napps, NULL, 0, release_cb, (void *) cb);
+    PMIX_LOAD_NSPACE(foobar, "foobar");
+    PMIx_server_register_nspace(foobar, napps, NULL, 0, release_cb, (void *) cb);
     return PMIX_SUCCESS;
 }
 static int numconnect = 0;

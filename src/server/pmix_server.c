@@ -993,6 +993,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
                 PMIX_RELEASE(kv); // maintain refcount
             }
         }
+        rc = PMIX_SUCCESS;
         goto release;
     }
     nptr->nlocalprocs = cd->nlocalprocs;
@@ -1101,6 +1102,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * in one of our nspaces, but we didn't know all the local procs
      * and so couldn't determine the proc was remote */
     pmix_pending_nspace_requests(nptr);
+    rc = PMIX_SUCCESS;
 
 release:
     cd->opcbfunc(rc, cd->cbdata);
