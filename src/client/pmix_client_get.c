@@ -73,7 +73,7 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata);
 
 static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb);
 
-static pmix_status_t process_request(const pmix_proc_t *proc, const pmix_key_t key,
+static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
                                      const pmix_info_t info[], size_t ninfo, pmix_get_logic_t *lg,
                                      pmix_value_t **val)
 {
@@ -194,7 +194,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const pmix_key_t k
     return PMIX_SUCCESS;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const pmix_key_t key,
+PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
                                    const pmix_info_t info[], size_t ninfo, pmix_value_t **val)
 {
     pmix_cb_t *cb;
@@ -212,6 +212,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const pmix_key_t key
     pmix_output_verbose(2, pmix_client_globals.get_output, "pmix:client get for %s key %s",
                         (NULL == proc) ? "NULL" : PMIX_NAME_PRINT(proc),
                         (NULL == key) ? "NULL" : key);
+
+    if (NULL != key && PMIX_MAX_KEYLEN < pmix_keylen(key)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     lg = PMIX_NEW(pmix_get_logic_t);
     rc = process_request(proc, key, info, ninfo, lg, val);
@@ -293,6 +297,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t 
 
     if (NULL == cbfunc) {
         /* no way to return the result! */
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (NULL != key && PMIX_MAX_KEYLEN < pmix_keylen(key)) {
         return PMIX_ERR_BAD_PARAM;
     }
 
