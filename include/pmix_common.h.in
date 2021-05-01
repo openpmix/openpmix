@@ -1506,7 +1506,7 @@ static inline void* pmix_calloc(size_t n, size_t m)
     ((a) == (b) || (PMIX_RANK_WILDCARD == (a) || PMIX_RANK_WILDCARD == (b)))
 
 #define PMIX_NSPACE_INVALID(a) \
-    (NULL == (a) || 0 == strlen((a)))
+    (NULL == (a) || 0 == pmix_nslen((a)))
 
 #define PMIX_PROCID_INVALID(a)  \
     (PMIX_NSPACE_INVALID((a)->nspace) || PMIX_RANK_INVALID == (a)->rank)
@@ -1975,11 +1975,11 @@ typedef struct pmix_proc {
     do {                                                                    \
         size_t _len;                                                        \
         memset((t), 0, PMIX_MAX_NSLEN+1);                                   \
-        _len = strlen((c));                                                 \
-        if ((_len + strlen((n))) < PMIX_MAX_NSLEN) {                        \
-            pmix_strncpy((char*)(t), (c), PMIX_MAX_NSLEN);                         \
+        _len = pmix_nslen((c));                                             \
+        if ((_len + pmix_nslen((n))) < PMIX_MAX_NSLEN) {                    \
+            pmix_strncpy((char*)(t), (c), PMIX_MAX_NSLEN);                  \
             (t)[_len] = ':';                                                \
-            pmix_strncpy((char*)&(t)[_len+1], (n), PMIX_MAX_NSLEN - _len);         \
+            pmix_strncpy((char*)&(t)[_len+1], (n), PMIX_MAX_NSLEN - _len);  \
         }                                                                   \
     } while(0)
 
@@ -3543,14 +3543,33 @@ static inline void pmix_strncpy(char *dest,
 
 static inline size_t pmix_keylen(const char *src)
 {
-    size_t i;
+    size_t i, maxlen;
 
     if (NULL == src) {
         return 0;
     }
+    maxlen = PMIX_MAX_KEYLEN + 1;
     /* use an algorithm that also protects against
      * non-NULL-terminated src strings */
-    for (i=0; i < PMIX_MAX_KEYLEN; ++i, ++src) {
+    for (i=0; i < maxlen; ++i, ++src) {
+        if ('\0' == *src) {
+            break;
+        }
+    }
+    return i;
+}
+
+static inline size_t pmix_nslen(const char *src)
+{
+    size_t i, maxlen;
+
+    if (NULL == src) {
+        return 0;
+    }
+    maxlen = PMIX_MAX_NSLEN + 1;
+    /* use an algorithm that also protects against
+     * non-NULL-terminated src strings */
+    for (i=0; i < maxlen; ++i, ++src) {
         if ('\0' == *src) {
             break;
         }
