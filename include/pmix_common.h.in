@@ -3541,6 +3541,23 @@ static inline void pmix_strncpy(char *dest,
     *dest = '\0';
 }
 
+static inline size_t pmix_keylen(const char *src)
+{
+    size_t i;
+
+    if (NULL == src) {
+        return 0;
+    }
+    /* use an algorithm that also protects against
+     * non-NULL-terminated src strings */
+    for (i=0; i < PMIX_MAX_KEYLEN; ++i, ++src) {
+        if ('\0' == *src) {
+            break;
+        }
+    }
+    return i;
+}
+
 #include <pmix_extend.h>
 #include <pmix_deprecated.h>
 
