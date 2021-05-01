@@ -130,7 +130,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int status, const char msg[],
  * the information locally until _PMIx_Commit_ is called. The provided scope
  * value is passed to the local PMIx server, which will distribute the data
  * as directed. */
-PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const pmix_key_t key, pmix_value_t *val);
+PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
 
 
 /* Push all previously _PMIx_Put_ values to the local PMIx server.
@@ -201,7 +201,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
  *     an error. The timeout parameter can help avoid "hangs" due to programming
  *     errors that prevent the target proc from ever exposing its data.
  */
-PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const pmix_key_t key,
+PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_value_t **val);
 
@@ -209,7 +209,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const pmix_key_t key
  * be executed once the specified data has been _PMIx_Put_
  * by the identified process and retrieved by the local server. The info
  * array is used as described above for the blocking form of this call. */
-PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const pmix_key_t key,
+PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
                                       const pmix_info_t info[], size_t ninfo,
                                       pmix_value_cbfunc_t cbfunc, void *cbdata);
 
@@ -1141,7 +1141,7 @@ PMIX_EXPORT const char* PMIx_Get_version(void);
  * proc. This is data that has only internal scope - it will
  * never be "pushed" externally */
 PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
-                                              const pmix_key_t key, pmix_value_t *val);
+                                              const char key[], pmix_value_t *val);
 
 
 /******    DATA BUFFER PACK/UNPACK SUPPORT    ******/
