@@ -137,13 +137,38 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
 {
     pmdl_nspace_t *ns, *ns2;
     pmix_status_t rc;
+    size_t n;
 
-    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output, "pmdl:oshmem:harvest envars");
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                        "pmdl:oshmem:harvest envars");
 
     if (!checkus(info, ninfo)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+    /* don't do OSHMEM again if already done */
+    if (NULL != *priors) {
+        char **t2 = *priors;
+        for (n = 0; NULL != t2[n]; n++) {
+            if (0 == strncmp(t2[n], "oshmem", strlen("oshmem"))) {
+                return PMIX_ERR_TAKE_NEXT_OPTION;
+            }
+        }
+    }
+    /* flag that we worked on this */
+    pmix_argv_append_nosize(priors, "oshmem");
+
+    /* are we to harvest envars? */
+    for (n=0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ENVARS)) {
+            goto harvest;
+        }
+    }
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                        "pmdl:oshmem:harvest envars: NO");
+    return PMIX_ERR_TAKE_NEXT_OPTION;
+
+harvest:
     if (NULL != nptr) {
         /* see if we already have this nspace */
         ns = NULL;
