@@ -11,6 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2010-2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -37,7 +38,8 @@ headers = \
         pmix_mca_base_var_enum.h \
         pmix_mca_base_var_group.h \
         pmix_mca_base_vari.h \
-        pmix_mca_base_framework.h
+        pmix_mca_base_framework.h \
+        pmix_mca_base_alias.h
 
 # Library
 
@@ -58,7 +60,8 @@ libpmix_mca_base_la_SOURCES = \
         pmix_mca_base_var_group.c \
         pmix_mca_base_parse_paramfile.c \
         pmix_mca_base_components_register.c \
-        pmix_mca_base_framework.c
+        pmix_mca_base_framework.c \
+        pmix_mca_base_alias.c
 
 # Conditionally install the header files
 

@@ -1133,7 +1133,7 @@ PMIX_EXPORT void *pmix_info_list_start(void)
     return p;
 }
 
-PMIX_EXPORT pmix_status_t pmix_info_list_add(void *ptr, pmix_key_t key, void *value,
+PMIX_EXPORT pmix_status_t pmix_info_list_add(void *ptr, const char *key, void *value,
                                              pmix_data_type_t type)
 {
     pmix_list_t *p = (pmix_list_t *) ptr;

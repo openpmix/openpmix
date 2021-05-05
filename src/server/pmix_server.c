@@ -984,6 +984,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
                 PMIX_RELEASE(kv); // maintain refcount
             }
         }
+        rc = PMIX_SUCCESS;
         goto release;
     }
     nptr->nlocalprocs = cd->nlocalprocs;
@@ -1092,6 +1093,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
      * in one of our nspaces, but we didn't know all the local procs
      * and so couldn't determine the proc was remote */
     pmix_pending_nspace_requests(nptr);
+    rc = PMIX_SUCCESS;
 
 release:
     cd->opcbfunc(rc, cd->cbdata);
@@ -2209,7 +2211,7 @@ static void _store_internal(int sd, short args, void *cbdata)
     }
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const pmix_key_t key,
+PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const char key[],
                                               pmix_value_t *val)
 {
     pmix_shift_caddy_t *cd;
@@ -2221,6 +2223,10 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const pmi
         return PMIX_ERR_INIT;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    if (NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /* setup to thread shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
@@ -2235,7 +2241,7 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const pmi
         PMIX_RELEASE(cd);
         return PMIX_ERR_NOMEM;
     }
-    cd->kv->key = strdup((char *) key);
+    cd->kv->key = strdup(key);
     cd->kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
     PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, cd->kv->value, val);
     if (PMIX_SUCCESS != rc) {

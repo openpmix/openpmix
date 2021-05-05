@@ -395,8 +395,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t inf
             while (PMIX_SUCCESS == rc) {
                 pmix_list_append(&ns->envars, &ev->super);
                 /* if this is the transport key, save it */
-                if (0
-                    == strncmp(ev->envar.envar, "OMPI_MCA_orte_precondition_transports",
+                if (0 == strncmp(ev->envar.envar, "OMPI_MCA_orte_precondition_transports",
                                PMIX_MAX_KEYLEN)) {
                     /* add it to the job-level info */
                     PMIX_LOAD_PROCID(&proc, ns->nspace, PMIX_RANK_WILDCARD);

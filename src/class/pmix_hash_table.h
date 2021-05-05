@@ -388,6 +388,16 @@ static inline int pmix_next_poweroftwo(int value)
          PMIX_SUCCESS                                 \
          == pmix_hash_table_get_next_key_##type(ht, &key, (void **) &value, _nptr, &_nptr);)
 
+#define PMIX_HASH_TABLE_FOREACH_PTR(key, value, ht, body)                                       \
+    {                                                                                           \
+        size_t key_size_;                                                                       \
+        for (void *_nptr = NULL;                                                                \
+            PMIX_SUCCESS                                                                        \
+            == pmix_hash_table_get_next_key_ptr(ht, &key, &key_size_, (void **) &value, _nptr,  \
+                                                &_nptr);)                                       \
+            body                                                                                \
+    }
+
 END_C_DECLS
 
 #endif /* PMIX_HASH_TABLE_H */

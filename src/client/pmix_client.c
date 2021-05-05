@@ -1199,7 +1199,7 @@ done:
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const pmix_key_t key, pmix_value_t *val)
+PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
@@ -1213,6 +1213,10 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const pmix_key_t key, pmi
         return PMIX_ERR_INIT;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    if (NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key)) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
@@ -1432,7 +1436,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
         ninfo = 2;
     }
 
-    if (NULL == nspace || 0 == strlen(nspace)) {
+    if (NULL == nspace || 0 == pmix_nslen(nspace)) {
         rc = PMIX_ERR_NOT_FOUND;
         np = 0;
         /* cycle across all known nspaces and aggregate the results */
@@ -1583,7 +1587,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
     /* get the list of nodes for this nspace */
     proc.rank = PMIX_RANK_WILDCARD;
 
-    if (NULL == nspace || 0 == strlen(nspace)) {
+    if (NULL == nspace || 0 == pmix_nslen(nspace)) {
         rc = PMIX_ERR_NOT_FOUND;
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
