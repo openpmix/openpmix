@@ -3,9 +3,8 @@
 #include <pmix.h>
 
 //<EG BEGIN ID="declare_model_cb">
-static void model_declared_cb(size_t evhdlr_registration_id,
-                              pmix_status_t status, const pmix_proc_t *source,
-                              pmix_info_t info[], size_t ninfo,
+static void model_declared_cb(size_t evhdlr_registration_id, pmix_status_t status,
+                              const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                               pmix_info_t results[], size_t nresults,
                               pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
@@ -25,19 +24,12 @@ static void model_declared_cb(size_t evhdlr_registration_id,
         /* tell the event handler that we are only a partial step */
         cbfunc(PMIX_EVENT_PARTIAL_ACTION_TAKEN, NULL, 0, NULL, NULL, cbdata);
     }
-  }
-  if (NULL != cbfunc) {
-    /* tell the event handler that we are only a partial step */
-    cbfunc(PMIX_EVENT_PARTIAL_ACTION_TAKEN, NULL, 0, NULL, NULL, cbdata);
-  }
 }
 //<EG END ID="declare_model_cb">
 
 //<EG BEGIN ID="omp_thread">
-static void parallel_region_OMP_cb(size_t evhdlr_registration_id,
-                                   pmix_status_t status,
-                                   const pmix_proc_t *source,
-                                   pmix_info_t info[], size_t ninfo,
+static void parallel_region_OMP_cb(size_t evhdlr_registration_id, pmix_status_t status,
+                                   const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                                    pmix_info_t results[], size_t nresults,
                                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
@@ -51,20 +43,19 @@ static void parallel_region_OMP_cb(size_t evhdlr_registration_id,
 //<EG END ID="omp_thread">
 
 //<EG BEGIN ID="mpi_thread">
-static void parallel_region_MPI_cb(size_t evhdlr_registration_id,
-                                   pmix_status_t status,
-                                   const pmix_proc_t *source,
-                                   pmix_info_t info[], size_t ninfo,
+static void parallel_region_MPI_cb(size_t evhdlr_registration_id, pmix_status_t status,
+                                   const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
                                    pmix_info_t results[], size_t nresults,
                                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     printf("Entered %s\n", __func__);
     /* do what we need MPI to do on entering a parallel region */
-    cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
-  }
+    if (NULL != cbfunc) {
+        /* do what we need MPI to do on entering a parallel region */
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
 }
 //<EG END ID="mpi_thread">
-
 
 static int openmp_handler(void)
 {
@@ -115,7 +106,7 @@ static int mpi_handler(void)
 
 static void notify_complete(pmix_status_t status, void *cbdata)
 {
-    volatile bool *flag = (volatile bool*)cbdata;
+    volatile bool *flag = (volatile bool *) cbdata;
     *flag = true;
 }
 
@@ -126,35 +117,36 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     volatile bool wearedone = false;
 
-  PMIX_INFO_CREATE(info, 4);
-  PMIX_INFO_LOAD(&info[0], PMIX_PROGRAMMING_MODEL, "MPI", PMIX_STRING);
-  PMIX_INFO_LOAD(&info[1], PMIX_MODEL_LIBRARY_NAME, "FooMPI", PMIX_STRING);
-  PMIX_INFO_LOAD(&info[2], PMIX_MODEL_LIBRARY_VERSION, "1.0.0", PMIX_STRING);
-  PMIX_INFO_LOAD(&info[3], PMIX_THREADING_MODEL, "pthread", PMIX_STRING);
-  pmix_status_t rc = PMIx_Init(&myproc, info, 4);
-  PMIX_INFO_FREE(info, 4);
-  //<EG END ID="declare_model">
-  printf("Registered MPI programming model\n");
+    PMIX_INFO_CREATE(info, 4);
+    PMIX_INFO_LOAD(&info[0], PMIX_PROGRAMMING_MODEL, "MPI", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[1], PMIX_MODEL_LIBRARY_NAME, "FooMPI", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[2], PMIX_MODEL_LIBRARY_VERSION, "1.0.0", PMIX_STRING);
+    PMIX_INFO_LOAD(&info[3], PMIX_THREADING_MODEL, "pthread", PMIX_STRING);
+    pmix_status_t rc = PMIx_Init(&myproc, info, 4);
+    PMIX_INFO_FREE(info, 4);
+    //<EG END ID="declare_model">
+    printf("Registered MPI programming model\n");
 
-  printf("Registering event handler for model declaration\n");
-  //<EG BEGIN ID="declare_model_cb">
-  pmix_status_t code = PMIX_MODEL_DECLARED;
-  rc = PMIx_Register_event_handler(&code, 1, NULL, 0, model_declared_cb, NULL, NULL);
-  //<EG END ID="declare_model_cb">
+    printf("Registering event handler for model declaration\n");
+    //<EG BEGIN ID="declare_model_cb">
+    pmix_status_t code = PMIX_MODEL_DECLARED;
+    rc = PMIx_Register_event_handler(&code, 1, NULL, 0, model_declared_cb, NULL, NULL);
+    //<EG END ID="declare_model_cb">
     if (rc < 0) {
         fprintf(stderr, "Failed to register event handler for model declaration\n");
         goto fin;
     }
-  printf("Registered event handler for model declaration\n");
+    printf("Registered event handler for model declaration\n");
 
-  openmp_handler();
-  mpi_handler();
+    openmp_handler();
+    mpi_handler();
 
-  printf("Notifying OpenMP parallel region about to be entered\n");
-  //<EG BEGIN ID="notify_event">
+    printf("Notifying OpenMP parallel region about to be entered\n");
+    //<EG BEGIN ID="notify_event">
     PMIX_INFO_CREATE(info, 1);
     PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-  rc = PMIx_Notify_event(PMIX_OPENMP_PARALLEL_ENTERED, &myproc, PMIX_RANGE_PROC_LOCAL, info, 1, notify_complete, (void*)&wearedone);
+    rc = PMIx_Notify_event(PMIX_OPENMP_PARALLEL_ENTERED, &myproc, PMIX_RANGE_PROC_LOCAL, info, 1,
+                           notify_complete, (void *) &wearedone);
     if (rc < 0) {
         fprintf(stderr, "Failed to notify OpenMP region entered\n");
         goto fin;
@@ -170,5 +162,5 @@ int main(int argc, char **argv)
 
 fin:
     PMIx_Finalize(NULL, 0);
-  //<EG END ID="notify_event">
+    //<EG END ID="notify_event">
 }
