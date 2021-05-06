@@ -77,7 +77,7 @@ for i in "$@"; do
         --config-args=*) config_args="${i#*=}"; shift ;;
         -distdir=*) distdir="${i#*=}"; shift ;;
         --distdir=*) distdir="${i#*=}"; shift ;;
-        --dirtyok) dirty_ok=1; shift ;;
+        --dirtyok) dirty_ok=1 ;;
         --verok) gnu_version_ignore=1 ;;
         -verok) gnu_version_ignore=1 ;;
         --macosx) mac=1 ;;
