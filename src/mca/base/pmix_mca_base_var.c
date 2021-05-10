@@ -17,6 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1325,25 +1326,25 @@ static int register_variable(const char *project_name, const char *framework_nam
     uintptr_t align = 0;
     switch (type) {
     case PMIX_MCA_BASE_VAR_TYPE_INT:
-        align = PMIX_ALIGNMENT_INT;
+        align = ALIGNOF_INT;
         break;
     case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_INT:
-        align = PMIX_ALIGNMENT_INT;
+        align = ALIGNOF_INT;
         break;
     case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_LONG:
-        align = PMIX_ALIGNMENT_LONG;
+        align = ALIGNOF_LONG;
         break;
     case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_LONG_LONG:
-        align = PMIX_ALIGNMENT_LONG_LONG;
+        align = ALIGNOF_LONG_LONG;
         break;
     case PMIX_MCA_BASE_VAR_TYPE_SIZE_T:
-        align = PMIX_ALIGNMENT_SIZE_T;
+        align = ALIGNOF_SIZE_T;
         break;
     case PMIX_MCA_BASE_VAR_TYPE_BOOL:
-        align = PMIX_ALIGNMENT_BOOL;
+        align = ALIGNOF_BOOL;
         break;
     case PMIX_MCA_BASE_VAR_TYPE_DOUBLE:
-        align = PMIX_ALIGNMENT_DOUBLE;
+        align = ALIGNOF_DOUBLE;
         break;
     case PMIX_MCA_BASE_VAR_TYPE_VERSION_STRING:
     case PMIX_MCA_BASE_VAR_TYPE_STRING:

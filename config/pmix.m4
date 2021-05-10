@@ -26,6 +26,7 @@ dnl
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
+dnl Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -311,26 +312,27 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Check for type alignments
     #
 
-    PMIX_C_GET_ALIGNMENT(bool, PMIX_ALIGNMENT_BOOL)
-    PMIX_C_GET_ALIGNMENT(int8_t, PMIX_ALIGNMENT_INT8)
-    PMIX_C_GET_ALIGNMENT(int16_t, PMIX_ALIGNMENT_INT16)
-    PMIX_C_GET_ALIGNMENT(int32_t, PMIX_ALIGNMENT_INT32)
-    PMIX_C_GET_ALIGNMENT(int64_t, PMIX_ALIGNMENT_INT64)
-    PMIX_C_GET_ALIGNMENT(char, PMIX_ALIGNMENT_CHAR)
-    PMIX_C_GET_ALIGNMENT(short, PMIX_ALIGNMENT_SHORT)
-    PMIX_C_GET_ALIGNMENT(wchar_t, PMIX_ALIGNMENT_WCHAR)
-    PMIX_C_GET_ALIGNMENT(int, PMIX_ALIGNMENT_INT)
-    PMIX_C_GET_ALIGNMENT(long, PMIX_ALIGNMENT_LONG)
+    AC_CHECK_ALIGNOF(bool, [AC_INCLUDES_DEFAULT
+                            #include <stdbool.h>])
+    AC_CHECK_ALIGNOF(int8_t)
+    AC_CHECK_ALIGNOF(int16_t)
+    AC_CHECK_ALIGNOF(int32_t)
+    AC_CHECK_ALIGNOF(int64_t)
+    AC_CHECK_ALIGNOF(char)
+    AC_CHECK_ALIGNOF(short)
+    AC_CHECK_ALIGNOF(wchar_t)
+    AC_CHECK_ALIGNOF(int)
+    AC_CHECK_ALIGNOF(long)
     if test "$ac_cv_type_long_long" = yes; then
-        PMIX_C_GET_ALIGNMENT(long long, PMIX_ALIGNMENT_LONG_LONG)
+        AC_CHECK_ALIGNOF(long long)
     fi
-    PMIX_C_GET_ALIGNMENT(float, PMIX_ALIGNMENT_FLOAT)
-    PMIX_C_GET_ALIGNMENT(double, PMIX_ALIGNMENT_DOUBLE)
+    AC_CHECK_ALIGNOF(float)
+    AC_CHECK_ALIGNOF(double)
     if test "$ac_cv_type_long_double" = yes; then
-        PMIX_C_GET_ALIGNMENT(long double, PMIX_ALIGNMENT_LONG_DOUBLE)
+        AC_CHECK_ALIGNOF(long double)
     fi
-    PMIX_C_GET_ALIGNMENT(void *, PMIX_ALIGNMENT_VOID_P)
-    PMIX_C_GET_ALIGNMENT(size_t, PMIX_ALIGNMENT_SIZE_T)
+    AC_CHECK_ALIGNOF(void *)
+    AC_CHECK_ALIGNOF(size_t)
 
 
     #
