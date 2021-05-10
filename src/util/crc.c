@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,9 +39,9 @@
 
 #include "src/util/crc.h"
 
-#if (PMIX_ALIGNMENT_LONG == 8)
+#if (ALIGNOF_LONG == 8)
 #    define PMIX_CRC_WORD_MASK_ 0x7
-#elif (PMIX_ALIGNMENT_LONG == 4)
+#elif (ALIGNOF_LONG == 4)
 #    define PMIX_CRC_WORD_MASK_ 0x3
 #else
 #    define PMIX_CRC_WORD_MASK_ 0xFFFF
