@@ -27,7 +27,6 @@
 #
 
 EXTRA_DIST = \
-	c_get_alignment.m4 \
 	pmix_get_version.sh \
 	distscript.sh \
 	getdate.sh \
