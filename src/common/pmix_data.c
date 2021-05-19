@@ -388,7 +388,7 @@ pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer, const pmix_byte_object
     return rc;
 }
 
-bool PMIx_Data_compress(uint8_t *inbytes, size_t size, uint8_t **outbytes, size_t *nbytes)
+bool PMIx_Data_compress(const uint8_t *inbytes, size_t size, uint8_t **outbytes, size_t *nbytes)
 {
     if (NULL == inbytes) {
         return PMIX_ERR_BAD_PARAM;
@@ -397,7 +397,8 @@ bool PMIx_Data_compress(uint8_t *inbytes, size_t size, uint8_t **outbytes, size_
     return pmix_compress.compress(inbytes, size, outbytes, nbytes);
 }
 
-bool PMIx_Data_decompress(uint8_t **outbytes, size_t *nbytes, uint8_t *inbytes, size_t size)
+bool PMIx_Data_decompress(const uint8_t *inbytes, size_t size,
+                          uint8_t **outbytes, size_t *nbytes)
 {
     if (NULL == inbytes) {
         return PMIX_ERR_BAD_PARAM;
