@@ -1512,7 +1512,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer,
 * @retval false The input data was not compressed
 *
 */
-PMIX_EXPORT bool PMIx_Data_compress(uint8_t *inbytes,
+PMIX_EXPORT bool PMIx_Data_compress(const uint8_t *inbytes,
                                     size_t size,
                                     uint8_t **outbytes,
                                     size_t *nbytes);
@@ -1543,10 +1543,10 @@ PMIX_EXPORT bool PMIx_Data_compress(uint8_t *inbytes,
 * @retval false The input data was not decompressed
 *
 */
-PMIX_EXPORT bool PMIx_Data_decompress(uint8_t **outbytes,
-                                      size_t *nbytes,
-                                      uint8_t *inbytes,
-                                      size_t size);
+PMIX_EXPORT bool PMIx_Data_decompress(const uint8_t *inbytes,
+                                      size_t size,
+                                      uint8_t **outbytes,
+                                      size_t *nbytes);
 
 
 
