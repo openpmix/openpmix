@@ -1419,7 +1419,7 @@ char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
         tmp = strdup(argv[i]);
         str = strchr(argv[i], '/');
         if (NULL == str) {
-            pmix_show_help("help-ptl-tool.txt", "invalid if_inexclude", true, name, tmp,
+            pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true, name, tmp,
                            "Invalid specification (missing \"/\")");
             free(argv[i]);
             free(tmp);
@@ -1434,7 +1434,7 @@ char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
         free(argv[i]);
 
         if (1 != ret) {
-            pmix_show_help("help-ptl-tool.txt", "invalid if_inexclude", true, name, tmp,
+            pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true, name, tmp,
                            "Invalid specification (inet_pton() failed)");
             free(tmp);
             continue;
@@ -1453,7 +1453,7 @@ char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
         }
         /* If we didn't find a match, keep trying */
         if (if_index < 0) {
-            pmix_show_help("help-ptl-tool.txt", "invalid if_inexclude", true, name, tmp,
+            pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true, name, tmp,
                            "Did not find interface matching this subnet");
             free(tmp);
             continue;
