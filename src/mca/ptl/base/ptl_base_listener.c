@@ -381,7 +381,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
              * error out as we can't do what was requested
              */
             if (PMIX_ERR_FABRIC_NOT_PARSEABLE == rc) {
-                pmix_show_help("help-ptl-tool.txt", "not-parseable", true);
+                pmix_show_help("help-ptl-base.txt", "not-parseable", true);
                 pmix_argv_free(interfaces);
                 return PMIX_ERR_BAD_PARAM;
             }
