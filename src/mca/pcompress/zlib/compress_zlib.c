@@ -87,7 +87,7 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
         (void) deflateEnd(&strm);
         return false;
     }
-    strm.next_in = inbytes;
+    strm.next_in = (uint8_t*)inbytes;
     strm.avail_in = inlen;
 
     /* allocating the upper bound guarantees zlib will
@@ -159,7 +159,7 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
         return false;
     }
     strm.avail_in = inlen;
-    strm.next_in = inbytes;
+    strm.next_in = (uint8_t*)inbytes;
     strm.avail_out = len2;
     strm.next_out = dest;
 
