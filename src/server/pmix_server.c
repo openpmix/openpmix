@@ -972,25 +972,27 @@ static void _register_nspace(int sd, short args, void *cbdata)
     }
     if (0 > cd->nlocalprocs) {
         gds = nptr->compat.gds;
-        /* this is just an update */
-        for (i=0; i < cd->ninfo; i++) {
-            if (PMIX_CHECK_KEY(&cd->info[i], PMIX_PROC_DATA)) {
-                iptr = (pmix_info_t*)cd->info[i].value.data.darray->array;
-                ninfo = cd->info[i].value.data.darray->size;
-                /* the first position is the rank */
-                PMIX_LOAD_PROCID(&proc, cd->proc.nspace, iptr[0].value.data.rank);
-                /* get the peer object for this rank */
-                for (m=1; m < ninfo; m++) {
-                    PMIX_KVAL_NEW(kv, iptr[m].key);
-                    PMIX_VALUE_XFER(rc, kv->value, &iptr[m].value);
-                    gds->store(&proc, PMIX_REMOTE, kv);
+        if (NULL != gds) {
+            /* this is just an update */
+            for (i=0; i < cd->ninfo; i++) {
+                if (PMIX_CHECK_KEY(&cd->info[i], PMIX_PROC_DATA)) {
+                    iptr = (pmix_info_t*)cd->info[i].value.data.darray->array;
+                    ninfo = cd->info[i].value.data.darray->size;
+                    /* the first position is the rank */
+                    PMIX_LOAD_PROCID(&proc, cd->proc.nspace, iptr[0].value.data.rank);
+                    /* get the peer object for this rank */
+                    for (m=1; m < ninfo; m++) {
+                        PMIX_KVAL_NEW(kv, iptr[m].key);
+                        PMIX_VALUE_XFER(rc, kv->value, &iptr[m].value);
+                        gds->store(&proc, PMIX_REMOTE, kv);
+                        PMIX_RELEASE(kv); // maintain refcount
+                    }
+                } else if (PMIX_CHECK_KEY(&cd->info[i], PMIX_GROUP_CONTEXT_ID)) {
+                    PMIX_KVAL_NEW(kv, cd->info[i].key);
+                    PMIX_VALUE_XFER(rc, kv->value, &cd->info[i].value);
+                    gds->store(&proc, PMIX_GLOBAL, kv);
                     PMIX_RELEASE(kv); // maintain refcount
                 }
-            } else if (PMIX_CHECK_KEY(&cd->info[i], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_KVAL_NEW(kv, cd->info[i].key);
-                PMIX_VALUE_XFER(rc, kv->value, &cd->info[i].value);
-                gds->store(&proc, PMIX_GLOBAL, kv);
-                PMIX_RELEASE(kv); // maintain refcount
             }
         }
         rc = PMIX_SUCCESS;
