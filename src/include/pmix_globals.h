@@ -599,6 +599,7 @@ static inline bool pmix_check_node_info(const char *key)
                     PMIX_LOCAL_SIZE,
                     PMIX_NODE_SIZE,
                     PMIX_LOCALLDR,
+                    PMIX_NODE_OVERSUBSCRIBED,
                     NULL};
     size_t n;
 
