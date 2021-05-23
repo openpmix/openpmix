@@ -69,11 +69,11 @@ typedef bool (*pmix_compress_base_module_decompress_string_fn_t)(char **outstrin
  * Arguments:
  *
  */
-typedef bool (*pmix_compress_base_module_compress_fn_t)(uint8_t *inbytes, size_t size,
+typedef bool (*pmix_compress_base_module_compress_fn_t)(const uint8_t *inbytes, size_t size,
                                                         uint8_t **outbytes, size_t *nbytes);
 
 typedef bool (*pmix_compress_base_module_decompress_fn_t)(uint8_t **outbytes, size_t *outlen,
-                                                          uint8_t *inbytes, size_t len);
+                                                          const uint8_t *inbytes, size_t len);
 
 /**
  * Structure for COMPRESS components.

@@ -274,6 +274,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CPUSET_BITMAP                  "pmix.bitmap"           // (pmix_cpuset_t*) Bitmap applied to process at launch
 #define PMIX_CREDENTIAL                     "pmix.cred"             // (char*) security credential assigned to proc
 #define PMIX_SPAWNED                        "pmix.spawned"          // (bool) true if this proc resulted from a call to PMIx_Spawn
+#define PMIX_NODE_OVERSUBSCRIBED            "pmix.ndosub"           // (bool) true if number of procs from this job on this node
+                                                                    //        exceeds the number of slots allocated to it
+
 
 /* scratch directory locations for use by applications */
 #define PMIX_TMPDIR                         "pmix.tmpdir"           // (char*) top-level tmp dir assigned to session
@@ -1499,6 +1502,8 @@ static inline void* pmix_calloc(size_t n, size_t m)
 
 #define PMIX_XFER_PROCID(a, b)      \
     memcpy((a), (b), sizeof(pmix_proc_t))
+
+#define PMIX_PROCID_XFER(a, b) PMIX_XFER_PROCID(a, b)
 
 /* define a convenience macro for checking names */
 #define PMIX_CHECK_PROCID(a, b) \

@@ -40,9 +40,9 @@
 
 #include "compress_zlib.h"
 
-static bool zlib_compress(uint8_t *inbytes, size_t inlen, uint8_t **outbytes, size_t *outlen);
+static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbytes, size_t *outlen);
 
-static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, uint8_t *inbytes, size_t inlen);
+static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t inlen);
 
 static bool compress_string(char *instring, uint8_t **outbytes, size_t *nbytes);
 
@@ -55,7 +55,7 @@ pmix_compress_base_module_t pmix_pcompress_zlib_module = {
     .decompress_string = decompress_string,
 };
 
-static bool zlib_compress(uint8_t *inbytes, size_t inlen, uint8_t **outbytes, size_t *outlen)
+static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbytes, size_t *outlen)
 {
     z_stream strm;
     size_t len, len2;
@@ -87,7 +87,7 @@ static bool zlib_compress(uint8_t *inbytes, size_t inlen, uint8_t **outbytes, si
         (void) deflateEnd(&strm);
         return false;
     }
-    strm.next_in = inbytes;
+    strm.next_in = (uint8_t*)inbytes;
     strm.avail_in = inlen;
 
     /* allocating the upper bound guarantees zlib will
@@ -137,7 +137,7 @@ static bool compress_string(char *instring, uint8_t **outbytes, size_t *nbytes)
     return zlib_compress((uint8_t *) instring, inlen, outbytes, nbytes);
 }
 
-static bool doit(uint8_t **outbytes, size_t len2, uint8_t *inbytes, size_t inlen)
+static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t inlen)
 {
     uint8_t *dest;
     z_stream strm;
@@ -159,7 +159,7 @@ static bool doit(uint8_t **outbytes, size_t len2, uint8_t *inbytes, size_t inlen
         return false;
     }
     strm.avail_in = inlen;
-    strm.next_in = inbytes;
+    strm.next_in = (uint8_t*)inbytes;
     strm.avail_out = len2;
     strm.next_out = dest;
 
@@ -172,7 +172,7 @@ static bool doit(uint8_t **outbytes, size_t len2, uint8_t *inbytes, size_t inlen
     free(dest);
     return false;
 }
-static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, uint8_t *inbytes, size_t inlen)
+static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t inlen)
 {
     int32_t len2;
     bool rc;

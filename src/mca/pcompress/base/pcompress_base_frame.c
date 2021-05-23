@@ -27,7 +27,7 @@
 /*
  * Globals
  */
-static bool compress_block(uint8_t *inblock, size_t size, uint8_t **outbytes, size_t *nbytes)
+static bool compress_block(const uint8_t *inblock, size_t size, uint8_t **outbytes, size_t *nbytes)
 {
     (void) inblock;
     (void) size;
@@ -40,7 +40,7 @@ static bool compress_block(uint8_t *inblock, size_t size, uint8_t **outbytes, si
     return false;
 }
 
-static bool decompress_block(uint8_t **outbytes, size_t *outlen, uint8_t *inbytes, size_t len)
+static bool decompress_block(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t len)
 {
     (void) outbytes;
     (void) outlen;
