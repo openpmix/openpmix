@@ -318,6 +318,14 @@ PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
         return "JOB ABORTED BY SYSTEM EVENT";
     case PMIX_ERR_PROC_TERM_WO_SYNC:
         return "PROC TERMINATED WITHOUT SYNC";
+    case PMIX_ERR_JOB_EXE_NOT_FOUND:
+        return "EXECUTABLE NOT FOUND";
+    case PMIX_ERR_JOB_WDIR_NOT_FOUND:
+        return "WORKING DIRECTORY NOT FOUND";
+    case PMIX_ERR_JOB_INSUFFICIENT_RESOURCES:
+        return "INSUFFICIENT RESOURCES";
+    case PMIX_ERR_JOB_SYS_OP_FAILED:
+        return "SYSTEM OPERATION FAILED";
 
     case PMIX_EVENT_PROC_TERMINATED:
         return "PROC TERMINATED";
