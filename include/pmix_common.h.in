@@ -1245,6 +1245,10 @@ typedef int pmix_status_t;
 #define PMIX_ERR_JOB_NON_ZERO_TERM                  -187
 #define PMIX_ERR_JOB_ALLOC_FAILED                   -188
 #define PMIX_ERR_JOB_ABORTED_BY_SYS_EVENT           -189
+#define PMIX_ERR_JOB_EXE_NOT_FOUND                  -190
+#define PMIX_ERR_JOB_WDIR_NOT_FOUND                 -233
+#define PMIX_ERR_JOB_INSUFFICIENT_RESOURCES         -234
+#define PMIX_ERR_JOB_SYS_OP_FAILED                  -235
 
 /* job-related non-error events */
 #define PMIX_EVENT_JOB_START                        -191
