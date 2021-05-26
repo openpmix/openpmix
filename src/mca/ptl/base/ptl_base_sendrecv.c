@@ -166,8 +166,10 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
             }
         }
 
-        /* reduce the number of local procs */
-        if (0 < peer->nptr->nlocalprocs) {
+
+        /* if the peer simply died without finalizing,
+         * then reduce the number of local procs */
+        if (!peer->finalized && 0 < peer->nptr->nlocalprocs) {
             --peer->nptr->nlocalprocs;
         }
 
