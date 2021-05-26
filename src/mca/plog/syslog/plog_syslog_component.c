@@ -62,6 +62,7 @@ static pmix_status_t syslog_register(void)
         PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
         PMIX_MCA_BASE_VAR_SCOPE_READONLY, &mca_plog_syslog_component.console);
 
+    level = "info";
     (void) pmix_mca_base_component_var_register(&mca_plog_syslog_component.super.base, "level",
                                                 "Default syslog logging level (err, alert, crit, "
                                                 "emerg, warning, notice, info[default], or debug)",
@@ -89,6 +90,7 @@ static pmix_status_t syslog_register(void)
         rc = PMIX_ERR_NOT_SUPPORTED;
     }
 
+    facility = "user";
     (void) pmix_mca_base_component_var_register(
         &mca_plog_syslog_component.super.base, "facility",
         "Specify what type of program is logging the message "
