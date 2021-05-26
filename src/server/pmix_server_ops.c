@@ -313,7 +313,8 @@ static pmix_server_trkr_t *get_tracker(char *id, pmix_proc_t *procs, size_t npro
     size_t i, j;
     size_t matches;
 
-    pmix_output_verbose(5, pmix_server_globals.base_output, "get_tracker called with %d procs",
+    pmix_output_verbose(5, pmix_server_globals.fence_output,
+                        "get_tracker called with %d procs",
                         (int) nprocs);
 
     /* bozo check - should never happen outside of programmer error */
@@ -391,7 +392,8 @@ static pmix_server_trkr_t *new_tracker(char *id, pmix_proc_t *procs, size_t npro
     pmix_nspace_caddy_t *nm;
     pmix_nspace_t first;
 
-    pmix_output_verbose(5, pmix_server_globals.base_output, "new_tracker called with %d procs",
+    pmix_output_verbose(5, pmix_server_globals.fence_output,
+                        "new_tracker called with %d procs",
                         (int) nprocs);
 
     /* bozo check - should never happen outside of programmer error */
@@ -400,7 +402,8 @@ static pmix_server_trkr_t *new_tracker(char *id, pmix_proc_t *procs, size_t npro
         return NULL;
     }
 
-    pmix_output_verbose(5, pmix_server_globals.base_output, "adding new tracker %s with %d procs",
+    pmix_output_verbose(5, pmix_server_globals.fence_output,
+                        "adding new tracker %s with %d procs",
                         (NULL == id) ? "NO-ID" : id, (int) nprocs);
 
     /* this tracker is new - create it */
@@ -487,8 +490,8 @@ static pmix_server_trkr_t *new_tracker(char *id, pmix_proc_t *procs, size_t npro
         }
         if (0 == nptr->nlocalprocs) {
             /* the host has informed us that this nspace has no local procs */
-            pmix_output_verbose(5, pmix_server_globals.base_output,
-                                "new_tracker: unknown nspace %s", procs[i].nspace);
+            pmix_output_verbose(5, pmix_server_globals.fence_output,
+                                "new_tracker: nspace %s has no local procs", procs[i].nspace);
             trk->local = false;
             continue;
         }
@@ -533,7 +536,7 @@ static pmix_server_trkr_t *new_tracker(char *id, pmix_proc_t *procs, size_t npro
             /* nope, so no point in going further on this one - we'll
              * process it once all the procs are known */
             all_def = false;
-            pmix_output_verbose(5, pmix_server_globals.base_output,
+            pmix_output_verbose(5, pmix_server_globals.fence_output,
                                 "new_tracker: all clients not registered nspace %s",
                                 procs[i].nspace);
             continue;
@@ -542,7 +545,7 @@ static pmix_server_trkr_t *new_tracker(char *id, pmix_proc_t *procs, size_t npro
         found = false;
         PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
             if (procs[i].rank == info->pname.rank) {
-                pmix_output_verbose(5, pmix_server_globals.base_output,
+                pmix_output_verbose(5, pmix_server_globals.fence_output,
                                     "adding local proc %s.%d to tracker", info->pname.nspace,
                                     info->pname.rank);
                 found = true;
@@ -672,7 +675,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk, pmix_buffer_t *buf)
                                 > key_fmt_size[PMIX_MODEX_KEY_KEYMAP_FMT]
                             ? PMIX_MODEX_KEY_KEYMAP_FMT
                             : PMIX_MODEX_KEY_NATIVE_FMT;
-            pmix_output_verbose(5, pmix_server_globals.base_output, "key packing type %s",
+            pmix_output_verbose(5, pmix_server_globals.fence_output, "key packing type %s",
                                 kmap_type == PMIX_MODEX_KEY_KEYMAP_FMT ? "kmap" : "native");
         }
         PMIX_CONSTRUCT(&rank_blobs, pmix_list_t);
