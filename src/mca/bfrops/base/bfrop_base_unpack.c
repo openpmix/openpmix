@@ -1837,6 +1837,12 @@ pmix_status_t pmix_bfrops_base_unpack_endpoint(pmix_pointer_array_t *regtypes,
             return ret;
         }
         m = 1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].osname, &m, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        m = 1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].endpt.size, &m, PMIX_SIZE, regtypes);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
