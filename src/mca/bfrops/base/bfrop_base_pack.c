@@ -1456,6 +1456,10 @@ pmix_status_t pmix_bfrops_base_pack_endpoint(pmix_pointer_array_t *regtypes, pmi
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].osname, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].endpt.size, 1, PMIX_SIZE, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
