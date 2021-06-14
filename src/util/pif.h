@@ -212,11 +212,6 @@ PMIX_EXPORT bool pmix_ifisloopback(int if_index);
  */
 PMIX_EXPORT int pmix_ifmatches(int kidx, char **nets);
 
-/*
- * Provide a list of strings that contain all known aliases for this node
- */
-PMIX_EXPORT void pmix_ifgetaliases(char ***aliases);
-
 END_C_DECLS
 
 #endif
