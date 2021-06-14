@@ -144,7 +144,7 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
 {
     size_t n, nds;
     pmix_status_t rc;
-    uint32_t nid = 0;
+    uint32_t nid = UINT32_MAX;
     char *hostname = NULL;
     bool found = false;
     pmix_nodeinfo_t *nd, *ndptr;
@@ -244,16 +244,16 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
 
     /* scan the list of nodes to find the matching entry */
     nd = NULL;
-    PMIX_LIST_FOREACH (ndptr, tgt, pmix_nodeinfo_t) {
-        if (NULL != hostname) {
-            if (pmix_gds_hash_check_nodename(ndptr, hostname)) {
+    if (UINT32_MAX!= nid) {
+        PMIX_LIST_FOREACH (ndptr, tgt, pmix_nodeinfo_t) {
+            if (UINT32_MAX != ndptr->nodeid &&
+                nid == ndptr->nodeid) {
                 nd = ndptr;
                 break;
             }
-        } else if (nid == ndptr->nodeid) {
-            nd = ndptr;
-            break;
         }
+    } else if (NULL != hostname) {
+        nd = pmix_gds_hash_check_nodename(tgt, hostname);
     }
     if (NULL == nd) {
         if (!found) {

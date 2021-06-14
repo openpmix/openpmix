@@ -57,7 +57,7 @@
  * in the array to identify the node */
 pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *tgt)
 {
-    size_t size, j;
+    size_t size, j, n;
     pmix_info_t *iptr;
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_kval_t *kp2, *k1;
@@ -146,16 +146,40 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
      * provided list */
     update = false;
     PMIX_LIST_FOREACH (ndptr, tgt, pmix_nodeinfo_t) {
-        if (pmix_gds_hash_check_node(ndptr, nd)) {
-            /* we assume that the data is updating the current
-             * values */
-            if (NULL == ndptr->hostname && NULL != nd->hostname) {
-                ndptr->hostname = strdup(nd->hostname);
+        if (UINT32_MAX != ndptr->nodeid &&
+            UINT32_MAX != nd->nodeid) {
+            if (ndptr->nodeid == nd->nodeid) {
+                if (NULL == ndptr->hostname &&
+                    NULL != nd->hostname) {
+                    ndptr->hostname = strdup(nd->hostname);
+                }
+                if (NULL != nd->aliases) {
+                    for (n=0; NULL != nd->aliases[n]; n++) {
+                        pmix_argv_append_unique_nosize(&ndptr->aliases, nd->aliases[n]);
+                    }
+                }
+                PMIX_RELEASE(nd);
+                nd = ndptr;
+                update = true;
+                break;
             }
-            PMIX_RELEASE(nd);
-            nd = ndptr;
-            update = true;
-            break;
+        } else if (NULL != ndptr->hostname &&
+                   NULL != nd->hostname) {
+            if (0 == strcmp(ndptr->hostname, nd->hostname)) {
+                if (UINT32_MAX == ndptr->nodeid &&
+                    UINT32_MAX != nd->nodeid) {
+                    ndptr->nodeid = nd->nodeid;
+                }
+                if (NULL != nd->aliases) {
+                    for (n=0; NULL != nd->aliases[n]; n++) {
+                        pmix_argv_append_unique_nosize(&ndptr->aliases, nd->aliases[n]);
+                    }
+                }
+                PMIX_RELEASE(nd);
+                nd = ndptr;
+                update = true;
+                break;
+            }
         }
     }
     if (!update) {
