@@ -675,36 +675,6 @@ int pmix_ifmatches(int kidx, char **nets)
     return PMIX_ERR_NOT_FOUND;
 }
 
-void pmix_ifgetaliases(char ***aliases)
-{
-    pmix_pif_t *intf;
-    char ipv4[INET_ADDRSTRLEN];
-    struct sockaddr_in *addr;
-    char ipv6[INET6_ADDRSTRLEN];
-    struct sockaddr_in6 *addr6;
-
-    /* set default answer */
-    *aliases = NULL;
-
-    for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
-         intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
-         intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
-        addr = (struct sockaddr_in *) &intf->if_addr;
-        /* ignore purely loopback interfaces */
-        if ((intf->if_flags & IFF_LOOPBACK) != 0) {
-            continue;
-        }
-        if (addr->sin_family == AF_INET) {
-            inet_ntop(AF_INET, &(addr->sin_addr.s_addr), ipv4, INET_ADDRSTRLEN);
-            pmix_argv_append_nosize(aliases, ipv4);
-        } else {
-            addr6 = (struct sockaddr_in6 *) &intf->if_addr;
-            inet_ntop(AF_INET6, &(addr6->sin6_addr), ipv6, INET6_ADDRSTRLEN);
-            pmix_argv_append_nosize(aliases, ipv6);
-        }
-    }
-}
-
 #else /* HAVE_STRUCT_SOCKADDR_IN */
 
 /* if we don't have struct sockaddr_in, we don't have traditional
@@ -783,12 +753,6 @@ int pmix_iftupletoaddr(const char *inaddr, uint32_t *net, uint32_t *mask)
 int pmix_ifmatches(int idx, char **nets)
 {
     return PMIX_ERR_NOT_SUPPORTED;
-}
-
-void pmix_ifgetaliases(char ***aliases)
-{
-    /* set default answer */
-    *aliases = NULL;
 }
 
 #endif /* HAVE_STRUCT_SOCKADDR_IN */

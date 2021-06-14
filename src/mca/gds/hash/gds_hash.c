@@ -150,7 +150,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
     pmix_status_t rc = PMIX_SUCCESS;
     size_t n, j, size, len;
     uint32_t flags = 0;
-    pmix_nodeinfo_t *nd, *ndptr;
+    pmix_nodeinfo_t *nd;
     pmix_apptrkr_t *apptr;
     bool found;
 
@@ -369,13 +369,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
         } else if (pmix_check_node_info(info[n].key)) {
             /* they are passing us the node-level info for just this
              * node - start by seeing if our node is on the list */
-            nd = NULL;
-            PMIX_LIST_FOREACH (ndptr, &trk->nodeinfo, pmix_nodeinfo_t) {
-                if (pmix_gds_hash_check_nodename(ndptr, pmix_globals.hostname)) {
-                    nd = ndptr;
-                    break;
-                }
-            }
+            nd = pmix_gds_hash_check_nodename(&trk->nodeinfo, pmix_globals.hostname);
             /* if not, then add it */
             if (NULL == nd) {
                 nd = PMIX_NEW(pmix_nodeinfo_t);
@@ -766,7 +760,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
     pmix_job_t *trk;
     pmix_hash_table_t *ht;
     char **nodelist = NULL;
-    pmix_nodeinfo_t *nd, *ndptr;
+    pmix_nodeinfo_t *nd;
     pmix_namespace_t *ns, *nptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
@@ -890,15 +884,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 /* track the nodes in this nspace */
                 pmix_argv_append_nosize(&nodelist, kv.key);
                 /* check and see if we already have this node */
-                nd = NULL;
-                PMIX_LIST_FOREACH (ndptr, &trk->nodeinfo, pmix_nodeinfo_t) {
-                    if (pmix_gds_hash_check_nodename(ndptr, kv.key)) {
-                        /* we assume that the data is updating the current
-                         * values */
-                        nd = ndptr;
-                        break;
-                    }
-                }
+                nd = pmix_gds_hash_check_nodename(&trk->nodeinfo, kv.key);
                 if (NULL == nd) {
                     nd = PMIX_NEW(pmix_nodeinfo_t);
                     nd->hostname = strdup(kv.key);

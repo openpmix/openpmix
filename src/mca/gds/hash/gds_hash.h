@@ -102,7 +102,7 @@ extern bool pmix_gds_hash_check_hostname(char *h1, char *h2);
 
 extern bool pmix_gds_hash_check_node(pmix_nodeinfo_t *n1, pmix_nodeinfo_t *n2);
 
-extern bool pmix_gds_hash_check_nodename(pmix_nodeinfo_t *nptr, char *hostname);
+extern pmix_nodeinfo_t* pmix_gds_hash_check_nodename(pmix_list_t *nodes, char *hostname);
 
 extern pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                                              uint32_t flags);

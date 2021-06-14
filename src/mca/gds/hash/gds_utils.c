@@ -143,26 +143,43 @@ bool pmix_gds_hash_check_node(pmix_nodeinfo_t *n1, pmix_nodeinfo_t *n2)
     return false;
 }
 
-bool pmix_gds_hash_check_nodename(pmix_nodeinfo_t *nptr, char *hostname)
+pmix_nodeinfo_t* pmix_gds_hash_check_nodename(pmix_list_t *nodes, char *hostname)
 {
     int i;
+    pmix_nodeinfo_t *nd;
+    bool aliases_exist = false;
 
-    if (NULL == nptr->hostname) {
-        return false;
+    if (NULL == hostname) {
+        return NULL;
     }
 
-    if (pmix_gds_hash_check_hostname(nptr->hostname, hostname)) {
-        return true;
+    /* first, just check all the node names as this is the
+     * most likely match */
+    PMIX_LIST_FOREACH (nd, nodes, pmix_nodeinfo_t) {
+        if (0 == strcmp(nd->hostname, hostname)) {
+            return nd;
+        }
+        if (NULL != nd->aliases) {
+            aliases_exist = true;
+        }
     }
 
-    if (NULL != nptr->aliases) {
-        for (i = 0; NULL != nptr->aliases[i]; i++) {
-            if (pmix_gds_hash_check_hostname(nptr->aliases[i], hostname)) {
-                return true;
+    if (!aliases_exist) {
+        return NULL;
+    }
+
+    /* if a match wasn't found, then we have to try the aliases */
+    PMIX_LIST_FOREACH (nd, nodes, pmix_nodeinfo_t) {
+        if (NULL != nd->aliases) {
+            for (i = 0; NULL != nd->aliases[i]; i++) {
+                if (0 == strcmp(nd->aliases[i], hostname)) {
+                    return nd;
+                }
             }
         }
     }
-    return false;
+    /* no match was found */
+    return NULL;
 }
 
 pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn, uint32_t flags)
@@ -174,7 +191,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
     char **procs;
     uint32_t totalprocs = 0;
     pmix_hash_table_t *ht = &trk->internal;
-    pmix_nodeinfo_t *nd, *ndptr;
+    pmix_nodeinfo_t *nd;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output, "[%s:%d] gds:hash:store_map",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
@@ -206,13 +223,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
 
     for (n = 0; NULL != nodes[n]; n++) {
         /* check and see if we already have this node */
-        nd = NULL;
-        PMIX_LIST_FOREACH (ndptr, &trk->nodeinfo, pmix_nodeinfo_t) {
-            if (pmix_gds_hash_check_nodename(ndptr, nodes[n])) {
-                nd = ndptr;
-                break;
-            }
-        }
+        nd = pmix_gds_hash_check_nodename(&trk->nodeinfo, nodes[n]);
         if (NULL == nd) {
             nd = PMIX_NEW(pmix_nodeinfo_t);
             nd->hostname = strdup(nodes[n]);
