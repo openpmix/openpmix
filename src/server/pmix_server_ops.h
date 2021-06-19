@@ -219,7 +219,6 @@ typedef struct {
     // verbosity for basic server functions
     int base_output;
     int base_verbose;
-
 } pmix_server_globals_t;
 
 #define PMIX_GDS_CADDY(c, p, t)              \
