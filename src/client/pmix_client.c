@@ -484,15 +484,13 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         goto cleanup;
     }
     /* lookup the handler for this IOF package */
-    if (NULL
-            != (req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
-                                                                     refid))
-        && NULL != req->cbfunc) {
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid);
+    if (NULL != req && NULL != req->cbfunc) {
         req->cbfunc(refid, channel, &source, &bo, info, ninfo);
     } else {
         /* otherwise, simply write it out to the specified std IO channel */
         if (NULL != bo.bytes && 0 < bo.size) {
-            pmix_iof_write_output(&source, channel, &bo, NULL);
+            pmix_iof_write_output(&source, channel, &bo);
         }
     }
 

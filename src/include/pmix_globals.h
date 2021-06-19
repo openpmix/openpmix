@@ -190,6 +190,20 @@ typedef struct {
 } pmix_cleanup_dir_t;
 PMIX_CLASS_DECLARATION(pmix_cleanup_dir_t);
 
+/* define a struct to hold booleans controlling the
+ * format/contents of the output */
+typedef struct {
+    bool set;
+    bool xml;
+    bool timestamp;
+    bool tag;
+    char *file;
+    char *directory;
+    bool nocopy;
+    bool merge;
+    bool local_output;
+} pmix_iof_flags_t;
+
 /* objects used by servers for tracking active nspaces */
 typedef struct {
     pmix_list_item_t super;
@@ -217,6 +231,8 @@ typedef struct {
                             // from this nspace
     pmix_list_t setup_data; // list of pmix_kval_t containing info structs having blobs
                             // for setting up the local node for this nspace/application
+    pmix_iof_flags_t iof_flags;   // output formatting flags
+    pmix_list_t sinks;   // IOF write events for output to files or directories
 } pmix_namespace_t;
 PMIX_CLASS_DECLARATION(pmix_namespace_t);
 
@@ -577,6 +593,7 @@ typedef struct {
     pmix_topology_t topology;
     bool external_topology;
     bool external_progress;
+    pmix_iof_flags_t iof_flags;
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */

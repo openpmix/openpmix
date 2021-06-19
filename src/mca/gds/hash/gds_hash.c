@@ -467,6 +467,8 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
                 } else {
                     nptr->num_waiting = 1;
                 }
+            } else {
+                pmix_iof_check_flags(&info[n], &nptr->iof_flags);
             }
         }
     }
