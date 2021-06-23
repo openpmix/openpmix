@@ -976,51 +976,57 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
             break;
         }
     }
-    /* if we are not to output IOF from this nspace,
-     * then we are done */
-    if (NULL == nptr || !nptr->iof_flags.local_output) {
-        return PMIX_SUCCESS;
-    }
 
     channel = NULL;
-    if (nptr->iof_flags.set) {
-        /* do we need an IOF channel for this source? */
-        if (NULL != nptr->iof_flags.directory) {
-            /* see if we already have one */
-            PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
-                if (sink->name.rank == name->rank &&
-                    ((stream & sink->tag) || nptr->iof_flags.merge)) {
-                    channel = &sink->wev;
-                    break;
-                }
+    if (NULL != nptr) {
+        if (nptr->iof_flags.set) {
+            if (!nptr->iof_flags.local_output) {
+                return PMIX_SUCCESS;
             }
-            if (NULL == channel) {
-                /* need to set this one up */
-                channel = pmix_iof_setup(nptr, name->rank, stream);
+            /* do we need an IOF channel for this source? */
+            if (NULL != nptr->iof_flags.directory) {
+                /* see if we already have one */
+                PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
+                    if (sink->name.rank == name->rank &&
+                        ((stream & sink->tag) || nptr->iof_flags.merge)) {
+                        channel = &sink->wev;
+                        break;
+                    }
+                }
                 if (NULL == channel) {
-                    return PMIX_ERR_IOF_FAILURE;
+                    /* need to set this one up */
+                    channel = pmix_iof_setup(nptr, name->rank, stream);
+                    if (NULL == channel) {
+                        return PMIX_ERR_IOF_FAILURE;
+                    }
                 }
-            }
-        } else if (NULL != nptr->iof_flags.file) {
-            /* see if we already have one - we reuse the same sink for
-             * all streams */
-            PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
-                if (sink->name.rank == name->rank) {
-                    channel = &sink->wev;
-                    break;
+            } else if (NULL != nptr->iof_flags.file) {
+                /* see if we already have one - we reuse the same sink for
+                 * all streams */
+                PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
+                    if (sink->name.rank == name->rank) {
+                        channel = &sink->wev;
+                        break;
+                    }
                 }
-            }
-            if (NULL == channel) {
-                /* need to set this one up */
-                channel = pmix_iof_setup(nptr, name->rank, stream);
                 if (NULL == channel) {
-                    return PMIX_ERR_IOF_FAILURE;
+                    /* need to set this one up */
+                    channel = pmix_iof_setup(nptr, name->rank, stream);
+                    if (NULL == channel) {
+                        return PMIX_ERR_IOF_FAILURE;
+                    }
                 }
             }
+            myflags = nptr->iof_flags;
+        } else {
+            myflags = pmix_globals.iof_flags;
         }
-        myflags = nptr->iof_flags;
     } else {
         myflags = pmix_globals.iof_flags;
+    }
+
+    if (!myflags.local_output) {
+        return PMIX_SUCCESS;
     }
 
     if (NULL == channel) {
