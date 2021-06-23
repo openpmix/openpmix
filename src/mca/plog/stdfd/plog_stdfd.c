@@ -70,7 +70,6 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     size_t n;
     pmix_status_t rc;
     pmix_byte_object_t bo;
-    pmix_iof_flags_t flags = {0};
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
@@ -81,7 +80,7 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
-
+#if 0
     /* check to see if there are any relevant directives */
     for (n = 0; n < ndirs; n++) {
         if (0 == strncmp(directives[n].key, PMIX_LOG_TIMESTAMP, PMIX_MAX_KEYLEN)) {
@@ -92,7 +91,7 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
             flags.tag = PMIX_INFO_TRUE(&directives[n]);
         }
     }
-
+#endif
     /* check to see if there are any stdfd entries */
     rc = PMIX_ERR_TAKE_NEXT_OPTION;
     for (n = 0; n < ndata; n++) {
@@ -102,14 +101,14 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
         if (0 == strncmp(data[n].key, PMIX_LOG_STDERR, PMIX_MAX_KEYLEN)) {
             bo.bytes = data[n].value.data.string;
             bo.size = strlen(bo.bytes);
-            pmix_iof_write_output(source, PMIX_FWD_STDERR_CHANNEL, &bo, &flags);
+            pmix_iof_write_output(source, PMIX_FWD_STDERR_CHANNEL, &bo);
             /* flag that we did this one */
             PMIX_INFO_OP_COMPLETED(&data[n]);
             rc = PMIX_SUCCESS;
         } else if (0 == strncmp(data[n].key, PMIX_LOG_STDOUT, PMIX_MAX_KEYLEN)) {
             bo.bytes = data[n].value.data.string;
             bo.size = strlen(bo.bytes);
-            pmix_iof_write_output(source, PMIX_FWD_STDOUT_CHANNEL, &bo, &flags);
+            pmix_iof_write_output(source, PMIX_FWD_STDOUT_CHANNEL, &bo);
             /* flag that we did this one */
             PMIX_INFO_OP_COMPLETED(&data[n]);
             rc = PMIX_SUCCESS;

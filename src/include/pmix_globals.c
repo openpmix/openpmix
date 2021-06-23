@@ -114,6 +114,9 @@ static void nscon(pmix_namespace_t *p)
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.ignores, pmix_list_t);
     PMIX_CONSTRUCT(&p->setup_data, pmix_list_t);
+    memset(&p->iof_flags, 0, sizeof(p->iof_flags));
+    PMIX_CONSTRUCT(&p->sinks, pmix_list_t);
+
 }
 static void nsdes(pmix_namespace_t *p)
 {
@@ -131,6 +134,13 @@ static void nsdes(pmix_namespace_t *p)
     PMIX_LIST_DESTRUCT(&p->epilog.cleanup_files);
     PMIX_LIST_DESTRUCT(&p->epilog.ignores);
     PMIX_LIST_DESTRUCT(&p->setup_data);
+    if (NULL != p->iof_flags.file) {
+        free(p->iof_flags.file);
+    }
+    if (NULL != p->iof_flags.directory) {
+        free(p->iof_flags.directory);
+    }
+    PMIX_LIST_DESTRUCT(&p->sinks);
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namespace_t, pmix_list_item_t, nscon, nsdes);
 

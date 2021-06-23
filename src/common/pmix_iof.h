@@ -59,7 +59,7 @@ BEGIN_C_DECLS
  * Maximum size of single msg
  */
 #define PMIX_IOF_BASE_MSG_MAX        4096
-#define PMIX_IOF_BASE_TAG_MAX        50
+#define PMIX_IOF_BASE_TAG_MAX        256
 #define PMIX_IOF_BASE_TAGGED_OUT_MAX 8192
 #define PMIX_IOF_MAX_INPUT_BUFFERS   50
 
@@ -108,14 +108,6 @@ typedef struct {
     size_t ndirs;
 } pmix_iof_read_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_read_event_t);
-
-/* define a struct to hold booleans controlling the
- * format/contents of the output */
-typedef struct {
-    bool xml;
-    time_t timestamp;
-    bool tag;
-} pmix_iof_flags_t;
 
 /* Write event macro's */
 
@@ -218,8 +210,7 @@ static inline bool pmix_iof_fd_always_ready(int fd)
 PMIX_EXPORT pmix_status_t pmix_iof_flush(void);
 
 PMIX_EXPORT pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t stream,
-                                                const pmix_byte_object_t *bo,
-                                                pmix_iof_flags_t *flags);
+                                                const pmix_byte_object_t *bo);
 PMIX_EXPORT void pmix_iof_static_dump_output(pmix_iof_sink_t *sink);
 PMIX_EXPORT void pmix_iof_write_handler(int fd, short event, void *cbdata);
 PMIX_EXPORT bool pmix_iof_stdin_check(int fd);
@@ -230,6 +221,7 @@ PMIX_EXPORT pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels,
                                                const pmix_byte_object_t *bo,
                                                const pmix_info_t *info, size_t ninfo,
                                                const pmix_iof_req_t *req);
+PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags);
 
 END_C_DECLS
 

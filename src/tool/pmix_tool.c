@@ -309,15 +309,13 @@ static void tool_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_b
         goto cleanup;
     }
     /* lookup the handler for this IOF package */
-    if (NULL
-            != (req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
-                                                                     refid))
-        && NULL != req->cbfunc) {
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid);
+    if (NULL != req && NULL != req->cbfunc) {
         req->cbfunc(refid, channel, &source, &bo, info, ninfo);
     } else {
         /* otherwise, simply write it out to the specified std IO channel */
         if (NULL != bo.bytes && 0 < bo.size) {
-            pmix_iof_write_output(&source, channel, &bo, NULL);
+            pmix_iof_write_output(&source, channel, &bo);
         }
     }
 
@@ -477,7 +475,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_TOOL);
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
-            if (0 == strncmp(info[n].key, PMIX_TOOL_DO_NOT_CONNECT, PMIX_MAX_KEYLEN)) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_DO_NOT_CONNECT)) {
                 do_not_connect = PMIX_INFO_TRUE(&info[n]);
             } else if (0 == strncmp(info[n].key, PMIX_TOOL_NSPACE, PMIX_MAX_KEYLEN)) {
                 if (NULL != nspace) {
@@ -488,21 +486,21 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 }
                 nspace = strdup(info[n].value.data.string);
                 nspace_given = true;
-            } else if (0 == strncmp(info[n].key, PMIX_TOOL_RANK, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_RANK)) {
                 rank = info[n].value.data.rank;
                 rank_given = true;
-            } else if (0 == strncmp(info[n].key, PMIX_FWD_STDIN, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_FWD_STDIN)) {
                 /* they want us to forward our stdin to someone */
                 fwd_stdin = PMIX_INFO_TRUE(&info[n]);
-            } else if (0 == strncmp(info[n].key, PMIX_LAUNCHER, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER)) {
                 if (PMIX_INFO_TRUE(&info[n])) {
                     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_LAUNCHER);
                 }
-            } else if (0 == strncmp(info[n].key, PMIX_SERVER_TMPDIR, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
-            } else if (0 == strncmp(info[n].key, PMIX_SYSTEM_TMPDIR, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
-            } else if (0 == strncmp(info[n].key, PMIX_TOOL_CONNECT_OPTIONAL, PMIX_MAX_KEYLEN)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 connect_optional = PMIX_INFO_TRUE(&info[n]);
             }
         }

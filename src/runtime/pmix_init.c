@@ -219,6 +219,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_pointer_array_init(&pmix_globals.iof_requests, 128, INT_MAX, 128);
     /* setup the stdin forwarding target list */
     PMIX_CONSTRUCT(&pmix_globals.stdin_targets, pmix_list_t);
+    memset(&pmix_globals.iof_flags, 0, sizeof(pmix_iof_flags_t));
 
     /* Setup client verbosities as all procs are allowed to
      * access client APIs */
@@ -325,6 +326,8 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                 pmix_globals.external_progress = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
                 keepfqdn = PMIX_INFO_TRUE(&info[n]);
+            } else {
+                pmix_iof_check_flags(&info[n], &pmix_globals.iof_flags);
             }
         }
     }
