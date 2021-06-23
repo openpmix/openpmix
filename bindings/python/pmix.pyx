@@ -570,6 +570,8 @@ cdef class PMIxClient:
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
 
+        val = None
+
         # pass it into the get API
         rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
         if PMIX_SUCCESS == rc:
