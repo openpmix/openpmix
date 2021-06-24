@@ -426,6 +426,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_lock_t reglock, releaselock;
     pmix_status_t code;
     pmix_value_t *val, value;
+    bool outputio = true;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -502,6 +503,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 connect_optional = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_LOCAL_OUTPUT)) {
+                outputio = PMIX_INFO_TRUE(&info[n]);
             }
         }
     }
@@ -605,6 +608,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     rcv->cbfunc = tool_iof_handler;
     /* add it to the end of the list of recvs */
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* default tools to outputting their IOF */
+    pmix_globals.iof_flags.local_output = outputio;
 
     /* setup the globals */
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
