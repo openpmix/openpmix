@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
     validation_params v_params;
 
     /* Handles all setup that's required prior to calling PMIx_Init() */
-    pmixt_pre_init(argc, argv, &params, &v_params);
+    pmixt_pre_init(argc, argv, &params, &v_params, NULL);
     /* initialization */
     PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), params, v_params);
 

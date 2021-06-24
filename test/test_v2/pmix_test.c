@@ -54,6 +54,7 @@ int main(int argc, char **argv)
     int test_fail = 0;
     char *tmp;
     sigset_t unblock;
+    char **test_argv = NULL;
 
     default_params(&params, &val_params);
 
@@ -64,13 +65,17 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("Testing version %s", PMIx_Get_version()));
 
-    parse_cmd(argc, argv, &params, &val_params);
+    parse_cmd_server(argc, argv, &params, &val_params, &test_argv);
     TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", params.timeout));
 
     /* set common argv and env */
     client_env = pmix_argv_copy(environ);
-    set_client_argv(&params, &client_argv);
-
+    if (NULL != test_argv) {
+        TEST_VERBOSE(("Before set_client_argv, test_argv[0] = %s", test_argv[0]));
+    }
+    set_client_argv(&params, &client_argv, test_argv);
+    //set_client_argv(&params, &client_argv);
+    TEST_VERBOSE(("After set_client_argv"));
     tmp = pmix_argv_join(client_argv, ' ');
     TEST_VERBOSE(("Executing test: %s", tmp));
     free(tmp);

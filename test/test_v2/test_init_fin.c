@@ -22,9 +22,10 @@ int main(int argc, char *argv[])
     size_t ninfo = 0;
     test_params params;
     validation_params v_params;
+    //int (*fnptr)() = NULL;
 
     /* Handles all setup that's required prior to calling PMIx_Init() */
-    pmixt_pre_init(argc, argv, &params, &v_params);
+    pmixt_pre_init(argc, argv, &params, &v_params, NULL);
 
     /* initialization */
     PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), params, v_params);

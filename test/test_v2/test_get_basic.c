@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
     pmix_proc_t job_proc;
     bool check_self = true;
 
-    pmixt_pre_init(argc, argv, &params, &v_params);
+    pmixt_pre_init(argc, argv, &params, &v_params, NULL);
     TEST_VERBOSE(("v_params values: pmix_nspace %s; pmix_job_size %d; pmix_univ_size %d",
                   v_params.pmix_nspace, v_params.pmix_job_size, v_params.pmix_univ_size));
     TEST_VERBOSE(

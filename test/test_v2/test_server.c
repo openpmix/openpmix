@@ -103,11 +103,16 @@ static void release_cb(pmix_status_t status, void *cbdata)
     *ptr = 0;
 }
 
-void set_client_argv(test_params *params, char ***argv)
+void set_client_argv(test_params *params, char ***argv, char **ltest_argv)
 {
     char num_str[MAX_DIGIT_LEN];
-
+    int i;
     pmix_argv_append_nosize(argv, params->binary);
+    if( ltest_argv != NULL) {
+        for (i = 0; NULL != ltest_argv[i]; i++) {
+            pmix_argv_append_nosize(argv, ltest_argv[i]);
+        }
+    }
 
     pmix_argv_append_nosize(argv, "-n");
     if (NULL == params->np) {
@@ -127,13 +132,6 @@ void set_client_argv(test_params *params, char ***argv)
         pmix_argv_append_nosize(argv, "-nb");
     }
 
-    pmix_argv_append_nosize(argv, "-r");
-    sprintf(num_str, "%lf", params->fence_timeout_ratio);
-    pmix_argv_append_nosize(argv, num_str);
-
-    pmix_argv_append_nosize(argv, "-m");
-    sprintf(num_str, "%lf", params->fence_time_multiplier);
-    pmix_argv_append_nosize(argv, num_str);
 }
 
 static void fill_seq_ranks_array(uint32_t nprocs, char **ranks)
@@ -158,6 +156,172 @@ static void fill_seq_ranks_array(uint32_t nprocs, char **ranks)
         *ranks = NULL;
         TEST_ERROR_EXIT(("ERROR: Server id: %d Not enough allocated space for global ranks array.",
                          my_server_id));
+    }
+}
+
+void parse_cmd_server(int argc, char **argv, test_params *params, validation_params *v_params, char ***t_argv)
+{
+    int i;
+    uint32_t job_size;
+    //char *tmp;
+
+    /* set output to stdout by default */
+    pmixt_outfile = stdout;
+    if( v_params->pmix_nspace[0] != '\0' ) {
+        v_params->pmix_nspace[0] = '\0';
+    }
+    /* parse user options */
+    for (i=1; i < argc; i++) {
+        if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->np = strdup(argv[i]);
+                job_size = strtol(argv[i], NULL, 10);
+                v_params->pmix_job_size = job_size;
+                v_params->pmix_univ_size = job_size;
+                if (-1 == params->ns_size) {
+                    params->ns_size = job_size;
+                }
+            }
+        } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
+            /* print help */
+            fprintf(stderr, "usage: pmix_test [-h] [-e foo] [-b] [-nb]\n");
+            fprintf(stderr, "\t-n       the job size (for checking purposes)\n");
+            fprintf(stderr, "\t-s       number of servers to emulate\n");
+            fprintf(stderr, "\t-e foo   use foo as test client executable\n");
+            fprintf(stderr, "\t-v       verbose output\n");
+            fprintf(stderr, "\t-t <>    set timeout\n");
+            fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
+            fprintf(stderr, "\t-d str   assign ranks to servers, for example: 0:0,1:1:2,3,4\n");
+            fprintf(stderr, "\t-h       generate help; for test-specific help instead, run ./test-name -h\n");
+            /*
+            fprintf(stderr, "\t-m num   fence time multiplier (similar to an error bar, default: 100)\n");
+            fprintf(stderr, "\t-r num   fence timeout ratio (used to calculate sleep time before fence calls, default: 100)\n");
+            fprintf(stderr, "\t-c       fence[_nb] callback shall include all collected data\n");
+            fprintf(stderr, "\t-nb      use non-blocking fence\n");
+            */
+            exit(0);
+        } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->binary = strdup(argv[i]);
+            }
+        } else if (0 == strcmp(argv[i], "--nservers") || 0 == strcmp(argv[i], "-s")){
+            i++;
+            if (NULL != argv[i]) {
+                //params->nservers = atoi(argv[i]);
+                v_params->pmix_num_nodes = atoi(argv[i]);
+            }
+        } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
+            PMIXT_VERBOSE_ON();
+            params->verbose = 1;
+        } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->timeout = atoi(argv[i]);
+                if( params->timeout == 0 ){
+                    params->timeout = TEST_DEFAULT_TIMEOUT;
+                }
+            }
+        } else if( 0 == strcmp(argv[i], "-o")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->prefix = strdup(argv[i]);
+            }
+        } else if( 0 == strcmp(argv[i], "--namespace")) {
+            i++;
+            if (NULL != argv[i]) {
+                strcpy(v_params->pmix_nspace, argv[i]);
+            }
+        /*
+        } else if (0 == strcmp(argv[i], "--collect-corrupt")) {
+            params->collect_bad = 1;
+        } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
+            params->nonblocking = 1;
+        } else if (0 == strcmp(argv[i], "--collect") || 0 == strcmp(argv[i], "-c")) {
+            params->collect = 1;
+        */
+        } else if (0 == strcmp(argv[i], "--ns-size")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->ns_size = strtol(argv[i], NULL, 10);
+            }
+        } else if (0 == strcmp(argv[i], "--ns-id")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->ns_id = strtol(argv[i], NULL, 10);
+            }
+        /*
+        } else if (0 == strcmp(argv[i], "--validate-params")) {
+            i++;
+            v_params->validate_params = true;
+            v_params_ascii_str = strdup(argv[i]);
+        */
+        // set up custom rank placement
+	    } else if (0 == strcmp(argv[i], "--distribute-ranks") || 0 == strcmp(argv[i], "-d") ) {
+            i++;
+            if ((PMIX_MAX_KEYLEN - 1) < strlen(argv[i])) {
+                TEST_ERROR(("Rank distribution string exceeds max length of %d bytes", PMIX_MAX_KEYLEN-1));
+                exit(1);
+            }
+            v_params->custom_rank_placement = true;
+            strcpy(v_params->rank_placement_string, argv[i]);
+            TEST_VERBOSE(("rank_placement_string: %s", v_params->rank_placement_string));
+	    } else if (0 == strcmp(argv[i], "--") || 0 == strcmp(argv[i], "--args") ) {
+            i++;
+            if (NULL != argv[i]) {
+                //char **tmp;
+                params->binary = strdup(argv[i]);
+                // create a separate argv for the client from the args specified after the test binary name
+                i++;
+                if (i < argc) {
+                    for (; i < argc; i++) {
+                        pmix_argv_append_nosize(t_argv, argv[i]);
+                    }
+                    //params->test_argv = pmix_argv_join(tmp, ' ');
+                    TEST_VERBOSE(("t_argv[0]: %s", *t_argv[0]));
+                    //pmix_argv_free(tmp);
+                    //tmp = NULL;
+                }
+            }
+            else {
+                TEST_ERROR_EXIT(("No test specified"));
+            }
+        }
+        else {
+            TEST_ERROR_EXIT(("unrecognized option: %s", argv[i]));
+        }
+    }
+
+    TEST_VERBOSE(("v_params->pmix_num_nodes: %d being passed into init_nodes", v_params->pmix_num_nodes));
+    init_nodes(v_params->pmix_num_nodes);
+    if (v_params->custom_rank_placement){
+        char *local_rank_placement_string = NULL;
+        TEST_VERBOSE(("Before populate_nodes_custom_placement_string, string: %s", v_params->rank_placement_string));
+        local_rank_placement_string = strdup(v_params->rank_placement_string);
+        // populates global *nodes array
+        populate_nodes_custom_placement_string(local_rank_placement_string, v_params->pmix_univ_size);
+        free(local_rank_placement_string);
+    }
+    else {
+        // populates global *nodes array
+        populate_nodes_default_placement(v_params->pmix_num_nodes, v_params->pmix_univ_size);
+    }
+
+    if (NULL == params->binary) {
+        char *basename = NULL;
+        basename = strrchr(argv[0], '/');
+        if (basename) {
+            *basename = '\0';
+            if (0 > asprintf(&params->binary, "%s/../pmix_client", argv[0])) {
+                exit(1);
+            }
+            *basename = '/';
+        } else {
+            if (0 > asprintf(&params->binary, "pmix_client")) {
+                exit(1);
+            }
+        }
     }
 }
 
@@ -693,8 +857,11 @@ int server_fence_contrib(char *data, size_t ndata, pmix_modex_cbfunc_t cbfunc, v
     msg_hdr.size = ndata;
     // this won't work if there is more than one fence active at the same time
     // in the future, we will have to create a list instead of just one entry
+    // (each server can have more than one fence in flight at the same time)
     server->modex_cbfunc = cbfunc;
     server->cbdata = cbdata;
+    //pmix_list_append(server->modex_cbfunc, cbfunc);
+    //pmix_list_append(server->cbdata, cbdata);
 
     if (PMIX_SUCCESS != (rc = server_send_msg(&msg_hdr, data, ndata))) {
         return PMIX_ERROR;
