@@ -174,6 +174,7 @@ static mylock_t globallock;
 static bool model = false;
 static bool xversion = false;
 static pmix_event_base_t *simptest_evbase = NULL;
+static bool abort_has_been_called = false;
 
 static void set_namespace(int nprocs, char *nspace, pmix_op_cbfunc_t cbfunc, myxfer_t *x);
 static void errhandler(size_t evhdlr_registration_id, pmix_status_t status,
@@ -521,10 +522,11 @@ int main(int argc, char **argv)
 
     /* see if anyone exited with non-zero status unless the test
      * was expected to do so */
-    if (NULL == strstr(executable, "simpdie")) {
+    if (NULL == strstr(executable, "simpdie") ||
+        (abort_has_been_called && 248 == exit_code)) {
         n = 0;
         PMIX_LIST_FOREACH (child, &children, wait_tracker_t) {
-            if (0 != child->exit_code) {
+            if (0 != child->exit_code && !abort_has_been_called) {
                 fprintf(stderr, "Child %d [%d] exited with status %d - test FAILED\n", n,
                         child->pid, child->exit_code);
             }
@@ -767,23 +769,11 @@ static pmix_status_t finalized(const pmix_proc_t *proc, void *server_object,
     return PMIX_OPERATION_SUCCEEDED;
 }
 
-static void abcbfunc(pmix_status_t status, void *cbdata)
-{
-    myxfer_t *x = (myxfer_t *) cbdata;
-
-    /* be sure to release the caller */
-    if (NULL != x->cbfunc) {
-        x->cbfunc(status, x->cbdata);
-    }
-    PMIX_RELEASE(x);
-}
-
 static pmix_status_t abort_fn(const pmix_proc_t *proc, void *server_object, int status,
                               const char msg[], pmix_proc_t procs[], size_t nprocs,
                               pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_status_t rc;
-    myxfer_t *x;
+    wait_tracker_t *t2;
 
     if (NULL != procs) {
         pmix_output(0, "SERVER: ABORT on %s:%d", procs[0].nspace, procs[0].rank);
@@ -791,29 +781,11 @@ static pmix_status_t abort_fn(const pmix_proc_t *proc, void *server_object, int 
         pmix_output(0, "SERVER: ABORT OF ALL PROCS IN NSPACE %s", proc->nspace);
     }
 
-    /* instead of aborting the specified procs, notify them
-     * (if they have registered their errhandler) */
+    /* mark that the client called abort so we know it will simply exit */
+    abort_has_been_called = true;
 
-    /* use the myxfer_t object to ensure we release
-     * the caller when notification has been queued */
-    x = PMIX_NEW(myxfer_t);
-    (void) strncpy(x->caller.nspace, proc->nspace, PMIX_MAX_NSLEN);
-    x->caller.rank = proc->rank;
-
-    PMIX_INFO_CREATE(x->info, 2);
-    (void) strncpy(x->info[0].key, "DARTH", PMIX_MAX_KEYLEN);
-    x->info[0].value.type = PMIX_INT8;
-    x->info[0].value.data.int8 = 12;
-    (void) strncpy(x->info[1].key, "VADER", PMIX_MAX_KEYLEN);
-    x->info[1].value.type = PMIX_DOUBLE;
-    x->info[1].value.data.dval = 12.34;
-    x->cbfunc = cbfunc;
-    x->cbdata = cbdata;
-
-    if (PMIX_SUCCESS
-        != (rc = PMIx_Notify_event(status, &x->caller, PMIX_RANGE_NAMESPACE, x->info, 2, abcbfunc,
-                                   x))) {
-        pmix_output(0, "SERVER: FAILED NOTIFY ERROR %d", (int) rc);
+    PMIX_LIST_FOREACH (t2, &children, wait_tracker_t) {
+        kill(t2->pid, SIGKILL);
     }
 
     return PMIX_SUCCESS;
@@ -1219,8 +1191,14 @@ static void wait_signal_callback(int fd, short event, void *arg)
                         t2->exit_code = WTERMSIG(status) + 128;
                     }
                 }
-                if (0 != t2->exit_code && 0 == exit_code) {
-                    exit_code = t2->exit_code;
+                if (0 == exit_code) {
+                    if (abort_has_been_called) {
+                        if (137 != t2->exit_code) {
+                            exit_code = t2->exit_code;
+                        }
+                    } else if (0 != t2->exit_code) {
+                        exit_code = t2->exit_code;
+                    }
                 }
                 --wakeup;
                 break;
