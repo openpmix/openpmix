@@ -985,6 +985,9 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
             if (NULL != sendpt[n].uuid) {
                 pendpt[n].uuid = strdup(sendpt[n].uuid);
             }
+            if (NULL != sendpt[n].osname) {
+                pendpt[n].osname = strdup(sendpt[n].osname);
+            }
             if (NULL != sendpt[n].endpt.bytes) {
                 pendpt[n].endpt.bytes = (char *) malloc(sendpt[n].endpt.size);
                 memcpy(pendpt[n].endpt.bytes, sendpt[n].endpt.bytes, sendpt[n].endpt.size);
@@ -1263,6 +1266,9 @@ pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest, pmix_endpoi
 
     if (NULL != src->uuid) {
         dst->uuid = strdup(src->uuid);
+    }
+    if (NULL != src->osname) {
+        dst->osname = strdup(src->osname);
     }
     if (NULL != src->endpt.bytes) {
         dst->endpt.bytes = (char *) malloc(src->endpt.size);

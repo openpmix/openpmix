@@ -162,15 +162,13 @@ static void server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
         goto cleanup;
     }
     /* lookup the handler for this IOF package */
-    if (NULL
-            != (req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
-                                                                     refid))
-        && NULL != req->cbfunc) {
+    req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, refid);
+    if (NULL != req && NULL != req->cbfunc) {
         req->cbfunc(refid, channel, &source, &bo, info, ninfo);
     } else {
         /* otherwise, simply write it out to the specified std IO channel */
         if (NULL != bo.bytes && 0 < bo.size) {
-            pmix_iof_write_output(&source, channel, &bo, NULL);
+            pmix_iof_write_output(&source, channel, &bo);
         }
     }
 
@@ -991,7 +989,7 @@ static void _register_nspace(int sd, short args, void *cbdata)
     }
     nptr->nlocalprocs = cd->nlocalprocs;
 
-    /* see if we have everyone */
+    /* see if we already have everyone */
     if (nptr->nlocalprocs == pmix_list_get_size(&nptr->ranks)) {
         nptr->all_registered = true;
     }
@@ -1680,7 +1678,7 @@ static void _register_client(int sd, short args, void *cbdata)
     info->gid = cd->gid;
     info->server_object = cd->server_object;
     pmix_list_append(&nptr->ranks, &info->super);
-    /* see if we have everyone - not that nlocalprocs is set to
+    /* see if we have everyone - note that nlocalprocs is set to
      * a default value to ensure we don't execute this
      * test until the host calls "register_nspace" */
     if (SIZE_MAX != nptr->nlocalprocs && nptr->nlocalprocs == pmix_list_get_size(&nptr->ranks)) {
@@ -2466,24 +2464,31 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     pmix_iof_cache_t *iof;
     int i;
     size_t n;
+    pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "PMIX:SERVER delivering IOF from %s on channel %0x",
                         PMIX_NAME_PRINT(cd->procs), cd->channels);
 
+    /* output it locally if requested */
+    rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+
     /* cycle across our list of IOF requests and see who wants
      * this channel from this source */
     for (i = 0; i < pmix_globals.iof_requests.size; i++) {
-        if (NULL
-            == (req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
-                                                                     i))) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL == req) {
             continue;
         }
-        if (PMIX_OPERATION_SUCCEEDED
-            == pmix_iof_process_iof(cd->channels, cd->procs, cd->bo, cd->info, cd->ninfo, req)) {
+        rc = pmix_iof_process_iof(cd->channels, cd->procs, cd->bo, cd->info, cd->ninfo, req);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
             /* flag that we do have at least one registrant for this info,
              * so there is no need to cache it */
             found = true;
+            rc = PMIX_SUCCESS;
         }
     }
 
@@ -2513,10 +2518,12 @@ static void _iofdeliver(int sd, short args, void *cbdata)
             }
         }
         pmix_list_append(&pmix_server_globals.iof, &iof->super);
+        rc = PMIX_SUCCESS;
     }
 
+done:
     if (NULL != cd->opcbfunc) {
-        cd->opcbfunc(PMIX_SUCCESS, cd->cbdata);
+        cd->opcbfunc(rc, cd->cbdata);
     }
 
     /* release the caddy */

@@ -2159,8 +2159,10 @@ pmix_status_t pmix_bfrops_base_print_endpoint(char **output, char *prefix, pmix_
         prefx = prefix;
     }
 
-    ret = asprintf(output, "%sData type: PMIX_ENDPOINT\tValue: %s #bytes: %" PRIsize_t, prefx,
-                   (NULL == src->uuid) ? "NULL" : src->uuid, src->endpt.size);
+    ret = asprintf(output, "%sData type: PMIX_ENDPOINT\tValue: %s(%s) #bytes: %" PRIsize_t, prefx,
+                   (NULL == src->uuid) ? "NULL" : src->uuid,
+                   (NULL == src->osname) ? "NULL" : src->osname,
+                   src->endpt.size);
     if (prefx != prefix) {
         free(prefx);
     }
