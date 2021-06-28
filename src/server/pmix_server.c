@@ -90,13 +90,17 @@ static pmix_proc_t myparent;
 
 static void pdiedfn(int fd, short flags, void *arg)
 {
-    pmix_info_t info[3];
+    pmix_info_t info[2];
+    pmix_proc_t keepalive;
+
+    PMIX_LOAD_PROCID(&keepalive, "PMIX_KEEPALIVE_PIPE", PMIX_RANK_UNDEF);
 
     PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &myparent, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &keepalive, PMIX_PROC);
 
     /* generate a job-terminated event */
-    PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL, info, 3,
+    PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid,
+                      PMIX_RANGE_PROC_LOCAL, info, 2,
                       NULL, NULL);
 }
 
