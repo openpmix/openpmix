@@ -35,7 +35,7 @@ int main(int argc, char *argv[])
     pmix_proc_t job_proc, peer_proc;
     int i;
 
-    pmixt_pre_init(argc, argv, &params, &v_params);
+    pmixt_pre_init(argc, argv, &params, &v_params, NULL);
     /* initialization */
     PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), params, v_params);
 

@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2020      Triad National Security, LLC
+ * Copyright (c) 2020-2021 Triad National Security, LLC
  *                         All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
@@ -18,34 +18,160 @@
 /* This file includes all functions called directly by client apps, along with
  * their callees. */
 
+#define _GNU_SOURCE
+
 #include <pmix_common.h>
 #include <src/include/pmix_config.h>
-
 #include "test_common.h"
 #include <ctype.h>
 #include <stdarg.h>
-#include <stdio.h>
 
 extern int pmix_test_verbose;
 extern test_params params;
 
 extern FILE *pmixt_outfile;
 
-// presently a placeholder - to be developed into a client-only command parser,
-// separating the processing logic for client command line options from that for
-// other callers (test app or server), unlike how parse_cmd() presently works.
-void parse_cmd_client(int argc, char **argv, test_params *params, validation_params *v_params)
+void parse_cmd_client(int argc, char **argv, test_params *params, validation_params *v_params,
+                      int (*parse_test_ptr)())
 {
-    ;
+    int i, retval;
+    uint32_t job_size;
+    char *tmp;
+
+    /* set output to stdout by default */
+    pmixt_outfile = stdout;
+    if( v_params->pmix_nspace[0] != '\0' ) {
+        v_params->pmix_nspace[0] = '\0';
+    }
+    /* parse user options */
+    for (i = 1; i < argc; i++) {
+        if ( 0 == strcmp(argv[i], "-n") ) {
+            i++;
+            if (NULL != argv[i]) {
+                params->np = strdup(argv[i]);
+                job_size = strtol(argv[i], NULL, 10);
+                v_params->pmix_job_size = job_size;
+                v_params->pmix_univ_size = job_size;
+                if (-1 == params->ns_size) {
+                    params->ns_size = job_size;
+                }
+            }
+        } else if( 0 == strcmp(argv[i],"-v") ){
+            PMIXT_VERBOSE_ON();
+            params->verbose = 1;
+        } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->timeout = atoi(argv[i]);
+                if( params->timeout == 0 ){
+                    params->timeout = TEST_DEFAULT_TIMEOUT;
+                }
+            }
+        } else if( 0 == strcmp(argv[i], "-o")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->prefix = strdup(argv[i]);
+            }
+        } else if( 0 == strcmp(argv[i], "--namespace")) {
+            i++;
+            if (NULL != argv[i]) {
+                strcpy(v_params->pmix_nspace, argv[i]);
+            }
+        /*
+        } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
+            params->nonblocking = 1;
+        */
+        } else if (0 == strcmp(argv[i], "--ns-size")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->ns_size = strtol(argv[i], NULL, 10);
+            }
+        } else if (0 == strcmp(argv[i], "--ns-id")) {
+            i++;
+            if (NULL != argv[i]) {
+                params->ns_id = strtol(argv[i], NULL, 10);
+            }
+        } else if (0 == strcmp(argv[i], "--validate-params")) {
+            i++;
+            v_params->validate_params = true;
+            v_params_ascii_str = strdup(argv[i]);
+	    } else if (0 == strcmp(argv[i], "--distribute-ranks") || 0 == strcmp(argv[i], "-d") ) {
+            i++;
+            if ((PMIX_MAX_KEYLEN - 1) < strlen(argv[i])) {
+                TEST_ERROR(("Rank distribution string exceeds max length of %d bytes", PMIX_MAX_KEYLEN-1));
+                exit(1);
+            }
+            v_params->custom_rank_placement = true;
+            strcpy(v_params->rank_placement_string, argv[i]);
+            TEST_VERBOSE(("rank_placement_string: %s", v_params->rank_placement_string));
+        }
+        else {
+            // pass the argv to parse_test_ptr for parsing custom to this test, return with pointer advanced to next viable location
+            if (NULL != parse_test_ptr) {
+                TEST_VERBOSE(("Before parse_test_ptr, i = %d, argv[i] = %s", i, argv[i]));
+                retval = parse_test_ptr(&i, argc, argv, params, v_params);
+                TEST_VERBOSE(("After parse_test_ptr, i = %d", i));
+                if (PMIX_SUCCESS != retval) {
+                    TEST_ERROR_EXIT(("unrecognized client option: %s", argv[i]));
+                }
+            }
+            else {
+                TEST_ERROR_EXIT(("unrecognized client option: %s", argv[i]));
+            }
+        }
+    }
+    /* the block below allows us to immediately process things that depend on
+     * the contents of v_params. */
+    if (v_params->validate_params) {
+        ssize_t v_size;
+        v_size = pmixt_decode(v_params_ascii_str, v_params, sizeof(*v_params));
+        if (v_size != sizeof(*v_params)) {
+            assert(v_size == sizeof(*v_params));
+            exit(1);
+        }
+    }
+
+    // we have to populate the *nodes array on clients for validation purposes
+    TEST_VERBOSE(("v_params->pmix_num_nodes: %d being passed into init_nodes", v_params->pmix_num_nodes));
+    init_nodes(v_params->pmix_num_nodes);
+    if (v_params->custom_rank_placement){
+        char *local_rank_placement_string = NULL;
+        TEST_VERBOSE(("Before populate_nodes_custom_placement_string, string: %s", v_params->rank_placement_string));
+        local_rank_placement_string = strdup(v_params->rank_placement_string);
+        // populates global *nodes array
+        populate_nodes_custom_placement_string(local_rank_placement_string, v_params->pmix_univ_size);
+        free(local_rank_placement_string);
+    }
+    else {
+        // populates global *nodes array
+        populate_nodes_default_placement(v_params->pmix_num_nodes, v_params->pmix_univ_size);
+    }
+
+    if (NULL == params->binary) {
+        char *basename = NULL;
+        basename = strrchr(argv[0], '/');
+        if (basename) {
+            *basename = '\0';
+            if (0 > asprintf(&params->binary, "%s/../pmix_client", argv[0])) {
+                exit(1);
+            }
+            *basename = '/';
+        } else {
+            if (0 > asprintf(&params->binary, "pmix_client")) {
+                exit(1);
+            }
+        }
+    }
 }
 
-void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params)
-{
+void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params, int (*parse_tst_ptr)() ) {
 
     ssize_t v_size = -1;
+    char **t_argv = NULL;
 
     default_params(params, v_params);
-    parse_cmd(argc, argv, params, v_params);
+    parse_cmd_client(argc, argv, params, v_params, parse_tst_ptr);
+
     TEST_OUTPUT(("v_params->pmix_rank: %d", v_params->pmix_rank));
 
     /* set filename if available in params */
@@ -225,4 +351,30 @@ void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_v
         TEST_ERROR_EXIT(("No test logic for type: %d, key: %s", value->type, key));
     }
     }
+}
+
+double avg_fence_time(void) {
+    double avg_fence = 0.0;
+    int i, retval;
+    unsigned long usecs;
+    struct timeval local_start, local_end;
+
+    // Synchronize before timing
+    if (0 != PMIx_Fence(NULL, 0, NULL, 0)) {
+        TEST_ERROR_EXIT(("PMIx_Fence Problem: ret val = %d", retval));
+    }
+    /* Measure the average typical fence execution time */
+    gettimeofday(&local_start, NULL);
+    for(i = 0; i < 100; i++) {
+        if (0 != PMIx_Fence(NULL, 0, NULL, 0)) {
+            TEST_ERROR_EXIT(("PMIx_Fence Problem: ret val = %d", retval));
+        }
+    }
+    gettimeofday(&local_end, NULL);
+    usecs = (local_end.tv_sec * 1000000) + local_end.tv_usec
+        - ((local_start.tv_sec * 1000000) + local_start.tv_usec);
+    avg_fence = ((double)usecs)/1E8;
+
+    TEST_VERBOSE(("Simple PMIx_Fence, avg time: %lf", avg_fence));
+    return avg_fence;
 }

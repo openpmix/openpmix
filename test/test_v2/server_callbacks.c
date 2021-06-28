@@ -121,11 +121,13 @@ pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs, const pmix_in
     TEST_VERBOSE(("Getting data for %s:%d", procs[0].nspace, procs[0].rank));
 
     /* see if we are asked to do something we don't support */
-    for (n = 0; n < ninfo; n++) {
+/*
+    for (n=0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
             return PMIX_ERR_NOT_SUPPORTED;
         }
     }
+*/
 
     if ((pmix_list_get_size(server_list) == 1) && (my_server_id == 0)) {
         if (NULL != cbfunc) {
