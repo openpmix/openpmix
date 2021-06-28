@@ -326,8 +326,10 @@ static void cycle_events(int sd, short args, void *cbdata)
     pmix_event_hdlr_t *nxt;
     pmix_info_t *newinfo;
 
-    pmix_output_verbose(2, pmix_client_globals.event_output, "%s progressing local event foo",
-                        PMIX_NAME_PRINT(&pmix_globals.myid));
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "%s progressing local event with status %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIx_Error_string(chain->interim_status));
 
     /* aggregate the results per RFC0018 - first search the
      * prior chained results to see if any keys have been NULL'd
@@ -382,15 +384,15 @@ static void cycle_events(int sd, short args, void *cbdata)
     PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 1]);
     // call their interim cbfunc
     if (NULL != chain->opcbfunc) {
-        chain->opcbfunc(PMIX_SUCCESS, chain->cbdata);
+        chain->opcbfunc(chain->interim_status, chain->cbdata);
     }
 
     /* if the caller indicates that the chain is completed,
      * or we completed the "last" event */
-    if (PMIX_EVENT_ACTION_COMPLETE == chain->status
+    if (PMIX_EVENT_ACTION_COMPLETE == chain->interim_status
         || PMIX_EVENT_ORDER_LAST_OVERALL == chain->evhdlr->precedence || chain->endchain) {
-        if (PMIX_EVENT_ACTION_COMPLETE == chain->status) {
-            chain->status = PMIX_SUCCESS;
+        if (PMIX_EVENT_ACTION_COMPLETE == chain->interim_status) {
+            chain->interim_status = PMIX_SUCCESS;
         }
         goto complete;
     }
@@ -613,7 +615,7 @@ complete:
     /* if we get here, there was nothing more to do, but
      * we still have to call their final callback */
     if (NULL != chain->final_cbfunc) {
-        chain->final_cbfunc(chain->status, chain->final_cbdata);
+        chain->final_cbfunc(chain->interim_status, chain->final_cbdata);
         return;
     }
     /* maintain acctng */
@@ -629,6 +631,7 @@ static void progress_local_event_hdlr(pmix_status_t status, pmix_info_t *results
 
     pmix_event_chain_t *chain = (pmix_event_chain_t *) notification_cbdata;
 
+    chain->interim_status = status;
     chain->interim = results;
     chain->ninterim = nresults;
     chain->opcbfunc = cbfunc;
@@ -656,7 +659,8 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "%s invoke_local_event_hdlr for status %s",
-                        PMIX_NAME_PRINT(&pmix_globals.myid), PMIx_Error_string(chain->status));
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIx_Error_string(chain->status));
 
     /* sanity check */
     if (NULL == chain->info) {
@@ -1497,6 +1501,7 @@ static void chcon(pmix_event_chain_t *p)
     p->info = NULL;
     p->ninfo = 0;
     p->nallocated = 0;
+    p->interim_status = PMIX_ERROR;
     p->results = NULL;
     p->nresults = 0;
     p->interim = NULL;

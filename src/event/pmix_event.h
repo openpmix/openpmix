@@ -140,6 +140,7 @@ typedef struct pmix_event_chain_t {
     pmix_info_t *info;
     size_t ninfo;
     size_t nallocated;
+    pmix_status_t interim_status;
     pmix_info_t *results;
     size_t nresults;
     pmix_info_t *interim;
