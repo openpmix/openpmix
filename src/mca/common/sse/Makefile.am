@@ -25,19 +25,19 @@ sources = \
 
 lib_LTLIBRARIES =
 noinst_LTLIBRARIES =
-comp_inst = libmca_common_sse.la
-comp_noinst = libmca_common_sse_noinst.la
 
 if MCA_BUILD_pmix_common_sse_DSO
-lib_LTLIBRARIES += $(comp_inst)
+lib_LTLIBRARIES += libmca_common_sse.la
 else
-noinst_LTLIBRARIES += $(comp_noinst)
+noinst_LTLIBRARIES += libmca_common_sse.la
 endif
 
 libmca_common_sse_la_SOURCES = $(headers) $(sources)
-libmca_common_sse_la_LDFLAGS = -version-info $(libmca_common_sse_so_version) $(pmix_check_curl_LDFLAGS)
+libmca_common_sse_la_LDFLAGS = $(pmix_check_curl_LDFLAGS)
+if MCA_BUILD_pmix_common_sse_DSO
+libmca_common_sse_la_LDFLAGS += -version-info $(libmca_common_sse_so_version)
+endif
 libmca_common_sse_la_LIBADD = $(pmix_check_curl_LIBS)
-libmca_common_sse_noinst_la_SOURCES = $(headers) $(sources)
 
 # Conditionally install the header files
 
@@ -45,16 +45,5 @@ if WANT_INSTALL_HEADERS
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)
 endif
-
-all-local:
-	if test -z "$(lib_LTLIBRARIES)"; then \
-		rm -f "$(comp_inst)"; \
-		$(LN_S) "$(comp_noinst)" "$(comp_inst)"; \
-	fi
-
-clean-local:
-	if test -z "$(lib_LTLIBRARIES)"; then \
-		rm -f "$(comp_inst)"; \
-	fi
 
 MAINTAINERCLEANFILES = sse_lex.c
