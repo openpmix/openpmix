@@ -1055,8 +1055,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     return PMIX_SUCCESS;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Abort(int status, const char msg[],
-                                     pmix_proc_t procs[], size_t nprocs)
+PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[], pmix_proc_t procs[], size_t nprocs)
 {
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_ABORT_CMD;
@@ -1071,10 +1070,10 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int status, const char msg[],
         return PMIX_ERR_INIT;
     }
 
-    /* if we aren't connected, don't attempt to send - just abort */
+    /* if we aren't connected, don't attempt to send */
     if (!pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        goto myabort;
+        return PMIX_ERR_UNREACH;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
@@ -1088,7 +1087,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int status, const char msg[],
         return rc;
     }
     /* pack the status flag */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, bfr, &status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, bfr, &flag, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(bfr);
@@ -1129,10 +1128,7 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int status, const char msg[],
     /* wait for the release */
     PMIX_WAIT_THREAD(&reglock);
     PMIX_DESTRUCT_LOCK(&reglock);
-
-myabort:
-    /* Now Exit */
-    _exit(status);
+    return PMIX_SUCCESS;
 }
 
 static void _putfn(int sd, short args, void *cbdata)
