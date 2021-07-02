@@ -19,6 +19,7 @@ cli_info_t *cli_info = NULL;
 int cli_info_cnt = 0;
 bool test_abort = false;
 bool test_complete = false;
+int test_timeout = 0;
 
 int cli_rank(cli_info_t *cli)
 {
@@ -158,12 +159,19 @@ void cli_cleanup(cli_info_t *cli)
     case CLI_FIN:
         /* error - means that process terminated w/o calling finalize */
         if (!test_abort) {
-            TEST_ERROR(
-                ("rank %d with state %d unexpectedly terminated.", cli_rank(cli), cli->state));
+            TEST_VERBOSE(("Rank %d cli->exit_code %d", cli_rank(cli), cli->exit_code));
+            if (PMIX_ERR_TIMEOUT == cli->exit_code) {
+                TEST_VERBOSE(("Rank %d timed out", cli_rank(cli)));
+                test_timeout = PMIX_ERR_TIMEOUT;
+            }
+            else {
+                TEST_ERROR(
+                    ("rank %d with state %d unexpectedly terminated.", cli_rank(cli), cli->state));
+                test_abort = true;
+            }
         }
         cli_finalize(cli);
         cli_cleanup(cli);
-        test_abort = true;
         break;
     case CLI_DISCONN:
         cli_disconnect(cli);

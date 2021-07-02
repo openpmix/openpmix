@@ -160,8 +160,23 @@ done:
     pmix_argv_free(client_argv);
     pmix_argv_free(client_env);
 
-    if (0 == test_fail) {
-        TEST_OUTPUT(("Test SUCCEEDED!"));
+    if (!test_fail && !test_timeout) {
+        if (0 == my_server_id) {
+            TEST_OUTPUT(("Test SUCCEEDED! All servers completed normally.", my_server_id));
+        }
     }
+    else if (!test_timeout) {
+        if (PMIX_ERR_TIMEOUT == test_fail){
+            TEST_OUTPUT(("Test TIMED OUT for server id: %d", my_server_id));
+        }
+        else {
+            TEST_OUTPUT(("Test FAILED for server id: %d, failure code = %d", my_server_id, test_fail));
+        }
+    }
+    else {
+        TEST_OUTPUT(("Test TIMED OUT for server id: %d", my_server_id));
+        return test_timeout;
+    }
+
     return test_fail;
 }
