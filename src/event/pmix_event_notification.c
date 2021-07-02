@@ -1192,9 +1192,11 @@ static void _notify_client_event(int sd, short args, void *cbdata)
             if (NULL != pmix_host_server.notify_event) {
                 /* mark that we sent it upstairs so we don't release
                  * the caddy until we return from the host RM */
-                holdcd = true;
-                pmix_host_server.notify_event(cd->status, &cd->source, cd->range, cd->info,
-                                              cd->ninfo, local_cbfunc, cd);
+                rc = pmix_host_server.notify_event(cd->status, &cd->source, cd->range, cd->info,
+                                                   cd->ninfo, local_cbfunc, cd);
+                if (PMIX_SUCCESS == rc) {
+                    holdcd = true;
+                }
             }
         }
     }
