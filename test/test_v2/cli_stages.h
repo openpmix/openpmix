@@ -62,6 +62,7 @@ extern cli_info_t *cli_info;
 extern int cli_info_cnt;
 extern bool test_abort;
 extern bool test_complete;
+extern int test_timeout;
 
 int cli_rank(cli_info_t *cli);
 void cli_init(int nprocs);

@@ -558,6 +558,7 @@ static int srv_wait_all(double timeout)
     int status;
     struct timeval tv;
     double start_time, cur_time;
+    signed char exit_status;
     int ret = 0;
 
     gettimeofday(&tv, NULL);
@@ -579,9 +580,16 @@ static int srv_wait_all(double timeout)
         if (pid >= 0) {
             PMIX_LIST_FOREACH_SAFE (server, next, server_list, server_info_t) {
                 if (server->pid == pid) {
+                    exit_status = (signed char) WEXITSTATUS(status);
                     TEST_VERBOSE(("server %d finalize PID:%d with status %d", server->idx,
-                                  server->pid, WEXITSTATUS(status)));
-                    ret += WEXITSTATUS(status);
+                                  server->pid, exit_status));
+                    if (PMIX_ERR_TIMEOUT == exit_status) {
+                        ret = exit_status;
+                    }
+                    else {
+                        ret += exit_status;
+                    }
+
                     remove_server_item(server);
                 }
             }
@@ -1004,7 +1012,9 @@ static void wait_signal_callback(int fd, short event, void *arg)
             if (cli_info[i].pid == pid) {
                 /* found it! */
                 if (WIFEXITED(status)) {
-                    cli_info[i].exit_code = WEXITSTATUS(status);
+                    // convert back to int
+                    signed char exit_status = (signed char)WEXITSTATUS(status);
+                    cli_info[i].exit_code = (int)exit_status;
                     TEST_VERBOSE(
                         ("WIFEXITED, pid = %d, exit_code = %d", pid, cli_info[i].exit_code));
                 } else {
