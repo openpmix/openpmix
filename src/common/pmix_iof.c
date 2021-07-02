@@ -1280,6 +1280,16 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     output->numbytes = k;
 
 process:
+    /* if we are simply dumping to stdout/err, then do so */
+    if (&pmix_client_globals.iof_stdout.wev == channel ||
+        &pmix_client_globals.iof_stderr.wev == channel) {
+        if (0 < output->numbytes) {
+            write(channel->fd, output->data, output->numbytes);
+        }
+        PMIX_RELEASE(output);
+        return 0;
+    }
+
     /* add this data to the write list for this fd */
     pmix_list_append(&channel->outputs, &output->super);
 
@@ -1332,7 +1342,8 @@ void pmix_iof_write_handler(int _fd, short event, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(sink);
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output, "%s write:handler writing data to %d",
+    PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
+                         "%s write:handler writing data to %d",
                          PMIX_NAME_PRINT(&pmix_globals.myid), wev->fd));
 
     while (NULL != (item = pmix_list_remove_first(&wev->outputs))) {

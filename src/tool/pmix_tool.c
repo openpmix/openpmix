@@ -1413,10 +1413,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finalize called");
 
-    /* flush anything that is still trying to be written out */
-    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
-    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
-
     /* if we are connected, then disconnect */
     if (pmix_globals.connected) {
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1475,6 +1471,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
      * tear down the infrastructure, including removal
      * of any events objects may be holding */
     (void) pmix_progress_thread_pause(NULL);
+
+    /* flush anything that is still trying to be written out */
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
 
     PMIX_RELEASE(pmix_client_globals.myserver);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
