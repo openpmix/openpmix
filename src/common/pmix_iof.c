@@ -893,6 +893,11 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     if (PMIX_CHECK_PROCID(source, &req->requestor->info->pname)) {
         return PMIX_SUCCESS;
     }
+    /* never forward to myself */
+    if (PMIX_CHECK_PROCID(&req->requestor->info->pname, &pmix_globals.myid)) {
+        return PMIX_SUCCESS;
+    }
+
     /* setup the msg */
     if (NULL == (msg = PMIX_NEW(pmix_buffer_t))) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
