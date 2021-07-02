@@ -449,6 +449,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_value_t value;
     pmix_lock_t reglock, releaselock;
     pmix_status_t code;
+    bool outputio;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -475,6 +476,15 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     }
     /* init the parent procid to something innocuous */
     PMIX_LOAD_PROCID(&myparent, NULL, PMIX_RANK_UNDEF);
+
+    if (NULL != getenv("PMIX_LAUNCHER_RNDZ_URI") ||
+        NULL != getenv("PMIX_KEEPALIVE_PIPE")) {
+        /* we have a parent tool, so default to
+         * letting them output IOF */
+        outputio = false;
+    } else {
+        outputio = true;
+    }
 
     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SERVER);
     /* setup the function pointers */
@@ -506,6 +516,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                 rank_given = true;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SHARE_TOPOLOGY)) {
                 share_topo = true;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_LOCAL_OUTPUT)) {
+                outputio = PMIX_INFO_TRUE(&info[n]);
             }
         }
     }
@@ -586,6 +598,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     req->cbfunc = server_iof_handler;
     /* add it to the end of the list of recvs */
     pmix_list_append(&pmix_ptl_base.posted_recvs, &req->super);
+    /* set the default local output flag */
+    pmix_globals.iof_flags.local_output = outputio;
 
     if (nspace_given) {
         PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, nspace);
@@ -1274,8 +1288,13 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(cd);
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server _deregister_nspace %s",
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server _deregister_nspace %s",
                         cd->proc.nspace);
+
+    /* flush anything that is still trying to be written out */
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
 
     /* release any job-level network resources */
     pmix_pnet.deregister_nspace(cd->proc.nspace);
@@ -2977,19 +2996,6 @@ static void op_cbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-static void connection_cleanup(int sd, short args, void *cbdata)
-{
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
-
-    /* ensure that we know the peer has finalized else we
-     * will generate an event - yes, it should have been
-     * done, but it is REALLY important that it be set */
-    cd->peer->finalized = true;
-    pmix_ptl_base_lost_connection(cd->peer, PMIX_SUCCESS);
-    /* cleanup the caddy */
-    PMIX_RELEASE(cd);
-}
-
 static void op_cbfunc2(pmix_status_t status, void *cbdata)
 {
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
@@ -3022,14 +3028,13 @@ static void op_cbfunc2(pmix_status_t status, void *cbdata)
         PMIX_RELEASE(reply);
     }
 
-    /* cleanup any lingering references to this peer - note
-     * that we cannot call the lost_connection function
-     * directly as we need the connection to still
-     * exist for the message (queued above) to be
-     * sent. So we push this into an event, thus
-     * ensuring that it will "fire" after the message
-     * event has completed */
-    PMIX_THREADSHIFT(cd, connection_cleanup);
+    /* ensure that we know the peer has finalized else we
+     * will generate an event when the socket closes - yes,
+     * it should have been done, but it is REALLY important
+     * that it be set */
+    cd->peer->finalized = true;
+    /* cleanup the caddy */
+    PMIX_RELEASE(cd);
 }
 
 static void _spcb(int sd, short args, void *cbdata)
@@ -4358,8 +4363,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
             pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
             proc.rank = peer->info->pname.rank;
             /* now tell the host server */
-            rc = pmix_host_server.client_finalized(&proc, peer->info->server_object, op_cbfunc2,
-                                                   cd);
+            rc = pmix_host_server.client_finalized(&proc, peer->info->server_object, op_cbfunc2, cd);
             if (PMIX_SUCCESS == rc) {
                 /* don't reply to them ourselves - we will do so when the host
                  * server calls us back */
