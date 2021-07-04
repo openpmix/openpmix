@@ -142,6 +142,10 @@ static void process_cache(int sd, short args, void *cbdata)
         if (PMIX_CHECK_PROCID(&iof->source, &req->requestor->info->pname)) {
             continue;
         }
+        /* never forward to myself */
+        if (PMIX_CHECK_PROCID(&req->requestor->info->pname, &pmix_globals.myid)) {
+            continue;
+        }
         /* if the source does not match the request, then ignore it */
         found = false;
         for (n = 0; n < req->nprocs; n++) {
@@ -271,7 +275,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
             return PMIX_SUCCESS;
         }
         /* if there isn't a registration callback, then we can return "succeeded"
-         * as we atomically performend the request. threadshift to process any
+         * as we atomically performed the request. threadshift to process any
          * cached IO as we must return from this function before we do so */
         PMIX_THREADSHIFT(req, process_cache);
         return PMIX_OPERATION_SUCCEEDED;
