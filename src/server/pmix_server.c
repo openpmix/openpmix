@@ -117,8 +117,10 @@ static void server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     pmix_iof_req_t *req;
     pmix_info_t *info = NULL;
 
-    pmix_output_verbose(2, pmix_client_globals.iof_output, "recvd IOF with %d bytes",
-                        (int) buf->bytes_used);
+    pmix_output_verbose(2, pmix_client_globals.iof_output,
+                        "recvd IOF with %d bytes from %s",
+                        (int) buf->bytes_used,
+                        PMIX_PNAME_PRINT(&peer->info->pname));
 
     /* if the buffer is empty, they are simply closing the socket */
     if (0 == buf->bytes_used) {
