@@ -1271,10 +1271,7 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         pyns = str(value[0].data.proc[0].nspace)
         return {'value':{'nspace':pyns, 'rank':value[0].data.proc[0].rank}, 'val_type':PMIX_PROC}
     elif PMIX_BYTE_OBJECT == value[0].type:
-        mybytes = <char*> PyMem_Malloc(value[0].data.bo.size)
-        if not mybytes:
-            return PMIX_ERR_NOMEM
-        memcpy(mybytes, value[0].data.bo.bytes, value[0].data.bo.size)
+        mybytes = <bytes>value[0].data.bo.bytes[:value[0].data.bo.size]
         return {'value':{'bytes':mybytes, 'size':value[0].data.bo.size}, 'val_type':PMIX_BYTE_OBJECT}
     elif PMIX_PERSISTENCE == value[0].type:
         return {'value':value[0].data.persist, 'val_type':PMIX_PERSISTENCE}

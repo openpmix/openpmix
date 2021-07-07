@@ -342,7 +342,7 @@ cdef class PMIxClient:
             pmix_free_info(info, klen)
         if PMIX_SUCCESS == rc:
             # convert the returned name
-            myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}
+            myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
         return rc, myname
 
     # Finalize the client library
