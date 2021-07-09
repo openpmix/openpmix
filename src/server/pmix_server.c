@@ -1878,9 +1878,8 @@ static void _deregister_client(int sd, short args, void *cbdata)
         if (info->pname.rank == cd->proc.rank) {
             /* if this client failed to call finalize, we still need
              * to restore any allocations that were given to it */
-            if (NULL
-                == (peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                                       info->peerid))) {
+            peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
+            if (NULL == peer) {
                 /* this peer never connected, and hence it won't finalize,
                  * so account for it here */
                 nptr->nfinalized++;

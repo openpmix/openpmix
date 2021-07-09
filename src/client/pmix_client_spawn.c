@@ -61,6 +61,7 @@
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_getcwd.h"
 
+#include "src/server/pmix_server_ops.h"
 #include "pmix_client_ops.h"
 
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
@@ -84,7 +85,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !pmix_globals.connected &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_UNREACH;
     }
@@ -136,6 +139,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_list_t ilist;
     char cwd[PMIX_PATH_MAX];
     char *tmp, *t2;
+    pmix_setup_caddy_t *cd;
+    bool proxy = false;
+    pmix_proc_t parent;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -152,7 +158,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         /* if I am a launcher, we default to local fork/exec */
         if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
             forkexec = true;
-        } else {
+        } else if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_UNREACH;
         }
@@ -179,7 +185,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                 }
                 jobenvars = true;
                 PMIX_LIST_DESTRUCT(&ilist);
-                break;
+            } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PARENT_ID)) {
+                PMIX_XFER_PROCID(&parent, job_info[n].value.data.proc);
+                proxy = true;
             }
         }
     }
@@ -248,6 +256,49 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                 }
             }
         }
+    }
+
+    /* if we are a server, then process this ourselves */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        cd = PMIX_NEW(pmix_setup_caddy_t);
+        if (NULL == cd) {
+            return PMIX_ERR_NOMEM;
+        }
+        /* if I am spawning on behalf of someone else, then
+         * that peer is the "spawner" */
+        if (proxy) {
+            /* find the parent's peer object */
+            cd->peer = pmix_get_peer_object(&parent);
+            if (NULL == cd->peer) {
+                PMIX_RELEASE(cd);
+                return PMIX_ERR_NOT_FOUND;
+            }
+        } else {
+            cd->peer = pmix_globals.mypeer;
+        }
+        PMIX_RETAIN(cd->peer);
+        cd->info = (pmix_info_t*)job_info;
+        cd->ninfo = ninfo;
+        cd->apps = (pmix_app_t*)apps;
+        cd->napps = napps;
+        cd->spcbfunc = cbfunc;
+        cd->cbdata = cbdata;
+        // mark that we are using the input data
+        cd->copied = false;
+        /* run a quick check of the directives to see if any IOF
+         * requests were included so we can set that up now - helps
+         * to catch any early output - and a request for notification
+         * of job termination so we can setup the event registration */
+        pmix_server_spawn_parser(pmix_globals.mypeer, cd);
+        /* call the local host */
+        rc = pmix_host_server.spawn(&pmix_globals.myid, cd->info, cd->ninfo,
+                                    cd->apps, cd->napps,
+                                    pmix_server_spcbfunc, cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
     }
 
     /* if we are not connected, then just fork/exec

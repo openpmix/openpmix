@@ -63,6 +63,7 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
+#include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 
@@ -1412,7 +1413,7 @@ cleanup:
     return rc;
 }
 
-static void spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
+void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_iof_req_t *req;
@@ -1452,10 +1453,9 @@ static void spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
                 continue;
             }
             pmix_output_verbose(2, pmix_server_globals.iof_output,
-                                "PMIX:SERVER:SPAWN delivering cached IOF from %s:%d to %s:%d",
-                                iof->source.nspace, iof->source.rank,
-                                req->requestor->info->pname.nspace,
-                                req->requestor->info->pname.rank);
+                                "PMIX:SERVER:SPAWN delivering cached IOF from %s to %s",
+                                PMIX_NAME_PRINT(&iof->source),
+                                PMIX_PNAME_PRINT(&req->requestor->info->pname));
             /* setup the msg */
             if (NULL == (msg = PMIX_NEW(pmix_buffer_t))) {
                 PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
@@ -1518,31 +1518,74 @@ static void spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
     }
 
 cleanup:
-    /* cleanup the caddy */
-    if (NULL != cd->info) {
-        PMIX_INFO_FREE(cd->info, cd->ninfo);
-    }
-    if (NULL != cd->apps) {
-        PMIX_APP_FREE(cd->apps, cd->napps);
-    }
     if (NULL != cd->spcbfunc) {
         cd->spcbfunc(status, nspace, cd->cbdata);
     }
     PMIX_RELEASE(cd);
 }
 
-pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf, pmix_spawn_cbfunc_t cbfunc,
+void pmix_server_spawn_parser(pmix_peer_t *peer, pmix_setup_caddy_t *cd)
+{
+    size_t n;
+    bool stdout_found = false, stderr_found = false, stddiag_found = false;
+
+    /* run a quick check of the directives to see if any IOF
+     * requests were included so we can set that up now - helps
+     * to catch any early output - and a request for notification
+     * of job termination so we can setup the event registration */
+    cd->channels = PMIX_FWD_NO_CHANNELS;
+    for (n = 0; n < cd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&cd->info[n], PMIX_FWD_STDIN)) {
+            if (PMIX_INFO_TRUE(&cd->info[n])) {
+                cd->channels |= PMIX_FWD_STDIN_CHANNEL;
+            }
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_FWD_STDOUT)) {
+            stdout_found = true;
+            if (PMIX_INFO_TRUE(&cd->info[n])) {
+                cd->channels |= PMIX_FWD_STDOUT_CHANNEL;
+            }
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_FWD_STDERR)) {
+            stderr_found = true;
+            if (PMIX_INFO_TRUE(&cd->info[n])) {
+                cd->channels |= PMIX_FWD_STDERR_CHANNEL;
+            }
+        } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_FWD_STDDIAG)) {
+            stddiag_found = true;
+            if (PMIX_INFO_TRUE(&cd->info[n])) {
+                cd->channels |= PMIX_FWD_STDDIAG_CHANNEL;
+            }
+        }
+    }
+    /* we will construct any required iof request tracker upon completion of the spawn
+     * as we need the nspace of the spawned application! */
+
+    if (PMIX_PEER_IS_TOOL(peer)) {
+        /* if the requestor is a tool, we default to forwarding all
+         * output IO channels */
+        if (!stdout_found) {
+            cd->channels |= PMIX_FWD_STDOUT_CHANNEL;
+        }
+        if (!stderr_found) {
+            cd->channels |= PMIX_FWD_STDERR_CHANNEL;
+        }
+        if (!stddiag_found) {
+            cd->channels |= PMIX_FWD_STDDIAG_CHANNEL;
+        }
+    }
+}
+
+pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
+                                pmix_spawn_cbfunc_t cbfunc,
                                 void *cbdata)
 {
     pmix_setup_caddy_t *cd;
     int32_t cnt;
     pmix_status_t rc;
     pmix_proc_t proc;
-    size_t ninfo, n;
-    bool stdout_found = false, stderr_found = false, stddiag_found = false;
 
-    pmix_output_verbose(2, pmix_server_globals.spawn_output, "recvd SPAWN from %s:%d",
-                        peer->info->pname.nspace, peer->info->pname.rank);
+    pmix_output_verbose(2, pmix_server_globals.spawn_output,
+                        "recvd SPAWN from %s",
+                        PMIX_PNAME_PRINT(&peer->info->pname));
 
     if (NULL == pmix_host_server.spawn) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -1560,24 +1603,19 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf, pmix_spaw
 
     /* unpack the number of job-level directives */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cd);
         return rc;
     }
-    /* always add one directive that indicates whether the requestor
-     * is a tool or client */
-    cd->ninfo = ninfo + 1;
-    PMIX_INFO_CREATE(cd->info, cd->ninfo);
-    if (NULL == cd->info) {
-        rc = PMIX_ERR_NOMEM;
-        goto cleanup;
-    }
-
-    /* unpack the array of directives */
-    if (0 < ninfo) {
-        cnt = ninfo;
+    if (0 < cd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        if (NULL == cd->info) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        cnt = cd->ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1587,48 +1625,7 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf, pmix_spaw
          * requests were included so we can set that up now - helps
          * to catch any early output - and a request for notification
          * of job termination so we can setup the event registration */
-        cd->channels = PMIX_FWD_NO_CHANNELS;
-        for (n = 0; n < cd->ninfo; n++) {
-            if (0 == strncmp(cd->info[n].key, PMIX_FWD_STDIN, PMIX_MAX_KEYLEN)) {
-                if (PMIX_INFO_TRUE(&cd->info[n])) {
-                    cd->channels |= PMIX_FWD_STDIN_CHANNEL;
-                }
-            } else if (0 == strncmp(cd->info[n].key, PMIX_FWD_STDOUT, PMIX_MAX_KEYLEN)) {
-                stdout_found = true;
-                if (PMIX_INFO_TRUE(&cd->info[n])) {
-                    cd->channels |= PMIX_FWD_STDOUT_CHANNEL;
-                }
-            } else if (0 == strncmp(cd->info[n].key, PMIX_FWD_STDERR, PMIX_MAX_KEYLEN)) {
-                stderr_found = true;
-                if (PMIX_INFO_TRUE(&cd->info[n])) {
-                    cd->channels |= PMIX_FWD_STDERR_CHANNEL;
-                }
-            } else if (0 == strncmp(cd->info[n].key, PMIX_FWD_STDDIAG, PMIX_MAX_KEYLEN)) {
-                stddiag_found = true;
-                if (PMIX_INFO_TRUE(&cd->info[n])) {
-                    cd->channels |= PMIX_FWD_STDDIAG_CHANNEL;
-                }
-            }
-        }
-        /* we will construct any required iof request tracker upon completion of the spawn
-         * as we need the nspace of the spawned application! */
-    }
-    /* add the directive to the end */
-    if (PMIX_PEER_IS_TOOL(peer)) {
-        PMIX_INFO_LOAD(&cd->info[ninfo], PMIX_REQUESTOR_IS_TOOL, NULL, PMIX_BOOL);
-        /* if the requestor is a tool, we default to forwarding all
-         * output IO channels */
-        if (!stdout_found) {
-            cd->channels |= PMIX_FWD_STDOUT_CHANNEL;
-        }
-        if (!stderr_found) {
-            cd->channels |= PMIX_FWD_STDERR_CHANNEL;
-        }
-        if (!stddiag_found) {
-            cd->channels |= PMIX_FWD_STDDIAG_CHANNEL;
-        }
-    } else {
-        PMIX_INFO_LOAD(&cd->info[ninfo], PMIX_REQUESTOR_IS_CLIENT, NULL, PMIX_BOOL);
+        pmix_server_spawn_parser(peer, cd);
     }
 
     /* unpack the number of apps */
@@ -1652,9 +1649,14 @@ pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf, pmix_spaw
             goto cleanup;
         }
     }
+    /* mark that we created the data */
+    cd->copied = true;
+
     /* call the local server */
     PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-    rc = pmix_host_server.spawn(&proc, cd->info, cd->ninfo, cd->apps, cd->napps, spcbfunc, cd);
+    rc = pmix_host_server.spawn(&proc, cd->info, cd->ninfo,
+                                cd->apps, cd->napps,
+                                pmix_server_spcbfunc, cd);
 
 cleanup:
     if (PMIX_SUCCESS != rc) {
@@ -4724,6 +4726,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->nlocalprocs = 0;
     p->info = NULL;
     p->ninfo = 0;
+    p->copied = false;
     p->keys = NULL;
     p->channels = PMIX_FWD_NO_CHANNELS;
     p->bo = NULL;
@@ -4741,8 +4744,13 @@ static void scaddes(pmix_setup_caddy_t *p)
         PMIX_RELEASE(p->peer);
     }
     PMIX_PROC_FREE(p->procs, p->nprocs);
-    if (NULL != p->apps) {
-        PMIX_APP_FREE(p->apps, p->napps);
+    if (p->copied) {
+        if (NULL != p->info) {
+            PMIX_INFO_FREE(p->info, p->ninfo);
+        }
+        if (NULL != p->apps) {
+            PMIX_APP_FREE(p->apps, p->napps);
+        }
     }
     if (NULL != p->bo) {
         PMIX_BYTE_OBJECT_FREE(p->bo, p->nbo);
