@@ -140,10 +140,8 @@ cdef int pmix_load_argv(char **keys, argv:list):
     for a in argv:
         pya = a
         if isinstance(a, str):
-            print("LOADARGV ENCODING")
             pya = a.encode('ascii')
         keys[n] = strdup(pya)
-        print("LOADARGV ", n, pya)
         n += 1
     keys[n] = NULL
     return PMIX_SUCCESS
@@ -855,6 +853,11 @@ def pmix_bool_convert(f):
         else:
             print("Incorrect boolean value provided")
             int_bool = PMIX_ERR_BAD_PARAM
+    elif isinstance(f, (int, float)):
+        int_bool = f
+    else:
+        print("Unrecognized boolean value type provided")
+
     return int_bool
 
 pmix_int_types = (int, long)
@@ -1389,7 +1392,6 @@ cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
     cdef size_t n
     n = 0
     while n < ninfo:
-        print("UNLOADING INFO TYPE ", PMIx_Data_type_string(info[n].value.type))
         # pmix_unload_value returns a python dict of val, val_type
         val = pmix_unload_value(&info[n].value)
         if val['val_type'] == PMIX_UNDEF:
@@ -1454,8 +1456,6 @@ cdef int pmix_unload_pdata(const pmix_pdata_t *pdata, size_t npdata, ilist:list)
     cdef char* kystr
     cdef size_t n = 0
     while n < npdata:
-        print("UNLOADING INFO ", pdata[n].key, " TYPE ",
-                PMIx_Data_type_string(pdata[n].value.type))
         val = pmix_unload_value(&pdata[n].value)
         if val['val_type'] == PMIX_UNDEF:
             return PMIX_ERR_NOT_SUPPORTED
@@ -1623,25 +1623,24 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
                 m = len(p['argv']) + 1
             else:
                 m = 2
-            print("LOADAPPS NUMARGV ", m)
             argv = <char**> PyMem_Malloc(m * sizeof(char*))
             if not argv:
                 return PMIX_ERR_NOMEM
             memset(argv, 0, m)
             if p['argv'] is not None:
-                print("LOADAPPS ARGV ", p['argv'])
                 # pmix_load_argv(argv, p['argv'])
                 argv[0] = strdup("hostname")
             else:
-                print("LOADAPPS ARGV ", p['cmd'])
               #  pmix_load_argv(argv, [p['cmd']])
                 argv[0] = strdup("hostname")
         except:
-            print("LOADAPPS NO ARGV");
             argv = <char**> PyMem_Malloc(2 * sizeof(char*))
             memset(argv, 0, 2)
-            pmix_load_argv(argv, [p['cmd']])
-
+            rc = pmix_load_argv(argv, [p['cmd']])
+            if PMIX_SUCCESS != rc:
+                PyMem_Free(argv)
+                return rc
+        apps[n].argv = argv
         apps[n].env = NULL
         try:
             if p['env'] is not None:
