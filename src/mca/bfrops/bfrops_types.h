@@ -31,41 +31,36 @@
 
 #include "src/include/pmix_config.h"
 
-
+#include "include/pmix_common.h"
+#include "src/class/pmix_list.h"
 #include "src/class/pmix_object.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/class/pmix_list.h"
-#include "include/pmix_common.h"
 
 BEGIN_C_DECLS
 
 /* define the results values for comparisons so we can change them in only one place */
-typedef enum {
-    PMIX_EQUAL = 0,
-    PMIX_VALUE1_GREATER,
-    PMIX_VALUE2_GREATER
-} pmix_value_cmp_t;
+typedef enum { PMIX_EQUAL = 0, PMIX_VALUE1_GREATER, PMIX_VALUE2_GREATER } pmix_value_cmp_t;
 
 /* set the bfrops module */
-#define PMIX_BFROPS_SET_MODULE(r, mp, p, v)                                 \
-    do {                                                                    \
-        (mp)->nptr->compat.bfrops = pmix_bfrops_base_assign_module((v));    \
-        if (NULL == (mp)->nptr->compat.bfrops) {                            \
-            (r) = PMIX_ERR_INIT;                                            \
-        } else {                                                            \
-            (p)->nptr->compat.bfrops = (mp)->nptr->compat.bfrops;           \
-            (mp)->protocol = PMIX_PROTOCOL_V2;                              \
-            (r) = PMIX_SUCCESS;                                             \
-        }                                                                   \
-    } while(0)
+#define PMIX_BFROPS_SET_MODULE(r, mp, p, v)                              \
+    do {                                                                 \
+        (mp)->nptr->compat.bfrops = pmix_bfrops_base_assign_module((v)); \
+        if (NULL == (mp)->nptr->compat.bfrops) {                         \
+            (r) = PMIX_ERR_INIT;                                         \
+        } else {                                                         \
+            (p)->nptr->compat.bfrops = (mp)->nptr->compat.bfrops;        \
+            (mp)->protocol = PMIX_PROTOCOL_V2;                           \
+            (r) = PMIX_SUCCESS;                                          \
+        }                                                                \
+    } while (0)
 
 /**
  * buffer type
  */
 typedef uint8_t pmix_bfrop_buffer_type_t;
-#define PMIX_BFROP_BUFFER_UNDEF         0x00
-#define PMIX_BFROP_BUFFER_NON_DESC      0x01
-#define PMIX_BFROP_BUFFER_FULLY_DESC    0x02
+#define PMIX_BFROP_BUFFER_UNDEF      0x00
+#define PMIX_BFROP_BUFFER_NON_DESC   0x01
+#define PMIX_BFROP_BUFFER_FULLY_DESC 0x02
 
 #define PMIX_BFROP_BUFFER_TYPE_HTON(h)
 #define PMIX_BFROP_BUFFER_TYPE_NTOH(h)
@@ -86,13 +81,13 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_kval_t);
         (k) = PMIX_NEW(pmix_kval_t);                                    \
         if (NULL != (k)) {                                              \
             (k)->key = strdup((s));                                     \
-            (k)->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));   \
+            (k)->value = (pmix_value_t *) malloc(sizeof(pmix_value_t)); \
             if (NULL == (k)->value) {                                   \
                 PMIX_RELEASE((k));                                      \
                 (k) = NULL;                                             \
             }                                                           \
         }                                                               \
-    } while(0)
+    } while (0)
 
 /**
  * Structure for holding a buffer */
@@ -137,10 +132,10 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_buffer_t);
 #define PMIX_LOAD_BUFFER(p, b, d, s)                    \
     do {                                                \
         (b)->type = (p)->nptr->compat.type;             \
-        (b)->base_ptr = (char*)(d);                     \
+        (b)->base_ptr = (char *) (d);                   \
         (b)->bytes_used = (s);                          \
         (b)->bytes_allocated = (s);                     \
-        (b)->pack_ptr = ((char*)(b)->base_ptr) + (s);   \
+        (b)->pack_ptr = ((char *) (b)->base_ptr) + (s); \
         (b)->unpack_ptr = (b)->base_ptr;                \
         (d) = NULL;                                     \
         (s) = 0;                                        \
@@ -159,21 +154,20 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_buffer_t);
  * the address of the buffer's payload to the provided pointer.
  * Accordingly, the macro will set all pmix_buffer_t internal
  * tracking pointers to NULL and all counters to zero */
-#define PMIX_UNLOAD_BUFFER(b, d, s)             \
-    do {                                        \
-        (d) = (char*)(b)->unpack_ptr;           \
-        (s) = (b)->bytes_used;                  \
-        (b)->base_ptr = NULL;                   \
-        (b)->bytes_used = 0;                    \
-        (b)->bytes_allocated = 0;               \
-        (b)->pack_ptr = NULL;                   \
-        (b)->unpack_ptr = NULL;                 \
+#define PMIX_UNLOAD_BUFFER(b, d, s)     \
+    do {                                \
+        (d) = (char *) (b)->unpack_ptr; \
+        (s) = (b)->bytes_used;          \
+        (b)->base_ptr = NULL;           \
+        (b)->bytes_used = 0;            \
+        (b)->bytes_allocated = 0;       \
+        (b)->pack_ptr = NULL;           \
+        (b)->unpack_ptr = NULL;         \
     } while (0)
 
 /* Convenience macro to check for empty buffer without
  * exposing the internals */
-#define PMIX_BUFFER_IS_EMPTY(b)     \
-    (0 == (b)->bytes_used || (b)->pack_ptr == (b)->unpack_ptr)
+#define PMIX_BUFFER_IS_EMPTY(b) (0 == (b)->bytes_used || (b)->pack_ptr == (b)->unpack_ptr)
 
 END_C_DECLS
 

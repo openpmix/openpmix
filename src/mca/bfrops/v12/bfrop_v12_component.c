@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,20 +29,20 @@
 
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
-#include "src/include/types.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/types.h"
 
-#include "src/util/error.h"
-#include "src/server/pmix_server_ops.h"
-#include "src/mca/bfrops/base/base.h"
 #include "bfrop_v12.h"
+#include "src/mca/bfrops/base/base.h"
+#include "src/server/pmix_server_ops.h"
+#include "src/util/error.h"
 
 extern pmix_bfrops_module_t pmix_bfrops_pmix12_module;
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 static pmix_status_t component_close(void);
-static pmix_bfrops_module_t* assign_module(void);
+static pmix_bfrops_module_t *assign_module(void);
 /*
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
@@ -64,7 +65,6 @@ pmix_bfrops_base_component_t mca_bfrops_v12_component = {
     .assign_module = assign_module
 };
 
-
 pmix_status_t component_open(void)
 {
     /* setup the types array */
@@ -73,15 +73,13 @@ pmix_status_t component_open(void)
     return PMIX_SUCCESS;
 }
 
-
 pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
 
     *priority = mca_bfrops_v12_component.priority;
-    *module = (pmix_mca_base_module_t *)&pmix_bfrops_pmix12_module;
+    *module = (pmix_mca_base_module_t *) &pmix_bfrops_pmix12_module;
     return PMIX_SUCCESS;
 }
-
 
 pmix_status_t component_close(void)
 {
@@ -89,7 +87,7 @@ pmix_status_t component_close(void)
     return PMIX_SUCCESS;
 }
 
-static pmix_bfrops_module_t* assign_module(void)
+static pmix_bfrops_module_t *assign_module(void)
 {
     return &pmix_bfrops_pmix12_module;
 }
