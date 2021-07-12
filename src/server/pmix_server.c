@@ -61,6 +61,7 @@
 #include "src/mca/preg/preg.h"
 #include "src/mca/prm/base/base.h"
 #include "src/mca/psensor/base/base.h"
+#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -451,6 +452,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_value_t value;
     pmix_lock_t reglock, releaselock;
     pmix_status_t code;
+    pmix_ptl_posted_recv_t *rcv;
     bool outputio;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
@@ -476,6 +478,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         /* anything else should just be cleared */
         pmix_unsetenv("PMIX_MCA_ptl", &environ);
     }
+
     /* init the parent procid to something innocuous */
     PMIX_LOAD_PROCID(&myparent, NULL, PMIX_RANK_UNDEF);
 
@@ -595,11 +598,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         return rc;
     }
     /* setup the IO Forwarding recv */
-    req = PMIX_NEW(pmix_ptl_posted_recv_t);
-    req->tag = PMIX_PTL_TAG_IOF;
-    req->cbfunc = server_iof_handler;
+    rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
+    rcv->tag = PMIX_PTL_TAG_IOF;
+    rcv->cbfunc = server_iof_handler;
     /* add it to the end of the list of recvs */
-    pmix_list_append(&pmix_ptl_base.posted_recvs, &req->super);
+    pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
     /* set the default local output flag */
     pmix_globals.iof_flags.local_output = outputio;
 
@@ -917,7 +920,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     /* close the psensor framework */
     (void) pmix_mca_base_framework_close(&pmix_psensor_base_framework);
     /* close the pnet framework */
-    (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    /* close the pstrg framework */
+    (void) pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
 
     PMIX_RELEASE_THREAD(&pmix_global_lock);
     PMIX_DESTRUCT_LOCK(&pmix_global_lock);
@@ -1869,9 +1874,8 @@ static void _deregister_client(int sd, short args, void *cbdata)
         if (info->pname.rank == cd->proc.rank) {
             /* if this client failed to call finalize, we still need
              * to restore any allocations that were given to it */
-            if (NULL
-                == (peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                                       info->peerid))) {
+            peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
+            if (NULL == peer) {
                 /* this peer never connected, and hence it won't finalize,
                  * so account for it here */
                 nptr->nfinalized++;
@@ -3260,7 +3264,6 @@ finish_collective:
     PMIX_LIST_FOREACH_SAFE (cd, nxt, &tracker->local_cbs, pmix_server_caddy_t) {
         reply = PMIX_NEW(pmix_buffer_t);
         if (NULL == reply) {
-            rc = PMIX_ERR_NOMEM;
             break;
         }
         /* setup the reply, starting with the returned status */
@@ -3272,8 +3275,8 @@ finish_collective:
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "server:modex_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-        PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
-        if (PMIX_SUCCESS != rc) {
+        PMIX_SERVER_QUEUE_REPLY(ret, cd->peer, cd->hdr.tag, reply);
+        if (PMIX_SUCCESS != ret) {
             PMIX_RELEASE(reply);
         }
         /* remove this entry */
@@ -3469,8 +3472,7 @@ static void _cnct(int sd, short args, void *cbdata)
                  * of returning a copy of the data, or a pointer to
                  * local storage */
                 /* add the job-level info, if necessary */
-                proc.rank = PMIX_RANK_WILDCARD;
-                pmix_strncpy(proc.nspace, nspaces[i], PMIX_MAX_NSLEN);
+                PMIX_LOAD_PROCID(&proc, nspaces[i], PMIX_RANK_WILDCARD);
                 PMIX_CONSTRUCT(&cb, pmix_cb_t);
                 /* this is for a local client, so give the gds the
                  * option of returning a complete copy of the data,

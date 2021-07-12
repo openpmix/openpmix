@@ -58,6 +58,7 @@ typedef struct {
     int nlocalprocs;
     pmix_info_t *info;
     size_t ninfo;
+    bool copied;
     char **keys;
     pmix_app_t *apps;
     size_t napps;
@@ -271,6 +272,8 @@ PMIX_EXPORT pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t
 
 PMIX_EXPORT pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT void pmix_server_spawn_parser(pmix_peer_t *peer, pmix_setup_caddy_t *cd);
+PMIX_EXPORT void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata);
 
 PMIX_EXPORT pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                                               pmix_op_cbfunc_t cbfunc);
@@ -352,5 +355,24 @@ PMIX_EXPORT pmix_status_t pmix_server_fabric_get_device_index(pmix_server_caddy_
 
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;
+
+static inline pmix_peer_t* pmix_get_peer_object(const pmix_proc_t *proc)
+{
+    pmix_peer_t *peer;
+    int n;
+
+    for (n=0; n < pmix_server_globals.clients.size; n++) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        if (NULL == peer) {
+            continue;
+        }
+        if (PMIX_CHECK_NSPACE(proc->nspace, peer->info->pname.nspace) &&
+            proc->rank == peer->info->pname.rank) {
+            return peer;
+        }
+    }
+    return NULL;
+}
+
 
 #endif // PMIX_SERVER_OPS_H
