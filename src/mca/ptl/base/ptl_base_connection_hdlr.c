@@ -701,6 +701,10 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd, char *
                 return PMIX_ERR_NOMEM;
             }
             nptr->nspace = strdup(pnd->proc.nspace);
+            /* save the version */
+            nptr->version.major = pnd->proc_type.major;
+            nptr->version.minor = pnd->proc_type.minor;
+            nptr->version.release = pnd->proc_type.release;
         }
         /* now look for the rank */
         info = NULL;

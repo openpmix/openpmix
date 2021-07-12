@@ -651,8 +651,7 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
 
     /* do we have a live connection? */
     if (queue->peer->sd < 0) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "%s no connection",
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "%s no connection",
                             PMIX_NAME_PRINT(&pmix_globals.myid));
         if (NULL != queue->buf) {
             PMIX_RELEASE(queue->buf);
@@ -739,8 +738,8 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "QUEING MSG TO SERVER %s ON SOCKET %d OF SIZE %d",
-                        PMIX_PNAME_PRINT(&ms->peer->info->pname),
-                        ms->peer->sd, (int)ms->bfr->bytes_used);
+                        PMIX_PNAME_PRINT(&ms->peer->info->pname), ms->peer->sd,
+                        (int) ms->bfr->bytes_used);
 
     /* is this a send to myself? */
     if (ms->peer == pmix_globals.mypeer) {

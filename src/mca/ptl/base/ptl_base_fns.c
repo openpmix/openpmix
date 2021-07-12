@@ -71,7 +71,7 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V41 SERVER DETECTED");
 
         /* must use the latest bfrops module */
-        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v41");
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, NULL);
         return rc;
     }
 
@@ -131,8 +131,8 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
     char *evar;
     pmix_status_t rc;
 
-    if (NULL != (evar = getenv("PMIX_SERVER_URI401"))) {
-        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI401");
+    if (NULL != (evar = getenv("PMIX_SERVER_URI41"))) {
+        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI41");
         *ev = evar;
         return rc;
     }
