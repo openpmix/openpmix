@@ -8,6 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -330,7 +331,6 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
     pmix_status_t rc;
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FABRIC_UPDATE_CMD;
-    pmix_info_t info;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -364,7 +364,6 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
         rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_UPDATE_INFO, cb->info, 1, fcb,
                                      (void *) cb);
         if (PMIX_SUCCESS != rc && NULL != cbfunc) {
-            PMIX_INFO_DESTRUCT(&info);
             PMIX_RELEASE(cb);
         }
         return rc;
