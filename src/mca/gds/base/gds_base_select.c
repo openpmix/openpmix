@@ -12,6 +12,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,11 +25,11 @@
 
 #include <string.h>
 
+#include "src/mca/base/base.h"
+#include "src/mca/mca.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/show_help.h"
-#include "src/mca/mca.h"
-#include "src/mca/base/base.h"
 
 #include "src/mca/gds/base/base.h"
 
@@ -52,17 +53,20 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
     pmix_gds_globals.selected = true;
 
     /* Query all available components and ask if they have a module */
-    PMIX_LIST_FOREACH(cli, &pmix_gds_base_framework.framework_components, pmix_mca_base_component_list_item_t) {
+    PMIX_LIST_FOREACH (cli, &pmix_gds_base_framework.framework_components,
+                       pmix_mca_base_component_list_item_t) {
         component = (pmix_mca_base_component_t *) cli->cli_component;
 
         pmix_output_verbose(5, pmix_gds_base_framework.framework_output,
-                            "mca:gds:select: checking available component %s", component->pmix_mca_component_name);
+                            "mca:gds:select: checking available component %s",
+                            component->pmix_mca_component_name);
 
         /* If there's no query function, skip it */
         if (NULL == component->pmix_mca_query_component) {
-            pmix_output_verbose(5, pmix_gds_base_framework.framework_output,
-                                "mca:gds:select: Skipping component [%s]. It does not implement a query function",
-                                component->pmix_mca_component_name );
+            pmix_output_verbose(
+                5, pmix_gds_base_framework.framework_output,
+                "mca:gds:select: Skipping component [%s]. It does not implement a query function",
+                component->pmix_mca_component_name);
             continue;
         }
 
@@ -74,14 +78,15 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
 
         /* If no module was returned, then skip component */
         if (PMIX_SUCCESS != rc || NULL == module) {
-            pmix_output_verbose(5, pmix_gds_base_framework.framework_output,
-                                "mca:gds:select: Skipping component [%s]. Query failed to return a module",
-                                component->pmix_mca_component_name );
+            pmix_output_verbose(
+                5, pmix_gds_base_framework.framework_output,
+                "mca:gds:select: Skipping component [%s]. Query failed to return a module",
+                component->pmix_mca_component_name);
             continue;
         }
 
         /* If we got a module, keep it */
-        nmodule = (pmix_gds_base_module_t*) module;
+        nmodule = (pmix_gds_base_module_t *) module;
         /* let it initialize */
         if (NULL != nmodule->init && PMIX_SUCCESS != nmodule->init(info, ninfo)) {
             continue;
@@ -90,14 +95,14 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
         newmodule = PMIX_NEW(pmix_gds_base_active_module_t);
         newmodule->pri = priority;
         newmodule->module = nmodule;
-        newmodule->component = (pmix_gds_base_component_t*)cli->cli_component;
+        newmodule->component = (pmix_gds_base_component_t *) cli->cli_component;
 
         /* maintain priority order */
         inserted = false;
-        PMIX_LIST_FOREACH(mod, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
+        PMIX_LIST_FOREACH (mod, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
             if (priority > mod->pri) {
-                pmix_list_insert_pos(&pmix_gds_globals.actives,
-                                     (pmix_list_item_t*)mod, &newmodule->super);
+                pmix_list_insert_pos(&pmix_gds_globals.actives, (pmix_list_item_t *) mod,
+                                     &newmodule->super);
                 inserted = true;
                 break;
             }
@@ -115,7 +120,7 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
     }
 
     /* setup the list of all module names */
-    PMIX_LIST_FOREACH(mod, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
+    PMIX_LIST_FOREACH (mod, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
         pmix_argv_append_nosize(&mods, mod->module->name);
     }
     pmix_gds_globals.all_mods = pmix_argv_join(mods, ',');
@@ -124,10 +129,12 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
     if (4 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output)) {
         pmix_output(0, "Final gds priorities");
         /* show the prioritized list */
-        PMIX_LIST_FOREACH(mod, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
-            pmix_output(0, "\tgds: %s Priority: %d", mod->component->base.pmix_mca_component_name, mod->pri);
+        PMIX_LIST_FOREACH (mod, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
+            pmix_output(0, "\tgds: %s Priority: %d", mod->component->base.pmix_mca_component_name,
+                        mod->pri);
         }
     }
 
-    return PMIX_SUCCESS;;
+    return PMIX_SUCCESS;
+    ;
 }

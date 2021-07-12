@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -11,8 +12,8 @@
  */
 
 #include "test_publish.h"
-#include <time.h>
 #include "src/include/pmix_globals.h"
+#include <time.h>
 
 typedef struct {
     int in_progress;
@@ -22,24 +23,22 @@ typedef struct {
 
 static void release_cb(pmix_status_t status, void *cbdata)
 {
-    int *ptr = (int*)cbdata;
+    int *ptr = (int *) cbdata;
     *ptr = 0;
 }
 
-static void lookup_cb(pmix_status_t status,
-                      pmix_pdata_t pdata[], size_t npdata,
-                      void *cbdata)
+static void lookup_cb(pmix_status_t status, pmix_pdata_t pdata[], size_t npdata, void *cbdata)
 {
     size_t i, j;
-    lookup_cbdata *cb = (lookup_cbdata*)cbdata;
+    lookup_cbdata *cb = (lookup_cbdata *) cbdata;
     pmix_pdata_t *tgt = cb->pdata;
 
     /* find the matching key in the provided info array - error if not found */
-    for (i=0; i < npdata; i++) {
-        for (j=0; j < cb->npdata; j++) {
+    for (i = 0; i < npdata; i++) {
+        for (j = 0; j < cb->npdata; j++) {
             if (0 == strcmp(pdata[i].key, tgt[j].key)) {
                 /* transfer the value to the pmix_pdata_t */
-                (void)strncpy(tgt[j].proc.nspace, pdata[i].proc.nspace, PMIX_MAX_NSLEN);
+                (void) strncpy(tgt[j].proc.nspace, pdata[i].proc.nspace, PMIX_MAX_NSLEN);
                 tgt[j].proc.rank = pdata[i].proc.rank;
                 pmix_value_xfer(&tgt[j].value, &pdata[i].value);
                 break;
@@ -56,8 +55,8 @@ static int test_publish(char *my_nspace, int my_rank, int blocking)
     char data[512];
 
     PMIX_INFO_CONSTRUCT(&info);
-    (void)snprintf(info.key, PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
-    (void)snprintf(data, 512, "data from proc %s:%d", my_nspace, my_rank);
+    (void) snprintf(info.key, PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
+    (void) snprintf(data, 512, "data from proc %s:%d", my_nspace, my_rank);
     info.value.type = PMIX_STRING;
     info.value.data.string = strdup(data);
     if (blocking) {
@@ -81,8 +80,8 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
     char *keys[2];
 
     PMIX_PDATA_CONSTRUCT(&pdata);
-    (void)snprintf(pdata.key, PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
-    (void)snprintf(data, 512, "data from proc %s:%d", my_nspace, my_rank);
+    (void) snprintf(pdata.key, PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
+    (void) snprintf(data, 512, "data from proc %s:%d", my_nspace, my_rank);
 
     if (blocking) {
         if (PMIX_SUCCESS != (rc = PMIx_Lookup(&pdata, 1, NULL, 0))) {
@@ -90,8 +89,8 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
             return rc;
         }
     } else {
-        keys[0] = (char*)malloc(PMIX_MAX_KEYLEN * sizeof(char));
-        (void)snprintf(keys[0], PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
+        keys[0] = (char *) malloc(PMIX_MAX_KEYLEN * sizeof(char));
+        (void) snprintf(keys[0], PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
         keys[1] = NULL;
 
         lookup_cbdata cbdata;
@@ -99,8 +98,8 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
         cbdata.npdata = 1;
         cbdata.pdata = &pdata;
         /* copy the key across */
-        (void)strncpy(pdata.key, keys[0], PMIX_MAX_KEYLEN);
-        rc = PMIx_Lookup_nb(keys, NULL, 0, lookup_cb, (void*)&cbdata);
+        (void) strncpy(pdata.key, keys[0], PMIX_MAX_KEYLEN);
+        rc = PMIx_Lookup_nb(keys, NULL, 0, lookup_cb, (void *) &cbdata);
         if (PMIX_SUCCESS != rc) {
             PMIX_PDATA_DESTRUCT(&pdata);
             return rc;
@@ -108,8 +107,7 @@ static int test_lookup(char *my_nspace, int my_rank, int blocking)
         PMIX_WAIT_FOR_COMPLETION(cbdata.in_progress);
     }
 
-    if (PMIX_STRING != pdata.value.type ||
-            NULL == pdata.value.data.string) {
+    if (PMIX_STRING != pdata.value.type || NULL == pdata.value.data.string) {
         PMIX_PDATA_DESTRUCT(&pdata);
         return PMIX_ERR_NOT_FOUND;
     }
@@ -127,8 +125,8 @@ static int test_unpublish(char *my_nspace, int my_rank, int blocking)
     int rc;
     char *keys[2];
 
-    keys[0] = (char*)malloc(PMIX_MAX_KEYLEN * sizeof(char));
-    (void)snprintf(keys[0], PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
+    keys[0] = (char *) malloc(PMIX_MAX_KEYLEN * sizeof(char));
+    (void) snprintf(keys[0], PMIX_MAX_KEYLEN, "%s:%d", my_nspace, my_rank);
     keys[1] = NULL;
 
     if (blocking) {
@@ -149,31 +147,40 @@ static int test_publish_lookup_common(char *my_nspace, int my_rank, int blocking
     int rc;
     rc = test_publish(my_nspace, my_rank, blocking);
     if (PMIX_SUCCESS != rc) {
-        TEST_ERROR(("%s:%d: %s failed.", my_nspace, my_rank, blocking ? "PMIX_Publish" : "PMIX_Publish_nb"));
+        TEST_ERROR(("%s:%d: %s failed.", my_nspace, my_rank,
+                    blocking ? "PMIX_Publish" : "PMIX_Publish_nb"));
         exit(rc);
     }
-    TEST_VERBOSE(("%s:%d: %s succeeded.", my_nspace, my_rank, blocking ? "PMIX_Publish" : "PMIX_Publish_nb"));
+    TEST_VERBOSE(("%s:%d: %s succeeded.", my_nspace, my_rank,
+                  blocking ? "PMIX_Publish" : "PMIX_Publish_nb"));
 
     rc = test_lookup(my_nspace, my_rank, blocking);
     if (PMIX_SUCCESS != rc) {
-        TEST_ERROR(("%s:%d: %s failed.", my_nspace, my_rank, blocking ? "PMIX_Lookup" : "PMIX_Lookup_nb"));
+        TEST_ERROR(
+            ("%s:%d: %s failed.", my_nspace, my_rank, blocking ? "PMIX_Lookup" : "PMIX_Lookup_nb"));
         exit(rc);
     }
-    TEST_VERBOSE(("%s:%d: %s succeeded.\n", my_nspace, my_rank, blocking ? "PMIX_Lookup" : "PMIX_Lookup_nb"));
+    TEST_VERBOSE(("%s:%d: %s succeeded.\n", my_nspace, my_rank,
+                  blocking ? "PMIX_Lookup" : "PMIX_Lookup_nb"));
 
     rc = test_unpublish(my_nspace, my_rank, blocking);
     if (PMIX_SUCCESS != rc) {
-        TEST_ERROR(("%s:%d: %s failed.", my_nspace, my_rank, blocking ? "PMIX_Unpublish" : "PMIX_Unpublish_nb"));
+        TEST_ERROR(("%s:%d: %s failed.", my_nspace, my_rank,
+                    blocking ? "PMIX_Unpublish" : "PMIX_Unpublish_nb"));
         exit(rc);
     }
-    TEST_VERBOSE(("%s:%d: %s succeeded.", my_nspace, my_rank, blocking ? "PMIX_Unpublish" : "PMIX_Unpublish_nb"));
+    TEST_VERBOSE(("%s:%d: %s succeeded.", my_nspace, my_rank,
+                  blocking ? "PMIX_Unpublish" : "PMIX_Unpublish_nb"));
 
     rc = test_lookup(my_nspace, my_rank, blocking);
     if (PMIX_ERR_NOT_FOUND != rc) {
-        TEST_ERROR(("%s:%d: %s function returned %d instead of PMIX_ERR_NOT_FOUND.", my_nspace, my_rank, blocking ? "PMIX_Lookup" : "PMIX_Lookup_nb", rc));
+        TEST_ERROR(("%s:%d: %s function returned %d instead of PMIX_ERR_NOT_FOUND.", my_nspace,
+                    my_rank, blocking ? "PMIX_Lookup" : "PMIX_Lookup_nb", rc));
         exit(rc);
     }
-    TEST_VERBOSE(("%s:%d: %s succeeded.", my_nspace, my_rank, blocking ? "PMIX_Lookup of non-existent key" : "PMIX_Lookup_nb of non-existent key"));
+    TEST_VERBOSE(
+        ("%s:%d: %s succeeded.", my_nspace, my_rank,
+         blocking ? "PMIX_Lookup of non-existent key" : "PMIX_Lookup_nb of non-existent key"));
     return PMIX_SUCCESS;
 }
 

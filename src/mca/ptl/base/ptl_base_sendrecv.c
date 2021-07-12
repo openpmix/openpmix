@@ -61,7 +61,6 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
 {
     pmix_server_trkr_t *trk, *tnxt;
     pmix_server_caddy_t *rinfo, *rnext;
-    pmix_rank_info_t *info, *pinfo;
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
@@ -83,7 +82,8 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
     }
     CLOSE_THE_SOCKET(peer->sd);
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         /* if I am a server, then we need to ensure that
          * we properly account for the loss of this client
          * from any local collectives in which it was
@@ -166,7 +166,6 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
             }
         }
 
-
         /* if the peer simply died without finalizing,
          * then reduce the number of local procs */
         if (!peer->finalized && 0 < peer->nptr->nlocalprocs) {
@@ -184,26 +183,19 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
             pmix_psensor.stop(peer, NULL);
         }
 
-        if (!peer->finalized && !PMIX_PEER_IS_TOOL(peer) && !pmix_globals.mypeer->finalized) {
+        if (!peer->finalized && !pmix_globals.mypeer->finalized) {
             /* if this peer already called finalize, then
              * we are just seeing their connection go away
              * when they terminate - so do not generate
              * an event. If not, then we do */
             PMIX_REPORT_EVENT(err, peer, PMIX_RANGE_PROC_LOCAL, _notify_complete);
         }
-        /* mark this rank as "dead" but do not remove it from ranks for this nspace if it is
-         * still there - we must check for multiple copies as there will be
-         * one for each "clone" of this peer */
-        PMIX_LIST_FOREACH_SAFE (info, pinfo, &(peer->nptr->ranks), pmix_rank_info_t) {
-            if (info == peer->info) {
-                peer->finalized = true;
-            }
-        }
 
         /* be sure to let the host know that the tool or client
          * is gone - otherwise, it won't know to cleanup the
          * resources it allocated to it */
-        if (NULL != pmix_host_server.client_finalized && !peer->finalized) {
+        if (NULL != pmix_host_server.client_finalized &&
+            !PMIX_PEER_IS_TOOL(peer) && !peer->finalized) {
             pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
             proc.rank = peer->info->pname.rank;
             /* now tell the host server */
@@ -617,9 +609,8 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(queue);
 
-    if (NULL == queue->peer || queue->peer->sd < 0 ||
-        NULL == queue->peer->info || NULL == queue->peer->nptr) {
-        /* this peer has lost connection */
+    if (NULL == queue->peer || NULL == queue->peer->info || NULL == queue->peer->nptr) {
+        /* we don't know this peer */
         if (NULL != queue->buf) {
             PMIX_RELEASE(queue->buf);
         }
@@ -660,8 +651,7 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
 
     /* do we have a live connection? */
     if (queue->peer->sd < 0) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "%s no connection",
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "%s no connection",
                             PMIX_NAME_PRINT(&pmix_globals.myid));
         if (NULL != queue->buf) {
             PMIX_RELEASE(queue->buf);
@@ -748,8 +738,8 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "QUEING MSG TO SERVER %s ON SOCKET %d OF SIZE %d",
-                        PMIX_PNAME_PRINT(&ms->peer->info->pname),
-                        ms->peer->sd, (int)ms->bfr->bytes_used);
+                        PMIX_PNAME_PRINT(&ms->peer->info->pname), ms->peer->sd,
+                        (int) ms->bfr->bytes_used);
 
     /* is this a send to myself? */
     if (ms->peer == pmix_globals.mypeer) {

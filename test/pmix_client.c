@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,19 +28,19 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "src/class/pmix_object.h"
-#include "test_common.h"
-#include "test_fence.h"
-#include "test_publish.h"
-#include "test_spawn.h"
 #include "test_cd.h"
-#include "test_resolve_peers.h"
+#include "test_common.h"
 #include "test_error.h"
-#include "test_replace.h"
+#include "test_fence.h"
 #include "test_internal.h"
+#include "test_publish.h"
+#include "test_replace.h"
+#include "test_resolve_peers.h"
+#include "test_spawn.h"
 
 int main(int argc, char **argv)
 {
@@ -64,29 +65,33 @@ int main(int argc, char **argv)
     pmix_info_t info[1];
     size_t ninfo = 0;
     if (NULL != params.gds_mode) {
-        (void)strncpy(info[0].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN);
+        (void) strncpy(info[0].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN);
         info[0].value.type = PMIX_STRING;
         info[0].value.data.string = strdup(params.gds_mode);
         ninfo = 1;
     }
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, info, ninfo))) {
-        TEST_ERROR(("Client ns %s rank %d: PMIx_Init failed: %s", params.nspace, params.rank, PMIx_Error_string(rc)));
+        TEST_ERROR(("Client ns %s rank %d: PMIx_Init failed: %s", params.nspace, params.rank,
+                    PMIx_Error_string(rc)));
         FREE_TEST_PARAMS(params);
         exit(rc);
     }
     if (myproc.rank != params.rank) {
-        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match to rank from command line %d.", myproc.nspace, myproc.rank, params.rank));
+        TEST_ERROR(("Client ns %s Rank returned in PMIx_Init %d does not match to rank from "
+                    "command line %d.",
+                    myproc.nspace, myproc.rank, params.rank));
         FREE_TEST_PARAMS(params);
         exit(1);
     }
-    if ( NULL != params.prefix && -1 != params.ns_id) {
+    if (NULL != params.prefix && -1 != params.ns_id) {
         TEST_SET_FILE(params.prefix, params.ns_id, params.rank);
     }
     TEST_VERBOSE((" Client ns %s rank %d: PMIx_Init success", myproc.nspace, myproc.rank));
 
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        TEST_ERROR(("rank %d: PMIx_Get universe size failed: %s", myproc.rank, PMIx_Error_string(rc)));
+        TEST_ERROR(
+            ("rank %d: PMIx_Get universe size failed: %s", myproc.rank, PMIx_Error_string(rc)));
         FREE_TEST_PARAMS(params);
         exit(rc);
     }
@@ -95,11 +100,10 @@ int main(int argc, char **argv)
         FREE_TEST_PARAMS(params);
         exit(1);
     }
-    if (val->type != PMIX_UINT32 || val->data.uint32 != (uint32_t)params.ns_size ) {
+    if (val->type != PMIX_UINT32 || val->data.uint32 != (uint32_t) params.ns_size) {
         TEST_ERROR(("rank %d: Universe size value or type mismatch,"
                     " want %d(%d) get %d(%d)",
-                    myproc.rank, params.ns_size, PMIX_UINT32,
-                    val->data.integer, val->type));
+                    myproc.rank, params.ns_size, PMIX_UINT32, val->data.integer, val->type));
         FREE_TEST_PARAMS(params);
         exit(1);
     }
@@ -117,11 +121,13 @@ int main(int argc, char **argv)
         exit(1);
     }
     if (val->type != PMIX_STRING) {
-        TEST_ERROR(("rank %d: Hostname type mismatch: %s",
-                    myproc.rank, PMIx_Data_type_string(val->type)));
+        TEST_ERROR(
+            ("rank %d: Hostname type mismatch: %s", myproc.rank, PMIx_Data_type_string(val->type)));
         FREE_TEST_PARAMS(params);
         exit(1);
     }
+
+    TEST_VERBOSE(("rank %d: Hostname check: PASSED", myproc.rank));
 
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NODEID, NULL, 0, &val))) {
         TEST_ERROR(("rank %d: PMIx_Get nodeid failed: %s", myproc.rank, PMIx_Error_string(rc)));
@@ -134,13 +140,15 @@ int main(int argc, char **argv)
         exit(1);
     }
     if (val->type != PMIX_UINT32) {
-        TEST_ERROR(("rank %d: NodeID type mismatch: %s",
-                    myproc.rank, PMIx_Data_type_string(val->type)));
+        TEST_ERROR(
+            ("rank %d: NodeID type mismatch: %s", myproc.rank, PMIx_Data_type_string(val->type)));
         FREE_TEST_PARAMS(params);
         exit(1);
     }
 
-    if( NULL != params.nspace && 0 != strcmp(myproc.nspace, params.nspace) ) {
+    TEST_VERBOSE(("rank %d: NodeID check: PASSED", myproc.rank));
+
+    if (NULL != params.nspace && 0 != strcmp(myproc.nspace, params.nspace)) {
         TEST_ERROR(("rank %d: Bad nspace!", myproc.rank));
         FREE_TEST_PARAMS(params);
         exit(1);
@@ -150,7 +158,8 @@ int main(int argc, char **argv)
         rc = test_fence(params, myproc.nspace, myproc.rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Fence test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(
+                ("%s:%d Fence test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -159,7 +168,8 @@ int main(int argc, char **argv)
         rc = test_job_fence(params, myproc.nspace, myproc.rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Job fence test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(("%s:%d Job fence test failed: %s", myproc.nspace, myproc.rank,
+                        PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -168,7 +178,8 @@ int main(int argc, char **argv)
         rc = test_publish_lookup(myproc.nspace, myproc.rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Publish/Lookup test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(("%s:%d Publish/Lookup test failed: %s", myproc.nspace, myproc.rank,
+                        PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -177,7 +188,8 @@ int main(int argc, char **argv)
         rc = test_spawn(myproc.nspace, myproc.rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Spawn test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(
+                ("%s:%d Spawn test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -186,7 +198,8 @@ int main(int argc, char **argv)
         rc = test_connect_disconnect(myproc.nspace, myproc.rank);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Connect/Disconnect test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(("%s:%d Connect/Disconnect test failed: %s", myproc.nspace, myproc.rank,
+                        PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -195,7 +208,8 @@ int main(int argc, char **argv)
         rc = test_resolve_peers(myproc.nspace, myproc.rank, params);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d Resolve peers test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(("%s:%d Resolve peers test failed: %s", myproc.nspace, myproc.rank,
+                        PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -204,7 +218,8 @@ int main(int argc, char **argv)
         rc = test_error(myproc.nspace, myproc.rank, params);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d error registration and event handling test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(("%s:%d error registration and event handling test failed: %s",
+                        myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -213,7 +228,8 @@ int main(int argc, char **argv)
         rc = test_replace(myproc.nspace, myproc.rank, params);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d error key replace test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(("%s:%d error key replace test failed: %s", myproc.nspace, myproc.rank,
+                        PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -222,7 +238,8 @@ int main(int argc, char **argv)
         rc = test_internal(myproc.nspace, myproc.rank, params);
         if (PMIX_SUCCESS != rc) {
             FREE_TEST_PARAMS(params);
-            TEST_ERROR(("%s:%d error key store internal test failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+            TEST_ERROR(("%s:%d error key store internal test failed: %s", myproc.nspace,
+                        myproc.rank, PMIx_Error_string(rc)));
             exit(rc);
         }
     }
@@ -237,10 +254,12 @@ int main(int argc, char **argv)
     /* finalize us */
     TEST_VERBOSE(("Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank));
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        TEST_ERROR(("Client ns %s rank %d:PMIx_Finalize failed: %s", myproc.nspace, myproc.rank, PMIx_Error_string(rc)));
+        TEST_ERROR(("Client ns %s rank %d:PMIx_Finalize failed: %s", myproc.nspace, myproc.rank,
+                    PMIx_Error_string(rc)));
         exit(rc);
     } else {
-        TEST_VERBOSE(("Client ns %s rank %d:PMIx_Finalize successfully completed", myproc.nspace, myproc.rank));
+        TEST_VERBOSE(("Client ns %s rank %d:PMIx_Finalize successfully completed", myproc.nspace,
+                      myproc.rank));
     }
 
     TEST_VERBOSE(("Client %s:%d finished PID:%d", params.nspace, params.rank, getpid()));

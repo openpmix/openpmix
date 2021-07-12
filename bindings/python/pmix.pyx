@@ -214,7 +214,6 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     myns = kystr.decode('ascii')
     free(kystr)
     srcrank = int(source[0].rank)
-    print("EVHDLR ", myns, srcrank)
     pysource = {'nspace': myns, 'rank': srcrank}
     pyev_id  = int(evhdlr_registration_id)
 
@@ -342,7 +341,7 @@ cdef class PMIxClient:
             pmix_free_info(info, klen)
         if PMIX_SUCCESS == rc:
             # convert the returned name
-            myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}
+            myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
         return rc, myname
 
     # Finalize the client library
@@ -570,6 +569,8 @@ cdef class PMIxClient:
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
 
+        val = None
+
         # pass it into the get API
         rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
         if PMIX_SUCCESS == rc:
@@ -740,7 +741,6 @@ cdef class PMIxClient:
             if 0 < ninfo:
                 pmix_free_info(jinfo, ninfo)
             return rc, None
-        apps[0].argv[0] = strdup("hostname")
         rc = PMIx_Spawn(jinfo, ninfo, apps, napps, nspace)
         pmix_free_apps(apps, napps)
         if 0 < ninfo:
@@ -2033,7 +2033,6 @@ cdef class PMIxServer(PMIxClient):
                 pykey = str(d['key'])
                 pmix_copy_key(info[n].key, pykey)
                 # the value also needs to be transferred
-                print("SETUP LOCAL ", info[n].key, " TYPE ", PMIx_Data_type_string(d['val_type']))
                 val = {'value':d['value'], 'val_type':d['val_type']}
                 # send dict of value and val_type to pmix_load_value
                 pmix_load_value(&info[n].value, val)
@@ -3169,9 +3168,14 @@ cdef class PMIxTool(PMIxServer):
         # start the event handler progress thread
         progressThread.start()
 
+        # init myname
+        myname = {'nspace':'UNASSIGNED', 'rank':PMIX_RANK_UNDEF}
+
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
+        if PMIX_SUCCESS != rc:
+            return rc, myname
 
         if sz > 0:
             rc = PMIx_tool_init(&self.myproc, info, sz)

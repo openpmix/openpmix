@@ -60,6 +60,7 @@
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psec/psec.h"
+#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -80,13 +81,17 @@ static pmix_proc_t myparent;
 
 static void pdiedfn(int fd, short flags, void *arg)
 {
-    pmix_info_t info[3];
+    pmix_info_t info[2];
+    pmix_proc_t keepalive;
+
+    PMIX_LOAD_PROCID(&keepalive, "PMIX_KEEPALIVE_PIPE", PMIX_RANK_UNDEF);
 
     PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &myparent, PMIX_PROC);
+    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &keepalive, PMIX_PROC);
 
     /* generate a job-terminated event */
-    PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL, info, 3,
+    PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid,
+                      PMIX_RANGE_PROC_LOCAL, info, 2,
                       NULL, NULL);
 }
 
@@ -220,8 +225,7 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         }
     }
 
-    pmix_output_verbose(
-        2, pmix_client_globals.event_output,
+    pmix_output_verbose(2, pmix_client_globals.event_output,
         "[%s:%d] pmix:tool_notify_recv - processing event %s from source %s:%d, calling errhandler",
         pmix_globals.myid.nspace, pmix_globals.myid.rank, PMIx_Error_string(chain->status),
         chain->source.nspace, chain->source.rank);
@@ -425,6 +429,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_lock_t reglock, releaselock;
     pmix_status_t code;
     pmix_value_t *val, value;
+    bool outputio = true;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -497,6 +502,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 connect_optional = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_LOCAL_OUTPUT)) {
+                outputio = PMIX_INFO_TRUE(&info[n]);
             }
         }
     }
@@ -600,6 +607,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     rcv->cbfunc = tool_iof_handler;
     /* add it to the end of the list of recvs */
     pmix_list_append(&pmix_ptl_base.posted_recvs, &rcv->super);
+    /* default tools to outputting their IOF */
+    pmix_globals.iof_flags.local_output = outputio;
 
     /* setup the globals */
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
@@ -1400,10 +1409,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finalize called");
 
-    /* flush anything that is still trying to be written out */
-    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
-    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
-
     /* if we are connected, then disconnect */
     if (pmix_globals.connected) {
         pmix_output_verbose(2, pmix_globals.debug_output,
@@ -1463,6 +1468,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
      * of any events objects may be holding */
     (void) pmix_progress_thread_pause(NULL);
 
+    /* flush anything that is still trying to be written out */
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
+    pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
+
     PMIX_RELEASE(pmix_client_globals.myserver);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (n = 0; n < pmix_client_globals.peers.size; n++) {
@@ -1492,9 +1501,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
 
-    (void)pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
-    (void)pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
-    (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
 
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {

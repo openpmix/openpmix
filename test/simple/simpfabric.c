@@ -17,6 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,23 +29,23 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix.h"
 #include "include/pmix_server.h"
-#include "src/include/types.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/types.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <time.h>
-#include <sys/types.h>
-#include <sys/wait.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 
 #include "src/class/pmix_list.h"
-#include "src/util/pmix_environ.h"
-#include "src/util/output.h"
-#include "src/util/printf.h"
 #include "src/util/argv.h"
+#include "src/util/output.h"
+#include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 
 #include "simptest.h"
 
@@ -59,24 +60,22 @@ typedef struct {
 
 static void local_cbfunc(pmix_status_t status, void *cbdata)
 {
-    mylock_t *lock = (mylock_t*)cbdata;
+    mylock_t *lock = (mylock_t *) cbdata;
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
 
-static void setup_cbfunc(pmix_status_t status,
-                         pmix_info_t info[], size_t ninfo,
-                         void *provided_cbdata,
-                         pmix_op_cbfunc_t cbfunc, void *cbdata)
+static void setup_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo,
+                         void *provided_cbdata, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    mycaddy_t *mq = (mycaddy_t*)provided_cbdata;
+    mycaddy_t *mq = (mycaddy_t *) provided_cbdata;
     size_t n;
 
     /* transfer it to the caddy for return to the main thread */
     if (0 < ninfo) {
         PMIX_INFO_CREATE(mq->info, ninfo);
         mq->ninfo = ninfo;
-        for (n=0; n < ninfo; n++) {
+        for (n = 0; n < ninfo; n++) {
             PMIX_INFO_XFER(&mq->info[n], &info[n]);
         }
     }
@@ -95,7 +94,7 @@ int main(int argc, char **argv)
     pmix_info_t *info, *iptr;
     pmix_status_t rc;
     size_t ninfo;
-    int exit_code=0;
+    int exit_code = 0;
     size_t n;
     char *hosts, *procs;
     char *regex, *ppn;
@@ -107,7 +106,8 @@ int main(int argc, char **argv)
     pmix_cpuset_t mycpuset;
     pmix_device_distance_t *distances;
     size_t ndist;
-    pmix_device_type_t type = PMIX_DEVTYPE_OPENFABRICS | PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_COPROC | PMIX_DEVTYPE_GPU;
+    pmix_device_type_t type = PMIX_DEVTYPE_OPENFABRICS | PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_COPROC
+                              | PMIX_DEVTYPE_GPU;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -115,7 +115,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    fprintf(stderr, "PID: %lu Testing version %s\n", (unsigned long)getpid(), PMIx_Get_version());
+    fprintf(stderr, "PID: %lu Testing version %s\n", (unsigned long) getpid(), PMIx_Get_version());
 
     ninfo = 1;
     PMIX_INFO_CREATE(info, ninfo);
@@ -146,7 +146,8 @@ int main(int argc, char **argv)
     mytopo = val->data.topo;
     val->data.topo = NULL;
     PMIX_VALUE_FREE(val, 1);
-    fprintf(stderr, "Got my topology: Source = %s\n", (NULL == mytopo->source) ? "NULL" : mytopo->source);
+    fprintf(stderr, "Got my topology: Source = %s\n",
+            (NULL == mytopo->source) ? "NULL" : mytopo->source);
 
     /* get my cpuset */
     fprintf(stderr, "GETTING CPUSET\n");
@@ -163,16 +164,16 @@ int main(int argc, char **argv)
     ninfo = 1;
     PMIX_INFO_CREATE(info, ninfo);
     PMIX_INFO_LOAD(&info[0], PMIX_DEVICE_TYPE, &type, PMIX_DEVTYPE);
-    rc = PMIx_Compute_distances(mytopo, &mycpuset,
-                                info, ninfo,
-                                &distances, &ndist);
+    rc = PMIx_Compute_distances(mytopo, &mycpuset, info, ninfo, &distances, &ndist);
     PMIX_INFO_FREE(info, ninfo);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "Compute distances failed: %s\n", PMIx_Error_string(rc));
     } else {
-        for (n=0; n < ndist; n++) {
-            fprintf(stderr, "Device[%d]: UUID %s OSname: %s Type %s MinDist %u MaxDist %u\n", (int)n, distances[n].uuid,
-                    distances[n].osname, PMIx_Device_type_string(distances[n].type), distances[n].mindist, distances[n].maxdist);
+        for (n = 0; n < ndist; n++) {
+            fprintf(stderr, "Device[%d]: UUID %s OSname: %s Type %s MinDist %u MaxDist %u\n",
+                    (int) n, distances[n].uuid, distances[n].osname,
+                    PMIx_Device_type_string(distances[n].type), distances[n].mindist,
+                    distances[n].maxdist);
         }
     }
 
@@ -191,16 +192,17 @@ int main(int argc, char **argv)
     PMIX_LOAD_KEY(iptr[2].key, PMIX_ALLOC_NETWORK);
     iptr[2].value.type = PMIX_DATA_ARRAY;
     PMIX_DATA_ARRAY_CREATE(iptr[2].value.data.darray, 2, PMIX_INFO);
-    info = (pmix_info_t*)iptr[2].value.data.darray->array;
+    info = (pmix_info_t *) iptr[2].value.data.darray->array;
     PMIX_INFO_LOAD(&info[0], PMIX_ALLOC_NETWORK_ID, "SIMPSCHED.net", PMIX_STRING);
     PMIX_INFO_LOAD(&info[1], PMIX_ALLOC_NETWORK_SEC_KEY, NULL, PMIX_BOOL);
 
     PMIX_INFO_LOAD(&iptr[3], PMIX_SETUP_APP_ENVARS, NULL, PMIX_BOOL);
 
     DEBUG_CONSTRUCT_LOCK(&cd.lock);
-    if (PMIX_SUCCESS != (rc = PMIx_server_setup_application("SIMPSCHED", iptr, 4,
-                                                             setup_cbfunc, &cd))) {
-        pmix_output(0, "[%s:%d] PMIx_server_setup_application failed: %s", __FILE__, __LINE__, PMIx_Error_string(rc));
+    if (PMIX_SUCCESS
+        != (rc = PMIx_server_setup_application("SIMPSCHED", iptr, 4, setup_cbfunc, &cd))) {
+        pmix_output(0, "[%s:%d] PMIx_server_setup_application failed: %s", __FILE__, __LINE__,
+                    PMIx_Error_string(rc));
         DEBUG_DESTRUCT_LOCK(&cd.lock);
         goto cleanup;
     }
@@ -209,16 +211,18 @@ int main(int argc, char **argv)
 
     /* setup the local subsystem */
     DEBUG_CONSTRUCT_LOCK(&lock);
-    if (PMIX_SUCCESS != (rc = PMIx_server_setup_local_support("SIMPSCHED", cd.info, cd.ninfo,
-                                                                  local_cbfunc, &lock))) {
-        pmix_output(0, "[%s:%d] PMIx_server_setup_local_support failed: %s", __FILE__, __LINE__, PMIx_Error_string(rc));
+    if (PMIX_SUCCESS
+        != (rc = PMIx_server_setup_local_support("SIMPSCHED", cd.info, cd.ninfo, local_cbfunc,
+                                                 &lock))) {
+        pmix_output(0, "[%s:%d] PMIx_server_setup_local_support failed: %s", __FILE__, __LINE__,
+                    PMIx_Error_string(rc));
         DEBUG_DESTRUCT_LOCK(&lock);
         goto cleanup;
     }
     DEBUG_WAIT_THREAD(&lock);
     DEBUG_DESTRUCT_LOCK(&lock);
 
-  cleanup:
+cleanup:
     if (PMIX_SUCCESS != rc) {
         exit_code = rc;
     }

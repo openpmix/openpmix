@@ -2,6 +2,7 @@
  * Copyright (c) 2017      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,13 +15,13 @@
 
 static void release_cb(pmix_status_t status, void *cbdata)
 {
-    int *ptr = (int*)cbdata;
+    int *ptr = (int *) cbdata;
     *ptr = 0;
 }
 
 static void get_cb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
 {
-    get_cbdata *cb = (get_cbdata*)cbdata;
+    get_cbdata *cb = (get_cbdata *) cbdata;
     if (PMIX_SUCCESS == status) {
         pmix_value_xfer(cb->kv, kv);
     }
@@ -28,7 +29,8 @@ static void get_cb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
     cb->status = status;
 }
 
-int test_internal(char *my_nspace, pmix_rank_t my_rank, test_params params) {
+int test_internal(char *my_nspace, pmix_rank_t my_rank, test_params params)
+{
     int idx;
     char sval[PMIX_MAX_NSLEN];
     char key[PMIX_MAX_KEYLEN];
@@ -37,7 +39,7 @@ int test_internal(char *my_nspace, pmix_rank_t my_rank, test_params params) {
     pmix_status_t rc;
 
     PMIX_PROC_CONSTRUCT(&proc);
-    (void)strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    (void) strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = my_rank;
 
     for (idx = 0; idx < params.test_internal; idx++) {

@@ -142,6 +142,10 @@ static void process_cache(int sd, short args, void *cbdata)
         if (PMIX_CHECK_PROCID(&iof->source, &req->requestor->info->pname)) {
             continue;
         }
+        /* never forward to myself */
+        if (PMIX_CHECK_PROCID(&req->requestor->info->pname, &pmix_globals.myid)) {
+            continue;
+        }
         /* if the source does not match the request, then ignore it */
         found = false;
         for (n = 0; n < req->nprocs; n++) {
@@ -271,7 +275,7 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
             return PMIX_SUCCESS;
         }
         /* if there isn't a registration callback, then we can return "succeeded"
-         * as we atomically performend the request. threadshift to process any
+         * as we atomically performed the request. threadshift to process any
          * cached IO as we must return from this function before we do so */
         PMIX_THREADSHIFT(req, process_cache);
         return PMIX_OPERATION_SUCCEEDED;
@@ -893,6 +897,11 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     if (PMIX_CHECK_PROCID(source, &req->requestor->info->pname)) {
         return PMIX_SUCCESS;
     }
+    /* never forward to myself */
+    if (PMIX_CHECK_PROCID(&req->requestor->info->pname, &pmix_globals.myid)) {
+        return PMIX_SUCCESS;
+    }
+
     /* setup the msg */
     if (NULL == (msg = PMIX_NEW(pmix_buffer_t))) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
@@ -1280,6 +1289,16 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     output->numbytes = k;
 
 process:
+    /* if we are simply dumping to stdout/err, then do so */
+    if (&pmix_client_globals.iof_stdout.wev == channel ||
+        &pmix_client_globals.iof_stderr.wev == channel) {
+        if (0 < output->numbytes) {
+            write(channel->fd, output->data, output->numbytes);
+        }
+        PMIX_RELEASE(output);
+        return 0;
+    }
+
     /* add this data to the write list for this fd */
     pmix_list_append(&channel->outputs, &output->super);
 
@@ -1332,7 +1351,8 @@ void pmix_iof_write_handler(int _fd, short event, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(sink);
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output, "%s write:handler writing data to %d",
+    PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
+                         "%s write:handler writing data to %d",
                          PMIX_NAME_PRINT(&pmix_globals.myid), wev->fd));
 
     while (NULL != (item = pmix_list_remove_first(&wev->outputs))) {
