@@ -60,6 +60,7 @@
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psec/psec.h"
+#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -1500,9 +1501,10 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
 
-    (void)pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
-    (void)pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
-    (void)pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pfexec_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pmdl_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
+    (void) pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
 
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {
