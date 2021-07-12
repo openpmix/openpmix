@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,8 +29,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "src/class/pmix_object.h"
 #include "src/util/argv.h"
@@ -49,17 +50,18 @@ int main(int argc, char **argv)
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", myproc.nspace, myproc.rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", myproc.nspace, myproc.rank,
+                    rc);
         exit(0);
     }
     pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
 
     /* get our job size */
-    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s",
-                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+        pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     nprocs = val->data.uint32;
@@ -68,24 +70,26 @@ int main(int argc, char **argv)
 
     /* call fence to ensure the data is received */
     PMIX_PROC_CONSTRUCT(&proc);
-    (void)strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank,
+                    rc);
         goto done;
     }
 
     /* publish something */
     if (0 == myproc.rank) {
         PMIX_INFO_CREATE(info, 2);
-        (void)strncpy(info[0].key, "FOOBAR", PMIX_MAX_KEYLEN);
+        (void) strncpy(info[0].key, "FOOBAR", PMIX_MAX_KEYLEN);
         info[0].value.type = PMIX_UINT8;
         info[0].value.data.uint8 = 1;
-        (void)strncpy(info[1].key, "PANDA", PMIX_MAX_KEYLEN);
+        (void) strncpy(info[1].key, "PANDA", PMIX_MAX_KEYLEN);
         info[1].value.type = PMIX_SIZE;
         info[1].value.data.size = 123456;
         if (PMIX_SUCCESS != (rc = PMIx_Publish(info, 2))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Publish failed: %d", myproc.nspace, myproc.rank, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Publish failed: %d", myproc.nspace,
+                        myproc.rank, rc);
             goto done;
         }
         PMIX_INFO_FREE(info, 2);
@@ -94,16 +98,18 @@ int main(int argc, char **argv)
     /* call fence again so all procs know the data
      * has been published */
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank,
+                    rc);
         goto done;
     }
 
     /* lookup something */
     if (0 != myproc.rank) {
         PMIX_PDATA_CREATE(pdata, 1);
-        (void)strncpy(pdata[0].key, "FOOBAR", PMIX_MAX_KEYLEN);
+        (void) strncpy(pdata[0].key, "FOOBAR", PMIX_MAX_KEYLEN);
         if (PMIX_SUCCESS != (rc = PMIx_Lookup(pdata, 1, NULL, 0))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Lookup failed: %d", myproc.nspace, myproc.rank, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Lookup failed: %d", myproc.nspace,
+                        myproc.rank, rc);
             goto done;
         }
         /* check the return for value and source */
@@ -124,7 +130,7 @@ int main(int argc, char **argv)
         }
         if (1 != pdata[0].value.data.uint8) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Lookup returned wrong value: %d",
-                        myproc.nspace, myproc.rank, (int)pdata[0].value.data.uint8);
+                        myproc.nspace, myproc.rank, (int) pdata[0].value.data.uint8);
             goto done;
         }
         PMIX_PDATA_FREE(pdata, 1);
@@ -133,7 +139,8 @@ int main(int argc, char **argv)
 
     /* call fence again so rank 0 waits before leaving */
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank,
+                    rc);
         goto done;
     }
 
@@ -143,7 +150,8 @@ int main(int argc, char **argv)
         pmix_argv_append_nosize(&keys, "PANDA");
 
         if (PMIX_SUCCESS != (rc = PMIx_Unpublish(keys, NULL, 0))) {
-            pmix_output(0, "Client ns %s rank %d: PMIx_Unpublish failed: %d", myproc.nspace, myproc.rank, rc);
+            pmix_output(0, "Client ns %s rank %d: PMIx_Unpublish failed: %d", myproc.nspace,
+                        myproc.rank, rc);
             goto done;
         }
         pmix_output(0, "UNPUBLISH SUCCEEDED");
@@ -152,18 +160,21 @@ int main(int argc, char **argv)
     /* call fence again so everyone waits for rank 0 before leaving */
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank,
+                    rc);
         goto done;
     }
 
- done:
+done:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return(0);
+    return (0);
 }

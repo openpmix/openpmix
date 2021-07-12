@@ -2,6 +2,7 @@
  * Copyright (c) 2018      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,7 +16,6 @@
 
 #include "pmix_server.h"
 #include "test_common.h"
-
 
 typedef enum {
     CMD_BARRIER_REQUEST,
@@ -33,8 +33,7 @@ typedef struct {
     size_t size;
 } msg_hdr_t;
 
-struct server_info_t
-{
+struct server_info_t {
     pmix_list_item_t super;
     char *hostname;
     pid_t pid;
@@ -49,10 +48,9 @@ struct server_info_t
 typedef struct server_info_t server_info_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(server_info_t);
 
-struct server_nspace_t
-{
+struct server_nspace_t {
     pmix_list_item_t super;
-    char name[PMIX_MAX_NSLEN+1];
+    char name[PMIX_MAX_NSLEN + 1];
     size_t ntasks; /* total number of tasks in this namespace */
     size_t ltasks; /* local */
     int *task_map;
@@ -68,13 +66,9 @@ extern pmix_list_t *server_nspace;
 int server_init(test_params *params);
 int server_finalize(test_params *params, int local_fail);
 int server_barrier(void);
-int server_fence_contrib(char *data, size_t ndata,
-                         pmix_modex_cbfunc_t cbfunc, void *cbdata);
-int server_dmdx_get(const char *nspace, int rank,
-                    pmix_modex_cbfunc_t cbfunc, void *cbdata);
-int server_launch_clients(int local_size, int univ_size, int base_rank,
-                   test_params *params, char *** client_env, char ***base_argv);
-
+int server_fence_contrib(char *data, size_t ndata, pmix_modex_cbfunc_t cbfunc, void *cbdata);
+int server_dmdx_get(const char *nspace, int rank, pmix_modex_cbfunc_t cbfunc, void *cbdata);
+int server_launch_clients(int local_size, int univ_size, int base_rank, test_params *params,
+                          char ***client_env, char ***base_argv);
 
 #endif // TEST_SERVER_C
-

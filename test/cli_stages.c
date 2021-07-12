@@ -5,6 +5,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,8 +23,8 @@ bool test_complete = false;
 int cli_rank(cli_info_t *cli)
 {
     int i;
-    for(i=0; i < cli_info_cnt; i++){
-        if( cli == &cli_info[i] ){
+    for (i = 0; i < cli_info_cnt; i++) {
+        if (cli == &cli_info[i]) {
             return cli->rank;
         }
     }
@@ -33,9 +34,9 @@ int cli_rank(cli_info_t *cli)
 void cli_init(int nprocs)
 {
     int n, i;
-    cli_state_t order[CLI_TERM+1];
+    cli_state_t order[CLI_TERM + 1];
 
-    cli_info = malloc( sizeof(cli_info_t) * nprocs);
+    cli_info = malloc(sizeof(cli_info_t) * nprocs);
     cli_info_cnt = nprocs;
 
     order[CLI_UNINIT] = CLI_FORKED;
@@ -45,13 +46,13 @@ void cli_init(int nprocs)
     order[CLI_DISCONN] = CLI_UNDEF;
     order[CLI_TERM] = CLI_UNDEF;
 
-    for (n=0; n < nprocs; n++) {
+    for (n = 0; n < nprocs; n++) {
         cli_info[n].sd = -1;
         cli_info[n].ev = NULL;
         cli_info[n].pid = -1;
         cli_info[n].state = CLI_UNINIT;
         PMIX_CONSTRUCT(&(cli_info[n].modex), pmix_list_t);
-        for (i = 0; i < CLI_TERM+1; i++) {
+        for (i = 0; i < CLI_TERM + 1; i++) {
             cli_info[n].next_state[i] = order[i];
         }
         cli_info[n].rank = -1;
@@ -59,29 +60,28 @@ void cli_init(int nprocs)
     }
 }
 
-void cli_connect(cli_info_t *cli, int sd, pmix_event_base_t * ebase, event_callback_fn callback)
+void cli_connect(cli_info_t *cli, int sd, pmix_event_base_t *ebase, event_callback_fn callback)
 {
-    if( CLI_CONNECTED != cli->next_state[cli->state] ){
-        TEST_ERROR(("Rank %d has bad next state: expect %d have %d!",
-                     cli_rank(cli), CLI_CONNECTED, cli->next_state[cli->state]));
+    if (CLI_CONNECTED != cli->next_state[cli->state]) {
+        TEST_ERROR(("Rank %d has bad next state: expect %d have %d!", cli_rank(cli), CLI_CONNECTED,
+                    cli->next_state[cli->state]));
         test_abort = true;
         return;
     }
 
     cli->sd = sd;
-    cli->ev = pmix_event_new(ebase, sd,
-                      EV_READ|EV_PERSIST, callback, cli);
-    pmix_event_add(cli->ev,NULL);
+    cli->ev = pmix_event_new(ebase, sd, EV_READ | EV_PERSIST, callback, cli);
+    pmix_event_add(cli->ev, NULL);
     pmix_ptl_base_set_nonblocking(sd);
-    TEST_VERBOSE(("Connection accepted from rank %d", cli_rank(cli) ));
+    TEST_VERBOSE(("Connection accepted from rank %d", cli_rank(cli)));
     cli->state = CLI_CONNECTED;
 }
 
 void cli_finalize(cli_info_t *cli)
 {
-    if( CLI_FIN != cli->next_state[cli->state] ){
-        TEST_ERROR(("rank %d: bad client next state: expect %d have %d!",
-                     cli_rank(cli), CLI_FIN, cli->next_state[cli->state]));
+    if (CLI_FIN != cli->next_state[cli->state]) {
+        TEST_ERROR(("rank %d: bad client next state: expect %d have %d!", cli_rank(cli), CLI_FIN,
+                    cli->next_state[cli->state]));
         test_abort = true;
     }
 
@@ -90,13 +90,13 @@ void cli_finalize(cli_info_t *cli)
 
 void cli_disconnect(cli_info_t *cli)
 {
-    if( CLI_DISCONN != cli->next_state[cli->state] ){
-        TEST_ERROR(("rank %d: bad client next state: expect %d have %d!",
-                     cli_rank(cli), CLI_DISCONN, cli->next_state[cli->state]));
+    if (CLI_DISCONN != cli->next_state[cli->state]) {
+        TEST_ERROR(("rank %d: bad client next state: expect %d have %d!", cli_rank(cli),
+                    CLI_DISCONN, cli->next_state[cli->state]));
         test_abort = true;
     }
 
-    if( 0 > cli->sd ){
+    if (0 > cli->sd) {
         TEST_ERROR(("Bad sd = %d of rank = %d ", cli->sd, cli_rank(cli)));
         test_abort = true;
     } else {
@@ -105,7 +105,7 @@ void cli_disconnect(cli_info_t *cli)
         cli->sd = -1;
     }
 
-    if( NULL == cli->ev ){
+    if (NULL == cli->ev) {
         TEST_ERROR(("Bad ev = NULL of rank = %d ", cli_rank(cli)));
         test_abort = true;
     } else {
@@ -123,9 +123,9 @@ void cli_disconnect(cli_info_t *cli)
 
 void cli_terminate(cli_info_t *cli)
 {
-    if( CLI_TERM != cli->next_state[cli->state] ){
-        TEST_ERROR(("rank %d: bad client next state: expect %d have %d!",
-                     cli_rank(cli), CLI_TERM, cli->next_state[cli->state]));
+    if (CLI_TERM != cli->next_state[cli->state]) {
+        TEST_ERROR(("rank %d: bad client next state: expect %d have %d!", cli_rank(cli), CLI_TERM,
+                    cli->next_state[cli->state]));
         test_abort = true;
     }
     cli->pid = -1;
@@ -143,13 +143,14 @@ void cli_cleanup(cli_info_t *cli)
         test_abort = true;
         return;
     }
-    switch( cli->next_state[cli->state] ){
+    switch (cli->next_state[cli->state]) {
     case CLI_FORKED:
         break;
     case CLI_CONNECTED:
         /* error - means that process terminated w/o calling finalize */
         if (!test_abort) {
-            TEST_ERROR(("rank %d with state %d unexpectedly terminated.", cli_rank(cli), cli->state));
+            TEST_ERROR(
+                ("rank %d with state %d unexpectedly terminated.", cli_rank(cli), cli->state));
         }
         cli->state = CLI_TERM;
         test_abort = true;
@@ -157,7 +158,8 @@ void cli_cleanup(cli_info_t *cli)
     case CLI_FIN:
         /* error - means that process terminated w/o calling finalize */
         if (!test_abort) {
-            TEST_ERROR(("rank %d with state %d unexpectedly terminated.", cli_rank(cli), cli->state));
+            TEST_ERROR(
+                ("rank %d with state %d unexpectedly terminated.", cli_rank(cli), cli->state));
         }
         cli_finalize(cli);
         cli_cleanup(cli);
@@ -177,19 +179,16 @@ void cli_cleanup(cli_info_t *cli)
     }
 }
 
-
 void cli_kill_all(void)
 {
     int i;
-    for(i = 0; i < cli_info_cnt; i++){
-        if( CLI_UNINIT == cli_info[i].state ){
-            TEST_ERROR(("Skip rank %d as it wasn't ever initialized (shouldn't happe)",
-                          i));
+    for (i = 0; i < cli_info_cnt; i++) {
+        if (CLI_UNINIT == cli_info[i].state) {
+            TEST_ERROR(("Skip rank %d as it wasn't ever initialized (shouldn't happe)", i));
             continue;
-        } else if( CLI_TERM <= cli_info[i].state ){
+        } else if (CLI_TERM <= cli_info[i].state) {
             TEST_VERBOSE(("Skip rank %d as it was already terminated.", i));
             continue;
-
         }
         TEST_VERBOSE(("Kill rank %d (pid = %d).", i, cli_info[i].pid));
         kill(cli_info[i].pid, SIGKILL);
@@ -197,28 +196,22 @@ void cli_kill_all(void)
     }
 }
 
-void errhandler(size_t evhdlr_registration_id,
-                pmix_status_t status,
-                const pmix_proc_t *source,
-                pmix_info_t info[], size_t ninfo,
-                pmix_info_t results[], size_t nresults,
-                pmix_event_notification_cbfunc_fn_t cbfunc,
-                void *cbdata)
+void errhandler(size_t evhdlr_registration_id, pmix_status_t status, const pmix_proc_t *source,
+                pmix_info_t info[], size_t ninfo, pmix_info_t results[], size_t nresults,
+                pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    TEST_ERROR((" PMIX server event handler for %s:%d with status = %d", source->nspace, source->rank, status));
+    TEST_ERROR((" PMIX server event handler for %s:%d with status = %d", source->nspace,
+                source->rank, status));
     cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
 }
 
-void op_callbk(pmix_status_t status,
-                      void *cbdata)
+void op_callbk(pmix_status_t status, void *cbdata)
 {
-    TEST_VERBOSE(( "OP CALLBACK CALLED WITH STATUS %d", status));
+    TEST_VERBOSE(("OP CALLBACK CALLED WITH STATUS %d", status));
 }
 
-void errhandler_reg_callbk (pmix_status_t status,
-                            size_t errhandler_ref,
-                            void *cbdata)
+void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
-    TEST_VERBOSE(("ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu",
-                status, (unsigned long)errhandler_ref));
+    TEST_VERBOSE(("ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu", status,
+                  (unsigned long) errhandler_ref));
 }

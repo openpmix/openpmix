@@ -15,6 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,8 +29,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <time.h>
+#include <unistd.h>
 
 #include "src/class/pmix_object.h"
 #include "src/util/argv.h"
@@ -60,11 +61,13 @@ int main(int argc, char **argv)
     pmix_argv_append_nosize(&query[1].keys, "spastic");
     pmix_argv_append_nosize(&query[1].keys, PMIX_SERVER_URI);
     if (PMIX_SUCCESS != (rc = PMIx_Query_info(query, nq, &results, &nresults))) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Query_info failed: %d", myproc.nspace, myproc.rank, rc);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Query_info failed: %d", myproc.nspace,
+                    myproc.rank, rc);
         goto done;
     }
     if (2 != nresults || NULL == results) {
-        pmix_output(0, "Client ns %s rank %d: PMIx_Query_info returned incorrect results: %d", myproc.nspace, myproc.rank, (int)nresults);
+        pmix_output(0, "Client ns %s rank %d: PMIx_Query_info returned incorrect results: %d",
+                    myproc.nspace, myproc.rank, (int) nresults);
         goto done;
     }
     if (0 != strncmp(results[0].key, "foobar", PMIX_MAX_KEYLEN)) {
@@ -94,14 +97,16 @@ int main(int argc, char **argv)
     pmix_output(0, "Client received result %s:%s", results[0].key, results[0].value.data.string);
     pmix_output(0, "Client received result %s:%s", results[1].key, results[1].value.data.string);
 
- done:
+done:
     /* finalize us */
     pmix_output(0, "Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace, myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
     } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
-    return(rc);
+    return (rc);
 }

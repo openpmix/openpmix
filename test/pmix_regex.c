@@ -16,6 +16,7 @@
  * Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,17 +29,17 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "src/util/argv.h"
-#include "src/util/pmix_environ.h"
-#include "src/util/output.h"
-#include "src/server/pmix_server_ops.h"
 #include "src/mca/preg/preg.h"
+#include "src/server/pmix_server_ops.h"
+#include "src/util/argv.h"
+#include "src/util/output.h"
+#include "src/util/pmix_environ.h"
 
 #include "server_callbacks.h"
 #include "utils.h"
 
-#define TEST_NODES "odin001,odin002,odin003,odin010,odin011,odin075"
-#define TEST_PROCS "1,2,3,4;5-8;9,11-12;17-20;21-24;100"
+#define TEST_NODES  "odin001,odin002,odin003,odin010,odin011,odin075"
+#define TEST_PROCS  "1,2,3,4;5-8;9,11-12;17-20;21-24;100"
 #define TEST_NODES2 "c712f6n01,c712f6n02,c712f6n03"
 
 bool spawn_wait = false;
