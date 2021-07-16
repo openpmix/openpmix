@@ -6,7 +6,7 @@
 # for more information.
 
 project=PMI-Exascale (PMIx)
-project_short=PMIx
+project_short=PMIX
 version=@PMIX_VERSION@
 language=C
 compiler_env=CC
