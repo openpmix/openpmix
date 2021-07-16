@@ -717,12 +717,6 @@ int main(int argc, char *argv[])
         } else if (0 == strcmp(user_argv[i], "-S")) {
             flags &= ~COMP_WANT_LINK;
             real_flag = true;
-        } else if (0 == strcmp(user_argv[i], "-lpmpi")) {
-            flags |= COMP_WANT_PMPI;
-
-            /* remove element from user_argv */
-            pmix_argv_delete(&user_argc, &user_argv, i, 1);
-            --i;
         } else if (0 == strcmp(user_argv[i], "-static") || 0 == strcmp(user_argv[i], "--static")
                    || 0 == strcmp(user_argv[i], "-Bstatic")
                    || 0 == strcmp(user_argv[i], "-Wl,-static")
