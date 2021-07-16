@@ -870,6 +870,16 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     /* increment our init reference counter */
     pmix_globals.init_cntr++;
 
+    /* fill in our local
+     * datastore with typical job-related info. No point
+     * in having the server generate these as we are
+     * obviously a singleton, and so the values are well-known */
+    rc = pmix_tool_init_info();
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+
     /* if we are connected, then send a request for our
      * job info - we do this as a non-blocking
      * transaction because some systems cannot handle very large
@@ -920,16 +930,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             }
         }
         PMIX_DESTRUCT(&cb);
-    } else {
-        /* now finish the initialization by filling our local
-         * datastore with typical job-related info. No point
-         * in having the server generate these as we are
-         * obviously a singleton, and so the values are well-known */
-        rc = pmix_tool_init_info();
-        if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
