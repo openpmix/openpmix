@@ -66,7 +66,7 @@ static void pinstalldirs_env_init(pmix_info_t info[], size_t ninfo)
     }
 
     if (!prefix_given) {
-        SET_FIELD(prefix, "PMIX_INSTALL_PREFIX");
+        SET_FIELD(prefix, "PMIX_PREFIX");
     }
     SET_FIELD(exec_prefix, "PMIX_EXEC_PREFIX");
     SET_FIELD(bindir, "PMIX_BINDIR");
