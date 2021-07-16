@@ -874,11 +874,11 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     /* increment our init reference counter */
     pmix_globals.init_cntr++;
 
-    /* if we are acting as a client, then send a request for our
+    /* if we are connected, then send a request for our
      * job info - we do this as a non-blocking
      * transaction because some systems cannot handle very large
      * blocking operations and error out if we try them. */
-    if (!do_not_connect && PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+    if (!do_not_connect) {
         req = PMIX_NEW(pmix_buffer_t);
         cmd = PMIX_REQ_CMD;
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, req, &cmd, 1, PMIX_COMMAND);
