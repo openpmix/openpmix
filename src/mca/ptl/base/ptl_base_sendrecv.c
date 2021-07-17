@@ -191,16 +191,6 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
             PMIX_REPORT_EVENT(err, peer, PMIX_RANGE_PROC_LOCAL, _notify_complete);
         }
 
-        /* be sure to let the host know that the tool or client
-         * is gone - otherwise, it won't know to cleanup the
-         * resources it allocated to it */
-        if (NULL != pmix_host_server.client_finalized &&
-            !PMIX_PEER_IS_TOOL(peer) && !peer->finalized) {
-            pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
-            proc.rank = peer->info->pname.rank;
-            /* now tell the host server */
-            pmix_host_server.client_finalized(&proc, peer->info->server_object, NULL, NULL);
-        }
     } else {
         /* if I am a client, there is only
          * one connection we can have */
