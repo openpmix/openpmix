@@ -4359,15 +4359,10 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         peer->nptr->nfinalized++;
         /* purge events */
         pmix_server_purge_events(peer, NULL);
-        /* turn off the recv event - we shouldn't hear anything
-         * more from this proc */
-        if (peer->recv_ev_active) {
-            pmix_event_del(&peer->recv_event);
-            peer->recv_ev_active = false;
-        }
         PMIX_GDS_CADDY(cd, peer, tag);
         /* call the local server, if supported */
-        if (NULL != pmix_host_server.client_finalized) {
+        if (NULL != pmix_host_server.client_finalized &&
+            PMIX_PEER_IS_CLIENT(peer)) {
             pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
             proc.rank = peer->info->pname.rank;
             /* now tell the host server */
