@@ -56,7 +56,17 @@ AC_DEFUN([MCA_pmix_ploc_hwloc_CONFIG],[
 
     AS_IF([test $pmix_hwloc_support -eq 1],
           [AC_MSG_CHECKING([hwloc header])
-           AC_MSG_RESULT([$PMIX_HWLOC_HEADER])])
+           AC_MSG_RESULT([$PMIX_HWLOC_HEADER])],
+          [AC_MSG_WARN([PMIx requires access to topology])
+           AC_MSG_WARN([information due to its increased role])
+           AC_MSG_WARN([in providing information on critical])
+           AC_MSG_WARN([areas such as device distances and fabric])
+           AC_MSG_WARN([interfaces. At this time, only the HWLOC])
+           AC_MSG_WARN([library is supported - and an installation])
+           AC_MSG_WARN([of that library was not found.])
+           AC_MSG_WARN([Please reconfigure PMIx pointing to an HWLOC])
+           AC_MSG_WARN([installation.])
+           AC_MSG_ERROR([Cannot continue.])])
 
     AC_DEFINE_UNQUOTED([PMIX_HWLOC_HEADER], [$PMIX_HWLOC_HEADER],
                    [Location of hwloc.h])
