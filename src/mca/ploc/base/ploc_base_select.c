@@ -27,6 +27,7 @@
 
 #include "src/mca/base/base.h"
 #include "src/mca/mca.h"
+#include "src/util/show_help.h"
 
 #include "src/mca/ploc/base/base.h"
 
@@ -118,6 +119,11 @@ int pmix_ploc_base_select(void)
         }
     }
 
+    /* there must be at least one active component */
+    if (0 == pmix_list_get_size(&pmix_ploc_globals.actives)) {
+        pmix_show_help("help-ploc.txt", "no-actives", true);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
     return PMIX_SUCCESS;
-    ;
 }

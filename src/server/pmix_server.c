@@ -652,9 +652,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_client_globals.myserver->info = pmix_globals.mypeer->info;
 
     /* open the pmdl framework and select the active modules for this environment */
-    if (PMIX_SUCCESS
-        != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework,
-                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -676,9 +675,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     }
 
     /* open the ploc framework */
-    if (PMIX_SUCCESS
-        != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework,
-                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -4355,15 +4353,10 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         peer->nptr->nfinalized++;
         /* purge events */
         pmix_server_purge_events(peer, NULL);
-        /* turn off the recv event - we shouldn't hear anything
-         * more from this proc */
-        if (peer->recv_ev_active) {
-            pmix_event_del(&peer->recv_event);
-            peer->recv_ev_active = false;
-        }
         PMIX_GDS_CADDY(cd, peer, tag);
         /* call the local server, if supported */
-        if (NULL != pmix_host_server.client_finalized) {
+        if (NULL != pmix_host_server.client_finalized &&
+            PMIX_PEER_IS_CLIENT(peer)) {
             pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
             proc.rank = peer->info->pname.rank;
             /* now tell the host server */

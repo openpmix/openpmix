@@ -46,8 +46,8 @@
 
 /* Instantiate the global vars */
 pmix_ploc_globals_t pmix_ploc_globals = {{0}};
-pmix_ploc_API_module_t pmix_ploc
-    = {.setup_topology = pmix_ploc_base_setup_topology,
+pmix_ploc_API_module_t pmix_ploc = {
+       .setup_topology = pmix_ploc_base_setup_topology,
        .load_topology = pmix_ploc_base_load_topology,
        .generate_cpuset_string = pmix_ploc_base_generate_cpuset_string,
        .parse_cpuset_string = pmix_ploc_base_parse_cpuset_string,
@@ -66,7 +66,8 @@ pmix_ploc_API_module_t pmix_ploc
        .copy_topology = pmix_ploc_base_copy_topology,
        .print_topology = pmix_ploc_base_print_topology,
        .destruct_topology = pmix_ploc_base_destruct_topology,
-       .release_topology = pmix_ploc_base_release_topology};
+       .release_topology = pmix_ploc_base_release_topology
+};
 
 static pmix_status_t pmix_ploc_close(void)
 {

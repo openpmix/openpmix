@@ -870,11 +870,21 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     /* increment our init reference counter */
     pmix_globals.init_cntr++;
 
-    /* if we are acting as a client, then send a request for our
+    /* fill in our local
+     * datastore with typical job-related info. No point
+     * in having the server generate these as we are
+     * obviously a singleton, and so the values are well-known */
+    rc = pmix_tool_init_info();
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+
+    /* if we are connected, then send a request for our
      * job info - we do this as a non-blocking
      * transaction because some systems cannot handle very large
      * blocking operations and error out if we try them. */
-    if (!do_not_connect && PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+    if (!do_not_connect) {
         req = PMIX_NEW(pmix_buffer_t);
         cmd = PMIX_REQ_CMD;
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, req, &cmd, 1, PMIX_COMMAND);
@@ -920,16 +930,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             }
         }
         PMIX_DESTRUCT(&cb);
-    } else {
-        /* now finish the initialization by filling our local
-         * datastore with typical job-related info. No point
-         * in having the server generate these as we are
-         * obviously a singleton, and so the values are well-known */
-        rc = pmix_tool_init_info();
-        if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return rc;
-        }
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 

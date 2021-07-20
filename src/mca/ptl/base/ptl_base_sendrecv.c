@@ -57,14 +57,13 @@ static void _notify_complete(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(chain);
 }
 
-void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
+static void lost_connection(pmix_peer_t *peer)
 {
     pmix_server_trkr_t *trk, *tnxt;
     pmix_server_caddy_t *rinfo, *rnext;
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
-    pmix_proc_t proc;
     pmix_status_t rc;
 
     /* stop all events */
@@ -182,31 +181,27 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
             /* cleanup any sensors that are monitoring them */
             pmix_psensor.stop(peer, NULL);
         }
-
-        if (!peer->finalized && !pmix_globals.mypeer->finalized) {
-            /* if this peer already called finalize, then
-             * we are just seeing their connection go away
-             * when they terminate - so do not generate
-             * an event. If not, then we do */
-            PMIX_REPORT_EVENT(err, peer, PMIX_RANGE_PROC_LOCAL, _notify_complete);
+        if (!pmix_globals.mypeer->finalized) {
+            /* if the peer is a tool, then we always generate the
+             * lost connection event so that the host can know the
+             * tool departed */
+            if (PMIX_PEER_IS_TOOL(peer) && !PMIX_PEER_IS_CLIENT(peer)) {
+                PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, peer,
+                                  PMIX_RANGE_PROC_LOCAL, _notify_complete);
+            } else if (!peer->finalized) {
+                /* if this peer already called finalize, then
+                 * we are just seeing their connection go away
+                 * when they terminate - so do not generate
+                 * an event. If an abnormal termination, then we do */
+                PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, peer,
+                                  PMIX_RANGE_PROC_LOCAL, _notify_complete);
+            }
         }
 
-        /* be sure to let the host know that the tool or client
-         * is gone - otherwise, it won't know to cleanup the
-         * resources it allocated to it */
-        if (NULL != pmix_host_server.client_finalized &&
-            !PMIX_PEER_IS_TOOL(peer) && !peer->finalized) {
-            pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
-            proc.rank = peer->info->pname.rank;
-            /* now tell the host server */
-            pmix_host_server.client_finalized(&proc, peer->info->server_object, NULL, NULL);
-        }
     } else {
         /* if I am a client, there is only
          * one connection we can have */
         pmix_globals.connected = false;
-        /* set the public error status */
-        err = PMIX_ERR_LOST_CONNECTION;
         /* it is possible that we have sendrecv's in progress where
          * we are waiting for a response to arrive. Since we have
          * lost connection to the server, that will never happen.
@@ -228,8 +223,8 @@ void pmix_ptl_base_lost_connection(pmix_peer_t *peer, pmix_status_t err)
         PMIX_DESTRUCT(&buf);
         /* if I called finalize, then don't generate an event */
         if (!pmix_globals.mypeer->finalized) {
-            PMIX_REPORT_EVENT(err, pmix_client_globals.myserver, PMIX_RANGE_PROC_LOCAL,
-                              _notify_complete);
+            PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, pmix_client_globals.myserver,
+                              PMIX_RANGE_PROC_LOCAL, _notify_complete);
         }
     }
 }
@@ -404,7 +399,7 @@ void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata)
             peer->send_ev_active = false;
             PMIX_RELEASE(msg);
             peer->send_msg = NULL;
-            pmix_ptl_base_lost_connection(peer, rc);
+            lost_connection(peer);
             /* ensure we post the modified peer object before another thread
              * picks it back up */
             PMIX_POST_OBJECT(peer);
@@ -592,7 +587,7 @@ err_close:
         PMIX_RELEASE(peer->recv_msg);
         peer->recv_msg = NULL;
     }
-    pmix_ptl_base_lost_connection(peer, PMIX_ERR_UNREACH);
+    lost_connection(peer);
     /* ensure we post the modified peer object before another thread
      * picks it back up */
     PMIX_POST_OBJECT(peer);

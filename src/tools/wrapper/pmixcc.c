@@ -332,10 +332,7 @@ static void data_callback(const char *key, const char *value)
     } else if (0 == strcmp(key, "includedir")) {
         if (NULL != value) {
             options_data[parse_options_idx].path_includedir = pmix_pinstall_dirs_expand(value);
-            if (0 != strcmp(options_data[parse_options_idx].path_includedir, "/usr/include")
-                || 0
-                       == strncmp(options_data[parse_options_idx].language, "Fortran",
-                                  strlen("Fortran"))) {
+            if (0 != strcmp(options_data[parse_options_idx].path_includedir, "/usr/include")) {
                 char *line;
                 pmix_asprintf(&line, PMIX_INCLUDE_FLAG "%s",
                               options_data[parse_options_idx].path_includedir);
@@ -358,10 +355,7 @@ static void data_callback(const char *key, const char *value)
         printf("EXPANDING!\n");
         if (NULL != value) {
             options_data[parse_options_idx].path_pmixincludedir = pmix_pinstall_dirs_expand(value);
-            if (0 != strcmp(options_data[parse_options_idx].path_pmixincludedir, "/usr/include")
-                || 0
-                       == strncmp(options_data[parse_options_idx].language, "Fortran",
-                                  strlen("Fortran"))) {
+            if (0 != strcmp(options_data[parse_options_idx].path_pmixincludedir, "/usr/include")) {
                 char *line;
                 pmix_asprintf(&line, PMIX_INCLUDE_FLAG "%s",
                               options_data[parse_options_idx].path_pmixincludedir);
@@ -441,19 +435,16 @@ static void load_env_data(const char *project, const char *flag, char **data)
     if (NULL == project || NULL == flag)
         return;
 
-    pmix_asprintf(&envname, "%s_MPI%s", project, flag);
+    pmix_asprintf(&envname, "%s_%s", project, flag);
     if (NULL == (envvalue = getenv(envname))) {
         free(envname);
-        pmix_asprintf(&envname, "%s_%s", project, flag);
-        if (NULL == (envvalue = getenv(envname))) {
-            free(envname);
-            return;
-        }
+        return;
     }
     free(envname);
 
-    if (NULL != *data)
+    if (NULL != *data) {
         free(*data);
+    }
     *data = strdup(envvalue);
 }
 
@@ -465,14 +456,10 @@ static void load_env_data_argv(const char *project, const char *flag, char ***da
     if (NULL == project || NULL == flag)
         return;
 
-    pmix_asprintf(&envname, "%s_MPI%s", project, flag);
+    pmix_asprintf(&envname, "%s_%s", project, flag);
     if (NULL == (envvalue = getenv(envname))) {
         free(envname);
-        pmix_asprintf(&envname, "%s_%s", project, flag);
-        if (NULL == (envvalue = getenv(envname))) {
-            free(envname);
-            return;
-        }
+        return;
     }
     free(envname);
 
@@ -497,8 +484,7 @@ int main(int argc, char *argv[])
     }
 
     /* initialize install dirs code */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
                                                PMIX_MCA_BASE_OPEN_DEFAULT))) {
         fprintf(stderr,
                 "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
@@ -731,12 +717,6 @@ int main(int argc, char *argv[])
         } else if (0 == strcmp(user_argv[i], "-S")) {
             flags &= ~COMP_WANT_LINK;
             real_flag = true;
-        } else if (0 == strcmp(user_argv[i], "-lpmpi")) {
-            flags |= COMP_WANT_PMPI;
-
-            /* remove element from user_argv */
-            pmix_argv_delete(&user_argc, &user_argv, i, 1);
-            --i;
         } else if (0 == strcmp(user_argv[i], "-static") || 0 == strcmp(user_argv[i], "--static")
                    || 0 == strcmp(user_argv[i], "-Bstatic")
                    || 0 == strcmp(user_argv[i], "-Wl,-static")
@@ -749,29 +729,6 @@ int main(int argc, char *argv[])
                    || 0 == strcmp(user_argv[i], "-Wl,--dynamic")
                    || 0 == strcmp(user_argv[i], "-Wl,-Bdynamic")) {
             flags &= ~COMP_WANT_STATIC;
-        } else if (0 == strcmp(user_argv[i], "--openmpi:linkall")) {
-            /* This is an intentionally undocummented wrapper compiler
-               switch.  It should only be used by Open MPI developers
-               -- not end users.  It will cause mpicc to use the
-               static library list, even if we're compiling
-               dynamically (i.e., it'll specifically -lopen-rte and
-               -lopen-pal (and all their dependent libs)).  We provide
-               this flag for test MPI applications that also invoke
-               ORTE and/or PMIX function calls.
-
-               On some systems (e.g., OS X), if the top-level
-               application calls ORTE/PMIX functions and you don't -l
-               ORTE and PMIX, then the functions won't be resolved at
-               link time (i.e., the implicit library dependencies of
-               libmpi won't be pulled in at link time), and therefore
-               the link will fail.  This flag will cause the wrapper
-               to explicitly list the ORTE and PMIX libs on the
-               underlying compiler command line, so the application
-               will therefore link properly. */
-            flags |= COMP_WANT_LINKALL;
-
-            /* remove element from user_argv */
-            pmix_argv_delete(&user_argc, &user_argv, i, 1);
         } else if ('-' != user_argv[i][0]) {
             disable_flags = false;
             flags |= COMP_SHOW_ERROR;
