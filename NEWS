@@ -23,11 +23,63 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-Master (not on release branches yet)
-------------------------------------
-
 4.1.0 -- TBD
 ----------------------
+ - PR #2235: Cherry-pick updates from master branch
+     - Default tools to outputting their IOF
+     - Initalize val before get in case get isn't successful
+     - Some cleanups of the event notification and keepalive support
+     - Remove stale travis.yml file
+     - Update simptest to truly support PMIx_Abort
+     - Some cleanups for client finalize and IOF output
+     - Do not forward cached IOF to self
+     - Update how C to Python bytes/strings are handled for get and byte objects
+     - Add test_v2 directory
+     - Add configure logic for RM and sse support
+     - Add pstat framework
+     - Remove duplicate PMIx_Data_load and PMIx_Data_unload definitions
+     - Add manpage files for tools
+     - Add sse common component
+     - Add the prm components
+     - Add the storage framework
+     - General update of code base to track master branch
+ - PR #2224: common/dstore: Fix inconsistent Makefile.am
+ - PR #2216: Cherry-pick updates from master branch
+     - Add missing osname endpt elements to bfrops
+     - Optimize check for nodes
+     - Transfer stdout/err formatting to PMIx
+     - Ensure tool output of IOF
+ - PR #2208: Cherry-pick updates from master branch
+     - Enable re-init of clients
+     - Add attribute to indicate copy/nocopy of output directed to files
+ - PR #2204: Add a few job error constants
+ - PR #2201: Cherry-pick updates from master branch
+     - Minor updates based on Standards review
+     - Correct references to help-ptl-tool.txt
+     - Protect register_nspace against new entries
+     - Add oversubscribed attribute
+ - PR #2195: configury: Use AC_CHECK_ALIGNOF and fix cross-compiling
+ - PR #2190:Cherry-pick updates from master branch
+     - Remove duplicative pmdl/ompi directories
+     - Add missing m4 file
+     - Update hwloc support to handle revised version string
+     - Register ompi5 and ompi4 as aliases for ompi plugin
+     - Correct the PMIx_Get signature
+     - Silence some gcc warnings
+     - Silence some gcc11 warnings
+     - Protect against bad nspace input
+     - Cleanup few lingering gcc11 warnings
+     - Protect against duplicate envar harvesting
+ - PR #2177: Cleanup shadow variables in dstore base and components
+ - PR #2156: Ensure we pass the desired scope on a PMIx_Get call
+ - PR #2170: Remove non-required items
+ - PR #2168: Cherry-pick updates from master branch
+     - Add missing datatype support in darray macros
+     - Update comments on debug attributes
+     - Remove stale envar settings in hwloc support
+     - Silence warning of unused var
+     - Minor addition to debug output
+ - PR #2158: atomics: Fix broken make dist
  - PR #2154: Cherry-pick updates from master branch
      - Spawn needs to do a little checking of the app
      - build: Allow autogen.pl to be run from a tarball
