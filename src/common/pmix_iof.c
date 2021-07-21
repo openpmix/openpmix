@@ -837,25 +837,34 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
 
 void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
 {
-    if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_OUTPUT)) {
+    if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_OUTPUT) ||
+        PMIX_CHECK_KEY(info, PMIX_TAG_OUTPUT)) {
         flags->tag = PMIX_INFO_TRUE(info);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_TIMESTAMP_OUTPUT)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_RANK_OUTPUT)) {
+        flags->rank = PMIX_INFO_TRUE(info);
+        flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_TIMESTAMP_OUTPUT) ||
+               PMIX_CHECK_KEY(info, PMIX_TIMESTAMP_OUTPUT)) {
         flags->timestamp = PMIX_INFO_TRUE(info);
         flags->set = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_XML_OUTPUT)) {
         flags->xml = PMIX_INFO_TRUE(info);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_FILE)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_FILE) ||
+               PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_FILE)) {
         flags->file = strdup(info->value.data.string);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_DIRECTORY)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_DIRECTORY) ||
+               PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_DIRECTORY)) {
         flags->directory = strdup(info->value.data.string);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_OUTPUT_NOCOPY)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_ONLY) ||
+               PMIX_CHECK_KEY(info, PMIX_OUTPUT_NOCOPY)) {
         flags->nocopy = PMIX_INFO_TRUE(info);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_MERGE_STDERR_STDOUT)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_MERGE_STDERR_STDOUT) ||
+               PMIX_CHECK_KEY(info, PMIX_MERGE_STDERR_STDOUT)) {
         flags->merge = PMIX_INFO_TRUE(info);
         flags->set = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_LOCAL_OUTPUT)) {
@@ -1097,7 +1106,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         goto process;
     }
 
-    if (!myflags.xml && !myflags.timestamp && !myflags.tag) {
+    if (!myflags.set) {
         /* the data is not to be tagged - just copy it
          * and move on to processing
          */
@@ -1114,17 +1123,33 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
             snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s nspace=\"%s\" rank=\"%s\"", suffix,
                      name->nspace, PMIX_RANK_PRINT(name->rank));
+        } else if (myflags.rank) {
+            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                     "<%s rank=\"%s\"", suffix,
+                     PMIX_RANK_PRINT(name->rank));
         } else if (myflags.timestamp) {
             snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         } else {
             snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
-                     "<%s rank=\"%s\">", suffix,
+                     "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         }
         snprintf(endtag, PMIX_IOF_BASE_TAG_MAX,
                  "</%s>", suffix);
+    } else {
+        if (myflags.tag) {
+            snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                     "[%s,%s]<%s>",
+                     name->nspace,
+                     PMIX_RANK_PRINT(name->rank),
+                     suffix);
+        } else if (myflags.rank) {
+            snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                     "[%s]",
+                     PMIX_RANK_PRINT(name->rank));
+        }
     }
 
     /* if we are to timestamp output, start the tag with that */
@@ -1136,25 +1161,17 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         cptr = ctime(&mytime);
         cptr[strlen(cptr) - 1] = '\0'; /* remove trailing newline */
 
-        if (myflags.xml && !myflags.tag) {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
-                     " timestamp=\"%s\">", cptr);
-        } else if (myflags.xml && myflags.tag) {
+        if (myflags.xml && !myflags.tag && !myflags.rank) {
             snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
                      " timestamp=\"%s\"", cptr);
-        } else if (myflags.tag) {
+        } else if (myflags.xml && (myflags.tag || myflags.rank)) {
+            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
+                     " timestamp=\"%s\"", cptr);
+        } else if (myflags.tag || myflags.rank) {
             snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
         } else {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s>", cptr, suffix);
+            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s", cptr, suffix);
         }
-    }
-
-    if (myflags.tag && !myflags.xml) {
-        snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
-                 "[%s,%s]<%s>",
-                 name->nspace,
-                 PMIX_RANK_PRINT(name->rank),
-                 suffix);
     }
 
     endtaglen = strlen(endtag);
@@ -1178,7 +1195,9 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     /* if xml, end the starttag with a '>' */
     if (myflags.xml) {
         starttag[k++] = '>';
-    } else {
+    } else if (myflags.rank) {
+        starttag[k++] = ' ';
+    } else if (myflags.tag || myflags.timestamp) {
         starttag[k++] = ':';
     }
 
