@@ -210,8 +210,7 @@ void errhandler(size_t evhdlr_registration_id, pmix_status_t status, const pmix_
 {
     TEST_ERROR((" PMIX server event handler for %s:%d with status = %d", source->nspace,
                 source->rank, status));
-    /* notify clients of error */
-    PMIx_Notify_event(status, source, PMIX_RANGE_NAMESPACE, NULL, 0, op_callbk, NULL);
+    cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
 }
 
 void op_callbk(pmix_status_t status, void *cbdata)
