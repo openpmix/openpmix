@@ -197,6 +197,7 @@ typedef struct {
     bool xml;
     bool timestamp;
     bool tag;
+    bool rank;
     char *file;
     char *directory;
     bool nocopy;
