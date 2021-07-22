@@ -25,6 +25,9 @@ multiple release branches.
 
 4.1.0 -- TBD
 ----------------------
+ - PR #2248: Continue updates to support MPICH integration
+     - Extend IOF outputting format to cover Hydra options.
+ - PR #2246: Cleanup some IOF attributes
  - PR #2235: Cherry-pick updates from master branch
      - Default tools to outputting their IOF
      - Initalize val before get in case get isn't successful

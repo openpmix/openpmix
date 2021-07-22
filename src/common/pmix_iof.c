@@ -781,9 +781,15 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             }
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
-            PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
-                                 PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
+            if (nptr->iof_flags.merge) {
+                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                     PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
+            } else {
+                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                     PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
+            }
             pmix_list_append(&nptr->sinks, &snk->super);
+            return &snk->wev;
         } else {
             /* setup the stderr sink */
             pmix_asprintf(&outfile, "%s/stderr", outdir);
@@ -799,8 +805,8 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
                                  PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
             pmix_list_append(&nptr->sinks, &snk->super);
+            return &snk->wev;
         }
-        return &snk->wev;
     }
 
     /* see if we are to output to a file */
@@ -814,22 +820,71 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             free(outdir);
             return NULL;
         }
-        /* setup the file */
-        pmix_asprintf(&outfile, "%s.%s.%0*u", nptr->iof_flags.file,
-                      nptr->nspace, numdigs, rank);
-        fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
-        free(outfile);
-        if (fdout < 0) {
-            /* couldn't be opened */
-            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-            return NULL;
+        if (PMIX_FWD_STDOUT_CHANNEL & stream ||
+            nptr->iof_flags.merge) {
+            /* setup the stdout sink */
+            if (nptr->iof_flags.pattern) {
+                /* if there are no '%' signs in the pattern, then it is just a literal string */
+                if (NULL == strchr(nptr->iof_flags.file, '%')) {
+                    /* setup the file */
+                    pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
+                } else {
+                    /* must process the pattern - for now, just take it literally */
+                    pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
+                }
+            } else {
+                /* setup the file */
+                pmix_asprintf(&outfile, "%s.%s.%0*u.out", nptr->iof_flags.file,
+                              nptr->nspace, numdigs, rank);
+            }
+            fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
+            free(outfile);
+            if (fdout < 0) {
+                /* couldn't be opened */
+                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                return NULL;
+            }
+            /* define a sink to that file descriptor */
+            snk = PMIX_NEW(pmix_iof_sink_t);
+            if (nptr->iof_flags.merge) {
+                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                     PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
+            } else {
+                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                     PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
+            }
+            pmix_list_append(&nptr->sinks, &snk->super);
+            return &snk->wev;
+        } else {
+            /* setup the stderr sink */
+            if (nptr->iof_flags.pattern) {
+                /* if there are no '%' signs in the pattern, then it is just a literal string */
+                if (NULL == strchr(nptr->iof_flags.file, '%')) {
+                    /* setup the file */
+                    pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
+                } else {
+                    /* must process the pattern - for now, just take it literally */
+                    pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
+                }
+            } else {
+                /* setup the file */
+                pmix_asprintf(&outfile, "%s.%s.%0*u.err", nptr->iof_flags.file,
+                              nptr->nspace, numdigs, rank);
+            }
+            fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
+            free(outfile);
+            if (fdout < 0) {
+                /* couldn't be opened */
+                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                return NULL;
+            }
+            /* define a sink to that file descriptor */
+            snk = PMIX_NEW(pmix_iof_sink_t);
+            PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                 PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
+            pmix_list_append(&nptr->sinks, &snk->super);
+            return &snk->wev;
         }
-        /* define a sink to that file descriptor */
-        snk = PMIX_NEW(pmix_iof_sink_t);
-        PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
-                             PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
-        pmix_list_append(&nptr->sinks, &snk->super);
-        return &snk->wev;
     }
 
     return NULL;
@@ -837,30 +892,42 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
 
 void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
 {
-    if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_OUTPUT)) {
+    if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_OUTPUT) ||
+        PMIX_CHECK_KEY(info, PMIX_TAG_OUTPUT)) {
         flags->tag = PMIX_INFO_TRUE(info);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_TIMESTAMP_OUTPUT)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_RANK_OUTPUT)) {
+        flags->rank = PMIX_INFO_TRUE(info);
+        flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_TIMESTAMP_OUTPUT) ||
+               PMIX_CHECK_KEY(info, PMIX_TIMESTAMP_OUTPUT)) {
         flags->timestamp = PMIX_INFO_TRUE(info);
         flags->set = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_XML_OUTPUT)) {
         flags->xml = PMIX_INFO_TRUE(info);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_FILE)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_FILE) ||
+               PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_FILE)) {
         flags->file = strdup(info->value.data.string);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_DIRECTORY)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_DIRECTORY) ||
+               PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_DIRECTORY)) {
         flags->directory = strdup(info->value.data.string);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_OUTPUT_NOCOPY)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_ONLY) ||
+               PMIX_CHECK_KEY(info, PMIX_OUTPUT_NOCOPY)) {
         flags->nocopy = PMIX_INFO_TRUE(info);
         flags->set = true;
-    } else if (PMIX_CHECK_KEY(info, PMIX_MERGE_STDERR_STDOUT)) {
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_MERGE_STDERR_STDOUT) ||
+               PMIX_CHECK_KEY(info, PMIX_MERGE_STDERR_STDOUT)) {
         flags->merge = PMIX_INFO_TRUE(info);
         flags->set = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_LOCAL_OUTPUT)) {
         flags->local_output = PMIX_INFO_TRUE(info);
         flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_PATTERN)) {
+        flags->pattern = PMIX_INFO_TRUE(info);
+        /* don't mark as set here as this is just a qualifier */
     }
 }
 
@@ -1097,7 +1164,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         goto process;
     }
 
-    if (!myflags.xml && !myflags.timestamp && !myflags.tag) {
+    if (!myflags.set) {
         /* the data is not to be tagged - just copy it
          * and move on to processing
          */
@@ -1114,17 +1181,33 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
             snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s nspace=\"%s\" rank=\"%s\"", suffix,
                      name->nspace, PMIX_RANK_PRINT(name->rank));
+        } else if (myflags.rank) {
+            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                     "<%s rank=\"%s\"", suffix,
+                     PMIX_RANK_PRINT(name->rank));
         } else if (myflags.timestamp) {
             snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         } else {
             snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
-                     "<%s rank=\"%s\">", suffix,
+                     "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         }
         snprintf(endtag, PMIX_IOF_BASE_TAG_MAX,
                  "</%s>", suffix);
+    } else {
+        if (myflags.tag) {
+            snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                     "[%s,%s]<%s>",
+                     name->nspace,
+                     PMIX_RANK_PRINT(name->rank),
+                     suffix);
+        } else if (myflags.rank) {
+            snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                     "[%s]",
+                     PMIX_RANK_PRINT(name->rank));
+        }
     }
 
     /* if we are to timestamp output, start the tag with that */
@@ -1136,25 +1219,17 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         cptr = ctime(&mytime);
         cptr[strlen(cptr) - 1] = '\0'; /* remove trailing newline */
 
-        if (myflags.xml && !myflags.tag) {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
-                     " timestamp=\"%s\">", cptr);
-        } else if (myflags.xml && myflags.tag) {
+        if (myflags.xml && !myflags.tag && !myflags.rank) {
             snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
                      " timestamp=\"%s\"", cptr);
-        } else if (myflags.tag) {
+        } else if (myflags.xml && (myflags.tag || myflags.rank)) {
+            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
+                     " timestamp=\"%s\"", cptr);
+        } else if (myflags.tag || myflags.rank) {
             snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
         } else {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s>", cptr, suffix);
+            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s", cptr, suffix);
         }
-    }
-
-    if (myflags.tag && !myflags.xml) {
-        snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
-                 "[%s,%s]<%s>",
-                 name->nspace,
-                 PMIX_RANK_PRINT(name->rank),
-                 suffix);
     }
 
     endtaglen = strlen(endtag);
@@ -1178,7 +1253,9 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     /* if xml, end the starttag with a '>' */
     if (myflags.xml) {
         starttag[k++] = '>';
-    } else {
+    } else if (myflags.rank) {
+        starttag[k++] = ' ';
+    } else if (myflags.tag || myflags.timestamp) {
         starttag[k++] = ':';
     }
 
