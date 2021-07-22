@@ -203,6 +203,7 @@ typedef struct {
     bool nocopy;
     bool merge;
     bool local_output;
+    bool pattern;
 } pmix_iof_flags_t;
 
 /* objects used by servers for tracking active nspaces */
