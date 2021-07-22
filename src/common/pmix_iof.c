@@ -781,9 +781,15 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             }
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
-            PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
-                                 PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
+            if (nptr->iof_flags.merge) {
+                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                     PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
+            } else {
+                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                     PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
+            }
             pmix_list_append(&nptr->sinks, &snk->super);
+            return &snk->wev;
         } else {
             /* setup the stderr sink */
             pmix_asprintf(&outfile, "%s/stderr", outdir);
@@ -799,8 +805,8 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
                                  PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
             pmix_list_append(&nptr->sinks, &snk->super);
+            return &snk->wev;
         }
-        return &snk->wev;
     }
 
     /* see if we are to output to a file */
@@ -814,22 +820,71 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             free(outdir);
             return NULL;
         }
-        /* setup the file */
-        pmix_asprintf(&outfile, "%s.%s.%0*u", nptr->iof_flags.file,
-                      nptr->nspace, numdigs, rank);
-        fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
-        free(outfile);
-        if (fdout < 0) {
-            /* couldn't be opened */
-            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-            return NULL;
+        if (PMIX_FWD_STDOUT_CHANNEL & stream ||
+            nptr->iof_flags.merge) {
+            /* setup the stdout sink */
+            if (nptr->iof_flags.pattern) {
+                /* if there are no '%' signs in the pattern, then it is just a literal string */
+                if (NULL == strchr(nptr->iof_flags.file, '%')) {
+                    /* setup the file */
+                    pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
+                } else {
+                    /* must process the pattern - for now, just take it literally */
+                    pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
+                }
+            } else {
+                /* setup the file */
+                pmix_asprintf(&outfile, "%s.%s.%0*u.out", nptr->iof_flags.file,
+                              nptr->nspace, numdigs, rank);
+            }
+            fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
+            free(outfile);
+            if (fdout < 0) {
+                /* couldn't be opened */
+                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                return NULL;
+            }
+            /* define a sink to that file descriptor */
+            snk = PMIX_NEW(pmix_iof_sink_t);
+            if (nptr->iof_flags.merge) {
+                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                     PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
+            } else {
+                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                     PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
+            }
+            pmix_list_append(&nptr->sinks, &snk->super);
+            return &snk->wev;
+        } else {
+            /* setup the stderr sink */
+            if (nptr->iof_flags.pattern) {
+                /* if there are no '%' signs in the pattern, then it is just a literal string */
+                if (NULL == strchr(nptr->iof_flags.file, '%')) {
+                    /* setup the file */
+                    pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
+                } else {
+                    /* must process the pattern - for now, just take it literally */
+                    pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
+                }
+            } else {
+                /* setup the file */
+                pmix_asprintf(&outfile, "%s.%s.%0*u.err", nptr->iof_flags.file,
+                              nptr->nspace, numdigs, rank);
+            }
+            fdout = open(outfile, O_CREAT | O_RDWR | O_TRUNC, 0644);
+            free(outfile);
+            if (fdout < 0) {
+                /* couldn't be opened */
+                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                return NULL;
+            }
+            /* define a sink to that file descriptor */
+            snk = PMIX_NEW(pmix_iof_sink_t);
+            PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                                 PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
+            pmix_list_append(&nptr->sinks, &snk->super);
+            return &snk->wev;
         }
-        /* define a sink to that file descriptor */
-        snk = PMIX_NEW(pmix_iof_sink_t);
-        PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
-                             PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
-        pmix_list_append(&nptr->sinks, &snk->super);
-        return &snk->wev;
     }
 
     return NULL;
@@ -870,6 +925,9 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_LOCAL_OUTPUT)) {
         flags->local_output = PMIX_INFO_TRUE(info);
         flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_PATTERN)) {
+        flags->pattern = PMIX_INFO_TRUE(info);
+        /* don't mark as set here as this is just a qualifier */
     }
 }
 

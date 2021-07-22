@@ -876,6 +876,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_IOF_XML_OUTPUT                 "pmix.iof.xml"          // (bool) Format output in XML
 #define PMIX_IOF_OUTPUT_TO_FILE             "pmix.iof.file"         // (char*) direct application output into files of form
                                                                     //         "<filename>.rank" with both stdout and stderr redirected into it
+#define PMIX_IOF_FILE_PATTERN               "pmix.iof.fpt"          // (bool) Specified output file is to be treated as a pattern and not
+                                                                    //        automatically annotated by nspace, rank, or other parameters
 #define PMIX_IOF_OUTPUT_TO_DIRECTORY        "pmix.iof.dir"          // (char*) direct application output into files of form
                                                                     //         "<directory>/<jobid>/rank.<rank>/stdout[err]"
 #define PMIX_IOF_FILE_ONLY                  "pmix.iof.fonly"        // (bool) output only into designated files - do not also output
