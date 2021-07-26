@@ -27,6 +27,7 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
+#include "src/util/show_help.h"
 #include "ptl_tool.h"
 #include "src/mca/ptl/base/base.h"
 
@@ -42,6 +43,29 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo)
     pmix_status_t rc;
     char **clnup = NULL, *cptr = NULL;
     pmix_info_t dir;
+    size_t n;
+
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_INCLUDE)) {
+            pmix_ptl_base.if_include = strdup(info[n].value.data.string);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_EXCLUDE)) {
+            pmix_ptl_base.if_exclude = strdup(info[n].value.data.string);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV4_PORT)) {
+            pmix_ptl_base.ipv4_port = info[n].value.data.integer;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV6_PORT)) {
+            pmix_ptl_base.ipv6_port = info[n].value.data.integer;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV4)) {
+            pmix_ptl_base.disable_ipv4_family = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV6)) {
+            pmix_ptl_base.disable_ipv6_family = PMIX_INFO_TRUE(&info[n]);
+        }
+    }
+
+    if (NULL != pmix_ptl_base.if_include && NULL != pmix_ptl_base.if_exclude) {
+        pmix_show_help("help-ptl-base.txt", "include-exclude", true, pmix_ptl_base.if_include,
+                       pmix_ptl_base.if_exclude);
+        return PMIX_ERR_SILENT;
+    }
 
     rc = pmix_ptl_base_setup_listener();
     if (PMIX_SUCCESS != rc) {
