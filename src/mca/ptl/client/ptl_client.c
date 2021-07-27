@@ -67,7 +67,10 @@
 
 static pmix_status_t connect_to_peer(struct pmix_peer_t *peer, pmix_info_t *info, size_t ninfo);
 
-pmix_ptl_module_t pmix_ptl_client_module = {.name = "client", .connect_to_peer = connect_to_peer};
+pmix_ptl_module_t pmix_ptl_client_module = {
+    .name = "client",
+    .connect_to_peer = connect_to_peer
+};
 
 static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, size_t ninfo)
 {
