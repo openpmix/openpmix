@@ -26,6 +26,174 @@ multiple release branches.
 Master (not on release branches yet)
 ------------------------------------
 
+4.1.0 -- 29 July 2021
+----------------------
+**** NOTE: This release implements the complete PMIx v4.1 Standard
+**** and therefore includes a number of new APIs and features. These
+**** are fully documented in the official document. It also includes
+**** some extensions that have not yet been included in that document.
+
+Beyond the v4.1 modifications and additions to APIs, datatypes, attributes,
+and macros, changes to the library include:
+
+ - PR #2251: More updates from master
+     - Replaced PMIx_Notify_Event with cbfunc call in errhandler to match
+     - Update attribute support tables
+ - PR #2248: Continue updates to support MPICH integration
+     - Extend IOF outputting format to cover Hydra options.
+ - PR #2246: Cleanup some IOF attributes
+ - PR #2235: Cherry-pick updates from master branch
+     - Default tools to outputting their IOF
+     - Initalize val before get in case get isn't successful
+     - Some cleanups of the event notification and keepalive support
+     - Remove stale travis.yml file
+     - Update simptest to truly support PMIx_Abort
+     - Some cleanups for client finalize and IOF output
+     - Do not forward cached IOF to self
+     - Update how C to Python bytes/strings are handled for get and byte objects
+     - Add test_v2 directory
+     - Add configure logic for RM and sse support
+     - Add pstat framework
+     - Remove duplicate PMIx_Data_load and PMIx_Data_unload definitions
+     - Add manpage files for tools
+     - Add sse common component
+     - Add the prm components
+     - Add the storage framework
+     - General update of code base to track master branch
+ - PR #2224: common/dstore: Fix inconsistent Makefile.am
+ - PR #2216: Cherry-pick updates from master branch
+     - Add missing osname endpt elements to bfrops
+     - Optimize check for nodes
+     - Transfer stdout/err formatting to PMIx
+     - Ensure tool output of IOF
+ - PR #2208: Cherry-pick updates from master branch
+     - Enable re-init of clients
+     - Add attribute to indicate copy/nocopy of output directed to files
+ - PR #2204: Add a few job error constants
+ - PR #2201: Cherry-pick updates from master branch
+     - Minor updates based on Standards review
+     - Correct references to help-ptl-tool.txt
+     - Protect register_nspace against new entries
+     - Add oversubscribed attribute
+ - PR #2195: configury: Use AC_CHECK_ALIGNOF and fix cross-compiling
+ - PR #2190:Cherry-pick updates from master branch
+     - Remove duplicative pmdl/ompi directories
+     - Add missing m4 file
+     - Update hwloc support to handle revised version string
+     - Register ompi5 and ompi4 as aliases for ompi plugin
+     - Correct the PMIx_Get signature
+     - Silence some gcc warnings
+     - Silence some gcc11 warnings
+     - Protect against bad nspace input
+     - Cleanup few lingering gcc11 warnings
+     - Protect against duplicate envar harvesting
+ - PR #2177: Cleanup shadow variables in dstore base and components
+ - PR #2156: Ensure we pass the desired scope on a PMIx_Get call
+ - PR #2170: Remove non-required items
+ - PR #2168: Cherry-pick updates from master branch
+     - Add missing datatype support in darray macros
+     - Update comments on debug attributes
+     - Remove stale envar settings in hwloc support
+     - Silence warning of unused var
+     - Minor addition to debug output
+ - PR #2158: atomics: Fix broken make dist
+ - PR #2154: Cherry-pick updates from master branch
+     - Spawn needs to do a little checking of the app
+     - build: Allow autogen.pl to be run from a tarball
+     - Enable singletons to connect to system servers
+     - Fix compile error in ptl_base_connect.c
+     - Update ptl_base_connect.c
+     - build: Change default build mode for components
+     - build: Remove options around mca direct calling
+     - Setup clients to output forwarded IO
+     - Set the default for enable-mca-dso
+     - Tool finalize crash due to ref count issue
+     - Reject ambiguous connection options
+     - ptl: prevent free of uninited suri variable
+     - Clang-format the code
+     - psec: include missing psec.h
+     - ptl: help on too-many-conns: mention conn handle files
+     - Some mods/cleanup of debugger definitions and handling
+     - build: Explicitly list libpmix dependencies
+     - build: Fix compiler attribute detection
+     - build: Fix compiler family detection
+     - atomics: Only support C11 and GCC builtin atomics
+     - Clean out unneeded test directory
+ - PR #2112: Add a bfrops 4.0.1 component
+ - PR #2111: Cherry-pick updates from master branch
+     - Add missing items
+     - Add missing PMIx_Data... functions
+     - Fix signature of new compression APIs
+     - Add compress/decompress APIs
+     - Update clang format
+     - Slight touchups on event notification and name print
+ - PR #2108: Cherry-pick updates from master branch
+     - leak: Free items in nslist for fence tracker
+     - Update src/common/pmix_iof.c
+     - Properly handle stdin forwarding
+     - Eliminate shadow variables
+     - leak: Fix case where buffer was unloaded, losing the pointer
+     - Leak: Always free ns->jobbkt in pmix_nspace_caddy_t destructor.
+     - Add clang format support
+ - PR #2105: Add zlib warning and compression checks
+ - PR #2100: Cherry-pick updates from master branch
+     - Correct listener - this is a PMIx v4 (not 4.1) server
+     - Purge shadowing as reported by gcc.
+     - Add -Wshadow to --picky-compiler
+     - Avoid zero byte malloc in argv_join_range
+     - Minor fix to libevent configury
+     - Minor configure cleanups
+     - Use LT_PATH_NM instead of AC_PATH_PROG to find nm
+     - Update to Autoconf 2.7x
+     - Enable singleton "comm_spawn" operations
+     - Link against libz when testing for TM
+     - Initialize myproc structure before calling PMIx_tool_set_server
+     - Py: Open files as UTF-8 while processing
+     - Fix Python binding build
+     - Correctly pass the right object to dereg cbfunc
+     - Extend check for empty buffer
+     - Correct miscast of object type
+     - Validate CFLAGS individually
+     - Use the provided caddy instead of creating a new one
+     - Silence -qinline xlc compiler warning
+     - Fix case where var->mbv_enumerator can be released when static
+     - Cleanup several places based on testing with PRRTE
+     - Ensure proper handling of IOF pull requests
+     - Protect against empty message
+     - Remove PMIX_BUFFER datatype and extend macro definition
+     - Fix stale definition for PMIX_HAVE_ATOMIC_LLSC_PTR
+     - Add datatype support for new types
+     - configury: fix _PMIX_CHECK_PACKAGE_LIB() macro
+     - Missed a spot - check for HWLOC_VERSION defined
+     - Protect HWLOC_VERSION
+     - Fix configury where most compilers will get mislabeled as 'gnu'
+     - Ensure the topology support matches the Standard
+     - Fix check for IBM xl compilers for v13.1 and later
+     - Cleanup the IOF register/dereg response code path
+     - Fix clang compliler regression
+     - Have developer builds use -O3 by default
+     - Silence PGI atomics warnings, while not breaking clang
+     - Update the new hybrid test a bit
+     - Fix build failure on Apple silicon
+     - Correctly handle precedence for first/last overall events
+     - Fix various PGI warnings
+     - Fix bugs in OFI configure and HWLOC component
+     - Add the local reference ID to iof/pull request
+     - Add a couple of useful macros
+     - Correct name of PSM2 envar
+     - configury: fix --with-ofi=DIR handling
+     - Add the psm2 auth_key to the job info and silence warning
+     - Update the pnet/opa component to current architecture
+     - Ensure the data array always gets initialized in PMIX_INFO_LIST_CONVERT
+     - Cleanup indirect debugger launch against mpirun
+ - PR #2014: Silence a couple of Coverity warnings
+ - PR #2013: Add the PMIx Standard version level to the version string
+ - PR #2012: Fix Python binding build for VPATH
+ - PR #2007: Disable IPv6 by default
+ - PR #2000: Set hostname in global to NULL on finalize
+ - PR #1998: Specify Python 3 for the configure check
+
+
 4.0.0 -- 30 Dec 2020
 ----------------------
 **** NOTE: This release implements the complete PMIx v4.0 Standard
