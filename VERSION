@@ -14,7 +14,7 @@
 # <major>.<minor>.<release>.
 
 major=4
-minor=1
+minor=2
 release=0
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
@@ -23,7 +23,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=rc2
+greek=a1
 
 # PMIx Standard Compliance Level
 std_major=4

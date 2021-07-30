@@ -23,7 +23,7 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.1.0 -- TBD
+4.1.0 -- 29 July 2021
 ----------------------
  - PR #2248: Continue updates to support MPICH integration
      - Extend IOF outputting format to cover Hydra options.
