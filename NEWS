@@ -25,6 +25,17 @@ multiple release branches.
 
 4.1.0 -- 29 July 2021
 ----------------------
+**** NOTE: This release implements the complete PMIx v4.1 Standard
+**** and therefore includes a number of new APIs and features. These
+**** are fully documented in the official document. It also includes
+**** some extensions that have not yet been included in that document.
+
+Beyond the v4.1 modifications and additions to APIs, datatypes, attributes,
+and macros, changes to the library include:
+
+ - PR #2251: More updates from master
+     - Replaced PMIx_Notify_Event with cbfunc call in errhandler to match
+     - Update attribute support tables
  - PR #2248: Continue updates to support MPICH integration
      - Extend IOF outputting format to cover Hydra options.
  - PR #2246: Cleanup some IOF attributes
