@@ -1054,7 +1054,7 @@ typedef uint32_t pmix_rank_t;
 
 
 /* Distance Attributes */
-#define PMIX_DEVICE_DISTANCES               "pmix.dev.dist"        // (pmix_data_array_t*) Return an array of pmix_device_dist_t containing the
+#define PMIX_DEVICE_DISTANCES               "pmix.dev.dist"        // (pmix_data_array_t*) Return an array of pmix_device_distance_t containing the
                                                                    //         minimum and maximum distances of the given process location to all
                                                                    //         devices of the specified type on the local node.
 #define PMIX_DEVICE_TYPE                    "pmix.dev.type"        // (pmix_device_type_t) Bitmask specifying the type(s) of device(s) whose
