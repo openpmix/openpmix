@@ -1271,7 +1271,7 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_PROC_RANK == value[0].type:
         return {'value':value[0].data.rank, 'val_type':PMIX_PROC_RANK}
     elif PMIX_PROC == value[0].type:
-        pyns = str(value[0].data.proc[0].nspace)
+        pyns = (<bytes>value[0].data.proc[0].nspace).decode('UTF-8')
         return {'value':{'nspace':pyns, 'rank':value[0].data.proc[0].rank}, 'val_type':PMIX_PROC}
     elif PMIX_BYTE_OBJECT == value[0].type:
         mybytes = <bytes>value[0].data.bo.bytes[:value[0].data.bo.size]
@@ -1285,10 +1285,10 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_PROC_STATE == value[0].type:
         return {'value':value[0].data.state, 'val_type':PMIX_PROC_STATE}
     elif PMIX_PROC_INFO == value[0].type:
-        pins = str(value[0].data.pinfo[0].proc.nspace)
+        pins = (<bytes>value[0].data.pinfo[0].proc.nspace).decode('UTF-8')
         pirk = value[0].data.pinfo[0].proc.rank
-        pihost = str(value[0].data.pinfo[0].hostname)
-        pexec = str(value[0].data.pinfo[0].executable_name)
+        pihost = (<bytes>value[0].data.pinfo[0].hostname).decode('UTF-8')
+        pexec = (<bytes>value[0].data.pinfo[0].executable_name).decode('UTF-8')
         pipid = value[0].data.pinfo[0].pid
         piex = value[0].data.pinfo[0].exit_code
         pist = value[0].data.pinfo[0].state
@@ -1306,8 +1306,8 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
     elif PMIX_ALLOC_DIRECTIVE == value[0].type:
         return {'value':value[0].data.adir, 'val_type':PMIX_ALLOC_DIRECTIVE}
     elif PMIX_ENVAR == value[0].type:
-        pyenv = str(value[0].data.envar.envar)
-        pyval = str(value[0].data.envar.value)
+        pyenv = (<bytes>value[0].data.envar.envar).decode('UTF-8')
+        pyval = (<bytes>value[0].data.envar.value).decode('UTF-8')
         pysep = value[0].data.envar.separator
         pyenvans = {'envar': pyenv, 'value': pyval, 'separator': pysep}
         return {'value':pyenvans, 'val_type':PMIX_ENVAR}
@@ -1372,7 +1372,7 @@ cdef int pmix_alloc_info(pmix_info_t **info_ptr, size_t *ninfo, dicts:list):
     if dicts is not None:
         ninfo[0] = len(dicts)
         if 0 < ninfo[0]:
-            info_ptr[0] = <pmix_info_t*> PyMem_Malloc(ninfo[0] * sizeof(pmix_info_t))
+            info_ptr[0] = <pmix_info_t*>malloc(ninfo[0] * sizeof(pmix_info_t))
             if not info_ptr[0]:
                 return PMIX_ERR_NOMEM
             rc = pmix_load_info(info_ptr[0], dicts)
@@ -1424,7 +1424,7 @@ cdef void pmix_free_info(pmix_info_t *array, size_t sz):
     while n < sz:
         pmix_destruct_info(&array[n])
         n += 1
-    PyMem_Free(array)
+    free(array)
 
 # Convert a dictionary of key-value pairs into an
 # array of pmix_pdata_t structs
@@ -1578,9 +1578,9 @@ cdef void pmix_unload_bytes(char *data, size_t ndata, blist:list):
 cdef void pmix_free_apps(pmix_app_t *array, size_t sz):
     n = 0
     while n < sz:
-        PyMem_Free(array[n].cmd)
+        free(array[n].cmd)
         # need to free the argv and env arrays
-        PyMem_Free(array[n].cwd)
+        free(array[n].cwd)
         if 0 < array[n].ninfo:
             pmix_free_info(array[n].info, array[n].ninfo)
         n += 1
@@ -1623,22 +1623,20 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
                 m = len(p['argv']) + 1
             else:
                 m = 2
-            argv = <char**> PyMem_Malloc(m * sizeof(char*))
+            argv = <char**> malloc(m * sizeof(char*))
             if not argv:
                 return PMIX_ERR_NOMEM
             memset(argv, 0, m)
             if p['argv'] is not None:
-                # pmix_load_argv(argv, p['argv'])
-                argv[0] = strdup("hostname")
+                pmix_load_argv(argv, p['argv'])
             else:
-              #  pmix_load_argv(argv, [p['cmd']])
-                argv[0] = strdup("hostname")
+                pmix_load_argv(argv, [p['cmd']])
         except:
-            argv = <char**> PyMem_Malloc(2 * sizeof(char*))
+            argv = <char**> malloc(2 * sizeof(char*))
             memset(argv, 0, 2)
             rc = pmix_load_argv(argv, [p['cmd']])
             if PMIX_SUCCESS != rc:
-                PyMem_Free(argv)
+                free(argv)
                 return rc
         apps[n].argv = argv
         apps[n].env = NULL
@@ -1647,7 +1645,7 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
                 m = len(p['env']) + 1
             else:
                 m = 1
-            env = <char**> PyMem_Malloc(m * sizeof(char*))
+            env = <char**> malloc(m * sizeof(char*))
             if not argv:
                 return PMIX_ERR_NOMEM
             memset(env, 0, m)
@@ -1669,7 +1667,7 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
         try:
             if p['info'] is not None:
                 apps[n].ninfo = len(p['info'])
-                apps[n].info =  <pmix_info_t*> PyMem_Malloc(apps[n].ninfo * sizeof(pmix_info_t))
+                apps[n].info =  <pmix_info_t*> malloc(apps[n].ninfo * sizeof(pmix_info_t))
                 if not apps[n].info:
                     return PMIX_ERR_NOMEM
                 rc = pmix_load_info(apps[n].info, p['info'])
