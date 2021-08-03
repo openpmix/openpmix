@@ -198,7 +198,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_info_t info[], size_t ninfo,
                          pmix_info_t *results, size_t nresults,
                          pmix_event_notification_cbfunc_fn_t cbfunc,
-                         void *cbdata):
+                         void *cbdata) with gil:
     cdef pmix_info_t *myresults
     cdef pmix_info_t **myresults_ptr
     cdef size_t nmyresults
@@ -3184,7 +3184,7 @@ cdef class PMIxTool(PMIxServer):
             rc = PMIx_tool_init(&self.myproc, NULL, 0)
         if PMIX_SUCCESS == rc:
             # convert the returned name
-            myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}
+            myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
         return rc, myname
 
     # Finalize the tool library
@@ -3234,8 +3234,8 @@ cdef class PMIxTool(PMIxServer):
             rc = PMIx_tool_attach_to_server(&self.myproc, &srvr, NULL, 0)
         if PMIX_SUCCESS == rc:
             # convert the returned name
-            myname = {'nspace': str(self.myproc.nspace), 'rank': self.myproc.rank}
-            mysrvr = {'nspace': str(srvr.nspace), 'rank': srvr.rank}
+            myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
+            mysrvr = {'nspace': (<bytes>srvr.nspace).decode('UTF-8'), 'rank': srvr.rank}
         return rc, myname, mysrvr
 
     def get_servers(self):
