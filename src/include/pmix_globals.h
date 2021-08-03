@@ -136,7 +136,7 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_IOF_DEREG_CMD                29
 #define PMIX_FABRIC_REGISTER_CMD          30
 #define PMIX_FABRIC_UPDATE_CMD            31
-#define PMIX_FABRIC_COMPUTE_DISTANCES_CMD 32
+#define PMIX_COMPUTE_DEVICE_DISTANCES_CMD 32
 
 /* provide a "pretty-print" function for cmds */
 const char *pmix_command_string(pmix_cmd_t cmd);
@@ -593,6 +593,7 @@ typedef struct {
     size_t output_limit;
     pmix_list_t nspaces;
     pmix_topology_t topology;
+    pmix_cpuset_t cpuset;
     bool external_topology;
     bool external_progress;
     pmix_iof_flags_t iof_flags;

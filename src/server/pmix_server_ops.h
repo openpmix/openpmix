@@ -353,6 +353,10 @@ PMIX_EXPORT pmix_status_t pmix_server_fabric_get_device_index(pmix_server_caddy_
                                                               pmix_buffer_t *buf,
                                                               pmix_info_cbfunc_t cbfunc);
 
+PMIX_EXPORT pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
+                                                   pmix_buffer_t *buf,
+                                                   pmix_device_dist_cbfunc_t cbfunc);
+
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;
 

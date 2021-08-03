@@ -1293,6 +1293,7 @@ static pmix_status_t compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpu
 
     /* find the max depth of this topology */
     depth = hwloc_topology_get_depth(topo->topology);
+
     /* get the lowest object that completely covers the cpuset */
     for (dp = 1; dp < depth; dp++) {
         tgt = dsearch(topo->topology, dp, cpuset->bitmap);
@@ -1309,6 +1310,7 @@ static pmix_status_t compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpu
          * that can be done here */
         return PMIX_ERR_NOT_AVAILABLE;
     }
+
     /* get the PU depth */
     pudepth = (unsigned) hwloc_get_type_depth(topo->topology, HWLOC_OBJ_PU);
     width = hwloc_get_nbobjs_by_depth(topo->topology, pudepth);
@@ -1508,13 +1510,24 @@ static pmix_status_t pack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *src,
     char *tmp;
     pmix_status_t rc;
 
-    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
-        return PMIX_ERR_TAKE_NEXT_OPTION;
+    if (NULL == src) {
+        /* pack a NULL string */
+        tmp = NULL;
+        PMIX_BFROPS_PACK_TYPE(rc, buf, &tmp, 1, PMIX_STRING, regtypes);
+        return PMIX_SUCCESS;
     }
 
-    /* express the cpuset as a string */
-    if (0 != hwloc_bitmap_list_asprintf(&tmp, src->bitmap)) {
-        return PMIX_ERROR;
+    if (NULL != src->source && 0 != strncasecmp(src->source, "hwloc", 5)) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    if (NULL == src->bitmap) {
+        /* the process isn't bound */
+        tmp = NULL;
+    } else {
+        /* express the cpuset as a string */
+        if (0 != hwloc_bitmap_list_asprintf(&tmp, src->bitmap)) {
+            return PMIX_ERROR;
+        }
     }
 
     /* pack the string */
@@ -1537,12 +1550,15 @@ static pmix_status_t unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest,
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-
-    /* convert to a bitmap */
+    if (NULL == tmp) {
+        dest->bitmap = NULL;
+    } else {
+        /* convert to a bitmap */
+        dest->bitmap = hwloc_bitmap_alloc();
+        hwloc_bitmap_list_sscanf(dest->bitmap, tmp);
+        free(tmp);
+    }
     dest->source = strdup("hwloc");
-    dest->bitmap = hwloc_bitmap_alloc();
-    hwloc_bitmap_list_sscanf(dest->bitmap, tmp);
-    free(tmp);
 
     return PMIX_SUCCESS;
 }
@@ -1623,7 +1639,13 @@ static pmix_status_t pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
     int len;
     struct hwloc_topology_support *support;
 
-    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
+    if (NULL == src) {
+        /* pack a NULL string */
+        PMIX_BFROPS_PACK_TYPE(rc, buf, &xmlbuffer, 1, PMIX_STRING, regtypes);
+        return PMIX_SUCCESS;
+    }
+
+    if (NULL != src->source && 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
@@ -1688,6 +1710,12 @@ static pmix_status_t unpack_topology(pmix_buffer_t *buf, pmix_topology_t *dest,
     PMIX_BFROPS_UNPACK_TYPE(rc, buf, &xmlbuffer, &cnt, PMIX_STRING, regtypes);
     if (PMIX_SUCCESS != rc) {
         return rc;
+    }
+    /* if it is NULL, then return a NULL topology */
+    if (NULL == xmlbuffer) {
+        dest->source = strdup("hwloc");
+        dest->topology = NULL;
+        return PMIX_SUCCESS;
     }
 
     /* convert the xml */

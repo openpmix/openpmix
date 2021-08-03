@@ -157,7 +157,7 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuse
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric update_distances");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:compute_distances");
 
     *distances = NULL;
     *ndist = 0;
@@ -183,7 +183,7 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuse
     }
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric update_distances completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:compute_distances completed");
 
     return rc;
 }
@@ -207,7 +207,7 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
     int cnt;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:fabric direcv from server with %d bytes", (int) buf->bytes_used);
+                        "pmix:compute_dist recv from server with %d bytes", (int) buf->bytes_used);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -246,19 +246,21 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
     }
 
 complete:
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric ifrecv from server releasing");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:compute_dist recv from server releasing");
     /* release the caller */
     cb->cbfunc.distfn(rc, cb->dist, cb->nvals, cb->cbdata, icbrelfn, (void *) cb);
 }
 
-pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo, pmix_cpuset_t *cpuset,
+pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
                                         pmix_info_t info[], size_t ninfo,
                                         pmix_device_dist_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
     pmix_buffer_t *msg;
-    pmix_cmd_t cmd = PMIX_FABRIC_COMPUTE_DISTANCES_CMD;
+    pmix_cmd_t cmd = PMIX_COMPUTE_DEVICE_DISTANCES_CMD;
+    pmix_topology_t *topo = NULL;
+    pmix_cpuset_t *cpuset = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -266,22 +268,58 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo, pmix_cpuset_t *cp
     cb->cbfunc.distfn = cbfunc;
     cb->cbdata = cbdata;
 
+    /* if the topology is NULL, then use ours */
+    if (NULL == tp) {
+        if (NULL == pmix_globals.topology.topology) {
+            /* if our topology is NULL, try to get it */
+            rc = pmix_ploc.load_topology(&pmix_globals.topology);
+            if (PMIX_SUCCESS != rc) {
+                /* try to ask our server if they can do it */
+                goto request;
+            }
+        }
+        topo = &pmix_globals.topology;
+    } else {
+        topo = tp;
+    }
+    /* same for cpuset */
+    if (NULL == cp) {
+        /* if our cpuset is NULL, it could be we are unbound or
+         * that we haven't yet gotten our cpuset. Try to get it. */
+        if (NULL == pmix_globals.cpuset.bitmap) {
+            rc = pmix_ploc.get_cpuset(&pmix_globals.cpuset, PMIX_CPUBIND_PROCESS);
+            if (PMIX_SUCCESS != rc) {
+                /* try to ask our server if they can do it */
+                goto request;
+            }
+        }
+        cpuset = &pmix_globals.cpuset;
+    } else {
+        cpuset = cp;
+    }
+
     /* see if I can support this myself */
     cb->status = pmix_ploc.compute_distances(topo, cpuset, info, ninfo, &cb->dist, &cb->nvals);
-    if (PMIX_SUCCESS == cb->status || PMIX_ERR_NOT_AVAILABLE == cb->status) {
+    if (PMIX_SUCCESS == cb->status) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         /* threadshift to return the result */
         PMIX_THREADSHIFT(cb, dcbfunc);
         return PMIX_SUCCESS;
     }
 
-    /* if I am a server, there is nothing more I can do */
+request:
+    /* if I am a server or I am not connected, there is nothing more I can do */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || !pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         PMIX_RELEASE(cb);
         return PMIX_ERR_UNREACH;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* don't send our topology if it's local */
+    if (topo == &pmix_globals.topology) {
+        topo = NULL;
+    }
 
     /* if we are a tool or client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
