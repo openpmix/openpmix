@@ -86,6 +86,7 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {.init_cntr = 0,
                                            .commits_pending = false,
                                            .pushstdin = false,
                                            .topology = {NULL, NULL},
+                                           .cpuset = {NULL, NULL},
                                            .external_topology = false,
                                            .external_progress = false};
 

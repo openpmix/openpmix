@@ -95,6 +95,10 @@ static pmix_status_t pmix_ploc_close(void)
 
 static pmix_status_t pmix_ploc_open(pmix_mca_base_open_flag_t flags)
 {
+    if (pmix_ploc_globals.initialized) {
+        return PMIX_SUCCESS;
+    }
+
     /* initialize globals */
     pmix_ploc_globals.initialized = true;
     PMIX_CONSTRUCT_LOCK(&pmix_ploc_globals.lock);
