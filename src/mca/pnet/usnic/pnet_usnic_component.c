@@ -31,10 +31,11 @@
 #include "include/pmix_common.h"
 
 #include "src/mca/ploc/ploc.h"
-#include "src/mca/pnet/base/base.h"
+#include "src/mca/pnet/pnet.h"
 #include "src/util/argv.h"
+#include "src/util/parse_options.h"
 
-#include "pnet_opa.h"
+#include "pnet_usnic.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -45,13 +46,13 @@ static pmix_status_t component_register(void);
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_pnet_opa_component_t mca_pnet_opa_component = {
+pmix_pnet_usnic_component_t mca_pnet_usnic_component = {
     .super = {
         .base = {
             PMIX_PNET_BASE_VERSION_1_0_0,
 
             /* Component name and version */
-            .pmix_mca_component_name = "opa",
+            .pmix_mca_component_name = "usnic",
             PMIX_MCA_BASE_MAKE_VERSION(component,
                                        PMIX_MAJOR_VERSION,
                                        PMIX_MINOR_VERSION,
@@ -70,38 +71,70 @@ pmix_pnet_opa_component_t mca_pnet_opa_component = {
     },
     .include = NULL,
     .exclude = NULL,
-    .radix = 64
+    .tcp_static_ports = NULL,
+    .tcp6_static_ports = NULL
 };
+
+static char *static_port_string = NULL;
+static char *static_port_string6 = NULL;
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &mca_pnet_opa_component.super.base;
+    pmix_mca_base_component_t *component = &mca_pnet_usnic_component.super.base;
 
-    mca_pnet_opa_component.incparms = "HFI_*,PSM2_*";
+    mca_pnet_usnic_component.incparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
         PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &mca_pnet_opa_component.incparms);
-    if (NULL != mca_pnet_opa_component.incparms) {
-        mca_pnet_opa_component.include = pmix_argv_split(mca_pnet_opa_component.incparms, ',');
+        &mca_pnet_usnic_component.incparms);
+    if (NULL != mca_pnet_usnic_component.incparms) {
+        mca_pnet_usnic_component.include = pmix_argv_split(mca_pnet_usnic_component.incparms, ',');
     }
 
-    mca_pnet_opa_component.excparms = NULL;
+    mca_pnet_usnic_component.excparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
         PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &mca_pnet_opa_component.excparms);
-    if (NULL != mca_pnet_opa_component.excparms) {
-        mca_pnet_opa_component.exclude = pmix_argv_split(mca_pnet_opa_component.excparms, ',');
+        &mca_pnet_usnic_component.excparms);
+    if (NULL != mca_pnet_usnic_component.excparms) {
+        mca_pnet_usnic_component.exclude = pmix_argv_split(mca_pnet_usnic_component.excparms, ',');
     }
 
-    (void) pmix_mca_base_component_var_register(component, "radix",
-                                                "Radix for simulating the network coordinates",
+    static_port_string = NULL;
+    (void) pmix_mca_base_component_var_register(component, "static_ipv4_ports",
+                                                "Static ports for daemons (IPv4)",
                                                 PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
                                                 PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                                &mca_pnet_opa_component.radix);
+                                                &static_port_string);
+    /* if ports were provided, parse the provided range */
+    if (NULL != static_port_string) {
+        pmix_util_parse_range_options(static_port_string, &mca_pnet_usnic_component.tcp_static_ports);
+        if (0 == strcmp(mca_pnet_usnic_component.tcp_static_ports[0], "-1")) {
+            pmix_argv_free(mca_pnet_usnic_component.tcp_static_ports);
+            mca_pnet_usnic_component.tcp_static_ports = NULL;
+        }
+    } else {
+        mca_pnet_usnic_component.tcp_static_ports = NULL;
+    }
+
+    static_port_string6 = NULL;
+    (void) pmix_mca_base_component_var_register(component, "static_ipv6_ports",
+                                                "Static ports for daemons (IPv6)",
+                                                PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
+                                                PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+                                                &static_port_string6);
+    /* if ports were provided, parse the provided range */
+    if (NULL != static_port_string6) {
+        pmix_util_parse_range_options(static_port_string6, &mca_pnet_usnic_component.tcp6_static_ports);
+        if (0 == strcmp(mca_pnet_usnic_component.tcp6_static_ports[0], "-1")) {
+            pmix_argv_free(mca_pnet_usnic_component.tcp6_static_ports);
+            mca_pnet_usnic_component.tcp6_static_ports = NULL;
+        }
+    } else {
+        mca_pnet_usnic_component.tcp6_static_ports = NULL;
+    }
 
     return PMIX_SUCCESS;
 }
@@ -110,15 +143,15 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, 8086);
+    rc = pmix_ploc.check_vendor(&pmix_globals.topology, 1137);
     return rc;
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    /* check our topology to see if we have any OPA devices */
+    /* check our topology to see if we have any USNIC devices */
     *priority = 10;
-    *module = (pmix_mca_base_module_t *) &pmix_opa_module;
+    *module = (pmix_mca_base_module_t *) &pmix_usnic_module;
     return PMIX_SUCCESS;
 }
 

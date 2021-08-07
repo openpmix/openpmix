@@ -600,3 +600,28 @@ void pmix_ploc_base_release_topology(pmix_topology_t *ptr, size_t sz)
         }
     }
 }
+
+pmix_status_t pmix_ploc_base_check_vendor(pmix_topology_t *topo,
+                                          unsigned short vendorID)
+{
+    pmix_ploc_base_active_module_t *active;
+    pmix_status_t rc;
+
+    if (!pmix_ploc_globals.initialized) {
+        return PMIX_ERR_INIT;
+    }
+
+    pmix_output_verbose(2, pmix_ploc_base_framework.framework_output,
+                        "ploc:check_vendor called");
+
+    /* process the request */
+    PMIX_LIST_FOREACH (active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        if (NULL != active->module->check_vendor) {
+            rc = active->module->check_vendor(topo, vendorID);
+            if (PMIX_SUCCESS == rc) {
+                return rc;
+            }
+        }
+    }
+    return PMIX_ERR_NOT_AVAILABLE;
+}

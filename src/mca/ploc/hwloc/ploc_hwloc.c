@@ -76,6 +76,8 @@ static pmix_status_t copy_topology(pmix_topology_t *dest, pmix_topology_t *src);
 static char *print_topology(pmix_topology_t *src);
 static pmix_status_t destruct_topology(pmix_topology_t *src);
 static pmix_status_t release_topology(pmix_topology_t *src, size_t ncpu);
+static pmix_status_t check_vendor(pmix_topology_t *topo,
+                                  unsigned short vendorID);
 
 static void finalize(void);
 
@@ -101,6 +103,7 @@ pmix_ploc_module_t pmix_ploc_hwloc_module = {
     .print_topology = print_topology,
     .destruct_topology = destruct_topology,
     .release_topology = release_topology,
+    .check_vendor = check_vendor
 };
 
 static bool topo_in_shmem = false;
@@ -1949,6 +1952,28 @@ static pmix_status_t release_topology(pmix_topology_t *src, size_t ncpu)
     free(src);
 
     return PMIX_SUCCESS;
+}
+
+pmix_status_t check_vendor(pmix_topology_t *topo,
+                           unsigned short vendorID)
+{
+    hwloc_obj_t device;
+
+    if (NULL == topo->source || 0 != strncasecmp(topo->source, "hwloc", 5)) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_OS_DEVICE, 0);
+    while (NULL != device) {
+        if (HWLOC_OBJ_OSDEV_NETWORK == device->attr->osdev.type ||
+            HWLOC_OBJ_OSDEV_OPENFABRICS == device->attr->osdev.type) {
+            if (device->attr->pcidev.vendor_id == vendorID) {
+                return PMIX_SUCCESS;
+            }
+        }
+        device = hwloc_get_next_osdev(topo->topology, device);
+    }
+    return PMIX_ERR_NOT_AVAILABLE;
 }
 
 #if HWLOC_API_VERSION >= 0x20000

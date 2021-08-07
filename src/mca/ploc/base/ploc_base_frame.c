@@ -66,7 +66,8 @@ pmix_ploc_API_module_t pmix_ploc = {
        .copy_topology = pmix_ploc_base_copy_topology,
        .print_topology = pmix_ploc_base_print_topology,
        .destruct_topology = pmix_ploc_base_destruct_topology,
-       .release_topology = pmix_ploc_base_release_topology
+       .release_topology = pmix_ploc_base_release_topology,
+       .check_vendor = pmix_ploc_base_check_vendor
 };
 
 static pmix_status_t pmix_ploc_close(void)
