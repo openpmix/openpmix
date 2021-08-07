@@ -123,6 +123,9 @@ typedef pmix_status_t (*pmix_ploc_base_module_release_topo_fn_t)(pmix_topology_t
 
 typedef void (*pmix_ploc_base_API_release_topo_fn_t)(pmix_topology_t *ptr, size_t sz);
 
+typedef pmix_status_t (*pmix_ploc_base_module_check_vendor_fn_t)(pmix_topology_t *topo,
+                                                                 unsigned short vendorID);
+
 /**
  * Base structure for a PLOC module. Each component should malloc a
  * copy of the module structure for each fabric plane they support.
@@ -151,6 +154,7 @@ typedef struct {
     pmix_ploc_base_module_print_topo_fn_t print_topology;
     pmix_ploc_base_module_destruct_topo_fn_t destruct_topology;
     pmix_ploc_base_module_release_topo_fn_t release_topology;
+    pmix_ploc_base_module_check_vendor_fn_t     check_vendor;
 } pmix_ploc_module_t;
 
 /* define a public API */
@@ -175,6 +179,7 @@ typedef struct {
     pmix_ploc_base_module_print_topo_fn_t print_topology;
     pmix_ploc_base_API_destruct_topo_fn_t destruct_topology;
     pmix_ploc_base_API_release_topo_fn_t release_topology;
+    pmix_ploc_base_module_check_vendor_fn_t     check_vendor;
 } pmix_ploc_API_module_t;
 
 /* declare the global APIs */
