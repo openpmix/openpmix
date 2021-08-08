@@ -1286,7 +1286,7 @@ typedef int pmix_status_t;
  * not to conflict with PMIx values. Definitions should always
  * be based on the PMIX_EXTERNAL_ERR_BASE constant and -not- a
  * specific value as the value of the constant may change */
-#define PMIX_EXTERNAL_ERR_BASE           PMIX_INTERNAL_ERR_BASE-2000
+#define PMIX_EXTERNAL_ERR_BASE                      -3000
 
 /****    PMIX DATA TYPES    ****/
 typedef uint16_t pmix_data_type_t;

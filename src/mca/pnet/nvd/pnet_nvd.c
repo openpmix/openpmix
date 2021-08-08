@@ -53,12 +53,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                               pmix_list_t *ilist);
 static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo);
 static pmix_status_t setup_fork(pmix_namespace_t *nptr, const pmix_proc_t *proc, char ***env);
-pmix_pnet_module_t pmix_nvd_module = {.name = "nvd",
-                                      .init = nvd_init,
-                                      .finalize = nvd_finalize,
-                                      .allocate = allocate,
-                                      .setup_local_network = setup_local_network,
-                                      .setup_fork = setup_fork};
+pmix_pnet_module_t pmix_pnet_nvd_module = {
+    .name = "nvd",
+    .init = nvd_init,
+    .finalize = nvd_finalize,
+    .allocate = allocate,
+    .setup_local_network = setup_local_network,
+    .setup_fork = setup_fork
+};
 
 /* internal structures */
 typedef struct {

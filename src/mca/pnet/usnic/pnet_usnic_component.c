@@ -143,7 +143,7 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, 1137);
+    rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x1137);
     return rc;
 }
 

@@ -77,6 +77,7 @@ static char *print_topology(pmix_topology_t *src);
 static pmix_status_t destruct_topology(pmix_topology_t *src);
 static pmix_status_t release_topology(pmix_topology_t *src, size_t ncpu);
 static pmix_status_t check_vendor(pmix_topology_t *topo,
+                                  pmix_device_type_t type,
                                   unsigned short vendorID);
 
 static void finalize(void);
@@ -1215,9 +1216,7 @@ static pmix_type_conversion_t table[] = {
     {.hwtype = HWLOC_OBJ_OSDEV_BLOCK, .pxtype = PMIX_DEVTYPE_BLOCK, .name = "BLOCK"},
     {.hwtype = HWLOC_OBJ_OSDEV_GPU, .pxtype = PMIX_DEVTYPE_GPU, .name = "GPU"},
     {.hwtype = HWLOC_OBJ_OSDEV_NETWORK, .pxtype = PMIX_DEVTYPE_NETWORK, .name = "NETWORK"},
-    {.hwtype = HWLOC_OBJ_OSDEV_OPENFABRICS,
-     .pxtype = PMIX_DEVTYPE_OPENFABRICS,
-     .name = "OPENFABRICS"},
+    {.hwtype = HWLOC_OBJ_OSDEV_OPENFABRICS, .pxtype = PMIX_DEVTYPE_OPENFABRICS, .name = "OPENFABRICS"},
     {.hwtype = HWLOC_OBJ_OSDEV_DMA, .pxtype = PMIX_DEVTYPE_DMA, .name = "DMA"},
 #if HWLOC_API_VERSION >= 0x00010800
     {.hwtype = HWLOC_OBJ_OSDEV_COPROC, .pxtype = PMIX_DEVTYPE_COPROC, .name = "COPROCESSOR"},
@@ -1955,21 +1954,34 @@ static pmix_status_t release_topology(pmix_topology_t *src, size_t ncpu)
 }
 
 pmix_status_t check_vendor(pmix_topology_t *topo,
+                           pmix_device_type_t type,
                            unsigned short vendorID)
 {
     hwloc_obj_t device;
+    hwloc_obj_osdev_type_t htype = 0;
+    int ntypes, n;
 
     if (NULL == topo->source || 0 != strncasecmp(topo->source, "hwloc", 5)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+    /* determine number of types we support */
+    ntypes = sizeof(table) / sizeof(pmix_type_conversion_t);
+    for (n=0; n < ntypes; n++) {
+        if (table[n].pxtype == type) {
+            htype = table[n].hwtype;
+            break;
+        }
+    }
+    if (0 == htype) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
     device = hwloc_get_obj_by_type(topo->topology, HWLOC_OBJ_OS_DEVICE, 0);
     while (NULL != device) {
-        if (HWLOC_OBJ_OSDEV_NETWORK == device->attr->osdev.type ||
-            HWLOC_OBJ_OSDEV_OPENFABRICS == device->attr->osdev.type) {
-            if (device->attr->pcidev.vendor_id == vendorID) {
-                return PMIX_SUCCESS;
-            }
+        if (htype == device->attr->osdev.type &&
+            device->attr->pcidev.vendor_id == vendorID) {
+            return PMIX_SUCCESS;
         }
         device = hwloc_get_next_osdev(topo->topology, device);
     }
