@@ -723,7 +723,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     }
 
     /* open the pnet framework and select the active modules for this environment
-     * Do this after setting up the topology so the components can check to see
+     * Do this AFTER setting up the topology so the components can check to see
      * if they have any local assets */
     if (PMIX_SUCCESS
         != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,

@@ -113,6 +113,8 @@ PMIX_EXPORT pmix_status_t pmix_ploc_base_copy_topology(pmix_topology_t *dest, pm
 PMIX_EXPORT char *pmix_ploc_base_print_topology(pmix_topology_t *src);
 PMIX_EXPORT void pmix_ploc_base_destruct_topology(pmix_topology_t *ptr);
 PMIX_EXPORT void pmix_ploc_base_release_topology(pmix_topology_t *ptr, size_t sz);
+PMIX_EXPORT pmix_status_t pmix_ploc_base_check_vendor(pmix_topology_t *topo,
+                                                      unsigned short vendorID);
 END_C_DECLS
 
 #endif

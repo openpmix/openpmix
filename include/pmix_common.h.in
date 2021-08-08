@@ -1691,11 +1691,11 @@ typedef struct pmix_geometry {
 
 /****    PMIX_DEVICE_TYPE    ****/
 typedef uint64_t pmix_device_type_t;
-#define PMIX_DEVTYPE_UNKNOWN        0x0
-#define PMIX_DEVTYPE_BLOCK          0x1
-#define PMIX_DEVTYPE_GPU            0x2
-#define PMIX_DEVTYPE_NETWORK        0x4
-#define PMIX_DEVTYPE_OPENFABRICS    0x8
+#define PMIX_DEVTYPE_UNKNOWN        0x00
+#define PMIX_DEVTYPE_BLOCK          0x01
+#define PMIX_DEVTYPE_GPU            0x02
+#define PMIX_DEVTYPE_NETWORK        0x04
+#define PMIX_DEVTYPE_OPENFABRICS    0x08
 #define PMIX_DEVTYPE_DMA            0x10
 #define PMIX_DEVTYPE_COPROC         0x20
 
