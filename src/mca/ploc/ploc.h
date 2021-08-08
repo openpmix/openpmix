@@ -124,6 +124,7 @@ typedef pmix_status_t (*pmix_ploc_base_module_release_topo_fn_t)(pmix_topology_t
 typedef void (*pmix_ploc_base_API_release_topo_fn_t)(pmix_topology_t *ptr, size_t sz);
 
 typedef pmix_status_t (*pmix_ploc_base_module_check_vendor_fn_t)(pmix_topology_t *topo,
+                                                                 pmix_device_type_t type,
                                                                  unsigned short vendorID);
 
 /**

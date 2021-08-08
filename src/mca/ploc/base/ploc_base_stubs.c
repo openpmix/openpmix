@@ -602,6 +602,7 @@ void pmix_ploc_base_release_topology(pmix_topology_t *ptr, size_t sz)
 }
 
 pmix_status_t pmix_ploc_base_check_vendor(pmix_topology_t *topo,
+                                          pmix_device_type_t type,
                                           unsigned short vendorID)
 {
     pmix_ploc_base_active_module_t *active;
@@ -617,8 +618,8 @@ pmix_status_t pmix_ploc_base_check_vendor(pmix_topology_t *topo,
     /* process the request */
     PMIX_LIST_FOREACH (active, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
         if (NULL != active->module->check_vendor) {
-            rc = active->module->check_vendor(topo, vendorID);
-            if (PMIX_SUCCESS == rc) {
+            rc = active->module->check_vendor(topo, type, vendorID);
+            if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 return rc;
             }
         }

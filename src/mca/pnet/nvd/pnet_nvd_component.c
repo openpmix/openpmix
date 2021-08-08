@@ -110,7 +110,12 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, 1014);
+    // currently under Mellanox
+    rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x1014);
+    if (PMIX_SUCCESS != rc) {
+        // future could be under NVIDIA
+        rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x10de);
+    }
     return rc;
 }
 
@@ -118,7 +123,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
 {
     /* check our topology to see if we have any NVD devices */
     *priority = 10;
-    *module = (pmix_mca_base_module_t *) &pmix_nvd_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pnet_nvd_module;
     return PMIX_SUCCESS;
 }
 
