@@ -120,12 +120,16 @@ void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data, pmix_data_ty
             memcpy(&(v->data.uint8), data, 1);
             break;
         case PMIX_UINT16:
+        case PMIX_STOR_ACCESS_TYPE:
             memcpy(&(v->data.uint16), data, 2);
             break;
         case PMIX_UINT32:
             memcpy(&(v->data.uint32), data, 4);
             break;
         case PMIX_UINT64:
+        case PMIX_STOR_MEDIUM:
+        case PMIX_STOR_ACCESS:
+        case PMIX_STOR_PERSIST:
             memcpy(&(v->data.uint64), data, 8);
             break;
         case PMIX_FLOAT:
@@ -408,6 +412,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
             *sz = 1;
             break;
         case PMIX_UINT16:
+        case PMIX_STOR_ACCESS_TYPE:
             memcpy(*data, &(kv->data.uint16), 2);
             *sz = 2;
             break;
@@ -416,6 +421,9 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
             *sz = 4;
             break;
         case PMIX_UINT64:
+        case PMIX_STOR_MEDIUM:
+        case PMIX_STOR_ACCESS:
+        case PMIX_STOR_PERSIST:
             memcpy(*data, &(kv->data.uint64), 8);
             *sz = 8;
             break;
@@ -720,6 +728,7 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p, pmix_value_t *p1)
         }
         break;
     case PMIX_UINT16:
+    case PMIX_STOR_ACCESS_TYPE:
         if (p->data.uint16 == p1->data.uint16) {
             rc = PMIX_EQUAL;
         }
@@ -730,6 +739,9 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p, pmix_value_t *p1)
         }
         break;
     case PMIX_UINT64:
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST:
         if (p->data.uint64 == p1->data.uint64) {
             rc = PMIX_EQUAL;
         }
@@ -872,6 +884,7 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p, const pmix_value_t *s
         p->data.uint8 = src->data.uint8;
         break;
     case PMIX_UINT16:
+    case PMIX_STOR_ACCESS_TYPE:
         /* to avoid alignment issues */
         memcpy(&p->data.uint16, &src->data.uint16, 2);
         break;
@@ -880,7 +893,10 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p, const pmix_value_t *s
         memcpy(&p->data.uint32, &src->data.uint32, 4);
         break;
     case PMIX_UINT64:
-        /* to avoid alignment issues */
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST:
+       /* to avoid alignment issues */
         memcpy(&p->data.uint64, &src->data.uint64, 8);
         break;
     case PMIX_FLOAT:

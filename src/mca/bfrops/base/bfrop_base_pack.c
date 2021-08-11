@@ -1880,3 +1880,67 @@ pmix_status_t pmix_bfrops_base_pack_dbuf(pmix_pointer_array_t *regtypes, pmix_bu
     }
     return PMIX_SUCCESS;
 }
+
+pmix_status_t pmix_bfrops_base_pack_smed(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                         const void *src, int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_STOR_MEDIUM != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_pack_sacc(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                         const void *src, int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_STOR_ACCESS != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_pack_spers(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                          const void *src, int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_STOR_PERSIST != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_pack_satyp(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                          const void *src, int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    if (NULL == regtypes) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (PMIX_STOR_ACCESS_TYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
+    return ret;
+}

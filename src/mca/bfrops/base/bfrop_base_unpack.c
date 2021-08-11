@@ -2387,3 +2387,71 @@ pmix_status_t pmix_bfrops_base_unpack_dbuf(pmix_pointer_array_t *regtypes, pmix_
     }
     return PMIX_SUCCESS;
 }
+
+pmix_status_t pmix_bfrops_base_unpack_smed(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                           void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d storage medium", *num_vals);
+
+    if (PMIX_STOR_MEDIUM != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT64, regtypes);
+
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_sacc(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                           void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d storage access", *num_vals);
+
+    if (PMIX_STOR_ACCESS != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT64, regtypes);
+
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_spers(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d storage persistence", *num_vals);
+
+    if (PMIX_STOR_PERSIST != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT64, regtypes);
+
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_satyp(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d storage access type", *num_vals);
+
+    if (PMIX_STOR_ACCESS_TYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT16, regtypes);
+
+    return ret;
+}

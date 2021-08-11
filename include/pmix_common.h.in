@@ -1358,6 +1358,10 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_NET_STATS                  63
 #define PMIX_NODE_STATS                 64
 #define PMIX_DATA_BUFFER                65
+#define PMIX_STOR_MEDIUM                66
+#define PMIX_STOR_ACCESS                67
+#define PMIX_STOR_PERSIST               68
+#define PMIX_STOR_ACCESS_TYPE           69
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */

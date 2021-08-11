@@ -342,6 +342,22 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_dbuf, pmix_bfrops_base_copy_dbuf,
                        pmix_bfrops_base_print_dbuf, &mca_bfrops_v41_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_STOR_MEDIUM", PMIX_STOR_MEDIUM, pmix_bfrops_base_pack_smed,
+                       pmix_bfrops_base_unpack_smed, pmix_bfrops_base_std_copy,
+                       pmix_bfrops_base_print_smed, &mca_bfrops_v41_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_STOR_ACCESS", PMIX_STOR_ACCESS, pmix_bfrops_base_pack_sacc,
+                       pmix_bfrops_base_unpack_sacc, pmix_bfrops_base_std_copy,
+                       pmix_bfrops_base_print_sacc, &mca_bfrops_v41_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_STOR_PERSIST", PMIX_STOR_PERSIST, pmix_bfrops_base_pack_spers,
+                       pmix_bfrops_base_unpack_spers, pmix_bfrops_base_std_copy,
+                       pmix_bfrops_base_print_spers, &mca_bfrops_v41_component.types);
+
+    PMIX_REGISTER_TYPE("PMIX_STOR_ACCESS_TYPE", PMIX_STOR_ACCESS_TYPE, pmix_bfrops_base_pack_satyp,
+                       pmix_bfrops_base_unpack_satyp, pmix_bfrops_base_std_copy,
+                       pmix_bfrops_base_print_satyp, &mca_bfrops_v41_component.types);
+
     return PMIX_SUCCESS;
 }
 
