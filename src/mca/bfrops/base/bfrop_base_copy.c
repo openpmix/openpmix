@@ -126,6 +126,7 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src, pmix_data_type_t
     case PMIX_UINT16:
     case PMIX_IOF_CHANNEL:
     case PMIX_LOCTYPE:
+    case PMIX_STOR_ACCESS_TYPE:
         datasize = 2;
         break;
 
@@ -137,6 +138,9 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src, pmix_data_type_t
     case PMIX_INT64:
     case PMIX_UINT64:
     case PMIX_DEVTYPE:
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST:
         datasize = 8;
         break;
 
