@@ -1455,6 +1455,57 @@ typedef enum {
     PMIX_GROUP_DESTRUCT
 } pmix_group_operation_t;
 
+/* define storage medium values
+ * The pmix_storage_medium_t is a uint64_t type that defines
+ * a set of bit-mask flags for specifying different types of
+ * storage mediums. These can be bitwise OR'd together to
+ * accommodate storage systems that mix storage medium types. */
+typedef uint64_t pmix_storage_medium_t;
+#define PMIX_STORAGE_MEDIUM_UNKNOWN     0x0000000000000001
+#define PMIX_STORAGE_MEDIUM_TAPE        0x0000000000000002
+#define PMIX_STORAGE_MEDIUM_HDD         0x0000000000000004
+#define PMIX_STORAGE_MEDIUM_SSD         0x0000000000000008
+#define PMIX_STORAGE_MEDIUM_NVME        0x0000000000000010
+#define PMIX_STORAGE_MEDIUM_PMEM        0x0000000000000020
+#define PMIX_STORAGE_MEDIUM_RAM         0x0000000000000040
+
+/* define storage accessibility values
+ * The pmix_storage_accessibility_t is a uint64_t type that
+ * defines a set of bit-mask flags for specifying different
+ * levels of storage accessibility (i.e,. from where a storage
+ * system may be accessed). These can be bitwise OR'd together
+ * to accommodate storage systems that are accessibile in
+ * multiple ways. */
+typedef uint64_t pmix_storage_accessibility_t;
+#define PMIX_STORAGE_ACCESSIBILITY_NODE     0x0000000000000001
+#define PMIX_STORAGE_ACCESSIBILITY_SESSION  0x0000000000000002
+#define PMIX_STORAGE_ACCESSIBILITY_JOB      0x0000000000000004
+#define PMIX_STORAGE_ACCESSIBILITY_RACK     0x0000000000000008
+#define PMIX_STORAGE_ACCESSIBILITY_CLUSTER  0x0000000000000010
+#define PMIX_STORAGE_ACCESSIBILITY_REMOTE   0x0000000000000020
+
+/* define storage persistence values
+ * The pmix_storage_persistence_t is a uint64_t type that defines
+ * a set of bit-mask flags for specifying different levels of
+ * persistence for a particular storage system. */
+typedef uint64_t pmix_storage_persistence_t;
+#define PMIX_STORAGE_PERSISTENCE_TEMPORARY  0x0000000000000001
+#define PMIX_STORAGE_PERSISTENCE_NODE       0x0000000000000002
+#define PMIX_STORAGE_PERSISTENCE_SESSION    0x0000000000000004
+#define PMIX_STORAGE_PERSISTENCE_JOB        0x0000000000000008
+#define PMIX_STORAGE_PERSISTENCE_SCRATCH    0x0000000000000010
+#define PMIX_STORAGE_PERSISTENCE_PROJECT    0x0000000000000020
+#define PMIX_STORAGE_PERSISTENCE_ARCHIVE    0x0000000000000040
+
+/* define storage access values
+ * The pmix_storage_access_type_t is a uint16_t type that defines
+ * a set of bit-mask flags for specifying different storage system
+ * access types. */
+typedef uint16_t pmix_storage_access_type_t;
+#define PMIX_STORAGE_ACCESS_RD      0x0001
+#define PMIX_STORAGE_ACCESS_WR      0x0002
+#define PMIX_STORAGE_ACCESS_RDWR    0x0003
+
 
 /* define some "hooks" external libraries can use to
  * intercept memory allocation/release operations */
