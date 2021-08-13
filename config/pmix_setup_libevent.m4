@@ -207,6 +207,22 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                           AC_MSG_WARN([thread support enabled])
                           pmix_libevent_support=0])
         fi
+        if test $pmix_libevent_support -eq 1; then
+            # Pin the "oldest supported" version to 2.0.21
+            AC_MSG_CHECKING([if libevent version is 2.0.21 or greater])
+            AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <event2/event.h>]],
+                                               [[
+                                                 #if defined(_EVENT_NUMERIC_VERSION) && _EVENT_NUMERIC_VERSION < 0x02001500
+                                                 #error "libevent API version is less than 0x02001500"
+                                                 #elif defined(EVENT__NUMERIC_VERSION) && EVENT__NUMERIC_VERSION < 0x02001500
+                                                 #error "libevent API version is less than 0x02001500"
+                                                 #endif
+                                               ]])],
+                              [AC_MSG_RESULT([yes])],
+                              [AC_MSG_RESULT([no])
+                               AC_MSG_WARN([libevent version is too old (2.0.21 or later required)])
+                               pmix_libevent_support=0])
+        fi
     fi
 
     CPPFLAGS="$pmix_check_libevent_save_CPPFLAGS"
