@@ -30,7 +30,7 @@ typedef struct {
 
 /* the component must be visible data for the linker to find it */
 PMIX_EXPORT extern pmix_pnet_usnic_component_t mca_pnet_usnic_component;
-extern pmix_pnet_module_t pmix_usnic_module;
+extern pmix_pnet_module_t pmix_pnet_usnic_module;
 
 /* define a key for any blob we need to send in a launch msg */
 #define PMIX_PNET_USNIC_BLOB "pmix.pnet.usnic.blob"

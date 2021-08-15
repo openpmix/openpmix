@@ -54,9 +54,9 @@
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/base/base.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/mca/plog/plog.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/mca/prm/prm.h"
@@ -4688,7 +4688,7 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
     if (NULL == topo.topology) {
         if (NULL == pmix_globals.topology.topology) {
             /* try to get it */
-            rc = pmix_ploc.load_topology(&pmix_globals.topology);
+            rc = pmix_hwloc_load_topology(&pmix_globals.topology);
             if (PMIX_SUCCESS != rc) {
                 /* nothing we can do */
                 goto cleanup;
@@ -4711,7 +4711,7 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
             goto cleanup;
         }
         kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
-        rc = pmix_ploc.parse_cpuset_string(kv->value->data.string, cpuset.bitmap);
+        rc = pmix_hwloc_parse_cpuset_string(kv->value->data.string, cpuset.bitmap);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&cb);
             goto cleanup;
@@ -4719,7 +4719,7 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
         PMIX_DESTRUCT(&cb);
     }
     /* compute the distances */
-    rc = pmix_ploc.compute_distances(&topo, &cpuset, cd->info, cd->ninfo, &distances, &ndist);
+    rc = pmix_hwloc_compute_distances(&topo, &cpuset, cd->info, cd->ninfo, &distances, &ndist);
     if (PMIX_SUCCESS == rc) {
         /* send the reply */
         cbfunc(rc, distances, ndist, cd, NULL, NULL);
@@ -4729,10 +4729,10 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
 cleanup:
     if (NULL != topo.topology &&
         topo.topology != pmix_globals.topology.topology) {
-        pmix_ploc.destruct_topology(&topo);
+        pmix_hwloc_destruct_topology(&topo);
     }
     if (NULL != cpuset.bitmap) {
-        pmix_ploc.destruct_cpuset(&cpuset);
+        pmix_hwloc_destruct_cpuset(&cpuset);
     }
     return rc;
 }

@@ -28,8 +28,8 @@
 #endif
 
 #include "src/class/pmix_pointer_array.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/mca/preg/preg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -1347,7 +1347,7 @@ pmix_status_t pmix_bfrops_base_pack_cpuset(pmix_pointer_array_t *regtypes, pmix_
     }
 
     for (i = 0; i < num_vals; ++i) {
-        ret = pmix_ploc.pack_cpuset(buffer, &ptr[i], regtypes);
+        ret = pmix_hwloc_pack_cpuset(buffer, &ptr[i], regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
@@ -1492,7 +1492,7 @@ pmix_status_t pmix_bfrops_base_pack_topology(pmix_pointer_array_t *regtypes, pmi
 
     for (i = 0; i < num_vals; ++i) {
         /* call the framework to pack it */
-        ret = pmix_ploc.pack_topology(buffer, &ptr[i], regtypes);
+        ret = pmix_hwloc_pack_topology(buffer, &ptr[i], regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }

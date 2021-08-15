@@ -105,12 +105,12 @@ static pmix_status_t component_open(void)
     pmix_status_t rc;
 
     // unsure what this will be registered under, so try multiple codes
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x17db);  // Cray
+    rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x17db, 0x208);  // Cray
     if (PMIX_SUCCESS != rc) {
-        rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x18c8);  // Cray
+        rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x18c8, 0x208);  // Cray
     }
     if (PMIX_SUCCESS != rc) {
-        rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x1590);  // HPE
+        rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x1590, 0x208);  // HPE
     }
 
     return rc;

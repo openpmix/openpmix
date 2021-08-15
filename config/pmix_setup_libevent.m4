@@ -39,7 +39,7 @@
 # modifications it desires in order to compile and link against
 # libevent.  This mode is used whenever the other modes are not used.
 #
-# MCA_libevent_CONFIG([action-if-found], [action-if-not-found])
+# PMIX_LIBEVENT_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 

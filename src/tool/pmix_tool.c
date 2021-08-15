@@ -52,11 +52,11 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pfexec/base/base.h"
-#include "src/mca/ploc/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psec/psec.h"
@@ -949,20 +949,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             return rc;
         }
 
-        /* open the ploc framework */
-        if (PMIX_SUCCESS
-            != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework,
-                                                  PMIX_MCA_BASE_OPEN_DEFAULT))) {
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_ploc_base_select())) {
-            return rc;
-        }
-
         /* if we don't know our topology, we better get it now as we
          * increasingly rely on it - note that our host will hopefully
          * have passed it to us so we don't duplicate their storage! */
-        if (PMIX_SUCCESS != (rc = pmix_ploc.setup_topology(info, ninfo))) {
+        if (PMIX_SUCCESS != (rc = pmix_hwloc_setup_topology(info, ninfo))) {
             return rc;
         }
 

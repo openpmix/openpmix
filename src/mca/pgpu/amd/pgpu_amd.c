@@ -30,11 +30,11 @@
 #include "include/pmix_common.h"
 
 #include "src/class/pmix_list.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/pcompress/pcompress.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/mca/preg/preg.h"
 #include "src/util/alfg.h"
 #include "src/util/argv.h"
@@ -52,10 +52,9 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
 static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
                                  pmix_info_t info[], size_t ninfo);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_inventory_cbfunc_t cbfunc, void *cbdata);
+                                       pmix_list_t *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
-                                       pmix_info_t directives[], size_t ndirs,
-                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
+                                       pmix_info_t directives[], size_t ndirs);
 
 pmix_pgpu_module_t pmix_amd_module = {
     .name = "amd",
@@ -221,7 +220,7 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
 }
 
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                       pmix_inventory_cbfunc_t cbfunc, void *cbdata)
+                                       pmix_list_t *inventory)
 {
     /* search the topology for AMD GPUs */
 
@@ -229,8 +228,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
 }
 
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
-                                       pmix_info_t directives[], size_t ndirs,
-                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
+                                       pmix_info_t directives[], size_t ndirs)
 {
     /* look for our inventory blob */
 

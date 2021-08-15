@@ -30,7 +30,7 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/mca/ploc/ploc.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/util/argv.h"
 
@@ -69,8 +69,7 @@ pmix_pnet_opa_component_t mca_pnet_opa_component = {
         }
     },
     .include = NULL,
-    .exclude = NULL,
-    .radix = 64
+    .exclude = NULL
 };
 
 static pmix_status_t component_register(void)
@@ -97,12 +96,6 @@ static pmix_status_t component_register(void)
         mca_pnet_opa_component.exclude = pmix_argv_split(mca_pnet_opa_component.excparms, ',');
     }
 
-    (void) pmix_mca_base_component_var_register(component, "radix",
-                                                "Radix for simulating the network coordinates",
-                                                PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                                PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                                &mca_pnet_opa_component.radix);
-
     return PMIX_SUCCESS;
 }
 
@@ -110,13 +103,12 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x8086);
+    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x8086, 0x207);
     return rc;
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    /* check our topology to see if we have any OPA devices */
     *priority = 10;
     *module = (pmix_mca_base_module_t *) &pmix_opa_module;
     return PMIX_SUCCESS;

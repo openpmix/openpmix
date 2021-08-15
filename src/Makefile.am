@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -89,6 +90,7 @@ include atomics/sys/Makefile.include
 include threads/Makefile.include
 include class/Makefile.include
 include event/Makefile.include
+include hwloc/Makefile.include
 include mca/Makefile.include
 include util/Makefile.include
 include client/Makefile.include

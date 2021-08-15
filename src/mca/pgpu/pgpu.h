@@ -103,7 +103,7 @@ typedef void (*pmix_pgpu_base_module_dregister_nspace_fn_t)(pmix_namespace_t *np
  * or execute the callback function with an error code if it is detected later.
  */
 typedef pmix_status_t (*pmix_pgpu_base_module_collect_inventory_fn_t)(pmix_info_t directives[], size_t ndirs,
-                                                                      pmix_inventory_cbfunc_t cbfunc, void *cbdata);
+                                                                      pmix_list_t *inventory);
 
 /**
  * Deliver inventory for archiving by corresponding modules
@@ -126,8 +126,7 @@ typedef pmix_status_t (*pmix_pgpu_base_module_collect_inventory_fn_t)(pmix_info_
  * should just return PMIX_SUCCESS;
  */
 typedef pmix_status_t (*pmix_pgpu_base_module_deliver_inventory_fn_t)(pmix_info_t info[], size_t ninfo,
-                                                                      pmix_info_t directives[], size_t ndirs,
-                                                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
+                                                                      pmix_info_t directives[], size_t ndirs);
 
 /**
  * Base structure for a pgpu module. Each component should malloc a
@@ -160,12 +159,6 @@ typedef pmix_status_t (*pmix_pgpu_base_API_setup_local_fn_t)(char *nspace, pmix_
 typedef pmix_status_t (*pmix_pgpu_base_API_setup_fork_fn_t)(const pmix_proc_t *peer, char ***env);
 
 typedef void (*pmix_pgpu_base_API_deregister_nspace_fn_t)(char *nspace);
-typedef void (*pmix_pgpu_base_API_collect_inventory_fn_t)(pmix_info_t directives[], size_t ndirs,
-                                                          pmix_inventory_cbfunc_t cbfunc,
-                                                          void *cbdata);
-typedef void (*pmix_pgpu_base_API_deliver_inventory_fn_t)(pmix_info_t info[], size_t ninfo,
-                                                          pmix_info_t directives[], size_t ndirs,
-                                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /**
  * Base structure for a pgpu API
@@ -181,8 +174,8 @@ typedef struct {
     pmix_pgpu_base_module_child_finalized_fn_t child_finalized;
     pmix_pgpu_base_module_local_app_finalized_fn_t local_app_finalized;
     pmix_pgpu_base_API_deregister_nspace_fn_t deregister_nspace;
-    pmix_pgpu_base_API_collect_inventory_fn_t collect_inventory;
-    pmix_pgpu_base_API_deliver_inventory_fn_t deliver_inventory;
+    pmix_pgpu_base_module_collect_inventory_fn_t collect_inventory;
+    pmix_pgpu_base_module_deliver_inventory_fn_t deliver_inventory;
 } pmix_pgpu_API_module_t;
 
 /* declare the global APIs */

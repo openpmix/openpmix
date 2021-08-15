@@ -20,15 +20,15 @@
 #include "include/pmix.h"
 
 #include "src/client/pmix_client_ops.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/util/error.h"
 
 static void _loadtp(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
-    cb->pstatus = pmix_ploc.load_topology(cb->topo);
+    cb->pstatus = pmix_hwloc_load_topology(cb->topo);
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
@@ -69,7 +69,7 @@ PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string, pm
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    rc = pmix_ploc.parse_cpuset_string(cpuset_string, cpuset);
+    rc = pmix_hwloc_parse_cpuset_string(cpuset_string, cpuset);
     return rc;
 }
 
@@ -85,7 +85,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envel
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    rc = pmix_ploc.get_cpuset(cpuset, ref);
+    rc = pmix_hwloc_get_cpuset(cpuset, ref);
     return rc;
 }
 
@@ -102,7 +102,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1, cons
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    rc = pmix_ploc.get_relative_locality(locality1, locality2, locality);
+    rc = pmix_hwloc_get_relative_locality(locality1, locality2, locality);
     return rc;
 }
 
@@ -272,7 +272,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     if (NULL == tp) {
         if (NULL == pmix_globals.topology.topology) {
             /* if our topology is NULL, try to get it */
-            rc = pmix_ploc.load_topology(&pmix_globals.topology);
+            rc = pmix_hwloc_load_topology(&pmix_globals.topology);
             if (PMIX_SUCCESS != rc) {
                 /* try to ask our server if they can do it */
                 goto request;
@@ -287,7 +287,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
         /* if our cpuset is NULL, it could be we are unbound or
          * that we haven't yet gotten our cpuset. Try to get it. */
         if (NULL == pmix_globals.cpuset.bitmap) {
-            rc = pmix_ploc.get_cpuset(&pmix_globals.cpuset, PMIX_CPUBIND_PROCESS);
+            rc = pmix_hwloc_get_cpuset(&pmix_globals.cpuset, PMIX_CPUBIND_PROCESS);
             if (PMIX_SUCCESS != rc) {
                 /* try to ask our server if they can do it */
                 goto request;
@@ -299,7 +299,7 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     }
 
     /* see if I can support this myself */
-    cb->status = pmix_ploc.compute_distances(topo, cpuset, info, ninfo, &cb->dist, &cb->nvals);
+    cb->status = pmix_hwloc_compute_distances(topo, cpuset, info, ninfo, &cb->dist, &cb->nvals);
     if (PMIX_SUCCESS == cb->status) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         /* threadshift to return the result */
