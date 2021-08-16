@@ -27,78 +27,77 @@
 
 #include "src/mca/base/base.h"
 #include "src/mca/mca.h"
-#include "src/util/show_help.h"
 
-#include "src/mca/ploc/base/base.h"
+#include "src/mca/pgpu/base/base.h"
 
 /* Function for selecting a prioritized list of components
  * from all those that are available. */
-int pmix_ploc_base_select(void)
+int pmix_pgpu_base_select(void)
 {
     pmix_mca_base_component_list_item_t *cli = NULL;
     pmix_mca_base_component_t *component = NULL;
     pmix_mca_base_module_t *module = NULL;
-    pmix_ploc_module_t *nmodule;
-    pmix_ploc_base_active_module_t *newmodule, *mod;
+    pmix_pgpu_module_t *nmodule;
+    pmix_pgpu_base_active_module_t *newmodule, *mod;
     int rc, priority;
     bool inserted;
 
-    if (pmix_ploc_globals.selected) {
+    if (pmix_pgpu_globals.selected) {
         /* ensure we don't do this twice */
         return PMIX_SUCCESS;
     }
-    pmix_ploc_globals.selected = true;
+    pmix_pgpu_globals.selected = true;
 
     /* Query all available components and ask if they have a module */
-    PMIX_LIST_FOREACH (cli, &pmix_ploc_base_framework.framework_components,
+    PMIX_LIST_FOREACH (cli, &pmix_pgpu_base_framework.framework_components,
                        pmix_mca_base_component_list_item_t) {
         component = (pmix_mca_base_component_t *) cli->cli_component;
 
-        pmix_output_verbose(5, pmix_ploc_base_framework.framework_output,
-                            "mca:ploc:select: checking available component %s",
+        pmix_output_verbose(5, pmix_pgpu_base_framework.framework_output,
+                            "mca:pgpu:select: checking available component %s",
                             component->pmix_mca_component_name);
 
         /* If there's no query function, skip it */
         if (NULL == component->pmix_mca_query_component) {
             pmix_output_verbose(
-                5, pmix_ploc_base_framework.framework_output,
-                "mca:ploc:select: Skipping component [%s]. It does not implement a query function",
+                5, pmix_pgpu_base_framework.framework_output,
+                "mca:pgpu:select: Skipping component [%s]. It does not implement a query function",
                 component->pmix_mca_component_name);
             continue;
         }
 
         /* Query the component */
-        pmix_output_verbose(5, pmix_ploc_base_framework.framework_output,
-                            "mca:ploc:select: Querying component [%s]",
+        pmix_output_verbose(5, pmix_pgpu_base_framework.framework_output,
+                            "mca:pgpu:select: Querying component [%s]",
                             component->pmix_mca_component_name);
         rc = component->pmix_mca_query_component(&module, &priority);
 
         /* If no module was returned, then skip component */
         if (PMIX_SUCCESS != rc || NULL == module) {
             pmix_output_verbose(
-                5, pmix_ploc_base_framework.framework_output,
-                "mca:ploc:select: Skipping component [%s]. Query failed to return a module",
+                5, pmix_pgpu_base_framework.framework_output,
+                "mca:pgpu:select: Skipping component [%s]. Query failed to return a module",
                 component->pmix_mca_component_name);
             continue;
         }
 
         /* If we got a module, keep it */
-        nmodule = (pmix_ploc_module_t *) module;
+        nmodule = (pmix_pgpu_module_t *) module;
         /* let it initialize */
         if (NULL != nmodule->init && PMIX_SUCCESS != nmodule->init()) {
             continue;
         }
         /* add to the list of selected modules */
-        newmodule = PMIX_NEW(pmix_ploc_base_active_module_t);
+        newmodule = PMIX_NEW(pmix_pgpu_base_active_module_t);
         newmodule->pri = priority;
         newmodule->module = nmodule;
-        newmodule->component = (pmix_ploc_base_component_t *) cli->cli_component;
+        newmodule->component = (pmix_pgpu_base_component_t *) cli->cli_component;
 
         /* maintain priority order */
         inserted = false;
-        PMIX_LIST_FOREACH (mod, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
+        PMIX_LIST_FOREACH (mod, &pmix_pgpu_globals.actives, pmix_pgpu_base_active_module_t) {
             if (priority > mod->pri) {
-                pmix_list_insert_pos(&pmix_ploc_globals.actives, (pmix_list_item_t *) mod,
+                pmix_list_insert_pos(&pmix_pgpu_globals.actives, (pmix_list_item_t *) mod,
                                      &newmodule->super);
                 inserted = true;
                 break;
@@ -106,24 +105,19 @@ int pmix_ploc_base_select(void)
         }
         if (!inserted) {
             /* must be lowest priority - add to end */
-            pmix_list_append(&pmix_ploc_globals.actives, &newmodule->super);
+            pmix_list_append(&pmix_pgpu_globals.actives, &newmodule->super);
         }
     }
 
-    if (4 < pmix_output_get_verbosity(pmix_ploc_base_framework.framework_output)) {
-        pmix_output(0, "Final ploc priorities");
+    if (4 < pmix_output_get_verbosity(pmix_pgpu_base_framework.framework_output)) {
+        pmix_output(0, "Final pgpu priorities");
         /* show the prioritized list */
-        PMIX_LIST_FOREACH (mod, &pmix_ploc_globals.actives, pmix_ploc_base_active_module_t) {
-            pmix_output(0, "\tploc: %s Priority: %d", mod->component->base.pmix_mca_component_name,
+        PMIX_LIST_FOREACH (mod, &pmix_pgpu_globals.actives, pmix_pgpu_base_active_module_t) {
+            pmix_output(0, "\tpgpu: %s Priority: %d", mod->component->base.pmix_mca_component_name,
                         mod->pri);
         }
     }
 
-    /* there must be at least one active component */
-    if (0 == pmix_list_get_size(&pmix_ploc_globals.actives)) {
-        pmix_show_help("help-ploc.txt", "no-actives", true);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
     return PMIX_SUCCESS;
+    ;
 }

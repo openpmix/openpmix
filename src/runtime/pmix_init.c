@@ -42,7 +42,6 @@
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
-#include "src/mca/ploc/base/base.h"
 #include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
@@ -471,18 +470,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
     if (PMIX_SUCCESS != (ret = pmix_plog_base_select())) {
         error = "pmix_plog_base_select";
-        goto return_error;
-    }
-
-    /* open the ploc and select the active plugins */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_ploc_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
-        error = "pmix_ploc_base_open";
-        goto return_error;
-    }
-    if (PMIX_SUCCESS != (ret = pmix_ploc_base_select())) {
-        error = "pmix_ploc_base_select";
         goto return_error;
     }
 

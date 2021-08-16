@@ -11,8 +11,9 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2016 Intel, Inc. All rights reserved
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,11 +24,11 @@
 AM_CPPFLAGS = $(LTDLINCL)
 
 # main library setup
-noinst_LTLIBRARIES = libmca_ploc.la
-libmca_ploc_la_SOURCES =
+noinst_LTLIBRARIES = libmca_pgpu.la
+libmca_pgpu_la_SOURCES =
 
 # local files
-headers = ploc.h
+headers = pgpu.h
 sources =
 
 # Conditionally install the header files
@@ -38,7 +39,7 @@ endif
 
 include base/Makefile.include
 
-libmca_ploc_la_SOURCES += $(headers) $(sources)
+libmca_pgpu_la_SOURCES += $(headers) $(sources)
 
 distclean-local:
 	rm -f base/static-components.h

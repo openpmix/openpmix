@@ -47,14 +47,14 @@ static void sshot_finalize(void);
 static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist);
 static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo);
-static pmix_status_t setup_fork(pmix_namespace_t *nptr, const pmix_proc_t *proc, char ***env);
-pmix_pnet_module_t pmix_sshot_module = {.name = "sshot",
-                                        .init = sshot_init,
-                                        .finalize = sshot_finalize,
-                                        .allocate = allocate,
-                                        .setup_local_network = setup_local_network,
-                                        .setup_fork = setup_fork,
-                                        .register_fabric = pmix_pnet_sshot_register_fabric};
+pmix_pnet_module_t pmix_sshot_module = {
+    .name = "sshot",
+    .init = sshot_init,
+    .finalize = sshot_finalize,
+    .allocate = allocate,
+    .setup_local_network = setup_local_network,
+    .register_fabric = pmix_pnet_sshot_register_fabric
+};
 
 /*    FORWARD-DECLARE LOCAL FUNCTIONS    */
 static pmix_status_t compute_endpoint(pmix_endpoint_t *endpt, char *xname, uint16_t lrank);
@@ -687,13 +687,6 @@ cleanup:
                     (float) (end.tv_sec - start.tv_sec)
                         + (float) (end.tv_usec - start.tv_usec) / 1000000.0);
     }
-    return PMIX_SUCCESS;
-}
-
-static pmix_status_t setup_fork(pmix_namespace_t *nptr, const pmix_proc_t *proc, char ***env)
-{
-    /* if you have envars you want to pass to each client,
-     * here is the place to do so */
     return PMIX_SUCCESS;
 }
 

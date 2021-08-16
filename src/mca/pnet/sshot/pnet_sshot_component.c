@@ -35,6 +35,8 @@
 #include "src/util/argv.h"
 #include "src/util/show_help.h"
 
+static pmix_status_t component_open(void);
+static pmix_status_t component_close(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 static pmix_status_t component_register(void);
 
@@ -55,6 +57,8 @@ pmix_pnet_sshot_component_t mca_pnet_sshot_component = {
                                        PMIX_RELEASE_VERSION),
 
             /* Component open and close functions */
+            .pmix_mca_open_component = component_open,
+            .pmix_mca_close_component = component_close,
             .pmix_mca_query_component = component_query,
             .pmix_mca_register_component_params = component_register
         },
@@ -93,6 +97,27 @@ static pmix_status_t component_register(void)
                                                 PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                                 &mca_pnet_sshot_component.ppn);
 
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t component_open(void)
+{
+    pmix_status_t rc;
+
+    // unsure what this will be registered under, so try multiple codes
+    rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x17db, 0x208);  // Cray
+    if (PMIX_SUCCESS != rc) {
+        rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x18c8, 0x208);  // Cray
+    }
+    if (PMIX_SUCCESS != rc) {
+        rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x1590, 0x208);  // HPE
+    }
+
+    return rc;
+}
+
+static pmix_status_t component_close(void)
+{
     return PMIX_SUCCESS;
 }
 

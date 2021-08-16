@@ -246,6 +246,20 @@ typedef struct {
 } pmix_nspace_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_nspace_caddy_t);
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_namespace_t *ns;
+    pmix_list_t envars;
+} pmix_nspace_env_cache_t;
+PMIX_CLASS_DECLARATION(pmix_nspace_env_cache_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_envar_t envar;
+} pmix_envar_list_item_t;
+PMIX_CLASS_DECLARATION(pmix_envar_list_item_t);
+
+
 typedef struct pmix_rank_info_t {
     pmix_list_item_t super;
     int peerid; // peer object index into the local clients array on the server
@@ -435,6 +449,7 @@ typedef struct {
         pmix_hdlr_reg_cbfunc_t hdlrregcbfn;
         pmix_op_cbfunc_t opcbfn;
         pmix_modex_cbfunc_t modexcbfunc;
+        pmix_info_cbfunc_t infocbfunc;
     } cbfunc;
     void *cbdata;
     size_t ref;

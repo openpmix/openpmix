@@ -70,17 +70,10 @@ typedef pmix_status_t (*pmix_pnet_base_module_allocate_fn_t)(pmix_namespace_t *n
  * Give the local network library an opportunity to setup address information
  * for the application by passing in the layout type and a regex describing
  * the layout */
-typedef pmix_status_t (*pmix_pnet_base_module_setup_local_net_fn_t)(pmix_namespace_t *nptr,
+typedef pmix_status_t (*pmix_pnet_base_module_setup_local_net_fn_t)(pmix_nspace_env_cache_t *nptr,
                                                                     pmix_info_t info[],
                                                                     size_t ninfo);
 
-/**
- * Give the local network library an opportunity to add any envars to the
- * environment of a local application process prior to fork/exec
- */
-typedef pmix_status_t (*pmix_pnet_base_module_setup_fork_fn_t)(pmix_namespace_t *nptr,
-                                                               const pmix_proc_t *proc,
-                                                               char ***env);
 
 /**
  * Provide an opportunity for the local network library to cleanup when a
@@ -119,7 +112,7 @@ typedef void (*pmix_pnet_base_module_dregister_nspace_fn_t)(pmix_namespace_t *np
  * or execute the callback function with an error code if it is detected later.
  */
 typedef pmix_status_t (*pmix_pnet_base_module_collect_inventory_fn_t)(
-    pmix_info_t directives[], size_t ndirs, pmix_inventory_cbfunc_t cbfunc, void *cbdata);
+    pmix_info_t directives[], size_t ndirs, pmix_list_t *inventory);
 
 /**
  * Deliver inventory for archiving by corresponding modules
@@ -142,8 +135,7 @@ typedef pmix_status_t (*pmix_pnet_base_module_collect_inventory_fn_t)(
  * should just return PMIX_SUCCESS;
  */
 typedef pmix_status_t (*pmix_pnet_base_module_deliver_inventory_fn_t)(
-    pmix_info_t info[], size_t ninfo, pmix_info_t directives[], size_t ndirs,
-    pmix_op_cbfunc_t cbfunc, void *cbdata);
+    pmix_info_t info[], size_t ninfo, pmix_info_t directives[], size_t ndirs);
 
 /* Register to provide cost information
  *
@@ -177,7 +169,6 @@ typedef struct {
     pmix_pnet_base_module_fini_fn_t finalize;
     pmix_pnet_base_module_allocate_fn_t allocate;
     pmix_pnet_base_module_setup_local_net_fn_t setup_local_network;
-    pmix_pnet_base_module_setup_fork_fn_t setup_fork;
     pmix_pnet_base_module_child_finalized_fn_t child_finalized;
     pmix_pnet_base_module_local_app_finalized_fn_t local_app_finalized;
     pmix_pnet_base_module_dregister_nspace_fn_t deregister_nspace;
@@ -196,15 +187,13 @@ typedef pmix_status_t (*pmix_pnet_base_API_allocate_fn_t)(char *nspace, pmix_inf
                                                           size_t ninfo, pmix_list_t *ilist);
 typedef pmix_status_t (*pmix_pnet_base_API_setup_local_net_fn_t)(char *nspace, pmix_info_t info[],
                                                                  size_t ninfo);
+/**
+ * Give the network framework an opportunity to add any envars to the
+ * environment of a local application process prior to fork/exec
+ */
 typedef pmix_status_t (*pmix_pnet_base_API_setup_fork_fn_t)(const pmix_proc_t *peer, char ***env);
 
 typedef void (*pmix_pnet_base_API_deregister_nspace_fn_t)(char *nspace);
-typedef void (*pmix_pnet_base_API_collect_inventory_fn_t)(pmix_info_t directives[], size_t ndirs,
-                                                          pmix_inventory_cbfunc_t cbfunc,
-                                                          void *cbdata);
-typedef void (*pmix_pnet_base_API_deliver_inventory_fn_t)(pmix_info_t info[], size_t ninfo,
-                                                          pmix_info_t directives[], size_t ndirs,
-                                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /**
  * Base structure for a PNET API
@@ -220,8 +209,8 @@ typedef struct {
     pmix_pnet_base_module_child_finalized_fn_t child_finalized;
     pmix_pnet_base_module_local_app_finalized_fn_t local_app_finalized;
     pmix_pnet_base_API_deregister_nspace_fn_t deregister_nspace;
-    pmix_pnet_base_API_collect_inventory_fn_t collect_inventory;
-    pmix_pnet_base_API_deliver_inventory_fn_t deliver_inventory;
+    pmix_pnet_base_module_collect_inventory_fn_t collect_inventory;
+    pmix_pnet_base_module_deliver_inventory_fn_t deliver_inventory;
     pmix_pnet_base_module_register_fabric_fn_t register_fabric;
     pmix_pnet_base_module_update_fabric_fn_t update_fabric;
     pmix_pnet_base_module_deregister_fabric_fn_t deregister_fabric;

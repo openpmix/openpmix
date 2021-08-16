@@ -11,9 +11,10 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -21,24 +22,22 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = $(ploc_hwloc_CPPFLAGS)
-
-headers = ploc_hwloc.h
+headers = pgpu_nvd.h
 sources = \
-        ploc_hwloc_component.c \
-        ploc_hwloc.c
+        pgpu_nvd_component.c \
+        pgpu_nvd.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_ploc_hwloc_DSO
+if MCA_BUILD_pmix_pgpu_nvd_DSO
 lib =
 lib_sources =
-component = mca_ploc_hwloc.la
+component = mca_pgpu_nvd.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_ploc_hwloc.la
+lib = libmca_pgpu_nvd.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -46,14 +45,12 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_ploc_hwloc_la_SOURCES = $(component_sources)
-mca_ploc_hwloc_la_LIBADD = $(ploc_hwloc_LIBS)
-mca_ploc_hwloc_la_LDFLAGS = -module -avoid-version $(ploc_hwloc_LDFLAGS)
+mca_pgpu_nvd_la_SOURCES = $(component_sources)
+mca_pgpu_nvd_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_ploc_hwloc_la_LIBADD += $(top_builddir)/src/libpmix.la
+mca_pgpu_nvd_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_ploc_hwloc_la_SOURCES = $(lib_sources)
-libmca_ploc_hwloc_la_LIBADD = $(ploc_hwloc_LIBS)
-libmca_ploc_hwloc_la_LDFLAGS = -module -avoid-version $(ploc_hwloc_LDFLAGS)
+libmca_pgpu_nvd_la_SOURCES = $(lib_sources)
+libmca_pgpu_nvd_la_LDFLAGS = -module -avoid-version

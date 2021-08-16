@@ -90,7 +90,8 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace, pmix_info_t info[
 {
     pmix_pnet_base_active_module_t *active;
     pmix_status_t rc;
-    pmix_namespace_t *nptr, *ns;
+    pmix_namespace_t *nsp, *nsp2;
+    pmix_nspace_env_cache_t *ns, *ns2;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: setup_local_network called");
@@ -105,26 +106,40 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace, pmix_info_t info[
     }
 
     /* find this proc's nspace object */
-    nptr = NULL;
-    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, nspace)) {
-            nptr = ns;
+    ns = NULL;
+    PMIX_LIST_FOREACH (ns2, &pmix_pnet_globals.nspaces, pmix_nspace_env_cache_t) {
+        if PMIX_CHECK_NSPACE(ns2->ns->nspace, nspace) {
+            ns = ns2;
             break;
         }
     }
-    if (NULL == nptr) {
-        /* add it */
-        nptr = PMIX_NEW(pmix_namespace_t);
-        if (NULL == nptr) {
-            return PMIX_ERR_NOMEM;
+    if (NULL == ns) {
+        /* find the namespace object for this nspace */
+        nsp = NULL;
+        PMIX_LIST_FOREACH (nsp2, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (0 == strcmp(nsp2->nspace, nspace)) {
+                nsp = nsp2;
+                break;
+            }
         }
-        nptr->nspace = strdup(nspace);
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+        if (NULL == nsp) {
+            /* add it */
+            nsp = PMIX_NEW(pmix_namespace_t);
+            if (NULL == nsp) {
+                return PMIX_ERR_NOMEM;
+            }
+            nsp->nspace = strdup(nspace);
+            pmix_list_append(&pmix_globals.nspaces, &nsp->super);
+        }
+        ns = PMIX_NEW(pmix_nspace_env_cache_t);
+        PMIX_RETAIN(nsp);
+        ns->ns = nsp;
+        pmix_list_append(&pmix_pnet_globals.nspaces, &ns->super);
     }
 
     PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->setup_local_network) {
-            rc = active->module->setup_local_network(nptr, info, ninfo);
+            rc = active->module->setup_local_network(ns, info, ninfo);
             if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc
                 && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 return rc;
@@ -138,9 +153,8 @@ pmix_status_t pmix_pnet_base_setup_local_network(char *nspace, pmix_info_t info[
 /* can only be called by a server from within an event! */
 pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
-    pmix_pnet_base_active_module_t *active;
-    pmix_status_t rc;
-    pmix_namespace_t *nptr, *ns;
+    pmix_nspace_env_cache_t *ns, *ns2;
+    pmix_envar_list_item_t *ev;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet: setup_fork called");
 
@@ -149,35 +163,17 @@ pmix_status_t pmix_pnet_base_setup_fork(const pmix_proc_t *proc, char ***env)
         return PMIX_ERR_BAD_PARAM;
     }
 
-    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        return PMIX_SUCCESS;
-    }
-
-    /* find this proc's nspace object */
-    nptr = NULL;
-    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, proc->nspace)) {
-            nptr = ns;
+    /* see if we have this nspace */
+    ns = NULL;
+    PMIX_LIST_FOREACH (ns2, &pmix_pnet_globals.nspaces, pmix_nspace_env_cache_t) {
+        if (PMIX_CHECK_NSPACE(ns2->ns->nspace, proc->nspace)) {
+            ns = ns2;
             break;
         }
     }
-    if (NULL == nptr) {
-        /* add it */
-        nptr = PMIX_NEW(pmix_namespace_t);
-        if (NULL == nptr) {
-            return PMIX_ERR_NOMEM;
-        }
-        nptr->nspace = strdup(proc->nspace);
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
-    }
-
-    PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
-        if (NULL != active->module->setup_fork) {
-            rc = active->module->setup_fork(nptr, proc, env);
-            if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_AVAILABLE != rc
-                && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
-                return rc;
-            }
+    if (NULL != ns) {
+        PMIX_LIST_FOREACH (ev, &ns->envars, pmix_envar_list_item_t) {
+            pmix_setenv(ev->envar.envar, ev->envar.value, true, env);
         }
     }
 
@@ -238,7 +234,7 @@ void pmix_pnet_base_local_app_finalized(pmix_namespace_t *nptr)
 void pmix_pnet_base_deregister_nspace(char *nspace)
 {
     pmix_pnet_base_active_module_t *active;
-    pmix_namespace_t *nptr, *ns;
+    pmix_nspace_env_cache_t *ns, *ns2;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                         "pnet: deregister_nspace called");
@@ -248,231 +244,63 @@ void pmix_pnet_base_deregister_nspace(char *nspace)
         return;
     }
 
-    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        return;
-    }
-
     /* find this nspace object */
-    nptr = NULL;
-    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, nspace)) {
-            nptr = ns;
+    ns = NULL;
+    PMIX_LIST_FOREACH (ns2, &pmix_pnet_globals.nspaces, pmix_nspace_env_cache_t) {
+        if PMIX_CHECK_NSPACE(ns2->ns->nspace, nspace) {
+            ns = ns2;
+            pmix_list_remove_item(&pmix_pnet_globals.nspaces, &ns->super);
             break;
         }
     }
-    if (NULL == nptr) {
-        /* nothing we can do */
+    if (NULL == ns) {
         return;
     }
 
     PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->deregister_nspace) {
-            active->module->deregister_nspace(nptr);
+            active->module->deregister_nspace(ns->ns);
         }
     }
+    PMIX_RELEASE(ns);
 }
 
-static void cicbfunc(pmix_status_t status, pmix_list_t *inventory, void *cbdata)
-{
-    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t *) cbdata;
-    pmix_kval_t *kv;
-
-    PMIX_ACQUIRE_THREAD(&rollup->lock);
-    /* check if they had an error */
-    if (PMIX_SUCCESS != status && PMIX_SUCCESS == rollup->status) {
-        rollup->status = status;
-    }
-    /* transfer the inventory */
-    if (NULL != inventory) {
-        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(inventory))) {
-            pmix_list_append(&rollup->payload, &kv->super);
-        }
-    }
-    /* record that we got a reply */
-    rollup->replies++;
-    /* see if all have replied */
-    if (rollup->replies < rollup->requests) {
-        /* nope - need to wait */
-        PMIX_RELEASE_THREAD(&rollup->lock);
-        return;
-    }
-
-    /* if we get here, then collection is complete */
-    PMIX_RELEASE_THREAD(&rollup->lock);
-    if (NULL != rollup->cbfunc) {
-        rollup->cbfunc(rollup->status, &rollup->payload, rollup->cbdata);
-    }
-    PMIX_RELEASE(rollup);
-    return;
-}
-
-void pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
-                                      pmix_inventory_cbfunc_t cbfunc, void *cbdata)
+pmix_status_t pmix_pnet_base_collect_inventory(pmix_info_t directives[], size_t ndirs,
+                                               pmix_list_t *inventory)
 {
     pmix_pnet_base_active_module_t *active;
-    pmix_inventory_rollup_t *myrollup;
     pmix_status_t rc;
-
-    /* we cannot block here as each plugin could take some time to
-     * complete the request. So instead, we call each active plugin
-     * and get their immediate response - if "in progress", then
-     * we record that we have to wait for their answer before providing
-     * the caller with a response. If "error", then we know we
-     * won't be getting a response from them */
-
-    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        cbfunc(PMIX_SUCCESS, NULL, cbdata);
-        return;
-    }
-
-    /* create the rollup object */
-    myrollup = PMIX_NEW(pmix_inventory_rollup_t);
-    if (NULL == myrollup) {
-        /* need to call them back so they know */
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_ERR_NOMEM, NULL, cbdata);
-        }
-        return;
-    }
-    myrollup->cbfunc = cbfunc;
-    myrollup->cbdata = cbdata;
-
-    /* hold the lock until all active modules have been called
-     * to avoid race condition where replies come in before
-     * the requests counter has been fully updated */
-    PMIX_ACQUIRE_THREAD(&myrollup->lock);
 
     PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->collect_inventory) {
             pmix_output_verbose(5, pmix_pnet_base_framework.framework_output, "COLLECTING %s",
                                 active->module->name);
-            rc = active->module->collect_inventory(directives, ndirs, cicbfunc, (void *) myrollup);
-            /* if they return success, then the values were
-             * placed directly on the payload - nothing
-             * to wait for here */
-            if (PMIX_OPERATION_IN_PROGRESS == rc) {
-                myrollup->requests++;
-            } else if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc
-                       && PMIX_ERR_NOT_SUPPORTED != rc) {
-                /* a true error - we need to wait for
-                 * all pending requests to complete
-                 * and then notify the caller of the error */
-                if (PMIX_SUCCESS == myrollup->status) {
-                    myrollup->status = rc;
-                }
+            rc = active->module->collect_inventory(directives, ndirs, inventory);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
             }
         }
     }
-    if (0 == myrollup->requests) {
-        /* report back */
-        PMIX_RELEASE_THREAD(&myrollup->lock);
-        if (NULL != cbfunc) {
-            cbfunc(myrollup->status, &myrollup->payload, cbdata);
-        }
-        PMIX_RELEASE(myrollup);
-        return;
-    }
-
-    PMIX_RELEASE_THREAD(&myrollup->lock);
-    return;
+    return PMIX_SUCCESS;
 }
 
-static void dlcbfunc(pmix_status_t status, void *cbdata)
-{
-    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t *) cbdata;
-
-    PMIX_ACQUIRE_THREAD(&rollup->lock);
-    /* check if they had an error */
-    if (PMIX_SUCCESS != status && PMIX_SUCCESS == rollup->status) {
-        rollup->status = status;
-    }
-    /* record that we got a reply */
-    rollup->replies++;
-    /* see if all have replied */
-    if (rollup->replies < rollup->requests) {
-        /* nope - need to wait */
-        PMIX_RELEASE_THREAD(&rollup->lock);
-        return;
-    }
-
-    /* if we get here, then delivery is complete */
-    PMIX_RELEASE_THREAD(&rollup->lock);
-    if (NULL != rollup->opcbfunc) {
-        rollup->opcbfunc(rollup->status, rollup->cbdata);
-    }
-    PMIX_RELEASE(rollup);
-    return;
-}
-
-void pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_info_t directives[],
-                                      size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata)
+pmix_status_t pmix_pnet_base_deliver_inventory(pmix_info_t info[], size_t ninfo,
+                                               pmix_info_t directives[], size_t ndirs)
 {
     pmix_pnet_base_active_module_t *active;
-    pmix_inventory_rollup_t *myrollup;
     pmix_status_t rc;
-
-    /* we cannot block here as each plugin could take some time to
-     * complete the request. So instead, we call each active plugin
-     * and get their immediate response - if "in progress", then
-     * we record that we have to wait for their answer before providing
-     * the caller with a response. If "error", then we know we
-     * won't be getting a response from them */
-
-    if (0 == pmix_list_get_size(&pmix_pnet_globals.actives)) {
-        cbfunc(PMIX_SUCCESS, cbdata);
-        return;
-    }
-
-    /* create the rollup object */
-    myrollup = PMIX_NEW(pmix_inventory_rollup_t);
-    if (NULL == myrollup) {
-        /* need to call them back so they know */
-        if (NULL != cbfunc) {
-            cbfunc(PMIX_ERR_NOMEM, cbdata);
-        }
-        return;
-    }
-    myrollup->opcbfunc = cbfunc;
-    myrollup->cbdata = cbdata;
-
-    /* hold the lock until all active modules have been called
-     * to avoid race condition where replies come in before
-     * the requests counter has been fully updated */
-    PMIX_ACQUIRE_THREAD(&myrollup->lock);
 
     PMIX_LIST_FOREACH (active, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
         if (NULL != active->module->deliver_inventory) {
             pmix_output_verbose(5, pmix_pnet_base_framework.framework_output, "DELIVERING TO %s",
                                 active->module->name);
-            rc = active->module->deliver_inventory(info, ninfo, directives, ndirs, dlcbfunc,
-                                                   (void *) myrollup);
-            /* if they return success, then the values were
-             * immediately archived - nothing to wait for here */
-            if (PMIX_OPERATION_IN_PROGRESS == rc) {
-                myrollup->requests++;
-            } else if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc
-                       && PMIX_ERR_NOT_SUPPORTED != rc) {
-                /* a true error - we need to wait for
-                 * all pending requests to complete
-                 * and then notify the caller of the error */
-                if (PMIX_SUCCESS == myrollup->status) {
-                    myrollup->status = rc;
-                }
+            rc = active->module->deliver_inventory(info, ninfo, directives, ndirs);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
             }
         }
     }
-    if (0 == myrollup->requests) {
-        /* report back */
-        PMIX_RELEASE_THREAD(&myrollup->lock);
-        if (NULL != cbfunc) {
-            cbfunc(myrollup->status, cbdata);
-        }
-        PMIX_RELEASE(myrollup);
-        return;
-    }
-
-    PMIX_RELEASE_THREAD(&myrollup->lock);
-    return;
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric, const pmix_info_t directives[],

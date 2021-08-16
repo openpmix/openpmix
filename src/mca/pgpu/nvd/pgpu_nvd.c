@@ -43,23 +43,23 @@
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 
-#include "pnet_usnic.h"
-#include "src/mca/pnet/base/base.h"
-#include "src/mca/pnet/pnet.h"
+#include "pgpu_nvd.h"
+#include "src/mca/pgpu/base/base.h"
+#include "src/mca/pgpu/pgpu.h"
 
-static pmix_status_t allocate(pmix_namespace_t *nptr,
-                              pmix_info_t info[], size_t ninfo,
+static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist);
-static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
-                                         pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
+                                 pmix_info_t info[], size_t ninfo);
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory);
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs);
-pmix_pnet_module_t pmix_pnet_usnic_module = {
-    .name = "usnic",
+
+pmix_pgpu_module_t pmix_pgpu_nvd_module = {
+    .name = "nvd",
     .allocate = allocate,
-    .setup_local_network = setup_local_network,
+    .setup_local = setup_local,
     .collect_inventory = collect_inventory,
     .deliver_inventory = deliver_inventory
 };
@@ -67,7 +67,8 @@ pmix_pnet_module_t pmix_pnet_usnic_module = {
 /* NOTE: if there is any binary data to be transferred, then
  * this function MUST pack it for transport as the host will
  * not know how to do so */
-static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
+static pmix_status_t allocate(pmix_namespace_t *nptr,
+                              pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist)
 {
     pmix_buffer_t mydata; // Buffer used to store information to be transmitted (scratch storage)
@@ -78,8 +79,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     pmix_list_t cache;
     size_t n;
 
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:usnic:allocate for nspace %s", nptr->nspace);
+    pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
+                        "pgpu:nvd:allocate for nspace %s", nptr->nspace);
 
     if (NULL == info) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
@@ -97,17 +98,17 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     PMIX_CONSTRUCT(&mydata, pmix_buffer_t);
 
     if (envars) {
-        pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                            "pnet: usnic harvesting envars %s excluding %s",
-                            (NULL == mca_pnet_usnic_component.incparms)
-                            ? "NONE" : mca_pnet_usnic_component.incparms,
-                            (NULL == mca_pnet_usnic_component.excparms)
-                            ? "NONE" : mca_pnet_usnic_component.excparms);
+        pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
+                            "pgpu: nvd harvesting envars %s excluding %s",
+                            (NULL == mca_pgpu_nvd_component.incparms)
+                            ? "NONE" : mca_pgpu_nvd_component.incparms,
+                            (NULL == mca_pgpu_nvd_component.excparms)
+                            ? "NONE" : mca_pgpu_nvd_component.excparms);
         /* harvest envars to pass along */
         PMIX_CONSTRUCT(&cache, pmix_list_t);
-        if (NULL != mca_pnet_usnic_component.include) {
-            rc = pmix_util_harvest_envars(mca_pnet_usnic_component.include,
-                                          mca_pnet_usnic_component.exclude, &cache);
+        if (NULL != mca_pgpu_nvd_component.include) {
+            rc = pmix_util_harvest_envars(mca_pgpu_nvd_component.include,
+                                          mca_pgpu_nvd_component.exclude, &cache);
             if (PMIX_SUCCESS != rc) {
                 PMIX_LIST_DESTRUCT(&cache);
                 PMIX_DESTRUCT(&mydata);
@@ -122,7 +123,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     }
 
     /* load all our results into a buffer for xmission to the backend */
-    PMIX_KVAL_NEW(kv, PMIX_PNET_USNIC_BLOB);
+    PMIX_KVAL_NEW(kv, PMIX_PGPU_NVD_BLOB);
     if (NULL == kv || NULL == kv->value) {
         PMIX_RELEASE(kv);
         PMIX_DESTRUCT(&mydata);
@@ -143,19 +144,19 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     return PMIX_SUCCESS;
 }
 
-/* PMIx_server_setup_local_support calls the "setup_local_network" function.
+/* PMIx_server_setup_local_support calls the "setup_local" function.
  * The Standard requires that this come _after_ the host calls the
  * PMIx_server_register_nspace function to ensure that any required information
  * is available to the components. Thus, we have the PMIX_NODE_MAP and
  * PMIX_PROC_MAP available to us and can use them here.
  *
- * When the host calls "setup_local_support", it passes down an array
+ * When the host calls "setup_local", it passes down an array
  * containing the information the "lead" server (e.g., "mpirun") collected
  * from PMIx_server_setup_application. In this case, we search for a blob
  * that our "allocate" function may have included in that info.
  */
-static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
-                                         pmix_info_t info[], size_t ninfo)
+static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
+                                 pmix_info_t info[], size_t ninfo)
 {
     size_t n;
     pmix_buffer_t bkt;
@@ -166,17 +167,17 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
     bool release = false;
     pmix_envar_list_item_t *ev;
 
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                        "pnet:usnic:setup_local with %lu info", (unsigned long) ninfo);
+    pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
+                        "pgpu:nvd:setup_local with %lu info", (unsigned long) ninfo);
 
     /* prep the unpack buffer */
     PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
 
     for (n = 0; n < ninfo; n++) {
         /* look for my key */
-        if (PMIX_CHECK_KEY(&info[n], PMIX_PNET_USNIC_BLOB)) {
-            pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
-                                "pnet:usnic:setup_local found my blob");
+        if (PMIX_CHECK_KEY(&info[n], PMIX_PGPU_NVD_BLOB)) {
+            pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
+                                "pgpu:nvd:setup_local found my blob");
 
             /* if this is a compressed byte object, decompress it */
             if (PMIX_COMPRESSED_BYTE_OBJECT == info[n].value.type) {
@@ -221,7 +222,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory)
 {
-    /* search the topology for usnic NICs */
+    /* search the topology for nvd GPUs */
 
     return PMIX_SUCCESS;
 }

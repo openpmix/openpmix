@@ -1188,6 +1188,7 @@ PMIX_EXPORT pmix_status_t pmix_info_list_convert(void *ptr, pmix_data_array_t *p
     if (NULL == par || NULL == ptr) {
         return PMIX_ERR_BAD_PARAM;
     }
+    PMIX_DATA_ARRAY_CONSTRUCT(par, 0, PMIX_INFO);
 
     n = pmix_list_get_size(p);
     if (0 == n) {

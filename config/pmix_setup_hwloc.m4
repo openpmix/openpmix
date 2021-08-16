@@ -29,11 +29,9 @@
 # modifications it desires in order to compile and link against
 # hwloc.  This mode is used whenever the other modes are not used.
 #
-# MCA_ploc_hwloc_CONFIG([action-if-found], [action-if-not-found])
+# PMIX_SETUP_HWLOC([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
-AC_DEFUN([MCA_pmix_ploc_hwloc_CONFIG],[
-    AC_CONFIG_FILES([src/mca/ploc/hwloc/Makefile])
-
+AC_DEFUN([PMIX_SETUP_HWLOC],[
     PMIX_VAR_SCOPE_PUSH([hwloc_build_mode])
 
     AC_ARG_WITH([hwloc],

@@ -22,22 +22,22 @@
 # $HEADER$
 #
 
-headers = pnet_opa.h
+headers = pgpu_amd.h
 sources = \
-        pnet_opa_component.c \
-        pnet_opa.c
+        pgpu_amd_component.c \
+        pgpu_amd.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_pnet_opa_DSO
+if MCA_BUILD_pmix_pgpu_amd_DSO
 lib =
 lib_sources =
-component = mca_pnet_opa.la
+component = mca_pgpu_amd.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_pnet_opa.la
+lib = libmca_pgpu_amd.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -45,12 +45,12 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_pnet_opa_la_SOURCES = $(component_sources)
-mca_pnet_opa_la_LDFLAGS = -module -avoid-version
+mca_pgpu_amd_la_SOURCES = $(component_sources)
+mca_pgpu_amd_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_pnet_opa_la_LIBADD = $(top_builddir)/src/libpmix.la
+mca_pgpu_amd_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_pnet_opa_la_SOURCES = $(lib_sources)
-libmca_pnet_opa_la_LDFLAGS = -module -avoid-version
+libmca_pgpu_amd_la_SOURCES = $(lib_sources)
+libmca_pgpu_amd_la_LDFLAGS = -module -avoid-version
