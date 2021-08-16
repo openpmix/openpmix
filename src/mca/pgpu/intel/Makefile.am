@@ -22,22 +22,22 @@
 # $HEADER$
 #
 
-headers = pgpu_nvd.h
+headers = pgpu_intel.h
 sources = \
-        pgpu_nvd_component.c \
-        pgpu_nvd.c
+        pgpu_intel_component.c \
+        pgpu_intel.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_pmix_pgpu_nvd_DSO
+if MCA_BUILD_pmix_pgpu_intel_DSO
 lib =
 lib_sources =
-component = mca_pgpu_nvd.la
+component = mca_pgpu_intel.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_pgpu_nvd.la
+lib = libmca_pgpu_intel.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -45,12 +45,12 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_pgpu_nvd_la_SOURCES = $(component_sources)
-mca_pgpu_nvd_la_LDFLAGS = -module -avoid-version
+mca_pgpu_intel_la_SOURCES = $(component_sources)
+mca_pgpu_intel_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_pgpu_nvd_la_LIBADD = $(top_builddir)/src/libpmix.la
+mca_pgpu_intel_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_pgpu_nvd_la_SOURCES = $(lib_sources)
-libmca_pgpu_nvd_la_LDFLAGS = -module -avoid-version
+libmca_pgpu_intel_la_SOURCES = $(lib_sources)
+libmca_pgpu_intel_la_LDFLAGS = -module -avoid-version

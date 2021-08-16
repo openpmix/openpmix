@@ -28,13 +28,13 @@ typedef struct {
 
 /* the component must be visible data for the linker to find it */
 PMIX_EXPORT extern pmix_pgpu_amd_component_t mca_pgpu_amd_component;
-extern pmix_pgpu_module_t pmix_amd_module;
+extern pmix_pgpu_module_t pmix_pgpu_amd_module;
 
 /* define a key for any blob we need to send in a launch msg */
 #define PMIX_PGPU_AMD_BLOB "pmix.pgpu.amd.blob"
 
 /* define an inventory key */
-#define PMIX_AMD_INVENTORY_KEY "pmix.amd.inventory"
+#define PMIX_PGPU_AMD_INVENTORY_KEY "pmix.pgpu.amd.inventory"
 
 END_C_DECLS
 

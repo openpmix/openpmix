@@ -22,8 +22,6 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = $(pnet_usnic_CPPFLAGS)
-
 headers = pnet_usnic.h
 sources = \
         pnet_usnic_component.c \
@@ -48,13 +46,11 @@ endif
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 mca_pnet_usnic_la_SOURCES = $(component_sources)
-mca_pnet_usnic_la_LIBADD = $(pnet_usnic_LIBS)
-mca_pnet_usnic_la_LDFLAGS = -module -avoid-version $(pnet_usnic_LDFLAGS)
+mca_pnet_usnic_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_pnet_usnic_la_LIBADD += $(top_builddir)/src/libpmix.la
+mca_pnet_usnic_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
 libmca_pnet_usnic_la_SOURCES = $(lib_sources)
-libmca_pnet_usnic_la_LIBADD = $(pnet_usnic_LIBS)
-libmca_pnet_usnic_la_LDFLAGS = -module -avoid-version $(pnet_usnic_LDFLAGS)
+libmca_pnet_usnic_la_LDFLAGS = -module -avoid-version

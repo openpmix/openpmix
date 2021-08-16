@@ -34,7 +34,7 @@
 #include "src/mca/pgpu/base/base.h"
 #include "src/util/argv.h"
 
-#include "pgpu_amd.h"
+#include "pgpu_intel.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);
@@ -45,13 +45,13 @@ static pmix_status_t component_register(void);
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_pgpu_amd_component_t mca_pgpu_amd_component = {
+pmix_pgpu_intel_component_t mca_pgpu_intel_component = {
     .super = {
         .base = {
             PMIX_PGPU_BASE_VERSION_1_0_0,
 
             /* Component name and version */
-            .pmix_mca_component_name = "amd",
+            .pmix_mca_component_name = "intel",
             PMIX_MCA_BASE_MAKE_VERSION(component,
                                        PMIX_MAJOR_VERSION,
                                        PMIX_MINOR_VERSION,
@@ -74,26 +74,26 @@ pmix_pgpu_amd_component_t mca_pgpu_amd_component = {
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &mca_pgpu_amd_component.super.base;
+    pmix_mca_base_component_t *component = &mca_pgpu_intel_component.super.base;
 
-    mca_pgpu_amd_component.incparms = NULL;
+    mca_pgpu_intel_component.incparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
         PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &mca_pgpu_amd_component.incparms);
-    if (NULL != mca_pgpu_amd_component.incparms) {
-        mca_pgpu_amd_component.include = pmix_argv_split(mca_pgpu_amd_component.incparms, ',');
+        &mca_pgpu_intel_component.incparms);
+    if (NULL != mca_pgpu_intel_component.incparms) {
+        mca_pgpu_intel_component.include = pmix_argv_split(mca_pgpu_intel_component.incparms, ',');
     }
 
-    mca_pgpu_amd_component.excparms = NULL;
+    mca_pgpu_intel_component.excparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
         PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &mca_pgpu_amd_component.excparms);
-    if (NULL != mca_pgpu_amd_component.excparms) {
-        mca_pgpu_amd_component.exclude = pmix_argv_split(mca_pgpu_amd_component.excparms, ',');
+        &mca_pgpu_intel_component.excparms);
+    if (NULL != mca_pgpu_intel_component.excparms) {
+        mca_pgpu_intel_component.exclude = pmix_argv_split(mca_pgpu_intel_component.excparms, ',');
     }
 
     return PMIX_SUCCESS;
@@ -103,15 +103,14 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x1022, 0x302);
+    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x8086, 0x0380);
     return rc;
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    /* check our topology to see if we have any AMD devices */
     *priority = 20;
-    *module = (pmix_mca_base_module_t *) &pmix_pgpu_amd_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pgpu_intel_module;
     return PMIX_SUCCESS;
 }
 

@@ -43,7 +43,7 @@
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 
-#include "pgpu_amd.h"
+#include "pgpu_intel.h"
 #include "src/mca/pgpu/base/base.h"
 #include "src/mca/pgpu/pgpu.h"
 
@@ -56,8 +56,8 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
 static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs);
 
-pmix_pgpu_module_t pmix_pgpu_amd_module = {
-    .name = "amd",
+pmix_pgpu_module_t pmix_pgpu_intel_module = {
+    .name = "intel",
     .allocate = allocate,
     .setup_local = setup_local,
     .collect_inventory = collect_inventory,
@@ -80,7 +80,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     size_t n;
 
     pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
-                        "pgpu:amd:allocate for nspace %s", nptr->nspace);
+                        "pgpu:intel:allocate for nspace %s", nptr->nspace);
 
     if (NULL == info) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
@@ -99,16 +99,16 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
 
     if (envars) {
         pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
-                            "pgpu: amd harvesting envars %s excluding %s",
-                            (NULL == mca_pgpu_amd_component.incparms)
-                                ? "NONE" : mca_pgpu_amd_component.incparms,
-                            (NULL == mca_pgpu_amd_component.excparms)
-                                ? "NONE" : mca_pgpu_amd_component.excparms);
+                            "pgpu: intel harvesting envars %s excluding %s",
+                            (NULL == mca_pgpu_intel_component.incparms)
+                                ? "NONE" : mca_pgpu_intel_component.incparms,
+                            (NULL == mca_pgpu_intel_component.excparms)
+                                ? "NONE" : mca_pgpu_intel_component.excparms);
         /* harvest envars to pass along */
         PMIX_CONSTRUCT(&cache, pmix_list_t);
-        if (NULL != mca_pgpu_amd_component.include) {
-            rc = pmix_util_harvest_envars(mca_pgpu_amd_component.include,
-                                          mca_pgpu_amd_component.exclude, &cache);
+        if (NULL != mca_pgpu_intel_component.include) {
+            rc = pmix_util_harvest_envars(mca_pgpu_intel_component.include,
+                                          mca_pgpu_intel_component.exclude, &cache);
             if (PMIX_SUCCESS != rc) {
                 PMIX_LIST_DESTRUCT(&cache);
                 PMIX_DESTRUCT(&mydata);
@@ -123,7 +123,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     }
 
     /* load all our results into a buffer for xmission to the backend */
-    PMIX_KVAL_NEW(kv, PMIX_PGPU_AMD_BLOB);
+    PMIX_KVAL_NEW(kv, PMIX_PGPU_INTEL_BLOB);
     if (NULL == kv || NULL == kv->value) {
         PMIX_RELEASE(kv);
         PMIX_DESTRUCT(&mydata);
@@ -168,16 +168,16 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
     pmix_envar_list_item_t *ev;
 
     pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
-                        "pgpu:amd:setup_local with %lu info", (unsigned long) ninfo);
+                        "pgpu:intel:setup_local with %lu info", (unsigned long) ninfo);
 
     /* prep the unpack buffer */
     PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
 
     for (n = 0; n < ninfo; n++) {
         /* look for my key */
-        if (PMIX_CHECK_KEY(&info[n], PMIX_PGPU_AMD_BLOB)) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_PGPU_INTEL_BLOB)) {
             pmix_output_verbose(2, pmix_pgpu_base_framework.framework_output,
-                                "pgpu:amd:setup_local found my blob");
+                                "pgpu:intel:setup_local found my blob");
 
             /* if this is a compressed byte object, decompress it */
             if (PMIX_COMPRESSED_BYTE_OBJECT == info[n].value.type) {
@@ -222,7 +222,7 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
 static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory)
 {
-    /* search the topology for AMD GPUs */
+    /* search the topology for intel GPUs */
 
     return PMIX_SUCCESS;
 }

@@ -34,7 +34,7 @@ extern pmix_pnet_module_t pmix_opa_module;
 #define PMIX_PNET_OPA_BLOB "pmix.pnet.opa.blob"
 
 /* define an inventory key */
-#define PMIX_OPA_INVENTORY_KEY "pmix.opa.inventory"
+#define PMIX_PNET_OPA_INVENTORY_KEY "pmix.pnet.opa.inventory"
 
 END_C_DECLS
 
