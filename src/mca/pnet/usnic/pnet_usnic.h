@@ -36,7 +36,7 @@ extern pmix_pnet_module_t pmix_usnic_module;
 #define PMIX_PNET_USNIC_BLOB "pmix.pnet.usnic.blob"
 
 /* define an inventory key */
-#define PMIX_USNIC_INVENTORY_KEY "pmix.usnic.inventory"
+#define PMIX_PNET_USNIC_INVENTORY_KEY "pmix.pnet.usnic.inventory"
 
 END_C_DECLS
 

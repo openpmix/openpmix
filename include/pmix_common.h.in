@@ -1654,13 +1654,13 @@ typedef struct{
     memset((m), 0, sizeof(pmix_cpuset_t))
 
 #define PMIX_CPUSET_DESTRUCT(m) \
-    pmix_ploc_base_destruct_cpuset((m))
+    pmix_hwloc_destruct_cpuset((m))
 
 #define PMIX_CPUSET_CREATE(m, n)    \
     (m) = (pmix_cpuset_t*)calloc((n), sizeof(pmix_cpuset_t));
 
 #define PMIX_CPUSET_FREE(m, n) \
-    pmix_ploc_base_release_cpuset((m), (n))
+    pmix_hwloc_release_cpuset((m), (n))
 
 
 /****    PMIX BIND ENVELOPE    ****/
@@ -1679,13 +1679,13 @@ typedef struct {
     memset((m), 0, sizeof(pmix_topology_t))
 
 #define PMIX_TOPOLOGY_DESTRUCT(m) \
-    pmix_ploc_base_destruct_topology((m))
+    pmix_hwloc_destruct_topology((m))
 
 #define PMIX_TOPOLOGY_CREATE(m, n) \
     (m) = (pmix_topology_t*)calloc(n, sizeof(pmix_topology_t))
 
 #define PMIX_TOPOLOGY_FREE(m, n) \
-    pmix_ploc_base_release_topology((m), (n))
+    pmix_hwloc_release_topology((m), (n))
 
 /**** PMIX RELATIVE LOCALITY    ****/
 typedef uint16_t pmix_locality_t;

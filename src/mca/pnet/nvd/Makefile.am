@@ -22,8 +22,6 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = $(pnet_nvd_CPPFLAGS)
-
 headers = pnet_nvd.h
 sources = \
         pnet_nvd_component.c \
@@ -48,13 +46,11 @@ endif
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 mca_pnet_nvd_la_SOURCES = $(component_sources)
-mca_pnet_nvd_la_LIBADD = $(pnet_nvd_LIBS)
-mca_pnet_nvd_la_LDFLAGS = -module -avoid-version $(pnet_nvd_LDFLAGS)
+mca_pnet_nvd_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_pnet_nvd_la_LIBADD += $(top_builddir)/src/libpmix.la
+mca_pnet_nvd_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
 libmca_pnet_nvd_la_SOURCES = $(lib_sources)
-libmca_pnet_nvd_la_LIBADD = $(pnet_nvd_LIBS)
-libmca_pnet_nvd_la_LDFLAGS = -module -avoid-version $(pnet_nvd_LDFLAGS)
+libmca_pnet_nvd_la_LDFLAGS = -module -avoid-version

@@ -35,7 +35,7 @@ extern pmix_pgpu_module_t pmix_pgpu_nvd_module;
 #define PMIX_PGPU_NVD_BLOB "pmix.pgpu.nvd.blob"
 
 /* define an inventory key */
-#define PMIX_NVD_INVENTORY_KEY "pmix.nvd.inventory"
+#define PMIX_PGPU_NVD_INVENTORY_KEY "pmix.pgpu.nvd.inventory"
 
 END_C_DECLS
 

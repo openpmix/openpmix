@@ -22,8 +22,6 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = $(pgpu_amd_CPPFLAGS)
-
 headers = pgpu_amd.h
 sources = \
         pgpu_amd_component.c \
@@ -48,13 +46,11 @@ endif
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 mca_pgpu_amd_la_SOURCES = $(component_sources)
-mca_pgpu_amd_la_LIBADD = $(pgpu_amd_LIBS)
-mca_pgpu_amd_la_LDFLAGS = -module -avoid-version $(pgpu_amd_LDFLAGS)
+mca_pgpu_amd_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_pgpu_amd_la_LIBADD += $(top_builddir)/src/libpmix.la
+mca_pgpu_amd_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
 libmca_pgpu_amd_la_SOURCES = $(lib_sources)
-libmca_pgpu_amd_la_LIBADD = $(pgpu_amd_LIBS)
-libmca_pgpu_amd_la_LDFLAGS = -module -avoid-version $(pgpu_amd_LDFLAGS)
+libmca_pgpu_amd_la_LDFLAGS = -module -avoid-version
