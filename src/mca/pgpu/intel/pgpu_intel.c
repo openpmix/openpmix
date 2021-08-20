@@ -125,7 +125,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     /* load all our results into a buffer for xmission to the backend */
     PMIX_KVAL_NEW(kv, PMIX_PGPU_INTEL_BLOB);
     if (NULL == kv || NULL == kv->value) {
-        PMIX_RELEASE(kv);
         PMIX_DESTRUCT(&mydata);
         return PMIX_ERR_NOMEM;
     }

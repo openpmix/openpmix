@@ -777,6 +777,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             if (fdout < 0) {
                 /* couldn't be opened */
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                free(outdir);
                 return NULL;
             }
             /* define a sink to that file descriptor */
@@ -789,6 +790,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                                      PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
             }
             pmix_list_append(&nptr->sinks, &snk->super);
+            free(outdir);
             return &snk->wev;
         } else {
             /* setup the stderr sink */
@@ -798,6 +800,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             if (fdout < 0) {
                 /* couldn't be opened */
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                free(outdir);
                 return NULL;
             }
             /* define a sink to that file descriptor */
@@ -805,6 +808,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
                                  PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
             pmix_list_append(&nptr->sinks, &snk->super);
+            free(outdir);
             return &snk->wev;
         }
     }
@@ -815,9 +819,9 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
         outdir = pmix_dirname(nptr->iof_flags.file);
         /* ensure the directory exists */
         rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
+        free(outdir);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            free(outdir);
             return NULL;
         }
         if (PMIX_FWD_STDOUT_CHANNEL & stream ||
@@ -830,7 +834,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                     pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
                 } else {
                     /* must process the pattern - for now, just take it literally */
-                    pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
+                    pmix_asprintf(&outfile, "%s.pattern.out", nptr->iof_flags.file);
                 }
             } else {
                 /* setup the file */
@@ -864,7 +868,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                     pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
                 } else {
                     /* must process the pattern - for now, just take it literally */
-                    pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
+                    pmix_asprintf(&outfile, "%s.pattern.err", nptr->iof_flags.file);
                 }
             } else {
                 /* setup the file */
@@ -1249,6 +1253,9 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     taglen = strlen(outtag);
     for (j = 0; j < taglen && k < PMIX_IOF_BASE_TAG_MAX; j++) {
         starttag[k++] = outtag[j];
+    }
+    if (PMIX_IOF_BASE_TAG_MAX == k) {
+        return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
     }
     /* if xml, end the starttag with a '>' */
     if (myflags.xml) {

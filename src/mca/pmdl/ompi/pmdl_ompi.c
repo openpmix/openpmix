@@ -236,15 +236,13 @@ harvest:
     }
 
     /* see if the user has a default MCA param file */
-    if (NULL != info) {
-        for (n = 0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, uid, uint32_t);
-                if (PMIX_SUCCESS != rc) {
-                    return rc;
-                }
-                break;
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_USERID)) {
+            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, uid, uint32_t);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
             }
+            break;
         }
     }
     if (UINT32_MAX == uid) {
