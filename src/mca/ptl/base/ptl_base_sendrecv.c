@@ -223,7 +223,8 @@ static void lost_connection(pmix_peer_t *peer)
         PMIX_DESTRUCT(&buf);
         /* if I called finalize, then don't generate an event */
         if (!pmix_globals.mypeer->finalized) {
-            PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION, pmix_client_globals.myserver,
+            PMIX_REPORT_EVENT(PMIX_ERR_LOST_CONNECTION,
+                              pmix_client_globals.myserver,
                               PMIX_RANGE_PROC_LOCAL, _notify_complete);
         }
     }

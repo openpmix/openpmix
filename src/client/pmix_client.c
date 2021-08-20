@@ -546,8 +546,10 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
             rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver, info,
                                           ninfo);
             if (PMIX_SUCCESS == rc) {
+                PMIX_ACQUIRE_THREAD(&pmix_global_lock);
                 pmix_init_result = rc;
                 pmix_client_globals.singleton = false;
+                PMIX_RELEASE_THREAD(&pmix_global_lock);
             }
         }
 

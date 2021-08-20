@@ -200,15 +200,6 @@ PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
             PMIX_PROC_CREATE(ch->affected, 1);                                                 \
             ch->naffected = 1;                                                                 \
             PMIX_LOAD_PROCID(ch->affected, (p)->nptr->nspace, (p)->info->pname.rank);          \
-            /* if I'm a client or tool and this is my server, then we don't */                 \
-            /* set the targets - otherwise, we do */                                           \
-            if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer)                                      \
-                && !PMIX_CHECK_PROCID(&pmix_client_globals.myserver->info->pname,              \
-                                      &(p)->info->pname)) {                                    \
-                PMIX_PROC_CREATE(ch->targets, 1);                                              \
-                ch->ntargets = 1;                                                              \
-                PMIX_LOAD_PROCID(ch->targets, (p)->nptr->nspace, PMIX_RANK_WILDCARD);          \
-            }                                                                                  \
             /* if this is lost-connection-to-server, then we let it go to */                   \
             /* the default event handler - otherwise, we don't */                              \
             if (PMIX_ERR_LOST_CONNECTION != (e) && PMIX_ERR_UNREACH != (e)) {                  \

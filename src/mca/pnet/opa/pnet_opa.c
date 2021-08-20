@@ -107,6 +107,7 @@ static char *transports_print(uint64_t *unique_key)
      * sizeof(int) == 4)).
      */
     if (0 > asprintf(&format, "%%0%dx", (int) (sizeof(unsigned int)) * 2)) {
+        free(string_key);
         return NULL;
     }
 
@@ -259,7 +260,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     /* load all our results into a buffer for xmission to the backend */
     PMIX_KVAL_NEW(kv, PMIX_PNET_OPA_BLOB);
     if (NULL == kv || NULL == kv->value) {
-        PMIX_RELEASE(kv);
         PMIX_DESTRUCT(&mydata);
         return PMIX_ERR_NOMEM;
     }
