@@ -301,7 +301,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     /* load all our results into a buffer for xmission to the backend */
     PMIX_KVAL_NEW(kv, PMIX_PNET_NVD_BLOB);
     if (NULL == kv || NULL == kv->value) {
-        PMIX_RELEASE(kv);
         PMIX_DESTRUCT(&mydata);
         return PMIX_ERR_NOMEM;
     }
@@ -435,6 +434,10 @@ static pmix_status_t setup_fork(pmix_namespace_t *nptr, const pmix_proc_t *proc,
 {
     nvd_nspace_t *ns, *ns2;
     nvd_envar_t *ev;
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    /* search the topology for Mellanox/NVIDIA NICs */
+    hwloc_obj_t device;
 
     pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet:nvd: setup fork for %s",
                         PMIX_NAME_PRINT(proc));

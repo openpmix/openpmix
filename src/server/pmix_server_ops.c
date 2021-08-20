@@ -4711,7 +4711,7 @@ pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
             goto cleanup;
         }
         kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
-        rc = pmix_ploc.parse_cpuset_string(kv->value->data.string, cpuset.bitmap);
+        rc = pmix_hwloc_parse_cpuset_string(kv->value->data.string, &cpuset);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&cb);
             goto cleanup;
