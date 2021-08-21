@@ -100,7 +100,6 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
                             "ptl:tool:connection_handler unable to complete recv of connect-ack "
                             "with client ON SOCKET %d",
                             pnd->sd);
-        free(msg);
         goto error;
     }
 
