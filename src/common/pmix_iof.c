@@ -252,8 +252,8 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
 
     /* if I am my own active server, then just register
      * the request */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)
-        && pmix_client_globals.myserver == pmix_globals.mypeer) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        pmix_client_globals.myserver == pmix_globals.mypeer) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         req = PMIX_NEW(pmix_iof_req_t);
         if (NULL == req) {
@@ -1373,16 +1373,6 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     output->numbytes = k;
 
 process:
-    /* if we are simply dumping to stdout/err, then do so */
-    if (&pmix_client_globals.iof_stdout.wev == channel ||
-        &pmix_client_globals.iof_stderr.wev == channel) {
-        if (0 < output->numbytes) {
-            write(channel->fd, output->data, output->numbytes);
-        }
-        PMIX_RELEASE(output);
-        return 0;
-    }
-
     /* add this data to the write list for this fd */
     pmix_list_append(&channel->outputs, &output->super);
 
@@ -1460,6 +1450,13 @@ void pmix_iof_write_handler(int _fd, short event, void *cbdata)
                 /* leave the write event running so it will call us again
                  * when the fd is ready.
                  */
+                wev->numtries++;
+                if (PMIX_IOF_MAX_RETRIES < wev->numtries) {
+                    /* give up */
+                    pmix_output(0, "IO Forwarding is unable to output - something is "
+                                "blocking us from writing");
+                    goto ABORT;
+                }
                 goto NEXT_CALL;
             }
             /* otherwise, something bad happened so all we can do is abort
@@ -1483,14 +1480,16 @@ void pmix_iof_write_handler(int _fd, short event, void *cbdata)
             /* leave the write event running so it will call us again
              * when the fd is ready
              */
+            wev->numtries = 0;
             goto NEXT_CALL;
         }
         PMIX_RELEASE(output);
+        wev->numtries = 0;
 
         total_written += num_written;
         if (wev->always_writable && (PMIX_IOF_SINK_BLOCKSIZE <= total_written)) {
             /* If this is a regular file it will never tell us it will block
-             * Write no more than PMIX_IOF_REGULARF_BLOCK at a time allowing
+             * Write no more than PMIX_IOF_SINK_BLOCKSIZE at a time to allow
              * other fds to progress
              */
             goto NEXT_CALL;
@@ -1779,6 +1778,7 @@ static void iof_write_event_construct(pmix_iof_write_event_t *wev)
 {
     wev->pending = false;
     wev->always_writable = false;
+    wev->numtries = 0;
     wev->fd = -1;
     PMIX_CONSTRUCT(&wev->outputs, pmix_list_t);
     wev->tv.tv_sec = 0;
