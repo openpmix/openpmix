@@ -2482,13 +2482,15 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     size_t n;
     pmix_status_t rc;
 
+    PMIX_ACQUIRE_OBJECT(cd);
+
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "PMIX:SERVER delivering IOF from %s on channel %0x",
                         PMIX_NAME_PRINT(cd->procs), cd->channels);
 
     /* output it locally if requested */
     rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
-    if (PMIX_SUCCESS != rc) {
+    if (0 > rc) {
         goto done;
     }
 
@@ -2595,95 +2597,60 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source, pmix_iof_channe
 
 static void cirelease(void *cbdata)
 {
-    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t *) cbdata;
-    if (NULL != rollup->info) {
-        PMIX_INFO_FREE(rollup->info, rollup->ninfo);
-    }
-    PMIX_RELEASE(rollup);
-}
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
 
-static void clct_complete(pmix_status_t status, pmix_list_t *inventory, void *cbdata)
-{
-    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t *) cbdata;
-    pmix_kval_t *kv;
-    size_t n;
-    pmix_status_t rc;
+    PMIX_ACQUIRE_OBJECT(cd);
 
-    PMIX_ACQUIRE_THREAD(&cd->lock);
-
-    /* collect the results */
-    if (NULL != inventory) {
-        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(inventory))) {
-            pmix_list_append(&cd->payload, &kv->super);
-        }
-    }
-    if (PMIX_SUCCESS != status && PMIX_SUCCESS == cd->status) {
-        cd->status = status;
-    }
-    /* see if we are done */
-    cd->replies++;
-    if (cd->replies == cd->requests) {
-        /* no need to continue tracking the input directives */
-        cd->info = NULL;
-        cd->ninfo = 0;
-        if (NULL != cd->infocbfunc) {
-            /* convert the list to an array of pmix_info_t */
-            cd->ninfo = pmix_list_get_size(&cd->payload);
-            if (0 < cd->ninfo) {
-                PMIX_INFO_CREATE(cd->info, cd->ninfo);
-                if (NULL == cd->info) {
-                    cd->status = PMIX_ERR_NOMEM;
-                    cd->ninfo = 0;
-                    PMIX_RELEASE_THREAD(&cd->lock);
-                    goto error;
-                }
-                /* transfer the results */
-                n = 0;
-                PMIX_LIST_FOREACH (kv, &cd->payload, pmix_kval_t) {
-                    pmix_strncpy(cd->info[n].key, kv->key, PMIX_MAX_KEYLEN);
-                    rc = pmix_value_xfer(&cd->info[n].value, kv->value);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_INFO_FREE(cd->info, cd->ninfo);
-                        cd->status = rc;
-                        break;
-                    }
-                    ++n;
-                }
-            }
-            /* now call the requestor back */
-            PMIX_RELEASE_THREAD(&cd->lock);
-            cd->infocbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, cirelease, cd);
-            return;
-        }
-    }
-    /* continue to wait */
-    PMIX_RELEASE_THREAD(&cd->lock);
-    return;
-
-error:
-    /* let them know */
-    if (NULL != cd->infocbfunc) {
-        cd->infocbfunc(cd->status, NULL, 0, cd->cbdata, NULL, NULL);
+    if (NULL != cd->info) {
+        PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
     PMIX_RELEASE(cd);
 }
+
 static void clct(int sd, short args, void *cbdata)
 {
-    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t *) cbdata;
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
+    pmix_list_t inventory;
+    pmix_data_array_t darray;
+    pmix_status_t rc;
 
-    /* we only have one source at this time */
-    cd->requests = 1;
+    PMIX_ACQUIRE_OBJECT(cd);
+
+    PMIX_CONSTRUCT(&inventory, pmix_list_t);
 
     /* collect the pnet inventory */
-    pmix_pnet.collect_inventory(cd->info, cd->ninfo, clct_complete, cd);
+    rc = pmix_pnet.collect_inventory(cd->directives, cd->ndirs, &inventory);
+    if (PMIX_SUCCESS != rc) {
+        goto report;
+    }
 
+    /* collect the pgpu inventory */
+    rc = pmix_pgpu.collect_inventory(cd->directives, cd->ndirs, &inventory);
+    if (PMIX_SUCCESS != rc) {
+        goto report;
+    }
+
+    /* convert list to an array of info */
+    rc = pmix_info_list_convert((void*)&inventory, &darray);
+    if (PMIX_ERR_EMPTY == rc) {
+        rc = PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS == rc) {
+        cd->info = (pmix_info_t*)darray.array;
+        cd->ninfo = darray.size;
+    }
+
+report:
+    if (NULL != cd->cbfunc.infocbfunc) {
+        cd->cbfunc.infocbfunc(rc, cd->info, cd->ninfo, cd->cbdata, cirelease, cd);
+    }
+    PMIX_LIST_DESTRUCT(&inventory);
     return;
 }
 
 pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndirs,
                                             pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_inventory_rollup_t *cd;
+    pmix_shift_caddy_t *cd;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -2693,58 +2660,41 @@ pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndi
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* need to threadshift this request */
-    cd = PMIX_NEW(pmix_inventory_rollup_t);
+    cd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
-    cd->info = directives;
-    cd->ninfo = ndirs;
-    cd->infocbfunc = cbfunc;
+    cd->directives = directives;
+    cd->ndirs = ndirs;
+    cd->cbfunc.infocbfunc = cbfunc;
     cd->cbdata = cbdata;
     PMIX_THREADSHIFT(cd, clct);
 
     return PMIX_SUCCESS;
 }
 
-static void dlinv_complete(pmix_status_t status, void *cbdata)
-{
-    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
-
-    /* take the lock */
-    PMIX_ACQUIRE_THREAD(&cd->lock);
-
-    /* increment number of replies */
-    cd->ndata++; // reuse field in shift_caddy
-    /* update status, if necessary */
-    if (PMIX_SUCCESS != status && PMIX_SUCCESS == cd->status) {
-        cd->status = status;
-    }
-    if (cd->ncodes == cd->ndata) {
-        /* we are done - let the caller know */
-        PMIX_RELEASE_THREAD(&cd->lock);
-        if (NULL != cd->cbfunc.opcbfn) {
-            cd->cbfunc.opcbfn(cd->status, cd->cbdata);
-        }
-        PMIX_RELEASE(cd);
-        return;
-    }
-
-    PMIX_RELEASE_THREAD(&cd->lock);
-    return;
-}
-
 static void dlinv(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
+    pmix_status_t rc;
 
-    /* only have one place to deliver inventory
-     * at this time */
-    cd->ncodes = 1; // reuse field in shift_caddy
+    PMIX_ACQUIRE_OBJECT(cd);
 
-    pmix_pnet.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs, dlinv_complete, cd);
+    rc = pmix_pnet.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
+    if (PMIX_SUCCESS != rc) {
+        goto report;
+    }
 
+    rc = pmix_pgpu.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
+
+report:
+    if (NULL != cd->cbfunc.opcbfn) {
+        cd->cbfunc.opcbfn(rc, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
     return;
 }
+
 pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
                                             pmix_info_t directives[], size_t ndirs,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
@@ -2820,6 +2770,9 @@ typedef struct {
 static void release_info(pmix_status_t status, void *cbdata)
 {
     mydata_t *cd = (mydata_t *) cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
     PMIX_INFO_FREE(cd->info, cd->ninfo);
     free(cd);
 }
@@ -2833,6 +2786,8 @@ static void psetdef(int sd, short args, void *cbdata)
     pmix_data_array_t *darray;
     pmix_proc_t *ptr;
     pmix_pset_t *ps;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     mydat = (mydata_t *) malloc(sizeof(mydata_t));
     mydat->ninfo = 3;
@@ -2899,6 +2854,8 @@ static void psetdel(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     mydata_t *mydat;
     pmix_pset_t *ps;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     mydat = (mydata_t *) malloc(sizeof(mydata_t));
     mydat->ninfo = 2;
@@ -3109,7 +3066,6 @@ static void spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata)
         cd->pname.nspace = strdup(nspace);
     }
     cd->cd = (pmix_server_caddy_t *) cbdata;
-    ;
 
     PMIX_THREADSHIFT(cd, _spcb);
 }
