@@ -848,8 +848,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
 PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
     int i;
+    pmix_status_t rc;
     pmix_peer_t *peer;
     pmix_namespace_t *ns;
+    pmix_iof_req_t *req;
+    pmix_iof_cache_t *iof;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -865,6 +868,20 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_globals.init_cntr = 0;
 
     pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server finalize called");
+
+    /* ensure that any cached IOF gets sent to requestors before we exit */
+    for (i = 0; i < pmix_globals.iof_requests.size; i++) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL == req) {
+            continue;
+        }
+        PMIX_LIST_FOREACH(iof, &pmix_server_globals.iof, pmix_iof_cache_t) {
+            rc = pmix_iof_process_iof(iof->channel, &iof->source, iof->bo, iof->info, iof->ninfo, req);
+            if (PMIX_OPERATION_SUCCEEDED != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+        }
+    }
 
     /* stop the progress thread, but leave the event base
      * still constructed. This will allow us to safely
