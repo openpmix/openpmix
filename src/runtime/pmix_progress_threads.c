@@ -245,8 +245,6 @@ static void stop_progress_engine(pmix_progress_tracker_t *trk)
     /* break the event loop - this will cause the loop to exit upon
        completion of any current event */
     pmix_event_base_loopexit(trk->ev_base);
-
-    pmix_thread_join(&trk->engine, NULL);
 }
 
 static int start_progress_engine(pmix_progress_tracker_t *trk)

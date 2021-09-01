@@ -58,15 +58,17 @@ BEGIN_C_DECLS
 /*
  * Maximum size of single msg
  */
-#define PMIX_IOF_BASE_MSG_MAX        4096
-#define PMIX_IOF_BASE_TAG_MAX        256
-#define PMIX_IOF_BASE_TAGGED_OUT_MAX 8192
+#define PMIX_IOF_BASE_MSG_MAX        8192
+#define PMIX_IOF_BASE_TAG_MAX        1024
+#define PMIX_IOF_BASE_TAGGED_OUT_MAX 16384
 #define PMIX_IOF_MAX_INPUT_BUFFERS   50
+#define PMIX_IOF_MAX_RETRIES         4
 
 typedef struct {
     pmix_list_item_t super;
     bool pending;
     bool always_writable;
+    int numtries;
     pmix_event_t ev;
     struct timeval tv;
     int fd;

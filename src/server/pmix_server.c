@@ -2497,13 +2497,15 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     size_t n;
     pmix_status_t rc;
 
+    PMIX_ACQUIRE_OBJECT(cd);
+
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "PMIX:SERVER delivering IOF from %s on channel %0x",
                         PMIX_NAME_PRINT(cd->procs), cd->channels);
 
     /* output it locally if requested */
     rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
-    if (PMIX_SUCCESS != rc) {
+    if (0 > rc) {
         goto done;
     }
 
@@ -2611,6 +2613,9 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source, pmix_iof_channe
 static void cirelease(void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
     if (NULL != cd->info) {
         PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
@@ -2623,6 +2628,8 @@ static void clct(int sd, short args, void *cbdata)
     pmix_list_t inventory;
     pmix_data_array_t darray;
     pmix_status_t rc;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     PMIX_CONSTRUCT(&inventory, pmix_list_t);
 
@@ -2685,6 +2692,8 @@ static void dlinv(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
     pmix_status_t rc;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     rc = pmix_pnet.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
     if (PMIX_SUCCESS != rc) {
@@ -2776,6 +2785,9 @@ typedef struct {
 static void release_info(pmix_status_t status, void *cbdata)
 {
     mydata_t *cd = (mydata_t *) cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
     PMIX_INFO_FREE(cd->info, cd->ninfo);
     free(cd);
 }
@@ -2789,6 +2801,8 @@ static void psetdef(int sd, short args, void *cbdata)
     pmix_data_array_t *darray;
     pmix_proc_t *ptr;
     pmix_pset_t *ps;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     mydat = (mydata_t *) malloc(sizeof(mydata_t));
     mydat->ninfo = 3;
@@ -2855,6 +2869,8 @@ static void psetdel(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     mydata_t *mydat;
     pmix_pset_t *ps;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     mydat = (mydata_t *) malloc(sizeof(mydata_t));
     mydat->ninfo = 2;
@@ -3065,7 +3081,6 @@ static void spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata)
         cd->pname.nspace = strdup(nspace);
     }
     cd->cd = (pmix_server_caddy_t *) cbdata;
-    ;
 
     PMIX_THREADSHIFT(cd, _spcb);
 }
