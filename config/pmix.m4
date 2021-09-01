@@ -821,15 +821,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_CHECK_OFI
 
     ##################################
-    # Dstore Locking
-    ##################################
-
-    pmix_show_title "Dstore Locking"
-
-    PMIX_CHECK_DSTOR_LOCK
-
-
-    ##################################
     # MCA
     ##################################
 
@@ -1172,21 +1163,6 @@ AC_DEFINE_UNQUOTED([PMIX_WANT_PRETTY_PRINT_STACKTRACE],
                    [if want pretty-print stack trace feature])
 
 #
-# Use pthread-based locking
-#
-DSTORE_PTHREAD_LOCK="1"
-AC_MSG_CHECKING([if want dstore pthread-based locking])
-AC_ARG_ENABLE([dstore-pthlck],
-              [AS_HELP_STRING([--disable-dstore-pthlck],
-                              [Disable pthread-based locking in dstor (default: enabled)])])
-if test "$enable_dstore_pthlck" = "no" ; then
-    AC_MSG_RESULT([no])
-    DSTORE_PTHREAD_LOCK="0"
-else
-    AC_MSG_RESULT([yes])
-    DSTORE_PTHREAD_LOCK="1"
-fi
-
 #
 # Ident string
 #
@@ -1387,7 +1363,6 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
         AM_CONDITIONAL([PMIX_WANT_MUNGE], [test "$pmix_munge_support" = "1"])
         AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
-        AM_CONDITIONAL([WANT_DSTORE], [test "x$enable_dstore" != "xno"])
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
         AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
         AM_CONDITIONAL(WANT_PMI_BACKWARD, test "$WANT_PMI_BACKWARD" = 1)
