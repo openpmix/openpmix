@@ -1568,9 +1568,9 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix
 
 static void opcbfn(pmix_status_t status, void *cbdata)
 {
-    pmix_lock_t *lock = (pmix_lock_t *) cbdata;
-    PMIX_ACQUIRE_OBJECT(lock);
-    PMIX_WAKEUP_THREAD(lock);
+    pmix_byte_object_t *boptr = (pmix_byte_object_t *) cbdata;
+    PMIX_ACQUIRE_OBJECT(boptr);
+    PMIX_BYTE_OBJECT_FREE(boptr, 1);
 }
 
 /* this is the read handler for stdin */
@@ -1582,10 +1582,9 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     pmix_status_t rc;
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_IOF_PUSH_CMD;
-    pmix_byte_object_t bo;
+    pmix_byte_object_t bo, *boptr;
     int fd;
     pmix_pfexec_child_t *child = (pmix_pfexec_child_t *) rev->childproc;
-    pmix_lock_t lock;
 
     PMIX_ACQUIRE_OBJECT(rev);
 
@@ -1597,6 +1596,10 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     /* read up to the fragment size */
     memset(data, 0, PMIX_IOF_BASE_MSG_MAX);
     numbytes = read(fd, data, sizeof(data));
+
+    /* The event has fired, so it's no longer active until we
+     re-add it */
+    rev->active = false;
 
     if (numbytes < 0) {
         /* either we have a connection error or it was a non-blocking read */
@@ -1610,43 +1613,37 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
         PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
                              "%s iof:read handler Error on stdin",
                              PMIX_NAME_PRINT(&pmix_globals.myid)));
-        /* Un-recoverable error. Allow the code to flow as usual in order to
-         * to send the zero bytes message up the stream, and then close the
-         * file descriptor and delete the event.
-         */
+        /* Un-recoverable error */
         numbytes = 0;
     }
+
+    /* if the number of bytes is zero, then we just delete the event - there
+     * is no need to pass it upstream as WE are the ones holding the event
+     * and associated file descriptor */
+    if (0 == numbytes) {
+        if (NULL != child && child->completed &&
+            (NULL == child->stdoutev || !child->stdoutev->active) &&
+            (NULL == child->stderrev || !child->stderrev->active)) {
+            PMIX_PFEXEC_CHK_COMPLETE(child);
+        }
+        return;
+    }
+
     bo.bytes = (char *) data;
     bo.size = numbytes;
-
-    /* The event has fired, so it's no longer active until we
-       re-add it */
-    rev->active = false;
-
-    /* if this is from our own child proc, then
-     * just push it to the corresponding sink */
-    if (NULL != child) {
-        pmix_iof_write_output(&rev->name, rev->channel, &bo);
-        if (0 == numbytes && child->completed
-            && (NULL == child->stdoutev || !child->stdoutev->active)
-            && (NULL == child->stderrev || !child->stderrev->active)) {
-            PMIX_PFEXEC_CHK_COMPLETE(child);
-            return;
-        }
-        goto reactivate;
-    }
 
     /* if I am a server, then push this up to my host */
     if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
         if (NULL == pmix_host_server.push_stdin) {
-            /* nothing we can do with this info */
-            goto reactivate;
+            /* nothing we can do with this info - no point in reactivating it */
+            return;
         }
-        PMIX_CONSTRUCT_LOCK(&lock);
+        PMIX_BYTE_OBJECT_CREATE(boptr, 1);
+        boptr->bytes = (char*)malloc(bo.size);
+        memcpy(boptr->bytes, bo.bytes, bo.size);
+        boptr->size = bo.size;
         rc = pmix_host_server.push_stdin(&pmix_globals.myid, rev->targets, rev->ntargets,
-                                         rev->directives, rev->ndirs, &bo, opcbfn, &lock);
-        PMIX_WAIT_THREAD(&lock);
-        PMIX_DESTRUCT_LOCK(&lock);
+                                         rev->directives, rev->ndirs, boptr, opcbfn, (void*)boptr);
         goto reactivate;
     }
 
