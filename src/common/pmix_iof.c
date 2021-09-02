@@ -1597,6 +1597,10 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     memset(data, 0, PMIX_IOF_BASE_MSG_MAX);
     numbytes = read(fd, data, sizeof(data));
 
+    /* The event has fired, so it's no longer active until we
+     re-add it */
+    rev->active = false;
+
     if (numbytes < 0) {
         /* either we have a connection error or it was a non-blocking read */
 
@@ -1627,10 +1631,6 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
 
     bo.bytes = (char *) data;
     bo.size = numbytes;
-
-    /* The event has fired, so it's no longer active until we
-       re-add it */
-    rev->active = false;
 
     /* if I am a server, then push this up to my host */
     if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
