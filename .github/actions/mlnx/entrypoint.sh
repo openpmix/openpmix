@@ -146,8 +146,9 @@ if [ "$jenkins_test_build" = "yes" ]; then
     echo ./configure --prefix=$pmix_dir $configure_args | bash -xeE
     make $make_opt install
     cd test
+    export PMIX_MCA_pcompress_base_silence_warning=1
     echo "Running make check ..."
-    make $make_opt check || (cat test/test-suite.log && exit 12)
+    make $make_opt check || (cat test-suite.log && exit 12)
     echo "Make check complete"
     echo "========================  TEST COMPLETE  ========================="
 fi
