@@ -830,11 +830,19 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     return PMIX_SUCCESS;
 }
 
+static void checkev(int fd, short args, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
+    PMIX_WAKEUP_THREAD(lock);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
     int i;
     pmix_peer_t *peer;
     pmix_namespace_t *ns;
+    pmix_lock_t lock;
+    pmix_event_t ev;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -850,6 +858,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_globals.init_cntr = 0;
 
     pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server finalize called");
+
+    /* wait here until all active events have been processed */
+    PMIX_CONSTRUCT_LOCK(&lock);
+    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
+    PMIX_POST_OBJECT(&lock);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
 
     /* stop the progress thread, but leave the event base
      * still constructed. This will allow us to safely
@@ -2485,8 +2501,10 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(cd);
 
     pmix_output_verbose(2, pmix_server_globals.iof_output,
-                        "PMIX:SERVER delivering IOF from %s on channel %0x",
-                        PMIX_NAME_PRINT(cd->procs), cd->channels);
+                        "PMIX:SERVER delivering IOF from %s on channel %s with %d bytes",
+                        PMIX_NAME_PRINT(cd->procs),
+                        PMIx_IOF_channel_string(cd->channels),
+                        (int)cd->bo->size);
 
     /* output it locally if requested */
     rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
@@ -2512,7 +2530,9 @@ static void _iofdeliver(int sd, short args, void *cbdata)
 
     /* if nobody has registered for this yet, then cache it */
     if (!found) {
-        pmix_output_verbose(2, pmix_server_globals.iof_output, "PMIx:SERVER caching IOF");
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "PMIx:SERVER caching IOF %d",
+                            (int)cd->bo->size);
         if (pmix_server_globals.max_iof_cache == pmix_list_get_size(&pmix_server_globals.iof)) {
             /* remove the oldest cached message */
             iof = (pmix_iof_cache_t *) pmix_list_remove_first(&pmix_server_globals.iof);
@@ -2525,8 +2545,10 @@ static void _iofdeliver(int sd, short args, void *cbdata)
         iof->channel = cd->channels;
         /* copy the data */
         PMIX_BYTE_OBJECT_CREATE(iof->bo, 1);
-        iof->bo->bytes = (char *) malloc(cd->bo->size);
-        memcpy(iof->bo->bytes, cd->bo->bytes, cd->bo->size);
+        if (0 < cd->bo->size) {
+            iof->bo->bytes = (char *) malloc(cd->bo->size);
+            memcpy(iof->bo->bytes, cd->bo->bytes, cd->bo->size);
+        }
         iof->bo->size = cd->bo->size;
         if (0 < cd->ninfo) {
             PMIX_INFO_CREATE(iof->info, cd->ninfo);

@@ -1401,8 +1401,7 @@ void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
     if (!pmix_list_is_empty(&wev->outputs)) {
         dump = false;
         /* make one last attempt to write this out */
-        while (NULL
-               != (output = (pmix_iof_write_output_t *) pmix_list_remove_first(&wev->outputs))) {
+        while (NULL != (output = (pmix_iof_write_output_t *) pmix_list_remove_first(&wev->outputs))) {
             if (!dump && 0 < output->numbytes) {
                 num_written = write(wev->fd, output->data, output->numbytes);
                 if (num_written < output->numbytes) {
