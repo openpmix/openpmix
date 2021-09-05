@@ -64,6 +64,21 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo)
             pmix_ptl_base.disable_ipv4_family = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV6)) {
             pmix_ptl_base.disable_ipv6_family = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
+            if (NULL != pmix_ptl_base.report_uri) {
+                free(pmix_ptl_base.report_uri);
+            }
+            pmix_ptl_base.report_uri = strdup(info[n].value.data.string);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
+            if (NULL != pmix_ptl_base.session_tmpdir) {
+                free(pmix_ptl_base.session_tmpdir);
+            }
+            pmix_ptl_base.session_tmpdir = strdup(info[n].value.data.string);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
+            if (NULL != pmix_ptl_base.system_tmpdir) {
+                free(pmix_ptl_base.system_tmpdir);
+            }
+            pmix_ptl_base.system_tmpdir = strdup(info[n].value.data.string);
         }
     }
 

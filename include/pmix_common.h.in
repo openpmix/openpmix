@@ -179,7 +179,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_HOMOGENEOUS_SYSTEM             "pmix.homo"             // (bool) The nodes comprising the session are homogeneous - i.e., they
                                                                     //        each contain the same number of identical packages, fabric interfaces,
                                                                     //        GPU, and other devices
-
+#define PMIX_SINGLETON                      "pmix.singleton"        // (char*) String representation (nspace.rank) of proc ID for the singleton
+                                                                    //         the server was started to support
 
 /* tool-related attributes */
 #define PMIX_TOOL_NSPACE                    "pmix.tool.nspace"      // (char*) Name of the nspace to use for this tool
