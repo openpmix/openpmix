@@ -280,8 +280,11 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
 
     if (0 > (fd = open(file, O_RDONLY))) {
         free(file);
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return PMIX_ERROR;
+        /* it may be that a tool has connected to a remote
+         * daemon, in which case the file won't be found.
+         * Could also be some other error, but let's not
+         * treat this as fatal */
+        goto tryself;
     }
     free(file);
     rc = hwloc_shmem_topology_adopt((hwloc_topology_t *) &pmix_globals.topology.topology, fd, 0,
@@ -387,6 +390,7 @@ tryxml:
         return rc;
     }
 
+tryself:
     /* did they give us one to use? */
     if (NULL != topo_file) {
         pmix_output_verbose(2, pmix_hwloc_output,
