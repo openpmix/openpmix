@@ -194,11 +194,6 @@ pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo)
                 free(pmix_ptl_base.uri);
             }
             pmix_ptl_base.uri = strdup(info[n].value.data.string);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
-            if (NULL != pmix_ptl_base.report_uri) {
-                free(pmix_ptl_base.report_uri);
-            }
-            pmix_ptl_base.report_uri = strdup(info[n].value.data.string);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
             if (NULL != pmix_ptl_base.session_tmpdir) {
                 free(pmix_ptl_base.session_tmpdir);
