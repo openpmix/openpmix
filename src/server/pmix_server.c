@@ -455,6 +455,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_status_t code;
     pmix_ptl_posted_recv_t *rcv;
     bool outputio;
+    char *singleton = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -528,6 +529,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                 share_topo = true;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_LOCAL_OUTPUT)) {
                 outputio = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SINGLETON)) {
+                singleton = info[n].value.data.string;
             }
         }
     }
@@ -681,8 +684,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
 
     /* if we were started to support a singleton, register it now
      * so we won't reject it when it connects to us */
-    if (NULL != (evar = getenv("PMIX_MCA_singleton"))) {
-        rc = register_singleton(evar);
+    if (NULL != singleton) {
+        rc = register_singleton(singleton);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
