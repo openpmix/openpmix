@@ -91,9 +91,9 @@ static pmix_status_t load_xml(char *xml);
 static char *popstr(pmix_cb_t *cb);
 #if HWLOC_API_VERSION >= 0x20000
 static size_t popsize(pmix_cb_t *cb);
+static void print_maps(void);
 #endif
 static pmix_topology_t *popptr(pmix_cb_t *cb);
-static void print_maps(void);
 static int get_locality_string_by_depth(int d, hwloc_cpuset_t cpuset, hwloc_cpuset_t result);
 static int set_flags(hwloc_topology_t topo, unsigned int flags);
 
@@ -390,7 +390,9 @@ tryxml:
         return rc;
     }
 
+#if HWLOC_API_VERSION >= 0x20000
 tryself:
+#endif
     /* did they give us one to use? */
     if (NULL != topo_file) {
         pmix_output_verbose(2, pmix_hwloc_output,
@@ -1492,6 +1494,7 @@ static pmix_status_t load_xml(char *xml)
     return PMIX_SUCCESS;
 }
 
+#if HWLOC_API_VERSION >= 0x20000
 static void print_maps(void)
 {
 
@@ -1509,6 +1512,7 @@ static void print_maps(void)
         fclose(maps_file);
     }
 }
+#endif
 
 static int get_locality_string_by_depth(int d, hwloc_cpuset_t cpuset, hwloc_cpuset_t result)
 {
