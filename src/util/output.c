@@ -197,7 +197,7 @@ bool pmix_output_init(void)
 
     /* Set some defaults */
 
-    if (0 > asprintf(&output_prefix, "output-pid%d-", getpid())) {
+    if (0 > asprintf(&output_prefix, "pmix-output-pid%d-", getpid())) {
         return false;
     }
     output_dir = strdup(pmix_tmp_directory());
