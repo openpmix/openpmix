@@ -1380,6 +1380,12 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buf
     PMIX_WAKEUP_THREAD(&tev->lock);
 }
 
+static void checkev(int fd, short args, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
+    PMIX_WAKEUP_THREAD(lock);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 {
     pmix_buffer_t *msg;
@@ -1390,6 +1396,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     int n;
     pmix_peer_t *peer;
     pmix_pfexec_child_t *child;
+    pmix_lock_t lock;
+    pmix_event_t ev;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (1 != pmix_globals.init_cntr) {
@@ -1455,6 +1463,14 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
             pmix_pfexec.kill_proc(&child->proc);
         }
     }
+
+    /* wait here until all active events have been processed */
+    PMIX_CONSTRUCT_LOCK(&lock);
+    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
+    PMIX_POST_OBJECT(&lock);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
 
     /* stop the progress thread, but leave the event base
      * still constructed. This will allow us to safely
