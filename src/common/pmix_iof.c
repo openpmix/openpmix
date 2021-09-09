@@ -929,6 +929,7 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_LOCAL_OUTPUT)) {
         flags->local_output = PMIX_INFO_TRUE(info);
         flags->set = true;
+        flags->local_output_given = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_PATTERN)) {
         flags->pattern = PMIX_INFO_TRUE(info);
         /* don't mark as set here as this is just a qualifier */
@@ -1046,6 +1047,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     pmix_iof_flags_t myflags;
     pmix_namespace_t *nptr, *ns;
     pmix_iof_sink_t *sink;
+    bool outputio;
 
     /* find the nspace for this source */
     nptr = NULL;
@@ -1058,9 +1060,15 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     }
 
     channel = NULL;
+    /* default outputio to our flag */
+    outputio = pmix_globals.iof_flags.local_output;
+
     if (NULL != nptr) {
         if (nptr->iof_flags.set) {
-            if (!nptr->iof_flags.local_output) {
+            if (nptr->iof_flags.local_output_given) {
+                outputio = nptr->iof_flags.local_output;
+            }
+            if (!outputio) {
                 return PMIX_SUCCESS;
             }
             /* do we need an IOF channel for this source? */
@@ -1105,7 +1113,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         myflags = pmix_globals.iof_flags;
     }
 
-    if (!myflags.local_output) {
+    if (!outputio) {
         return PMIX_SUCCESS;
     }
 
