@@ -203,6 +203,7 @@ typedef struct {
     bool nocopy;
     bool merge;
     bool local_output;
+    bool local_output_given;
     bool pattern;
 } pmix_iof_flags_t;
 
