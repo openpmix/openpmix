@@ -649,6 +649,13 @@ static pmix_status_t register_nspace(char *nspace, pmix_pfexec_fork_caddy_t *fcd
         return rc;
     }
 
+    /* mark us as the parent */
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_PARENT_ID, &pmix_globals.myid, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_INFO_LIST_RELEASE(jinfo);
+        return rc;
+    }
+
     /* node size */
     PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_NODE_SIZE, &nprocs, PMIX_UINT32);
     if (PMIX_SUCCESS != rc) {

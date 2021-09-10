@@ -1639,6 +1639,21 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     bo.bytes = (char *) data;
     bo.size = numbytes;
 
+    /* if this is stdout or stderr of a child, then just output it */
+    if (NULL != child &&
+        (PMIX_FWD_STDOUT_CHANNEL == rev->channel ||
+         PMIX_FWD_STDERR_CHANNEL == rev->channel)) {
+        if (PMIX_FWD_STDOUT_CHANNEL == rev->channel) {
+            rc = pmix_iof_write_output(&child->stdoutev->name, PMIX_FWD_STDOUT_CHANNEL, &bo);
+        } else if (PMIX_FWD_STDERR_CHANNEL == rev->channel) {
+            rc = pmix_iof_write_output(&child->stderrev->name, PMIX_FWD_STDERR_CHANNEL, &bo);
+        }
+        if (0 > rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        goto reactivate;
+    }
+
     /* if I am a server, then push this up to my host */
     if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
         if (NULL == pmix_host_server.push_stdin) {
