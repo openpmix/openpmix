@@ -26,6 +26,14 @@ multiple release branches.
 Master (not on release branches yet)
 ------------------------------------
 
+4.1.1 -- TBD
+----------------------
+ - PR #2257: Check for libevent minimum 2.0.21
+ - PR #2253: Fix up string creation functions, take the GIL in the callback code,
+             and system malloc instead of the Python malloc for datastructures
+             going to PMIx
+ - PR #2250: Update attribute support tables
+
 4.1.0 -- 29 July 2021
 ----------------------
 **** NOTE: This release implements the complete PMIx v4.1 Standard
