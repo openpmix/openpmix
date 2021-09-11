@@ -26,8 +26,23 @@ release=0
 greek=a1
 
 # PMIx Standard Compliance Level
+# The major and minor numbers indicate the version
+# of the official PMIx Standard that is supported
+# by this release. The extension number tracks how
+# far beyond that Standard this implementation has
+# gone. It is incremented whenever a release ADDS
+# something beyond the Standard. An extension of "1"
+# therefore indicates that something beyond the
+# indicated Standard level has been added. A
+# subsequent release that did not further add
+# attributes or APIs to the implementation would
+# retain the same extension value - if it did
+# include further extensions, then the extension
+# value would increment to "2" regardless of the
+# magnitude of the changes.
 std_major=4
 std_minor=1
+std_extension=2
 
 # If repo_rev is empty, then the repository version number will be
 # obtained during "make dist" via the "git describe --tags --always"
