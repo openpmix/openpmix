@@ -23,6 +23,34 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
+4.1.1 -- TBD
+----------------------
+ - PR #2277: Update v4.1.1 release candidate
+    - Add missing m4 file
+    - Add a Standard extension value to the compliance version
+    - Properly read/output stdout/err from a fork/exec'd child
+    - Default to using our local_output flag
+    - Cleanup compiler warnings for ancient hwloc versions
+    - Prefix the output files with "pmix"
+    - Ensure tools wait until all active events are processed
+    - autogen.pl: ignore all excluded components
+    - Don't treat inability to open shmem file as fatal
+    - Avoid use of MCA params for singleton and report-uri
+    - Ensure the server waits for all IOF and message events to complete
+    - Restore the thread join in progress thread "stop"
+    - Mark the read event as no longer active
+    - Avoid blocking in the stdin read handler
+    - Some cleanup of IOF output
+    - Add missing .m4 files to extra_dist
+    - Check for libevent minimum 2.0.21
+    - Add Intel GPU component
+    - Correct vendor IDs and generalize check_vendor
+    - Add missing storage-related datatype support
+    - Add missing storage constants
+    - Improve pnet component selection
+    - Cleanup the device distance computation
+
+
 4.1.0 -- 29 July 2021
 ----------------------
 **** NOTE: This release implements the complete PMIx v4.1 Standard
