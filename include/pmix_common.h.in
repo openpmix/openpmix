@@ -179,7 +179,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_HOMOGENEOUS_SYSTEM             "pmix.homo"             // (bool) The nodes comprising the session are homogeneous - i.e., they
                                                                     //        each contain the same number of identical packages, fabric interfaces,
                                                                     //        GPU, and other devices
-
+#define PMIX_SINGLETON                      "pmix.singleton"        // (char*) String representation (nspace.rank) of proc ID for the singleton
+                                                                    //         the server was started to support
 
 /* tool-related attributes */
 #define PMIX_TOOL_NSPACE                    "pmix.tool.nspace"      // (char*) Name of the nspace to use for this tool
@@ -1054,7 +1055,7 @@ typedef uint32_t pmix_rank_t;
 
 
 /* Distance Attributes */
-#define PMIX_DEVICE_DISTANCES               "pmix.dev.dist"        // (pmix_data_array_t*) Return an array of pmix_device_dist_t containing the
+#define PMIX_DEVICE_DISTANCES               "pmix.dev.dist"        // (pmix_data_array_t*) Return an array of pmix_device_distance_t containing the
                                                                    //         minimum and maximum distances of the given process location to all
                                                                    //         devices of the specified type on the local node.
 #define PMIX_DEVICE_TYPE                    "pmix.dev.type"        // (pmix_device_type_t) Bitmask specifying the type(s) of device(s) whose
@@ -1286,7 +1287,7 @@ typedef int pmix_status_t;
  * not to conflict with PMIx values. Definitions should always
  * be based on the PMIX_EXTERNAL_ERR_BASE constant and -not- a
  * specific value as the value of the constant may change */
-#define PMIX_EXTERNAL_ERR_BASE           PMIX_INTERNAL_ERR_BASE-2000
+#define PMIX_EXTERNAL_ERR_BASE                      -3000
 
 /****    PMIX DATA TYPES    ****/
 typedef uint16_t pmix_data_type_t;
@@ -1358,6 +1359,10 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_NET_STATS                  63
 #define PMIX_NODE_STATS                 64
 #define PMIX_DATA_BUFFER                65
+#define PMIX_STOR_MEDIUM                66
+#define PMIX_STOR_ACCESS                67
+#define PMIX_STOR_PERSIST               68
+#define PMIX_STOR_ACCESS_TYPE           69
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1454,6 +1459,57 @@ typedef enum {
     PMIX_GROUP_CONSTRUCT,
     PMIX_GROUP_DESTRUCT
 } pmix_group_operation_t;
+
+/* define storage medium values
+ * The pmix_storage_medium_t is a uint64_t type that defines
+ * a set of bit-mask flags for specifying different types of
+ * storage mediums. These can be bitwise OR'd together to
+ * accommodate storage systems that mix storage medium types. */
+typedef uint64_t pmix_storage_medium_t;
+#define PMIX_STORAGE_MEDIUM_UNKNOWN     0x0000000000000001
+#define PMIX_STORAGE_MEDIUM_TAPE        0x0000000000000002
+#define PMIX_STORAGE_MEDIUM_HDD         0x0000000000000004
+#define PMIX_STORAGE_MEDIUM_SSD         0x0000000000000008
+#define PMIX_STORAGE_MEDIUM_NVME        0x0000000000000010
+#define PMIX_STORAGE_MEDIUM_PMEM        0x0000000000000020
+#define PMIX_STORAGE_MEDIUM_RAM         0x0000000000000040
+
+/* define storage accessibility values
+ * The pmix_storage_accessibility_t is a uint64_t type that
+ * defines a set of bit-mask flags for specifying different
+ * levels of storage accessibility (i.e,. from where a storage
+ * system may be accessed). These can be bitwise OR'd together
+ * to accommodate storage systems that are accessibile in
+ * multiple ways. */
+typedef uint64_t pmix_storage_accessibility_t;
+#define PMIX_STORAGE_ACCESSIBILITY_NODE     0x0000000000000001
+#define PMIX_STORAGE_ACCESSIBILITY_SESSION  0x0000000000000002
+#define PMIX_STORAGE_ACCESSIBILITY_JOB      0x0000000000000004
+#define PMIX_STORAGE_ACCESSIBILITY_RACK     0x0000000000000008
+#define PMIX_STORAGE_ACCESSIBILITY_CLUSTER  0x0000000000000010
+#define PMIX_STORAGE_ACCESSIBILITY_REMOTE   0x0000000000000020
+
+/* define storage persistence values
+ * The pmix_storage_persistence_t is a uint64_t type that defines
+ * a set of bit-mask flags for specifying different levels of
+ * persistence for a particular storage system. */
+typedef uint64_t pmix_storage_persistence_t;
+#define PMIX_STORAGE_PERSISTENCE_TEMPORARY  0x0000000000000001
+#define PMIX_STORAGE_PERSISTENCE_NODE       0x0000000000000002
+#define PMIX_STORAGE_PERSISTENCE_SESSION    0x0000000000000004
+#define PMIX_STORAGE_PERSISTENCE_JOB        0x0000000000000008
+#define PMIX_STORAGE_PERSISTENCE_SCRATCH    0x0000000000000010
+#define PMIX_STORAGE_PERSISTENCE_PROJECT    0x0000000000000020
+#define PMIX_STORAGE_PERSISTENCE_ARCHIVE    0x0000000000000040
+
+/* define storage access values
+ * The pmix_storage_access_type_t is a uint16_t type that defines
+ * a set of bit-mask flags for specifying different storage system
+ * access types. */
+typedef uint16_t pmix_storage_access_type_t;
+#define PMIX_STORAGE_ACCESS_RD      0x0001
+#define PMIX_STORAGE_ACCESS_WR      0x0002
+#define PMIX_STORAGE_ACCESS_RDWR    0x0003
 
 
 /* define some "hooks" external libraries can use to
@@ -1599,13 +1655,13 @@ typedef struct{
     memset((m), 0, sizeof(pmix_cpuset_t))
 
 #define PMIX_CPUSET_DESTRUCT(m) \
-    pmix_ploc_base_destruct_cpuset((m))
+    pmix_hwloc_destruct_cpuset((m))
 
 #define PMIX_CPUSET_CREATE(m, n)    \
     (m) = (pmix_cpuset_t*)calloc((n), sizeof(pmix_cpuset_t));
 
 #define PMIX_CPUSET_FREE(m, n) \
-    pmix_ploc_base_release_cpuset((m), (n))
+    pmix_hwloc_release_cpuset((m), (n))
 
 
 /****    PMIX BIND ENVELOPE    ****/
@@ -1624,13 +1680,13 @@ typedef struct {
     memset((m), 0, sizeof(pmix_topology_t))
 
 #define PMIX_TOPOLOGY_DESTRUCT(m) \
-    pmix_ploc_base_destruct_topology((m))
+    pmix_hwloc_destruct_topology((m))
 
 #define PMIX_TOPOLOGY_CREATE(m, n) \
     (m) = (pmix_topology_t*)calloc(n, sizeof(pmix_topology_t))
 
 #define PMIX_TOPOLOGY_FREE(m, n) \
-    pmix_ploc_base_release_topology((m), (n))
+    pmix_hwloc_release_topology((m), (n))
 
 /**** PMIX RELATIVE LOCALITY    ****/
 typedef uint16_t pmix_locality_t;
@@ -1691,11 +1747,11 @@ typedef struct pmix_geometry {
 
 /****    PMIX_DEVICE_TYPE    ****/
 typedef uint64_t pmix_device_type_t;
-#define PMIX_DEVTYPE_UNKNOWN        0x0
-#define PMIX_DEVTYPE_BLOCK          0x1
-#define PMIX_DEVTYPE_GPU            0x2
-#define PMIX_DEVTYPE_NETWORK        0x4
-#define PMIX_DEVTYPE_OPENFABRICS    0x8
+#define PMIX_DEVTYPE_UNKNOWN        0x00
+#define PMIX_DEVTYPE_BLOCK          0x01
+#define PMIX_DEVTYPE_GPU            0x02
+#define PMIX_DEVTYPE_NETWORK        0x04
+#define PMIX_DEVTYPE_OPENFABRICS    0x08
 #define PMIX_DEVTYPE_DMA            0x10
 #define PMIX_DEVTYPE_COPROC         0x20
 

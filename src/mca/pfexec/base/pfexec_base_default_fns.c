@@ -379,14 +379,6 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
         return;
     }
 
-#if 0
-    /* if we opened the stdin IOF channel, be sure
-     * we close it */
-    if (NULL != orte_iof.close) {
-        orte_iof.close(&child->name, ORTE_IOF_STDIN);
-    }
-#endif
-
     /* remove the child from the list so waitpid callback won't
      * find it as this induces unmanageable race
      * conditions when we are deliberately killing the process
@@ -420,11 +412,6 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
     /* cleanup */
     PMIX_RELEASE(child);
     PMIX_WAKEUP_THREAD(scd->lock);
-
-#if 0
-    /* ensure the child's session directory is cleaned up */
-    orte_session_dir_finalize(&child->name);
-#endif
 
     return;
 }
@@ -494,17 +481,6 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
         return PMIX_ERR_SYS_OTHER;
     }
 
-#if 0
-    /* connect stdin endpoint */
-    if (opts->connect_stdin) {
-        /* and connect the pty to stdin */
-        ret = orte_iof.pull(name, ORTE_IOF_STDIN, opts->p_stdin[1]);
-        if(ORTE_SUCCESS != ret) {
-            ORTE_ERROR_LOG(ret);
-            return ret;
-        }
-    }
-#endif
     /* connect read ends to IOF */
     PMIX_IOF_READ_EVENT(&child->stdoutev, targets, 0, directives, 0, opts->p_stdout[0],
                         pmix_iof_read_local_handler, false);
@@ -668,6 +644,13 @@ static pmix_status_t register_nspace(char *nspace, pmix_pfexec_fork_caddy_t *fcd
 
     /* hostname */
     PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_HOSTNAME, pmix_globals.hostname, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_INFO_LIST_RELEASE(jinfo);
+        return rc;
+    }
+
+    /* mark us as the parent */
+    PMIX_INFO_LIST_ADD(rc, jinfo, PMIX_PARENT_ID, &pmix_globals.myid, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_INFO_LIST_RELEASE(jinfo);
         return rc;

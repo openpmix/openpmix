@@ -152,6 +152,7 @@ int pmix_mca_base_alias_register(const char *project, const char *framework,
     if (NULL == alias) {
         alias = PMIX_NEW(pmix_mca_base_alias_t);
         if (NULL == alias) {
+            free(name);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
@@ -162,8 +163,9 @@ int pmix_mca_base_alias_register(const char *project, const char *framework,
 
     pmix_mca_base_alias_item_t *alias_item = PMIX_NEW(pmix_mca_base_alias_item_t);
     if (NULL == alias_item) {
-        if (NULL != name)
+        if (NULL != name) {
             free(name);
+        }
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
@@ -171,7 +173,9 @@ int pmix_mca_base_alias_register(const char *project, const char *framework,
     alias_item->alias_flags = alias_flags;
 
     pmix_list_append(&alias->component_aliases, &alias_item->super);
-
+    if (NULL != name) {
+        free(name);
+    }
     return PMIX_SUCCESS;
 }
 

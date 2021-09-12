@@ -227,10 +227,18 @@ sub mca_process_framework {
                 verbose "--- Found pmix / $framework / $d component: src/mca/$framework/$d\n";
 
                 # Skip if specifically excluded
-                if (exists($exclude_list->{$framework}) &&
-                    $exclude_list->{$framework}[0] eq $d) {
-                    verbose "    => Excluded\n";
-                    next;
+                if (exists($exclude_list->{$framework})) {
+                    my $tst = 0;
+                    foreach my $ck (@{$exclude_list->{$framework}}) {
+                        if ($ck eq $d) {
+                            verbose "    => Excluded\n";
+                            $tst = 1;
+                            last;
+                        }
+                    }
+                    if ($tst) {
+                        next;
+                    }
                 }
 
                 # Skip if the framework is on the include list, but

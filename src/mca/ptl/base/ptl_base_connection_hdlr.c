@@ -240,6 +240,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         if (NULL != blob) {
             free(blob);
         }
+        free(msg);
         return;
     }
 
@@ -420,6 +421,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
     /* check the cached events and update the client */
     _check_cached_events(peer);
+    if (NULL != blob) {
+        free(blob);
+    }
 
     return;
 
@@ -430,6 +434,9 @@ error:
     }
     if (NULL != msg) {
         free(msg);
+    }
+    if (NULL != blob) {
+        free(blob);
     }
     if (NULL != peer) {
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);

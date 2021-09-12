@@ -252,8 +252,8 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
 
     /* if I am my own active server, then just register
      * the request */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)
-        && pmix_client_globals.myserver == pmix_globals.mypeer) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        pmix_client_globals.myserver == pmix_globals.mypeer) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         req = PMIX_NEW(pmix_iof_req_t);
         if (NULL == req) {
@@ -777,6 +777,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             if (fdout < 0) {
                 /* couldn't be opened */
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                free(outdir);
                 return NULL;
             }
             /* define a sink to that file descriptor */
@@ -789,6 +790,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                                      PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
             }
             pmix_list_append(&nptr->sinks, &snk->super);
+            free(outdir);
             return &snk->wev;
         } else {
             /* setup the stderr sink */
@@ -798,6 +800,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             if (fdout < 0) {
                 /* couldn't be opened */
                 PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+                free(outdir);
                 return NULL;
             }
             /* define a sink to that file descriptor */
@@ -805,6 +808,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
                                  PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
             pmix_list_append(&nptr->sinks, &snk->super);
+            free(outdir);
             return &snk->wev;
         }
     }
@@ -815,9 +819,9 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
         outdir = pmix_dirname(nptr->iof_flags.file);
         /* ensure the directory exists */
         rc = pmix_os_dirpath_create(outdir, S_IRWXU | S_IRGRP | S_IXGRP);
+        free(outdir);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
-            free(outdir);
             return NULL;
         }
         if (PMIX_FWD_STDOUT_CHANNEL & stream ||
@@ -830,7 +834,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                     pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
                 } else {
                     /* must process the pattern - for now, just take it literally */
-                    pmix_asprintf(&outfile, "%s.out", nptr->iof_flags.file);
+                    pmix_asprintf(&outfile, "%s.pattern.out", nptr->iof_flags.file);
                 }
             } else {
                 /* setup the file */
@@ -864,7 +868,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
                     pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
                 } else {
                     /* must process the pattern - for now, just take it literally */
-                    pmix_asprintf(&outfile, "%s.err", nptr->iof_flags.file);
+                    pmix_asprintf(&outfile, "%s.pattern.err", nptr->iof_flags.file);
                 }
             } else {
                 /* setup the file */
@@ -925,6 +929,7 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_LOCAL_OUTPUT)) {
         flags->local_output = PMIX_INFO_TRUE(info);
         flags->set = true;
+        flags->local_output_given = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_PATTERN)) {
         flags->pattern = PMIX_INFO_TRUE(info);
         /* don't mark as set here as this is just a qualifier */
@@ -1042,6 +1047,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     pmix_iof_flags_t myflags;
     pmix_namespace_t *nptr, *ns;
     pmix_iof_sink_t *sink;
+    bool outputio;
 
     /* find the nspace for this source */
     nptr = NULL;
@@ -1054,9 +1060,15 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     }
 
     channel = NULL;
+    /* default outputio to our flag */
+    outputio = pmix_globals.iof_flags.local_output;
+
     if (NULL != nptr) {
         if (nptr->iof_flags.set) {
-            if (!nptr->iof_flags.local_output) {
+            if (nptr->iof_flags.local_output_given) {
+                outputio = nptr->iof_flags.local_output;
+            }
+            if (!outputio) {
                 return PMIX_SUCCESS;
             }
             /* do we need an IOF channel for this source? */
@@ -1101,7 +1113,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         myflags = pmix_globals.iof_flags;
     }
 
-    if (!myflags.local_output) {
+    if (!outputio) {
         return PMIX_SUCCESS;
     }
 
@@ -1250,6 +1262,9 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     for (j = 0; j < taglen && k < PMIX_IOF_BASE_TAG_MAX; j++) {
         starttag[k++] = outtag[j];
     }
+    if (PMIX_IOF_BASE_TAG_MAX == k) {
+        return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
+    }
     /* if xml, end the starttag with a '>' */
     if (myflags.xml) {
         starttag[k++] = '>';
@@ -1366,16 +1381,6 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     output->numbytes = k;
 
 process:
-    /* if we are simply dumping to stdout/err, then do so */
-    if (&pmix_client_globals.iof_stdout.wev == channel ||
-        &pmix_client_globals.iof_stderr.wev == channel) {
-        if (0 < output->numbytes) {
-            write(channel->fd, output->data, output->numbytes);
-        }
-        PMIX_RELEASE(output);
-        return 0;
-    }
-
     /* add this data to the write list for this fd */
     pmix_list_append(&channel->outputs, &output->super);
 
@@ -1404,8 +1409,7 @@ void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
     if (!pmix_list_is_empty(&wev->outputs)) {
         dump = false;
         /* make one last attempt to write this out */
-        while (NULL
-               != (output = (pmix_iof_write_output_t *) pmix_list_remove_first(&wev->outputs))) {
+        while (NULL != (output = (pmix_iof_write_output_t *) pmix_list_remove_first(&wev->outputs))) {
             if (!dump && 0 < output->numbytes) {
                 num_written = write(wev->fd, output->data, output->numbytes);
                 if (num_written < output->numbytes) {
@@ -1453,6 +1457,13 @@ void pmix_iof_write_handler(int _fd, short event, void *cbdata)
                 /* leave the write event running so it will call us again
                  * when the fd is ready.
                  */
+                wev->numtries++;
+                if (PMIX_IOF_MAX_RETRIES < wev->numtries) {
+                    /* give up */
+                    pmix_output(0, "IO Forwarding is unable to output - something is "
+                                "blocking us from writing");
+                    goto ABORT;
+                }
                 goto NEXT_CALL;
             }
             /* otherwise, something bad happened so all we can do is abort
@@ -1476,14 +1487,16 @@ void pmix_iof_write_handler(int _fd, short event, void *cbdata)
             /* leave the write event running so it will call us again
              * when the fd is ready
              */
+            wev->numtries = 0;
             goto NEXT_CALL;
         }
         PMIX_RELEASE(output);
+        wev->numtries = 0;
 
         total_written += num_written;
         if (wev->always_writable && (PMIX_IOF_SINK_BLOCKSIZE <= total_written)) {
             /* If this is a regular file it will never tell us it will block
-             * Write no more than PMIX_IOF_REGULARF_BLOCK at a time allowing
+             * Write no more than PMIX_IOF_SINK_BLOCKSIZE at a time to allow
              * other fds to progress
              */
             goto NEXT_CALL;
@@ -1562,9 +1575,9 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix
 
 static void opcbfn(pmix_status_t status, void *cbdata)
 {
-    pmix_lock_t *lock = (pmix_lock_t *) cbdata;
-    PMIX_ACQUIRE_OBJECT(lock);
-    PMIX_WAKEUP_THREAD(lock);
+    pmix_byte_object_t *boptr = (pmix_byte_object_t *) cbdata;
+    PMIX_ACQUIRE_OBJECT(boptr);
+    PMIX_BYTE_OBJECT_FREE(boptr, 1);
 }
 
 /* this is the read handler for stdin */
@@ -1576,10 +1589,9 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     pmix_status_t rc;
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_IOF_PUSH_CMD;
-    pmix_byte_object_t bo;
+    pmix_byte_object_t bo, *boptr;
     int fd;
     pmix_pfexec_child_t *child = (pmix_pfexec_child_t *) rev->childproc;
-    pmix_lock_t lock;
 
     PMIX_ACQUIRE_OBJECT(rev);
 
@@ -1591,6 +1603,10 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     /* read up to the fragment size */
     memset(data, 0, PMIX_IOF_BASE_MSG_MAX);
     numbytes = read(fd, data, sizeof(data));
+
+    /* The event has fired, so it's no longer active until we
+     re-add it */
+    rev->active = false;
 
     if (numbytes < 0) {
         /* either we have a connection error or it was a non-blocking read */
@@ -1604,28 +1620,36 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
         PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
                              "%s iof:read handler Error on stdin",
                              PMIX_NAME_PRINT(&pmix_globals.myid)));
-        /* Un-recoverable error. Allow the code to flow as usual in order to
-         * to send the zero bytes message up the stream, and then close the
-         * file descriptor and delete the event.
-         */
+        /* Un-recoverable error */
         numbytes = 0;
     }
+
+    /* if the number of bytes is zero, then we just delete the event - there
+     * is no need to pass it upstream as WE are the ones holding the event
+     * and associated file descriptor */
+    if (0 == numbytes) {
+        if (NULL != child && child->completed &&
+            (NULL == child->stdoutev || !child->stdoutev->active) &&
+            (NULL == child->stderrev || !child->stderrev->active)) {
+            PMIX_PFEXEC_CHK_COMPLETE(child);
+        }
+        return;
+    }
+
     bo.bytes = (char *) data;
     bo.size = numbytes;
 
-    /* The event has fired, so it's no longer active until we
-       re-add it */
-    rev->active = false;
-
-    /* if this is from our own child proc, then
-     * just push it to the corresponding sink */
-    if (NULL != child) {
-        pmix_iof_write_output(&rev->name, rev->channel, &bo);
-        if (0 == numbytes && child->completed
-            && (NULL == child->stdoutev || !child->stdoutev->active)
-            && (NULL == child->stderrev || !child->stderrev->active)) {
-            PMIX_PFEXEC_CHK_COMPLETE(child);
-            return;
+    /* if this is stdout or stderr of a child, then just output it */
+    if (NULL != child &&
+        (PMIX_FWD_STDOUT_CHANNEL == rev->channel ||
+         PMIX_FWD_STDERR_CHANNEL == rev->channel)) {
+        if (PMIX_FWD_STDOUT_CHANNEL == rev->channel) {
+            rc = pmix_iof_write_output(&child->stdoutev->name, PMIX_FWD_STDOUT_CHANNEL, &bo);
+        } else if (PMIX_FWD_STDERR_CHANNEL == rev->channel) {
+            rc = pmix_iof_write_output(&child->stderrev->name, PMIX_FWD_STDERR_CHANNEL, &bo);
+        }
+        if (0 > rc) {
+            PMIX_ERROR_LOG(rc);
         }
         goto reactivate;
     }
@@ -1633,14 +1657,15 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     /* if I am a server, then push this up to my host */
     if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
         if (NULL == pmix_host_server.push_stdin) {
-            /* nothing we can do with this info */
-            goto reactivate;
+            /* nothing we can do with this info - no point in reactivating it */
+            return;
         }
-        PMIX_CONSTRUCT_LOCK(&lock);
+        PMIX_BYTE_OBJECT_CREATE(boptr, 1);
+        boptr->bytes = (char*)malloc(bo.size);
+        memcpy(boptr->bytes, bo.bytes, bo.size);
+        boptr->size = bo.size;
         rc = pmix_host_server.push_stdin(&pmix_globals.myid, rev->targets, rev->ntargets,
-                                         rev->directives, rev->ndirs, &bo, opcbfn, &lock);
-        PMIX_WAIT_THREAD(&lock);
-        PMIX_DESTRUCT_LOCK(&lock);
+                                         rev->directives, rev->ndirs, boptr, opcbfn, (void*)boptr);
         goto reactivate;
     }
 
@@ -1772,6 +1797,7 @@ static void iof_write_event_construct(pmix_iof_write_event_t *wev)
 {
     wev->pending = false;
     wev->always_writable = false;
+    wev->numtries = 0;
     wev->fd = -1;
     PMIX_CONSTRUCT(&wev->outputs, pmix_list_t);
     wev->tv.tv_sec = 0;

@@ -22,8 +22,6 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = $(pnet_opa_CPPFLAGS)
-
 headers = pnet_opa.h
 sources = \
         pnet_opa_component.c \
@@ -48,13 +46,11 @@ endif
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 mca_pnet_opa_la_SOURCES = $(component_sources)
-mca_pnet_opa_la_LIBADD = $(pnet_opa_LIBS)
-mca_pnet_opa_la_LDFLAGS = -module -avoid-version $(pnet_opa_LDFLAGS)
+mca_pnet_opa_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_pnet_opa_la_LIBADD += $(top_builddir)/src/libpmix.la
+mca_pnet_opa_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
 libmca_pnet_opa_la_SOURCES = $(lib_sources)
-libmca_pnet_opa_la_LIBADD = $(pnet_opa_LIBS)
-libmca_pnet_opa_la_LDFLAGS = -module -avoid-version $(pnet_opa_LDFLAGS)
+libmca_pnet_opa_la_LDFLAGS = -module -avoid-version

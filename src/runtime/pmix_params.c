@@ -34,6 +34,7 @@
 #include "pmix_config.h"
 
 #include "src/client/pmix_client_ops.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
@@ -296,6 +297,7 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_SCOPE_ALL,
                                       &pmix_server_globals.max_iof_cache);
 
+    pmix_hwloc_register();
     return PMIX_SUCCESS;
 }
 

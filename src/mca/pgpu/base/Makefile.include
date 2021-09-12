@@ -11,8 +11,9 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2016 Intel, Inc. All rights reserved
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -27,8 +28,6 @@ headers += \
          base/base.h
 
 sources += \
-        base/ploc_base_frame.c \
-        base/ploc_base_select.c \
-        base/ploc_base_stubs.c
-
-dist_pmixdata_DATA = base/help-ploc.txt
+        base/pgpu_base_frame.c \
+        base/pgpu_base_select.c \
+        base/pgpu_base_fns.c

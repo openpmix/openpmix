@@ -25,8 +25,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/mca/preg/preg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -1684,7 +1684,7 @@ pmix_status_t pmix_bfrops_base_unpack_cpuset(pmix_pointer_array_t *regtypes, pmi
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        ret = pmix_ploc.unpack_cpuset(buffer, &ptr[i], regtypes);
+        ret = pmix_hwloc_unpack_cpuset(buffer, &ptr[i], regtypes);
         if (PMIX_SUCCESS != ret) {
             *num_vals = 0;
             return ret;
@@ -1880,7 +1880,7 @@ pmix_status_t pmix_bfrops_base_unpack_topology(pmix_pointer_array_t *regtypes,
     n = *num_vals;
 
     for (i = 0; i < n; ++i) {
-        ret = pmix_ploc.unpack_topology(buffer, &ptr[i], regtypes);
+        ret = pmix_hwloc_unpack_topology(buffer, &ptr[i], regtypes);
         if (PMIX_SUCCESS != ret) {
             *num_vals = 0;
             return ret;
@@ -2386,4 +2386,72 @@ pmix_status_t pmix_bfrops_base_unpack_dbuf(pmix_pointer_array_t *regtypes, pmix_
         }
     }
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_smed(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                           void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d storage medium", *num_vals);
+
+    if (PMIX_STOR_MEDIUM != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT64, regtypes);
+
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_sacc(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                           void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d storage access", *num_vals);
+
+    if (PMIX_STOR_ACCESS != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT64, regtypes);
+
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_spers(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d storage persistence", *num_vals);
+
+    if (PMIX_STOR_PERSIST != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT64, regtypes);
+
+    return ret;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_satyp(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d storage access type", *num_vals);
+
+    if (PMIX_STOR_ACCESS_TYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_UINT16, regtypes);
+
+    return ret;
 }

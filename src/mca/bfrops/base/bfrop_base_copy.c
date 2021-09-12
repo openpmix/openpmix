@@ -22,8 +22,8 @@
 
 #include "src/include/pmix_config.h"
 
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/mca/preg/preg.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"
@@ -126,6 +126,7 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src, pmix_data_type_t
     case PMIX_UINT16:
     case PMIX_IOF_CHANNEL:
     case PMIX_LOCTYPE:
+    case PMIX_STOR_ACCESS_TYPE:
         datasize = 2;
         break;
 
@@ -137,6 +138,9 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src, pmix_data_type_t
     case PMIX_INT64:
     case PMIX_UINT64:
     case PMIX_DEVTYPE:
+    case PMIX_STOR_MEDIUM:
+    case PMIX_STOR_ACCESS:
+    case PMIX_STOR_PERSIST:
         datasize = 8;
         break;
 
@@ -909,9 +913,9 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
         pcpuset = (pmix_cpuset_t *) p->array;
         scpuset = (pmix_cpuset_t *) src->array;
         for (n = 0; n < src->size; n++) {
-            rc = pmix_ploc.copy_cpuset(&pcpuset[n], &scpuset[n]);
+            rc = pmix_hwloc_copy_cpuset(&pcpuset[n], &scpuset[n]);
             if (PMIX_SUCCESS != rc) {
-                pmix_ploc.release_cpuset(pcpuset, src->size);
+                pmix_hwloc_release_cpuset(pcpuset, src->size);
                 free(p->array);
                 free(p);
                 return rc;
@@ -1177,7 +1181,7 @@ pmix_status_t pmix_bfrops_base_copy_cpuset(pmix_cpuset_t **dest, pmix_cpuset_t *
         return PMIX_ERR_NOMEM;
     }
 
-    rc = pmix_ploc.copy_cpuset(dst, src);
+    rc = pmix_hwloc_copy_cpuset(dst, src);
     if (PMIX_SUCCESS == rc) {
         *dest = dst;
     } else {
@@ -1294,7 +1298,7 @@ pmix_status_t pmix_bfrops_base_copy_topology(pmix_topology_t **dest, pmix_topolo
         return PMIX_ERR_NOMEM;
     }
 
-    rc = pmix_ploc.copy_topology(dst, src);
+    rc = pmix_hwloc_copy_topology(dst, src);
     if (PMIX_SUCCESS == rc) {
         *dest = dst;
     } else {

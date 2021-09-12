@@ -136,7 +136,7 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_IOF_DEREG_CMD                29
 #define PMIX_FABRIC_REGISTER_CMD          30
 #define PMIX_FABRIC_UPDATE_CMD            31
-#define PMIX_FABRIC_COMPUTE_DISTANCES_CMD 32
+#define PMIX_COMPUTE_DEVICE_DISTANCES_CMD 32
 
 /* provide a "pretty-print" function for cmds */
 const char *pmix_command_string(pmix_cmd_t cmd);
@@ -203,6 +203,7 @@ typedef struct {
     bool nocopy;
     bool merge;
     bool local_output;
+    bool local_output_given;
     bool pattern;
 } pmix_iof_flags_t;
 
@@ -245,6 +246,20 @@ typedef struct {
     pmix_namespace_t *ns;
 } pmix_nspace_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_nspace_caddy_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_namespace_t *ns;
+    pmix_list_t envars;
+} pmix_nspace_env_cache_t;
+PMIX_CLASS_DECLARATION(pmix_nspace_env_cache_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_envar_t envar;
+} pmix_envar_list_item_t;
+PMIX_CLASS_DECLARATION(pmix_envar_list_item_t);
+
 
 typedef struct pmix_rank_info_t {
     pmix_list_item_t super;
@@ -435,6 +450,7 @@ typedef struct {
         pmix_hdlr_reg_cbfunc_t hdlrregcbfn;
         pmix_op_cbfunc_t opcbfn;
         pmix_modex_cbfunc_t modexcbfunc;
+        pmix_info_cbfunc_t infocbfunc;
     } cbfunc;
     void *cbdata;
     size_t ref;
@@ -593,6 +609,7 @@ typedef struct {
     size_t output_limit;
     pmix_list_t nspaces;
     pmix_topology_t topology;
+    pmix_cpuset_t cpuset;
     bool external_topology;
     bool external_progress;
     pmix_iof_flags_t iof_flags;

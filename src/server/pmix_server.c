@@ -50,12 +50,13 @@
 #include <sys/stat.h>
 
 #include "src/common/pmix_attributes.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
+#include "src/mca/pgpu/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
-#include "src/mca/ploc/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/preg.h"
@@ -454,6 +455,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_status_t code;
     pmix_ptl_posted_recv_t *rcv;
     bool outputio;
+    char *singleton = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -523,6 +525,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                 share_topo = true;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_LOCAL_OUTPUT)) {
                 outputio = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SINGLETON)) {
+                singleton = info[n].value.data.string;
             }
         }
     }
@@ -674,21 +678,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         return rc;
     }
 
-    /* open the ploc framework */
-    rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_ploc_base_select())) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-
     /* if we were started to support a singleton, register it now
      * so we won't reject it when it connects to us */
-    if (NULL != (evar = getenv("PMIX_MCA_singleton"))) {
-        rc = register_singleton(evar);
+    if (NULL != singleton) {
+        rc = register_singleton(singleton);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
@@ -720,7 +713,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     /* if we don't know our topology, we better get it now as we
      * increasingly rely on it - note that our host will hopefully
      * have passed it to us so we don't duplicate their storage! */
-    if (PMIX_SUCCESS != (rc = pmix_ploc.setup_topology(info, ninfo))) {
+    if (PMIX_SUCCESS != (rc = pmix_hwloc_setup_topology(info, ninfo))) {
         /* if they told us to share our topology and we cannot do so,
          * then that is a reportable error */
         if (share_topo) {
@@ -729,16 +722,26 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         }
     }
 
-    /* open the pnet framework and select the active modules for this environment
-     * Do this after setting up the topology so the components can check to see
-     * if they have any local assets */
-    if (PMIX_SUCCESS
-        != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
-                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    /* open the pnet and pgpu frameworks and select their active modules for this
+     * environment Do this AFTER setting up the topology so the components can
+     * check to see if they have any local assets */
+    rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
+                                      PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    rc = pmix_mca_base_framework_open(&pmix_pgpu_base_framework,
+                                      PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_pgpu_base_select())) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -841,11 +844,19 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     return PMIX_SUCCESS;
 }
 
+static void checkev(int fd, short args, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
+    PMIX_WAKEUP_THREAD(lock);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
     int i;
     pmix_peer_t *peer;
     pmix_namespace_t *ns;
+    pmix_lock_t lock;
+    pmix_event_t ev;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -861,6 +872,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_globals.init_cntr = 0;
 
     pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server finalize called");
+
+    /* wait here until all active events have been processed */
+    PMIX_CONSTRUCT_LOCK(&lock);
+    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
+    PMIX_POST_OBJECT(&lock);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
 
     /* stop the progress thread, but leave the event base
      * still constructed. This will allow us to safely
@@ -2493,13 +2512,17 @@ static void _iofdeliver(int sd, short args, void *cbdata)
     size_t n;
     pmix_status_t rc;
 
+    PMIX_ACQUIRE_OBJECT(cd);
+
     pmix_output_verbose(2, pmix_server_globals.iof_output,
-                        "PMIX:SERVER delivering IOF from %s on channel %0x",
-                        PMIX_NAME_PRINT(cd->procs), cd->channels);
+                        "PMIX:SERVER delivering IOF from %s on channel %s with %d bytes",
+                        PMIX_NAME_PRINT(cd->procs),
+                        PMIx_IOF_channel_string(cd->channels),
+                        (int)cd->bo->size);
 
     /* output it locally if requested */
     rc = pmix_iof_write_output(cd->procs, cd->channels, cd->bo);
-    if (PMIX_SUCCESS != rc) {
+    if (0 > rc) {
         goto done;
     }
 
@@ -2521,7 +2544,9 @@ static void _iofdeliver(int sd, short args, void *cbdata)
 
     /* if nobody has registered for this yet, then cache it */
     if (!found) {
-        pmix_output_verbose(2, pmix_server_globals.iof_output, "PMIx:SERVER caching IOF");
+        pmix_output_verbose(2, pmix_server_globals.iof_output,
+                            "PMIx:SERVER caching IOF %d",
+                            (int)cd->bo->size);
         if (pmix_server_globals.max_iof_cache == pmix_list_get_size(&pmix_server_globals.iof)) {
             /* remove the oldest cached message */
             iof = (pmix_iof_cache_t *) pmix_list_remove_first(&pmix_server_globals.iof);
@@ -2534,8 +2559,10 @@ static void _iofdeliver(int sd, short args, void *cbdata)
         iof->channel = cd->channels;
         /* copy the data */
         PMIX_BYTE_OBJECT_CREATE(iof->bo, 1);
-        iof->bo->bytes = (char *) malloc(cd->bo->size);
-        memcpy(iof->bo->bytes, cd->bo->bytes, cd->bo->size);
+        if (0 < cd->bo->size) {
+            iof->bo->bytes = (char *) malloc(cd->bo->size);
+            memcpy(iof->bo->bytes, cd->bo->bytes, cd->bo->size);
+        }
         iof->bo->size = cd->bo->size;
         if (0 < cd->ninfo) {
             PMIX_INFO_CREATE(iof->info, cd->ninfo);
@@ -2606,95 +2633,60 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source, pmix_iof_channe
 
 static void cirelease(void *cbdata)
 {
-    pmix_inventory_rollup_t *rollup = (pmix_inventory_rollup_t *) cbdata;
-    if (NULL != rollup->info) {
-        PMIX_INFO_FREE(rollup->info, rollup->ninfo);
-    }
-    PMIX_RELEASE(rollup);
-}
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
 
-static void clct_complete(pmix_status_t status, pmix_list_t *inventory, void *cbdata)
-{
-    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t *) cbdata;
-    pmix_kval_t *kv;
-    size_t n;
-    pmix_status_t rc;
+    PMIX_ACQUIRE_OBJECT(cd);
 
-    PMIX_ACQUIRE_THREAD(&cd->lock);
-
-    /* collect the results */
-    if (NULL != inventory) {
-        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(inventory))) {
-            pmix_list_append(&cd->payload, &kv->super);
-        }
-    }
-    if (PMIX_SUCCESS != status && PMIX_SUCCESS == cd->status) {
-        cd->status = status;
-    }
-    /* see if we are done */
-    cd->replies++;
-    if (cd->replies == cd->requests) {
-        /* no need to continue tracking the input directives */
-        cd->info = NULL;
-        cd->ninfo = 0;
-        if (NULL != cd->infocbfunc) {
-            /* convert the list to an array of pmix_info_t */
-            cd->ninfo = pmix_list_get_size(&cd->payload);
-            if (0 < cd->ninfo) {
-                PMIX_INFO_CREATE(cd->info, cd->ninfo);
-                if (NULL == cd->info) {
-                    cd->status = PMIX_ERR_NOMEM;
-                    cd->ninfo = 0;
-                    PMIX_RELEASE_THREAD(&cd->lock);
-                    goto error;
-                }
-                /* transfer the results */
-                n = 0;
-                PMIX_LIST_FOREACH (kv, &cd->payload, pmix_kval_t) {
-                    pmix_strncpy(cd->info[n].key, kv->key, PMIX_MAX_KEYLEN);
-                    rc = pmix_value_xfer(&cd->info[n].value, kv->value);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_INFO_FREE(cd->info, cd->ninfo);
-                        cd->status = rc;
-                        break;
-                    }
-                    ++n;
-                }
-            }
-            /* now call the requestor back */
-            PMIX_RELEASE_THREAD(&cd->lock);
-            cd->infocbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, cirelease, cd);
-            return;
-        }
-    }
-    /* continue to wait */
-    PMIX_RELEASE_THREAD(&cd->lock);
-    return;
-
-error:
-    /* let them know */
-    if (NULL != cd->infocbfunc) {
-        cd->infocbfunc(cd->status, NULL, 0, cd->cbdata, NULL, NULL);
+    if (NULL != cd->info) {
+        PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
     PMIX_RELEASE(cd);
 }
+
 static void clct(int sd, short args, void *cbdata)
 {
-    pmix_inventory_rollup_t *cd = (pmix_inventory_rollup_t *) cbdata;
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t*)cbdata;
+    pmix_list_t inventory;
+    pmix_data_array_t darray;
+    pmix_status_t rc;
 
-    /* we only have one source at this time */
-    cd->requests = 1;
+    PMIX_ACQUIRE_OBJECT(cd);
+
+    PMIX_CONSTRUCT(&inventory, pmix_list_t);
 
     /* collect the pnet inventory */
-    pmix_pnet.collect_inventory(cd->info, cd->ninfo, clct_complete, cd);
+    rc = pmix_pnet.collect_inventory(cd->directives, cd->ndirs, &inventory);
+    if (PMIX_SUCCESS != rc) {
+        goto report;
+    }
 
+    /* collect the pgpu inventory */
+    rc = pmix_pgpu.collect_inventory(cd->directives, cd->ndirs, &inventory);
+    if (PMIX_SUCCESS != rc) {
+        goto report;
+    }
+
+    /* convert list to an array of info */
+    rc = pmix_info_list_convert((void*)&inventory, &darray);
+    if (PMIX_ERR_EMPTY == rc) {
+        rc = PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS == rc) {
+        cd->info = (pmix_info_t*)darray.array;
+        cd->ninfo = darray.size;
+    }
+
+report:
+    if (NULL != cd->cbfunc.infocbfunc) {
+        cd->cbfunc.infocbfunc(rc, cd->info, cd->ninfo, cd->cbdata, cirelease, cd);
+    }
+    PMIX_LIST_DESTRUCT(&inventory);
     return;
 }
 
 pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndirs,
                                             pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_inventory_rollup_t *cd;
+    pmix_shift_caddy_t *cd;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -2704,58 +2696,41 @@ pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndi
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* need to threadshift this request */
-    cd = PMIX_NEW(pmix_inventory_rollup_t);
+    cd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
-    cd->info = directives;
-    cd->ninfo = ndirs;
-    cd->infocbfunc = cbfunc;
+    cd->directives = directives;
+    cd->ndirs = ndirs;
+    cd->cbfunc.infocbfunc = cbfunc;
     cd->cbdata = cbdata;
     PMIX_THREADSHIFT(cd, clct);
 
     return PMIX_SUCCESS;
 }
 
-static void dlinv_complete(pmix_status_t status, void *cbdata)
-{
-    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
-
-    /* take the lock */
-    PMIX_ACQUIRE_THREAD(&cd->lock);
-
-    /* increment number of replies */
-    cd->ndata++; // reuse field in shift_caddy
-    /* update status, if necessary */
-    if (PMIX_SUCCESS != status && PMIX_SUCCESS == cd->status) {
-        cd->status = status;
-    }
-    if (cd->ncodes == cd->ndata) {
-        /* we are done - let the caller know */
-        PMIX_RELEASE_THREAD(&cd->lock);
-        if (NULL != cd->cbfunc.opcbfn) {
-            cd->cbfunc.opcbfn(cd->status, cd->cbdata);
-        }
-        PMIX_RELEASE(cd);
-        return;
-    }
-
-    PMIX_RELEASE_THREAD(&cd->lock);
-    return;
-}
-
 static void dlinv(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
+    pmix_status_t rc;
 
-    /* only have one place to deliver inventory
-     * at this time */
-    cd->ncodes = 1; // reuse field in shift_caddy
+    PMIX_ACQUIRE_OBJECT(cd);
 
-    pmix_pnet.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs, dlinv_complete, cd);
+    rc = pmix_pnet.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
+    if (PMIX_SUCCESS != rc) {
+        goto report;
+    }
 
+    rc = pmix_pgpu.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
+
+report:
+    if (NULL != cd->cbfunc.opcbfn) {
+        cd->cbfunc.opcbfn(rc, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
     return;
 }
+
 pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
                                             pmix_info_t directives[], size_t ndirs,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata)
@@ -2810,7 +2785,7 @@ pmix_status_t PMIx_server_generate_locality_string(const pmix_cpuset_t *cpuset, 
     pmix_status_t rc;
 
     /* just pass this down */
-    rc = pmix_ploc.generate_locality_string(cpuset, locality);
+    rc = pmix_hwloc_generate_locality_string(cpuset, locality);
     return rc;
 }
 
@@ -2819,7 +2794,7 @@ pmix_status_t PMIx_server_generate_cpuset_string(const pmix_cpuset_t *cpuset, ch
     pmix_status_t rc;
 
     /* just pass this down */
-    rc = pmix_ploc.generate_cpuset_string(cpuset, cpuset_string);
+    rc = pmix_hwloc_generate_cpuset_string(cpuset, cpuset_string);
     return rc;
 }
 
@@ -2831,6 +2806,9 @@ typedef struct {
 static void release_info(pmix_status_t status, void *cbdata)
 {
     mydata_t *cd = (mydata_t *) cbdata;
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
     PMIX_INFO_FREE(cd->info, cd->ninfo);
     free(cd);
 }
@@ -2844,6 +2822,8 @@ static void psetdef(int sd, short args, void *cbdata)
     pmix_data_array_t *darray;
     pmix_proc_t *ptr;
     pmix_pset_t *ps;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     mydat = (mydata_t *) malloc(sizeof(mydata_t));
     mydat->ninfo = 3;
@@ -2910,6 +2890,8 @@ static void psetdel(int sd, short args, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     mydata_t *mydat;
     pmix_pset_t *ps;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     mydat = (mydata_t *) malloc(sizeof(mydata_t));
     mydat->ninfo = 2;
@@ -3120,7 +3102,6 @@ static void spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata)
         cd->pname.nspace = strdup(nspace);
     }
     cd->cd = (pmix_server_caddy_t *) cbdata;
-    ;
 
     PMIX_THREADSHIFT(cd, _spcb);
 }
@@ -4228,6 +4209,53 @@ complete:
     }
 }
 
+static void dist_cbfunc(pmix_status_t status, pmix_device_distance_t *dist, size_t ndist, void *cbdata,
+                        pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:fabric callback with status %d",
+                        status);
+
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    /* pack the returned data */
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ndist, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    if (0 < ndist) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, dist, ndist, PMIX_DEVICE_DIST);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
+complete:
+    // send reply
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+    PMIX_RELEASE(cd);
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+}
+
 /* the switchyard is the primary message handling function. It's purpose
  * is to take incoming commands (packed into a buffer), unpack them,
  * and then call the corresponding host server's function to execute
@@ -4572,6 +4600,14 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
     if (PMIX_FABRIC_UPDATE_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_fabric_update(cd, buf, fabric_cbfunc))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
+    if (PMIX_COMPUTE_DEVICE_DISTANCES_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_device_dists(cd, buf, dist_cbfunc))) {
             PMIX_RELEASE(cd);
         }
         return rc;

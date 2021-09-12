@@ -194,11 +194,6 @@ pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo)
                 free(pmix_ptl_base.uri);
             }
             pmix_ptl_base.uri = strdup(info[n].value.data.string);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
-            if (NULL != pmix_ptl_base.report_uri) {
-                free(pmix_ptl_base.report_uri);
-            }
-            pmix_ptl_base.report_uri = strdup(info[n].value.data.string);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
             if (NULL != pmix_ptl_base.session_tmpdir) {
                 free(pmix_ptl_base.session_tmpdir);
@@ -390,6 +385,7 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
     struct stat buf;
     DIR *cur_dirp;
     struct dirent *dir_entry;
+    pmix_status_t rc;
 
     if (NULL == (cur_dirp = opendir(dirname))) {
         return PMIX_ERR_NOT_FOUND;
@@ -423,7 +419,12 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
             /* try to read this file */
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "pmix:tool: reading file %s", newdir);
-            pmix_ptl_base_parse_uri_file(newdir, connections);
+            rc = pmix_ptl_base_parse_uri_file(newdir, connections);
+            if (PMIX_SUCCESS != rc) {
+                free(newdir);
+                closedir(cur_dirp);
+                return rc;
+            }
         }
         free(newdir);
     }
@@ -832,7 +833,9 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, char **msgout, 
     if (NULL == (msg = (char *) malloc(sdsize))) {
         PMIX_BYTE_OBJECT_DESTRUCT(&cred);
         free(sec);
-        PMIX_DESTRUCT(&buf);
+        if (NULL != iptr) {
+            PMIX_DESTRUCT(&buf);
+        }
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     memset(msg, 0, sdsize);
@@ -899,7 +902,9 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, char **msgout, 
 
     default:
         /* we don't know what they are! */
-        PMIX_DESTRUCT(&buf);
+        if (NULL != iptr) {
+            PMIX_DESTRUCT(&buf);
+        }
         free(msg);
         return PMIX_ERR_NOT_SUPPORTED;
     }

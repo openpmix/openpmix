@@ -31,9 +31,9 @@
 #    include <time.h>
 #endif
 
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/printf.h"
@@ -1116,6 +1116,18 @@ int pmix_bfrops_base_print_value(char **output, char *prefix, pmix_value_t *src,
     case PMIX_ENDPOINT:
         rc = pmix_bfrops_base_print_endpoint(output, prefx, src->data.endpoint, PMIX_ENDPOINT);
         break;
+    case PMIX_STOR_MEDIUM:
+        rc = pmix_bfrops_base_print_smed(output, prefx, &src->data.uint64, PMIX_STOR_MEDIUM);
+        break;
+    case PMIX_STOR_ACCESS:
+        rc = pmix_bfrops_base_print_sacc(output, prefx, &src->data.uint64, PMIX_STOR_ACCESS);
+        break;
+    case PMIX_STOR_PERSIST:
+        rc = pmix_bfrops_base_print_spers(output, prefx, &src->data.uint64, PMIX_STOR_PERSIST);
+        break;
+    case PMIX_STOR_ACCESS_TYPE:
+        rc = pmix_bfrops_base_print_satyp(output, prefx, &src->data.uint16, PMIX_STOR_ACCESS_TYPE);
+        break;
     default:
         rc = asprintf(output, "%sPMIX_VALUE: Data type: UNKNOWN\tValue: UNPRINTABLE", prefx);
         break;
@@ -2013,7 +2025,7 @@ pmix_status_t pmix_bfrops_base_print_cpuset(char **output, char *prefix, pmix_cp
         return PMIX_ERR_BAD_PARAM;
     }
 
-    string = pmix_ploc.print_cpuset(src);
+    string = pmix_hwloc_print_cpuset(src);
     if (NULL == string) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
@@ -2184,7 +2196,7 @@ pmix_status_t pmix_bfrops_base_print_topology(char **output, char *prefix, pmix_
         return PMIX_ERR_BAD_PARAM;
     }
 
-    string = pmix_ploc.print_topology(src);
+    string = pmix_hwloc_print_topology(src);
     if (NULL == string) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
@@ -2514,4 +2526,216 @@ pmix_status_t pmix_bfrops_base_print_dbuf(char **output, char *prefix, pmix_data
     }
 
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_print_smed(char **output, char *prefix,
+                                          pmix_storage_medium_t *src,
+                                          pmix_data_type_t type)
+{
+    char *prefx, **tmp = NULL, *str;
+    int ret;
+
+    if (PMIX_STOR_MEDIUM != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    if (PMIX_STORAGE_MEDIUM_UNKNOWN & *src) {
+        str = strdup("UNKNOWN");
+    } else {
+        if (PMIX_STORAGE_MEDIUM_TAPE & *src) {
+            pmix_argv_append_nosize(&tmp, "TAPE");
+        }
+        if (PMIX_STORAGE_MEDIUM_HDD & *src) {
+            pmix_argv_append_nosize(&tmp, "HDD");
+        }
+        if (PMIX_STORAGE_MEDIUM_SSD & *src) {
+            pmix_argv_append_nosize(&tmp, "SSD");
+        }
+        if (PMIX_STORAGE_MEDIUM_NVME & *src) {
+            pmix_argv_append_nosize(&tmp, "NVME");
+        }
+        if (PMIX_STORAGE_MEDIUM_PMEM & *src) {
+            pmix_argv_append_nosize(&tmp, "PMEM");
+        }
+        if (PMIX_STORAGE_MEDIUM_RAM & *src) {
+            pmix_argv_append_nosize(&tmp, "RAM");
+        }
+        str = pmix_argv_join(tmp, ':');
+        pmix_argv_free(tmp);
+    }
+
+    ret = asprintf(output, "%sData type: PMIX_STOR_MEDIUM\tValue: %s", prefx, str);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+    free(str);
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_sacc(char **output, char *prefix,
+                                          pmix_storage_accessibility_t *src,
+                                          pmix_data_type_t type)
+{
+    char *prefx, **tmp = NULL, *str;
+    int ret;
+
+    if (PMIX_STOR_ACCESS != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    if (PMIX_STORAGE_ACCESSIBILITY_NODE & *src) {
+        pmix_argv_append_nosize(&tmp, "NODE");
+    }
+    if (PMIX_STORAGE_ACCESSIBILITY_SESSION & *src) {
+        pmix_argv_append_nosize(&tmp, "SESSION");
+    }
+    if (PMIX_STORAGE_ACCESSIBILITY_JOB & *src) {
+        pmix_argv_append_nosize(&tmp, "JOB");
+    }
+    if (PMIX_STORAGE_ACCESSIBILITY_RACK & *src) {
+        pmix_argv_append_nosize(&tmp, "RACK");
+    }
+    if (PMIX_STORAGE_ACCESSIBILITY_CLUSTER & *src) {
+        pmix_argv_append_nosize(&tmp, "CLUSTER");
+    }
+    if (PMIX_STORAGE_ACCESSIBILITY_REMOTE & *src) {
+        pmix_argv_append_nosize(&tmp, "REMOTE");
+    }
+    str = pmix_argv_join(tmp, ':');
+    pmix_argv_free(tmp);
+
+    ret = asprintf(output, "%sData type: PMIX_STOR_ACCESS\tValue: %s", prefx, str);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+    free(str);
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_spers(char **output, char *prefix,
+                                           pmix_storage_persistence_t *src,
+                                           pmix_data_type_t type)
+{
+    char *prefx, **tmp = NULL, *str;
+    int ret;
+
+    if (PMIX_STOR_PERSIST != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    if (PMIX_STORAGE_PERSISTENCE_TEMPORARY & *src) {
+        pmix_argv_append_nosize(&tmp, "TEMPORARY");
+    }
+    if (PMIX_STORAGE_PERSISTENCE_NODE & *src) {
+        pmix_argv_append_nosize(&tmp, "NODE");
+    }
+    if (PMIX_STORAGE_PERSISTENCE_SESSION & *src) {
+        pmix_argv_append_nosize(&tmp, "SESSION");
+    }
+    if (PMIX_STORAGE_PERSISTENCE_JOB & *src) {
+        pmix_argv_append_nosize(&tmp, "JOB");
+    }
+    if (PMIX_STORAGE_PERSISTENCE_SCRATCH & *src) {
+        pmix_argv_append_nosize(&tmp, "SCRATCH");
+    }
+    if (PMIX_STORAGE_PERSISTENCE_PROJECT & *src) {
+        pmix_argv_append_nosize(&tmp, "PROJECT");
+    }
+    if (PMIX_STORAGE_PERSISTENCE_ARCHIVE & *src) {
+        pmix_argv_append_nosize(&tmp, "ARCHIVE");
+    }
+
+    str = pmix_argv_join(tmp, ':');
+    pmix_argv_free(tmp);
+
+    ret = asprintf(output, "%sData type: PMIX_STOR_PERSIST\tValue: %s", prefx, str);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+    free(str);
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_satyp(char **output, char *prefix,
+                                           pmix_storage_access_type_t *src,
+                                           pmix_data_type_t type)
+{
+    char *prefx, **tmp = NULL, *str;
+    int ret;
+
+    if (PMIX_STOR_ACCESS_TYPE != type) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* deal with NULL prefix */
+    if (NULL == prefix) {
+        if (0 > asprintf(&prefx, " ")) {
+            return PMIX_ERR_NOMEM;
+        }
+    } else {
+        prefx = prefix;
+    }
+
+    if (PMIX_STORAGE_ACCESS_RD & *src) {
+        pmix_argv_append_nosize(&tmp, "READ");
+    }
+    if (PMIX_STORAGE_ACCESS_WR & *src) {
+        pmix_argv_append_nosize(&tmp, "WRITE");
+    }
+    str = pmix_argv_join(tmp, ':');
+    pmix_argv_free(tmp);
+
+    ret = asprintf(output, "%sData type: PMIX_STOR_ACCESS_TYPE\tValue: %s", prefx, str);
+    if (prefx != prefix) {
+        free(prefx);
+    }
+    free(str);
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
 }

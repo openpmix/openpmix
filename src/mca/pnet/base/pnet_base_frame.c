@@ -48,17 +48,19 @@
 pmix_pnet_globals_t pmix_pnet_globals = {.actives = PMIX_LIST_STATIC_INIT,
                                          .fabrics = PMIX_LIST_STATIC_INIT
 };
-pmix_pnet_API_module_t pmix_pnet = {.allocate = pmix_pnet_base_allocate,
-                                    .setup_local_network = pmix_pnet_base_setup_local_network,
-                                    .setup_fork = pmix_pnet_base_setup_fork,
-                                    .child_finalized = pmix_pnet_base_child_finalized,
-                                    .local_app_finalized = pmix_pnet_base_local_app_finalized,
-                                    .deregister_nspace = pmix_pnet_base_deregister_nspace,
-                                    .collect_inventory = pmix_pnet_base_collect_inventory,
-                                    .deliver_inventory = pmix_pnet_base_deliver_inventory,
-                                    .register_fabric = pmix_pnet_base_register_fabric,
-                                    .update_fabric = pmix_pnet_base_update_fabric,
-                                    .deregister_fabric = pmix_pnet_base_deregister_fabric};
+pmix_pnet_API_module_t pmix_pnet = {
+    .allocate = pmix_pnet_base_allocate,
+    .setup_local_network = pmix_pnet_base_setup_local_network,
+    .setup_fork = pmix_pnet_base_setup_fork,
+    .child_finalized = pmix_pnet_base_child_finalized,
+    .local_app_finalized = pmix_pnet_base_local_app_finalized,
+    .deregister_nspace = pmix_pnet_base_deregister_nspace,
+    .collect_inventory = pmix_pnet_base_collect_inventory,
+    .deliver_inventory = pmix_pnet_base_deliver_inventory,
+    .register_fabric = pmix_pnet_base_register_fabric,
+    .update_fabric = pmix_pnet_base_update_fabric,
+    .deregister_fabric = pmix_pnet_base_deregister_fabric
+};
 
 static pmix_status_t pmix_pnet_close(void)
 {
@@ -76,6 +78,7 @@ static pmix_status_t pmix_pnet_close(void)
     }
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.actives);
     PMIX_LIST_DESTRUCT(&pmix_pnet_globals.fabrics);
+    PMIX_LIST_DESTRUCT(&pmix_pnet_globals.nspaces);
 
     return pmix_mca_base_framework_components_close(&pmix_pnet_base_framework, NULL);
 }
@@ -85,6 +88,7 @@ static pmix_status_t pmix_pnet_open(pmix_mca_base_open_flag_t flags)
     /* initialize globals */
     PMIX_CONSTRUCT(&pmix_pnet_globals.actives, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_pnet_globals.fabrics, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_pnet_globals.nspaces, pmix_list_t);
 
     /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_pnet_base_framework, flags);

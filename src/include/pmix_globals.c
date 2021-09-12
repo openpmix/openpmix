@@ -64,11 +64,42 @@ PMIX_EXPORT pmix_lock_t pmix_global_lock = {.mutex = PMIX_MUTEX_STATIC_INIT,
                                             .cond = PMIX_CONDITION_STATIC_INIT,
                                             .active = false};
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namelist_t, pmix_list_item_t, NULL, NULL);
+static void nsenvcon(pmix_nspace_env_cache_t *p)
+{
+    PMIX_CONSTRUCT(&p->envars, pmix_list_t);
+}
+static void nsenvdes(pmix_nspace_env_cache_t *p)
+{
+    PMIX_LIST_DESTRUCT(&p->envars);
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_env_cache_t,
+                                pmix_list_item_t,
+                                nsenvcon, nsenvdes);
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_proclist_t, pmix_list_item_t, NULL, NULL);
+static void encon(pmix_envar_list_item_t *p)
+{
+    PMIX_ENVAR_CONSTRUCT(&p->envar);
+}
+static void endes(pmix_envar_list_item_t *p)
+{
+    PMIX_ENVAR_DESTRUCT(&p->envar);
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_envar_list_item_t,
+                                pmix_list_item_t,
+                                encon, endes);
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_topo_obj_t, pmix_object_t, NULL, NULL);
+
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namelist_t,
+                                pmix_list_item_t,
+                                NULL, NULL);
+
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_proclist_t,
+                                pmix_list_item_t,
+                                NULL, NULL);
+
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_topo_obj_t,
+                                pmix_object_t,
+                                NULL, NULL);
 
 static void cfcon(pmix_cleanup_file_t *p)
 {

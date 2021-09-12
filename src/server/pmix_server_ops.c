@@ -54,6 +54,7 @@
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/plog/plog.h"
@@ -4633,6 +4634,106 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *
     return PMIX_SUCCESS;
 
 exit:
+    return rc;
+}
+
+pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
+                                       pmix_buffer_t *buf,
+                                       pmix_device_dist_cbfunc_t cbfunc)
+{
+    pmix_topology_t topo = {NULL, NULL};
+    pmix_cpuset_t cpuset = {NULL, NULL};
+    pmix_status_t rc;
+    pmix_device_distance_t *distances;
+    size_t ndist;
+    int cnt;
+    pmix_cb_t cb;
+    pmix_kval_t *kv;
+    pmix_proc_t proc;
+
+    /* unpack the topology they want us to use */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &topo, &cnt, PMIX_TOPO);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* unpack the cpuset */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &cpuset, &cnt, PMIX_PROC_CPUSET);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+
+    /* unpack any directives */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
+    }
+    if (0 < cd->ninfo) {
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        cnt = cd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, cd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
+    }
+
+    /* if the provided topo is NULL, use my own */
+    if (NULL == topo.topology) {
+        if (NULL == pmix_globals.topology.topology) {
+            /* try to get it */
+            rc = pmix_hwloc_load_topology(&pmix_globals.topology);
+            if (PMIX_SUCCESS != rc) {
+                /* nothing we can do */
+                goto cleanup;
+            }
+        }
+        topo.topology = pmix_globals.topology.topology;
+    }
+
+    /* if the cpuset is NULL, see if we know the binding of the requesting process */
+    if (NULL == cpuset.bitmap) {
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.key = strdup(PMIX_CPUSET);
+        PMIX_LOAD_PROCID(&proc, cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+        cb.proc = &proc;
+        cb.scope = PMIX_LOCAL;
+        cb.copy = true;
+        PMIX_GDS_FETCH_KV(rc, cd->peer, &cb);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&cb);
+            goto cleanup;
+        }
+        kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
+        rc = pmix_hwloc_parse_cpuset_string(kv->value->data.string, &cpuset);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&cb);
+            goto cleanup;
+        }
+        PMIX_DESTRUCT(&cb);
+    }
+    /* compute the distances */
+    rc = pmix_hwloc_compute_distances(&topo, &cpuset, cd->info, cd->ninfo, &distances, &ndist);
+    if (PMIX_SUCCESS == rc) {
+        /* send the reply */
+        cbfunc(rc, distances, ndist, cd, NULL, NULL);
+        PMIX_DEVICE_DIST_FREE(distances, ndist);
+    }
+
+cleanup:
+    if (NULL != topo.topology &&
+        topo.topology != pmix_globals.topology.topology) {
+        pmix_hwloc_destruct_topology(&topo);
+    }
+    if (NULL != cpuset.bitmap) {
+        pmix_hwloc_destruct_cpuset(&cpuset);
+    }
     return rc;
 }
 

@@ -52,11 +52,11 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pfexec/base/base.h"
-#include "src/mca/ploc/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/psec/psec.h"
@@ -945,20 +945,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             return rc;
         }
 
-        /* open the ploc framework */
-        if (PMIX_SUCCESS
-            != (rc = pmix_mca_base_framework_open(&pmix_ploc_base_framework,
-                                                  PMIX_MCA_BASE_OPEN_DEFAULT))) {
-            return rc;
-        }
-        if (PMIX_SUCCESS != (rc = pmix_ploc_base_select())) {
-            return rc;
-        }
-
         /* if we don't know our topology, we better get it now as we
          * increasingly rely on it - note that our host will hopefully
          * have passed it to us so we don't duplicate their storage! */
-        if (PMIX_SUCCESS != (rc = pmix_ploc.setup_topology(info, ninfo))) {
+        if (PMIX_SUCCESS != (rc = pmix_hwloc_setup_topology(info, ninfo))) {
             return rc;
         }
 
@@ -1386,6 +1376,12 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buf
     PMIX_WAKEUP_THREAD(&tev->lock);
 }
 
+static void checkev(int fd, short args, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
+    PMIX_WAKEUP_THREAD(lock);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 {
     pmix_buffer_t *msg;
@@ -1396,6 +1392,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     int n;
     pmix_peer_t *peer;
     pmix_pfexec_child_t *child;
+    pmix_lock_t lock;
+    pmix_event_t ev;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (1 != pmix_globals.init_cntr) {
@@ -1461,6 +1459,14 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
             pmix_pfexec.kill_proc(&child->proc);
         }
     }
+
+    /* wait here until all active events have been processed */
+    PMIX_CONSTRUCT_LOCK(&lock);
+    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
+    PMIX_POST_OBJECT(&lock);
+    pmix_event_active(&ev, EV_WRITE, 1);
+    PMIX_WAIT_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
 
     /* stop the progress thread, but leave the event base
      * still constructed. This will allow us to safely
