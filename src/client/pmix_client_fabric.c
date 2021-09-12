@@ -48,7 +48,6 @@
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/util/argv.h"
 #include "src/util/error.h"

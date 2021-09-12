@@ -30,7 +30,7 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/mca/ploc/ploc.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/pgpu/base/base.h"
 #include "src/util/argv.h"
 
@@ -103,7 +103,7 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_GPU, 0x1022);
+    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x1022, 0x302);
     return rc;
 }
 

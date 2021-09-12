@@ -50,12 +50,13 @@
 #include <sys/stat.h>
 
 #include "src/common/pmix_attributes.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
+#include "src/mca/pgpu/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
-#include "src/mca/ploc/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/preg.h"
@@ -712,7 +713,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     /* if we don't know our topology, we better get it now as we
      * increasingly rely on it - note that our host will hopefully
      * have passed it to us so we don't duplicate their storage! */
-    if (PMIX_SUCCESS != (rc = pmix_ploc.setup_topology(info, ninfo))) {
+    if (PMIX_SUCCESS != (rc = pmix_hwloc_setup_topology(info, ninfo))) {
         /* if they told us to share our topology and we cannot do so,
          * then that is a reportable error */
         if (share_topo) {
@@ -721,16 +722,26 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         }
     }
 
-    /* open the pnet framework and select the active modules for this environment
-     * Do this AFTER setting up the topology so the components can check to see
-     * if they have any local assets */
-    if (PMIX_SUCCESS
-        != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
-                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    /* open the pnet and pgpu frameworks and select their active modules for this
+     * environment Do this AFTER setting up the topology so the components can
+     * check to see if they have any local assets */
+    rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
+                                      PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    rc = pmix_mca_base_framework_open(&pmix_pgpu_base_framework,
+                                      PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return rc;
+    }
+    if (PMIX_SUCCESS != (rc = pmix_pgpu_base_select())) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -2774,7 +2785,7 @@ pmix_status_t PMIx_server_generate_locality_string(const pmix_cpuset_t *cpuset, 
     pmix_status_t rc;
 
     /* just pass this down */
-    rc = pmix_ploc.generate_locality_string(cpuset, locality);
+    rc = pmix_hwloc_generate_locality_string(cpuset, locality);
     return rc;
 }
 
@@ -2783,7 +2794,7 @@ pmix_status_t PMIx_server_generate_cpuset_string(const pmix_cpuset_t *cpuset, ch
     pmix_status_t rc;
 
     /* just pass this down */
-    rc = pmix_ploc.generate_cpuset_string(cpuset, cpuset_string);
+    rc = pmix_hwloc_generate_cpuset_string(cpuset, cpuset_string);
     return rc;
 }
 

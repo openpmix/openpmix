@@ -30,7 +30,7 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/mca/ploc/ploc.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/pgpu/base/base.h"
 #include "src/util/argv.h"
 
@@ -69,15 +69,14 @@ pmix_pgpu_nvd_component_t mca_pgpu_nvd_component = {
         }
     },
     .include = NULL,
-    .exclude = NULL,
-    .radix = 64
+    .exclude = NULL
 };
 
 static pmix_status_t component_register(void)
 {
     pmix_mca_base_component_t *component = &mca_pgpu_nvd_component.super.base;
 
-    mca_pgpu_nvd_component.incparms = "HFI_*,PSM2_*";
+    mca_pgpu_nvd_component.incparms = "CUDA_*,NCCL_*";
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
@@ -97,12 +96,6 @@ static pmix_status_t component_register(void)
         mca_pgpu_nvd_component.exclude = pmix_argv_split(mca_pgpu_nvd_component.excparms, ',');
     }
 
-    (void) pmix_mca_base_component_var_register(component, "radix",
-                                                "Radix for simulating the network coordinates",
-                                                PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                                PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-                                                &mca_pgpu_nvd_component.radix);
-
     return PMIX_SUCCESS;
 }
 
@@ -110,18 +103,14 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    // currently under Mellanox
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x1014);
-    if (PMIX_SUCCESS != rc) {
-        // future could be under NVIDIA
-        rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x10de);
-    }
+    // under NVIDIA
+    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x10de, 0x302);
+
     return rc;
 }
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    /* check our topology to see if we have any NVD devices */
     *priority = 10;
     *module = (pmix_mca_base_module_t *) &pmix_pgpu_nvd_module;
     return PMIX_SUCCESS;

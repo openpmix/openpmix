@@ -31,9 +31,9 @@
 #    include <time.h>
 #endif
 
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/mca/ploc/ploc.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/printf.h"
@@ -2025,7 +2025,7 @@ pmix_status_t pmix_bfrops_base_print_cpuset(char **output, char *prefix, pmix_cp
         return PMIX_ERR_BAD_PARAM;
     }
 
-    string = pmix_ploc.print_cpuset(src);
+    string = pmix_hwloc_print_cpuset(src);
     if (NULL == string) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
@@ -2196,7 +2196,7 @@ pmix_status_t pmix_bfrops_base_print_topology(char **output, char *prefix, pmix_
         return PMIX_ERR_BAD_PARAM;
     }
 
-    string = pmix_ploc.print_topology(src);
+    string = pmix_hwloc_print_topology(src);
     if (NULL == string) {
         return PMIX_ERR_NOT_SUPPORTED;
     }

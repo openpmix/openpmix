@@ -450,6 +450,7 @@ typedef struct {
         pmix_hdlr_reg_cbfunc_t hdlrregcbfn;
         pmix_op_cbfunc_t opcbfn;
         pmix_modex_cbfunc_t modexcbfunc;
+        pmix_info_cbfunc_t infocbfunc;
     } cbfunc;
     void *cbdata;
     size_t ref;

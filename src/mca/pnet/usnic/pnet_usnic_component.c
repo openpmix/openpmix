@@ -30,7 +30,7 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
-#include "src/mca/ploc/ploc.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/util/argv.h"
 #include "src/util/parse_options.h"
@@ -143,7 +143,7 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, PMIX_DEVTYPE_OPENFABRICS, 0x1137);
+    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x1137, 0x208);
     return rc;
 }
 
@@ -151,7 +151,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
 {
     /* check our topology to see if we have any USNIC devices */
     *priority = 10;
-    *module = (pmix_mca_base_module_t *) &pmix_usnic_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pnet_usnic_module;
     return PMIX_SUCCESS;
 }
 

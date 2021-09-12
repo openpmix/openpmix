@@ -791,12 +791,18 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 
     ##################################
+    # HWLOC
+    ##################################
+    pmix_show_title "HWLOC"
+
+    PMIX_SETUP_HWLOC
+
+    ##################################
     # JANSSON
     ##################################
     pmix_show_title "JANSSON"
 
     PMIX_CHECK_JANSSON
-
 
     ##################################
     # CURL

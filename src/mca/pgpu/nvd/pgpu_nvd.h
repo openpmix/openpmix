@@ -24,7 +24,6 @@ typedef struct {
     char *excparms;
     char **include;
     char **exclude;
-    int radix;
 } pmix_pgpu_nvd_component_t;
 
 /* the component must be visible data for the linker to find it */

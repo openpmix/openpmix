@@ -53,11 +53,12 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                               pmix_list_t *ilist);
 static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo);
 
-pmix_pnet_module_t pmix_simptest_module = {.name = "simptest",
-                                           .init = simptest_init,
-                                           .finalize = simptest_finalize,
-                                           .allocate = allocate,
-                                           .setup_local_network = setup_local_network};
+pmix_pnet_module_t pmix_simptest_module = {
+    .name = "simptest",
+    .init = simptest_init,
+    .finalize = simptest_finalize,
+    .allocate = allocate,
+    .setup_local_network = setup_local_network};
 
 /* internal tracking structures */
 typedef struct {
