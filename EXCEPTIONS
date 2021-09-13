@@ -1,26 +1,88 @@
-Extensions to the base PMIx Standard are listed here for each OpenPMIx release. These extensions
+Exceptions to the base PMIx Standard are listed here for each OpenPMIx release. These exceptions
 are not indicative of any intent to stray from the Standard, but instead represent the difference
 between the pace of development of the library versus the normal Standard's process. Accordingly,
-it is expected that the extensions listed below will make their way into a future release of the
-PMIx Standard and then be removed from the list of extensions in some future OpenPMIx release.
+it is expected that the exceptions listed below will make their way into a future release of the
+PMIx Standard and then be removed from the list of exceptions in some future OpenPMIx release.
+
+==========================================================================================
 
 OpenPMIx v4.1.1
 ---------------------------------
-OpenPMIx v4.1.1 is based on the PMIx v4.1 Standard and includes the following *extensions*:
+OpenPMIx v4.1.1 is based on the PMIx v4.1 Standard and includes the following EXTENSIONS:
+
+Constants
+------------
+PMIX_DATA_BUFFER
+PMIX_DEBUG_STOP_IN_APP
+PMIX_DISK_STATS
+PMIX_ERR_JOB_EXE_NOT_FOUND
+PMIX_ERR_JOB_INSUFFICIENT_RESOURCES
+PMIX_ERR_JOB_SYS_OP_FAILED
+PMIX_ERR_JOB_WDIR_NOT_FOUND
+PMIX_READY_FOR_DEBUG
+
 
 Attributes
 ------------
+PMIX_BREAKPOINT
+PMIX_ENVARS_HARVESTED
+PMIX_IOF_FILE_ONLY
+PMIX_IOF_FILE_PATTERN
+PMIX_IOF_LOCAL_OUTPUT
+PMIX_IOF_MERGE_STDERR_STDOUT
+PMIX_IOF_OUTPUT_TO_DIRECTORY
+PMIX_IOF_OUTPUT_TO_FILE
+PMIX_IOF_RANK_OUTPUT
+PMIX_NET_STATS
+PMIX_NODE_OVERSUBSCRIBED
+PMIX_NODE_STATS
+PMIX_PROC_STATS
 
 Datatypes
 ------------
+pmix_disk_stats_t
+pmix_net_stats_t
+pmix_node_stats_t
+pmix_proc_stats_t
 
 Macros
 ---------
+PMIX_VALUE_XFER_DIRECT
+PMIX_XFER_PROCID
+PMIX_DISK_STATS_CONSTRUCT
+PMIX_DISK_STATS_CREATE
+PMIX_DISK_STATS_DESTRUCT
+PMIX_DISK_STATS_FREE
+PMIX_DISK_STATS_RELEASE
+PMIX_NET_STATS_CONSTRUCT
+PMIX_NET_STATS_CREATE
+PMIX_NET_STATS_DESTRUCT
+PMIX_NET_STATS_FREE
+PMIX_NET_STATS_RELEASE
+PMIX_NODE_STATS_CONSTRUCT
+PMIX_NODE_STATS_CREATE
+PMIX_NODE_STATS_DESTRUCT
+PMIX_NODE_STATS_RELEASE
+PMIX_PROC_STATS_CONSTRUCT
+PMIX_PROC_STATS_CREATE
+PMIX_PROC_STATS_DESTRUCT
+PMIX_PROC_STATS_FREE
+PMIX_PROC_STATS_RELEASE
 
 
-OpenPMIx v4.1.0 - Exceptions to the PMIx v4.1 Standard
+OpenPMIx v4.1.1 renamed one constant:
+
+Constants
+------------
+PMIX_DEBUG_WAIT_FOR_NOTIFY - renamed to PMIX_READY_FOR_DEBUG
+
+
+==========================================================================================
+
+
+OpenPMIx v4.1.0
 ---------------------------------
-OpenPMIx v4.1.0 is based on the PMIx v4.1 Standard and includes the following *extensions*:
+OpenPMIx v4.1.0 is based on the PMIx v4.1 Standard and includes the following EXTENSIONS:
 
 
 APIs
@@ -95,11 +157,11 @@ PMIX_PROC_STATS_FREE
 PMIX_PROC_STATS_RELEASE
 
 
-OpenPMIx v4.1.0 does *not* include support for the storage definitions in the PMIx v4.1 Standard, and removed support for one constant. This includes the following:
+OpenPMIx v4.1.0 DOES NOT INCLUDE support for the storage definitions in the PMIx v4.1 Standard, and renamed one constant. This includes the following:
 
 Constants
 ------------
-PMIX_DEBUG_WAIT_FOR_NOTIFY
+PMIX_DEBUG_WAIT_FOR_NOTIFY - renamed to PMIX_READY_FOR_DEBUG
 
 
 Attributes
