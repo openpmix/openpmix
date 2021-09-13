@@ -1,6 +1,7 @@
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
+# Copyright (c) 2021      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Construct a dictionary for translating attributes to/from
@@ -144,6 +145,16 @@ def harvest_constants(options, path, constants):
                             datatype = "PMIX_DEVTYPE"
                         elif tokens[3] == "(varies)":
                             datatype = "PMIX_INT"
+                        elif tokens[3] == "(pmix_storage_accessibility_t)":
+                            datatype = "PMIX_UINT64"
+                        elif tokens[3] == "(pmix_storage_medium_t)":
+                            datatype = "PMIX_UINT64"
+                        elif tokens[3] == "(pmix_storage_persistence_t)":
+                            datatype = "PMIX_UINT64"
+                        elif tokens[3] == "(pmix_storage_access_type_t)":
+                            datatype = "PMIX_UINT16"
+                        elif tokens[3] == "(double)":
+                            datatype = "PMIX_DOUBLE"
                         else:
                             print("UNKNOWN TOKEN: {tok}".format(tok=tokens[3]))
                             return 1
