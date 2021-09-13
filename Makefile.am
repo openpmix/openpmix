@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2019      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -32,7 +33,7 @@ AM_DISTCHECK_CONFIGURE_FLAGS = --disable-dlopen
 headers =
 sources =
 nodist_headers =
-EXTRA_DIST = AUTHORS README HACKING INSTALL VERSION LICENSE autogen.pl Makefile.pmix-rules
+EXTRA_DIST = AUTHORS README HACKING INSTALL VERSION LICENSE autogen.pl Makefile.pmix-rules EXCEPTIONS
 
 # Only install the valgrind suppressions file and man pages
 # if we're building in standalone mode
