@@ -923,23 +923,38 @@ typedef uint32_t pmix_rank_t;
 /* Storage-Related Attributes */
 #define PMIX_QUERY_STORAGE_LIST             "pmix.strg.list"       // (char*) return comma-delimited list of identifiers for all available storage systems
 #define PMIX_STORAGE_CAPACITY_LIMIT         "pmix.strg.cap"        // (uint64_t) return overall capacity (in Megabytes[base2]) of specified storage system
-#define PMIX_STORAGE_CAPACITY_FREE          "pmix.strg.free"       // (uint64_t) return free capacity (in Megabytes[base2]) of specified storage system
-#define PMIX_STORAGE_CAPACITY_AVAIL         "pmix.strg.avail"      // (uint64_t) return capacity (in Megabytes[[base2]]) of specified storage
-                                                                   //            system that is available for use by the calling program
-
 #define PMIX_STORAGE_OBJECT_LIMIT           "pmix.strg.obj"        // (uint64_t) return overall limit on number of objects (e.g., inodes) of specified storage system
-#define PMIX_STORAGE_OBJECTS_FREE           "pmix.strg.objf"       // (uint64_t) return number of free objects (e.g., inodes) of specified storage system
-#define PMIX_STORAGE_OBJECTS_AVAIL          "pmix.strg.obja"       // (uint64_t) return number of objects (e.g., inodes) of specified storage system
-                                                                   //            that are available for use by the calling program
-
-#define PMIX_STORAGE_BW                     "pmix.strg.bw"         // (float) return overall bandwidth (in Megabytes[base2]/sec) of specified storage system
-#define PMIX_STORAGE_AVAIL_BW               "pmix.strg.availbw"    // (float) return overall bandwidth (in Megabytes[base2]/sec) of specified storage system
-                                                                   //         that is available for use by the calling program
 
 #define PMIX_STORAGE_ID                     "pmix.strg.id"         // (char*) identifier of the storage system being referenced
 #define PMIX_STORAGE_PATH                   "pmix.strg.path"       // (char*) Mount point corresponding to a specified storage ID
 #define PMIX_STORAGE_TYPE                   "pmix.strg.type"       // (char*) Qualifier indicating the type of storage being referenced by a query
                                                                    //         (e.g., lustre, gpfs, online, fabric-attached, ...)
+#define PMIX_STORAGE_ACCESSIBILITY          "pmix.strg.access"     // (pmix_storage_accessibility_t) Accessibility level of the storage system
+                                                                   //         (e.g., within same node, within same session)
+#define PMIX_STORAGE_ACCESS_TYPE            "pmix.strg.atype"      // (pmix_storage_access_type_t) Qualifier describing the type of storage access to return
+                                                                   //       information for (e.g., for qualifying PMIX_STORAGE_BW_CUR, PMIX_STORAGE_IOPS_CUR,
+                                                                   //       or PMIX_STORAGE_SUGGESTED_XFER_SIZE attributes)
+#define PMIX_STORAGE_BW_CUR                 "pmix.strg.bwcur"      // (double) Observed bandwidth (in bytes/sec) for storage system - provided as a
+                                                                   //       recently observed bandwidth value, with the exact measurement interval
+                                                                   //       depending on the storage system and/or PMIx library implementation
+#define PMIX_STORAGE_BW_MAX                 "pmix.strg.bwmax"      // (double) Maximum bandwidth (in bytes/sec) for storage system - provided as the
+                                                                   //       theoretical maximum or the maximum observed bandwidth value
+#define PMIX_STORAGE_CAPACITY_USED          "pmix.strg.capuse"     // (double) Overall used capacity (in bytes) for the storage system
+#define PMIX_STORAGE_IOPS_CUR               "pmix.strg.iopscur"    // (double) Observed IOPS (in I/O operations per second) for storage system - provided
+                                                                   //       as a recently observed IOPS value, with the exact measurement interval depending
+                                                                   //       on the storage system and/or PMIx library implementation
+#define PMIX_STORAGE_IOPS_MAX               "pmix.strg.iopsmax"    // (double) Maximum IOPS (in I/O operations per second) for storage system - provided
+                                                                   //       as the theoretical maximum or the maximum observed IOPS value
+#define PMIX_STORAGE_MEDIUM                 "pmix.strg.medium"     // (pmix_storage_medium_t) Types of storage mediums utilized by the storage system
+                                                                   //       (e.g., SSDs, HDDs, tape)
+#define PMIX_STORAGE_MINIMAL_XFER_SIZE      "pmix.strg.minxfer"    // (double) Minimal transfer size (in bytes) for the storage system - this is the
+                                                                   //       storage system's atomic unit of transfer (e.g., block size)
+#define PMIX_STORAGE_OBJECTS_USED           "pmix.strg.objuse"     // (uint64_t) Overall used number of objects (e.g., inodes) for the storage system
+#define PMIX_STORAGE_PERSISTENCE            "pmix.strg.persist"    // (pmix_storage_persistence_t) Persistence level of the storage system
+                                                                   //       (e.g., sratch storage or achive storage)
+#define PMIX_STORAGE_SUGGESTED_XFER_SIZE    "pmix.strg.sxfer"      // (double) Suggested transfer size (in bytes) for the storage system
+#define PMIX_STORAGE_VERSION                "pmix.strg.ver"        // (char*) Version string for the storage system
+
 
 /* Fabric-related Attributes */
 #define PMIX_FABRIC_COST_MATRIX             "pmix.fab.cm"          // (pointer) Pointer to a two-dimensional array of point-to-point relative

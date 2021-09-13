@@ -1647,6 +1647,8 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
             rc = pmix_iof_write_output(&child->stdoutev->name, PMIX_FWD_STDOUT_CHANNEL, &bo);
         } else if (PMIX_FWD_STDERR_CHANNEL == rev->channel) {
             rc = pmix_iof_write_output(&child->stderrev->name, PMIX_FWD_STDERR_CHANNEL, &bo);
+        } else {
+            rc = PMIX_ERR_BAD_PARAM;
         }
         if (0 > rc) {
             PMIX_ERROR_LOG(rc);
