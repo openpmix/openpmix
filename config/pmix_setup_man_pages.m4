@@ -79,7 +79,7 @@ AC_DEFUN([_PMIX_SETUP_PANDOC],[
                   AC_MSG_RESULT([no - adequate pandoc installation not found])
                   PANDOC=
                   PMIX_ENABLE_MAN_PAGES=0],
-                 [AS_IF([test ! -f "$srcdir/tools/wrapper/pmixcc.1"],
+                 [AS_IF([test ! -f "$top_srcdir/src/tools/wrapper/pmixcc.1"],
                          [AC_MSG_WARN([*** Could not find a suitable pandoc on your system.])
                           AC_MSG_WARN([*** You need pandoc >=$min_major_version.$min_minor_version to build OpenPMIx man pages.])
                           AC_MSG_WARN([*** See pandoc.org.])
