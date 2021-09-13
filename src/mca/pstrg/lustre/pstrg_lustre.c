@@ -166,36 +166,6 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
                 /* I will package the data for return once I see what Lustre provides */
                 continue;
 
-            } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_CAPACITY_FREE)) {
-                /* ADD HERE:
-                 *
-                 * Get the amount of free capacity of the Lustre storage systems. If they ask for
-                 * a specific one, then get just that one.
-                 */
-
-                /* I will package the data for return once I see what Lustre provides */
-                continue;
-
-            } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_CAPACITY_AVAIL)) {
-                /* ADD HERE:
-                 *
-                 * Get the capacity of the Lustre storage systems that are available to the
-                 * caller's userid/grpid, as provided in the qualifiers.
-                 */
-                if (UINT32_MAX == uid || UINT32_MAX == gid) {
-                    /* they failed to provide the user's info - I will
-                     * take care of returning an appropriate error */
-                }
-
-                /*
-                 * Let me know if you need further info to process the request - e.g.,
-                 * we could provide the app's jobid or argv[0]. If they ask for
-                 * a specific storage system, then get process that one.
-                 */
-
-                /* I will package the data for return once I see what Lustre provides */
-                continue;
-
             } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_OBJECT_LIMIT)) {
                 /* ADD HERE:
                  *
@@ -206,65 +176,6 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
                 /* I will package the data for return once I see what Lustre provides */
                 continue;
 
-            } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_OBJECTS_FREE)) {
-                /* ADD HERE:
-                 *
-                 * Get the number of free objects in the Lustre storage systems. If they ask for
-                 * a specific one(s), then get just those.
-                 */
-
-                /* I will package the data for return once I see what Lustre provides */
-                continue;
-
-            } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_CAPACITY_AVAIL)) {
-                /* ADD HERE:
-                 *
-                 * Get the number of objects in the Lustre storage systems that are available to the
-                 * caller's userid/grpid, as provided in the qualifiers.
-                 */
-                if (UINT32_MAX == uid || UINT32_MAX == gid) {
-                    /* they failed to provide the user's info - I will
-                     * take care of returning an appropriate error */
-                }
-
-                /*
-                 * Let me know if you need further info to process the request - e.g.,
-                 * we could provide the app's jobid or argv[0]. If they ask for
-                 * a specific storage system, then get process that one.
-                 */
-
-                /* I will package the data for return once I see what Lustre provides */
-                continue;
-
-            } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_BW)) {
-                /* ADD HERE:
-                 *
-                 * Get the overall bandwidth of the Lustre storage systems. If they ask for
-                 * a specific one, then get just that one.
-                 */
-
-                /* I will package the data for return once I see what Lustre provides */
-                continue;
-
-            } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_AVAIL_BW)) {
-                /* ADD HERE:
-                 *
-                 * Get the bandwidth of the Lustre storage systems that is available to the
-                 * caller's userid/grpid.
-                 */
-                if (UINT32_MAX == uid || UINT32_MAX == gid) {
-                    /* they failed to provide the user's info - I will
-                     * take care of returning an appropriate error */
-                }
-
-                /*
-                If you need further info, please let me know - e.g.,
-                 * we could provide the app's jobid or argv[0]. If they ask for
-                 * a specific storage system, then get just that one.
-                 */
-
-                /* I will package the data for return once I see what Lustre provides */
-                continue;
             } else if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_ID)) {
                 /* don't worry about this one for now - once I see how to get the
                  * storage list and mount pts, I will construct the response here
