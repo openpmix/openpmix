@@ -25,6 +25,9 @@
 #ifdef HAVE_FCNTL_H
 #    include <fcntl.h>
 #endif
+#ifdef HAVE_SYS_UTSNAME_H
+#    include <sys/utsname.h>
+#endif
 #include <time.h>
 
 #include "include/pmix.h"
@@ -45,26 +48,29 @@
 #include "src/util/pmix_environ.h"
 #include "src/util/printf.h"
 
-#include "pmdl_oshmem.h"
+#include "pmdl_mpich.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pmdl/pmdl.h"
 
-static pmix_status_t oshmem_init(void);
-static void oshmem_finalize(void);
+static pmix_status_t mpich_init(void);
+static void mpich_finalize(void);
 static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t info[], size_t ninfo,
                                     pmix_list_t *ilist, char ***priors);
 static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info);
 static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv);
 static pmix_status_t register_nspace(pmix_namespace_t *nptr);
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***priors);
 static void deregister_nspace(pmix_namespace_t *nptr);
-pmix_pmdl_module_t pmix_pmdl_oshmem_module = {
-    .name = "oshmem",
-    .init = oshmem_init,
-    .finalize = oshmem_finalize,
+static void deregister_nspace(pmix_namespace_t *nptr);
+pmix_pmdl_module_t pmix_pmdl_mpich_module = {
+    .name = "mpich",
+    .init = mpich_init,
+    .finalize = mpich_finalize,
     .harvest_envars = harvest_envars,
     .setup_nspace = setup_nspace,
     .setup_nspace_kv = setup_nspace_kv,
     .register_nspace = register_nspace,
+    .setup_fork = setup_fork,
     .deregister_nspace = deregister_nspace
 };
 
@@ -72,7 +78,6 @@ pmix_pmdl_module_t pmix_pmdl_oshmem_module = {
 typedef struct {
     pmix_list_item_t super;
     pmix_nspace_t nspace;
-    bool datacollected;
     uint32_t univ_size;
     uint32_t job_size;
     uint32_t local_size;
@@ -80,27 +85,26 @@ typedef struct {
 } pmdl_nspace_t;
 static void nscon(pmdl_nspace_t *p)
 {
-    p->datacollected = false;
-    p->univ_size = 0;
-    p->job_size = 0;
-    p->local_size = 0;
-    p->num_apps = 0;
+    p->univ_size = UINT32_MAX;
+    p->job_size = UINT32_MAX;
+    p->local_size = UINT32_MAX;
+    p->num_apps = UINT32_MAX;
 }
 static PMIX_CLASS_INSTANCE(pmdl_nspace_t, pmix_list_item_t, nscon, NULL);
 
 /* internal variables */
 static pmix_list_t mynspaces;
 
-static pmix_status_t oshmem_init(void)
+static pmix_status_t mpich_init(void)
 {
-    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output, "pmdl: oshmem init");
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output, "pmdl: mpich init");
 
     PMIX_CONSTRUCT(&mynspaces, pmix_list_t);
 
     return PMIX_SUCCESS;
 }
 
-static void oshmem_finalize(void)
+static void mpich_finalize(void)
 {
     PMIX_LIST_DESTRUCT(&mynspaces);
 }
@@ -108,8 +112,7 @@ static void oshmem_finalize(void)
 static bool checkus(const pmix_info_t info[], size_t ninfo)
 {
     bool takeus = false;
-    char **tmp;
-    size_t n, m;
+    size_t n;
 
     if (NULL == info) {
         return false;
@@ -120,14 +123,10 @@ static bool checkus(const pmix_info_t info[], size_t ninfo)
         /* check the attribute */
         if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL)
             || PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
-            tmp = pmix_argv_split(info[n].value.data.string, ',');
-            for (m = 0; NULL != tmp[m]; m++) {
-                if (0 == strcmp(tmp[m], "oshmem")) {
-                    takeus = true;
-                    break;
-                }
+            if (NULL != strstr(info[n].value.data.string, "mpich")) {
+                takeus = true;
+                break;
             }
-            pmix_argv_free(tmp);
         }
     }
 
@@ -142,26 +141,26 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
     size_t n;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:oshmem:harvest envars");
+                        "pmdl:mpich:harvest envars");
 
     if (!checkus(info, ninfo)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    /* don't do OSHMEM again if already done */
+    /* don't do MPICH again if already done */
     if (NULL != *priors) {
         char **t2 = *priors;
         for (n = 0; NULL != t2[n]; n++) {
-            if (0 == strncmp(t2[n], "oshmem", strlen("oshmem"))) {
+            if (0 == strncmp(t2[n], "mpich", strlen("mpich"))) {
                 return PMIX_ERR_TAKE_NEXT_OPTION;
             }
         }
     }
     /* flag that we worked on this */
-    pmix_argv_append_nosize(priors, "oshmem");
+    pmix_argv_append_nosize(priors, "mpich");
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:oshmem:harvest envars active");
+                        "pmdl:mpich:harvest envars active");
 
     /* are we to harvest envars? */
     for (n=0; n < ninfo; n++) {
@@ -170,7 +169,7 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
         }
     }
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:oshmem:harvest envars: NO");
+                        "pmdl:mpich:harvest envars: NO");
     return PMIX_ERR_TAKE_NEXT_OPTION;
 
 harvest:
@@ -191,17 +190,17 @@ harvest:
     }
 
     /* harvest our local envars */
-    if (NULL != mca_pmdl_oshmem_component.include) {
+    if (NULL != mca_pmdl_mpich_component.include) {
         pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                            "pmdl: oshmem harvesting envars %s excluding %s",
-                            (NULL == mca_pmdl_oshmem_component.incparms)
-                                ? "NONE"
-                                : mca_pmdl_oshmem_component.incparms,
-                            (NULL == mca_pmdl_oshmem_component.excparms)
-                                ? "NONE"
-                                : mca_pmdl_oshmem_component.excparms);
-        rc = pmix_util_harvest_envars(mca_pmdl_oshmem_component.include,
-                                      mca_pmdl_oshmem_component.exclude, ilist);
+                            "pmdl: mpich harvesting envars %s excluding %s",
+                            (NULL == mca_pmdl_mpich_component.incparms)
+                            ? "NONE"
+                            : mca_pmdl_mpich_component.incparms,
+                            (NULL == mca_pmdl_mpich_component.excparms)
+                            ? "NONE"
+                            : mca_pmdl_mpich_component.excparms);
+        rc = pmix_util_harvest_envars(mca_pmdl_mpich_component.include,
+                                      mca_pmdl_mpich_component.exclude, ilist);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
@@ -215,7 +214,7 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info)
     pmdl_nspace_t *ns, *ns2;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:oshmem: setup nspace for nspace %s with %s", nptr->nspace,
+                        "pmdl:mpich: setup nspace for nspace %s with %s", nptr->nspace,
                         info->value.data.string);
 
     if (!checkus(info, 1)) {
@@ -242,33 +241,21 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info)
 static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv)
 {
     pmdl_nspace_t *ns, *ns2;
-    char **tmp, *ptr;
+    char **tmp;
     size_t m;
-    uint vers;
     bool takeus = false;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:oshmem: setup nspace_kv for nspace %s with %s", nptr->nspace,
+                        "pmdl:mpich: setup nspace_kv for nspace %s with %s", nptr->nspace,
                         kv->value->data.string);
 
     /* check the attribute */
-    if (PMIX_CHECK_KEY(kv, PMIX_PROGRAMMING_MODEL) || PMIX_CHECK_KEY(kv, PMIX_PERSONALITY)) {
+    if (PMIX_CHECK_KEY(kv, PMIX_PROGRAMMING_MODEL) ||
+        PMIX_CHECK_KEY(kv, PMIX_PERSONALITY)) {
         tmp = pmix_argv_split(kv->value->data.string, ',');
         for (m = 0; NULL != tmp[m]; m++) {
-            if (0 == strcmp(tmp[m], "ompi")) {
-                /* they didn't specify a level, so we will service
-                 * them just in case */
+            if (0 == strcmp(tmp[m], "mpich")) {
                 takeus = true;
-                break;
-            }
-            if (0 == strncmp(tmp[m], "ompi", 4)) {
-                /* if they specifically requested an ompi level greater
-                 * than or equal to us, then we service it */
-                ptr = &tmp[m][4];
-                vers = strtoul(ptr, NULL, 10);
-                if (vers >= 5) {
-                    takeus = true;
-                }
                 break;
             }
         }
@@ -298,16 +285,13 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv)
 static pmix_status_t register_nspace(pmix_namespace_t *nptr)
 {
     pmdl_nspace_t *ns, *ns2;
-    char *ev1, **tmp;
-    pmix_proc_t wildcard, undef;
+    pmix_proc_t wildcard;
     pmix_status_t rc;
     pmix_kval_t *kv;
-    pmix_info_t info[2];
-    uint32_t n;
     pmix_cb_t cb;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
-                        "pmdl:oshmem: register_nspace for %s", nptr->nspace);
+                        "pmdl:mpich: register_nspace for %s", nptr->nspace);
 
     /* see if we already have this nspace */
     ns = NULL;
@@ -319,18 +303,70 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
     }
     if (NULL == ns) {
         /* we don't know anything about this one or
-         * it doesn't have any ompi-based apps */
+         * it doesn't have any mpich-based apps */
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    /* do we already have the data we need here? */
-    if (!ns->datacollected) {
-        PMIX_LOAD_PROCID(&wildcard, nptr->nspace, PMIX_RANK_WILDCARD);
+    /* do we already have the data we need here? Servers are
+     * allowed to call register_nspace multiple times with
+     * different info, so we really need to recheck those
+     * values that haven't already been filled */
+    PMIX_LOAD_PROCID(&wildcard, nptr->nspace, PMIX_RANK_WILDCARD);
+
+    /* fetch the universe size */
+    if (UINT32_MAX == ns->univ_size) {
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.key = PMIX_UNIV_SIZE;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.key = NULL;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        ns->univ_size = kv->value->data.uint32;
+        PMIX_DESTRUCT(&cb);
+    }
+
+    /* fetch the job size */
+    if (UINT32_MAX == ns->job_size) {
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.key = PMIX_JOB_SIZE;
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        cb.key = NULL;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&cb);
+            return rc;
+        }
+        /* the data is the first value on the cb.kvs list */
+        if (1 != pmix_list_get_size(&cb.kvs)) {
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            PMIX_DESTRUCT(&cb);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+        ns->job_size = kv->value->data.uint32;
+        PMIX_DESTRUCT(&cb);
+    }
+
+    /* fetch the number of apps */
+    if (UINT32_MAX == ns->num_apps) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
         cb.proc = &wildcard;
         cb.copy = true;
         cb.key = PMIX_JOB_NUM_APPS;
-        /* fetch the number of apps */
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
         cb.key = NULL;
         if (PMIX_SUCCESS != rc) {
@@ -347,103 +383,122 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
         ns->num_apps = kv->value->data.uint32;
         PMIX_DESTRUCT(&cb);
-
-        ns->datacollected = true;
     }
 
-    if (1 == ns->num_apps) {
-        return PMIX_SUCCESS;
-    }
-
-    /* construct the list of app sizes */
-    PMIX_LOAD_PROCID(&undef, nptr->nspace, PMIX_RANK_UNDEF);
-    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
-    tmp = NULL;
-    for (n = 0; n < ns->num_apps; n++) {
+    /* fetch the number of local peers */
+    if (UINT32_MAX == ns->local_size) {
         PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &undef;
+        cb.proc = &wildcard;
         cb.copy = true;
-        cb.info = info;
-        cb.ninfo = 2;
-        cb.key = PMIX_APP_SIZE;
-        PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &n, PMIX_UINT32);
+        cb.key = PMIX_LOCAL_SIZE;
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        PMIX_INFO_DESTRUCT(&info[1]);
         cb.key = NULL;
-        cb.info = NULL;
-        cb.ninfo = 0;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
+        /* it is okay if there are no local procs */
+        if (PMIX_SUCCESS == rc) {
+            /* the data is the first value on the cb.kvs list */
+            if (1 != pmix_list_get_size(&cb.kvs)) {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                PMIX_DESTRUCT(&cb);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+            ns->local_size = kv->value->data.uint32;
             PMIX_DESTRUCT(&cb);
-            return rc;
         }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
+    }
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***priors)
+{
+    pmdl_nspace_t *ns, *ns2;
+    char *param;
+    pmix_status_t rc;
+    uint16_t u16;
+    pmix_kval_t *kv;
+    uint32_t n;
+    pmix_cb_t cb;
+
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                        "pmdl:mpich: setup fork for %s", PMIX_NAME_PRINT(proc));
+
+    /* don't do MPICH again if already done */
+    if (NULL != *priors) {
+        char **t2 = *priors;
+        for (n = 0; NULL != t2[n]; n++) {
+            if (0 == strncmp(t2[n], "mpich", 4)) {
+                return PMIX_ERR_TAKE_NEXT_OPTION;
+            }
         }
-        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-        pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
-        pmix_argv_append_nosize(&tmp, ev1);
-        free(ev1);
+    }
+    /* flag that we worked on this */
+    pmix_argv_append_nosize(priors, "mpich");
+
+    /* see if we already have this nspace */
+    ns = NULL;
+    PMIX_LIST_FOREACH (ns2, &mynspaces, pmdl_nspace_t) {
+        if (PMIX_CHECK_NSPACE(ns2->nspace, proc->nspace)) {
+            ns = ns2;
+            break;
+        }
+    }
+    if (NULL == ns) {
+        /* we don't know anything about this one or
+         * it doesn't have any mpich-based apps */
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    /* pass the proc's global rank */
+    if (0 > asprintf(&param, "%u", proc->rank)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("PMI_RANK", param, true, env);
+    free(param);
+
+    /* pass the job size */
+    if (0 > asprintf(&param, "%u", ns->job_size)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("PMI_SIZE", param, true, env);
+    free(param);
+
+    /* pass the local size */
+    if (0 > asprintf(&param, "%u", ns->local_size)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("MPI_LOCALNRANKS", param, true, env);
+    free(param);
+
+    /* pass the local rank */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = (pmix_proc_t *) proc;
+    cb.copy = true;
+    cb.key = PMIX_LOCAL_RANK;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    cb.key = NULL;
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         PMIX_DESTRUCT(&cb);
+        return rc;
     }
-    PMIX_INFO_DESTRUCT(&info[0]);
-
-    if (NULL != tmp) {
-        ev1 = pmix_argv_join(tmp, ' ');
-        pmix_argv_free(tmp);
-        PMIX_INFO_LOAD(&info[0], "OMPI_APP_SIZES", ev1, PMIX_STRING);
-        free(ev1);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
-        PMIX_INFO_DESTRUCT(&info[0]);
-    }
-
-    /* construct the list of app leaders */
-    PMIX_INFO_LOAD(&info[0], PMIX_APP_INFO, NULL, PMIX_BOOL);
-    tmp = NULL;
-    for (n = 0; n < ns->num_apps; n++) {
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-        cb.proc = &undef;
-        cb.copy = true;
-        cb.info = info;
-        cb.ninfo = 2;
-        cb.key = PMIX_APPLDR;
-        PMIX_INFO_LOAD(&info[1], PMIX_APPNUM, &n, PMIX_UINT32);
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        PMIX_INFO_DESTRUCT(&info[1]);
-        cb.key = NULL;
-        cb.info = NULL;
-        cb.ninfo = 0;
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        /* the data is the first value on the cb.kvs list */
-        if (1 != pmix_list_get_size(&cb.kvs)) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            PMIX_DESTRUCT(&cb);
-            return PMIX_ERR_BAD_PARAM;
-        }
-        kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
-        pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
-        pmix_argv_append_nosize(&tmp, ev1);
-        free(ev1);
+    /* the data is the first value on the cb.kvs list */
+    if (1 != pmix_list_get_size(&cb.kvs)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_BAD_PARAM;
     }
-    PMIX_INFO_DESTRUCT(&info[0]);
+    kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
+    u16 = kv->value->data.uint16;
+    PMIX_DESTRUCT(&cb);
+    if (0 > asprintf(&param, "%lu", (unsigned long) u16)) {
+        return PMIX_ERR_NOMEM;
+    }
+    pmix_setenv("MPI_LOCALNRANKID", param, true, env);
+    free(param);
 
-    if (NULL != tmp) {
-        ev1 = pmix_argv_join(tmp, ' ');
-        pmix_argv_free(tmp);
-        tmp = NULL;
-        PMIX_INFO_LOAD(&info[0], "OMPI_FIRST_RANKS", ev1, PMIX_STRING);
-        free(ev1);
-        PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
-        PMIX_INFO_DESTRUCT(&info[0]);
-    }
+    /* pass the hostname */
+    pmix_setenv("MPIR_CVAR_CH3_INTERFACE_HOSTNAME", pmix_globals.hostname, true, env);
 
     return PMIX_SUCCESS;
 }
