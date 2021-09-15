@@ -50,6 +50,8 @@ int main(int argc, char **argv)
     char **client_env = NULL;
     char **client_argv = NULL;
     int rc, i;
+    test_params params;
+    validation_params val_params;
     struct stat stat_buf;
     int test_fail = 0;
     char *tmp;
@@ -102,7 +104,7 @@ int main(int argc, char **argv)
     }
 
     // fork of other servers happens below in server_init
-    if (PMIX_SUCCESS != (rc = server_init(&params, &val_params))) {
+    if (PMIX_SUCCESS != (rc = server_init(&val_params))) {
         free_params(&params, &val_params);
         return rc;
     }
