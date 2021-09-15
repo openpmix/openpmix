@@ -472,6 +472,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CMD_LINE                       "pmix.cmd.line"         // (char*) command line executing in the specified nspace
 #define PMIX_FORKEXEC_AGENT                 "pmix.fe.agnt"          // (char*) command line of fork/exec agent to be used for starting
                                                                     //         local processes
+#define PMIX_JOB_TIMEOUT                    "pmix.job.time"         // (int) time in sec before job should time out (0 => infinite)
+#define PMIX_SPAWN_TIMEOUT                  "pmix.sp.time"          // (int) time in sec before spawn operation should time out (0 => infinite)
+                                                                    //       Logically equivalent to passing the PMIX_TIMEOUT attribute to the
+                                                                    //       PMIx_Spawn API, it is provided as a separate attribute to distinguish
+                                                                    //       it from the PMIX_JOB_TIMEOUT attribute
 #define PMIX_TIMEOUT_STACKTRACES            "pmix.tim.stack"        // (bool) include process stacktraces in timeout report from a job
 #define PMIX_TIMEOUT_REPORT_STATE           "pmix.tim.state"        // (bool) report process states in timeout report from a job
 #define PMIX_APP_ARGV                       "pmix.app.argv"         // (char*) consolidated argv passed to the spawn command for the given app
