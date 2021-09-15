@@ -44,7 +44,7 @@ dist_pmixdata_DATA += contrib/pmix-valgrind.supp
 endif
 
 if PMIX_TESTS_EXAMPLES
-SUBDIRS += . test examples
+SUBDIRS += . test/test_v2 test examples
 endif
 
 if WANT_INSTALL_HEADERS

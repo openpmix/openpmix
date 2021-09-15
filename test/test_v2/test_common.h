@@ -20,8 +20,8 @@
 #ifndef TEST_COMMON_H
 #define TEST_COMMON_H
 
-#include <pmix_common.h>
-#include <src/include/pmix_config.h>
+#include "pmix_common.h"
+#include "src/include/pmix_config.h"
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -215,11 +215,10 @@ typedef struct {
     double fence_time_multiplier;
 } test_params;
 
-extern test_params params;
 
 void parse_cmd_server(int argc, char **argv, test_params *params, validation_params *v_params, char ***t_argv);
 void parse_cmd_client(int argc, char **argv, test_params *params, validation_params *v_params,
-                      int (*parse_test_ptr)());
+                      int (*parse_test_ptr)(int *, int, char **, test_params *, validation_params *));
 void parse_rank_placement_string(char *placement_str, int num_nodes);
 void populate_nodes_default_placement(uint32_t num_nodes, int num_procs);
 void populate_nodes_custom_placement_string(char *placement_str, int num_nodes);
@@ -230,15 +229,16 @@ int parse_replace(char *replace_param, int store, int *key_num);
 
 void default_params(test_params *params, validation_params *v_params);
 void init_nodes(int num_nodes);
+void free_nodes(int num_nodes);
 void free_params(test_params *params, validation_params *vparams);
 void set_client_argv(test_params *params, char ***argv, char **ltest_argv);
 
 void pmixt_exit(int exit_code);
-void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, test_params *params,
-                           validation_params *v_params);
+void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, validation_params *v_params);
 void pmixt_post_init(pmix_proc_t *this_proc, test_params *params, validation_params *val_params);
 void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params, validation_params *v_params);
-void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params, int (*parse_tst_ptr)());
+void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params,
+                    int (*parse_tst_ptr)(int *, int, char **, test_params *, validation_params *));
 void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value,
                                const pmix_data_type_t expected_type, validation_params *val_params);
 

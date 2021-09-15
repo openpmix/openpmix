@@ -20,10 +20,10 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/include/pmix_config.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
-#include <src/include/pmix_config.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
