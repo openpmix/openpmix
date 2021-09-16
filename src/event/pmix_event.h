@@ -181,7 +181,7 @@ PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
 #define PMIX_REPORT_EVENT(e, p, r, f)                                                          \
     do {                                                                                       \
         pmix_event_chain_t *ch, *cp;                                                           \
-        size_t n;                                                                              \
+        size_t _n;                                                                             \
                                                                                                \
         ch = NULL;                                                                             \
         /* see if we already have this event cached */                                         \
@@ -231,8 +231,8 @@ PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
             PMIX_INFO_CREATE(info_tmp, ninfo_tmp);                                             \
             /* must keep the hdlr name and return object at the end, so prepend */             \
             PMIX_INFO_LOAD(&info_tmp[0], PMIX_PROCID, &proc_tmp, PMIX_PROC);                   \
-            for (n = 0; n < ch->ninfo; n++) {                                                  \
-                PMIX_INFO_XFER(&info_tmp[n + 1], &ch->info[n]);                                \
+            for (_n = 0; _n < ch->ninfo; _n++) {                                               \
+                PMIX_INFO_XFER(&info_tmp[_n + 1], &ch->info[_n]);                              \
             }                                                                                  \
             PMIX_INFO_FREE(ch->info, ch->nallocated);                                          \
             ch->nallocated = ninfo_tmp;                                                        \
