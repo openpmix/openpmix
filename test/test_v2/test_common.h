@@ -383,7 +383,7 @@ typedef struct {
             if (data_ex) {                                                                    \
                 bool value = 1;                                                               \
                 PMIX_INFO_CREATE(info, 1);                                                    \
-                (void) strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);                \
+                pmix_strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);                \
                 pmix_value_load(&info->value, &value, PMIX_BOOL);                             \
                 ninfo = 1;                                                                    \
             }                                                                                 \

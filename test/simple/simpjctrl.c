@@ -124,11 +124,11 @@ int main(int argc, char **argv)
      * wildcard rank as it doesn't relate to a specific rank. Setup
      * a name to retrieve such values */
     PMIX_PROC_CONSTRUCT(&proc);
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
 
     /* get our job size */
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n", myproc.nspace,
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
     flag = true;
     PMIX_INFO_LOAD(&info[0], PMIX_JOB_CTRL_PREEMPTIBLE, (void *) &flag, PMIX_BOOL);
     /* can't use "load" to load a pmix_data_array_t */
-    (void) strncpy(info[1].key, PMIX_JOB_CTRL_CHECKPOINT_METHOD, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[1].key, PMIX_JOB_CTRL_CHECKPOINT_METHOD, PMIX_MAX_KEYLEN);
     info[1].value.type = PMIX_DATA_ARRAY;
     dptr = (pmix_data_array_t *) malloc(sizeof(pmix_data_array_t));
     info[1].value.data.darray = dptr;

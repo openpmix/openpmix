@@ -40,7 +40,7 @@ int test_connect_disconnect(char *my_nspace, int my_rank)
     pmix_proc_t proc;
     cd_cbdata cbdata;
 
-    (void) strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
 
     rc = PMIx_Connect(&proc, 1, NULL, 0);

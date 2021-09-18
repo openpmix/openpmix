@@ -630,7 +630,7 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t *
         *nranks = params.ns_size;
         PMIX_PROC_CREATE(*ranks, params.ns_size);
         for (j = 0; j < (size_t) params.ns_size; j++) {
-            (void) strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
+            pmix_strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
             (*ranks)[j].rank = j;
         }
     } else {
@@ -649,7 +649,7 @@ int get_all_ranks_from_namespace(test_params params, char *nspace, pmix_proc_t *
             *nranks = num_ranks;
             PMIX_PROC_CREATE(*ranks, num_ranks);
             for (j = 0; j < num_ranks; j++) {
-                (void) strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
+                pmix_strncpy((*ranks)[j].nspace, nspace, PMIX_MAX_NSLEN);
                 (*ranks)[j].rank = j;
             }
         } else {
