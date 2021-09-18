@@ -258,7 +258,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
     int rc;
     pmix_proc_t proc;
 
-    (void) strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     /* get number of neighbors on this node */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
@@ -343,7 +343,7 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
     pmix_proc_t proc;
     pmix_info_t info;
 
-    (void) strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = my_rank;
 
     for (i = 0; i < 3; i++) {

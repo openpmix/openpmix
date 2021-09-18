@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
 
     /* test something */
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get failed: %s", myproc.nspace, myproc.rank,

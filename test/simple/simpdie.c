@@ -94,7 +94,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
 
     /* get our job size */
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
@@ -111,7 +111,7 @@ int main(int argc, char **argv)
 
     /* call fence to sync */
     PMIX_PROC_CONSTRUCT(&proc);
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank,

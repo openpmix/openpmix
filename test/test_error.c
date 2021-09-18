@@ -72,7 +72,7 @@ int test_error(char *my_nspace, int my_rank, test_params params)
                                 &errhandler_refs[1]);
     /* inject error from client */
     done = false;
-    (void) strncpy(source.nspace, my_nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(source.nspace, my_nspace, PMIX_MAX_NSLEN);
     source.rank = my_rank;
     /* change error value to test other error notifications */
     PMIx_Notify_event(TEST_NOTIFY, &source, PMIX_RANGE_NAMESPACE, NULL, 0, op1_callbk, NULL);

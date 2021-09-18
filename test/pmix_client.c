@@ -65,7 +65,7 @@ int main(int argc, char **argv)
     pmix_info_t info[1];
     size_t ninfo = 0;
     if (NULL != params.gds_mode) {
-        (void) strncpy(info[0].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN);
+        pmix_strncpy(info[0].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN);
         info[0].value.type = PMIX_STRING;
         info[0].value.data.string = strdup(params.gds_mode);
         ninfo = 1;

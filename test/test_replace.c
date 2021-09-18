@@ -65,7 +65,7 @@ int test_replace(char *my_nspace, pmix_rank_t my_rank, test_params params)
     }
 
     PMIX_PROC_CONSTRUCT(&proc);
-    (void) strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
 
     /* Submit the data */
