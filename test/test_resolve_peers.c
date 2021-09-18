@@ -94,11 +94,11 @@ int test_resolve_peers(char *my_nspace, int my_rank, test_params params)
         /* add to procs array all processes from own namespace and all processes from this
          * namespace. Make sure that processes are placed in the same order. */
         if (0 < strncmp(nspace, my_nspace, PMIX_MAX_NSLEN)) {
-            (void) strncpy(procs[0].nspace, nspace, PMIX_MAX_NSLEN);
-            (void) strncpy(procs[1].nspace, my_nspace, PMIX_MAX_NSLEN);
+            pmix_strncpy(procs[0].nspace, nspace, PMIX_MAX_NSLEN);
+            pmix_strncpy(procs[1].nspace, my_nspace, PMIX_MAX_NSLEN);
         } else {
-            (void) strncpy(procs[1].nspace, nspace, PMIX_MAX_NSLEN);
-            (void) strncpy(procs[0].nspace, my_nspace, PMIX_MAX_NSLEN);
+            pmix_strncpy(procs[1].nspace, nspace, PMIX_MAX_NSLEN);
+            pmix_strncpy(procs[0].nspace, my_nspace, PMIX_MAX_NSLEN);
         }
         procs[0].rank = PMIX_RANK_WILDCARD;
         procs[1].rank = PMIX_RANK_WILDCARD;

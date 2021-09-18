@@ -58,7 +58,7 @@ int main(int argc, char **argv)
 
     /* look for network data */
     memset(&proc, 0, sizeof(pmix_proc_t));
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
 
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, "my.net.key", NULL, 0, &val))

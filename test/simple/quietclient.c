@@ -128,7 +128,7 @@ int main(int argc, char **argv)
     PMIX_INFO_FREE(iptr, 2);
 
     /* test something */
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get failed: %s", myproc.nspace, myproc.rank,
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
     }
 
     /* get our job size */
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
@@ -227,7 +227,7 @@ int main(int argc, char **argv)
 
         /* call fence to ensure the data is received */
         PMIX_PROC_CONSTRUCT(&proc);
-        (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
         proc.rank = PMIX_RANK_WILDCARD;
         if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
             pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Fence failed: %s", myproc.nspace,
@@ -236,7 +236,7 @@ int main(int argc, char **argv)
         }
 
         /* check the returned data */
-        (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
         for (j = 0; j <= cnt; j++) {
             for (n = 0; n < nprocs; n++) {
                 proc.rank = n;
