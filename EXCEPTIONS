@@ -58,6 +58,13 @@ PMIX_NODE_OVERSUBSCRIBED            "pmix.ndosub"           // (bool) true if nu
                                                             //        exceeds the number of slots allocated to it
 PMIX_SINGLETON                      "pmix.singleton"        // (char*) String representation (nspace.rank) of proc ID for the singleton
                                                             //         the server was started to support
+PMIX_JOB_TIMEOUT                    "pmix.job.time"         // (int) time in sec before job should time out (0 => infinite)
+PMIX_SPAWN_TIMEOUT                  "pmix.sp.time"          // (int) time in sec before spawn operation should time out (0 => infinite)
+                                                            //       Logically equivalent to passing the PMIX_TIMEOUT attribute to the
+                                                            //       PMIx_Spawn API, it is provided as a separate attribute to distinguish
+                                                            //       it from the PMIX_JOB_TIMEOUT attribute
+PMIX_LOCAL_COLLECTIVE_STATUS        "pmix.loc.col.st"       // (pmix_status_t) status code for local collective operation bei>
+                                                            //         reported to host by server library
 
 
 
