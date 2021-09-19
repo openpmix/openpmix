@@ -827,7 +827,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     size_t sz = 0;
     pmix_buffer_t bucket;
     pmix_info_t *info = NULL;
-    size_t ninfo = 0, n, nmbrs, idx;
+    size_t ninfo = 0, ninf, n, nmbrs, idx;
     struct timeval tv = {0, 0};
     pmix_list_t expand;
     pmix_group_caddy_t *gcd;
@@ -917,25 +917,29 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
 
     /* unpack the number of provided info structs */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(info, ninfo);
-        if (NULL == info) {
-            PMIX_PROC_FREE(procs, nprocs);
-            return PMIX_ERR_NOMEM;
-        }
+    ninfo = ninf + 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    if (NULL == info) {
+        PMIX_PROC_FREE(procs, nprocs);
+        return PMIX_ERR_NOMEM;
+    }
+    /* store the default response */
+    rc = PMIX_SUCCESS;
+    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    if (0 < ninf) {
         /* unpack the info */
-        cnt = ninfo;
+        cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
         /* see if we are to collect data or enforce a timeout - we don't internally care
          * about any other directives */
-        for (n = 0; n < ninfo; n++) {
+        for (n = 0; n < ninf; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_COLLECT_DATA)) {
                 collect_data = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
@@ -1032,8 +1036,9 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
              * will acknowledge successful acceptance of the fence request,
              * but the client still requires a return from the callback in
              * that scenario, so we leave this caddy on the list of local cbs */
-            trk->modexcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
-            rc = PMIX_SUCCESS;
+            rc = trk->info[trk->ninfo-1].value.data.status;
+            trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
+            rc = PMIX_SUCCESS;  // ensure the switchyard doesn't release the caddy
             goto cleanup;
         }
         /* this fence involves non-local procs - check if the
@@ -1106,7 +1111,8 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
              * the modexcbfunc thread-shifts the call prior to processing,
              * so it is okay to call it directly from here */
             trk->host_called = false; // the host will not be calling us back
-            trk->modexcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+            rc = trk->info[trk->ninfo-1].value.data.status;
+            trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
             /* ensure that the switchyard doesn't release the caddy */
             rc = PMIX_SUCCESS;
         }
@@ -1678,7 +1684,7 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     int32_t cnt;
     pmix_status_t rc;
     pmix_info_t *info = NULL;
-    size_t nprocs, ninfo;
+    size_t nprocs, ninfo, ninf;
     pmix_server_trkr_t *trk;
     pmix_proc_t *procs = NULL;
 
@@ -1715,18 +1721,22 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
 
     /* unpack the number of provided info structs */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(info, ninfo);
-        if (NULL == info) {
-            rc = PMIX_ERR_NOMEM;
-            goto cleanup;
-        }
+    ninfo = ninf + 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    if (NULL == info) {
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
+    /* store the default response */
+    rc = PMIX_SUCCESS;
+    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    if (0 < ninf) {
         /* unpack the info */
-        cnt = ninfo;
+        cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
@@ -1837,7 +1847,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     pmix_status_t rc;
     pmix_proc_t *procs = NULL;
     pmix_info_t *info = NULL;
-    size_t nprocs, ninfo, n;
+    size_t nprocs, ninfo, n, ninf;
     pmix_server_trkr_t *trk;
     struct timeval tv = {0, 0};
 
@@ -1877,24 +1887,28 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
 
     /* unpack the number of provided info structs */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(info, ninfo);
-        if (NULL == info) {
-            rc = PMIX_ERR_NOMEM;
-            goto cleanup;
-        }
+    ninfo = ninf + 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    if (NULL == info) {
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
+    /* store the default response */
+    rc = PMIX_SUCCESS;
+    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    if (0 < ninf) {
         /* unpack the info */
-        cnt = ninfo;
+        cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             goto cleanup;
         }
         /* check for a timeout */
-        for (n = 0; n < ninfo; n++) {
+        for (n = 0; n < ninf; n++) {
             if (0 == strncmp(info[n].key, PMIX_TIMEOUT, PMIX_MAX_KEYLEN)) {
                 tv.tv_sec = info[n].value.data.uint32;
                 break;
@@ -3990,7 +4004,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     pmix_proc_t *procs;
     pmix_group_t *grp, *pgrp;
     pmix_info_t *info = NULL, *iptr;
-    size_t n, ninfo, nprocs, n2;
+    size_t n, ninfo, ninf, nprocs, n2;
     pmix_server_trkr_t *trk;
     struct timeval tv = {0, 0};
     bool need_cxtid = false;
@@ -4118,14 +4132,18 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
 
     /* unpack the number of directives */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(info, ninfo);
-        cnt = ninfo;
+    ninfo = ninf + 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    /* store default response */
+    rc = PMIX_SUCCESS;
+    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    if (0 < ninf) {
+        cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -4134,12 +4152,10 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     }
 
     /* find/create the local tracker for this operation */
-    if (NULL
-        == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_CONSTRUCT_CMD))) {
+    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_CONSTRUCT_CMD))) {
         /* If no tracker was found - create and initialize it once */
-        if (NULL
-            == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs,
-                                  PMIX_GROUP_CONSTRUCT_CMD))) {
+        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs,
+                                       PMIX_GROUP_CONSTRUCT_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             rc = PMIX_ERROR;
@@ -4318,7 +4334,7 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
     pmix_status_t rc;
     char *grpid;
     pmix_info_t *info = NULL;
-    size_t n, ninfo;
+    size_t n, ninfo, ninf;
     pmix_server_trkr_t *trk;
     pmix_group_t *grp, *pgrp;
     struct timeval tv = {0, 0};
@@ -4357,14 +4373,18 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
 
     /* unpack the number of directives */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninfo, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    if (0 < ninfo) {
-        PMIX_INFO_CREATE(info, ninfo);
-        cnt = ninfo;
+    ninfo = ninf + 1;
+    PMIX_INFO_CREATE(info, ninfo);
+    /* store default response */
+    rc = PMIX_SUCCESS;
+    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    if (0 < ninf) {
+        cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -4372,7 +4392,7 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
         }
         /* see if we are to enforce a timeout - we don't internally care
          * about any other directives */
-        for (n = 0; n < ninfo; n++) {
+        for (n = 0; n < ninf; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
                 tv.tv_sec = info[n].value.data.uint32;
                 break;
@@ -4381,11 +4401,9 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
     }
 
     /* find/create the local tracker for this operation */
-    if (NULL
-        == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD))) {
+    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD))) {
         /* If no tracker was found - create and initialize it once */
-        if (NULL
-            == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD))) {
+        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD))) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             rc = PMIX_ERROR;

@@ -741,7 +741,17 @@ static void errhandler(size_t evhdlr_registration_id, pmix_status_t status,
                        pmix_info_t results[], size_t nresults,
                        pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %d", status);
+    pmix_output(0, "SERVER: ERRHANDLER CALLED WITH STATUS %s", PMIx_Error_string(status));
+
+    if (PMIX_ERR_LOST_CONNECTION == status) {
+        // give the procs a chance to do something
+        usleep(10000);
+        /* let the other clients know */
+        PMIx_Notify_event(PMIX_ERR_PROC_ABORTED, &pmix_globals.myid,
+                          PMIX_RANGE_LOCAL, NULL, 0,
+                          NULL, NULL);
+    }
+
     /* we must NOT tell the event handler state machine that we
      * are the last step as that will prevent it from notifying
      * anyone else that might be listening for declarations */
@@ -809,6 +819,11 @@ static pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs, const 
 
     scd = PMIX_NEW(pmix_shift_caddy_t);
     scd->status = PMIX_SUCCESS;
+    if (NULL != info) {
+        if (PMIX_CHECK_KEY(&info[ninfo-1], PMIX_LOCAL_COLLECTIVE_STATUS)) {
+            scd->status = info[ninfo-1].value.data.status;
+        }
+    }
     scd->data = data;
     scd->ndata = ndata;
     scd->cbfunc.modexcbfunc = cbfunc;

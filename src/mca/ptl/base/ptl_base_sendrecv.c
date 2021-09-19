@@ -104,6 +104,12 @@ static void lost_connection(pmix_peer_t *peer)
             }
             /* it should - adjust the count */
             --trk->nlocal;
+            if (0 < trk->nlocal) {
+                rc = PMIX_ERR_PARTIAL_SUCCESS;
+            } else {
+                rc = PMIX_ERR_LOST_CONNECTION;
+            }
+            PMIX_INFO_LOAD(&trk->info[trk->ninfo-1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
             /* see if it already participated in this tracker */
             PMIX_LIST_FOREACH_SAFE (rinfo, rnext, &trk->local_cbs, pmix_server_caddy_t) {
                 if (!PMIX_CHECK_PROCID(&rinfo->peer->info->pname, &peer->info->pname)) {
@@ -119,7 +125,7 @@ static void lost_connection(pmix_peer_t *peer)
             if (trk->host_called) {
                 continue;
             }
-            /* are we now locallly complete? */
+            /* are we now locally complete? */
             if (trk->def_complete && trk->nlocal == pmix_list_get_size(&trk->local_cbs)) {
                 /* if this is a local-only collective, then resolve it now */
                 if (trk->local) {
@@ -128,16 +134,19 @@ static void lost_connection(pmix_peer_t *peer)
                      * as otherwise the collective will never complete */
                     if (PMIX_FENCENB_CMD == trk->type) {
                         if (NULL != trk->modexcbfunc) {
-                            trk->modexcbfunc(PMIX_ERR_LOST_CONNECTION, NULL, 0, trk, NULL,
-                                             NULL);
+                            trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
                         }
                     } else if (PMIX_CONNECTNB_CMD == trk->type) {
                         if (NULL != trk->op_cbfunc) {
-                            trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION, trk);
+                            trk->op_cbfunc(rc, trk);
                         }
                     } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
                         if (NULL != trk->op_cbfunc) {
-                            trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION, trk);
+                            trk->op_cbfunc(rc, trk);
+                        }
+                    } else if (PMIX_GROUP_CONSTRUCT_CMD == trk->type) {
+                        if (NULL != trk->op_cbfunc) {
+                            trk->op_cbfunc(rc, trk);
                         }
                     }
                 } else {
@@ -146,8 +155,8 @@ static void lost_connection(pmix_peer_t *peer)
                     if (PMIX_FENCENB_CMD == trk->type) {
                         trk->host_called = true;
                         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info,
-                                                       trk->ninfo, NULL, 0, trk->modexcbfunc,
-                                                       trk);
+                                                       trk->ninfo, NULL, 0,
+                                                       trk->modexcbfunc, trk);
                         if (PMIX_SUCCESS != rc) {
                             pmix_list_remove_item(&pmix_server_globals.collectives,
                                                   &trk->super);
