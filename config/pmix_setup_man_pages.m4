@@ -39,7 +39,7 @@ AC_DEFUN([PMIX_SETUP_MAN_PAGES],[
 
     AS_IF([test $PMIX_ENABLE_MAN_PAGES -eq 1],
           [PMIX_SUMMARY_ADD([[Options]],[[Manpages built]], [pmix_manpages], [yes])],
-          [PMIX_SUMMARY_ADD([[Options]],[[Manpages built]], [pmix_manpages], [yes])])
+          [PMIX_SUMMARY_ADD([[Options]],[[Manpages built]], [pmix_manpages], [no])])
 
 ])
 
