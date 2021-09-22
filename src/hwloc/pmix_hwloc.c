@@ -187,7 +187,8 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
     }
     passed_thru = true;
 
-    pmix_output_verbose(2, pmix_hwloc_output, "%s:%s", __FILE__, __func__);
+    pmix_output_verbose(2, pmix_hwloc_output,
+                        "%s:%s", __FILE__, __func__);
 
     /* see if they want us to share the topology with our clients */
     for (n = 0; n < ninfo; n++) {
@@ -222,8 +223,7 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
         kv->value->data.topo = &pmix_globals.topology;
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kv);
         PMIX_RELEASE(kv);
-        pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored", __FILE__,
-                            __func__);
+        pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored", __FILE__, __func__);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
@@ -355,7 +355,8 @@ tryxml:
 #endif
 
     /* try to get the v1 XML string */
-    pmix_output_verbose(2, pmix_hwloc_output, "%s:%s checking v1 xml",
+    pmix_output_verbose(2, pmix_hwloc_output,
+                        "%s:%s checking v1 xml",
                         __FILE__, __func__);
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
@@ -461,7 +462,8 @@ tryself:
 
 sharetopo:
     /* setup the XML representation(s) */
-    pmix_output_verbose(2, pmix_hwloc_output, "%s:%s sharing topology",
+    pmix_output_verbose(2, pmix_hwloc_output,
+                        "%s:%s sharing topology",
                         __FILE__, __func__);
 
 #if HWLOC_API_VERSION < 0x20000
@@ -471,7 +473,8 @@ sharetopo:
      * themselves as this could overwhelm the local
      * system on large-scale SMPs */
     if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len)) {
-        pmix_output_verbose(2, pmix_hwloc_output, "%s:%s export v1 xml",
+        pmix_output_verbose(2, pmix_hwloc_output,
+                            "%s:%s export v1 xml",
                             __FILE__, __func__);
         kv = PMIX_NEW(pmix_kval_t);
         kv->key = strdup(PMIX_HWLOC_XML_V1);
@@ -508,9 +511,8 @@ sharetopo:
         hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
     }
     /* and as a v1 xml string, should an older client attach */
-    if (0
-        == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len,
-                                           HWLOC_TOPOLOGY_EXPORT_XML_FLAG_V1)) {
+    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len,
+                                             HWLOC_TOPOLOGY_EXPORT_XML_FLAG_V1)) {
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s export v1 xml",
                             __FILE__, __func__);
         kv = PMIX_NEW(pmix_kval_t);
