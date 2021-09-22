@@ -745,8 +745,11 @@ cdef class PMIxClient:
         pmix_free_apps(apps, napps)
         if 0 < ninfo:
             pmix_free_info(jinfo, ninfo)
-        pyns = nspace
-        return rc, pyns.decode('ascii')
+        if PMIX_SUCCESS != rc:
+            pyns = None
+        else:
+            pyns = nspace.decode('ascii')
+        return rc, pyns
 
     def connect(self, peers:list, pyinfo:list):
         cdef pmix_proc_t *procs
