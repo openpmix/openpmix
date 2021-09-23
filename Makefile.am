@@ -33,7 +33,7 @@ AM_DISTCHECK_CONFIGURE_FLAGS = --disable-dlopen
 headers =
 sources =
 nodist_headers =
-EXTRA_DIST = AUTHORS README HACKING INSTALL VERSION LICENSE autogen.pl Makefile.pmix-rules EXCEPTIONS
+EXTRA_DIST = AUTHORS README HACKING INSTALL VERSION LICENSE autogen.pl EXCEPTIONS
 
 # Only install the valgrind suppressions file and man pages
 # if we're building in standalone mode
@@ -56,8 +56,7 @@ else
 noinst_HEADERS = $(headers)
 endif
 
-nroff:
-	(cd man; $(MAKE) nroff)
+include man/Makefile.include
 
 dist-hook:
 	env LS_COLORS= sh "$(top_srcdir)/config/distscript.sh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_REPO_REV)"

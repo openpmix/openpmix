@@ -156,6 +156,7 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
                 }
             }
 
+            pmix_output(0, "SILENCE WARNINGS %u %u", uid, gid);
             if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_CAPACITY_LIMIT)) {
                 /* ADD HERE:
                  *

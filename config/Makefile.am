@@ -30,7 +30,6 @@ EXTRA_DIST = \
 	pmix_get_version.sh \
 	distscript.sh \
 	getdate.sh \
-	md2nroff.pl \
     pmix_check_alps.m4 \
 	pmix_check_attributes.m4 \
 	pmix_check_broken_qsort.m4 \
@@ -69,7 +68,6 @@ EXTRA_DIST = \
 	pmix_setup_hwloc.m4 \
 	pmix_setup_libev.m4 \
 	pmix_setup_libevent.m4 \
-	pmix_setup_man_pages.m4 \
 	pmix_setup_wrappers.m4 \
 	pmix_try_assemble.m4 \
 	pmix.m4 \
