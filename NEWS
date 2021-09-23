@@ -25,6 +25,17 @@ multiple release branches.
 
 4.1.1 -- TBD
 ----------------------
+**** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
+**** for building and installing man pages.
+ - PR #2299: Update 4.1.1 rc2
+    - Update VERSION and NEWS
+    - Add some spawn-specific timeout attributes
+    - Resolve race condition in lost connection
+    - Provide "partial_success" error when collectives not complete
+    - Only conditionally decode the nspace return value when we
+        are sure the spawn was successful
+    - Correctly copy stone age hwloc topologies
+    - Remove man page Markdown source and build dependency on pandoc
  - PR #2277: Update v4.1.1 release candidate
     - Add missing m4 file
     - Add a Standard extension value to the compliance version
