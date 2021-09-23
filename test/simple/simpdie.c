@@ -47,8 +47,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 {
     size_t n;
 
-    pmix_output(0, "Client %s:%d NOTIFIED with status %d source %s:%d and %d info", myproc.nspace,
-                myproc.rank, status, source->nspace, source->rank, (int) ninfo);
+    pmix_output(0, "Client %s:%d NOTIFIED with status %s source %s:%d and %d info", myproc.nspace,
+                myproc.rank, PMIx_Error_string(status), source->nspace, source->rank, (int) ninfo);
     for (n = 0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_PROCID, PMIX_MAX_KEYLEN)
             && PMIX_PROC == info[n].value.type) {
@@ -82,9 +82,30 @@ int main(int argc, char **argv)
     pmix_value_t *val = &value;
     pmix_proc_t proc;
     uint32_t nprocs;
-    pmix_status_t code[5] = {PMIX_ERR_PROC_ABORTING, PMIX_ERR_PROC_ABORTED,
+    pmix_status_t code[6] = {PMIX_ERR_PROC_ABORTING, PMIX_ERR_PROC_ABORTED,
                              PMIX_ERR_PROC_REQUESTED_ABORT, PMIX_ERR_JOB_TERMINATED,
-                             PMIX_ERR_UNREACH};
+                             PMIX_ERR_UNREACH, PMIX_ERR_LOST_CONNECTION};
+    bool fail_early = false;
+    bool fail_after_participate = false;
+    int opt;
+
+    if (1 == argc) {
+        fail_early = true;
+    } else if (2 == argc) {
+        opt = strtol(argv[1], NULL, 10);
+        switch(opt) {
+            case 0:
+                fail_early = true;
+                break;
+            case 1:
+                fail_after_participate = true;
+                break;
+            default:
+                fprintf(stderr, "Unknown case\n");
+                exit(1);
+        }
+    }
+
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %d", myproc.nspace, myproc.rank,
@@ -94,7 +115,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client ns %s rank %d: Running", myproc.nspace, myproc.rank);
 
     /* get our job size */
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
@@ -107,11 +128,11 @@ int main(int argc, char **argv)
     completed = false;
 
     /* register our errhandler */
-    PMIx_Register_event_handler(code, 5, NULL, 0, notification_fn, errhandler_reg_callbk, NULL);
+    PMIx_Register_event_handler(code, 6, NULL, 0, notification_fn, errhandler_reg_callbk, NULL);
 
     /* call fence to sync */
     PMIX_PROC_CONSTRUCT(&proc);
-    (void) strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Fence failed: %d", myproc.nspace, myproc.rank,
@@ -119,27 +140,35 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    /* rank=0 dies */
-    if (4 < nprocs) {
-        /* have one exit */
-        if (0 == myproc.rank) {
+    if (0 == myproc.rank) {
+        if (fail_early) {
+            // wait a little bit to let someone else start the collective
+            usleep(1000);
             pmix_output(0, "Client ns %s rank %d: bye-bye!", myproc.nspace, myproc.rank);
             exit(1);
-        } else if (1 == myproc.rank) {
+        } else if (fail_after_participate) {
             usleep(500000);
             pmix_output(0, "Client ns %s rank %d: bye-bye!", myproc.nspace, myproc.rank);
             exit(1);
         }
-    } else if (0 == myproc.rank) {
-        pmix_output(0, "Client ns %s rank %d: bye-bye!", myproc.nspace, myproc.rank);
-        exit(1);
-    }
-    /* everyone simply waits */
-    while (!completed) {
-        struct timespec ts;
-        ts.tv_sec = 0;
-        ts.tv_nsec = 100000;
-        nanosleep(&ts, NULL);
+    } else {
+        if (fail_early) {
+            if (1 != myproc.rank) {
+                // wait a little bit to let the other guy start the collective
+                usleep(2000);
+            }
+            pmix_output(0, "Rank %u calling Fence", myproc.rank);
+            rc = PMIx_Fence(&proc, 1, NULL, 0);
+            // let the user know
+            pmix_output(0, "Rank %u: Fence returned %d(%s)", myproc.rank, rc, PMIx_Error_string(rc));
+            // give the server a chance to learn of the problem
+            while (!completed) {
+                struct timespec ts;
+                ts.tv_sec = 0;
+                ts.tv_nsec = 100000;
+                nanosleep(&ts, NULL);
+            }
+        }
     }
 
 done:

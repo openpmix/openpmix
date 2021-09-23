@@ -46,10 +46,6 @@ dist_pmixdata_DATA =
 nobase_pmix_HEADERS =
 pmixdir = $(pmixincludedir)/$(subdir)
 
-# place to capture sources for backward compatibility libs
-pmi1_sources =
-pmi2_sources =
-
 libpmix_la_LIBADD = \
 	mca/base/libpmix_mca_base.la \
 	$(MCA_pmix_FRAMEWORK_LIBS) \

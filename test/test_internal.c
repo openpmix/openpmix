@@ -39,7 +39,7 @@ int test_internal(char *my_nspace, pmix_rank_t my_rank, test_params params)
     pmix_status_t rc;
 
     PMIX_PROC_CONSTRUCT(&proc);
-    (void) strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = my_rank;
 
     for (idx = 0; idx < params.test_internal; idx++) {

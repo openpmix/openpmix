@@ -430,7 +430,7 @@ int main(int argc, char **argv)
     PMIX_RELEASE(x);
 
     /* fork/exec the test */
-    (void) strncpy(proc.nspace, "foobar", PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, "foobar", PMIX_MAX_NSLEN);
     for (n = 0; n < nprocs; n++) {
         proc.rank = n;
         x = PMIX_NEW(myxfer_t);
@@ -533,19 +533,19 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
     x->ninfo = 7 + nprocs;
 
     PMIX_INFO_CREATE(x->info, x->ninfo);
-    (void) strncpy(x->info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
+    pmix_strncpy(x->info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
     x->info[0].value.type = PMIX_UINT32;
     x->info[0].value.data.uint32 = nprocs;
 
-    (void) strncpy(x->info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
+    pmix_strncpy(x->info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
     x->info[1].value.type = PMIX_UINT32;
     x->info[1].value.data.uint32 = 0;
 
-    (void) strncpy(x->info[2].key, PMIX_LOCAL_SIZE, PMIX_MAX_KEYLEN);
+    pmix_strncpy(x->info[2].key, PMIX_LOCAL_SIZE, PMIX_MAX_KEYLEN);
     x->info[2].value.type = PMIX_UINT32;
     x->info[2].value.data.uint32 = nprocs;
 
-    (void) strncpy(x->info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
+    pmix_strncpy(x->info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
     x->info[3].value.type = PMIX_STRING;
     x->info[3].value.data.string = strdup(ranks);
 
@@ -555,12 +555,12 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
     PMIx_generate_ppn(ranks, &ppn);
     PMIX_INFO_LOAD(&x->info[5], PMIX_PROC_MAP, ppn, PMIX_REGEX);
 
-    (void) strncpy(x->info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
+    pmix_strncpy(x->info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
     x->info[6].value.type = PMIX_UINT32;
     x->info[6].value.data.uint32 = nprocs;
 
     for (n = 0; n < nprocs; n++) {
-        (void) strncpy(x->info[7 + n].key, PMIX_PROC_DATA, PMIX_MAX_KEYLEN);
+        pmix_strncpy(x->info[7 + n].key, PMIX_PROC_DATA, PMIX_MAX_KEYLEN);
         x->info[7 + n].value.type = PMIX_DATA_ARRAY;
         darray = (pmix_data_array_t *) malloc(sizeof(pmix_data_array_t));
         darray->size = 2;
@@ -644,14 +644,14 @@ static pmix_status_t abort_fn(const pmix_proc_t *proc, void *server_object, int 
     /* use the myxfer_t object to ensure we release
      * the caller when notification has been queued */
     x = PMIX_NEW(myxfer_t);
-    (void) strncpy(x->caller.nspace, proc->nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(x->caller.nspace, proc->nspace, PMIX_MAX_NSLEN);
     x->caller.rank = proc->rank;
 
     PMIX_INFO_CREATE(x->info, 2);
-    (void) strncpy(x->info[0].key, "DARTH", PMIX_MAX_KEYLEN);
+    pmix_strncpy(x->info[0].key, "DARTH", PMIX_MAX_KEYLEN);
     x->info[0].value.type = PMIX_INT8;
     x->info[0].value.data.int8 = 12;
-    (void) strncpy(x->info[1].key, "VADER", PMIX_MAX_KEYLEN);
+    pmix_strncpy(x->info[1].key, "VADER", PMIX_MAX_KEYLEN);
     x->info[1].value.type = PMIX_DOUBLE;
     x->info[1].value.data.dval = 12.34;
     x->cbfunc = cbfunc;
@@ -706,9 +706,9 @@ static pmix_status_t publish_fn(const pmix_proc_t *proc, const pmix_info_t info[
 
     for (n = 0; n < ninfo; n++) {
         p = PMIX_NEW(pmix_locdat_t);
-        (void) strncpy(p->pdata.proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
+        pmix_strncpy(p->pdata.proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
         p->pdata.proc.rank = proc->rank;
-        (void) strncpy(p->pdata.key, info[n].key, PMIX_MAX_KEYLEN);
+        pmix_strncpy(p->pdata.key, info[n].key, PMIX_MAX_KEYLEN);
         pmix_value_xfer(&p->pdata.value, (pmix_value_t *) &info[n].value);
         pmix_list_append(&pubdata, &p->super);
     }
@@ -735,9 +735,9 @@ static pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys, const pmix_
         PMIX_LIST_FOREACH (p, &pubdata, pmix_locdat_t) {
             if (0 == strncmp(keys[n], p->pdata.key, PMIX_MAX_KEYLEN)) {
                 p2 = PMIX_NEW(pmix_locdat_t);
-                (void) strncpy(p2->pdata.proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
+                pmix_strncpy(p2->pdata.proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
                 p2->pdata.proc.rank = p->pdata.proc.rank;
-                (void) strncpy(p2->pdata.key, p->pdata.key, PMIX_MAX_KEYLEN);
+                pmix_strncpy(p2->pdata.key, p->pdata.key, PMIX_MAX_KEYLEN);
                 pmix_value_xfer(&p2->pdata.value, &p->pdata.value);
                 pmix_list_append(&results, &p2->super);
                 break;
@@ -750,9 +750,9 @@ static pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys, const pmix_
         for (i = 0; i < n; i++) {
             p = (pmix_locdat_t *) pmix_list_remove_first(&results);
             if (p) {
-                (void) strncpy(pd[i].proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
+                pmix_strncpy(pd[i].proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
                 pd[i].proc.rank = p->pdata.proc.rank;
-                (void) strncpy(pd[i].key, p->pdata.key, PMIX_MAX_KEYLEN);
+                pmix_strncpy(pd[i].key, p->pdata.key, PMIX_MAX_KEYLEN);
                 pmix_value_xfer(&pd[i].value, &p->pdata.value);
             }
         }
@@ -915,7 +915,7 @@ static pmix_status_t query_fn(pmix_proc_t *proct, pmix_query_t *queries, size_t 
     PMIX_INFO_CREATE(info, nqueries);
     for (n = 0; n < nqueries; n++) {
         pmix_output(0, "\tKey: %s", queries[n].keys[0]);
-        (void) strncpy(info[n].key, queries[n].keys[0], PMIX_MAX_KEYLEN);
+        pmix_strncpy(info[n].key, queries[n].keys[0], PMIX_MAX_KEYLEN);
         info[n].value.type = PMIX_STRING;
         if (0 > asprintf(&info[n].value.data.string, "%d", (int) n)) {
             return PMIX_ERROR;
@@ -933,7 +933,7 @@ static void tool_connect_fn(pmix_info_t *info, size_t ninfo, pmix_tool_connectio
     pmix_output(0, "SERVER: TOOL CONNECT");
 
     /* just pass back an arbitrary nspace */
-    (void) strncpy(proc.nspace, "TOOL", PMIX_MAX_NSLEN);
+    pmix_strncpy(proc.nspace, "TOOL", PMIX_MAX_NSLEN);
     proc.rank = 0;
 
     if (NULL != cbfunc) {

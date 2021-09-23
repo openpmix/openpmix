@@ -65,6 +65,8 @@ static void lost_connection(pmix_peer_t *peer)
     pmix_buffer_t buf;
     pmix_ptl_hdr_t hdr;
     pmix_status_t rc;
+    bool flag;
+    size_t n;
 
     /* stop all events */
     if (peer->recv_ev_active) {
@@ -80,7 +82,6 @@ static void lost_connection(pmix_peer_t *peer)
         peer->recv_msg = NULL;
     }
     CLOSE_THE_SOCKET(peer->sd);
-
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         /* if I am a server, then we need to ensure that
@@ -90,75 +91,94 @@ static void lost_connection(pmix_peer_t *peer)
          * have been added to any collective tracker until
          * after it successfully connected */
         PMIX_LIST_FOREACH_SAFE (trk, tnxt, &pmix_server_globals.collectives, pmix_server_trkr_t) {
-            /* see if this proc is participating in this tracker */
+            /* check if the process should be participating in this collective */
+            flag = false;
+            for (n=0; n < trk->npcs; n++) {
+                if (PMIX_CHECK_PROCID(&trk->pcs[n], &peer->info->pname)) {
+                    flag = true;
+                    break;
+                }
+            }
+            if (!flag) {
+                continue;
+            }
+            /* it should - adjust the count */
+            --trk->nlocal;
+            if (0 < trk->nlocal) {
+                rc = PMIX_ERR_PARTIAL_SUCCESS;
+            } else {
+                rc = PMIX_ERR_LOST_CONNECTION;
+            }
+            PMIX_INFO_LOAD(&trk->info[trk->ninfo-1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+            /* see if it already participated in this tracker */
             PMIX_LIST_FOREACH_SAFE (rinfo, rnext, &trk->local_cbs, pmix_server_caddy_t) {
                 if (!PMIX_CHECK_PROCID(&rinfo->peer->info->pname, &peer->info->pname)) {
                     continue;
                 }
-                /* it is - adjust the count */
-                --trk->nlocal;
                 /* remove it from the list */
                 pmix_list_remove_item(&trk->local_cbs, &rinfo->super);
                 PMIX_RELEASE(rinfo);
-                /* if the host has already been called for this tracker,
-                 * then do nothing here - just wait for the host to return
-                 * from the operation */
-                if (trk->host_called) {
-                    continue;
-                }
-                if (trk->def_complete && trk->nlocal == pmix_list_get_size(&trk->local_cbs)) {
-                    /* if this is a local-only collective, then resolve it now */
-                    if (trk->local) {
-                        /* everyone else has called in - we need to let them know
-                         * that this proc has disappeared
-                         * as otherwise the collective will never complete */
-                        if (PMIX_FENCENB_CMD == trk->type) {
-                            if (NULL != trk->modexcbfunc) {
-                                trk->modexcbfunc(PMIX_ERR_LOST_CONNECTION, NULL, 0, trk, NULL,
-                                                 NULL);
-                            }
-                        } else if (PMIX_CONNECTNB_CMD == trk->type) {
-                            if (NULL != trk->op_cbfunc) {
-                                trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION, trk);
-                            }
-                        } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
-                            if (NULL != trk->op_cbfunc) {
-                                trk->op_cbfunc(PMIX_ERR_LOST_CONNECTION, trk);
-                            }
+            }
+            /* if the host has already been called for this tracker,
+             * then do nothing here - just wait for the host to return
+             * from the operation */
+            if (trk->host_called) {
+                continue;
+            }
+            /* are we now locally complete? */
+            if (trk->def_complete && trk->nlocal == pmix_list_get_size(&trk->local_cbs)) {
+                /* if this is a local-only collective, then resolve it now */
+                if (trk->local) {
+                    /* everyone else has called in - we need to let them know
+                     * that this proc has disappeared
+                     * as otherwise the collective will never complete */
+                    if (PMIX_FENCENB_CMD == trk->type) {
+                        if (NULL != trk->modexcbfunc) {
+                            trk->modexcbfunc(rc, NULL, 0, trk, NULL, NULL);
                         }
-                    } else {
-                        /* if the host has not been called, then we need to see if
-                         * the collective is locally complete without this lost
-                         * participant. If so, then we need to pass the call
-                         * up to the host as otherwise the global collective will hang */
-                        if (PMIX_FENCENB_CMD == trk->type) {
-                            trk->host_called = true;
-                            rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info,
-                                                           trk->ninfo, NULL, 0, trk->modexcbfunc,
-                                                           trk);
-                            if (PMIX_SUCCESS != rc) {
-                                pmix_list_remove_item(&pmix_server_globals.collectives,
-                                                      &trk->super);
-                                PMIX_RELEASE(trk);
-                            }
-                        } else if (PMIX_CONNECTNB_CMD == trk->type) {
-                            trk->host_called = true;
-                            rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info,
-                                                          trk->ninfo, trk->op_cbfunc, trk);
-                            if (PMIX_SUCCESS != rc) {
-                                pmix_list_remove_item(&pmix_server_globals.collectives,
-                                                      &trk->super);
-                                PMIX_RELEASE(trk);
-                            }
-                        } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
-                            trk->host_called = true;
-                            rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info,
-                                                             trk->ninfo, trk->op_cbfunc, trk);
-                            if (PMIX_SUCCESS != rc) {
-                                pmix_list_remove_item(&pmix_server_globals.collectives,
-                                                      &trk->super);
-                                PMIX_RELEASE(trk);
-                            }
+                    } else if (PMIX_CONNECTNB_CMD == trk->type) {
+                        if (NULL != trk->op_cbfunc) {
+                            trk->op_cbfunc(rc, trk);
+                        }
+                    } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
+                        if (NULL != trk->op_cbfunc) {
+                            trk->op_cbfunc(rc, trk);
+                        }
+                    } else if (PMIX_GROUP_CONSTRUCT_CMD == trk->type) {
+                        if (NULL != trk->op_cbfunc) {
+                            trk->op_cbfunc(rc, trk);
+                        }
+                    }
+                } else {
+                    /* if the host has not been called, then we need to pass the call
+                     * up to the host as otherwise the global collective will hang */
+                    if (PMIX_FENCENB_CMD == trk->type) {
+                        trk->host_called = true;
+                        rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info,
+                                                       trk->ninfo, NULL, 0,
+                                                       trk->modexcbfunc, trk);
+                        if (PMIX_SUCCESS != rc) {
+                            pmix_list_remove_item(&pmix_server_globals.collectives,
+                                                  &trk->super);
+                            PMIX_RELEASE(trk);
+                        }
+                    } else if (PMIX_CONNECTNB_CMD == trk->type) {
+                        trk->host_called = true;
+                        rc = pmix_host_server.connect(trk->pcs, trk->npcs, trk->info,
+                                                      trk->ninfo, trk->op_cbfunc, trk);
+                        if (PMIX_SUCCESS != rc) {
+                            pmix_list_remove_item(&pmix_server_globals.collectives,
+                                                  &trk->super);
+                            PMIX_RELEASE(trk);
+                        }
+                    } else if (PMIX_DISCONNECTNB_CMD == trk->type) {
+                        trk->host_called = true;
+                        rc = pmix_host_server.disconnect(trk->pcs, trk->npcs, trk->info,
+                                                         trk->ninfo, trk->op_cbfunc, trk);
+                        if (PMIX_SUCCESS != rc) {
+                            pmix_list_remove_item(&pmix_server_globals.collectives,
+                                                  &trk->super);
+                            PMIX_RELEASE(trk);
                         }
                     }
                 }

@@ -209,10 +209,10 @@ pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys, const pmix_info_t 
     for (i = 0; i < ndata; i++) {
         PMIX_LIST_FOREACH (tinfo, pmix_test_published_list, pmix_test_info_t) {
             if (0 == strcmp(tinfo->data.key, keys[i])) {
-                (void) strncpy(pdata[i].proc.nspace, tinfo->namespace_published, PMIX_MAX_NSLEN);
+                pmix_strncpy(pdata[i].proc.nspace, tinfo->namespace_published, PMIX_MAX_NSLEN);
                 pdata[i].proc.rank = tinfo->rank_published;
                 memset(pdata[i].key, 0, PMIX_MAX_KEYLEN + 1);
-                (void) strncpy(pdata[i].key, keys[i], PMIX_MAX_KEYLEN);
+                pmix_strncpy(pdata[i].key, keys[i], PMIX_MAX_KEYLEN);
                 pmix_value_xfer(&pdata[i].value, &tinfo->data.value);
                 ret++;
                 break;

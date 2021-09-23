@@ -998,10 +998,9 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                     kptr->value->data.bo.size = len;
                 }
             }
-            pmix_output_verbose(
-                2, pmix_gds_base_framework.framework_output,
-                "[%s:%u] pmix:gds:hash store job info storing key %s for WILDCARD rank",
-                pmix_globals.myid.nspace, pmix_globals.myid.rank, kptr->key);
+            pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                                "[%s:%u] pmix:gds:hash store job info storing key %s for WILDCARD rank",
+                                pmix_globals.myid.nspace, pmix_globals.myid.rank, kptr->key);
             if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kptr))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kptr);

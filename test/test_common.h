@@ -339,7 +339,7 @@ typedef struct {
             if (data_ex) {                                                                     \
                 bool _value = 1;                                                               \
                 PMIX_INFO_CREATE(_info, 1);                                                    \
-                (void) strncpy(_info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);                \
+                pmix_strncpy(_info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);                \
                 pmix_value_load(&_info->value, &_value, PMIX_BOOL);                            \
                 _ninfo = 1;                                                                    \
             }                                                                                  \

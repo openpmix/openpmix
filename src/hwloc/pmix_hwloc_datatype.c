@@ -323,6 +323,7 @@ pmix_status_t pmix_hwloc_copy_topology(pmix_topology_t *dest, pmix_topology_t *s
     int len;
     struct hwloc_topology_support *srcsup, *destsup;
     pmix_status_t rc;
+    unsigned long flags;
 
     /* extract an xml-buffer representation of the tree */
 #    if HWLOC_API_VERSION < 0x20000
@@ -341,17 +342,47 @@ pmix_status_t pmix_hwloc_copy_topology(pmix_topology_t *dest, pmix_topology_t *s
         free(xmlbuffer);
         return rc;
     }
-    if (0 != hwloc_topology_set_xmlbuffer(dest->topology, xmlbuffer, strlen(xmlbuffer))) {
+    if (0 != hwloc_topology_set_xmlbuffer(dest->topology, xmlbuffer, strlen(xmlbuffer)+1)) {
         rc = PMIX_ERROR;
         free(xmlbuffer);
         hwloc_topology_destroy(dest->topology);
         return rc;
     }
+
+    /* since we are loading this from an external source, we have to
+     * explicitly set a flag so hwloc sets things up correctly
+     */
+    flags = HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM;
+#if HWLOC_API_VERSION < 0x00020000
+    flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
+    flags |= HWLOC_TOPOLOGY_FLAG_IO_DEVICES;
+#else
+    if (0 != hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT)) {
+        hwloc_topology_destroy(dest->topology);
+        free(xmlbuffer);
+        return PMIX_ERROR;
+    }
+#    if HWLOC_API_VERSION < 0x00020100
+    flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
+#    else
+    flags |= HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED;
+#    endif
+#endif
+    if (0 != hwloc_topology_set_flags(dest->topology, flags)) {
+        hwloc_topology_destroy(dest->topology);
+        free(xmlbuffer);
+        return PMIX_ERROR;
+    }
+    /* now load the topology */
+    if (0 != hwloc_topology_load(dest->topology)) {
+        hwloc_topology_destroy(dest->topology);
+        free(xmlbuffer);
+        return PMIX_ERROR;
+    }
     free(xmlbuffer);
 
     /* transfer the support struct */
-    srcsup = (struct hwloc_topology_support *) hwloc_topology_get_support(
-                                                                          (hwloc_topology_t) src->topology);
+    srcsup = (struct hwloc_topology_support *) hwloc_topology_get_support((hwloc_topology_t) src->topology);
     destsup = (struct hwloc_topology_support *) hwloc_topology_get_support(dest->topology);
     memcpy(destsup, srcsup, sizeof(struct hwloc_topology_support));
 
