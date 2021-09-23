@@ -20,12 +20,6 @@
 # $HEADER$
 #
 
-include $(top_srcdir)/Makefile.pmix-rules
-
-MD_FILES = pps.1.md
-man_pages_from_md = $(MD_FILES:.1.md=.1)
-EXTRA_DIST = $(MD_FILES) $(man_pages_from_md)
-
 AM_CFLAGS = \
             -DPMIX_CONFIGURE_USER="\"@PMIX_CONFIGURE_USER@\"" \
             -DPMIX_CONFIGURE_HOST="\"@PMIX_CONFIGURE_HOST@\"" \
@@ -49,10 +43,6 @@ bin_PROGRAMS = pps
 dist_pmixdata_DATA = help-pps.txt
 
 endif # PMIX_INSTALL_BINARIES
-
-if PMIX_ENABLE_MAN_PAGES
-man_MANS = $(man_pages_from_md)
-endif
 
 pps_SOURCES = pps.c
 pps_LDADD = \
