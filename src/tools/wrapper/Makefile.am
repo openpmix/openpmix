@@ -15,6 +15,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -22,20 +23,11 @@
 # $HEADER$
 #
 
-include $(top_srcdir)/Makefile.pmix-rules
-
-MD_FILES = pmixcc.1.md
-man_pages_from_md = $(MD_FILES:.1.md=.1)
-EXTRA_DIST = $(MD_FILES) $(man_pages_from_md)
 AM_LDFLAGS = $(PMIX_EXTRA_LIB_LDFLAGS) $(pmix_hwloc_LDFLAGS) $(pmix_libevent_LDFLAGS)
 
 if PMIX_INSTALL_BINARIES
 
 bin_PROGRAMS = pmixcc
-
-if PMIX_ENABLE_MAN_PAGES
-_man_MANS = $(man_pages_from_md)
-endif # PMIX_ENABLE_MAN_PAGES
 
 nodist_pmixdata_DATA = pmixcc-wrapper-data.txt
 
