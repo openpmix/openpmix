@@ -30,7 +30,8 @@
 int pmix_test_verbose = 0;
 test_params params;
 char **test_argv = NULL;
-
+node_map *nodes = NULL;
+char *v_params_ascii_str = NULL;
 FILE *pmixt_outfile;
 
 #define OUTPUT_MAX 1024
@@ -246,17 +247,8 @@ pmix_list_t key_replace;
 
 // cross-platform millisecond sleep function
 void sleep_ms(unsigned long milliseconds) {
-#ifdef WIN32
-    Sleep(milliseconds);
-#elif _POSIX_C_SOURCE >= 199309L
-    struct timespec ts;
-    ts.tv_sec = milliseconds / 1000;
-    ts.tv_nsec = (milliseconds % 1000) * 1000000;
-    nanosleep(&ts, NULL);
-#else
     if (1000 <= milliseconds) {
         sleep(milliseconds / 1000);
     }
     usleep((milliseconds % 1000) * 1000);
-#endif
 }

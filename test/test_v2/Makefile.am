@@ -16,6 +16,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2021      Triad National Security, LLC
 #                         All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -60,30 +61,36 @@ TC6FILES = test_fence_wildcard.c $(TCCOMMONFILES)
 # Note the use of -no-install in LDFLAGS to force rpath
 # into binaries and prevent libtool from creating the usual scripts.
 # This simplifies testing and debugging.
+if PMIX_HAVE_APPLE
+INSTALLFLAG=-no-fast-install
+else
+INSTALLFLAG=-no-install
+endif
+
 pmix_test_SOURCES = $(headers) $(PCFILES)
-pmix_test_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-install
+pmix_test_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 pmix_test_LDADD = $(top_builddir)/src/libpmix.la
 
 test_init_fin_SOURCES = $(headers) $(TC1FILES)
-test_init_fin_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-install
+test_init_fin_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 test_init_fin_LDADD = $(top_builddir)/src/libpmix.la
 
 test_helloworld_SOURCES = $(headers) $(TC2FILES)
-test_helloworld_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-install
+test_helloworld_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 test_helloworld_LDADD = $(top_builddir)/src/libpmix.la
 
 test_get_basic_SOURCES = $(headers) $(TC3FILES)
-test_get_basic_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-install
+test_get_basic_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 test_get_basic_LDADD = $(top_builddir)/src/libpmix.la
 
 test_get_peers_SOURCES = $(headers) $(TC4FILES)
-test_get_peers_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-install
+test_get_peers_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 test_get_peers_LDADD = $(top_builddir)/src/libpmix.la
 
 test_fence_basic_SOURCES = $(headers) $(TC5FILES)
-test_fence_basic_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-install
+test_fence_basic_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 test_fence_basic_LDADD = $(top_builddir)/src/libpmix.la
 
 test_fence_wildcard_SOURCES = $(headers) $(TC6FILES)
-test_fence_wildcard_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) -no-install
+test_fence_wildcard_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 test_fence_wildcard_LDADD = $(top_builddir)/src/libpmix.la

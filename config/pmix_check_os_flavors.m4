@@ -5,6 +5,7 @@ dnl Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2014      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -63,6 +64,7 @@ AC_DEFUN([PMIX_CHECK_OS_FLAVORS],
     AC_DEFINE_UNQUOTED([PMIX_HAVE_APPLE],
                        [$pmix_have_apple],
                        [Whether or not we have apple])
+    AM_CONDITIONAL(PMIX_HAVE_APPLE, test "$pmix_have_apple" = "1")
 
     # check for sockaddr_in (a good sign we have TCP)
     AC_CHECK_HEADERS([netdb.h netinet/in.h netinet/tcp.h])
