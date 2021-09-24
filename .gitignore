@@ -180,5 +180,13 @@ test/sshot/server
 test/sshot/mytopo.json
 test/sshot/testcoord
 
+test/test_v2/pmix_test
+test/test_v2/test_fence_basic
+test/test_v2/test_fence_wildcard
+test/test_v2/test_get_basic
+test/test_v2/test_get_peers
+test/test_v2/test_helloworld
+test/test_v2/test_init_fin
+
 # coverity
 cov-int

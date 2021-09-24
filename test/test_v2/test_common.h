@@ -174,7 +174,7 @@ typedef struct {
     char pmix_hostname[PMIX_MAX_KEYLEN];
 } node_map;
 
-node_map *nodes;
+extern node_map *nodes;
 
 // order of these fields should be in order that we introduce them
 typedef struct {
@@ -197,8 +197,7 @@ typedef struct {
     // more as needed
 } validation_params;
 
-validation_params val_params;
-char *v_params_ascii_str;
+extern char *v_params_ascii_str;
 
 typedef struct {
     char *binary;
