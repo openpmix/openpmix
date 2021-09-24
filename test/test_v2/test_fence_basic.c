@@ -18,21 +18,18 @@
 
 int main(int argc, char *argv[]) {
 
-    pmix_value_t *val;
     int rc, i;
-    size_t ninfo = 0, nprocs = 0;
-    test_params params;
+    size_t ninfo = 0;
+    test_params l_params;
     validation_params v_params;
     pmix_proc_t job_proc, this_proc;
-    pmix_proc_t *procs;
-    struct timeval start, end;
 
-    pmixt_pre_init(argc, argv, &params, &v_params, NULL);
+    pmixt_pre_init(argc, argv, &l_params, &v_params, NULL);
     /* initialization */
-    PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), params, v_params);
+    PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), l_params, v_params);
 
     /* Handles everything that needs to happen after PMIx_Init() */
-    pmixt_post_init(&this_proc, &params, &v_params);
+    pmixt_post_init(&this_proc, &l_params, &v_params);
 
     PMIX_PROC_CONSTRUCT(&job_proc);
     strncpy(job_proc.nspace, this_proc.nspace, PMIX_MAX_NSLEN);
@@ -57,8 +54,8 @@ int main(int argc, char *argv[]) {
     PMIX_PROC_DESTRUCT(&job_proc);
 
     /* finalize */
-    PMIXT_CHECK(PMIx_Finalize(NULL, 0), params, v_params);
+    PMIXT_CHECK(PMIx_Finalize(NULL, 0), l_params, v_params);
 
     /* Handles cleanup */
-    pmixt_post_finalize(&this_proc, &params, &v_params);
+    pmixt_post_finalize(&this_proc, &l_params, &v_params);
 }

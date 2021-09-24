@@ -14,6 +14,9 @@
 #include "pmix.h"
 #include "test_common.h"
 
+void client_help(char *);
+int parse_fence_client(int *, int, char **, test_params *, validation_params *);
+
 void client_help(char *binary) {
     fprintf(stderr, "Usage: %s [OPTION...]\n", binary);
     fprintf(stderr, "    -h            Display this message\n");
@@ -29,27 +32,27 @@ void client_help(char *binary) {
     */
 }
 // client-specific command parser logic
-int parse_fence_client(int *index, int argc, char **argv, test_params *params, validation_params *v_params)
+int parse_fence_client(int *index, int argc, char **argv, test_params *lparams, validation_params *v_params)
 {
     if (0 == strcmp(argv[*index], "-h") || 0 == strcmp(argv[*index], "--help")) {
         // produce client-specific help
         client_help(argv[0]);
         exit(0);
     } else if (0 == strcmp(argv[*index], "--time-fence")) {
-        params->time_fence = true;
+        lparams->time_fence = true;
     // multiplier for fence timeout threshold called 'fence timeout ratio' (1 of 2)
 	} else if (0 == strcmp(argv[*index], "--fence-timeout-ratio") || 0 == strcmp(argv[*index], "-r") ) {
         (*index)++;
-        params->time_fence = true;
+        lparams->time_fence = true;
         if (NULL != argv[*index]) {
-            params->fence_timeout_ratio = strtod(argv[*index], NULL);
+            lparams->fence_timeout_ratio = strtod(argv[*index], NULL);
         }
     // multiplier for fence timeout threshold called 'fence time multiplier' (2 of 2)
 	} else if (0 == strcmp(argv[*index], "--fence-time-multiplier") || 0 == strcmp(argv[*index], "-m") ) {
         (*index)++;
-        params->time_fence = true;
+        lparams->time_fence = true;
         if (NULL != argv[*index]) {
-            params->fence_time_multiplier = strtod(argv[*index], NULL);
+            lparams->fence_time_multiplier = strtod(argv[*index], NULL);
         }
     }
     else {
@@ -60,45 +63,41 @@ int parse_fence_client(int *index, int argc, char **argv, test_params *params, v
 
 int main(int argc, char *argv[]) {
 
-    pmix_value_t *val;
-    int rc, i;
-    size_t ninfo = 0, nprocs = 0;
-    test_params params;
+    int rc;
+    size_t ninfo = 0;
+    test_params l_params;
     validation_params v_params;
     pmix_proc_t job_proc, this_proc;
-    pmix_proc_t *procs;
     struct timeval start, end;
     unsigned long usecs_elapsed, sleep_time_ms;
     double secs_elapsed, fence_time, sleep_time, padded_fence_time;
-    char **client_argv;
 
     // pass in function pointer for custom argument processing, if no custom processing, will be null
-    pmixt_pre_init(argc, argv, &params, &v_params, &parse_fence_client);
-    // calling parse_cmd_client from within parse_cmd instead
-    //parse_cmd_client(argc, argv, &params, &v_params);
+    pmixt_pre_init(argc, argv, &l_params, &v_params, &parse_fence_client);
     /* initialization */
-    PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), params, v_params);
+    PMIXT_CHECK(PMIx_Init(&this_proc, NULL, ninfo), l_params, v_params);
 
     /* Handles everything that needs to happen after PMIx_Init() */
-    pmixt_post_init(&this_proc, &params, &v_params);
+    pmixt_post_init(&this_proc, &l_params, &v_params);
 
     PMIX_PROC_CONSTRUCT(&job_proc);
     strncpy(job_proc.nspace, this_proc.nspace, PMIX_MAX_NSLEN);
     job_proc.rank = PMIX_RANK_WILDCARD;
 
-    if (params.time_fence) {
+    if (l_params.time_fence) {
         // establishes baseline fence time before entering loop
         fence_time = avg_fence_time();
         // padded_fence_time is the time permitted just for the fence call
-        padded_fence_time = params.fence_time_multiplier * fence_time;
-        sleep_time = params.fence_timeout_ratio * padded_fence_time;
+        padded_fence_time = l_params.fence_time_multiplier * fence_time;
+        sleep_time = l_params.fence_timeout_ratio * padded_fence_time;
         sleep_time_ms = (long)(sleep_time * 1000.0);
 
         TEST_VERBOSE(("Rank %d fence timeout ratio: %lf fence time multiplier: %lf",
-            this_proc.rank, params.fence_timeout_ratio, params.fence_time_multiplier));
+            this_proc.rank, l_params.fence_timeout_ratio, l_params.fence_time_multiplier));
 
         // Synchronize before timing
-        if (0 != PMIx_Fence(NULL, 0, NULL, 0)) {
+        rc = PMIx_Fence(NULL, 0, NULL, 0);
+        if (0 != rc) {
             TEST_ERROR_EXIT(("PMIx_Fence Problem: ret val = %d", rc));
         }
         if (0 == this_proc.rank){
@@ -148,8 +147,8 @@ int main(int argc, char *argv[]) {
     PMIX_PROC_DESTRUCT(&job_proc);
 
     /* finalize */
-    PMIXT_CHECK(PMIx_Finalize(NULL, 0), params, v_params);
+    PMIXT_CHECK(PMIx_Finalize(NULL, 0), l_params, v_params);
 
     /* Handles cleanup */
-    pmixt_post_finalize(&this_proc, &params, &v_params);
+    pmixt_post_finalize(&this_proc, &l_params, &v_params);
 }
