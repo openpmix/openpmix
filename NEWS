@@ -25,8 +25,13 @@ multiple release branches.
 
 4.1.1 -- TBD
 ----------------------
+**** NOTE: As of v4.1.1, PMIx includes an EXCEPTIONS file that lists
+**** all deviations from the PMIx Standard. This primarily includes
+**** extensions that have not yet been adopted by the Standard.
+
 **** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
 **** for building and installing man pages.
+
  - PR #2299: Update 4.1.1 rc2
     - Update VERSION and NEWS
     - Add some spawn-specific timeout attributes
