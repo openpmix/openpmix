@@ -709,6 +709,7 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             return PMIX_ERR_NOMEM;
         }
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.netstats, &m, PMIX_NET_STATS, regtypes);
+        return ret;
     case PMIX_NODE_STATS:
         PMIX_NODE_STATS_CREATE(val->data.ndstats, 1);
         if (NULL == val->data.ndstats) {

@@ -935,6 +935,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
+            PMIX_INFO_FREE(info, ninfo);
             goto cleanup;
         }
         /* see if we are to collect data or enforce a timeout - we don't internally care
@@ -964,6 +965,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                 opcbfunc(PMIX_ERROR, cd);
             }
             rc = PMIX_ERROR;
+            PMIX_INFO_FREE(info, ninfo);
             goto cleanup;
         }
         trk->type = PMIX_FENCENB_CMD;
@@ -1001,6 +1003,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         /* cleanup */
         PMIX_INFO_FREE(info, ninfo);
         info = NULL;
+        ninfo = 0;
     }
 
     /* add this contributor to the tracker so they get

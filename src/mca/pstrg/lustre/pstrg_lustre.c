@@ -144,10 +144,16 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
                 if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_STORAGE_ID)) {
                     /* there may be more than one (comma-delimited) storage ID, so
                      * split them into a NULL-terminated argv-type array */
+                    if (NULL != sid) {
+                        pmix_argv_free(sid);
+                    }
                     sid = pmix_argv_split(queries[n].qualifiers[k].value.data.string, ',');
                 } else if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_STORAGE_PATH)) {
                     /* there may be more than one (comma-delimited) mount pt, so
                      * split them into a NULL-terminated argv-type array */
+                    if (NULL != mountpt) {
+                        pmix_argv_free(mountpt);
+                    }
                     mountpt = pmix_argv_split(queries[n].qualifiers[k].value.data.string, ',');
                 } else if (0 == strcmp(queries[n].qualifiers[k].key, PMIX_USERID)) {
                     uid = queries[n].qualifiers[k].value.data.uint32;
@@ -156,7 +162,15 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
                 }
             }
 
-            pmix_output(0, "SILENCE WARNINGS %u %u", uid, gid);
+            /* just some nonsense to get rid of compile warnings until we fully implement */
+            if (NULL != sid) {
+                pmix_argv_free(sid);
+            }
+            if (NULL != mountpt) {
+                pmix_argv_free(mountpt);
+            }
+            k = uid - gid;
+
             if (0 == strcmp(queries[n].keys[m], PMIX_STORAGE_CAPACITY_LIMIT)) {
                 /* ADD HERE:
                  *

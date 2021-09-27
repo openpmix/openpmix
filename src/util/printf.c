@@ -81,6 +81,7 @@ static int guess_strlen(const char *fmt, va_list ap)
 
             case 'd':
             case 'i':
+            case 'u':
                 iarg = va_arg(ap, int);
                 /* Alloc for minus sign */
                 if (iarg < 0)
@@ -166,6 +167,7 @@ static int guess_strlen(const char *fmt, va_list ap)
                         break;
 
                     case 'd':
+                    case 'u':
                     default:
                         larg = va_arg(ap, int);
                         /* Now get the log10 */

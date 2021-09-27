@@ -74,7 +74,7 @@ void parse_cmd_client(int argc, char **argv, test_params *l_params, validation_p
         } else if( 0 == strcmp(argv[i], "--namespace")) {
             i++;
             if (NULL != argv[i]) {
-                strcpy(v_params->pmix_nspace, argv[i]);
+                pmix_strncpy(v_params->pmix_nspace, argv[i], PMIX_MAX_NSLEN);
             }
         /*
         } else if (0 == strcmp(argv[i], "--non-blocking") || 0 == strcmp(argv[i], "-nb")) {
@@ -93,6 +93,9 @@ void parse_cmd_client(int argc, char **argv, test_params *l_params, validation_p
         } else if (0 == strcmp(argv[i], "--validate-params")) {
             i++;
             v_params->validate_params = true;
+            if (NULL != v_params_ascii_str) {
+                free(v_params_ascii_str);
+            }
             v_params_ascii_str = strdup(argv[i]);
 	    } else if (0 == strcmp(argv[i], "--distribute-ranks") || 0 == strcmp(argv[i], "-d") ) {
             i++;
@@ -220,11 +223,10 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, validation_params *v_params)
     }
 
     // Fix namespace if running under RM
-    if (NULL == v_params->pmix_nspace) {
+    if (0 == pmix_nslen(v_params->pmix_nspace)) {
         char *nspace = getenv("PMIX_NAMESPACE");
         if (NULL != nspace) {
-            strcpy(v_params->pmix_nspace, nspace);
-            free(nspace);
+            pmix_strncpy(v_params->pmix_nspace, nspace, PMIX_MAX_NSLEN);
         } else { /* If we aren't running under SLURM, you should have set nspace
                     in your custom fix_rank_and_ns_rm_* function! */
             TEST_ERROR_EXIT(("nspace not set and no value for PMIX_NAMESPACE env variable. "
@@ -330,9 +332,9 @@ void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_v
         TEST_ERROR_EXIT(("Check input for case PMIX_PROC_RANK: key: %s", key));
     }
     case PMIX_STRING: {
-        void *stringdata;
+        char *stringdata;
         size_t lsize;
-        PMIX_VALUE_UNLOAD(rc, value, &stringdata, &lsize);
+        PMIX_VALUE_UNLOAD(rc, value, (void**)&stringdata, &lsize);
         if (PMIX_SUCCESS != rc) {
             TEST_ERROR_EXIT(
                 ("Failed to retrieve value correctly. Key: %s Type: %u", key, value->type));

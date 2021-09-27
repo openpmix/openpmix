@@ -24,6 +24,7 @@
 #include "pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
+#include "src/util/printf.h"
 
 #include "cli_stages.h"
 #include "server_callbacks.h"
@@ -195,7 +196,7 @@ static void set_namespace(int local_size, int univ_size, int base_rank, char *na
         nodes = NULL;
         if (0 == my_server_id) {
             for (i = base_rank + local_size; i < univ_size; i++) {
-                asprintf(&ppn, "%d", i);
+                pmix_asprintf(&ppn, "%d", i);
                 pmix_argv_append_nosize(&nodes, ppn);
                 free(ppn);
             }
@@ -204,7 +205,7 @@ static void set_namespace(int local_size, int univ_size, int base_rank, char *na
             free(ppn);
         } else {
             for (i = 0; i < base_rank; i++) {
-                asprintf(&ppn, "%d", i);
+                pmix_asprintf(&ppn, "%d", i);
                 pmix_argv_append_nosize(&nodes, ppn);
                 free(ppn);
             }
@@ -855,7 +856,7 @@ int server_init(test_params *params)
                     server_list = PMIX_NEW(pmix_list_t);
                     my_server_info = server_info;
                     my_server_id = i;
-                    asprintf(&server_info->hostname, "node%d", i);
+                    pmix_asprintf(&server_info->hostname, "node%d", i);
                     server_info->idx = 0;
                     server_info->pid = getppid();
                     server_info->rd_fd = fd1[0];
@@ -866,7 +867,7 @@ int server_init(test_params *params)
                     pmix_list_append(server_list, &server_info->super);
                     break;
                 }
-                asprintf(&server_info->hostname, "node%d", i);
+                pmix_asprintf(&server_info->hostname, "node%d", i);
                 server_info->idx = i;
                 server_info->pid = pid;
                 server_info->wr_fd = fd1[1];

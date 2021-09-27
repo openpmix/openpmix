@@ -75,6 +75,20 @@ typedef uint8_t pmix_rnd_flag_t;
 /* numerical value must be converted back to host
  * order, so we use an intermediate storage place
  * for that purpose */
+#define PMIX_PTL_GET_U32_NOERROR(r, n)          \
+    do {                                        \
+        uint32_t _u;                            \
+        if (sizeof(uint32_t) <= cnt) {          \
+            memcpy(&_u, mg, sizeof(uint32_t));  \
+            (n) = ntohl(_u);                    \
+            mg += sizeof(uint32_t);             \
+            cnt -= sizeof(uint32_t);            \
+            (r) = PMIX_SUCCESS;                 \
+        } else {                                \
+            (r) = PMIX_ERR_BAD_PARAM;           \
+        }                                       \
+    } while (0)
+
 #define PMIX_PTL_GET_U32(n)                     \
     do {                                        \
         uint32_t _u;                            \
@@ -115,14 +129,20 @@ typedef uint8_t pmix_rnd_flag_t;
         }                                       \
     } while (0)
 
-#define PMIX_PTL_GET_PROCID(p)        \
-    do {                              \
-        char *n;                      \
-        uint32_t r;                   \
-        PMIX_PTL_GET_STRING(n);       \
-        PMIX_PTL_GET_U32(r);          \
-        PMIX_LOAD_PROCID(&(p), n, r); \
-        free(n);                      \
+#define PMIX_PTL_GET_PROCID(p)              \
+    do {                                    \
+        char *n;                            \
+        uint32_t _r;                        \
+        pmix_status_t _rc;                  \
+        PMIX_PTL_GET_STRING(n);             \
+        PMIX_PTL_GET_U32_NOERROR(_rc, _r);  \
+        if (PMIX_SUCCESS != _rc) {          \
+            PMIX_ERROR_LOG(_rc);            \
+            free(n);                        \
+            goto error;                     \
+        }                                   \
+        PMIX_LOAD_PROCID(&(p), n, _r);      \
+        free(n);                            \
     } while (0)
 
 /* The following macros are for use in the ptl_base_fns.c

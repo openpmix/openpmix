@@ -1293,7 +1293,7 @@ pmix_status_t pmix20_bfrop_copy_darray(pmix_data_array_t **dest, pmix_data_array
         p1 = (pmix_info_t *) p->array;
         s1 = (pmix_info_t *) src->array;
         for (n = 0; n < src->size; n++) {
-            PMIX_INFO_LOAD(&p1[n], s1[n].key, &s1[n].value.data.flag, s1[n].value.type);
+            PMIX_INFO_XFER(&p1[n], &s1[n]);
         }
         break;
     case PMIX_PDATA:
@@ -1305,7 +1305,7 @@ pmix_status_t pmix20_bfrop_copy_darray(pmix_data_array_t **dest, pmix_data_array
         pd = (pmix_pdata_t *) p->array;
         sd = (pmix_pdata_t *) src->array;
         for (n = 0; n < src->size; n++) {
-            PMIX_PDATA_LOAD(&pd[n], &sd[n].proc, sd[n].key, &sd[n].value.data, sd[n].value.type);
+            PMIX_PDATA_XFER(&pd[n], &sd[n]);
         }
         break;
     case PMIX_BUFFER:

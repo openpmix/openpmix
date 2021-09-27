@@ -185,6 +185,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
 static pmix_status_t pmix_ptl_close(void)
 {
+    int rc;
+
     if (!pmix_ptl_base.initialized) {
         return PMIX_SUCCESS;
     }
@@ -208,31 +210,56 @@ static pmix_status_t pmix_ptl_close(void)
 
     if (NULL != pmix_ptl_base.system_filename) {
         if (pmix_ptl_base.created_system_filename) {
-            remove(pmix_ptl_base.system_filename);
+            rc = remove(pmix_ptl_base.system_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.system_filename);
     }
     if (NULL != pmix_ptl_base.session_filename) {
         if (pmix_ptl_base.created_session_filename) {
-            remove(pmix_ptl_base.session_filename);
+            rc = remove(pmix_ptl_base.session_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.session_filename);
     }
     if (NULL != pmix_ptl_base.nspace_filename) {
         if (pmix_ptl_base.created_nspace_filename) {
-            remove(pmix_ptl_base.nspace_filename);
+            rc = remove(pmix_ptl_base.nspace_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.nspace_filename);
     }
     if (NULL != pmix_ptl_base.pid_filename) {
         if (pmix_ptl_base.created_pid_filename) {
-            remove(pmix_ptl_base.pid_filename);
+            rc = remove(pmix_ptl_base.pid_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.pid_filename);
     }
     if (NULL != pmix_ptl_base.rendezvous_filename) {
         if (pmix_ptl_base.created_rendezvous_file) {
-            remove(pmix_ptl_base.rendezvous_filename);
+            rc = remove(pmix_ptl_base.rendezvous_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.rendezvous_filename);
     }
@@ -242,7 +269,12 @@ static pmix_status_t pmix_ptl_close(void)
     if (NULL != pmix_ptl_base.urifile) {
         if (pmix_ptl_base.created_urifile) {
             /* remove the file */
-            remove(pmix_ptl_base.urifile);
+            rc = remove(pmix_ptl_base.urifile);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.urifile);
         pmix_ptl_base.urifile = NULL;

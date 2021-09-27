@@ -670,7 +670,7 @@ void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace, pmix_ran
     /* store the URI for subsequent lookups */
     PMIX_KVAL_NEW(urikv, PMIX_SERVER_URI);
     urikv->value->type = PMIX_STRING;
-    asprintf(&urikv->value->data.string, "%s.%u;%s", nspace, rank, suri);
+    pmix_asprintf(&urikv->value->data.string, "%s.%u;%s", nspace, rank, suri);
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
@@ -1161,6 +1161,7 @@ process:
         if (NULL != nspace) {
             free(nspace);
         }
+        free(srvr);
         return;
     }
 
