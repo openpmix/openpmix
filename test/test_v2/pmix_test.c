@@ -162,7 +162,7 @@ done:
 
     if (!test_fail && !test_timeout) {
         if (0 == my_server_id) {
-            TEST_OUTPUT(("Test SUCCEEDED! All servers completed normally.", my_server_id));
+            TEST_OUTPUT(("Test SUCCEEDED! All servers completed normally."));
         }
     }
     else if (!test_timeout) {

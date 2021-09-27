@@ -215,43 +215,15 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr, pmix_socklen_
                             sd);
         /* try to connect */
         if (connect(sd, (struct sockaddr *) addr, addrlen) < 0) {
-            if (pmix_socket_errno == ETIMEDOUT) {
-                /* The server may be too busy to accept new connections */
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "timeout connecting to server");
-                /* get a different socket, but do that BEFORE we release the current
-                 * one so we don't just get the same socket handed back to us */
-                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
-                CLOSE_THE_SOCKET(sd);
-                sd = sd2;
-                continue;
-            }
-
-            /* Some kernels (Linux 2.6) will automatically software
-             abort a connection that was ECONNREFUSED on the last
-             attempt, without even trying to establish the
-             connection.  Handle that case in a semi-rational
-             way by trying twice before giving up */
-            if (ECONNABORTED == pmix_socket_errno) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "connection to server aborted by OS - retrying");
-                /* get a different socket, but do that BEFORE we release the current
-                 * one so we don't just get the same socket handed back to us */
-                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
-                CLOSE_THE_SOCKET(sd);
-                sd = sd2;
-                continue;
-            } else {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Connect failed: %s (%d)", strerror(pmix_socket_errno),
-                                    pmix_socket_errno);
-                /* get a different socket, but do that BEFORE we release the current
-                 * one so we don't just get the same socket handed back to us */
-                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
-                CLOSE_THE_SOCKET(sd);
-                sd = sd2;
-                continue;
-            }
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "Connect failed: %s (%d)", strerror(pmix_socket_errno),
+                                pmix_socket_errno);
+            /* get a different socket, but do that BEFORE we release the current
+             * one so we don't just get the same socket handed back to us */
+            sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
+            CLOSE_THE_SOCKET(sd);
+            sd = sd2;
+            continue;
         } else {
             /* otherwise, the connect succeeded - so break out of the loop */
             break;

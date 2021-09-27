@@ -38,7 +38,7 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer
                       void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
-    pmix_status_t rc, status;
+    pmix_status_t rc, status = PMIX_ERR_UNPACK_FAILURE;
     int cnt;
     pmix_byte_object_t cred;
     pmix_info_t *info = NULL;
@@ -57,6 +57,7 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer
         PMIX_RELEASE(cd);
         return;
     }
+    PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
 
     /* unpack the status */
     cnt = 1;
@@ -257,7 +258,7 @@ static void valid_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buf
                          void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
-    pmix_status_t rc, status;
+    pmix_status_t rc, status = PMIX_ERR_UNPACK_FAILURE;
     int cnt;
     pmix_info_t *info = NULL;
     size_t ninfo = 0;

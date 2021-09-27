@@ -69,7 +69,7 @@ static pmix_status_t dohash(pmix_hash_table_t *ht, const char *key, pmix_rank_t 
             if (NULL == val->data.darray || PMIX_INFO != val->data.darray->type
                 || 0 == val->data.darray->size) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-                PMIX_RELEASE(val);
+                PMIX_VALUE_RELEASE(val);
                 return PMIX_ERR_NOT_FOUND;
             }
             /* if they want the value returned in its array form,

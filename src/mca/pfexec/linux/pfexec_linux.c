@@ -484,6 +484,7 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
                 free(str);
                 return rc;
             }
+            str[msg.msg_str_len] = '\0'; // ensure NULL termination
         }
 
         /* Print out what we got.  We already have a rendered string,

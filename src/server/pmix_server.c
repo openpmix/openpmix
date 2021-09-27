@@ -2550,7 +2550,9 @@ static void _iofdeliver(int sd, short args, void *cbdata)
         if (pmix_server_globals.max_iof_cache == pmix_list_get_size(&pmix_server_globals.iof)) {
             /* remove the oldest cached message */
             iof = (pmix_iof_cache_t *) pmix_list_remove_first(&pmix_server_globals.iof);
-            PMIX_RELEASE(iof);
+            if (NULL != iof) {
+                PMIX_RELEASE(iof);
+            }
         }
         /* add this output to our cache so it is cached until someone
          * registers to receive it */

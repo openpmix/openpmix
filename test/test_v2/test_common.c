@@ -104,8 +104,8 @@ void populate_nodes_default_placement(uint32_t num_nodes, int num_procs)
         nodes[i].pmix_local_size = j;
         base_rank = base_rank_next_node;
         TEST_VERBOSE(
-            ("Default rank placement: num_nodes: %d num_procs: %d nodes[%d].pmix_local_size: %d",
-             num_nodes, num_procs, i, nodes[i].pmix_local_size));
+            ("Default rank placement: num_nodes: %u num_procs: %d nodes[%d].pmix_local_size: %d",
+             num_nodes, num_procs, i, (int)nodes[i].pmix_local_size));
     }
 }
 
@@ -150,7 +150,7 @@ void populate_nodes_custom_placement_string(char *placement_str, int num_nodes)
         }
         nodes[i].pmix_local_size = j;
         TEST_VERBOSE(("num_nodes: %d idx: %d nodes[%d].pmix_local_size: %d hostname: %s", num_nodes,
-                      idx, i, j, nodes[i].pmix_hostname));
+                      (int)idx, (int)i, (int)j, nodes[i].pmix_hostname));
     }
 
     free(tempstr);

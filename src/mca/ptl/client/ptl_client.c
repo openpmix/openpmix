@@ -77,7 +77,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, 
     char *evar = NULL, *suri = NULL;
     char *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_WILDCARD;
-    char **server_nspace = NULL, *rendfile = NULL;
+    char *rendfile = NULL;
     pmix_status_t rc;
     pmix_peer_t *peer = (pmix_peer_t *) pr;
     size_t m, n;
@@ -224,14 +224,8 @@ complete:
     if (NULL != nspace) {
         free(nspace);
     }
-    if (NULL != rendfile) {
-        free(rendfile);
-    }
     if (NULL != suri) {
         free(suri);
-    }
-    if (NULL != server_nspace) {
-        free(server_nspace);
     }
     return rc;
 }

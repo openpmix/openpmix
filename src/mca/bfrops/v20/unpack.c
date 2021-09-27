@@ -857,9 +857,12 @@ pmix_status_t pmix20_bfrop_unpack_info(pmix_pointer_array_t *regtypes, pmix_buff
         /* unpack key */
         m = 1;
         tmp = NULL;
-        if (PMIX_SUCCESS
-            != (ret = pmix20_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING))) {
+        ret = pmix20_bfrop_unpack_string(regtypes, buffer, &tmp, &m, PMIX_STRING);
+        if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
+            if (NULL != tmp) {
+                free(tmp);
+            }
             return ret;
         }
         if (NULL == tmp) {
