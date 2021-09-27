@@ -1003,14 +1003,21 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
          * proc is different from the nspace of the proc whose data is being
          * returned, then we have to store it into our hash tables */
         PMIX_LIST_FOREACH (nm, &nspaces, pmix_nspace_caddy_t) {
-            if (NULL == nm->ns->compat.gds || 0 == nm->ns->nlocalprocs
-                || !PMIX_CHECK_NSPACE(nptr->nspace, nm->ns->nspace)) {
+            if (NULL == nm->ns->compat.gds || 0 == nm->ns->nlocalprocs ||
+                !PMIX_CHECK_NSPACE(nptr->nspace, nm->ns->nspace)) {
                 peer = pmix_globals.mypeer;
             } else {
                 /* there must be at least one local proc */
                 rinfo = (pmix_rank_info_t *) pmix_list_get_first(&nm->ns->ranks);
-                peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                                   rinfo->peerid);
+                if (NULL == rinfo) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+                    goto complete;
+                }
+                peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, rinfo->peerid);
+                if (NULL == peer) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+                    goto complete;
+                }
             }
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             if (NULL == caddy->data) {

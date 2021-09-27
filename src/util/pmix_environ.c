@@ -335,10 +335,12 @@ pmix_status_t pmix_util_harvest_envars(char **incvars, char **excvars, pmix_list
                 }
                 PMIX_KVAL_NEW(kv, PMIX_SET_ENVAR);
                 if (NULL == kv) {
+                    free(cs_env);
                     return PMIX_ERR_NOMEM;
                 }
                 if (NULL == kv->value) {
                     PMIX_RELEASE(kv);
+                    free(cs_env);
                     return PMIX_ERR_NOMEM;
                 }
                 kv->value->type = PMIX_ENVAR;

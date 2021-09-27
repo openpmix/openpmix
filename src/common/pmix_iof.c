@@ -588,7 +588,11 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_b
                                             __FILE__, __LINE__, errno);
                             } else {
                                 flags |= O_NONBLOCK;
-                                fcntl(fd, F_SETFL, flags);
+                                if (0 != fcntl(fd, F_SETFL, flags)) {
+                                    pmix_output(pmix_client_globals.iof_output,
+                                                "[%s:%d]: fcntl(F_SETFL) failed with errno=%d\n",
+                                                __FILE__, __LINE__, errno);
+                                }
                             }
                         }
                         if (isatty(fd)) {

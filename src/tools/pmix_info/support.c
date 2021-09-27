@@ -896,6 +896,7 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
                     if (NULL != v_to_free) {
                         free(v_to_free);
                     }
+                    free(filler);
                     return;
                 }
 

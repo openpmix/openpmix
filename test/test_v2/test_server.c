@@ -26,6 +26,7 @@
 #include "pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
+#include "src/util/printf.h"
 
 #include "cli_stages.h"
 #include "server_callbacks.h"
@@ -227,7 +228,7 @@ void parse_cmd_server(int argc, char **argv, test_params *l_params, validation_p
         } else if( 0 == strcmp(argv[i], "--namespace")) {
             i++;
             if (NULL != argv[i]) {
-                strcpy(v_params->pmix_nspace, argv[i]);
+                pmix_strncpy(v_params->pmix_nspace, argv[i], PMIX_MAX_NSLEN);
             }
         /*
         } else if (0 == strcmp(argv[i], "--collect-corrupt")) {
@@ -361,9 +362,10 @@ static void set_namespace(validation_params *v_params)
     TEST_VERBOSE(("Server id: %d local_size: %d", my_server_id, v_params->pmix_local_size));
     fill_seq_ranks_array(v_params->pmix_local_size, &ranks);
     if (NULL == ranks) {
+        PMIX_INFO_FREE(info, ninfo);
         return;
     }
-    strncpy(v_params->pmix_local_peers, ranks, PMIX_MAX_KEYLEN);
+    pmix_strncpy(v_params->pmix_local_peers, ranks, PMIX_MAX_KEYLEN);
     TEST_VERBOSE(("Server id: %d Local peers array: %s", my_server_id, ranks));
     pmix_strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
     info[3].value.type = PMIX_STRING;
@@ -380,6 +382,9 @@ static void set_namespace(validation_params *v_params)
         node_string = NULL;
         if (PMIX_SUCCESS != (rc = PMIx_generate_regex(tmp, &regex))) {
             PMIX_ERROR_LOG(rc);
+            free(ranks);
+            free(tmp);
+            PMIX_INFO_FREE(info, ninfo);
             return;
         }
         free(tmp);
@@ -816,7 +821,7 @@ static void server_read_cb(int fd, short event, void *arg)
         }
         break;
     case CMD_FENCE_COMPLETE:
-        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %d", my_server_id, msg_hdr.size));
+        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %d", my_server_id, (int)msg_hdr.size));
         server->modex_cbfunc(PMIX_SUCCESS, msg_buf, msg_hdr.size, server->cbdata, _libpmix_cb,
                              msg_buf);
         msg_buf = NULL;
@@ -1209,7 +1214,6 @@ int server_launch_clients(test_params *l_params, validation_params *v_params, ch
 {
     uid_t myuid;
     gid_t mygid;
-    char *ranks = NULL;
     char digit[MAX_DIGIT_LEN];
     int rc;
     static int cli_counter = 0;
@@ -1229,10 +1233,6 @@ int server_launch_clients(test_params *l_params, validation_params *v_params, ch
     strncpy(v_params->pmix_nspace, proc.nspace, PMIX_MAX_NSLEN);
 
     set_namespace(v_params);
-    if (NULL != ranks) {
-        free(ranks);
-    }
-
     local_size = v_params->pmix_local_size;
     univ_size = v_params->pmix_univ_size;
     /* add namespace entry */

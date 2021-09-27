@@ -141,6 +141,8 @@ static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
     pmix_buffer_t *msg;
     pmix_status_t rc;
 
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
     /* if we are the server, then we just issue the query and
      * return the response */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
