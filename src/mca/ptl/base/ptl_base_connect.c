@@ -196,18 +196,20 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
 pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr, pmix_socklen_t addrlen, int *fd)
 {
     int sd = -1, sd2;
-    int retries = 0;
+    int retries = -1;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl_base_connect: attempting to connect to server");
 
+    /* Create the new socket */
+    sd = socket(addr->ss_family, SOCK_STREAM, 0);
+
     while (retries < PMIX_MAX_RETRIES) {
         retries++;
-        /* Create the new socket */
-        sd = socket(addr->ss_family, SOCK_STREAM, 0);
         if (sd < 0) {
             pmix_output(0, "pmix:create_socket: socket() failed: %s (%d)\n",
                         strerror(pmix_socket_errno), pmix_socket_errno);
+            sd = socket(addr->ss_family, SOCK_STREAM, 0);
             continue;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
