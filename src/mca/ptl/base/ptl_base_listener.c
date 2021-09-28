@@ -597,7 +597,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
          * server */
         if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
             struct stat buf;
-            /* coverity[toctou] */
+            /* coverity[TOCTOU] */
             if (0 == stat(pmix_ptl_base.rendezvous_filename, &buf)) {
                 goto nextstep;
             }

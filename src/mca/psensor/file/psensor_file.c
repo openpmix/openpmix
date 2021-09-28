@@ -279,7 +279,7 @@ static void file_sample(int sd, short args, void *cbdata)
                          pmix_globals.myid.rank, ft->file));
 
     /* stat the file and get its info */
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (0 > stat(ft->file, &buf)) {
         /* cannot stat file */
         PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,

@@ -242,7 +242,7 @@ char *pmix_path_access(char *fname, char *path, int mode)
     /* first check to see - is this a file or a directory? We
      * only want files
      */
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (0 != stat(fullpath, &buf)) {
         /* couldn't stat the path - obviously, this also meets the
          * existence check, if that was requested
