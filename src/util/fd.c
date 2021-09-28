@@ -101,7 +101,7 @@ pmix_status_t pmix_fd_set_cloexec(int fd)
 bool pmix_fd_is_regular(int fd)
 {
     struct stat buf;
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (fstat(fd, &buf)) {
         return false;
     }
@@ -111,7 +111,7 @@ bool pmix_fd_is_regular(int fd)
 bool pmix_fd_is_chardev(int fd)
 {
     struct stat buf;
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (fstat(fd, &buf)) {
         return false;
     }
@@ -121,7 +121,7 @@ bool pmix_fd_is_chardev(int fd)
 bool pmix_fd_is_blkdev(int fd)
 {
     struct stat buf;
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (fstat(fd, &buf)) {
         return false;
     }

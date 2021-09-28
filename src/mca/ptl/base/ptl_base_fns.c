@@ -280,7 +280,7 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connecti
      * be configured to support tool connections, or this
      * user isn't authorized to access it - or it may just
      * not exist yet! Check for existence */
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (0 != access(filename, R_OK)) {
         if (ENOENT == errno) {
             /* the file does not exist, so give it
@@ -307,7 +307,7 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connecti
                 }
                 PMIX_WAIT_THREAD(&lock);
                 PMIX_DESTRUCT_LOCK(&lock);
-                /* coverity[toctou] */
+                /* coverity[TOCTOU] */
                 if (0 == access(filename, R_OK)) {
                     goto process;
                 }
@@ -401,7 +401,7 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
             continue;
         }
         newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
-        /* coverity[toctou] */
+        /* coverity[TOCTOU] */
         if (-1 == stat(newdir, &buf)) {
             free(newdir);
             continue;
@@ -1083,7 +1083,7 @@ static void check_server(char *filename, pmix_list_t *servers)
      * be configured to support tool connections, or this
      * user isn't authorized to access it - or it may just
      * not exist yet! Check for existence */
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (0 == access(filename, R_OK)) {
         goto process;
     } else {
@@ -1112,7 +1112,7 @@ static void check_server(char *filename, pmix_list_t *servers)
                 }
                 PMIX_WAIT_THREAD(&lock);
                 PMIX_DESTRUCT_LOCK(&lock);
-                /* coverity[toctou] */
+                /* coverity[TOCTOU] */
                 if (0 == access(filename, R_OK)) {
                     goto process;
                 }
@@ -1304,7 +1304,7 @@ static void query_servers(char *dirname, pmix_list_t *servers)
             continue;
         }
         newdir = pmix_os_path(false, dname, dir_entry->d_name, NULL);
-        /* coverity[toctou] */
+        /* coverity[TOCTOU] */
         if (-1 == stat(newdir, &buf)) {
             free(newdir);
             continue;

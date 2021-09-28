@@ -85,7 +85,7 @@ static int pdlopen_open(const char *fname, bool use_ext, bool private_namespace,
 
             /* Does the file exist? */
             struct stat buf;
-            /* coverity[toctou] */
+            /* coverity[TOCTOU] */
             if (stat(name, &buf) < 0) {
                 if (NULL != err_msg) {
                     rc = asprintf(err_msg, "File %s not found", name);
@@ -197,7 +197,7 @@ static int pdlopen_foreachfile(const char *search_path,
 
             /* Stat the file */
             struct stat buf;
-            /* coverity[toctou] */
+            /* coverity[TOCTOU] */
             if (stat(abs_name, &buf) < 0) {
                 free(abs_name);
                 ret = PMIX_ERR_IN_ERRNO;
