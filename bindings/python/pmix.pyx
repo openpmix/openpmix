@@ -741,7 +741,8 @@ cdef class PMIxClient:
             if 0 < ninfo:
                 pmix_free_info(jinfo, ninfo)
             return rc, None
-        rc = PMIx_Spawn(jinfo, ninfo, apps, napps, nspace)
+        with nogil:
+            rc = PMIx_Spawn(jinfo, ninfo, apps, napps, nspace)
         pmix_free_apps(apps, napps)
         if 0 < ninfo:
             pmix_free_info(jinfo, ninfo)
