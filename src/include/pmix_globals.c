@@ -712,3 +712,13 @@ pmix_event_t *pmix_event_new(pmix_event_base_t *b, int fd, short fg, event_callb
 
     return ev;
 }
+
+#if PMIX_PICKY_COMPILERS
+void pmix_hide_unused_params(int x, ...)
+{
+    va_list ap;
+
+    va_start(ap, x);
+    va_end(ap);
+}
+#endif

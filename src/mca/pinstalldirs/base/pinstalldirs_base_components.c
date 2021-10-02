@@ -23,7 +23,25 @@
 #include "src/mca/pinstalldirs/base/static-components.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 
-pmix_pinstall_dirs_t pmix_pinstall_dirs = {0};
+pmix_pinstall_dirs_t pmix_pinstall_dirs = {
+    .prefix = NULL,
+    .exec_prefix = NULL,
+    .bindir = NULL,
+    .sbindir = NULL,
+    .libexecdir = NULL,
+    .datarootdir = NULL,
+    .datadir = NULL,
+    .sysconfdir = NULL,
+    .sharedstatedir = NULL,
+    .localstatedir = NULL,
+    .libdir = NULL,
+    .includedir = NULL,
+    .infodir = NULL,
+    .mandir = NULL,
+    .pmixdatadir = NULL,
+    .pmixlibdir = NULL,
+    .pmixincludedir = NULL
+};
 
 #define CONDITIONAL_COPY(target, origin, field)             \
     do {                                                    \

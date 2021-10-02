@@ -409,6 +409,7 @@ done:
 static void chaincbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     if (NULL != cb) {
         PMIX_RELEASE(cb);
@@ -432,6 +433,8 @@ static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
     size_t n;
     pmix_status_t rc = PMIX_GROUP_INVITE_DECLINED;
     size_t contextid = SIZE_MAX;
+
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, results, nresults);
 
     /* find the object we asked to be returned with event */
     for (n = 0; n < ninfo; n++) {
@@ -740,6 +743,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
+    PMIX_HIDE_UNUSED_PARAMS(results, nresults);
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which lock to release when
      * the return message is recvd */
@@ -772,6 +777,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     pmix_data_range_t range;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    PMIX_HIDE_UNUSED_PARAMS(grp, cbfunc);
 
     pmix_output_verbose(2, pmix_client_globals.connect_output, "[%s:%d] pmix: join nb called",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
@@ -986,6 +993,8 @@ static void grp_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_
     int32_t cnt;
     size_t ctxid, ninfo = 0;
     pmix_info_t info, *iptr = NULL;
+
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     pmix_output_verbose(2, pmix_client_globals.connect_output,
                         "pmix:client recv callback activated with %d bytes",

@@ -339,14 +339,6 @@ typedef pmix_status_t (*pmix_bfrop_value_unload_fn_t)(pmix_value_t *kv, void **d
  */
 typedef pmix_value_cmp_t (*pmix_bfrop_value_cmp_fn_t)(pmix_value_t *p1, pmix_value_t *p2);
 
-/* define a component-level API for registering a new
- * datatype, providing all the required functions */
-typedef pmix_status_t (*pmix_bfrop_base_register_fn_t)(const char *name, pmix_data_type_t type,
-                                                       pmix_bfrop_pack_fn_t pack,
-                                                       pmix_bfrop_unpack_fn_t unpack,
-                                                       pmix_bfrop_copy_fn_t copy,
-                                                       pmix_bfrop_print_fn_t print);
-
 /* return the string name of a provided data type */
 typedef const char *(*pmix_bfrop_data_type_string_fn_t)(pmix_data_type_t type);
 
@@ -366,7 +358,6 @@ typedef struct {
     pmix_bfrop_value_load_fn_t value_load;
     pmix_bfrop_value_unload_fn_t value_unload;
     pmix_bfrop_value_cmp_fn_t value_cmp;
-    pmix_bfrop_base_register_fn_t register_type;
     pmix_bfrop_data_type_string_fn_t data_type_string;
 } pmix_bfrops_module_t;
 

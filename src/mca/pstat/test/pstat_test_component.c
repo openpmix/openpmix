@@ -76,7 +76,8 @@ const pmix_pstat_base_component_t mca_pstat_test_component = {
     /* Next the MCA v1.0.0 component meta data */
     .base_data = {
         /* The component is checkpoint ready */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
+        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
+        .reserved = {0}
     }
 };
 

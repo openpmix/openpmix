@@ -70,6 +70,9 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
 
+    // must use sd, args to avoid -Werror
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,
                         "ptl:base:connection_handler: new connection: %d", pnd->sd);
 
@@ -463,6 +466,9 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(cd);
+    // must use sd, args to avoid -Werror
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     /* shortcuts */
     peer = (pmix_peer_t *) pnd->peer;
     nptr = peer->nptr;

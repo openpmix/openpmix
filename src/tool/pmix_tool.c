@@ -79,10 +79,11 @@ static pmix_event_t stdinsig, parentdied;
 static pmix_iof_read_event_t stdinev;
 static pmix_proc_t myparent;
 
-static void pdiedfn(int fd, short flags, void *arg)
+static void pdiedfn(int sd, short args, void *cbdata)
 {
     pmix_info_t info[2];
     pmix_proc_t keepalive;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args, cbdata);
 
     PMIX_LOAD_PROCID(&keepalive, "PMIX_KEEPALIVE_PIPE", PMIX_RANK_UNDEF);
 
@@ -148,14 +149,15 @@ cleanup:
     PMIX_RELEASE(chain);
 }
 
-static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                                  void *cbdata)
+static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                                  pmix_buffer_t *buf, void *cbdata)
 {
     pmix_status_t rc;
     int32_t cnt;
     pmix_cmd_t cmd;
     pmix_event_chain_t *chain;
     size_t ninfo;
+    PMIX_HIDE_UNUSED_PARAMS(peer, hdr, cbdata);
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix:tool_notify_recv - processing event");
@@ -250,8 +252,8 @@ error:
     pmix_invoke_local_event_hdlr(chain);
 }
 
-static void tool_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                             void *cbdata)
+static void tool_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                             pmix_buffer_t *buf, void *cbdata)
 {
     pmix_peer_t *peer = (pmix_peer_t *) pr;
     pmix_proc_t source;
@@ -262,6 +264,7 @@ static void tool_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_b
     size_t refid, ninfo = 0;
     pmix_iof_req_t *req;
     pmix_info_t *info = NULL;
+    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
     pmix_output_verbose(2, pmix_client_globals.iof_output, "recvd IOF with %d bytes",
                         (int) buf->bytes_used);
@@ -331,12 +334,14 @@ cleanup:
 }
 
 /* callback to receive job info */
-static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf, void *cbdata)
+static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                     pmix_buffer_t *buf, void *cbdata)
 {
     pmix_status_t rc;
     char *nspace;
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     /* unpack the nspace - should be same as our own */
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &nspace, &cnt, PMIX_STRING);
@@ -359,6 +364,7 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
 static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(evhandler_ref);
 
     lock->status = status;
     PMIX_WAKEUP_THREAD(lock);
@@ -372,6 +378,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     pmix_lock_t *lock = NULL;
     char *name = NULL;
     size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
     pmix_output_verbose(2, pmix_client_globals.base_output, "[%s:%d] DEBUGGER RELEASE RECVD",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
@@ -1358,6 +1365,7 @@ static void fin_timeout(int sd, short args, void *cbdata)
 {
     pmix_tool_timeout_t *tev;
     tev = (pmix_tool_timeout_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finwait timeout fired");
     if (tev->active) {
@@ -1366,11 +1374,12 @@ static void fin_timeout(int sd, short args, void *cbdata)
     }
 }
 /* callback for finalize completion */
-static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                           void *cbdata)
+static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                           pmix_buffer_t *buf, void *cbdata)
 {
     pmix_tool_timeout_t *tev;
     tev = (pmix_tool_timeout_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, buf);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finwait_cbfunc received");
     if (tev->active) {
@@ -1380,9 +1389,10 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buf
     PMIX_WAKEUP_THREAD(&tev->lock);
 }
 
-static void checkev(int fd, short args, void *cbdata)
+static void checkev(int sd, short args, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t*)cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
     PMIX_WAKEUP_THREAD(lock);
 }
 
@@ -1542,6 +1552,7 @@ static void retry_attach(int sd, short args, void *cbdata)
     pmix_peer_t *peer;
     size_t n;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cb);
 
@@ -1660,6 +1671,7 @@ static void disc(int sd, short args, void *cbdata)
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_peer_t *peer = NULL, *pr;
     int n;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cb);
 
@@ -1744,6 +1756,7 @@ static void getsrvrs(int sd, short args, void *cbdata)
     pmix_list_t srvrs;
     pmix_proclist_t *ps;
     pmix_peer_t *pr;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cb);
 
@@ -1834,6 +1847,7 @@ static void retry_set(int sd, short args, void *cbdata)
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     int n;
     pmix_peer_t *peer = NULL, *pr;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cb);
 

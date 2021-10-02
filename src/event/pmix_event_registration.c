@@ -83,7 +83,9 @@ static void check_cached_events(pmix_rshift_caddy_t *cd);
 
 /* catch the event registration response message from the
  * server and process it */
-static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+static void regevents_cbfunc(struct pmix_peer_t *peer,
+                             pmix_ptl_hdr_t *hdr,
+                             pmix_buffer_t *buf,
                              void *cbdata)
 {
     pmix_rshift_caddy_t *rb = (pmix_rshift_caddy_t *) cbdata;
@@ -93,6 +95,8 @@ static void regevents_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix
     size_t index = rb->index;
 
     pmix_output_verbose(2, pmix_client_globals.event_output, "pmix: regevents callback recvd");
+
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     /* unpack the status code */
     cnt = 1;
@@ -472,6 +476,8 @@ static void reg_event_hdlr(int sd, short args, void *cbdata)
 
     /* need to acquire the object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cd);
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "[%s]: register event_hdlr with %d infos",
@@ -960,6 +966,8 @@ static void dereg_event_hdlr(int sd, short args, void *cbdata)
 
     /* need to acquire the object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cd);
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* if I am not the server, and I am connected, then I need
      * to notify the server to remove my registration */

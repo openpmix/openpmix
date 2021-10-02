@@ -33,7 +33,13 @@
 #include "src/mca/plog/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_plog_globals_t pmix_plog_globals = {{0}};
+pmix_plog_globals_t pmix_plog_globals = {
+    .lock = PMIX_LOCK_STATIC_INIT,
+    .actives = PMIX_POINTER_ARRAY_STATIC_INIT,
+    .initialized = false,
+    .selected = false,
+    .channels = NULL
+};
 pmix_plog_API_module_t pmix_plog = {.log = pmix_plog_base_log};
 
 static char *order = NULL;

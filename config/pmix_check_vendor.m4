@@ -15,6 +15,7 @@ dnl Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2015      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -96,7 +97,7 @@ AC_DEFUN([_PMIX_CHECK_COMPILER_VENDOR], [
     # Portland Group
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],
           [PMIX_IFDEF_IFELSE([__PGI],
-               [pmix_check_compiler_vendor_result="portland group"])])
+               [pmix_check_compiler_vendor_result="pgi"])])
 
     # Fujitsu
     AS_IF([test "$pmix_check_compiler_vendor_result" = "unknown"],

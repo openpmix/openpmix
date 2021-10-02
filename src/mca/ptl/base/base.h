@@ -65,7 +65,7 @@ struct pmix_ptl_base_t {
     int stop_thread[2];
     bool listen_thread_active;
     pmix_listener_t listener;
-    struct sockaddr_storage connection;
+    struct sockaddr_storage *connection;
     uint32_t current_tag;
     size_t max_msg_size;
     char *session_tmpdir;

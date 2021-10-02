@@ -62,6 +62,19 @@ struct pmix_pointer_array_t {
     /** pointer to array of pointers */
     void **addr;
 };
+
+#define PMIX_POINTER_ARRAY_STATIC_INIT              \
+{                                                   \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+    .lowest_free = 0,                               \
+    .number_free = 0,                               \
+    .size = 0,                                      \
+    .max_size = 0,                                  \
+    .block_size = 0,                                \
+    .free_bits = NULL,                              \
+    .addr = NULL                                    \
+}
+
 /**
  * Convenience typedef
  */

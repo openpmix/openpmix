@@ -92,6 +92,8 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {.init_cntr = 0,
 static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_num, void *occupant)
 {
     pmix_notify_caddy_t *cache = (pmix_notify_caddy_t *) occupant;
+    PMIX_HIDE_UNUSED_PARAMS(hotel, room_num);
+
     PMIX_RELEASE(cache);
 }
 

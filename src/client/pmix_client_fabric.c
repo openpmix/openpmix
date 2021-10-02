@@ -86,6 +86,8 @@ static void frecv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *
     pmix_status_t rc;
     int cnt;
 
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
+
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric recv from server with %d bytes",
                         (int) buf->bytes_used);
 
@@ -431,6 +433,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric, pmix_
                                                     void *cbdata)
 {
     pmix_status_t rc;
+
+    PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 

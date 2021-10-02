@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2018      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -37,6 +38,8 @@ headers = test_common.h cli_stages.h server_callbacks.h utils.h test_fence.h \
         test_replace.h test_internal.h test_server.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
+# we do NOT want picky compilers down here
+CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
 noinst_SCRIPTS = pmix_client_otheruser.sh \
 	run_tests00.pl \

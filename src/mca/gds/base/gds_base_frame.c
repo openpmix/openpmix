@@ -47,7 +47,12 @@
 #include "src/mca/gds/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_gds_globals_t pmix_gds_globals = {{{0}}};
+pmix_gds_globals_t pmix_gds_globals = {
+    .actives = PMIX_LIST_STATIC_INIT,
+    .initialized = false,
+    .selected = false,
+    .all_mods = NULL
+};
 int pmix_gds_base_output = -1;
 
 static pmix_status_t pmix_gds_close(void)

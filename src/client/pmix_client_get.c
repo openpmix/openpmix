@@ -273,6 +273,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
 static void gcbfn(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     cb->cbfunc.valuefn(cb->status, cb->value, cb->cbdata);
     PMIX_RELEASE(cb);
@@ -439,6 +440,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buff
     pmix_get_logic_t *lg;
 
     PMIX_ACQUIRE_OBJECT(cb);
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     pmix_output_verbose(2, pmix_client_globals.get_output, "pmix: get_nb callback recvd");
 

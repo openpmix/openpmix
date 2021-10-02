@@ -436,7 +436,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
 
     /* save the connection */
     if (PMIX_SUCCESS
-        != pmix_ifindextoaddr(saveindex, (struct sockaddr *) &pmix_ptl_base.connection,
+        != pmix_ifindextoaddr(saveindex, (struct sockaddr *) pmix_ptl_base.connection,
                               sizeof(struct sockaddr))) {
         pmix_output(0, "ptl:base: problems getting address for kernel index %i\n",
                     pmix_ifindextokindex(saveindex));
@@ -444,15 +444,15 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     }
 
     /* set the port */
-    if (AF_INET == pmix_ptl_base.connection.ss_family) {
-        ((struct sockaddr_in *) &pmix_ptl_base.connection)->sin_port = htons(
+    if (AF_INET == pmix_ptl_base.connection->ss_family) {
+        ((struct sockaddr_in *) pmix_ptl_base.connection)->sin_port = htons(
             pmix_ptl_base.ipv4_port);
         addrlen = sizeof(struct sockaddr_in);
         if (0 != pmix_ptl_base.ipv4_port) {
             flags = 1;
         }
-    } else if (AF_INET6 == pmix_ptl_base.connection.ss_family) {
-        ((struct sockaddr_in6 *) &pmix_ptl_base.connection)->sin6_port = htons(
+    } else if (AF_INET6 == pmix_ptl_base.connection->ss_family) {
+        ((struct sockaddr_in6 *) pmix_ptl_base.connection)->sin6_port = htons(
             pmix_ptl_base.ipv6_port);
         addrlen = sizeof(struct sockaddr_in6);
         if (0 != pmix_ptl_base.ipv6_port) {
@@ -471,7 +471,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     lt->cbfunc = pmix_ptl_base_connection_handler;
 
     /* create a listen socket for incoming connection attempts */
-    lt->socket = socket(pmix_ptl_base.connection.ss_family, SOCK_STREAM, 0);
+    lt->socket = socket(pmix_ptl_base.connection->ss_family, SOCK_STREAM, 0);
     if (lt->socket < 0) {
         printf("%s:%d socket() failed\n", __FILE__, __LINE__);
         goto sockerror;
@@ -493,14 +493,14 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         goto sockerror;
     }
 
-    if (bind(lt->socket, (struct sockaddr *) &pmix_ptl_base.connection, addrlen) < 0) {
+    if (bind(lt->socket, (struct sockaddr *) pmix_ptl_base.connection, addrlen) < 0) {
         printf("[%u] %s:%d bind() failed for socket %d storage size %u: %s\n", (unsigned) getpid(),
                __FILE__, __LINE__, lt->socket, (unsigned) addrlen, strerror(errno));
         goto sockerror;
     }
 
     /* resolve assigned port */
-    if (getsockname(lt->socket, (struct sockaddr *) &pmix_ptl_base.connection, &addrlen) < 0) {
+    if (getsockname(lt->socket, (struct sockaddr *) pmix_ptl_base.connection, &addrlen) < 0) {
         pmix_output(0, "ptl:tool:create_listen: getsockname(): %s (%d)",
                     strerror(pmix_socket_errno), pmix_socket_errno);
         goto sockerror;
@@ -523,15 +523,15 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         goto sockerror;
     }
 
-    if (AF_INET == pmix_ptl_base.connection.ss_family) {
+    if (AF_INET == pmix_ptl_base.connection->ss_family) {
         prefix = "tcp4://";
-        myport = ntohs(((struct sockaddr_in *) &pmix_ptl_base.connection)->sin_port);
-        inet_ntop(AF_INET, &((struct sockaddr_in *) &pmix_ptl_base.connection)->sin_addr,
+        myport = ntohs(((struct sockaddr_in *) pmix_ptl_base.connection)->sin_port);
+        inet_ntop(AF_INET, &((struct sockaddr_in *) pmix_ptl_base.connection)->sin_addr,
                   myconnhost, PMIX_MAXHOSTNAMELEN - 1);
-    } else if (AF_INET6 == pmix_ptl_base.connection.ss_family) {
+    } else if (AF_INET6 == pmix_ptl_base.connection->ss_family) {
         prefix = "tcp6://";
-        myport = ntohs(((struct sockaddr_in6 *) &pmix_ptl_base.connection)->sin6_port);
-        inet_ntop(AF_INET6, &((struct sockaddr_in6 *) &pmix_ptl_base.connection)->sin6_addr,
+        myport = ntohs(((struct sockaddr_in6 *) pmix_ptl_base.connection)->sin6_port);
+        inet_ntop(AF_INET6, &((struct sockaddr_in6 *) pmix_ptl_base.connection)->sin6_addr,
                   myconnhost, PMIX_MAXHOSTNAMELEN - 1);
     } else {
         goto sockerror;

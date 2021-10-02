@@ -38,6 +38,7 @@
 #include "include/pmix_common.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
@@ -201,6 +202,7 @@ static int file_exists(const char *filename, const char *ext)
 
 int pmix_mca_base_component_repository_add(const char *path)
 {
+    PMIX_HIDE_UNUSED_PARAMS(path);
 #if PMIX_HAVE_PDL_SUPPORT
     char *path_to_use = NULL, *dir, *ctx;
     const char sep[] = {PMIX_ENV_SEP, '\0'};
@@ -293,6 +295,7 @@ int pmix_mca_base_component_repository_get_components(pmix_mca_base_framework_t 
                                          strlen(framework->framework_name),
                                          (void **) framework_components);
 #else
+    PMIX_HIDE_UNUSED_PARAMS(framework);
     return PMIX_ERR_NOT_FOUND;
 #endif
 }
@@ -350,6 +353,8 @@ void pmix_mca_base_component_repository_release(const pmix_mca_base_component_t 
     if (NULL != ri && !(--ri->ri_refcnt)) {
         pmix_mca_base_component_repository_release_internal(ri);
     }
+#else
+    PMIX_HIDE_UNUSED_PARAMS(component);
 #endif
 }
 
@@ -365,6 +370,7 @@ int pmix_mca_base_component_repository_retain_component(const char *type, const 
 
     return PMIX_ERR_NOT_FOUND;
 #else
+    PMIX_HIDE_UNUSED_PARAMS(type, name);
     return PMIX_ERR_NOT_SUPPORTED;
 #endif
 }
@@ -559,6 +565,7 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
 #else
 
     /* no dlopen support */
+    PMIX_HIDE_UNUSED_PARAMS(framework, ri);
     return PMIX_ERR_NOT_SUPPORTED;
 #endif
 }

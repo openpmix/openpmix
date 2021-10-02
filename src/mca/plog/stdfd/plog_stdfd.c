@@ -80,6 +80,10 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
+
+
+    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs, cbfunc, cbdata);
+    
 #if 0
     /* check to see if there are any relevant directives */
     for (n = 0; n < ndirs; n++) {
