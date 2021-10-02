@@ -270,9 +270,10 @@ AS_IF([test ! -z "$PMIX_CFLAGS_cache"], [CFLAGS="$CFLAGS $PMIX_CFLAGS_cache"])
 
 # Delay setting pickyness until here so we
 # don't break configure code tests
-#if test "$WANT_PICKY_COMPILER" = "1"; then
-#    CFLAGS="$CFLAGS -Wall -Wextra -Werror"
-#fi
+if test "$WANT_PICKY_COMPILER" = "1" && test "$pmix_c_vendor" != "pgi"; then
+        CFLAGS="$CFLAGS -Wall -Wextra -Werror"
+# -fsanitize=address -fsanitize=undefined"
+fi
 
 # Cleanup duplicate flags
 PMIX_FLAGS_UNIQ(CFLAGS)

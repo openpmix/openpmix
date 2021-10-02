@@ -1067,6 +1067,9 @@ if test "$WANT_PICKY_COMPILER" = "0" && test -z "$enable_picky" && test "$PMIX_D
 fi
 #################### Early development override ####################
 
+AC_DEFINE_UNQUOTED(PMIX_PICKY_COMPILERS, $WANT_PICKY_COMPILER,
+                   [Whether or not we are using picky compiler settings])
+
 #
 # Developer debugging
 #

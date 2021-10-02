@@ -39,8 +39,16 @@
 /*
  * Global variables
  */
-pmix_psensor_base_module_t pmix_psensor = {pmix_psensor_base_start, pmix_psensor_base_stop};
-pmix_psensor_base_t pmix_psensor_base = {{{0}}};
+pmix_psensor_base_module_t pmix_psensor = {
+    .start = pmix_psensor_base_start,
+    .stop = pmix_psensor_base_stop
+};
+
+pmix_psensor_base_t pmix_psensor_base = {
+    .actives = PMIX_LIST_STATIC_INIT,
+    .evbase = NULL,
+    .selected = false
+};
 
 static bool use_separate_thread = false;
 

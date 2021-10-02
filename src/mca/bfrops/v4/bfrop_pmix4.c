@@ -41,9 +41,6 @@ static pmix_status_t pmix4_unpack(pmix_buffer_t *buffer, void *dest, int32_t *nu
                                   pmix_data_type_t type);
 static pmix_status_t pmix4_copy(void **dest, void *src, pmix_data_type_t type);
 static pmix_status_t pmix4_print(char **output, char *prefix, void *src, pmix_data_type_t type);
-static pmix_status_t register_type(const char *name, pmix_data_type_t type,
-                                   pmix_bfrop_pack_fn_t pack, pmix_bfrop_unpack_fn_t unpack,
-                                   pmix_bfrop_copy_fn_t copy, pmix_bfrop_print_fn_t print);
 static const char *data_type_string(pmix_data_type_t type);
 
 static pmix_status_t pmix4_bfrops_base_pack_general_int(pmix_pointer_array_t *regtypes,
@@ -65,20 +62,21 @@ static pmix_status_t pmix4_bfrops_base_unpack_sizet(pmix_pointer_array_t *regtyp
                                                     pmix_buffer_t *buffer, void *dest,
                                                     int32_t *num_vals, pmix_data_type_t type);
 
-pmix_bfrops_module_t pmix_bfrops_pmix4_module = {.version = "v4",
-                                                 .init = init,
-                                                 .finalize = finalize,
-                                                 .pack = pmix4_pack,
-                                                 .unpack = pmix4_unpack,
-                                                 .copy = pmix4_copy,
-                                                 .print = pmix4_print,
-                                                 .copy_payload = pmix_bfrops_base_copy_payload,
-                                                 .value_xfer = pmix_bfrops_base_value_xfer,
-                                                 .value_load = pmix_bfrops_base_value_load,
-                                                 .value_unload = pmix_bfrops_base_value_unload,
-                                                 .value_cmp = pmix_bfrops_base_value_cmp,
-                                                 .register_type = register_type,
-                                                 .data_type_string = data_type_string};
+pmix_bfrops_module_t pmix_bfrops_pmix4_module = {
+    .version = "v4",
+    .init = init,
+    .finalize = finalize,
+    .pack = pmix4_pack,
+    .unpack = pmix4_unpack,
+    .copy = pmix4_copy,
+    .print = pmix4_print,
+    .copy_payload = pmix_bfrops_base_copy_payload,
+    .value_xfer = pmix_bfrops_base_value_xfer,
+    .value_load = pmix_bfrops_base_value_load,
+    .value_unload = pmix_bfrops_base_value_unload,
+    .value_cmp = pmix_bfrops_base_value_cmp,
+    .data_type_string = data_type_string
+};
 
 static pmix_status_t init(void)
 {
@@ -208,7 +206,7 @@ static pmix_status_t init(void)
 
     PMIX_REGISTER_TYPE("PMIX_SCOPE", PMIX_SCOPE, pmix_bfrops_base_pack_scope,
                        pmix_bfrops_base_unpack_scope, pmix_bfrops_base_std_copy,
-                       pmix_bfrops_base_std_copy, &mca_bfrops_v4_component.types);
+                       pmix_bfrops_base_print_scope, &mca_bfrops_v4_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_DATA_RANGE", PMIX_DATA_RANGE, pmix_bfrops_base_pack_range,
                        pmix_bfrops_base_unpack_range, pmix_bfrops_base_std_copy,
@@ -359,14 +357,6 @@ static pmix_status_t pmix4_print(char **output, char *prefix, void *src, pmix_da
     return pmix_bfrops_base_print(&mca_bfrops_v4_component.types, output, prefix, src, type);
 }
 
-static pmix_status_t register_type(const char *name, pmix_data_type_t type,
-                                   pmix_bfrop_pack_fn_t pack, pmix_bfrop_unpack_fn_t unpack,
-                                   pmix_bfrop_copy_fn_t copy, pmix_bfrop_print_fn_t print)
-{
-    PMIX_REGISTER_TYPE(name, type, pack, unpack, copy, print, &mca_bfrops_v4_component.types);
-    return PMIX_SUCCESS;
-}
-
 static const char *data_type_string(pmix_data_type_t type)
 {
     return pmix_bfrops_base_data_type_string(&mca_bfrops_v4_component.types, type);
@@ -386,6 +376,8 @@ static pmix_status_t pmix4_bfrops_base_pack_general_int(pmix_pointer_array_t *re
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrops_base_pack_integer * %d\n", num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes);
 
     PMIX_SQUASH_TYPE_SIZEOF(rc, type, val_size);
     if (PMIX_SUCCESS != rc) {
@@ -429,6 +421,8 @@ static pmix_status_t pmix4_bfrops_base_pack_int(pmix_pointer_array_t *regtypes,
 {
     pmix_status_t ret;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     if (false == pmix_psquash.int_type_is_encoded) {
         /* System types need to always be described so we can properly
            unpack them */
@@ -450,6 +444,8 @@ static pmix_status_t pmix4_bfrops_base_pack_sizet(pmix_pointer_array_t *regtypes
                                                   int32_t num_vals, pmix_data_type_t type)
 {
     int ret;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     if (false == pmix_psquash.int_type_is_encoded) {
         /* System types need to always be described so we can properly
@@ -477,6 +473,8 @@ static pmix_status_t pmix4_bfrops_base_unpack_general_int(pmix_pointer_array_t *
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrops_base_unpack_integer * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
 
     /* check to see if there's enough data in buffer */
     if (buffer->pack_ptr == buffer->unpack_ptr) {
@@ -531,6 +529,8 @@ static pmix_status_t pmix4_bfrops_base_unpack_int(pmix_pointer_array_t *regtypes
     pmix_status_t ret;
     pmix_data_type_t remote_type;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     if (false == pmix_psquash.int_type_is_encoded) {
         if (PMIX_SUCCESS != (ret = pmix_bfrop_get_data_type(regtypes, buffer, &remote_type))) {
             return ret;
@@ -559,6 +559,8 @@ static pmix_status_t pmix4_bfrops_base_unpack_sizet(pmix_pointer_array_t *regtyp
 {
     pmix_status_t ret;
     pmix_data_type_t remote_type;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     if (false == pmix_psquash.int_type_is_encoded) {
         if (PMIX_SUCCESS != (ret = pmix_bfrop_get_data_type(regtypes, buffer, &remote_type))) {

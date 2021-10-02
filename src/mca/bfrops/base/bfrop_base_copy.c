@@ -222,9 +222,8 @@ pmix_status_t pmix_bfrops_base_std_copy(void **dest, void *src, pmix_data_type_t
  */
 pmix_status_t pmix_bfrops_base_copy_string(char **dest, char *src, pmix_data_type_t type)
 {
-    if (PMIX_STRING != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     if (NULL == src) { /* got zero-length string/NULL pointer - store NULL */
         *dest = NULL;
     } else {
@@ -240,9 +239,8 @@ pmix_status_t pmix_bfrops_base_copy_value(pmix_value_t **dest, pmix_value_t *src
 {
     pmix_value_t *p;
 
-    if (PMIX_VALUE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* create the new object */
     *dest = (pmix_value_t *) malloc(sizeof(pmix_value_t));
     if (NULL == *dest) {
@@ -259,9 +257,8 @@ pmix_status_t pmix_bfrops_base_copy_value(pmix_value_t **dest, pmix_value_t *src
 pmix_status_t pmix_bfrops_base_copy_info(pmix_info_t **dest, pmix_info_t *src,
                                          pmix_data_type_t type)
 {
-    if (PMIX_VALUE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_info_t *) malloc(sizeof(pmix_info_t));
     pmix_strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
     (*dest)->flags = src->flags;
@@ -271,9 +268,8 @@ pmix_status_t pmix_bfrops_base_copy_info(pmix_info_t **dest, pmix_info_t *src,
 pmix_status_t pmix_bfrops_base_copy_buf(pmix_buffer_t **dest, pmix_buffer_t *src,
                                         pmix_data_type_t type)
 {
-    if (PMIX_BUFFER != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = PMIX_NEW(pmix_buffer_t);
     pmix_bfrops_base_copy_payload(*dest, src);
     return PMIX_SUCCESS;
@@ -283,9 +279,8 @@ pmix_status_t pmix_bfrops_base_copy_app(pmix_app_t **dest, pmix_app_t *src, pmix
 {
     size_t j;
 
-    if (PMIX_APP != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_app_t *) malloc(sizeof(pmix_app_t));
     (*dest)->cmd = strdup(src->cmd);
     (*dest)->argv = pmix_argv_copy(src->argv);
@@ -308,9 +303,8 @@ pmix_status_t pmix_bfrops_base_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
 {
     pmix_kval_t *p;
 
-    if (PMIX_KVAL != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* create the new object */
     *dest = PMIX_NEW(pmix_kval_t);
     if (NULL == *dest) {
@@ -327,9 +321,8 @@ pmix_status_t pmix_bfrops_base_copy_kval(pmix_kval_t **dest, pmix_kval_t *src,
 pmix_status_t pmix_bfrops_base_copy_proc(pmix_proc_t **dest, pmix_proc_t *src,
                                          pmix_data_type_t type)
 {
-    if (PMIX_PROC != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_proc_t *) malloc(sizeof(pmix_proc_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -342,9 +335,8 @@ pmix_status_t pmix_bfrops_base_copy_proc(pmix_proc_t **dest, pmix_proc_t *src,
 pmix_status_t pmix_bfrop_base_copy_persist(pmix_persistence_t **dest, pmix_persistence_t *src,
                                            pmix_data_type_t type)
 {
-    if (PMIX_PERSIST != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_persistence_t *) malloc(sizeof(pmix_persistence_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -356,9 +348,8 @@ pmix_status_t pmix_bfrop_base_copy_persist(pmix_persistence_t **dest, pmix_persi
 pmix_status_t pmix_bfrops_base_copy_bo(pmix_byte_object_t **dest, pmix_byte_object_t *src,
                                        pmix_data_type_t type)
 {
-    if (PMIX_BYTE_OBJECT != type && PMIX_COMPRESSED_BYTE_OBJECT != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_byte_object_t *) malloc(sizeof(pmix_byte_object_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -372,9 +363,8 @@ pmix_status_t pmix_bfrops_base_copy_bo(pmix_byte_object_t **dest, pmix_byte_obje
 pmix_status_t pmix_bfrops_base_copy_pdata(pmix_pdata_t **dest, pmix_pdata_t *src,
                                           pmix_data_type_t type)
 {
-    if (PMIX_PDATA != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_pdata_t *) malloc(sizeof(pmix_pdata_t));
     pmix_strncpy((*dest)->proc.nspace, src->proc.nspace, PMIX_MAX_NSLEN);
     (*dest)->proc.rank = src->proc.rank;
@@ -387,9 +377,8 @@ pmix_status_t pmix_bfrops_base_copy_pinfo(pmix_proc_info_t **dest, pmix_proc_inf
 {
     pmix_proc_info_t *p;
 
-    if (PMIX_INFO != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_PROC_INFO_CREATE(p, 1);
     if (NULL == p) {
         return PMIX_ERR_NOMEM;
@@ -454,9 +443,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
     pmix_net_stats_t *ntdest, *ntsrc;
     pmix_node_stats_t *nddest, *ndsrc;
 
-    if (PMIX_DATA_ARRAY != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     p = (pmix_data_array_t *) calloc(1, sizeof(pmix_data_array_t));
     if (NULL == p) {
@@ -1074,9 +1061,8 @@ pmix_status_t pmix_bfrops_base_copy_query(pmix_query_t **dest, pmix_query_t *src
 {
     pmix_status_t rc;
 
-    if (PMIX_QUERY != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_query_t *) malloc(sizeof(pmix_query_t));
     if (NULL != src->keys) {
         (*dest)->keys = pmix_argv_copy(src->keys);
@@ -1096,9 +1082,8 @@ pmix_status_t pmix_bfrops_base_copy_query(pmix_query_t **dest, pmix_query_t *src
 pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest, pmix_envar_t *src,
                                           pmix_data_type_t type)
 {
-    if (PMIX_ENVAR != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_ENVAR_CREATE(*dest, 1);
     if (NULL == (*dest)) {
         return PMIX_ERR_NOMEM;
@@ -1119,9 +1104,8 @@ pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest, pmix_coord_t *src
     pmix_coord_t *d;
     pmix_status_t rc;
 
-    if (PMIX_COORD != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     d = (pmix_coord_t *) malloc(sizeof(pmix_coord_t));
     if (NULL == d) {
         return PMIX_ERR_NOMEM;
@@ -1140,9 +1124,8 @@ pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest, pmix_coord_t *src
 pmix_status_t pmix_bfrops_base_copy_regattr(pmix_regattr_t **dest, pmix_regattr_t *src,
                                             pmix_data_type_t type)
 {
-    if (PMIX_REGATTR != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_REGATTR_CREATE(*dest, 1);
     if (NULL == (*dest)) {
         return PMIX_ERR_NOMEM;
@@ -1160,9 +1143,7 @@ pmix_status_t pmix_bfrops_base_copy_regex(char **dest, char *src, pmix_data_type
 {
     size_t len;
 
-    if (PMIX_REGEX != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     return pmix_preg.copy(dest, &len, src);
 }
@@ -1173,9 +1154,8 @@ pmix_status_t pmix_bfrops_base_copy_cpuset(pmix_cpuset_t **dest, pmix_cpuset_t *
     pmix_cpuset_t *dst;
     pmix_status_t rc;
 
-    if (PMIX_PROC_CPUSET != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_CPUSET_CREATE(dst, 1);
     if (NULL == dst) {
         return PMIX_ERR_NOMEM;
@@ -1197,9 +1177,8 @@ pmix_status_t pmix_bfrops_base_copy_geometry(pmix_geometry_t **dest, pmix_geomet
     pmix_status_t rc;
     size_t n;
 
-    if (PMIX_GEOMETRY != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_GEOMETRY_CREATE(dst, 1);
     if (NULL == dst) {
         return PMIX_ERR_NOMEM;
@@ -1233,9 +1212,8 @@ pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
 {
     pmix_device_distance_t *dst;
 
-    if (PMIX_DEVICE_DIST != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_DEVICE_DIST_CREATE(dst, 1);
     if (NULL == dst) {
         return PMIX_ERR_NOMEM;
@@ -1260,9 +1238,8 @@ pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest, pmix_endpoi
 {
     pmix_endpoint_t *dst;
 
-    if (PMIX_ENDPOINT != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_ENDPOINT_CREATE(dst, 1);
     if (NULL == dst) {
         return PMIX_ERR_NOMEM;
@@ -1290,9 +1267,8 @@ pmix_status_t pmix_bfrops_base_copy_topology(pmix_topology_t **dest, pmix_topolo
     pmix_topology_t *dst;
     pmix_status_t rc;
 
-    if (PMIX_TOPO != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_TOPOLOGY_CREATE(dst, 1);
     if (NULL == dst) {
         return PMIX_ERR_NOMEM;
@@ -1312,9 +1288,8 @@ pmix_status_t pmix_bfrops_base_copy_nspace(pmix_nspace_t **dest, pmix_nspace_t *
 {
     pmix_nspace_t *dst;
 
-    if (PMIX_PROC_NSPACE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     dst = (pmix_nspace_t *) malloc(sizeof(pmix_nspace_t));
     if (NULL == dst) {
         return PMIX_ERR_NOMEM;
@@ -1353,6 +1328,8 @@ pmix_status_t pmix_bfrops_base_copy_pstats(pmix_proc_stats_t **dest, pmix_proc_s
 {
     pmix_proc_stats_t *p;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* create the new object */
     PMIX_PROC_STATS_CREATE(p, 1);
     if (NULL == p) {
@@ -1386,6 +1363,8 @@ pmix_status_t pmix_bfrops_base_copy_dkstats(pmix_disk_stats_t **dest, pmix_disk_
 {
     pmix_disk_stats_t *p;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* create the new object */
     PMIX_DISK_STATS_CREATE(p, 1);
     if (NULL == p) {
@@ -1413,6 +1392,8 @@ pmix_status_t pmix_bfrops_base_copy_netstats(pmix_net_stats_t **dest, pmix_net_s
                                              pmix_data_type_t type)
 {
     pmix_net_stats_t *p;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* create the new object */
     PMIX_NET_STATS_CREATE(p, 1);
@@ -1466,6 +1447,8 @@ pmix_status_t pmix_bfrops_base_copy_ndstats(pmix_node_stats_t **dest, pmix_node_
 {
     pmix_node_stats_t *p;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* create the new object */
     PMIX_NODE_STATS_CREATE(p, 1);
     if (NULL == p) {
@@ -1481,6 +1464,8 @@ pmix_status_t pmix_bfrops_base_copy_dbuf(pmix_data_buffer_t **dest, pmix_data_bu
 {
     pmix_data_buffer_t *p;
     pmix_status_t rc;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* create the new object */
     PMIX_DATA_BUFFER_CREATE(p);

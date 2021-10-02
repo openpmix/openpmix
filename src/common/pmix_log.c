@@ -42,12 +42,13 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-static void log_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                       void *cbdata)
+static void log_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                       pmix_buffer_t *buf, void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
     int32_t m;
     pmix_status_t rc, status;
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     /* unpack the return status */
     m = 1;

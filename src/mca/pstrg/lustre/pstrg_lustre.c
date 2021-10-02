@@ -87,7 +87,8 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
     gid_t gid = UINT32_MAX;
 
     pmix_output_verbose(2, pmix_pstrg_base_framework.framework_output, "pstrg: lustre query");
-
+    PMIX_HIDE_UNUSED_PARAMS(results, cbfunc, cbdata);
+    
     /* just put something here so that Travis will pass its tests
      * because it treats warnings as errors, and wants to warn about
      * unused variables */

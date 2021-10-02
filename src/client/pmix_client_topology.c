@@ -27,6 +27,7 @@
 static void _loadtp(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     cb->pstatus = pmix_hwloc_load_topology(cb->topo);
     PMIX_WAKEUP_THREAD(&cb->lock);
@@ -191,6 +192,7 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuse
 static void dcbfunc(int sd, short args, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     if (NULL != cb->cbfunc.distfn) {
         cb->cbfunc.distfn(cb->status, cb->dist, cb->nvals, cb->cbdata, icbrelfn, cb);
@@ -205,6 +207,8 @@ static void direcv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
     int cnt;
+
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:compute_dist recv from server with %d bytes", (int) buf->bytes_used);

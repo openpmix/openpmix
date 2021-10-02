@@ -285,7 +285,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # gcc-impersonating compilers won't accept them.
     PMIX_CFLAGS_BEFORE_PICKY="$CFLAGS"
 
-    if test $WANT_PICKY_COMPILER -eq 1; then
+    if test $WANT_PICKY_COMPILER -eq 1 && test "$pmix_c_vendor" != "pgi"; then
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wundef, Wundef)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-long, Wno_long_long, int main() { long long x; })
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wsign-compare, Wsign_compare)

@@ -485,6 +485,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     if (NULL == buf) {
         ret = PMIX_ERR_BAD_PARAM;
@@ -535,6 +536,7 @@ static void wait_lookup_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     /* set the defaults */
     pdata = NULL;

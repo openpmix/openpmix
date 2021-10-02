@@ -258,6 +258,25 @@ struct pmix_mca_base_component_2_1_0_t {
         breaking older components. */
     char reserved[32];
 };
+#define PMIX_BASE_COMPONENT_STATIC_INIT         \
+{                                               \
+    .pmix_mca_major_version = 0,                \
+    .pmix_mca_minor_version = 0,                \
+    .pmix_mca_release_version = 0,              \
+    .pmix_mca_project_name = {0},               \
+    .pmix_mca_type_major_version = 0,           \
+    .pmix_mca_type_minor_version = 0,           \
+    .pmix_mca_type_release_version = 0,         \
+    .pmix_mca_component_name = {0},             \
+    .pmix_mca_component_major_version = 0,      \
+    .pmix_mca_component_minor_version = 0,      \
+    .pmix_mca_component_release_version = 0,    \
+    .pmix_mca_open_component = NULL,            \
+    .pmix_mca_close_component = NULL,           \
+    .pmix_mca_query_component = NULL,           \
+    .pmix_mca_register_component_params = NULL, \
+    .reserved = {0}                             \
+}
 /** Unversioned convenience typedef; use this name in
     frameworks/components to stay forward source-compatible */
 typedef struct pmix_mca_base_component_2_1_0_t pmix_mca_base_component_t;
@@ -284,6 +303,12 @@ struct pmix_mca_base_component_data_2_0_0_t {
         breaking older components. */
     char reserved[32];
 };
+#define PMIX_BASE_DATA_STATIC_INIT      \
+{                                       \
+    .param_field = 0,                   \
+    .reserved = {0}                     \
+}
+
 /** Unversioned convenience typedef; use this name in
     frameworks/components to stay forward source-compatible */
 typedef struct pmix_mca_base_component_data_2_0_0_t pmix_mca_base_component_data_t;

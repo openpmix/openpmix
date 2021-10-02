@@ -63,7 +63,8 @@ pmix_pstrg_lustre_component_t mca_pstrg_lustre_component = {
         },
         .data = {
             /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
+            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
+            .reserved = {0}
         }
     },
 };

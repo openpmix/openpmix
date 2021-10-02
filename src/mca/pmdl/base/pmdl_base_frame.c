@@ -46,17 +46,28 @@
 #include "src/mca/pmdl/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_pmdl_globals_t pmix_pmdl_globals = {{0}};
-pmix_pmdl_API_module_t pmix_pmdl = {.harvest_envars = pmix_pmdl_base_harvest_envars,
-                                    .setup_nspace = pmix_pmdl_base_setup_nspace,
-                                    .setup_nspace_kv = pmix_pmdl_base_setup_nspace_kv,
-                                    .register_nspace = pmix_pmdl_base_register_nspace,
-                                    .setup_client = pmix_pmdl_base_setup_client,
-                                    .setup_fork = pmix_pmdl_base_setup_fork,
-                                    .deregister_nspace = pmix_pmdl_base_deregister_nspace};
+pmix_pmdl_globals_t pmix_pmdl_globals = {
+    .lock = PMIX_LOCK_STATIC_INIT,
+    .actives = PMIX_LIST_STATIC_INIT,
+    .initialized = false,
+    .selected = false
+};
+
+pmix_pmdl_API_module_t pmix_pmdl = {
+    .harvest_envars = pmix_pmdl_base_harvest_envars,
+    .setup_nspace = pmix_pmdl_base_setup_nspace,
+    .setup_nspace_kv = pmix_pmdl_base_setup_nspace_kv,
+    .register_nspace = pmix_pmdl_base_register_nspace,
+    .setup_client = pmix_pmdl_base_setup_client,
+    .setup_fork = pmix_pmdl_base_setup_fork,
+    .deregister_nspace = pmix_pmdl_base_deregister_nspace};
 
 static int pmix_pmdl_register(pmix_mca_base_register_flag_t flags)
 {
+    if (PMIX_MCA_BASE_REGISTER_STATIC_ONLY == flags) {
+        return PMIX_SUCCESS;
+    }
+
     /* Note that we break abstraction rules here by listing a
      specific PMDL here in the base.  This is necessary, however,
      due to extraordinary circumstances:

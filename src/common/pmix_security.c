@@ -34,8 +34,8 @@
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
 
-static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                      void *cbdata)
+static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                      pmix_buffer_t *buf, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_status_t rc, status = PMIX_ERR_UNPACK_FAILURE;
@@ -43,6 +43,7 @@ static void getcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer
     pmix_byte_object_t cred;
     pmix_info_t *info = NULL;
     size_t ninfo = 0;
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:security cback from server with %d bytes", (int) buf->bytes_used);
@@ -108,10 +109,11 @@ complete:
     PMIX_RELEASE(cd);
 }
 
-static void mycdcb(pmix_status_t status, pmix_byte_object_t *credential, pmix_info_t info[],
-                   size_t ninfo, void *cbdata)
+static void mycdcb(pmix_status_t status, pmix_byte_object_t *credential,
+                   pmix_info_t info[], size_t ninfo, void *cbdata)
 {
     pmix_query_caddy_t *cb = (pmix_query_caddy_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
 
     PMIX_ACQUIRE_OBJECT(cb);
     cb->status = status;
@@ -254,14 +256,15 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     return rc;
 }
 
-static void valid_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                         void *cbdata)
+static void valid_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_status_t rc, status = PMIX_ERR_UNPACK_FAILURE;
     int cnt;
     pmix_info_t *info = NULL;
     size_t ninfo = 0;
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:security cback from server with %d bytes", (int) buf->bytes_used);

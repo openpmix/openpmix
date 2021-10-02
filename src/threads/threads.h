@@ -71,6 +71,14 @@ typedef struct {
     volatile bool active;
 } pmix_lock_t;
 
+#define PMIX_LOCK_STATIC_INIT               \
+    {                                       \
+        .status = PMIX_SUCCESS,             \
+        .mutex = PMIX_MUTEX_STATIC_INIT,    \
+        .cond = PMIX_CONDITION_STATIC_INIT, \
+        .active = false                     \
+    }
+
 #define PMIX_CONSTRUCT_LOCK(l)                     \
     do {                                           \
         PMIX_CONSTRUCT(&(l)->mutex, pmix_mutex_t); \

@@ -331,6 +331,8 @@ static void cycle_events(int sd, short args, void *cbdata)
                         PMIX_NAME_PRINT(&pmix_globals.myid),
                         PMIx_Error_string(chain->interim_status));
 
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     /* aggregate the results per RFC0018 - first search the
      * prior chained results to see if any keys have been NULL'd
      * as this indicates that info struct should be removed */

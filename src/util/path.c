@@ -70,6 +70,7 @@
 #    define MOUNTED_FILE "/etc/mtab"
 #endif
 
+#include "src/include/pmix_globals.h"
 #include "src/include/pmix_stdint.h"
 #include "src/util/argv.h"
 #include "src/util/os_path.h"
@@ -415,6 +416,7 @@ char *pmix_find_absolute_path(char *app_name)
 
 static char *pmix_check_mtab(char *dev_path)
 {
+    PMIX_HIDE_UNUSED_PARAMS(dev_path);
 
 #ifdef HAVE_MNTENT_H
     FILE *mtab = NULL;

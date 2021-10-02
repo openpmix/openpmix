@@ -46,14 +46,21 @@
 #include "src/mca/preg/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_preg_globals_t pmix_preg_globals = {{{0}}};
-pmix_preg_module_t pmix_preg = {.generate_node_regex = pmix_preg_base_generate_node_regex,
-                                .generate_ppn = pmix_preg_base_generate_ppn,
-                                .parse_nodes = pmix_preg_base_parse_nodes,
-                                .parse_procs = pmix_preg_base_parse_procs,
-                                .copy = pmix_preg_base_copy,
-                                .pack = pmix_preg_base_pack,
-                                .unpack = pmix_preg_base_unpack};
+pmix_preg_globals_t pmix_preg_globals = {
+    .actives = PMIX_LIST_STATIC_INIT,
+    .initialized = false,
+    .selected = false
+};
+
+pmix_preg_module_t pmix_preg = {
+    .generate_node_regex = pmix_preg_base_generate_node_regex,
+    .generate_ppn = pmix_preg_base_generate_ppn,
+    .parse_nodes = pmix_preg_base_parse_nodes,
+    .parse_procs = pmix_preg_base_parse_procs,
+    .copy = pmix_preg_base_copy,
+    .pack = pmix_preg_base_pack,
+    .unpack = pmix_preg_base_unpack
+};
 
 static pmix_status_t pmix_preg_close(void)
 {

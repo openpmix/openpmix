@@ -49,6 +49,7 @@
 
 #include "include/pmix_common.h"
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
@@ -104,6 +105,7 @@ int pmix_mca_base_component_find(const char *directory, pmix_mca_base_framework_
     pmix_mca_base_component_list_item_t *cli;
     bool include_mode = true;
     int ret;
+    PMIX_HIDE_UNUSED_PARAMS(open_dso_components);
 
     pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, framework->framework_output,
                         "mca: base: component_find: searching %s for %s components", directory,

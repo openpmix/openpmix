@@ -166,6 +166,9 @@ pmix_status_t pmix20_bfrop_unpack_bool(pmix_pointer_array_t *regtypes, pmix_buff
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_bool * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, *num_vals)) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -198,6 +201,8 @@ pmix_status_t pmix20_bfrop_unpack_int(pmix_pointer_array_t *regtypes, pmix_buffe
     pmix_status_t ret;
     pmix_data_type_t remote_type;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     if (PMIX_SUCCESS != (ret = pmix20_bfrop_get_data_type(regtypes, buffer, &remote_type))) {
         return ret;
     }
@@ -226,6 +231,8 @@ pmix_status_t pmix20_bfrop_unpack_sizet(pmix_pointer_array_t *regtypes, pmix_buf
     pmix_status_t ret;
     pmix_data_type_t remote_type;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     if (PMIX_SUCCESS != (ret = pmix20_bfrop_get_data_type(regtypes, buffer, &remote_type))) {
         return ret;
     }
@@ -253,6 +260,8 @@ pmix_status_t pmix20_bfrop_unpack_pid(pmix_pointer_array_t *regtypes, pmix_buffe
 {
     pmix_status_t ret;
     pmix_data_type_t remote_type;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     if (PMIX_SUCCESS != (ret = pmix20_bfrop_get_data_type(regtypes, buffer, &remote_type))) {
         return ret;
@@ -283,6 +292,9 @@ pmix_status_t pmix20_bfrop_unpack_byte(pmix_pointer_array_t *regtypes, pmix_buff
 {
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_byte * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, *num_vals)) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -305,6 +317,9 @@ pmix_status_t pmix20_bfrop_unpack_int16(pmix_pointer_array_t *regtypes, pmix_buf
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_int16 * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(tmp))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -329,6 +344,9 @@ pmix_status_t pmix20_bfrop_unpack_int32(pmix_pointer_array_t *regtypes, pmix_buf
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_int32 * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(tmp))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -350,6 +368,8 @@ pmix_status_t pmix20_bfrop_unpack_datatype(pmix_pointer_array_t *regtypes, pmix_
 {
     pmix_status_t ret;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_INT16, regtypes);
     return ret;
 }
@@ -362,6 +382,9 @@ pmix_status_t pmix20_bfrop_unpack_int64(pmix_pointer_array_t *regtypes, pmix_buf
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_int64 * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(tmp))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -384,6 +407,8 @@ pmix_status_t pmix20_bfrop_unpack_string(pmix_pointer_array_t *regtypes, pmix_bu
     pmix_status_t ret;
     int32_t i, len, n = 1;
     char **sdest = (char **) dest;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < (*num_vals); ++i) {
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &len, &n, PMIX_INT32, regtypes);
@@ -417,6 +442,9 @@ pmix_status_t pmix20_bfrop_unpack_float(pmix_pointer_array_t *regtypes, pmix_buf
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_float * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(float))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -449,6 +477,9 @@ pmix_status_t pmix20_bfrop_unpack_double(pmix_pointer_array_t *regtypes, pmix_bu
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_double * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(double))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -481,6 +512,9 @@ pmix_status_t pmix20_bfrop_unpack_timeval(pmix_pointer_array_t *regtypes, pmix_b
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_timeval * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(struct timeval))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -514,6 +548,9 @@ pmix_status_t pmix20_bfrop_unpack_time(pmix_pointer_array_t *regtypes, pmix_buff
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_time * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* unpack the data */
     for (i = 0; i < (*num_vals); ++i) {
         n = 1;
@@ -534,6 +571,9 @@ pmix_status_t pmix20_bfrop_unpack_status(pmix_pointer_array_t *regtypes, pmix_bu
 
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix20_bfrop_unpack_status * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* check to see if there's enough data in buffer */
     if (pmix_bfrop_too_small(buffer, (*num_vals) * (sizeof(pmix_status_t)))) {
         return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
@@ -824,6 +864,8 @@ pmix_status_t pmix20_bfrop_unpack_value(pmix_pointer_array_t *regtypes, pmix_buf
     ptr = (pmix_value_t *) dest;
     n = *num_vals;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < n; ++i) {
         /* unpack the type */
         if (PMIX_SUCCESS != (ret = pmix20_bfrop_get_data_type(regtypes, buffer, &ptr[i].type))) {
@@ -850,6 +892,8 @@ pmix_status_t pmix20_bfrop_unpack_info(pmix_pointer_array_t *regtypes, pmix_buff
 
     ptr = (pmix_info_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         memset(ptr[i].key, 0, sizeof(ptr[i].key));
@@ -914,6 +958,8 @@ pmix_status_t pmix20_bfrop_unpack_pdata(pmix_pointer_array_t *regtypes, pmix_buf
     ptr = (pmix_pdata_t *) dest;
     n = *num_vals;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < n; ++i) {
         PMIX_PDATA_CONSTRUCT(&ptr[i]);
         /* unpack the proc */
@@ -964,6 +1010,8 @@ pmix_status_t pmix20_bfrop_unpack_buf(pmix_pointer_array_t *regtypes, pmix_buffe
     ptr = (pmix_buffer_t *) dest;
     n = *num_vals;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < n; ++i) {
         /* unpack the number of bytes */
         m = 1;
@@ -1003,6 +1051,8 @@ pmix_status_t pmix20_bfrop_unpack_proc(pmix_pointer_array_t *regtypes, pmix_buff
 
     ptr = (pmix_proc_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
@@ -1048,6 +1098,8 @@ pmix_status_t pmix20_bfrop_unpack_app(pmix_pointer_array_t *regtypes, pmix_buffe
 
     ptr = (pmix_app_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         /* initialize the fields */
@@ -1146,6 +1198,8 @@ pmix_status_t pmix20_bfrop_unpack_kval(pmix_pointer_array_t *regtypes, pmix_buff
     ptr = (pmix_kval_t *) dest;
     n = *num_vals;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < n; ++i) {
         PMIX_CONSTRUCT(&ptr[i], pmix_kval_t);
         /* unpack the key */
@@ -1181,6 +1235,8 @@ pmix_status_t pmix20_bfrop_unpack_modex(pmix_pointer_array_t *regtypes, pmix_buf
     ptr = (pmix_modex_data_t *) dest;
     n = *num_vals;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < n; ++i) {
         memset(&ptr[i], 0, sizeof(pmix_modex_data_t));
         /* unpack the number of bytes */
@@ -1205,30 +1261,40 @@ pmix_status_t pmix20_bfrop_unpack_modex(pmix_pointer_array_t *regtypes, pmix_buf
 pmix_status_t pmix20_bfrop_unpack_persist(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                           void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     return pmix20_bfrop_unpack_byte(regtypes, buffer, dest, num_vals, PMIX_UINT8);
 }
 
 pmix_status_t pmix20_bfrop_unpack_scope(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                         void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     return pmix20_bfrop_unpack_byte(regtypes, buffer, dest, num_vals, PMIX_UINT8);
 }
 
 pmix_status_t pmix20_bfrop_unpack_range(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                         void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     return pmix20_bfrop_unpack_byte(regtypes, buffer, dest, num_vals, PMIX_UINT8);
 }
 
 pmix_status_t pmix20_bfrop_unpack_cmd(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                       void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     return pmix20_bfrop_unpack_byte(regtypes, buffer, dest, num_vals, PMIX_UINT8);
 }
 
 pmix_status_t pmix20_bfrop_unpack_infodirs(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     return pmix20_bfrop_unpack_int32(regtypes, buffer, dest, num_vals, PMIX_UINT32);
 }
 
@@ -1244,6 +1310,8 @@ pmix_status_t pmix20_bfrop_unpack_bo(pmix_pointer_array_t *regtypes, pmix_buffer
 
     ptr = (pmix_byte_object_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         memset(&ptr[i], 0, sizeof(pmix_byte_object_t));
@@ -1272,6 +1340,8 @@ pmix_status_t pmix20_bfrop_unpack_ptr(pmix_pointer_array_t *regtypes, pmix_buffe
     uint8_t foo = 1;
     int32_t cnt = 1;
 
+    PMIX_HIDE_UNUSED_PARAMS(dest, num_vals, type);
+
     /* it obviously makes no sense to pack a pointer and
      * send it somewhere else, so we just unpack the sentinel */
     return pmix20_bfrop_unpack_byte(regtypes, buffer, &foo, &cnt, PMIX_UINT8);
@@ -1280,6 +1350,8 @@ pmix_status_t pmix20_bfrop_unpack_ptr(pmix_pointer_array_t *regtypes, pmix_buffe
 pmix_status_t pmix20_bfrop_unpack_pstate(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                          void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     return pmix20_bfrop_unpack_byte(regtypes, buffer, dest, num_vals, PMIX_UINT8);
 }
 
@@ -1295,6 +1367,8 @@ pmix_status_t pmix20_bfrop_unpack_pinfo(pmix_pointer_array_t *regtypes, pmix_buf
 
     ptr = (pmix_proc_info_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         PMIX_PROC_INFO_CONSTRUCT(&ptr[i]);
@@ -1348,6 +1422,8 @@ pmix_status_t pmix20_bfrop_unpack_darray(pmix_pointer_array_t *regtypes, pmix_bu
 
     ptr = (pmix_data_array_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         memset(&ptr[i], 0, sizeof(pmix_data_array_t));
@@ -1446,6 +1522,7 @@ pmix_status_t pmix20_bfrop_unpack_darray(pmix_pointer_array_t *regtypes, pmix_bu
             break;
         case PMIX_QUERY:
             nbytes = sizeof(pmix_query_t);
+            break;
         default:
             return PMIX_ERR_NOT_SUPPORTED;
         }
@@ -1464,6 +1541,8 @@ pmix_status_t pmix20_bfrop_unpack_darray(pmix_pointer_array_t *regtypes, pmix_bu
 pmix_status_t pmix20_bfrop_unpack_rank(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                        void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     return pmix20_bfrop_unpack_int32(regtypes, buffer, dest, num_vals, PMIX_UINT32);
 }
 
@@ -1480,6 +1559,8 @@ pmix_status_t pmix20_bfrop_unpack_query(pmix_pointer_array_t *regtypes, pmix_buf
 
     ptr = (pmix_query_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         PMIX_QUERY_CONSTRUCT(&ptr[i]);
@@ -1526,6 +1607,8 @@ pmix_status_t pmix20_bfrop_unpack_alloc_directive(pmix_pointer_array_t *regtypes
                                                   pmix_buffer_t *buffer, void *dest,
                                                   int32_t *num_vals, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     return pmix20_bfrop_unpack_byte(regtypes, buffer, dest, num_vals, PMIX_UINT8);
 }
 
@@ -1542,6 +1625,8 @@ pmix_status_t pmix20_bfrop_unpack_array(pmix_pointer_array_t *regtypes, pmix_buf
 
     ptr = (pmix_info_array_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,

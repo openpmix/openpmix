@@ -66,7 +66,8 @@ pmix_pnet_usnic_component_t mca_pnet_usnic_component = {
         },
         .data = {
             /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
+            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
+            .reserved = {0}
         }
     },
     .include = NULL,

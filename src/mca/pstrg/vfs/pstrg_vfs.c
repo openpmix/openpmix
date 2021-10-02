@@ -105,6 +105,8 @@ static void vfs_finalize(void)
 static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t *results,
                            pmix_pstrg_query_cbfunc_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(queries, nqueries, results, cbfunc, cbdata) ;
+    
 #if 0
     size_t n, m, k;
     char **sid, **mountpt;

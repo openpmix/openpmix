@@ -676,6 +676,19 @@ static inline bool pmix_check_session_info(const char *key)
     return false;
 }
 
+#if PMIX_PICKY_COMPILERS
+#define PMIX_HIDE_UNUSED_PARAMS(...)                \
+    do {                                            \
+        int __x = 3;                                \
+        pmix_hide_unused_params(__x, __VA_ARGS__);  \
+    } while(0)
+
+PMIX_EXPORT void pmix_hide_unused_params(int x, ...);
+
+#else
+#define PMIX_HIDE_UNUSED_PARAMS(...)
+#endif
+
 END_C_DECLS
 
 #endif /* PMIX_GLOBALS_H */

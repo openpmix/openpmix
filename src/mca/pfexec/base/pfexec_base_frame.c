@@ -55,12 +55,23 @@
 /*
  * Instantiate globals
  */
-pmix_pfexec_base_module_t pmix_pfexec = {0};
+pmix_pfexec_base_module_t pmix_pfexec = {
+    .spawn_job = NULL,
+    .kill_proc = NULL,
+    .signal_proc = NULL
+};
 
 /*
  * Framework global variables
  */
-pmix_pfexec_globals_t pmix_pfexec_globals = {0};
+pmix_pfexec_globals_t pmix_pfexec_globals = {
+    .handler = NULL,
+    .active = false,
+    .children = PMIX_LIST_STATIC_INIT,
+    .timeout_before_sigkill = 0,
+    .nextid = 0,
+    .selected = false
+};
 
 static int pmix_pfexec_base_close(void)
 {
