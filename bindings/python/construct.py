@@ -402,16 +402,9 @@ def harvest_constants(options, src, constants, definitions):
             defsrc = True
         definitions.write("\n    # APIS\n")
         for api in apis:
-            definitions.write("    " + api[0] + "\n")
-            if len(api) > 1:
-                # find the opening paren
-                idx = api[0].find("(") + 1
-                for n in range(1, len(api)):
-                    definitions.write("    ")
-                    for m in range(idx):
-                        definitions.write(" ")
-                    definitions.write(api[n] + "\n")
-            definitions.write("\n")
+            fill = 5 + api[0].find("(")
+            fstring = "    {}" + ("\n" + " " * fill + "{}") * (len(api)-1) + " nogil\n\n"
+            definitions.write(fstring.format(*api))
     return 0
 
 def main():
