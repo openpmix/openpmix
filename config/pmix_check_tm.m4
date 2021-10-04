@@ -61,8 +61,18 @@ AC_DEFUN([PMIX_CHECK_TM],[
               [pmix_check_tm_happy="yes"
                AS_IF([test ! -z "$with_tm" && test "$with_tm" != "yes"],
                      [pmix_check_tm_dir="$with_tm"
-                      pmix_check_tm_libdir="$with_tm/lib"],
-                     [pmix_check_tm_dir=""])])
+                      AC_MSG_CHECKING([for TM/PBS library in])
+                      if test -d $with_tm/lib64; then
+                        pmix_check_tm_libdir="$with_tm/lib64"
+                      elif test -d $with_tm/lib; then
+                        pmix_check_tm_libdir="$with_tm/lib"
+                      else
+                         AC_MSG_RESULT([Could not find $with_tm/lib or $with_tm/lib64])
+                         AC_MSG_ERROR([Can not continue])
+                     fi
+                     AC_MSG_RESULT([($pmix_check_tm_libdir)])],
+                     [pmix_check_tm_dir=""
+                      pmix_check_tm_libdir=""])])
 
 	AS_IF([test "$pmix_check_tm_happy" = "yes"],
               [AC_MSG_CHECKING([for pbs-config])
