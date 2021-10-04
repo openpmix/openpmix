@@ -268,12 +268,8 @@ AS_IF([test -z "$CC_FOR_BUILD"],[
 # restore any user-provided Werror flags
 AS_IF([test ! -z "$PMIX_CFLAGS_cache"], [CFLAGS="$CFLAGS $PMIX_CFLAGS_cache"])
 
-# Delay setting pickyness until here so we
-# don't break configure code tests
-if test "$WANT_PICKY_COMPILER" = "1" && test "$pmix_c_vendor" != "pgi"; then
-        CFLAGS="$CFLAGS -Wall -Wextra -Werror"
-# -fsanitize=address -fsanitize=undefined"
-fi
+# setup "picky" compiler options if enabled
+PMIX_SETUP_PICKY_COMPILERS
 
 # Cleanup duplicate flags
 PMIX_FLAGS_UNIQ(CFLAGS)
