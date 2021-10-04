@@ -285,21 +285,6 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # gcc-impersonating compilers won't accept them.
     PMIX_CFLAGS_BEFORE_PICKY="$CFLAGS"
 
-    if test $WANT_PICKY_COMPILER -eq 1 && test "$pmix_c_vendor" != "pgi"; then
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wundef, Wundef)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-long, Wno_long_long, int main() { long long x; })
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wsign-compare, Wsign_compare)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wmissing-prototypes, Wmissing_prototypes)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wstrict-prototypes, Wstrict_prototypes)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wcomment, Wcomment)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wshadow, Wshadow)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror-implicit-function-declaration, Werror_implicit_function_declaration)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-double, Wno_long_double, int main() { long double x; })
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-fno-strict-aliasing, fno_strict_aliasing, int main () { int x; })
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-pedantic, pedantic)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wall, Wall)
-    fi
-
     # Note: Some versions of clang (at least >= 3.5 -- perhaps
     # older versions, too?) and xlc with -g (v16.1, perhaps older)
     # will *warn* about -finline-functions, but still allow it.
@@ -429,4 +414,26 @@ AC_DEFUN([_PMIX_PROG_CC],[
     PMIX_WHICH([$pmix_cc_argv0], [PMIX_CC_ABSOLUTE])
     AC_SUBST(PMIX_CC_ABSOLUTE)
     PMIX_VAR_SCOPE_POP
+])
+
+AC_DEFUN([PMIX_SETUP_PICKY_COMPILERS],[
+    if test $WANT_PICKY_COMPILER -eq 1 && test "$pmix_c_vendor" != "pgi"; then
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wundef, Wundef)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-long, Wno_long_long, int main() { long long x; })
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wsign-compare, Wsign_compare)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wmissing-prototypes, Wmissing_prototypes)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wstrict-prototypes, Wstrict_prototypes)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wcomment, Wcomment)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wshadow, Wshadow)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror-implicit-function-declaration, Werror_implicit_function_declaration)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-double, Wno_long_double, int main() { long double x; })
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-fno-strict-aliasing, fno_strict_aliasing, int main () { int x; })
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-pedantic, pedantic)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wall, Wall)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wextra, Wextra)
+        _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror, Werror)
+#        _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=address, fsanitize=address)
+#        _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=undefined, fsanitize=undefined)
+    fi
+
 ])
