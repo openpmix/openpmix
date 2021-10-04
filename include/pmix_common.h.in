@@ -3452,6 +3452,13 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
     }
 }
 
+#define PMIX_DATA_ARRAY_INIT(m, t)      \
+    do {                                \
+        (m)->array = NULL;              \
+        (m)->type = (t);                \
+        (m)->size = 0;                  \
+    } while(0)
+
 #define PMIX_DATA_ARRAY_CONSTRUCT(m, n, t)                          \
     do {                                                            \
         (m)->type = (t);                                            \

@@ -608,13 +608,14 @@ static void relcbfunc(void *cbdata)
     }
     PMIX_RELEASE(cd);
 }
-static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                         void *cbdata)
+static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_status_t rc;
     pmix_shift_caddy_t *results;
     int cnt;
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:attrs:query cback from server");
 
@@ -668,6 +669,7 @@ PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata)
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_QUERY_CMD;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 

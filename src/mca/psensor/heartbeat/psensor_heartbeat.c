@@ -146,6 +146,7 @@ static void add_tracker(int sd, short flags, void *cbdata)
     pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cbdata;
 
     PMIX_ACQUIRE_OBJECT(ft);
+    PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
     /* add the tracker to our list */
     pmix_list_append(&mca_psensor_heartbeat_component.trackers, &ft->super);
@@ -222,6 +223,7 @@ static void del_tracker(int sd, short flags, void *cbdata)
     pmix_heartbeat_trkr_t *ft, *ftnext;
 
     PMIX_ACQUIRE_OBJECT(cd);
+    PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
     /* remove the tracker from our list */
     PMIX_LIST_FOREACH_SAFE (ft, ftnext, &mca_psensor_heartbeat_component.trackers,
@@ -259,6 +261,7 @@ static pmix_status_t heartbeat_stop(pmix_peer_t *requestor, char *id)
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_heartbeat_trkr_t *ft = (pmix_heartbeat_trkr_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     PMIX_RELEASE(ft); // maintain accounting
 }
@@ -274,6 +277,8 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
     pmix_proc_t source;
 
     PMIX_ACQUIRE_OBJECT(ft);
+    PMIX_HIDE_UNUSED_PARAMS(fd, dummy);
+
 
     PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] sensor:check_heartbeat for proc %s:%d", pmix_globals.myid.nspace,
@@ -318,6 +323,7 @@ static void add_beat(int sd, short args, void *cbdata)
     pmix_heartbeat_trkr_t *ft;
 
     PMIX_ACQUIRE_OBJECT(b);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* find this peer in our trackers */
     PMIX_LIST_FOREACH (ft, &mca_psensor_heartbeat_component.trackers, pmix_heartbeat_trkr_t) {
@@ -337,6 +343,8 @@ void pmix_psensor_heartbeat_recv_beats(struct pmix_peer_t *peer, pmix_ptl_hdr_t 
                                        pmix_buffer_t *buf, void *cbdata)
 {
     pmix_psensor_beat_t *b;
+
+    PMIX_HIDE_UNUSED_PARAMS(hdr, buf, cbdata);
 
     b = PMIX_NEW(pmix_psensor_beat_t);
     PMIX_RETAIN(peer);

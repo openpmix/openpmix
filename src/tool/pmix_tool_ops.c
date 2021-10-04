@@ -107,13 +107,14 @@ pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer, pmix_buffer_
     return PMIX_SUCCESS;
 }
 
-static void tool_switchyard(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                            void *cbdata)
+static void tool_switchyard(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                            pmix_buffer_t *buf, void *cbdata)
 {
     pmix_shift_caddy_t *s = (pmix_shift_caddy_t *) cbdata;
     pmix_buffer_t *relay;
     pmix_status_t rc;
     uint32_t tag = (uint32_t) s->ncodes;
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     /* the tag for the original sender was stored in ncodes, and
      * the server would have packed the buffer using my

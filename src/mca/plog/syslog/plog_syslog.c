@@ -94,6 +94,8 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
+
     /* check directives */
     if (NULL != directives) {
         for (n = 0; n < ndirs; n++) {

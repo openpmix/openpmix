@@ -221,6 +221,8 @@ pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo)
 
 pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
+    PMIX_HIDE_UNUSED_PARAMS(proc);
+
     pmix_setenv("PMIX_SERVER_TMPDIR", pmix_ptl_base.session_tmpdir, true, env);
     pmix_setenv("PMIX_SYSTEM_TMPDIR", pmix_ptl_base.system_tmpdir, true, env);
 
@@ -954,6 +956,7 @@ pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
 
 void pmix_ptl_base_setup_socket(pmix_peer_t *peer)
 {
+    PMIX_HIDE_UNUSED_PARAMS(peer);
 #if defined(TCP_NODELAY)
     int optval;
     optval = 1;
@@ -1347,6 +1350,8 @@ void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
     pmix_infolist_t *iptr;
     pmix_status_t rc;
 
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     PMIX_CONSTRUCT(&servers, pmix_list_t);
 
     query_servers(NULL, &servers);
@@ -1373,6 +1378,8 @@ void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
 static void timeout(int sd, short args, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     PMIX_WAKEUP_THREAD(lock);
 }
 

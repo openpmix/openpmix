@@ -63,7 +63,8 @@ pmix_pdl_pdlopen_component_t mca_pdl_pdlopen_component = {
 
         .base_data = {
             /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
+            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
+            .reserved = {0}
         },
 
         /* The pdl framework members */

@@ -83,7 +83,36 @@ static void bufdes(rank_blob_t *p)
 }
 static PMIX_CLASS_INSTANCE(rank_blob_t, pmix_list_item_t, NULL, bufdes);
 
-pmix_server_module_t pmix_host_server = {0};
+pmix_server_module_t pmix_host_server = {
+    .client_connected = NULL,
+    .client_finalized = NULL,
+    .abort = NULL,
+    .fence_nb = NULL,
+    .direct_modex = NULL,
+    .publish = NULL,
+    .lookup = NULL,
+    .unpublish = NULL,
+    .spawn = NULL,
+    .connect = NULL,
+    .disconnect = NULL,
+    .register_events = NULL,
+    .deregister_events = NULL,
+    .listener = NULL,
+    .notify_event = NULL,
+    .query = NULL,
+    .tool_connected = NULL,
+    .log = NULL,
+    .allocate = NULL,
+    .job_control = NULL,
+    .monitor = NULL,
+    .get_credential = NULL,
+    .validate_credential = NULL,
+    .iof_pull = NULL,
+    .push_stdin = NULL,
+    .group = NULL,
+    .fabric = NULL,
+    .client_connected2 = NULL
+};
 
 pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf, pmix_op_cbfunc_t cbfunc,
                                 void *cbdata)
@@ -571,6 +600,7 @@ static pmix_server_trkr_t *new_tracker(char *id, pmix_proc_t *procs, size_t npro
 static void fence_timeout(int sd, short args, void *cbdata)
 {
     pmix_server_trkr_t *trk = (pmix_server_trkr_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_server_globals.fence_output, "ALERT: fence timeout fired");
 
@@ -1831,6 +1861,7 @@ cleanup:
 static void connect_timeout(int sd, short args, void *cbdata)
 {
     pmix_server_trkr_t *trk = (pmix_server_trkr_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_server_globals.connect_output, "ALERT: connect timeout fired");
 
@@ -2027,6 +2058,8 @@ static void _check_cached_events(int sd, short args, void *cbdata)
     pmix_buffer_t *relay;
     pmix_status_t ret = PMIX_SUCCESS;
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* check if any matching notifications have been cached */
     rngtrk.procs = NULL;
@@ -3796,6 +3829,7 @@ static void grp_timeout(int sd, short args, void *cbdata)
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
     pmix_buffer_t *reply;
     pmix_status_t ret, rc = PMIX_ERR_TIMEOUT;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_server_globals.fence_output, "ALERT: grp construct timeout fired");
 
@@ -3826,7 +3860,7 @@ error:
     PMIX_RELEASE(cd);
 }
 
-static void _grpcbfunc(int sd, short argc, void *cbdata)
+static void _grpcbfunc(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *) cbdata;
     pmix_server_trkr_t *trk = scd->tracker;
@@ -3841,6 +3875,7 @@ static void _grpcbfunc(int sd, short argc, void *cbdata)
     bool found;
 
     PMIX_ACQUIRE_OBJECT(scd);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     if (NULL == trk) {
         /* give them a release if they want it - this should
@@ -4479,6 +4514,7 @@ error:
 static void _fabric_response(int sd, short args, void *cbdata)
 {
     pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     qcd->cbfunc(PMIX_SUCCESS, qcd->info, qcd->ninfo, qcd->cbdata, NULL, NULL);
     PMIX_RELEASE(qcd);

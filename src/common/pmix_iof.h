@@ -69,12 +69,23 @@ typedef struct {
     bool pending;
     bool always_writable;
     int numtries;
-    pmix_event_t ev;
+    pmix_event_t *ev;
     struct timeval tv;
     int fd;
     pmix_list_t outputs;
 } pmix_iof_write_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_event_t);
+#define PMIX_IOF_WRITE_EVENT_STATIC_INIT    \
+{                                           \
+    .super = PMIX_LIST_ITEM_STATIC_INIT,    \
+    .pending = false,                       \
+    .always_writable = false,               \
+    .numtries = 0,                          \
+    .ev = NULL,                             \
+    .tv = {0, 0},                           \
+    .fd = 0,                                \
+    .outputs = PMIX_LIST_STATIC_INIT        \
+}
 
 typedef struct {
     pmix_list_item_t super;
@@ -86,6 +97,16 @@ typedef struct {
     bool closed;
 } pmix_iof_sink_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_sink_t);
+#define PMIX_IOF_SINK_STATIC_INIT               \
+{                                               \
+    .super = PMIX_LIST_ITEM_STATIC_INIT,        \
+    .name = {{0}, 0},                           \
+    .tag = PMIX_FWD_NO_CHANNELS,                \
+    .wev = PMIX_IOF_WRITE_EVENT_STATIC_INIT,    \
+    .xoff = false,                              \
+    .exclusive = false,                         \
+    .closed = false                             \
+}
 
 typedef struct {
     pmix_list_item_t super;
@@ -130,7 +151,7 @@ static inline bool pmix_iof_fd_always_ready(int fd)
             /* Regular is always write ready. Use timer to activate */ \
             tv = &wev->tv;                                             \
         }                                                              \
-        if (pmix_event_add(&wev->ev, tv)) {                            \
+        if (pmix_event_add(wev->ev, tv)) {                             \
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);                        \
         }                                                              \
     } while (0);
@@ -149,9 +170,9 @@ static inline bool pmix_iof_fd_always_ready(int fd)
             (snk)->wev.fd = (fid);                                                                 \
             (snk)->wev.always_writable = pmix_iof_fd_always_ready(fid);                            \
             if ((snk)->wev.always_writable) {                                                      \
-                pmix_event_evtimer_set(pmix_globals.evbase, &(snk)->wev.ev, wrthndlr, (snk));      \
+                pmix_event_evtimer_set(pmix_globals.evbase, (snk)->wev.ev, wrthndlr, (snk));       \
             } else {                                                                               \
-                pmix_event_set(pmix_globals.evbase, &(snk)->wev.ev, (snk)->wev.fd, PMIX_EV_WRITE,  \
+                pmix_event_set(pmix_globals.evbase, (snk)->wev.ev, (snk)->wev.fd, PMIX_EV_WRITE,   \
                                wrthndlr, (snk));                                                   \
             }                                                                                      \
         }                                                                                          \
@@ -208,6 +229,26 @@ static inline bool pmix_iof_fd_always_ready(int fd)
             PMIX_IOF_READ_ACTIVATE(rev)                                                          \
         }                                                                                        \
     } while (0);
+
+#define PMIX_IOF_READ_EVENT_LOCAL(rv, fid, cbfunc, actv)                                         \
+    do {                                                                                         \
+        pmix_iof_read_event_t *rev;                                                              \
+        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output, "defining read event at: %s %d", \
+                             __FILE__, __LINE__));                                               \
+        rev = PMIX_NEW(pmix_iof_read_event_t);                                                   \
+        rev->fd = (fid);                                                                         \
+        rev->always_readable = pmix_iof_fd_always_ready(fid);                                    \
+        *(rv) = rev;                                                                             \
+        if (rev->always_readable) {                                                              \
+            pmix_event_evtimer_set(pmix_globals.evbase, &rev->ev, (cbfunc), rev);                \
+        } else {                                                                                 \
+            pmix_event_set(pmix_globals.evbase, &rev->ev, (fid), PMIX_EV_READ, (cbfunc), rev);   \
+        }                                                                                        \
+        if ((actv)) {                                                                            \
+            PMIX_IOF_READ_ACTIVATE(rev)                                                          \
+        }                                                                                        \
+    } while (0);
+
 
 PMIX_EXPORT pmix_status_t pmix_iof_flush(void);
 

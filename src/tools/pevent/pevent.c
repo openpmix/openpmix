@@ -58,6 +58,9 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status,
+                            source, info, ninfo, results, nresults);
+
     /* this example doesn't do anything with default events */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -74,6 +77,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(evhandler_ref);
 
     if (PMIX_SUCCESS != status) {
         fprintf(stderr, "Client %s:%d EVENT HANDLER REGISTRATION FAILED WITH STATUS %d, ref=%lu\n",
@@ -94,28 +98,34 @@ typedef struct {
     int range;
 } pmix_pevent_globals_t;
 
-pmix_pevent_globals_t pmix_pevent_globals = {0};
+pmix_pevent_globals_t pmix_pevent_globals = {
+    .help = false,
+    .verbose = false,
+    .pid = 0,
+    .code = 0,
+    .range = 0
+};
 
 pmix_cmd_line_init_t cmd_line_opts[] = {{NULL, 'h', NULL, "help", 0, &pmix_pevent_globals.help,
-                                         PMIX_CMD_LINE_TYPE_BOOL, "This help message"},
+                                         PMIX_CMD_LINE_TYPE_BOOL, "This help message", PMIX_CMD_LINE_OTYPE_GENERAL},
 
                                         {NULL, 'v', NULL, "verbose", 0,
                                          &pmix_pevent_globals.verbose, PMIX_CMD_LINE_TYPE_BOOL,
-                                         "Be Verbose"},
+                                         "Be Verbose", PMIX_CMD_LINE_OTYPE_GENERAL},
 
                                         {NULL, 'p', NULL, "pid", 1, &pmix_pevent_globals.pid,
-                                         PMIX_CMD_LINE_TYPE_INT, "Specify launcher pid"},
+                                         PMIX_CMD_LINE_TYPE_INT, "Specify launcher pid", PMIX_CMD_LINE_OTYPE_GENERAL},
 
                                         {NULL, 'e', NULL, "event", 0, &pmix_pevent_globals.code,
                                          PMIX_CMD_LINE_TYPE_INT,
-                                         "Status code (integer value) of event to be sent"},
+                                         "Status code (integer value) of event to be sent", PMIX_CMD_LINE_OTYPE_GENERAL},
 
                                         {NULL, 'r', NULL, "range", 0, &pmix_pevent_globals.range,
-                                         PMIX_CMD_LINE_TYPE_INT, "Range of event to be sent"},
+                                         PMIX_CMD_LINE_TYPE_INT, "Range of event to be sent", PMIX_CMD_LINE_OTYPE_GENERAL},
 
                                         /* End of list */
                                         {NULL, '\0', NULL, NULL, 0, NULL, PMIX_CMD_LINE_TYPE_NULL,
-                                         NULL}};
+                                         NULL, PMIX_CMD_LINE_OTYPE_GENERAL}};
 
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {

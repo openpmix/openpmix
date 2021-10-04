@@ -976,7 +976,7 @@ static int make_opt(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *e)
         (void) pmix_mca_base_var_env_name(e->ocl_mca_param_name, &option->clo_mca_param_env_var);
     }
 
-    option->clo_otype = e->ocl_otype;
+    option->clo_otype = PMIX_CMD_LINE_OTYPE_GENERAL;
 
     /* Append the item, serializing thread access */
 

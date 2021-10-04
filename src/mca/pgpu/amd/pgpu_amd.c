@@ -222,6 +222,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory)
 {
     /* search the topology for AMD GPUs */
+    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs, inventory);
 
     return PMIX_SUCCESS;
 }
@@ -230,6 +231,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs)
 {
     /* look for our inventory blob */
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo, directives, ndirs);
 
     return PMIX_SUCCESS;
 }

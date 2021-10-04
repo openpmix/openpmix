@@ -45,8 +45,17 @@
 
 #include "src/mca/psquash/base/static-components.h"
 
-pmix_psquash_base_module_t pmix_psquash = {0};
-pmix_psquash_globals_t pmix_psquash_globals = {0};
+pmix_psquash_base_module_t pmix_psquash = {
+    .init = NULL,
+    .finalize = NULL,
+    .get_max_size = NULL,
+    .encode_int = NULL,
+    .decode_int = NULL
+};
+pmix_psquash_globals_t pmix_psquash_globals = {
+    .initialized = false,
+    .selected = false
+};
 
 static pmix_status_t pmix_psquash_close(void)
 {

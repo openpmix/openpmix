@@ -208,9 +208,10 @@ void pmix_event_base_loopexit(pmix_event_base_t *ev_base)
  * If this event is fired, just restart it so that this event base
  * continues to have something to block on.
  */
-static void dummy_timeout_cb(int fd, short args, void *cbdata)
+static void dummy_timeout_cb(int sd, short args, void *cbdata)
 {
     pmix_progress_tracker_t *trk = (pmix_progress_tracker_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_event_add(&trk->block, &long_timeout);
 }

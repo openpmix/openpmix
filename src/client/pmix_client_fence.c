@@ -246,6 +246,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: fence_nb callback recvd");
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     if (NULL == cb) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);

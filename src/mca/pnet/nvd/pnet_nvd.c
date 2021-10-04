@@ -221,6 +221,8 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
 {
     pmix_status_t rc = PMIX_SUCCESS;
 
+    PMIX_HIDE_UNUSED_PARAMS(directives,ndirs, inventory);
+
     /* search the topology for Mellanox/NVIDIA NICs */
     hwloc_obj_t device;
 
@@ -247,6 +249,8 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs)
 {
     /* look for our inventory blob */
+
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo, directives, ndirs);
 
     return PMIX_SUCCESS;
 }

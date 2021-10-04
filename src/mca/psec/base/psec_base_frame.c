@@ -45,7 +45,11 @@
 #include "src/mca/psec/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_psec_globals_t pmix_psec_globals = {{{0}}};
+pmix_psec_globals_t pmix_psec_globals = {
+    .actives = PMIX_LIST_STATIC_INIT,
+    .initialized = false,
+    .selected = false
+};
 
 static pmix_status_t pmix_psec_close(void)
 {

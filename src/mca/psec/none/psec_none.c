@@ -60,6 +60,8 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
                                  size_t ndirs, pmix_info_t **info, size_t *ninfo,
                                  pmix_byte_object_t *cred)
 {
+    PMIX_HIDE_UNUSED_PARAMS(peer, directives, ndirs, info, ninfo);
+
     /* ensure initialization */
     PMIX_BYTE_OBJECT_CONSTRUCT(cred);
 
@@ -75,6 +77,8 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     bool takeus;
 
     pmix_output_verbose(2, pmix_globals.debug_output, "psec: none always reports valid");
+
+    PMIX_HIDE_UNUSED_PARAMS(peer, cred);
 
     /* if we are responding to a local request to validate a credential,
      * then see if they specified a mechanism */

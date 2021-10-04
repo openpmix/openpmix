@@ -493,6 +493,9 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
                         PMIX_NAME_PRINT(&pmix_globals.myid), (NULL == key) ? "NULL" : key,
                         PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope));
 
+
+    PMIX_HIDE_UNUSED_PARAMS(copy);
+
     /* see if we have a tracker for this nspace - we will
      * if we already cached the job info for it. If we
      * didn't then we'll have no idea how to answer any

@@ -448,8 +448,6 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
 {
     int ret = -1;
     pmix_pfexec_base_io_conf_t *opts = &child->opts;
-    pmix_proc_t *targets = NULL;
-    pmix_info_t *directives = NULL;
 
     fflush(stdout);
 
@@ -482,13 +480,13 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
     }
 
     /* connect read ends to IOF */
-    PMIX_IOF_READ_EVENT(&child->stdoutev, targets, 0, directives, 0, opts->p_stdout[0],
-                        pmix_iof_read_local_handler, false);
+    PMIX_IOF_READ_EVENT_LOCAL(&child->stdoutev, opts->p_stdout[0],
+                              pmix_iof_read_local_handler, false);
     PMIX_LOAD_PROCID(&child->stdoutev->name, child->proc.nspace, child->proc.rank);
     child->stdoutev->childproc = (void *) child;
     child->stdoutev->channel = PMIX_FWD_STDOUT_CHANNEL;
-    PMIX_IOF_READ_EVENT(&child->stderrev, targets, 0, directives, 0, opts->p_stderr[0],
-                        pmix_iof_read_local_handler, false);
+    PMIX_IOF_READ_EVENT_LOCAL(&child->stderrev, opts->p_stderr[0],
+                              pmix_iof_read_local_handler, false);
     PMIX_LOAD_PROCID(&child->stderrev->name, child->proc.nspace, child->proc.rank);
     child->stderrev->childproc = (void *) child;
     child->stderrev->channel = PMIX_FWD_STDERR_CHANNEL;
