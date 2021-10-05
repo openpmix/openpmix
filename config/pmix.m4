@@ -10,7 +10,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved
+dnl Copyright (c) 2006-2021 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009-2021 IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
@@ -398,6 +398,23 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_CHECK_ATTRIBUTES
     PMIX_CHECK_COMPILER_VERSION_ID
+
+    # OpenPMIx only supports GCC >=v4.8.1.  Notes:
+    #
+    # 1. The default compiler that comes with RHEL 7 is v4.8.5
+    #    (version ID 264197).
+    # 2. We regularly test with GCC v4.8.1 (version ID 264193).
+    # 3. GCC 4.8.0 probably also works; we just haven't tested it.
+    #
+    # Since we regularly test with 4.8.1, that's what we check for.
+    AS_IF([test "$pmix_cv_compiler_FAMILYNAME" = "GNU" && \
+               test "$pmix_cv_compiler_VERSION" -lt 264193],
+          [AC_MSG_WARN([OpenPMIx no longer supports versions of the GNU compiler suite])
+           AC_MSG_WARN([less than v4.8.1.])
+           AC_MSG_WARN([Please upgrade your GNU compiler suite, or use])
+           AC_MSG_WARN([a different compiler to build OpenPMIx.])
+           AC_MSG_ERROR([Cannot continue])
+          ])
 
     ##################################
     # Assembler Configuration
