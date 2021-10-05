@@ -1338,9 +1338,9 @@ void pmix_info_do_config(bool want_all)
     pmix_info_out("C compiler", "compiler:c:command", PMIX_CC);
     pmix_info_out("C compiler absolute", "compiler:c:absolute", PMIX_CC_ABSOLUTE);
     pmix_info_out("C compiler family name", "compiler:c:familyname",
-                  _STRINGIFY(PMIX_BUILD_PLATFORM_COMPILER_FAMILYNAME));
+                  PLATFORM_STRINGIFY(PMIX_BUILD_PLATFORM_COMPILER_FAMILYNAME));
     pmix_info_out("C compiler version", "compiler:c:version",
-                  _STRINGIFY(PMIX_BUILD_PLATFORM_COMPILER_VERSION_STR));
+                  PLATFORM_STRINGIFY(PMIX_BUILD_PLATFORM_COMPILER_VERSION_STR));
 
     if (want_all) {
         pmix_info_out_int("C char size", "compiler:c:sizeof:char", sizeof(char));
