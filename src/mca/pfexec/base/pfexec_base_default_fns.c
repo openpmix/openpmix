@@ -323,8 +323,14 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
             /* setup a keepalive pipe unless "nohup" was given */
             if (!nohup) {
-                pipe(child->keepalive);
-                snprintf(sock, 10, "%d", child->keepalive[1]);
+                rc = pipe(child->keepalive);
+                if (0 != rc) {
+                    PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
+                    pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
+                    PMIX_RELEASE(child);
+                    goto complete;
+                }
+                pmix_snprintf(sock, 10, "%d", child->keepalive[1]);
                 pmix_setenv("PMIX_KEEPALIVE_PIPE", sock, true, &env);
             }
 
