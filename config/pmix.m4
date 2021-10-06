@@ -431,6 +431,10 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     pmix_show_title "Header file tests"
 
+    PMIX_VAR_SCOPE_PUSH(PMIX_CFLAGS_save_for_headers)
+    PMIX_CFLAGS_save_for_headers=$CFLAGS
+    _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror, Werror)
+
     AC_CHECK_HEADERS([arpa/inet.h \
                       fcntl.h ifaddrs.h inttypes.h libgen.h \
                       net/uio.h netinet/in.h \
@@ -509,6 +513,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED(PMIX_USE_STDBOOL_H, $PMIX_USE_STDBOOL_H,
                        [Whether to use <stdbool.h> or not])
     AC_MSG_RESULT([$MSG])
+
+    CFLAGS=$PMIX_CFLAGS_save_for_headers
+    PMIX_VAR_SCOPE_POP
 
     # checkpoint results
     AC_CACHE_SAVE

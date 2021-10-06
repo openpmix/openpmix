@@ -434,7 +434,6 @@ AC_DEFUN([PMIX_SETUP_PICKY_COMPILERS],[
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror, Werror)
 #        _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=address, fsanitize=address)
 #        _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=undefined, fsanitize=undefined)
-        _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-deprecated-declarations, Wno_deprecated_declarations)
     fi
 
 ])
