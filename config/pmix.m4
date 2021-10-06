@@ -990,6 +990,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/Makefile]
         pmix_config_prefix[src/include/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
+        pmix_config_prefix[src/util/showhelp/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
         pmix_config_prefix[src/tools/pevent/Makefile]
         pmix_config_prefix[src/tools/pmix_info/Makefile]
