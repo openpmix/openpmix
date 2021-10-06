@@ -1086,9 +1086,9 @@
       defined(__arch32__) || defined(__32BIT__) || \
       __INTPTR_MAX__ == 2147483647
   #define PLATFORM_ARCH_32 1
-#elif _PLATFORM_ARCH_64
+#elif defined(_PLATFORM_ARCH_64) && _PLATFORM_ARCH_64
   #define PLATFORM_ARCH_64 1
-#elif _PLATFORM_ARCH_32
+#elif defined(_PLATFORM_ARCH_32) && _PLATFORM_ARCH_32
   #define PLATFORM_ARCH_32 1
 #endif
 #undef _PLATFORM_ARCH_64
