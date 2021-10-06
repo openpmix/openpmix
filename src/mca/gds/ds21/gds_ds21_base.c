@@ -6,6 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -81,6 +82,7 @@ static pmix_status_t ds21_assign_module(pmix_info_t *info, size_t ninfo,
 static pmix_status_t ds21_cache_job_info(struct pmix_namespace_t *ns,
                                 pmix_info_t info[], size_t ninfo)
 {
+    PMIX_HIDE_UNUSED_PARAMS(ns, info, ninfo);
     return PMIX_SUCCESS;
 }
 

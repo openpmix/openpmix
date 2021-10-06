@@ -186,7 +186,9 @@ PMIX_CLASS_INSTANCE(ns_track_elem_t,
                     pmix_value_array_t,
                     ncon, ndes);
 
-static inline void _esh_session_map_clean(pmix_common_dstore_ctx_t *ds_ctx, ns_map_t *m) {
+static inline void _esh_session_map_clean(pmix_common_dstore_ctx_t *ds_ctx, ns_map_t *m)
+{
+    PMIX_HIDE_UNUSED_PARAMS(ds_ctx);
     memset(m, 0, sizeof(*m));
     m->data.track_idx = -1;
 }
@@ -399,6 +401,7 @@ static inline ns_map_data_t * _esh_session_map(pmix_common_dstore_ctx_t *ds_ctx,
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return NULL;
     }
+    PMIX_HIDE_UNUSED_PARAMS(local_size);
 
     for(map_idx = 0; map_idx < size; map_idx++) {
         if (!ns_map[map_idx].in_use) {
@@ -512,6 +515,7 @@ static int _esh_session_init(pmix_common_dstore_ctx_t *ds_ctx, size_t idx, ns_ma
     session_t *s = &(PMIX_VALUE_ARRAY_GET_ITEM(ds_ctx->session_array, session_t, idx));
     pmix_status_t rc = PMIX_SUCCESS;
 
+    PMIX_HIDE_UNUSED_PARAMS(local_size);
     s->setjobuid = setjobuid;
     s->jobuid = jobuid;
     s->nspace_path = strdup(ds_ctx->base_path);
@@ -731,6 +735,7 @@ static int _put_ns_info_to_initial_segment(pmix_common_dstore_ctx_t *ds_ctx,
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
+    PMIX_HIDE_UNUSED_PARAMS(metaseg, dataseg);
 
     if (ds_ctx->max_ns_num == num_elems) {
         num_elems = 0;
@@ -1576,6 +1581,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_cache_job_info(pmix_common_dstore_ct
                                 struct pmix_namespace_t *ns,
                                 pmix_info_t info[], size_t ninfo)
 {
+    PMIX_HIDE_UNUSED_PARAMS(ds_ctx, ns, info, ninfo);
     return PMIX_SUCCESS;
 }
 
@@ -2341,6 +2347,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_fetch(pmix_common_dstore_ctx_t *ds_c
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "gds: dstore fetch `%s`", key == NULL ? "NULL" : key);
+    PMIX_HIDE_UNUSED_PARAMS(scope, copy, info, ninfo);
 
     rc = _dstore_fetch(ds_ctx, proc->nspace, proc->rank, key, &val);
     if (PMIX_SUCCESS == rc) {
@@ -2967,6 +2974,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_store_job_info(pmix_common_dstore_ct
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%u] pmix:gds:dstore store job info for nspace %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, nspace);
+    PMIX_HIDE_UNUSED_PARAMS(ds_ctx);
 
     /* check buf data */
     if ((NULL == job_data) || (0 == job_data->bytes_used)) {

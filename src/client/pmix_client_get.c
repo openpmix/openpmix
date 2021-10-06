@@ -727,6 +727,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
 
     /* cb was passed to us from another thread - acquire it */
     PMIX_ACQUIRE_OBJECT(cb);
+    PMIX_HIDE_UNUSED_PARAMS(fd, flags);
 
     /* set the proc object identifier */
     PMIX_LOAD_PROCID(&proc, cb->pname.nspace, cb->pname.rank);
