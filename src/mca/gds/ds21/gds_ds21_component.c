@@ -15,6 +15,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -61,7 +62,8 @@ pmix_gds_base_component_t mca_gds_ds21_component = {
     },
     .data = {
         /* The component is checkpoint ready */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
+        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
+        .reserved = {0}
     }
 };
 

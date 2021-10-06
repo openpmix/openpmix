@@ -14,6 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -44,16 +45,23 @@
 #include "src/mca/pshmem/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_pshmem_globals_t pmix_pshmem_globals = {0};
-pmix_pshmem_base_module_t pmix_pshmem = {0};
+pmix_pshmem_globals_t pmix_pshmem_globals = {
+    .initialized = false,
+    .selected = false
+};
+pmix_pshmem_base_module_t pmix_pshmem = {
+    .init = NULL,
+    .finalize = NULL,
+    .segment_create = NULL,
+    .segment_detach = NULL,
+    .segment_unlink = NULL
+};
 
 static pmix_status_t pmix_pshmem_close(void)
 {
     if (!pmix_pshmem_globals.initialized) {
         return PMIX_SUCCESS;
     }
-    pmix_pshmem_globals.initialized = false;
-    pmix_pshmem_globals.selected = false;
 
     return pmix_mca_base_framework_components_close(&pmix_pshmem_base_framework, NULL);
 }

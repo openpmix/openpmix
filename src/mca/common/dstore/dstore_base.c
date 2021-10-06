@@ -1799,8 +1799,9 @@ err_exit:
 
 PMIX_EXPORT void pmix_common_dstor_finalize(pmix_common_dstore_ctx_t *ds_ctx)
 {
-    struct stat st = {0};
+    struct stat st;
     pmix_status_t rc = PMIX_SUCCESS;
+    memset(&st, 0, sizeof(struct stat));
 
     PMIX_OUTPUT_VERBOSE((10, pmix_gds_base_framework.framework_output,
                          "%s:%d:%s", __FILE__, __LINE__, __func__));
