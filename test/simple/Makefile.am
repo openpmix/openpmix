@@ -31,7 +31,8 @@ noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
                   hybrid
 
 simptest_SOURCES = \
-        simptest.c
+        simptest.c \
+        $(headers)
 simptest_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simptest_LDADD = \
     $(top_builddir)/src/libpmix.la
