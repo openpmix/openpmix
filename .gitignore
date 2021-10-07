@@ -111,8 +111,8 @@ src/tools/wrapper/pmixcc-wrapper-data.txt
 src/tools/wrapper/pmixcc
 
 
-src/util/show_help_lex.c
 src/util/keyval/keyval_lex.c
+src/util/showhelp/showhelp_lex.c
 
 test/pmi2_client
 test/pmi_client

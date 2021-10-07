@@ -14,6 +14,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,27 +29,27 @@
 #include <unistd.h>
 #endif
 
-#include "src/util/show_help_lex.h"
+#include "src/util/showhelp/showhelp_lex.h"
 
 BEGIN_C_DECLS
 
 /*
  * public functions
  */
-extern int pmix_show_help_finish_parsing(void);
+extern int pmix_showhelp_finish_parsing(void);
 
 /*
  * local functions
  */
-static int pmix_show_help_yywrap(void);
+static int pmix_showhelp_yywrap(void);
 
 END_C_DECLS
 
 /*
  * global variables
  */
-int pmix_show_help_yynewlines = 1;
-bool pmix_show_help_parse_done = false;
+int pmix_showhelp_yynewlines = 1;
+bool pmix_showhelp_parse_done = false;
 
 %}
 
@@ -75,7 +76,7 @@ CHAR        [A-Za-z0-9_\-\.]
 #endif
 
 #if (YY_FLEX_MAJOR_VERSION < 2) || (YY_FLEX_MAJOR_VERSION == 2 && (YY_FLEX_MINOR_VERSION < 5 || (YY_FLEX_MINOR_VERSION == 5 && YY_FLEX_SUBMINOR_VERSION < 5)))
-int pmix_show_help_yylex_destroy(void)
+int pmix_showhelp_yylex_destroy(void)
 {
     if (NULL != YY_CURRENT_BUFFER) {
         yy_delete_buffer(YY_CURRENT_BUFFER);
@@ -89,9 +90,9 @@ int pmix_show_help_yylex_destroy(void)
 }
 #endif
 
-static int pmix_show_help_yywrap(void)
+static int pmix_showhelp_yywrap(void)
 {
-    pmix_show_help_parse_done = true;
+    pmix_showhelp_parse_done = true;
     return 1;
 }
 
@@ -105,7 +106,7 @@ static int pmix_show_help_yywrap(void)
  * have a valid buffer.  Hence, here we ensure to give it a valid
  * buffer.
  */
-int pmix_show_help_init_buffer(FILE *file)
+int pmix_showhelp_init_buffer(FILE *file)
 {
     YY_BUFFER_STATE buf = yy_create_buffer(file, YY_BUF_SIZE);
     yy_switch_to_buffer(buf);

@@ -37,14 +37,14 @@
 
 #include <stdio.h>
 BEGIN_C_DECLS
-PMIX_EXPORT int pmix_show_help_yylex(void);
-PMIX_EXPORT int pmix_show_help_init_buffer(FILE *file);
-PMIX_EXPORT int pmix_show_help_yylex_destroy(void);
+PMIX_EXPORT int pmix_showhelp_yylex(void);
+PMIX_EXPORT int pmix_showhelp_init_buffer(FILE *file);
+PMIX_EXPORT int pmix_showhelp_yylex_destroy(void);
 
-extern FILE *pmix_show_help_yyin;
-PMIX_EXPORT extern bool pmix_show_help_parse_done;
-PMIX_EXPORT extern char *pmix_show_help_yytext;
-PMIX_EXPORT extern int pmix_show_help_yynewlines;
+extern FILE *pmix_showhelp_yyin;
+PMIX_EXPORT extern bool pmix_showhelp_parse_done;
+PMIX_EXPORT extern char *pmix_showhelp_yytext;
+PMIX_EXPORT extern int pmix_showhelp_yynewlines;
 
 /*
  * Make lex-generated files not issue compiler warnings
