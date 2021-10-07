@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2020      Triad National Security, LLC
+ * Copyright (c) 2020-2021 Triad National Security, LLC
  *                         All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
@@ -39,6 +39,8 @@ server_info_t *my_server_info = NULL;
 pmix_list_t *server_list = NULL;
 pmix_list_t *server_nspace = NULL;
 
+uint32_t g_num_nodes;
+
 /* server destructor */
 static void sdes(server_info_t *s)
 {
@@ -56,14 +58,20 @@ static void sdes(server_info_t *s)
 /* server constructor */
 static void scon(server_info_t *s)
 {
+    int i;
+
     s->hostname = NULL;
     s->idx = 0;
     s->pid = 0;
     s->rd_fd = -1;
     s->wr_fd = -1;
     s->evread = NULL;
-    s->modex_cbfunc = NULL;
-    s->cbdata = NULL;
+    s->num_fences = 0;
+    for (i = 0; i < PMIXT_MAX_FENCES; i++) {
+        s->modex_cbfunc[i] = NULL;
+        s->cbdata[i] = NULL;
+        s->nprocs[i] = 0;
+    }
 }
 
 PMIX_CLASS_INSTANCE(server_info_t, pmix_list_item_t, scon, sdes);
@@ -189,7 +197,7 @@ void parse_cmd_server(int argc, char **argv, test_params *l_params, validation_p
             fprintf(stderr, "\t-v       verbose output\n");
             fprintf(stderr, "\t-t <>    set timeout\n");
             fprintf(stderr, "\t-o out   redirect clients logs to file out.<rank>\n");
-            fprintf(stderr, "\t-d str   assign ranks to servers, for example: 0:0,1:1:2,3,4\n");
+            fprintf(stderr, "\t-d 'str' assign ranks to servers, for example: -d '0:0,1;1:2,3,4'\n");
             fprintf(stderr, "\t-h       generate help; for test-specific help instead, run ./test-name -h\n");
             /*
             fprintf(stderr, "\t-m num   fence time multiplier (similar to an error bar, default: 100)\n");
@@ -206,8 +214,8 @@ void parse_cmd_server(int argc, char **argv, test_params *l_params, validation_p
         } else if (0 == strcmp(argv[i], "--nservers") || 0 == strcmp(argv[i], "-s")){
             i++;
             if (NULL != argv[i]) {
-                //params->nservers = atoi(argv[i]);
                 v_params->pmix_num_nodes = atoi(argv[i]);
+                g_num_nodes = v_params->pmix_num_nodes;
             }
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
             PMIXT_VERBOSE_ON();
@@ -267,7 +275,6 @@ void parse_cmd_server(int argc, char **argv, test_params *l_params, validation_p
 	    } else if (0 == strcmp(argv[i], "--") || 0 == strcmp(argv[i], "--args") ) {
             i++;
             if (NULL != argv[i]) {
-                //char **tmp;
                 l_params->binary = strdup(argv[i]);
                 // create a separate argv for the client from the args specified after the test binary name
                 i++;
@@ -275,10 +282,7 @@ void parse_cmd_server(int argc, char **argv, test_params *l_params, validation_p
                     for (; i < argc; i++) {
                         pmix_argv_append_nosize(t_argv, argv[i]);
                     }
-                    //params->test_argv = pmix_argv_join(tmp, ' ');
                     TEST_VERBOSE(("t_argv[0]: %s", *t_argv[0]));
-                    //pmix_argv_free(tmp);
-                    //tmp = NULL;
                 }
             }
             else {
@@ -439,7 +443,7 @@ static void set_namespace(validation_params *v_params)
 static void server_unpack_procs(char *buf, size_t size)
 {
     char *ptr = buf;
-    size_t i;
+    size_t i, j;
     size_t ns_count;
     char *nspace;
 
@@ -482,7 +486,7 @@ static void server_unpack_procs(char *buf, size_t size)
                 assert(ns_item->ntasks == ntasks);
             }
 
-            for (i = 0; i < ltasks; i++) {
+            for (j = 0; j < ltasks; j++) {
                 int rank;
                 memcpy(&rank, ptr, sizeof(int));
                 ptr += sizeof(int);
@@ -647,10 +651,13 @@ static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size)
     } else {
         server = (server_info_t *) pmix_list_get_first(server_list);
     }
-
-    ret += write(server->wr_fd, msg_hdr, sizeof(msg_hdr_t));
-    ret += write(server->wr_fd, data, size);
-    if (ret != (sizeof(*msg_hdr) + size)) {
+    // check return codes on each write
+    ret = write(server->wr_fd, msg_hdr, sizeof(msg_hdr_t));
+    if (ret != (sizeof(*msg_hdr))) {
+        return PMIX_ERROR;
+    }
+    ret = write(server->wr_fd, data, size);
+    if (ret != (size)) {
         return PMIX_ERROR;
     }
     return PMIX_SUCCESS;
@@ -683,10 +690,15 @@ static int server_send_procs(void)
     msg_hdr.dst_id = 0;
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = server_pack_procs(my_server_id, &buf, 0);
-    server->modex_cbfunc = _send_procs_cb;
-    server->cbdata = (void *) server;
+    // setting nprocs to 0 means procs array is ignored (all processes participate)
+    msg_hdr.nprocs = 0;
+    // we can assume index of 0 bc this is first fence, and only called from server_init
+    server->nprocs[0] = 0;
+    server->modex_cbfunc[0] = _send_procs_cb;
+    server->cbdata[0] = (void *) server;
 
     server->lock.active = true;
+    server->num_fences++;
 
     if (PMIX_SUCCESS != (rc = server_send_msg(&msg_hdr, buf, msg_hdr.size))) {
         if (buf) {
@@ -718,6 +730,8 @@ int server_barrier(void)
     msg_hdr.dst_id = 0;
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = 0;
+    // setting nprocs to 0 indicates that all procs participate
+    msg_hdr.nprocs = 0;
 
     server->lock.active = true;
 
@@ -743,23 +757,33 @@ static void server_read_cb(int fd, short event, void *arg)
     msg_hdr_t msg_hdr;
     char *msg_buf = NULL;
     static char *fence_buf = NULL;
-    int rc;
+    int i, n, p, temp_nodeid, fence_idx, rc;
+    static int fences_in_flight = 0;
+    bool fence_found = false, node_found = false;
+    // hard limits to fences in flight, procs, and nodes below
+    static uint32_t num_nodes_participating[PMIXT_MAX_FENCES];
+    static uint32_t num_nodes_contributed[PMIXT_MAX_FENCES];
+    static pmix_proc_t fence_sig[PMIXT_MAX_FENCES][PMIXT_MAX_PROCS];
+    static fence_nodes_t fence_nodes[PMIXT_MAX_FENCES][PMIXT_MAX_NODES];
     static size_t barrier_cnt = 0;
     static size_t contrib_cnt = 0;
     static size_t fence_buf_offset = 0;
+
+    TEST_VERBOSE(("sizeof(msg_hdr_t): %d, sizeof(pmix_proc_t): %d",
+                 sizeof(msg_hdr_t), sizeof(pmix_proc_t)));
 
     rc = read(server->rd_fd, &msg_hdr, sizeof(msg_hdr_t));
     if (rc <= 0) {
         return;
     }
     if (msg_hdr.size) {
-        msg_buf = (char *) malloc(sizeof(char) * msg_hdr.size);
+        msg_buf = (char *) malloc(msg_hdr.size);
         rc += read(server->rd_fd, msg_buf, msg_hdr.size);
     }
     if (rc != (int) (sizeof(msg_hdr_t) + msg_hdr.size)) {
         TEST_ERROR(("error read from %d", server->idx));
     }
-
+    // only called under direct modex situations?
     if (my_server_id != msg_hdr.dst_id) {
         server_fwd_msg(&msg_hdr, msg_buf, msg_hdr.size);
         free(msg_buf);
@@ -789,41 +813,253 @@ static void server_read_cb(int fd, short event, void *arg)
         PMIX_WAKEUP_THREAD(&server->lock);
         break;
     case CMD_FENCE_CONTRIB:
-        contrib_cnt++;
-        if (msg_hdr.size > 0) {
-            fence_buf = (char *) realloc((void *) fence_buf, fence_buf_offset + msg_hdr.size);
-            memcpy(fence_buf + fence_buf_offset, msg_buf, msg_hdr.size);
-            fence_buf_offset += msg_hdr.size;
-            free(msg_buf);
-            msg_buf = NULL;
-        }
+        assert(0 == my_server_id);
 
-        TEST_VERBOSE(("CMD_FENCE_CONTRIB req from %d cnt %lu size %d", msg_hdr.src_id,
+        TEST_VERBOSE(("CMD_FENCE_CONTRIB req from server: %d cnt: %lu size: %d", msg_hdr.src_id,
                       (unsigned long) contrib_cnt, msg_hdr.size));
-        if (pmix_list_get_size(server_list) == contrib_cnt) {
-            server_info_t *tmp_server;
-            PMIX_LIST_FOREACH (tmp_server, server_list, server_info_t) {
-                msg_hdr_t resp_hdr;
-                resp_hdr.dst_id = tmp_server->idx;
-                resp_hdr.src_id = my_server_id;
-                resp_hdr.cmd = CMD_FENCE_COMPLETE;
-                resp_hdr.size = fence_buf_offset;
-                server_send_msg(&resp_hdr, fence_buf, fence_buf_offset);
+        // compare incoming fence to our existing fences
+        // assumption is that procs array will be constructed in the same order for every
+        // participating server
+        if (msg_hdr.nprocs > 0 && msg_hdr.procs[0].rank != PMIX_RANK_WILDCARD) {
+            TEST_VERBOSE(("Inside partial fence processing, source: %d, nprocs: %d"
+                         " fences_in_flight : %d", msg_hdr.src_id, msg_hdr.nprocs, fences_in_flight));
+            // init fence_nodes array (must only happen first pass)
+            if (fences_in_flight == 0) {
+                for (i = 0; i < PMIXT_MAX_FENCES; i++) {
+                    for (n = 0; n < PMIXT_MAX_NODES; n++) {
+                        fence_nodes[i][n].node = -1;
+                        fence_nodes[i][n].contributed = false;
+                    }
+                }
             }
-            TEST_VERBOSE(
-                ("CMD_FENCE_CONTRIB complete, size %lu", (unsigned long) fence_buf_offset));
-            if (fence_buf) {
-                free(fence_buf);
-                fence_buf = NULL;
-                fence_buf_offset = 0;
+            // see if we already have this fence signature or not
+            fence_found = false;
+            for (i = 0; i < fences_in_flight; i++) { // if we enter loop, some in-flight fences must exist
+                for (p = 0; p < msg_hdr.nprocs; p++) {
+                    if (msg_hdr.procs[p].rank != fence_sig[i][p].rank
+                        || strcmp(msg_hdr.procs[p].nspace, fence_sig[i][p].nspace)) {
+                        TEST_VERBOSE(("No match to existing fence, msg_hdr.procs[%d].rank: %d,"
+                                    " fence_sig[%d][%d].rank: %d "
+                                    "msg_hdr.procs[p].nspace: <%s>, fence_sig[i][p].nspace: <%s>",
+                                    p, msg_hdr.procs[p].rank, i, p, fence_sig[i][p].rank,
+                                    msg_hdr.procs[p].nspace,fence_sig[i][p].nspace));
+                        break;
+                    }
+                    if (p == (msg_hdr.nprocs - 1)) {
+                        fence_found = true;
+                        TEST_VERBOSE(("Fence was found for fence: %d", i));
+                    }
+                }
+                if (fence_found) {
+                    fence_idx = i;
+                    break;
+                }
             }
-            contrib_cnt = 0;
+            // if we haven't seen fence signature, create it
+            if (!fence_found) {
+                fences_in_flight++;
+                if (fences_in_flight > PMIXT_MAX_FENCES) {
+                    TEST_ERROR_EXIT(("Max in-flight fence limit of: %d exceeded", PMIXT_MAX_FENCES));
+                }
+                fence_idx = fences_in_flight - 1;
+                // loop over procs in this fence
+                for (p = 0; p < msg_hdr.nprocs; p++) {
+                    fence_sig[fence_idx][p].rank = msg_hdr.procs[p].rank;
+                    strncpy(fence_sig[fence_idx][p].nspace, msg_hdr.procs[p].nspace, 255);
+                    // loop over all nodes to find which node has this proc
+                    for (n = 0; n < g_num_nodes; n++) {
+                        temp_nodeid = -1;
+                        // look for a match for this fence proc within the procs on this node
+                        for (i = 0; i < nodes[n].pmix_local_size; i++) {
+                            TEST_VERBOSE(("Node: %d Local size: %d rank: %d", n, nodes[n].pmix_local_size, nodes[n].pmix_rank[i]));
+                            if (nodes[n].pmix_rank[i] == msg_hdr.procs[p].rank) {
+                                temp_nodeid = nodes[n].pmix_nodeid;
+                                TEST_VERBOSE(("Node: %d found for proc: %d", temp_nodeid, nodes[n].pmix_rank[i]));
+                                break;
+                            }
+                        }
+                        if (-1 != temp_nodeid) {
+                            break;
+                        }
+                    }
+                    if (-1 == temp_nodeid) {
+                        TEST_ERROR_EXIT(("Problem in node discovery logic in fence processing, exiting"));
+                    }
+                    // look for this node in fence_nodes array; if it's not found,
+                    // add it to fence_nodes and increment number of participating nodes in this fence
+                    n = 0;
+                    node_found = false;
+                    while (fence_nodes[fence_idx][n].node != -1 && n < PMIXT_MAX_NODES) {
+                        if (temp_nodeid == fence_nodes[fence_idx][n].node) {
+                            node_found = true;
+                            break;
+                        }
+                        n++;
+                    }
+                    if (!node_found) {
+                        num_nodes_participating[fence_idx]++;
+                        fence_nodes[fence_idx][n].node = temp_nodeid;
+                    }
+                }
+            }
+
+            // mark which node contributed this message, increment contributed count
+            for (n = 0; n < num_nodes_participating[fence_idx]; n++) {
+                if (msg_hdr.src_id == fence_nodes[fence_idx][n].node) {
+                    fence_nodes[fence_idx][n].contributed = true;
+                    num_nodes_contributed[fence_idx]++;
+                    TEST_VERBOSE(("For node: %d number of nodes contributed[%d]: %d, n: %d",
+                                my_server_id, fence_idx, num_nodes_contributed[fence_idx], n));
+                    break;
+                }
+            }
+
+            if (num_nodes_contributed[fence_idx] == num_nodes_participating[fence_idx]) {
+                for (n = 0; n < num_nodes_participating[fence_idx]; n++) {
+                    msg_hdr_t resp_hdr;
+                    resp_hdr.dst_id = fence_nodes[fence_idx][n].node;
+                    resp_hdr.src_id = my_server_id;
+                    resp_hdr.cmd = CMD_FENCE_COMPLETE;
+                    resp_hdr.size = fence_buf_offset;
+                    // is the fence_index field helping anything here?
+                    resp_hdr.fence_index = fence_idx;
+                    resp_hdr.nprocs = msg_hdr.nprocs;
+                    for (i = 0; i < msg_hdr.nprocs; i++) {
+                        strcpy(resp_hdr.procs[i].nspace, msg_hdr.procs[i].nspace);
+                        resp_hdr.procs[i].rank = msg_hdr.procs[i].rank;
+                    }
+                    server_send_msg(&resp_hdr, fence_buf, fence_buf_offset);
+                }
+                TEST_VERBOSE(
+                    ("CMD_FENCE_CONTRIB complete, size %lu", (unsigned long) fence_buf_offset));
+                if (fence_buf) {
+                    free(fence_buf);
+                    fence_buf = NULL;
+                    fence_buf_offset = 0;
+                }
+                for (n = 0; n < num_nodes_participating[fence_idx]; n++) {
+                    fence_nodes[fence_idx][n].node = -1;
+                    fence_nodes[fence_idx][n].contributed = false;
+                }
+                num_nodes_contributed[fence_idx] = 0;
+                num_nodes_participating[fence_idx] = 0;
+                for (i = fence_idx; i < fences_in_flight && i < (PMIXT_MAX_FENCES-1); i++) {
+                    for (n = 0; n < num_nodes_participating[i+1]; n++) {
+                        fence_nodes[i][n].node = fence_nodes[i+1][n].node;
+                        fence_nodes[i][n].contributed = fence_nodes[i+1][n].contributed;
+                    }
+                    num_nodes_contributed[i] = num_nodes_contributed[i+1];
+                    num_nodes_participating[i] = num_nodes_participating[i+1];
+
+                }
+                fences_in_flight--;
+                assert (fences_in_flight >= 0);
+            }
+        }
+        else { // msg_hdr.nprocs == 0 or PMIX_RANK_WILDCARD (implies that this is a fence across all procs)
+            if (msg_hdr.size > 0) {
+                fence_buf = (char *) realloc((void *) fence_buf, fence_buf_offset + msg_hdr.size);
+                memcpy(fence_buf + fence_buf_offset, msg_buf, msg_hdr.size);
+                fence_buf_offset += msg_hdr.size;
+                free(msg_buf);
+                msg_buf = NULL;
+            }
+            contrib_cnt++;
+            if (pmix_list_get_size(server_list) == contrib_cnt) {
+                server_info_t *tmp_server;
+                PMIX_LIST_FOREACH (tmp_server, server_list, server_info_t) {
+                    msg_hdr_t resp_hdr;
+                    resp_hdr.dst_id = tmp_server->idx;
+                    resp_hdr.src_id = my_server_id;
+                    resp_hdr.cmd = CMD_FENCE_COMPLETE;
+                    resp_hdr.size = fence_buf_offset;
+                    resp_hdr.fence_index = -1;
+                    resp_hdr.nprocs = msg_hdr.nprocs;
+                    resp_hdr.procs[0].rank = msg_hdr.procs[0].rank;
+                    server_send_msg(&resp_hdr, fence_buf, fence_buf_offset);
+                }
+                TEST_VERBOSE(
+                    ("CMD_FENCE_CONTRIB complete, size %lu", (unsigned long) fence_buf_offset));
+                if (fence_buf) {
+                    free(fence_buf);
+                    fence_buf = NULL;
+                    fence_buf_offset = 0;
+                }
+                contrib_cnt = 0;
+            }
         }
         break;
     case CMD_FENCE_COMPLETE:
-        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %d", my_server_id, (int)msg_hdr.size));
-        server->modex_cbfunc(PMIX_SUCCESS, msg_buf, msg_hdr.size, server->cbdata, _libpmix_cb,
-                             msg_buf);
+        // CMD_FENCE_COMPLETE is sent to every participating server when fence is complete
+        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE, size: %d, procs[0].rank: %d", my_server_id,
+                     msg_hdr.size, msg_hdr.procs[0].rank));
+        // the simple case (all nodes participate, no procs data stored)
+        if (0 == msg_hdr.nprocs || msg_hdr.procs[0].rank == PMIX_RANK_WILDCARD) {
+            server_info_t *tmp_server;
+            // we set tmp_server to (node) 0 because that struct is where we stored all the fence
+            // signature and callback info from this node process (inside server_fence_contrib)
+            if (0 == my_server_id) {
+                tmp_server = my_server_info;
+            }
+            else {
+                tmp_server = (server_info_t *) pmix_list_get_first(server_list);
+            }
+            fence_idx = tmp_server->num_fences-1;
+            TEST_VERBOSE(("Before modex_cbfunc call, my_server_id: %d tmp_server->num_fences: %d "
+                         "fence_idx: %d", my_server_id, tmp_server->num_fences, fence_idx));
+            tmp_server->modex_cbfunc[fence_idx](PMIX_SUCCESS, msg_buf, msg_hdr.size, tmp_server->cbdata[fence_idx],
+                                            _libpmix_cb, msg_buf);
+            tmp_server->num_fences--;
+        }
+        // compare incoming fence to the existing fences
+        // assumption is that procs array will be constructed in the same order for every
+        // participating server, so that header will match what's in the server struct
+        else {
+            server_info_t *tmp_server;
+            fence_found = false;
+            // we set tmp_server to (node) 0 because that struct is where we stored all the fence
+            // signature and callback info from this node process (inside server_fence_contrib)
+            if (0 == my_server_id) {
+                tmp_server = my_server_info;
+            }
+            else {
+                tmp_server = (server_info_t *) pmix_list_get_first(server_list);
+            }
+            for (i = 0; i < tmp_server->num_fences; i++) {
+                for (p = 0; p < msg_hdr.nprocs; p++) {
+                    if (msg_hdr.procs[p].rank != tmp_server->procs[i][p].rank
+                       || strcmp(msg_hdr.procs[p].nspace, tmp_server->procs[i][p].nspace)) {
+                        break;
+                    }
+                    if (p == (msg_hdr.nprocs - 1)) {
+                        fence_found = true;
+                    }
+                }
+                if (fence_found) {
+                    fence_idx = i;
+                    break;
+                }
+            }
+            // if we haven't seen this fence signature, error out
+            if (!fence_found) {
+                TEST_ERROR_EXIT(("Unrecognized fence signature received from server 0 on server: %d, exiting",
+                                 my_server_id));
+            }
+            // Return control to PMIx callback indicating fence success
+            tmp_server->modex_cbfunc[fence_idx](PMIX_SUCCESS, msg_buf, msg_hdr.size,
+                                                tmp_server->cbdata[fence_idx], _libpmix_cb, msg_buf);
+            // remove this fence signature from this process's entries; shift remaining fences left in array
+            for (i = fence_idx; i < tmp_server->num_fences && i < (PMIXT_MAX_FENCES-1); i++) {
+                for (p = 0; p < tmp_server->nprocs[i+1]; p++) {
+                    tmp_server->procs[i][p].rank = tmp_server->procs[i][p+1].rank;
+                    strncpy(tmp_server->procs[i][p].nspace, tmp_server->procs[i][p+1].nspace, 255);
+                    TEST_VERBOSE(("tmp_server->procs[%d][%d].rank: %d",i, p, tmp_server->procs[i][p].rank));
+                }
+                tmp_server->nprocs[i] = tmp_server->nprocs[i+1];
+            }
+            // Decrement num_fences once processing is complete
+            tmp_server->num_fences--;
+        }
         msg_buf = NULL;
         break;
     case CMD_DMDX_REQUEST: {
@@ -841,8 +1077,10 @@ static void server_read_cb(int fd, short event, void *arg)
     }
     case CMD_DMDX_RESPONSE:
         TEST_VERBOSE(("%d: CMD_DMDX_RESPONSE", my_server_id));
-        server->modex_cbfunc(PMIX_SUCCESS, msg_buf, msg_hdr.size, server->cbdata, _libpmix_cb,
-                             msg_buf);
+        // would need to be modified to support multiple in-flights and partials
+        fence_idx = msg_hdr.fence_index;
+        server->modex_cbfunc[fence_idx](PMIX_SUCCESS, msg_buf, msg_hdr.size,
+                            server->cbdata[fence_idx], _libpmix_cb, msg_buf);
         msg_buf = NULL;
         break;
     }
@@ -851,28 +1089,50 @@ static void server_read_cb(int fd, short event, void *arg)
     }
 }
 
-int server_fence_contrib(char *data, size_t ndata, pmix_modex_cbfunc_t cbfunc, void *cbdata)
+int server_fence_contrib(const pmix_proc_t procs[], size_t nprocs, char *data,
+                         size_t ndata, pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
+    // this fence callback function is only called if there is more than one server
     server_info_t *server;
     msg_hdr_t msg_hdr;
+    size_t n, fence_idx = 0;
     int rc = PMIX_SUCCESS;
 
     if (0 == my_server_id) {
         server = my_server_info;
-    } else {
+    }
+    else {
         server = (server_info_t *) pmix_list_get_first(server_list);
     }
+
     msg_hdr.cmd = CMD_FENCE_CONTRIB;
     msg_hdr.dst_id = 0;
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = ndata;
-    // this won't work if there is more than one fence active at the same time
-    // in the future, we will have to create a list instead of just one entry
-    // (each server can have more than one fence in flight at the same time)
-    server->modex_cbfunc = cbfunc;
-    server->cbdata = cbdata;
-    //pmix_list_append(server->modex_cbfunc, cbfunc);
-    //pmix_list_append(server->cbdata, cbdata);
+    // Put participating procs list into header and server structs.
+    // Note that all fence data is going into the server 0 struct
+    // on this server/node *process* (which may or may not be 0)
+    msg_hdr.nprocs = nprocs;
+    server->num_fences++;
+    TEST_VERBOSE(("my_server_id: %d, num_fences: %d", my_server_id, server->num_fences));
+    if (server->num_fences > PMIXT_MAX_FENCES) {
+        TEST_ERROR_EXIT(("Max in-flight fence limit of: %d exceeded", PMIXT_MAX_FENCES));
+    }
+    fence_idx = server->num_fences - 1;
+    server->nprocs[fence_idx] = msg_hdr.nprocs;
+    for (n = 0; n < msg_hdr.nprocs; n++) {
+        strncpy(msg_hdr.procs[n].nspace, procs[n].nspace, 255);
+        strncpy(server->procs[fence_idx][n].nspace, procs[n].nspace, 255);
+        msg_hdr.procs[n].rank = procs[n].rank;
+        server->procs[fence_idx][n].rank = procs[n].rank;
+    }
+    // the below cbfunc and cbdata are used internally by PMIx and are called when fence is
+    // complete, hence the need for multiples of these if we have multiple fences.
+    // We are on a sending node, modifying the server 0 struct in the list that the sending
+    // node maintains; then when fence_complete is called, we remove entries that have a
+    // fence signature match.
+    server->modex_cbfunc[fence_idx] = cbfunc;
+    server->cbdata[fence_idx] = cbdata;
 
     if (PMIX_SUCCESS != (rc = server_send_msg(&msg_hdr, data, ndata))) {
         return PMIX_ERROR;
@@ -923,6 +1183,10 @@ static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata)
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = sz;
     msg_hdr.dst_id = *sender_id;
+    // the below assignment will need to change to support multiple in-flight direct modexes,
+    // in addition to capturing the full procs list in this callback in place of
+    // the 'status' parameter, and populating msg_hdr.procs and .nprocs to support partials...
+    msg_hdr.fence_index = 0;
     TEST_VERBOSE(("srv #%d: DMDX RESPONSE: receiver=%d, size=%lu,", my_server_id, *sender_id,
                   (unsigned long) sz));
     free(sender_id);
@@ -936,6 +1200,7 @@ int server_dmdx_get(const char *nspace, int rank, pmix_modex_cbfunc_t cbfunc, vo
     msg_hdr_t msg_hdr;
     pmix_status_t rc = PMIX_SUCCESS;
     char *buf = NULL;
+    int fence_idx = 0;
 
     if (0 > (msg_hdr.dst_id = server_find_id(nspace, rank))) {
         TEST_ERROR(("%d: server not found for %s:%d", my_server_id, nspace, rank));
@@ -960,8 +1225,16 @@ int server_dmdx_get(const char *nspace, int rank, pmix_modex_cbfunc_t cbfunc, vo
     msg_hdr.cmd = CMD_DMDX_REQUEST;
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = server_pack_dmdx(my_server_id, nspace, rank, &buf);
-    server->modex_cbfunc = cbfunc;
-    server->cbdata = cbdata;
+    server->num_fences++;
+    if (server->num_fences > PMIXT_MAX_FENCES) {
+        TEST_ERROR(("Max in-flight operations limit of: %d exceeded", PMIXT_MAX_FENCES));
+        goto error;
+    }
+    fence_idx = server->num_fences - 1;
+    server->modex_cbfunc[fence_idx] = cbfunc;
+    server->cbdata[fence_idx] = cbdata;
+    // setting nprocs to 0 indicates that downstream ops can ignore contents of procs[]
+    server->nprocs[fence_idx] = 0;
 
     if (PMIX_SUCCESS != (rc = server_send_msg(&msg_hdr, buf, msg_hdr.size))) {
         rc = PMIX_ERROR;
@@ -1048,6 +1321,7 @@ int server_init(validation_params *v_params)
 {
     pmix_info_t info[2];
     int rc = PMIX_SUCCESS;
+    int i, retval, pipesz1 = 0, pipesz2 = 0;
 
     /* fork/init servers procs */
     if (v_params->pmix_num_nodes >= 1) {
@@ -1070,6 +1344,22 @@ int server_init(validation_params *v_params)
             rc = pipe(fd2);
             if (0 != rc) {
                 TEST_ERROR_EXIT(("Creation of pipe failed with error: %d", rc));
+            }
+            pipesz1 = fcntl(fd1[0], F_GETPIPE_SZ);
+            pipesz2 = fcntl(fd2[0], F_GETPIPE_SZ);
+            if (pipesz1 < 0 || pipesz2 < 0) {
+                TEST_ERROR_EXIT(("Problem with GETPIPE_SZ"));
+            }
+            if (pipesz1 < PMIXT_PIPE_SZ || pipesz2 < PMIXT_PIPE_SZ) {
+                TEST_ERROR(("Server-server pipes too small: %d %d", pipesz1, pipesz2));
+                retval = fcntl(fd1[0], F_SETPIPE_SZ, PMIXT_PIPE_SZ);
+                if (retval < 0) {
+                    TEST_ERROR_EXIT(("Problem setting pipe size; check permissions. Exiting"));
+                }
+                retval = fcntl(fd2[0], F_SETPIPE_SZ, PMIXT_PIPE_SZ);
+                if (retval < 0) {
+                    TEST_ERROR_EXIT(("Problem setting pipe size; check permissions. Exiting"));
+                }
             }
 
             // copy hostname from nodes array
@@ -1097,9 +1387,8 @@ int server_init(validation_params *v_params)
                     pmix_list_append(server_list, &server_info->super);
                     break;
                 }
-
-                server_info->idx
-                    = i; // idx is id of server we are talking to (descriptor of remote peer)
+                // idx is id of server we are talking to (descriptor of remote peer)
+                server_info->idx = i;
                 server_info->pid = pid;
                 server_info->wr_fd = fd1[1];
                 server_info->rd_fd = fd2[0];

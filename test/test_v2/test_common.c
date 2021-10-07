@@ -171,6 +171,7 @@ void default_params(test_params *lparams, validation_params *v_params) {
     lparams->ns_id = -1;
     lparams->fence_timeout_ratio = TEST_DEFAULT_FENCE_TIMEOUT_RATIO;
     lparams->fence_time_multiplier = TEST_DEFAULT_FENCE_TIME_MULTIPLIER;
+    lparams->time_fence = false;
 
     v_params->version = PMIXT_VALIDATION_PARAMS_VER;
     v_params->validate_params = false;
