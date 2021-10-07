@@ -1088,6 +1088,25 @@ fi
 AC_DEFINE_UNQUOTED(PMIX_PICKY_COMPILERS, $WANT_PICKY_COMPILER,
                    [Whether or not we are using picky compiler settings])
 
+AC_MSG_CHECKING([if want memory sanitizers])
+AC_ARG_ENABLE(memory-sanitizers,
+    AS_HELP_STRING([--memory-sanitizers],
+                   [enable developer-level memory sanitizers when building PMIx (default: disabled)]))
+if test "$enable_memory_sanitizers" = "yes"; then
+    AC_MSG_RESULT([yes])
+    WANT_MEMORY_SANITIZERS=1
+    AC_MSG_WARN([******************************************************])
+    AC_MSG_WARN([**** Memory sanitizers may require that you LD_PRELOAD])
+    AC_MSG_WARN([**** libasan in order to run an executable.])
+    AC_MSG_WARN([******************************************************])
+else
+    AC_MSG_RESULT([no])
+    WANT_MEMORY_SANITIZERS=0
+fi
+
+AC_DEFINE_UNQUOTED(PMIX_MEMORY_SANITIZERS, $WANT_MEMORY_SANITIZERS,
+                   [Whether or not we are using memory sanitizers])
+
 #
 # Developer debugging
 #

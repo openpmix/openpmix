@@ -31,7 +31,7 @@ AC_MSG_CHECKING(if $CC supports ([$1]))
                                     _PMIX_CFLAGS_FAIL_SEARCH("ignored\|not recognized\|not supported\|not compatible\|unrecognized\|unknown", [$2])
                                    ],
                                     pmix_cv_cc_[$2]=1
-                                    _PMIX_CFLAGS_FAIL_SEARCH("ignored\|not recognized\|not supported\|not compatible\|unrecognized\|unknown\|error", [$2])
+                                    _PMIX_CFLAGS_FAIL_SEARCH("ignored\|not recognized\|not supported\|not compatible\|unrecognized\|unknown", [$2])
                                  )])
             if test "$pmix_cv_cc_[$2]" = "0" ; then
                 CFLAGS="$CFLAGS_orig"

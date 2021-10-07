@@ -432,8 +432,10 @@ AC_DEFUN([PMIX_SETUP_PICKY_COMPILERS],[
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wall, Wall)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wextra, Wextra)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror, Werror)
-#        _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=address, fsanitize=address)
-#        _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=undefined, fsanitize=undefined)
+        if test $WANT_MEMORY_SANITIZERS -eq 1 && test "$pmix_c_vendor" != "pgi"; then
+            _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=address, fsanaddress)
+            _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=undefined, fsanundefined)
+        fi
     fi
 
 ])
