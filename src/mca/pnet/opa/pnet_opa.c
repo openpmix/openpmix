@@ -41,6 +41,7 @@
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 #include "src/util/pmix_environ.h"
 
 #include "pnet_opa.h"
@@ -120,12 +121,12 @@ static char *transports_print(uint64_t *unique_key)
                 int_ptr[i] |= j << j;
             }
         }
-        snprintf(string_key + written_len, string_key_len - written_len, format, int_ptr[i]);
+        pmix_snprintf(string_key + written_len, string_key_len - written_len, format, int_ptr[i]);
         written_len = strlen(string_key);
     }
 
     /* print the middle dash */
-    snprintf(string_key + written_len, string_key_len - written_len, "-");
+    pmix_snprintf(string_key + written_len, string_key_len - written_len, "-");
     written_len = strlen(string_key);
 
     /* print the second number */
@@ -137,7 +138,7 @@ static char *transports_print(uint64_t *unique_key)
                 int_ptr[i] |= j << j;
             }
         }
-        snprintf(string_key + written_len, string_key_len - written_len, format, int_ptr[i]);
+        pmix_snprintf(string_key + written_len, string_key_len - written_len, format, int_ptr[i]);
         written_len = strlen(string_key);
     }
     free(format);

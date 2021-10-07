@@ -77,6 +77,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 
 #include "pmix_client_ops.h"
 
@@ -683,7 +684,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
         /* if we didn't see a PMIx server (e.g., missing envar),
          * then allow us to run as a singleton */
         pid = getpid();
-        snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN, "singleton.%s.%lu",
+        pmix_snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN, "singleton.%s.%lu",
                  pmix_globals.hostname, (unsigned long) pid);
         pmix_globals.myid.rank = 0;
         if (NULL != proc) {

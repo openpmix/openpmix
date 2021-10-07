@@ -164,7 +164,7 @@ static int query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats)
         stats->node = strdup(pmix_globals.hostname);
 
         /* create the stat filename for this proc */
-        numchars = snprintf(data, sizeof(data), "/proc/%d/stat", pid);
+        numchars = pmix_snprintf(data, sizeof(data), "/proc/%d/stat", pid);
         if (numchars >= sizeof(data)) {
             return PMIX_ERROR;
         }
@@ -292,7 +292,7 @@ static int query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats)
 
         /* now create the status filename for this proc */
         memset(data, 0, sizeof(data));
-        numchars = snprintf(data, sizeof(data), "/proc/%d/status", pid);
+        numchars = pmix_snprintf(data, sizeof(data), "/proc/%d/status", pid);
         if (numchars >= sizeof(data)) {
             return PMIX_ERROR;
         }
@@ -321,7 +321,7 @@ static int query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats)
 
         /* now create the smaps filename for this proc */
         memset(data, 0, sizeof(data));
-        numchars = snprintf(data, sizeof(data), "/proc/%d/smaps", pid);
+        numchars = pmix_snprintf(data, sizeof(data), "/proc/%d/smaps", pid);
         if (numchars >= sizeof(data)) {
             return PMIX_ERROR;
         }

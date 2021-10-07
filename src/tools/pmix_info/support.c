@@ -45,6 +45,7 @@
 #include "src/util/cmd_line.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 #include "src/util/show_help.h"
 
 #include "src/include/frameworks.h"
@@ -1249,7 +1250,7 @@ char *pmix_info_make_version_str(const char *scope, int major, int minor, int re
 
     temp[BUFSIZ - 1] = '\0';
     if (0 == strcmp(scope, pmix_info_ver_full) || 0 == strcmp(scope, pmix_info_ver_all)) {
-        snprintf(temp, BUFSIZ - 1, "%d.%d.%d", major, minor, release);
+        pmix_snprintf(temp, BUFSIZ - 1, "%d.%d.%d", major, minor, release);
         str = strdup(temp);
         if (NULL != greek) {
             if (0 > asprintf(&tmp, "%s%s", str, greek)) {
@@ -1260,11 +1261,11 @@ char *pmix_info_make_version_str(const char *scope, int major, int minor, int re
             str = tmp;
         }
     } else if (0 == strcmp(scope, pmix_info_ver_major)) {
-        snprintf(temp, BUFSIZ - 1, "%d", major);
+        pmix_snprintf(temp, BUFSIZ - 1, "%d", major);
     } else if (0 == strcmp(scope, pmix_info_ver_minor)) {
-        snprintf(temp, BUFSIZ - 1, "%d", minor);
+        pmix_snprintf(temp, BUFSIZ - 1, "%d", minor);
     } else if (0 == strcmp(scope, pmix_info_ver_release)) {
-        snprintf(temp, BUFSIZ - 1, "%d", release);
+        pmix_snprintf(temp, BUFSIZ - 1, "%d", release);
     } else if (0 == strcmp(scope, pmix_info_ver_greek)) {
         str = strdup(greek);
     } else if (0 == strcmp(scope, pmix_info_ver_repo)) {

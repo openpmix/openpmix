@@ -158,7 +158,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
     /* create a namespace for the new job */
     memset(tmp, 0, 2048);
-    (void) snprintf(tmp, 2047, "%s:%lu", pmix_globals.myid.nspace,
+    (void) pmix_snprintf(tmp, 2047, "%s:%lu", pmix_globals.myid.nspace,
                     (unsigned long) pmix_pfexec_globals.nextid);
     PMIX_LOAD_NSPACE(nspace, tmp);
     ++pmix_pfexec_globals.nextid;
@@ -303,7 +303,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 
             /* pass the rank */
             memset(tmp, 0, 2048);
-            (void) snprintf(tmp, 2047, "%u", child->proc.rank);
+            (void) pmix_snprintf(tmp, 2047, "%u", child->proc.rank);
             pmix_setenv("PMIX_RANK", tmp, true, &env);
             pmix_setenv("PMIX_SERVER_RANK", tmp, true, &env);
 

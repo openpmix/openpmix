@@ -72,6 +72,7 @@
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 #include "src/util/show_help.h"
 
 /* the server also needs access to client operations
@@ -2097,7 +2098,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     /* pass the nspace */
     pmix_setenv("PMIX_NAMESPACE", proc->nspace, true, env);
     /* pass the rank */
-    (void) snprintf(rankstr, 127, "%u", proc->rank);
+    (void) pmix_snprintf(rankstr, 127, "%u", proc->rank);
     pmix_setenv("PMIX_RANK", rankstr, true, env);
     /* pass our rendezvous info */
     lt = &pmix_ptl_base.listener;
