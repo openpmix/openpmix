@@ -903,7 +903,7 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
         } else {
             continue;
         }
-        (void) snprintf(uri, 2048, "%s%s", prefix, myconnhost);
+        (void) pmix_snprintf(uri, 2048, "%s%s", prefix, myconnhost);
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                             "TCP INVENTORY ADDING: %s %s", name, uri);
         found = true;

@@ -44,6 +44,7 @@
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 
 /*
  * Private data
@@ -779,29 +780,29 @@ static int make_string(char **out, char **no_newline_string, output_desc_t *ldi,
     temp_str_len = total_len * 2;
     if (NULL != ldi->ldi_prefix && NULL != ldi->ldi_suffix) {
         if (want_newline) {
-            snprintf(temp_str, temp_str_len, "%s%s%s\n", ldi->ldi_prefix, *no_newline_string,
+            pmix_snprintf(temp_str, temp_str_len, "%s%s%s\n", ldi->ldi_prefix, *no_newline_string,
                      ldi->ldi_suffix);
         } else {
-            snprintf(temp_str, temp_str_len, "%s%s%s", ldi->ldi_prefix, *no_newline_string,
+            pmix_snprintf(temp_str, temp_str_len, "%s%s%s", ldi->ldi_prefix, *no_newline_string,
                      ldi->ldi_suffix);
         }
     } else if (NULL != ldi->ldi_prefix) {
         if (want_newline) {
-            snprintf(temp_str, temp_str_len, "%s%s\n", ldi->ldi_prefix, *no_newline_string);
+            pmix_snprintf(temp_str, temp_str_len, "%s%s\n", ldi->ldi_prefix, *no_newline_string);
         } else {
-            snprintf(temp_str, temp_str_len, "%s%s", ldi->ldi_prefix, *no_newline_string);
+            pmix_snprintf(temp_str, temp_str_len, "%s%s", ldi->ldi_prefix, *no_newline_string);
         }
     } else if (NULL != ldi->ldi_suffix) {
         if (want_newline) {
-            snprintf(temp_str, temp_str_len, "%s%s\n", *no_newline_string, ldi->ldi_suffix);
+            pmix_snprintf(temp_str, temp_str_len, "%s%s\n", *no_newline_string, ldi->ldi_suffix);
         } else {
-            snprintf(temp_str, temp_str_len, "%s%s", *no_newline_string, ldi->ldi_suffix);
+            pmix_snprintf(temp_str, temp_str_len, "%s%s", *no_newline_string, ldi->ldi_suffix);
         }
     } else {
         if (want_newline) {
-            snprintf(temp_str, temp_str_len, "%s\n", *no_newline_string);
+            pmix_snprintf(temp_str, temp_str_len, "%s\n", *no_newline_string);
         } else {
-            snprintf(temp_str, temp_str_len, "%s", *no_newline_string);
+            pmix_snprintf(temp_str, temp_str_len, "%s", *no_newline_string);
         }
     }
     *out = temp_str;
@@ -874,7 +875,7 @@ static int output(int output_id, const char *format, va_list arglist)
                 } else if (ldi->ldi_file_num_lines_lost > 0 && 0 <= ldi->ldi_fd) {
                     char buffer[BUFSIZ];
                     memset(buffer, 0, BUFSIZ);
-                    snprintf(buffer, BUFSIZ - 1,
+                    pmix_snprintf(buffer, BUFSIZ - 1,
                              "[WARNING: %d lines lost because the PMIx process session directory "
                              "did\n not exist when pmix_output() was invoked]\n",
                              ldi->ldi_file_num_lines_lost);

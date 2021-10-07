@@ -52,7 +52,7 @@ BEGIN_C_DECLS
  * Returns the number of characters that would have been printed if
  * the size were unlimited (again, not including the final `\0').
  *
- * THIS IS A PORTABILITY FEATURE: USE snprintf() in CODE.
+ * THIS IS A PORTABILITY FEATURE: USE pmix_snprintf() in CODE.
  */
 PMIX_EXPORT int pmix_snprintf(char *str, size_t size, const char *fmt, ...)
     __pmix_attribute_format__(__printf__, 3, 4);
@@ -77,9 +77,9 @@ PMIX_EXPORT int pmix_snprintf(char *str, size_t size, const char *fmt, ...)
  * Returns the number of characters that would have been printed if
  * the size were unlimited (again, not including the final `\0').
  *
- * THIS IS A PORTABILITY FEATURE: USE vsnprintf() in CODE.
+ * THIS IS A PORTABILITY FEATURE: USE vpmix_snprintf() in CODE.
  */
-PMIX_EXPORT int pmix_vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
+PMIX_EXPORT int pmix_vpmix_snprintf(char *str, size_t size, const char *fmt, va_list ap)
     __pmix_attribute_format__(__printf__, 3, 0);
 
 /**

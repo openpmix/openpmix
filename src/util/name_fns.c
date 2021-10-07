@@ -111,7 +111,7 @@ static char *print_args(char *ns, pmix_rank_t rnk)
     /* protect against NULL nspace */
     if (NULL == ns) {
         index = ptr->cntr;
-        snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "[NO-NAME]");
+        pmix_snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "[NO-NAME]");
         ptr->cntr++;
         if (PMIX_PRINT_NAME_ARG_NUM_BUFS == ptr->cntr) {
             ptr->cntr = 0;
@@ -122,7 +122,7 @@ static char *print_args(char *ns, pmix_rank_t rnk)
     rank = pmix_util_print_rank(rnk);
 
     index = ptr->cntr;
-    snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "[%s,%s]", ns, rank);
+    pmix_snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "[%s,%s]", ns, rank);
     ptr->cntr++;
     if (PMIX_PRINT_NAME_ARG_NUM_BUFS == ptr->cntr) {
         ptr->cntr = 0;
@@ -163,11 +163,11 @@ char *pmix_util_print_rank(const pmix_rank_t vpid)
 
     index = ptr->cntr;
     if (PMIX_RANK_UNDEF == vpid) {
-        snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "UNDEF");
+        pmix_snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "UNDEF");
     } else if (PMIX_RANK_WILDCARD == vpid) {
-        snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "WILDCARD");
+        pmix_snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "WILDCARD");
     } else {
-        snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "%ld", (long) vpid);
+        pmix_snprintf(ptr->buffers[index], PMIX_PRINT_NAME_ARGS_MAX_SIZE, "%ld", (long) vpid);
     }
     ptr->cntr++;
     if (PMIX_PRINT_NAME_ARG_NUM_BUFS == ptr->cntr) {

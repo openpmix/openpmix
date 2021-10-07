@@ -56,6 +56,7 @@
 #include "src/util/error.h"
 #include "src/util/getid.h"
 #include "src/util/os_path.h"
+#include "src/util/printf.h"
 #include "src/util/show_help.h"
 #include "src/util/strnlen.h"
 
@@ -321,12 +322,17 @@ char *pmix_ptl_base_get_cmd_line(void)
 
     /* open the pid's info file */
     mypid = getpid();
-    snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long) mypid);
+    pmix_snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long) mypid);
     fp = fopen(tmp, "r");
     if (NULL != fp) {
         /* read the cmd line */
-        fgets(tmp, 512, fp);
-        fclose(fp);
+        if (NULL == fgets(tmp, 512, fp)) {
+            fclose(fp);
+            return NULL;
+        }
+        if (0 != fclose(fp)) {
+            ;
+        }
         p = strdup(tmp);
     }
 #endif
