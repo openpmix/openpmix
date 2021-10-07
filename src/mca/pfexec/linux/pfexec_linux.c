@@ -411,7 +411,9 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     /* Exec the new executable */
     execve(app->cmd, app->argv, env);
     errval = errno;
-    getcwd(dir, sizeof(dir));
+    if (0 != getcwd(dir, sizeof(dir))) {
+        pmix_strncpy(dir, "GETCWD-FAILED", sizeof(dir));
+    }
     send_error_show_help(write_fd, 1, "help-pfexec-linux.txt", "execve error",
                          pmix_globals.hostname, dir, app->cmd, strerror(errval));
     /* Does not return */
