@@ -38,6 +38,7 @@
 #include "src/util/argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 
 #include "preg_native.h"
 #include "src/mca/preg/base/base.h"
@@ -846,7 +847,7 @@ static pmix_status_t regex_parse_value_range(char *base, char *range, int num_di
             str[k + base_len] = '0';
         }
         memset(tmp, 0, 132);
-        snprintf(tmp, 132, "%lu", (unsigned long) i);
+        pmix_snprintf(tmp, 132, "%lu", (unsigned long) i);
         for (k = 0; k < strlen(tmp); k++) {
             str[base_len + num_digits - k - 1] = tmp[strlen(tmp) - k - 1];
         }

@@ -23,6 +23,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 
 #include "psec_dummy_handshake.h"
 #include "src/mca/psec/base/base.h"
@@ -86,7 +87,7 @@ static pmix_status_t server_hndshk(int sd)
 
     pmix_output_verbose(2, pmix_psec_base_framework.framework_output, "psec: simple server_hndshk");
 
-    asprintf(&hndshk_msg, "%s", PMIX_PSEC_DUMMY_HNDSHK_STR);
+    pmix_asprintf(&hndshk_msg, "%s", PMIX_PSEC_DUMMY_HNDSHK_STR);
     size = strlen(hndshk_msg);
 
     /* send size of handshake message */

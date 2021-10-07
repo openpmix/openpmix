@@ -71,6 +71,7 @@
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 #include "src/util/show_help.h"
 
 #define PMIX_MAX_RETRIES 10
@@ -723,7 +724,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         if (!nspace_given || !rank_given) {
             /* self-assign a namespace and rank for ourselves. Use our hostname:pid
              * for the nspace, and rank clearly is 0 */
-            snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN - 1, "%s:%lu", pmix_globals.hostname,
+            pmix_snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN - 1, "%s:%lu", pmix_globals.hostname,
                      (unsigned long) pmix_globals.pid);
             pmix_globals.myid.rank = 0;
             nspace_given = false;
@@ -749,7 +750,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             /* if connection was optional, then we need to self-assign
              * a namespace and rank for ourselves. Use our hostname:pid
              * for the nspace, and rank clearly is 0 */
-            snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN - 1, "%s:%lu", pmix_globals.hostname,
+            pmix_snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN - 1, "%s:%lu", pmix_globals.hostname,
                      (unsigned long) pmix_globals.pid);
             pmix_globals.myid.rank = 0;
             nspace_given = false;

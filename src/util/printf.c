@@ -249,13 +249,13 @@ int pmix_snprintf(char *str, size_t size, const char *fmt, ...)
     va_list ap;
 
     va_start(ap, fmt);
-    length = pmix_vsnprintf(str, size, fmt, ap);
+    length = pmix_vpmix_snprintf(str, size, fmt, ap);
     va_end(ap);
 
     return length;
 }
 
-int pmix_vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
+int pmix_vpmix_snprintf(char *str, size_t size, const char *fmt, va_list ap)
 {
     int length;
     char *buf;
@@ -290,17 +290,17 @@ int main(int argc, char *argv[])
     char *s;
     int length;
 
-    puts("test for NULL buffer in snprintf:");
+    puts("test for NULL buffer in pmix_snprintf:");
     length = pmix_snprintf(NULL, 0, "this is a string %d", 1004);
     printf("length = %d\n", length);
 
-    puts("test of snprintf to an undersize buffer:");
+    puts("test of pmix_snprintf to an undersize buffer:");
     length = pmix_snprintf(a, sizeof(a), "this is a string %d", 1004);
     printf("string = %s\n", a);
     printf("length = %d\n", length);
     printf("strlen = %d\n", (int) strlen(a));
 
-    puts("test of snprintf to an oversize buffer:");
+    puts("test of pmix_snprintf to an oversize buffer:");
     length = pmix_snprintf(b, sizeof(b), "this is a string %d", 1004);
     printf("string = %s\n", b);
     printf("length = %d\n", length);

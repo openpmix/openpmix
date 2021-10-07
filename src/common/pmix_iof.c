@@ -1199,33 +1199,33 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
      */
     if (myflags.xml) {
         if (myflags.tag) {
-            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s nspace=\"%s\" rank=\"%s\"", suffix,
                      name->nspace, PMIX_RANK_PRINT(name->rank));
         } else if (myflags.rank) {
-            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         } else if (myflags.timestamp) {
-            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         } else {
-            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         }
-        snprintf(endtag, PMIX_IOF_BASE_TAG_MAX,
+        pmix_snprintf(endtag, PMIX_IOF_BASE_TAG_MAX,
                  "</%s>", suffix);
     } else {
         if (myflags.tag) {
-            snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
                      "[%s,%s]<%s>",
                      name->nspace,
                      PMIX_RANK_PRINT(name->rank),
                      suffix);
         } else if (myflags.rank) {
-            snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
                      "[%s]",
                      PMIX_RANK_PRINT(name->rank));
         }
@@ -1241,15 +1241,15 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         cptr[strlen(cptr) - 1] = '\0'; /* remove trailing newline */
 
         if (myflags.xml && !myflags.tag && !myflags.rank) {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
                      " timestamp=\"%s\"", cptr);
         } else if (myflags.xml && (myflags.tag || myflags.rank)) {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
                      " timestamp=\"%s\"", cptr);
         } else if (myflags.tag || myflags.rank) {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
         } else {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s", cptr, suffix);
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s", cptr, suffix);
         }
     }
 
@@ -1300,7 +1300,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
                     goto process;
                 }
-                snprintf(qprint, 10, "&amp;");
+                pmix_snprintf(qprint, 10, "&amp;");
                 for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
                     output->data[k++] = qprint[j];
                 }
@@ -1309,7 +1309,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
                     goto process;
                 }
-                snprintf(qprint, 10, "&lt;");
+                pmix_snprintf(qprint, 10, "&lt;");
                 for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
                     output->data[k++] = qprint[j];
                 }
@@ -1318,7 +1318,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
                     goto process;
                 }
-                snprintf(qprint, 10, "&gt;");
+                pmix_snprintf(qprint, 10, "&gt;");
                 for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
                     output->data[k++] = qprint[j];
                 }
@@ -1328,7 +1328,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
                     goto process;
                 }
-                snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[i]);
+                pmix_snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[i]);
                 for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
                     output->data[k++] = qprint[j];
                 }
