@@ -6,6 +6,8 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021      Triad National Security, LLC
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -116,17 +118,22 @@ pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs, const pmix_in
                          size_t ninfo, char *data, size_t ndata, pmix_modex_cbfunc_t cbfunc,
                          void *cbdata)
 {
-    //size_t n;
+    size_t n;
 
-    TEST_VERBOSE(("Getting data for %s:%d", procs[0].nspace, procs[0].rank));
+    for (n = 0; n < nprocs; n++){
+        TEST_VERBOSE(("Participating in this fence on node: %d procs[%d].nspace: %s,"
+                      " procs[%d].rank: %d, nprocs: %d", my_server_id, n, procs[n].nspace, n,
+                      procs[n].rank, nprocs));
+    }
 
-    /* see if we are asked to do something we don't support */
-    // Note: commenting out for now in order to allow timeouts
-    //for (n=0; n < ninfo; n++) {
-    //    if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-    //        return PMIX_ERR_NOT_SUPPORTED;
-    //    }
-    //}
+    /* commented out, for now, to allow for the possibility of timeouts */
+    /*
+    for (n=0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+    }
+    */
 
     if ((pmix_list_get_size(server_list) == 1) && (my_server_id == 0)) {
         if (NULL != cbfunc) {
@@ -134,7 +141,7 @@ pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs, const pmix_in
         }
         return PMIX_SUCCESS;
     }
-    return server_fence_contrib(data, ndata, cbfunc, cbdata);
+    return server_fence_contrib(procs, nprocs, data, ndata, cbfunc, cbdata);
 }
 
 pmix_status_t dmodex_fn(const pmix_proc_t *proc, const pmix_info_t info[], size_t ninfo,

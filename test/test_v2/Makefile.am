@@ -33,11 +33,10 @@ CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 # Can be added in for purposes of debugging on platforms building with gcc (gcc-specific flags)
 #AM_CFLAGS = -fno-omit-frame-pointer -g -Wfatal-errors #-Wall -Wextra -Wpedantic -Wconversion -Wshadow
 
+# No scripts at present, but if they are added, use this as a model
 #noinst_SCRIPTS = pmix_client_otheruser.sh \
 #	run_tests00.pl \
 #	run_tests15.pl
-
-#noinst_PROGRAMS =
 
 #########################
 # Support for "make check" - could add each individual test here for a different approach
@@ -48,7 +47,7 @@ check_PROGRAMS = # test_init_fin (etc)
 
 noinst_PROGRAMS = pmix_test test_init_fin test_helloworld \
 				   test_get_basic test_get_peers \
-				   test_fence_basic test_fence_wildcard
+				   test_fence_basic test_fence_wildcard test_fence_partial
 
 PCFILES = pmix_test.c test_common.c cli_stages.c test_server.c \
 		  server_callbacks.c base64_enc_dec.c
@@ -59,6 +58,7 @@ TC3FILES = test_get_basic.c $(TCCOMMONFILES)
 TC4FILES = test_get_peers.c $(TCCOMMONFILES)
 TC5FILES = test_fence_basic.c $(TCCOMMONFILES)
 TC6FILES = test_fence_wildcard.c $(TCCOMMONFILES)
+TC7FILES = test_fence_partial.c $(TCCOMMONFILES)
 
 # Note the use of -no-install in LDFLAGS to force rpath
 # into binaries and prevent libtool from creating the usual scripts.
@@ -96,3 +96,7 @@ test_fence_basic_LDADD = $(top_builddir)/src/libpmix.la
 test_fence_wildcard_SOURCES = $(headers) $(TC6FILES)
 test_fence_wildcard_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 test_fence_wildcard_LDADD = $(top_builddir)/src/libpmix.la
+
+test_fence_partial_SOURCES = $(headers) $(TC7FILES)
+test_fence_partial_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
+test_fence_partial_LDADD = $(top_builddir)/src/libpmix.la
