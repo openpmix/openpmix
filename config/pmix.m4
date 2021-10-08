@@ -1086,10 +1086,10 @@ else
     WANT_PICKY_COMPILER=0
 fi
 #################### Early development override ####################
-if test "$WANT_PICKY_COMPILER" = "0" && test -z "$enable_picky" && test "$PMIX_DEVEL" = "1"; then
-    WANT_PICKY_COMPILER=1
-    echo "--> developer override: enable picky compiler by default"
-fi
+#if test "$WANT_PICKY_COMPILER" = "0" && test -z "$enable_picky" && test "$PMIX_DEVEL" = "1"; then
+#    WANT_PICKY_COMPILER=1
+#    echo "--> developer override: enable picky compiler by default"
+#fi
 #################### Early development override ####################
 
 AC_DEFINE_UNQUOTED(PMIX_PICKY_COMPILERS, $WANT_PICKY_COMPILER,
