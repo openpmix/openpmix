@@ -56,6 +56,7 @@
 #include "src/util/error.h"
 #include "src/util/getid.h"
 #include "src/util/os_path.h"
+#include "src/util/printf.h"
 #include "src/util/show_help.h"
 #include "src/util/strnlen.h"
 
@@ -196,18 +197,20 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
 pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr, pmix_socklen_t addrlen, int *fd)
 {
     int sd = -1, sd2;
-    int retries = 0;
+    int retries = -1;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl_base_connect: attempting to connect to server");
 
+    /* Create the new socket */
+    sd = socket(addr->ss_family, SOCK_STREAM, 0);
+
     while (retries < PMIX_MAX_RETRIES) {
         retries++;
-        /* Create the new socket */
-        sd = socket(addr->ss_family, SOCK_STREAM, 0);
         if (sd < 0) {
             pmix_output(0, "pmix:create_socket: socket() failed: %s (%d)\n",
                         strerror(pmix_socket_errno), pmix_socket_errno);
+            sd = socket(addr->ss_family, SOCK_STREAM, 0);
             continue;
         }
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -215,43 +218,15 @@ pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr, pmix_socklen_
                             sd);
         /* try to connect */
         if (connect(sd, (struct sockaddr *) addr, addrlen) < 0) {
-            if (pmix_socket_errno == ETIMEDOUT) {
-                /* The server may be too busy to accept new connections */
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "timeout connecting to server");
-                /* get a different socket, but do that BEFORE we release the current
-                 * one so we don't just get the same socket handed back to us */
-                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
-                CLOSE_THE_SOCKET(sd);
-                sd = sd2;
-                continue;
-            }
-
-            /* Some kernels (Linux 2.6) will automatically software
-             abort a connection that was ECONNREFUSED on the last
-             attempt, without even trying to establish the
-             connection.  Handle that case in a semi-rational
-             way by trying twice before giving up */
-            if (ECONNABORTED == pmix_socket_errno) {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "connection to server aborted by OS - retrying");
-                /* get a different socket, but do that BEFORE we release the current
-                 * one so we don't just get the same socket handed back to us */
-                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
-                CLOSE_THE_SOCKET(sd);
-                sd = sd2;
-                continue;
-            } else {
-                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                                    "Connect failed: %s (%d)", strerror(pmix_socket_errno),
-                                    pmix_socket_errno);
-                /* get a different socket, but do that BEFORE we release the current
-                 * one so we don't just get the same socket handed back to us */
-                sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
-                CLOSE_THE_SOCKET(sd);
-                sd = sd2;
-                continue;
-            }
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "Connect failed: %s (%d)", strerror(pmix_socket_errno),
+                                pmix_socket_errno);
+            /* get a different socket, but do that BEFORE we release the current
+             * one so we don't just get the same socket handed back to us */
+            sd2 = socket(addr->ss_family, SOCK_STREAM, 0);
+            CLOSE_THE_SOCKET(sd);
+            sd = sd2;
+            continue;
         } else {
             /* otherwise, the connect succeeded - so break out of the loop */
             break;
@@ -347,12 +322,17 @@ char *pmix_ptl_base_get_cmd_line(void)
 
     /* open the pid's info file */
     mypid = getpid();
-    snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long) mypid);
+    pmix_snprintf(tmp, 512, "/proc/%lu/cmdline", (unsigned long) mypid);
     fp = fopen(tmp, "r");
     if (NULL != fp) {
         /* read the cmd line */
-        fgets(tmp, 512, fp);
-        fclose(fp);
+        if (NULL == fgets(tmp, 512, fp)) {
+            fclose(fp);
+            return NULL;
+        }
+        if (0 != fclose(fp)) {
+            ;
+        }
         p = strdup(tmp);
     }
 #endif

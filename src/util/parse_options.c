@@ -36,6 +36,7 @@
 
 #include "src/util/argv.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 
 #include "src/util/parse_options.h"
 
@@ -87,7 +88,7 @@ void pmix_util_parse_range_options(char *inp, char ***output)
             end = start;
         }
         for (n = start; n <= end; n++) {
-            snprintf(nstr, 32, "%d", n);
+            pmix_snprintf(nstr, 32, "%d", n);
             pmix_argv_append_nosize(output, nstr);
         }
         pmix_argv_free(r2);

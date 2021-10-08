@@ -96,12 +96,8 @@ pmix_status_t pmix_bfrops_base_pack_bool(pmix_pointer_array_t *regtypes, pmix_bu
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrops_base_pack_bool * %d\n", num_vals);
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_BOOL != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if buffer needs extending */
     if (NULL == (dst = (uint8_t *) pmix_bfrop_buffer_extend(buffer, num_vals))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -131,9 +127,8 @@ pmix_status_t pmix_bfrops_base_pack_int(pmix_pointer_array_t *regtypes, pmix_buf
 {
     pmix_status_t ret;
 
-    if (PMIX_INT != type && PMIX_UINT != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* System types need to always be described so we can properly
        unpack them */
     if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(regtypes, buffer, BFROP_TYPE_INT))) {
@@ -153,9 +148,8 @@ pmix_status_t pmix_bfrops_base_pack_sizet(pmix_pointer_array_t *regtypes, pmix_b
 {
     int ret;
 
-    if (PMIX_SIZE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* System types need to always be described so we can properly
        unpack them. */
     if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(regtypes, buffer, BFROP_TYPE_SIZE_T))) {
@@ -174,9 +168,8 @@ pmix_status_t pmix_bfrops_base_pack_pid(pmix_pointer_array_t *regtypes, pmix_buf
 {
     int ret;
 
-    if (PMIX_PID != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* System types need to always be described so we can properly
        unpack them. */
     if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(regtypes, buffer, BFROP_TYPE_PID_T))) {
@@ -199,12 +192,8 @@ pmix_status_t pmix_bfrops_base_pack_byte(pmix_pointer_array_t *regtypes, pmix_bu
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrops_base_pack_byte * %d\n", num_vals);
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_BYTE != type && PMIX_UINT8 != type && PMIX_INT8 != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if buffer needs extending */
     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -233,12 +222,8 @@ pmix_status_t pmix_bfrops_base_pack_int16(pmix_pointer_array_t *regtypes, pmix_b
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrops_base_pack_int16 * %d\n", num_vals);
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_INT16 != type && PMIX_UINT16 != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if buffer needs extending */
     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals * sizeof(tmp)))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -268,12 +253,8 @@ pmix_status_t pmix_bfrops_base_pack_int32(pmix_pointer_array_t *regtypes, pmix_b
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrops_base_pack_int32 * %d\n", num_vals);
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_INT32 != type && PMIX_UINT32 != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if buffer needs extending */
     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals * sizeof(tmp)))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -303,12 +284,8 @@ pmix_status_t pmix_bfrops_base_pack_int64(pmix_pointer_array_t *regtypes, pmix_b
     pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
                         "pmix_bfrops_base_pack_int64 * %d\n", num_vals);
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_INT64 != type && PMIX_UINT64 != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     /* check to see if buffer needs extending */
     if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, bytes_packed))) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -336,12 +313,8 @@ pmix_status_t pmix_bfrops_base_pack_string(pmix_pointer_array_t *regtypes, pmix_
     int32_t i, len;
     char **ssrc = (char **) src;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_STRING != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; ++i) {
         if (NULL == ssrc[i]) { /* got zero-length string/NULL pointer - store NULL */
             len = 0;
@@ -373,12 +346,8 @@ pmix_status_t pmix_bfrops_base_pack_float(pmix_pointer_array_t *regtypes, pmix_b
     float *ssrc = (float *) src;
     char *convert;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_FLOAT != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; ++i) {
         ret = asprintf(&convert, "%f", ssrc[i]);
         if (0 > ret) {
@@ -403,12 +372,8 @@ pmix_status_t pmix_bfrops_base_pack_double(pmix_pointer_array_t *regtypes, pmix_
     double *ssrc = (double *) src;
     char *convert;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_DOUBLE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; ++i) {
         ret = asprintf(&convert, "%f", ssrc[i]);
         if (0 > ret) {
@@ -434,12 +399,8 @@ pmix_status_t pmix_bfrops_base_pack_timeval(pmix_pointer_array_t *regtypes, pmix
     int32_t i;
     struct timeval *ssrc = (struct timeval *) src;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_TIMEVAL != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; ++i) {
         tmp[0] = (int64_t) ssrc[i].tv_sec;
         tmp[1] = (int64_t) ssrc[i].tv_usec;
@@ -460,12 +421,8 @@ pmix_status_t pmix_bfrops_base_pack_time(pmix_pointer_array_t *regtypes, pmix_bu
     time_t *ssrc = (time_t *) src;
     uint64_t ui64;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_TIME != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* time_t is a system-dependent size, so cast it
      * to uint64_t as a generic safe size
      */
@@ -488,12 +445,8 @@ pmix_status_t pmix_bfrops_base_pack_status(pmix_pointer_array_t *regtypes, pmix_
     pmix_status_t *ssrc = (pmix_status_t *) src;
     int32_t status;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_STATUS != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; ++i) {
         status = (int32_t) ssrc[i];
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &status, 1, PMIX_INT32, regtypes);
@@ -512,12 +465,8 @@ pmix_status_t pmix_bfrops_base_pack_buf(pmix_pointer_array_t *regtypes, pmix_buf
     int32_t i;
     int ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_BUFFER != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     ptr = (pmix_buffer_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
@@ -550,12 +499,8 @@ pmix_status_t pmix_bfrops_base_pack_bo(pmix_pointer_array_t *regtypes, pmix_buff
     int i;
     pmix_byte_object_t *bo;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_BYTE_OBJECT != type && PMIX_COMPRESSED_BYTE_OBJECT != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     bo = (pmix_byte_object_t *) src;
     for (i = 0; i < num_vals; i++) {
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &bo[i].size, 1, PMIX_SIZE, regtypes);
@@ -579,12 +524,8 @@ pmix_status_t pmix_bfrops_base_pack_proc(pmix_pointer_array_t *regtypes, pmix_bu
     int32_t i;
     int ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PROC != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     proc = (pmix_proc_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
@@ -609,12 +550,8 @@ pmix_status_t pmix_bfrops_base_pack_value(pmix_pointer_array_t *regtypes, pmix_b
     int32_t i;
     int ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_VALUE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     ptr = (pmix_value_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
@@ -638,12 +575,8 @@ pmix_status_t pmix_bfrops_base_pack_info(pmix_pointer_array_t *regtypes, pmix_bu
     int ret;
     char *foo;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_INFO != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     info = (pmix_info_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
@@ -679,12 +612,8 @@ pmix_status_t pmix_bfrops_base_pack_pdata(pmix_pointer_array_t *regtypes, pmix_b
     int ret;
     char *foo;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PDATA != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     pdata = (pmix_pdata_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
@@ -722,12 +651,8 @@ pmix_status_t pmix_bfrops_base_pack_app(pmix_pointer_array_t *regtypes, pmix_buf
     int32_t i, j, nvals;
     int ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_APP != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     app = (pmix_app_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
@@ -798,12 +723,8 @@ pmix_status_t pmix_bfrops_base_pack_kval(pmix_pointer_array_t *regtypes, pmix_bu
     int32_t i;
     int ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_KVAL != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     ptr = (pmix_kval_t *) src;
 
     for (i = 0; i < num_vals; ++i) {
@@ -826,12 +747,8 @@ pmix_status_t pmix_bfrops_base_pack_persist(pmix_pointer_array_t *regtypes, pmix
                                             pmix_data_type_t type)
 {
     pmix_status_t ret;
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PERSIST != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_BYTE, regtypes);
     return ret;
 }
@@ -841,12 +758,8 @@ pmix_status_t pmix_bfrops_base_pack_datatype(pmix_pointer_array_t *regtypes, pmi
                                              pmix_data_type_t type)
 {
     pmix_status_t ret;
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_DATA_TYPE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;
 }
@@ -857,12 +770,8 @@ pmix_status_t pmix_bfrops_base_pack_ptr(pmix_pointer_array_t *regtypes, pmix_buf
     pmix_status_t ret;
     uint8_t foo = 1;
 
-    if (NULL == regtypes || NULL != src || 0 == num_vals) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_POINTER != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(src, num_vals, type);
+
     /* it obviously makes no sense to pack a pointer and
      * send it somewhere else, so we just pack a sentinel */
     PMIX_BFROPS_PACK_TYPE(ret, buffer, &foo, 1, PMIX_UINT8, regtypes);
@@ -874,12 +783,8 @@ pmix_status_t pmix_bfrops_base_pack_scope(pmix_pointer_array_t *regtypes, pmix_b
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_SCOPE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
 }
@@ -889,12 +794,8 @@ pmix_status_t pmix_bfrops_base_pack_range(pmix_pointer_array_t *regtypes, pmix_b
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_DATA_RANGE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
 }
@@ -904,12 +805,8 @@ pmix_status_t pmix_bfrops_base_pack_cmd(pmix_pointer_array_t *regtypes, pmix_buf
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_COMMAND != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
 }
@@ -920,12 +817,8 @@ pmix_status_t pmix_bfrops_base_pack_info_directives(pmix_pointer_array_t *regtyp
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_INFO_DIRECTIVES != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT32, regtypes);
     return ret;
 }
@@ -935,12 +828,8 @@ pmix_status_t pmix_bfrops_base_pack_pstate(pmix_pointer_array_t *regtypes, pmix_
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PROC_STATE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
 }
@@ -952,12 +841,8 @@ pmix_status_t pmix_bfrops_base_pack_pinfo(pmix_pointer_array_t *regtypes, pmix_b
     pmix_status_t ret;
     int32_t i;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PROC_INFO != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; i++) {
         /* pack the proc identifier */
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &pinfo[i].proc, 1, PMIX_PROC, regtypes);
@@ -993,12 +878,8 @@ pmix_status_t pmix_bfrops_base_pack_darray(pmix_pointer_array_t *regtypes, pmix_
     pmix_status_t ret;
     int32_t i;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_DATA_ARRAY != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; i++) {
         /* pack the actual type in the array */
         if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(regtypes, buffer, p[i].type))) {
@@ -1031,12 +912,8 @@ pmix_status_t pmix_bfrops_base_pack_rank(pmix_pointer_array_t *regtypes, pmix_bu
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PROC_RANK != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT32, regtypes);
     return ret;
 }
@@ -1049,12 +926,8 @@ pmix_status_t pmix_bfrops_base_pack_query(pmix_pointer_array_t *regtypes, pmix_b
     int32_t i;
     int32_t nkeys;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_QUERY != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; i++) {
         /* pack the number of keys */
         nkeys = pmix_argv_count(pq[i].keys);
@@ -1137,12 +1010,8 @@ pmix_status_t pmix_bfrops_base_pack_alloc_directive(pmix_pointer_array_t *regtyp
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_ALLOC_DIRECTIVE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
 }
@@ -1153,12 +1022,8 @@ pmix_status_t pmix_bfrops_base_pack_iof_channel(pmix_pointer_array_t *regtypes,
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_IOF_CHANNEL != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;
 }
@@ -1170,12 +1035,8 @@ pmix_status_t pmix_bfrops_base_pack_envar(pmix_pointer_array_t *regtypes, pmix_b
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_ENVAR != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; ++i) {
         /* pack the name */
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].envar, 1, PMIX_STRING, regtypes);
@@ -1203,12 +1064,8 @@ pmix_status_t pmix_bfrops_base_pack_coord(pmix_pointer_array_t *regtypes, pmix_b
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_COORD != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; ++i) {
         /* pack the view */
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].view, 1, PMIX_UINT8, regtypes);
@@ -1238,12 +1095,8 @@ pmix_status_t pmix_bfrops_base_pack_regattr(pmix_pointer_array_t *regtypes, pmix
     pmix_status_t ret;
     char *foo;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_REGATTR != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < num_vals; ++i) {
         /* pack the name */
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].name, 1, PMIX_STRING, regtypes);
@@ -1285,12 +1138,8 @@ pmix_status_t pmix_bfrops_base_pack_regex(pmix_pointer_array_t *regtypes, pmix_b
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_REGEX != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
     for (i = 0; i < num_vals; ++i) {
         ret = pmix_preg.pack(buffer, ptr[i]);
         if (PMIX_SUCCESS != ret) {
@@ -1306,12 +1155,8 @@ pmix_status_t pmix_bfrops_base_pack_jobstate(pmix_pointer_array_t *regtypes, pmi
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_JOB_STATE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
 }
@@ -1322,12 +1167,8 @@ pmix_status_t pmix_bfrops_base_pack_linkstate(pmix_pointer_array_t *regtypes, pm
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_LINK_STATE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
     return ret;
 }
@@ -1339,12 +1180,7 @@ pmix_status_t pmix_bfrops_base_pack_cpuset(pmix_pointer_array_t *regtypes, pmix_
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PROC_CPUSET != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         ret = pmix_hwloc_pack_cpuset(buffer, &ptr[i], regtypes);
@@ -1363,12 +1199,7 @@ pmix_status_t pmix_bfrops_base_pack_geometry(pmix_pointer_array_t *regtypes, pmi
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_GEOMETRY != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].fabric, 1, PMIX_SIZE, regtypes);
@@ -1404,12 +1235,7 @@ pmix_status_t pmix_bfrops_base_pack_devdist(pmix_pointer_array_t *regtypes, pmix
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_DEVICE_DIST != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].uuid, 1, PMIX_STRING, regtypes);
@@ -1444,12 +1270,7 @@ pmix_status_t pmix_bfrops_base_pack_endpoint(pmix_pointer_array_t *regtypes, pmi
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_ENDPOINT != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].uuid, 1, PMIX_STRING, regtypes);
@@ -1483,12 +1304,7 @@ pmix_status_t pmix_bfrops_base_pack_topology(pmix_pointer_array_t *regtypes, pmi
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_TOPO != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         /* call the framework to pack it */
@@ -1506,12 +1322,7 @@ pmix_status_t pmix_bfrops_base_pack_devtype(pmix_pointer_array_t *regtypes, pmix
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_DEVTYPE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
     return ret;
@@ -1523,12 +1334,7 @@ pmix_status_t pmix_bfrops_base_pack_locality(pmix_pointer_array_t *regtypes, pmi
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_LOCTYPE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;
@@ -1542,12 +1348,7 @@ pmix_status_t pmix_bfrops_base_pack_nspace(pmix_pointer_array_t *regtypes, pmix_
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PROC_NSPACE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         p = (char *) ptr[i];
@@ -1567,12 +1368,7 @@ pmix_status_t pmix_bfrops_base_pack_pstats(pmix_pointer_array_t *regtypes, pmix_
     int ret;
     char *cptr;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_PROC_STATS != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         cptr = ptr[i].node;
@@ -1643,12 +1439,7 @@ pmix_status_t pmix_bfrops_base_pack_dkstats(pmix_pointer_array_t *regtypes, pmix
     int ret;
     char *cptr;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_DISK_STATS != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         cptr = ptr[i].disk;
@@ -1714,12 +1505,7 @@ pmix_status_t pmix_bfrops_base_pack_netstats(pmix_pointer_array_t *regtypes, pmi
     int ret;
     char *cptr;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_NET_STATS != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         cptr = ptr[i].net_interface;
@@ -1764,12 +1550,7 @@ pmix_status_t pmix_bfrops_base_pack_ndstats(pmix_pointer_array_t *regtypes, pmix
     int ret;
     char *cptr;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_NODE_STATS != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         cptr = ptr[i].node;
@@ -1858,12 +1639,7 @@ pmix_status_t pmix_bfrops_base_pack_dbuf(pmix_pointer_array_t *regtypes, pmix_bu
     int32_t i;
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_DATA_BUFFER != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].bytes_used, 1, PMIX_SIZE, regtypes);
@@ -1886,12 +1662,7 @@ pmix_status_t pmix_bfrops_base_pack_smed(pmix_pointer_array_t *regtypes, pmix_bu
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_STOR_MEDIUM != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
     return ret;
@@ -1902,12 +1673,7 @@ pmix_status_t pmix_bfrops_base_pack_sacc(pmix_pointer_array_t *regtypes, pmix_bu
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_STOR_ACCESS != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
     return ret;
@@ -1918,12 +1684,7 @@ pmix_status_t pmix_bfrops_base_pack_spers(pmix_pointer_array_t *regtypes, pmix_b
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_STOR_PERSIST != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT64, regtypes);
     return ret;
@@ -1934,12 +1695,7 @@ pmix_status_t pmix_bfrops_base_pack_satyp(pmix_pointer_array_t *regtypes, pmix_b
 {
     pmix_status_t ret;
 
-    if (NULL == regtypes) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    if (PMIX_STOR_ACCESS_TYPE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;

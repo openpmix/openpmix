@@ -77,6 +77,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 
 #include "pmix_client_ops.h"
 
@@ -150,6 +151,8 @@ static void pmix_client_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hd
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "%s pmix:client_notify_recv - processing event",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    PMIX_HIDE_UNUSED_PARAMS(peer, hdr, cbdata);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -244,7 +247,30 @@ error:
     pmix_invoke_local_event_hdlr(chain);
 }
 
-pmix_client_globals_t pmix_client_globals = {0};
+pmix_client_globals_t pmix_client_globals = {
+    .myserver = NULL,
+    .singleton = false,
+    .pending_requests = PMIX_LIST_STATIC_INIT,
+    .peers = PMIX_POINTER_ARRAY_STATIC_INIT,
+    .get_output = -1,
+    .get_verbose = 0,
+    .connect_output = -1,
+    .connect_verbose = 0,
+    .fence_output = -1,
+    .fence_verbose = 0,
+    .pub_output = -1,
+    .pub_verbose = 0,
+    .spawn_output = -1,
+    .spawn_verbose = 0,
+    .event_output = -1,
+    .event_verbose = 0,
+    .iof_output = -1,
+    .iof_verbose = 0,
+    .base_output = -1,
+    .base_verbose = 0,
+    .iof_stdout = PMIX_IOF_SINK_STATIC_INIT,
+    .iof_stderr = PMIX_IOF_SINK_STATIC_INIT
+};
 
 /* callback for wait completion */
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
@@ -253,6 +279,9 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
 
     pmix_output_verbose(2, pmix_client_globals.base_output, "pmix:client wait_cbfunc received");
+    if (NULL == pr || NULL == hdr || NULL == buf || NULL == cbdata) {
+        ;
+    }
     PMIX_WAKEUP_THREAD(lock);
 }
 
@@ -263,6 +292,9 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
     char *nspace;
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+
+
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -305,6 +337,9 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
 
+
+    PMIX_HIDE_UNUSED_PARAMS(evhandler_ref);
+
     lock->status = status;
     PMIX_WAKEUP_THREAD(lock);
 }
@@ -320,6 +355,9 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 
     pmix_output_verbose(2, pmix_client_globals.base_output, "[%s:%d] DEBUGGER RELEASE RECVD",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
+
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
+
     if (NULL != info) {
         lock = NULL;
         for (n = 0; n < ninfo; n++) {
@@ -360,6 +398,8 @@ static void release_info(pmix_status_t status, void *cbdata)
     mydata_t *cd = (mydata_t *) cbdata;
     PMIX_INFO_FREE(cd->info, cd->ninfo);
     free(cd);
+
+    PMIX_HIDE_UNUSED_PARAMS(status);
 }
 
 static void _check_for_notify(pmix_info_t info[], size_t ninfo)
@@ -437,6 +477,8 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
 
     pmix_output_verbose(2, pmix_client_globals.iof_output, "recvd IOF with %d bytes",
                         (int) buf->bytes_used);
+
+    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
     /* if the buffer is empty, they are simply closing the socket */
     if (0 == buf->bytes_used) {
@@ -642,7 +684,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
         /* if we didn't see a PMIx server (e.g., missing envar),
          * then allow us to run as a singleton */
         pid = getpid();
-        snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN, "singleton.%s.%lu",
+        pmix_snprintf(pmix_globals.myid.nspace, PMIX_MAX_NSLEN, "singleton.%s.%lu",
                  pmix_globals.hostname, (unsigned long) pid);
         pmix_globals.myid.rank = 0;
         if (NULL != proc) {
@@ -917,6 +959,9 @@ static void fin_timeout(int sd, short args, void *cbdata)
     tev = (pmix_client_timeout_t *) cbdata;
 
     pmix_output_verbose(2, pmix_client_globals.base_output, "pmix:client finwait timeout fired");
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     if (tev->active) {
         tev->active = false;
         PMIX_WAKEUP_THREAD(&tev->lock);
@@ -930,6 +975,9 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buf
     tev = (pmix_client_timeout_t *) cbdata;
 
     pmix_output_verbose(2, pmix_client_globals.base_output, "pmix:client finwait_cbfunc received");
+
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, buf);
+
     if (tev->active) {
         tev->active = false;
         PMIX_WAKEUP_THREAD(&tev->lock);
@@ -1147,6 +1195,9 @@ static void _putfn(int sd, short args, void *cbdata)
     /* need to acquire the cb object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cb);
 
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+
     /* no need to push info that starts with "pmix" as that is
      * info we would have been provided at startup */
     if (0 == strncmp(cb->key, "pmix", 4)) {
@@ -1249,6 +1300,8 @@ static void _commitfn(int sd, short args, void *cbdata)
 
     /* need to acquire the cb object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cb);
+
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     msgout = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */

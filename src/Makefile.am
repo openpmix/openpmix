@@ -25,6 +25,7 @@
 SUBDIRS = \
     include \
     util/keyval \
+    util/showhelp \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
     $(MCA_pmix_FRAMEWORK_COMPONENT_STATIC_SUBDIRS) \
@@ -34,6 +35,7 @@ SUBDIRS = \
 DIST_SUBDIRS = \
     include \
     util/keyval \
+    util/showhelp \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
     $(MCA_pmix_FRAMEWORK_COMPONENT_ALL_SUBDIRS)

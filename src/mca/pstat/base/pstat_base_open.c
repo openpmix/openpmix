@@ -24,6 +24,7 @@
 #include "pmix_config.h"
 
 #include "include/pmix_common.h"
+#include "src/include/pmix_globals.h"
 #include "src/mca/base/base.h"
 #include "src/mca/mca.h"
 #include "src/mca/pstat/base/base.h"
@@ -47,9 +48,11 @@ static int pmix_pstat_base_unsupported_finalize(void);
  * Globals
  */
 pmix_pstat_base_component_t *pmix_pstat_base_component = NULL;
-pmix_pstat_base_module_t pmix_pstat = {pmix_pstat_base_unsupported_init,
-                                       pmix_pstat_base_unsupported_query,
-                                       pmix_pstat_base_unsupported_finalize};
+pmix_pstat_base_module_t pmix_pstat = {
+    pmix_pstat_base_unsupported_init,
+    pmix_pstat_base_unsupported_query,
+    pmix_pstat_base_unsupported_finalize
+};
 
 /* Use default register/open/close functions */
 static int pmix_pstat_base_close(void)
@@ -79,6 +82,8 @@ static int pmix_pstat_base_unsupported_init(void)
 static int pmix_pstat_base_unsupported_query(pid_t pid, pmix_proc_stats_t *stats,
                                              pmix_node_stats_t *nstats)
 {
+    PMIX_HIDE_UNUSED_PARAMS(pid, stats, nstats);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 

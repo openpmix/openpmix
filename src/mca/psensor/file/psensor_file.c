@@ -154,6 +154,8 @@ static void add_tracker(int sd, short flags, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(fd);
 
+    PMIX_HIDE_UNUSED_PARAMS(sd, flags);
+
     /* add the tracker to our list */
     pmix_list_append(&mca_psensor_file_component.trackers, &ft->super);
 
@@ -171,6 +173,8 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
 {
     file_tracker_t *ft;
     size_t n;
+
+    PMIX_HIDE_UNUSED_PARAMS(error);
 
     PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] checking file monitoring for requestor %s:%d",
@@ -226,6 +230,8 @@ static void del_tracker(int sd, short flags, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(cd);
 
+    PMIX_HIDE_UNUSED_PARAMS(sd, flags);
+
     /* remove the tracker from our list */
     PMIX_LIST_FOREACH_SAFE (ft, ftnext, &mca_psensor_file_component.trackers, file_tracker_t) {
         if (ft->requestor != cd->requestor) {
@@ -262,6 +268,8 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     file_tracker_t *ft = (file_tracker_t *) cbdata;
 
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     PMIX_RELEASE(ft);
 }
 
@@ -274,12 +282,14 @@ static void file_sample(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(ft);
 
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] sampling file %s", pmix_globals.myid.nspace,
                          pmix_globals.myid.rank, ft->file));
 
     /* stat the file and get its info */
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (0 > stat(ft->file, &buf)) {
         /* cannot stat file */
         PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,

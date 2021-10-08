@@ -69,7 +69,7 @@ static pmix_status_t dohash(pmix_hash_table_t *ht, const char *key, pmix_rank_t 
             if (NULL == val->data.darray || PMIX_INFO != val->data.darray->type
                 || 0 == val->data.darray->size) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
-                PMIX_RELEASE(val);
+                PMIX_VALUE_RELEASE(val);
                 return PMIX_ERR_NOT_FOUND;
             }
             /* if they want the value returned in its array form,
@@ -492,6 +492,9 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
                         "%s pmix:gds:hash fetch %s for proc %s on scope %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid), (NULL == key) ? "NULL" : key,
                         PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope));
+
+
+    PMIX_HIDE_UNUSED_PARAMS(copy);
 
     /* see if we have a tracker for this nspace - we will
      * if we already cached the job info for it. If we

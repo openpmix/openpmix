@@ -126,7 +126,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
 
 static void gcbfn(int sd, short args, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     cb->cbfunc.valuefn(cb->status, cb->value, cb->cbdata);
     PMIX_RELEASE(cb);
@@ -537,8 +538,10 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     pmix_kval_t *kv;
     bool diffnspace;
 
-    pmix_output_verbose(2, pmix_client_globals.get_output,
-                        "pmix: get_nb callback recvd");
+    PMIX_ACQUIRE_OBJECT(cb);
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
+
+    pmix_output_verbose(2, pmix_client_globals.get_output, "pmix: get_nb callback recvd");
 
     if (NULL == cb) {
         /* nothing we can do */
@@ -724,6 +727,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
 
     /* cb was passed to us from another thread - acquire it */
     PMIX_ACQUIRE_OBJECT(cb);
+    PMIX_HIDE_UNUSED_PARAMS(fd, flags);
 
     /* set the proc object identifier */
     PMIX_LOAD_PROCID(&proc, cb->pname.nspace, cb->pname.rank);

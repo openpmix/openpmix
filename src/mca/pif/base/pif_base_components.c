@@ -22,7 +22,7 @@
 #include "src/util/output.h"
 
 /* instantiate the global list of interfaces */
-pmix_list_t pmix_if_list = {{0}};
+pmix_list_t pmix_if_list = PMIX_LIST_STATIC_INIT;
 bool pmix_if_do_not_resolve = false;
 bool pmix_if_retain_loopback = false;
 

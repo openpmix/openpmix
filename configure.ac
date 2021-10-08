@@ -268,11 +268,8 @@ AS_IF([test -z "$CC_FOR_BUILD"],[
 # restore any user-provided Werror flags
 AS_IF([test ! -z "$PMIX_CFLAGS_cache"], [CFLAGS="$CFLAGS $PMIX_CFLAGS_cache"])
 
-# Delay setting pickyness until here so we
-# don't break configure code tests
-#if test "$WANT_PICKY_COMPILER" = "1"; then
-#    CFLAGS="$CFLAGS -Wall -Wextra -Werror"
-#fi
+# setup "picky" compiler options if enabled
+PMIX_SETUP_PICKY_COMPILERS
 
 # Cleanup duplicate flags
 PMIX_FLAGS_UNIQ(CFLAGS)
@@ -358,6 +355,7 @@ AC_SUBST([libmca_common_sse_so_version])
 AC_CONFIG_FILES(pmix_config_prefix[contrib/Makefile]
                 pmix_config_prefix[examples/Makefile]
                 pmix_config_prefix[test/Makefile]
+                pmix_config_prefix[test/test_v2/Makefile]
                 pmix_config_prefix[test/python/Makefile]
                 pmix_config_prefix[test/simple/Makefile]
                 pmix_config_prefix[maint/pmix.pc])

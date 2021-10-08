@@ -61,8 +61,8 @@
  */
 
 pmix_cmd_line_t *pmix_info_cmd_line = NULL;
-pmix_pointer_array_t pmix_component_map = {{0}};
-pmix_pointer_array_t mca_types = {{0}};
+pmix_pointer_array_t pmix_component_map = PMIX_POINTER_ARRAY_STATIC_INIT;
+pmix_pointer_array_t mca_types = PMIX_POINTER_ARRAY_STATIC_INIT;
 
 const char *pmix_info_type_base = "base";
 

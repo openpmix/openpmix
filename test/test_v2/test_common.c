@@ -18,8 +18,8 @@
 /* Note: this file is for functions called by both client and server and their
         callees. */
 
-#include <pmix_common.h>
-#include <src/include/pmix_config.h>
+#include "pmix_common.h"
+#include "src/include/pmix_config.h"
 
 #include "test_common.h"
 #include <assert.h>
@@ -30,7 +30,8 @@
 int pmix_test_verbose = 0;
 test_params params;
 char **test_argv = NULL;
-
+node_map *nodes = NULL;
+char *v_params_ascii_str = NULL;
 FILE *pmixt_outfile;
 
 #define OUTPUT_MAX 1024
@@ -87,7 +88,7 @@ void free_nodes(int num_nodes)
 // populates the global *nodes array for the default rank placement case
 void populate_nodes_default_placement(uint32_t num_nodes, int num_procs)
 {
-    int i, j, base_rank = 0, base_rank_next_node = 0;
+    uint32_t i, j, base_rank = 0, base_rank_next_node = 0;
 
     for (i = 0; i < num_nodes; i++) {
         base_rank_next_node += (num_procs % num_nodes) > (uint32_t) i ? num_procs / num_nodes + 1
@@ -103,8 +104,8 @@ void populate_nodes_default_placement(uint32_t num_nodes, int num_procs)
         nodes[i].pmix_local_size = j;
         base_rank = base_rank_next_node;
         TEST_VERBOSE(
-            ("Default rank placement: num_nodes: %d num_procs: %d nodes[%d].pmix_local_size: %d",
-             num_nodes, num_procs, i, nodes[i].pmix_local_size));
+            ("Default rank placement: num_nodes: %u num_procs: %d nodes[%d].pmix_local_size: %d",
+             num_nodes, num_procs, i, (int)nodes[i].pmix_local_size));
     }
 }
 
@@ -149,7 +150,7 @@ void populate_nodes_custom_placement_string(char *placement_str, int num_nodes)
         }
         nodes[i].pmix_local_size = j;
         TEST_VERBOSE(("num_nodes: %d idx: %d nodes[%d].pmix_local_size: %d hostname: %s", num_nodes,
-                      idx, i, j, nodes[i].pmix_hostname));
+                      (int)idx, (int)i, (int)j, nodes[i].pmix_hostname));
     }
 
     free(tempstr);
@@ -159,17 +160,17 @@ void populate_nodes_custom_placement_string(char *placement_str, int num_nodes)
     free(buf);
 }
 
-void default_params(test_params *params, validation_params *v_params) {
-    params->binary = NULL;
-    params->np = NULL;
-    params->prefix = NULL;
-    params->timeout = TEST_DEFAULT_TIMEOUT;
-    params->verbose = 0;
-    params->nonblocking = 0;
-    params->ns_size = -1;
-    params->ns_id = -1;
-    params->fence_timeout_ratio = TEST_DEFAULT_FENCE_TIMEOUT_RATIO;
-    params->fence_time_multiplier = TEST_DEFAULT_FENCE_TIME_MULTIPLIER;
+void default_params(test_params *lparams, validation_params *v_params) {
+    lparams->binary = NULL;
+    lparams->np = NULL;
+    lparams->prefix = NULL;
+    lparams->timeout = TEST_DEFAULT_TIMEOUT;
+    lparams->verbose = 0;
+    lparams->nonblocking = 0;
+    lparams->ns_size = -1;
+    lparams->ns_id = -1;
+    lparams->fence_timeout_ratio = TEST_DEFAULT_FENCE_TIMEOUT_RATIO;
+    lparams->fence_time_multiplier = TEST_DEFAULT_FENCE_TIME_MULTIPLIER;
 
     v_params->version = PMIXT_VALIDATION_PARAMS_VER;
     v_params->validate_params = false;
@@ -189,16 +190,16 @@ void default_params(test_params *params, validation_params *v_params) {
 }
 
 // also frees the global array *nodes
-void free_params(test_params *params, validation_params *vparams)
+void free_params(test_params *l_params, validation_params *vparams)
 {
-    if (NULL != params->binary) {
-        free(params->binary);
+    if (NULL != l_params->binary) {
+        free(l_params->binary);
     }
-    if (NULL != params->np) {
-        free(params->np);
+    if (NULL != l_params->np) {
+        free(l_params->np);
     }
-    if (NULL != params->prefix) {
-        free(params->prefix);
+    if (NULL != l_params->prefix) {
+        free(l_params->prefix);
     }
 
     if (NULL != v_params_ascii_str) {
@@ -227,8 +228,8 @@ PMIX_CLASS_INSTANCE(participant_t, pmix_list_item_t, NULL, NULL);
 
 PMIX_CLASS_INSTANCE(key_replace_t, pmix_list_item_t, NULL, NULL);
 
-static int ns_id = -1;
-static fence_desc_t *fdesc = NULL;
+//static int ns_id = -1;
+//static fence_desc_t *fdesc = NULL;
 pmix_list_t *participants = NULL;
 pmix_list_t test_fences;
 pmix_list_t *noise_range = NULL;
@@ -246,17 +247,8 @@ pmix_list_t key_replace;
 
 // cross-platform millisecond sleep function
 void sleep_ms(unsigned long milliseconds) {
-#ifdef WIN32
-    Sleep(milliseconds);
-#elif _POSIX_C_SOURCE >= 199309L
-    struct timespec ts;
-    ts.tv_sec = milliseconds / 1000;
-    ts.tv_nsec = (milliseconds % 1000) * 1000000;
-    nanosleep(&ts, NULL);
-#else
     if (1000 <= milliseconds) {
         sleep(milliseconds / 1000);
     }
     usleep((milliseconds % 1000) * 1000);
-#endif
 }

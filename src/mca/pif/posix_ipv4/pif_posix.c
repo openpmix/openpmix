@@ -77,7 +77,8 @@ pmix_pif_base_component_t mca_pif_posix_ipv4_component = {
     },
     .data = {
         /* This component is checkpointable */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
+        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
+        .reserved = {0}
     },
 };
 
@@ -108,6 +109,9 @@ static int if_posix_open(void)
     struct ifconf ifconf;
     int ifc_len;
     bool successful_locate = false;
+    struct ifreq *ifr;
+    pmix_pif_t *intf;
+    int length;
 
     /* Create the internet socket to test with.  Must use AF_INET;
        using AF_UNSPEC or AF_INET6 will cause everything to
@@ -138,7 +142,7 @@ static int if_posix_open(void)
     ifc_len = sizeof(struct ifreq) * DEFAULT_NUMBER_INTERFACES;
     do {
         ifconf.ifc_len = ifc_len;
-        ifconf.ifc_req = malloc(ifc_len);
+        ifconf.ifc_req = (struct ifreq *) malloc(ifc_len);
         if (NULL == ifconf.ifc_req) {
             close(sd);
             return PMIX_ERROR;
@@ -188,15 +192,14 @@ static int if_posix_open(void)
     /*
      * Setup indexes
      */
+    ifr = (struct ifreq *) malloc(ifc_len);
     ptr = (char *) ifconf.ifc_req;
     rem = ifconf.ifc_len;
 
     /* loop through all interfaces */
     while (rem > 0) {
-        struct ifreq *ifr = (struct ifreq *) ptr;
-        pmix_pif_t *intf;
-        int length;
-
+        memset(ifr, 0, ifc_len);
+        memcpy(ifr, ptr, rem);
         /* compute offset for entries */
 #ifdef HAVE_STRUCT_SOCKADDR_SA_LEN
         length = sizeof(struct sockaddr);
@@ -324,6 +327,6 @@ static int if_posix_open(void)
     }
     free(ifconf.ifc_req);
     close(sd);
-
+    free(ifr);
     return PMIX_SUCCESS;
 }

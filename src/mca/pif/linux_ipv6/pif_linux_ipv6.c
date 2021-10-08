@@ -72,7 +72,8 @@ pmix_pif_base_component_t mca_pif_linux_ipv6_component = {
     },
     .data = {
         /* This component is checkpointable */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
+        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
+        .reserved = {0}
     },
 };
 

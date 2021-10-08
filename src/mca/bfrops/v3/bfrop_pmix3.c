@@ -38,25 +38,23 @@ static pmix_status_t pmix3_unpack(pmix_buffer_t *buffer, void *dest, int32_t *nu
                                   pmix_data_type_t type);
 static pmix_status_t pmix3_copy(void **dest, void *src, pmix_data_type_t type);
 static pmix_status_t pmix3_print(char **output, char *prefix, void *src, pmix_data_type_t type);
-static pmix_status_t register_type(const char *name, pmix_data_type_t type,
-                                   pmix_bfrop_pack_fn_t pack, pmix_bfrop_unpack_fn_t unpack,
-                                   pmix_bfrop_copy_fn_t copy, pmix_bfrop_print_fn_t print);
 static const char *data_type_string(pmix_data_type_t type);
 
-pmix_bfrops_module_t pmix_bfrops_pmix3_module = {.version = "v3",
-                                                 .init = init,
-                                                 .finalize = finalize,
-                                                 .pack = pmix3_pack,
-                                                 .unpack = pmix3_unpack,
-                                                 .copy = pmix3_copy,
-                                                 .print = pmix3_print,
-                                                 .copy_payload = pmix_bfrops_base_copy_payload,
-                                                 .value_xfer = pmix_bfrops_base_value_xfer,
-                                                 .value_load = pmix_bfrops_base_value_load,
-                                                 .value_unload = pmix_bfrops_base_value_unload,
-                                                 .value_cmp = pmix_bfrops_base_value_cmp,
-                                                 .register_type = register_type,
-                                                 .data_type_string = data_type_string};
+pmix_bfrops_module_t pmix_bfrops_pmix3_module = {
+    .version = "v3",
+    .init = init,
+    .finalize = finalize,
+    .pack = pmix3_pack,
+    .unpack = pmix3_unpack,
+    .copy = pmix3_copy,
+    .print = pmix3_print,
+    .copy_payload = pmix_bfrops_base_copy_payload,
+    .value_xfer = pmix_bfrops_base_value_xfer,
+    .value_load = pmix_bfrops_base_value_load,
+    .value_unload = pmix_bfrops_base_value_unload,
+    .value_cmp = pmix_bfrops_base_value_cmp,
+    .data_type_string = data_type_string
+};
 
 /* DEPRECATED data type values */
 #define PMIX_MODEX      29
@@ -221,7 +219,7 @@ static pmix_status_t init(void)
 
     PMIX_REGISTER_TYPE("PMIX_SCOPE", PMIX_SCOPE, pmix_bfrops_base_pack_scope,
                        pmix_bfrops_base_unpack_scope, pmix_bfrops_base_std_copy,
-                       pmix_bfrops_base_std_copy, &mca_bfrops_v3_component.types);
+                       pmix_bfrops_base_print_scope, &mca_bfrops_v3_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_DATA_RANGE", PMIX_DATA_RANGE, pmix_bfrops_base_pack_range,
                        pmix_bfrops_base_unpack_range, pmix_bfrops_base_std_copy,
@@ -325,14 +323,6 @@ static pmix_status_t pmix3_print(char **output, char *prefix, void *src, pmix_da
     return pmix_bfrops_base_print(&mca_bfrops_v3_component.types, output, prefix, src, type);
 }
 
-static pmix_status_t register_type(const char *name, pmix_data_type_t type,
-                                   pmix_bfrop_pack_fn_t pack, pmix_bfrop_unpack_fn_t unpack,
-                                   pmix_bfrop_copy_fn_t copy, pmix_bfrop_print_fn_t print)
-{
-    PMIX_REGISTER_TYPE(name, type, pack, unpack, copy, print, &mca_bfrops_v3_component.types);
-    return PMIX_SUCCESS;
-}
-
 static const char *data_type_string(pmix_data_type_t type)
 {
     return pmix_bfrops_base_data_type_string(&mca_bfrops_v3_component.types, type);
@@ -348,6 +338,8 @@ static pmix_status_t pmix3_bfrop_pack_array(pmix_pointer_array_t *regtypes, pmix
     pmix_status_t ret;
 
     ptr = (pmix_info_array_t *) src;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         /* pack the size */
@@ -377,6 +369,8 @@ static pmix_status_t pmix3_bfrop_pack_modex(pmix_pointer_array_t *regtypes, pmix
     pmix_status_t ret;
 
     ptr = (pmix_modex_data_t *) src;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < num_vals; ++i) {
         if (PMIX_SUCCESS
@@ -409,6 +403,8 @@ static pmix_status_t pmix3_bfrop_unpack_array(pmix_pointer_array_t *regtypes, pm
 
     ptr = (pmix_info_array_t *) dest;
     n = *num_vals;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     for (i = 0; i < n; ++i) {
         pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
@@ -447,6 +443,8 @@ static pmix_status_t pmix3_bfrop_unpack_modex(pmix_pointer_array_t *regtypes, pm
     ptr = (pmix_modex_data_t *) dest;
     n = *num_vals;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     for (i = 0; i < n; ++i) {
         memset(&ptr[i], 0, sizeof(pmix_modex_data_t));
         /* unpack the number of bytes */
@@ -477,6 +475,8 @@ static pmix_status_t pmix3_bfrop_copy_array(pmix_info_array_t **dest, pmix_info_
 {
     pmix_info_t *d1, *s1;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_info_array_t *) malloc(sizeof(pmix_info_array_t));
     (*dest)->size = src->size;
     (*dest)->array = (pmix_info_t *) malloc(src->size * sizeof(pmix_info_t));
@@ -489,6 +489,8 @@ static pmix_status_t pmix3_bfrop_copy_array(pmix_info_array_t **dest, pmix_info_
 static pmix_status_t pmix3_bfrop_copy_modex(pmix_modex_data_t **dest, pmix_modex_data_t *src,
                                             pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     *dest = (pmix_modex_data_t *) malloc(sizeof(pmix_modex_data_t));
     if (NULL == *dest) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -515,6 +517,8 @@ static pmix_status_t pmix3_bfrop_print_array(char **output, char *prefix, pmix_i
     size_t j;
     char *tmp, *tmp2, *tmp3, *pfx;
     pmix_info_t *s1;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     if (0 > asprintf(&tmp, "%sARRAY SIZE: %ld", prefix, (long) src->size)) {
         return PMIX_ERR_NOMEM;
@@ -543,6 +547,8 @@ static pmix_status_t pmix3_bfrop_print_array(char **output, char *prefix, pmix_i
 static pmix_status_t pmix3_bfrop_print_modex(char **output, char *prefix, pmix_modex_data_t *src,
                                              pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_SUCCESS;
 }
 

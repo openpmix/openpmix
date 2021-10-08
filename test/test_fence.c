@@ -272,7 +272,7 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
 
     if (val->type != PMIX_UINT32) {
         TEST_ERROR(("%s:%d: local peer # attribute value type mismatch,"
-                    " want %d get %d(%d)",
+                    " want %d get %d",
                     my_nspace, my_rank, PMIX_UINT32, val->type));
         exit(PMIX_ERROR);
     }

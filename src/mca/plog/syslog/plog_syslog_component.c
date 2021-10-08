@@ -41,7 +41,8 @@ pmix_plog_syslog_component_t mca_plog_syslog_component = {
         },
         .data = {
             /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
+            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
+            .reserved = {0}
         },
     },
     .console = false,

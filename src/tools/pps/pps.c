@@ -116,26 +116,33 @@ typedef struct {
     pid_t pid;
 } pmix_ps_globals_t;
 
-pmix_ps_globals_t pmix_ps_globals = {0};
+pmix_ps_globals_t pmix_ps_globals = {
+    .help = false,
+    .parseable = false,
+    .nodes = false,
+    .nspace = NULL,
+    .pid = 0
+};
 
 pmix_cmd_line_init_t cmd_line_opts[]
     = {{NULL, 'h', NULL, "help", 0, &pmix_ps_globals.help, PMIX_CMD_LINE_TYPE_BOOL,
-        "This help message"},
+        "This help message", PMIX_CMD_LINE_OTYPE_GENERAL},
 
        {NULL, '\0', NULL, "parseable", 0, &pmix_ps_globals.parseable, PMIX_CMD_LINE_TYPE_BOOL,
-        "Provide parseable output"},
+        "Provide parseable output", PMIX_CMD_LINE_OTYPE_GENERAL},
 
        {NULL, '\0', NULL, "nspace", 0, &pmix_ps_globals.nspace, PMIX_CMD_LINE_TYPE_STRING,
-        "Nspace of job whose status is being requested"},
+        "Nspace of job whose status is being requested", PMIX_CMD_LINE_OTYPE_GENERAL},
 
        {NULL, 'p', NULL, "pid", 1, &pmix_ps_globals.pid, PMIX_CMD_LINE_TYPE_INT,
-        "Specify pid of launcher to be contacted (default is to system server"},
+        "Specify pid of launcher to be contacted (default is to system server", PMIX_CMD_LINE_OTYPE_GENERAL},
 
        {NULL, 'n', NULL, "nodes", 0, &pmix_ps_globals.nodes, PMIX_CMD_LINE_TYPE_BOOL,
-        "Display Node Information"},
+        "Display Node Information", PMIX_CMD_LINE_OTYPE_GENERAL},
 
        /* End of list */
-       {NULL, '\0', NULL, NULL, 0, NULL, PMIX_CMD_LINE_TYPE_NULL, NULL}};
+       {NULL, '\0', NULL, NULL, 0, NULL, PMIX_CMD_LINE_TYPE_NULL, NULL, PMIX_CMD_LINE_OTYPE_GENERAL}
+    };
 
 /* this is a callback function for the PMIx_Query
  * API. The query will callback with a status indicating
@@ -154,6 +161,7 @@ static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
 {
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     /* save the returned info - the PMIx library "owns" it
      * and will release it and perform other cleanup actions
@@ -185,6 +193,9 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo,
+                            results, nresults);
+
     /* this example doesn't do anything with default events */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);

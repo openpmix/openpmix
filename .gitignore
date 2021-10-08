@@ -111,8 +111,8 @@ src/tools/wrapper/pmixcc-wrapper-data.txt
 src/tools/wrapper/pmixcc
 
 
-src/util/show_help_lex.c
 src/util/keyval/keyval_lex.c
+src/util/showhelp/showhelp_lex.c
 
 test/pmi2_client
 test/pmi_client
@@ -179,6 +179,14 @@ test/sshot/generate
 test/sshot/server
 test/sshot/mytopo.json
 test/sshot/testcoord
+
+test/test_v2/pmix_test
+test/test_v2/test_fence_basic
+test/test_v2/test_fence_wildcard
+test/test_v2/test_get_basic
+test/test_v2/test_get_peers
+test/test_v2/test_helloworld
+test/test_v2/test_init_fin
 
 # coverity
 cov-int

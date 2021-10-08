@@ -23,6 +23,7 @@
 #include "src/include/pmix_config.h"
 #include "src/class/pmix_list.h"
 #include "include/pmix_common.h"
+#include "src/include/pmix_globals.h"
 
 /*
  *  List classes
@@ -61,6 +62,7 @@ static void pmix_list_item_destruct(pmix_list_item_t *item)
     assert(0 == item->pmix_list_item_refcount);
     assert(NULL == item->pmix_list_item_belong_to);
 #endif /* PMIX_ENABLE_DEBUG */
+    PMIX_HIDE_UNUSED_PARAMS(item);
 }
 
 /*

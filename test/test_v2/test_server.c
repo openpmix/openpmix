@@ -26,6 +26,7 @@
 #include "pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
+#include "src/util/printf.h"
 
 #include "cli_stages.h"
 #include "server_callbacks.h"
@@ -94,8 +95,6 @@ static void remove_server_item(server_info_t *server);
 static void server_unpack_dmdx(char *buf, int *sender, pmix_proc_t *proc);
 static int server_pack_dmdx(int sender_id, const char *nspace, int rank, char **buf);
 static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata);
-static void fill_global_validation_params(pmix_proc_t proc, int univ_size,
-                                          validation_params *v_params);
 
 static void release_cb(pmix_status_t status, void *cbdata)
 {
@@ -103,11 +102,10 @@ static void release_cb(pmix_status_t status, void *cbdata)
     *ptr = 0;
 }
 
-void set_client_argv(test_params *params, char ***argv, char **ltest_argv)
+void set_client_argv(test_params *l_params, char ***argv, char **ltest_argv)
 {
-    char num_str[MAX_DIGIT_LEN];
     int i;
-    pmix_argv_append_nosize(argv, params->binary);
+    pmix_argv_append_nosize(argv, l_params->binary);
     if( ltest_argv != NULL) {
         for (i = 0; NULL != ltest_argv[i]; i++) {
             pmix_argv_append_nosize(argv, ltest_argv[i]);
@@ -115,20 +113,20 @@ void set_client_argv(test_params *params, char ***argv, char **ltest_argv)
     }
 
     pmix_argv_append_nosize(argv, "-n");
-    if (NULL == params->np) {
+    if (NULL == l_params->np) {
         pmix_argv_append_nosize(argv, "1");
     } else {
-        pmix_argv_append_nosize(argv, params->np);
+        pmix_argv_append_nosize(argv, l_params->np);
     }
 
-    if (params->verbose) {
+    if (l_params->verbose) {
         pmix_argv_append_nosize(argv, "-v");
     }
-    if (NULL != params->prefix) {
+    if (NULL != l_params->prefix) {
         pmix_argv_append_nosize(argv, "-o");
-        pmix_argv_append_nosize(argv, params->prefix);
+        pmix_argv_append_nosize(argv, l_params->prefix);
     }
-    if (params->nonblocking) {
+    if (l_params->nonblocking) {
         pmix_argv_append_nosize(argv, "-nb");
     }
 
@@ -159,11 +157,10 @@ static void fill_seq_ranks_array(uint32_t nprocs, char **ranks)
     }
 }
 
-void parse_cmd_server(int argc, char **argv, test_params *params, validation_params *v_params, char ***t_argv)
+void parse_cmd_server(int argc, char **argv, test_params *l_params, validation_params *v_params, char ***t_argv)
 {
     int i;
     uint32_t job_size;
-    //char *tmp;
 
     /* set output to stdout by default */
     pmixt_outfile = stdout;
@@ -175,12 +172,12 @@ void parse_cmd_server(int argc, char **argv, test_params *params, validation_par
         if (0 == strcmp(argv[i], "--n") || 0 == strcmp(argv[i], "-n")) {
             i++;
             if (NULL != argv[i]) {
-                params->np = strdup(argv[i]);
+                l_params->np = strdup(argv[i]);
                 job_size = strtol(argv[i], NULL, 10);
                 v_params->pmix_job_size = job_size;
                 v_params->pmix_univ_size = job_size;
-                if (-1 == params->ns_size) {
-                    params->ns_size = job_size;
+                if (-1 == l_params->ns_size) {
+                    l_params->ns_size = job_size;
                 }
             }
         } else if (0 == strcmp(argv[i], "--h") || 0 == strcmp(argv[i], "-h")) {
@@ -204,7 +201,7 @@ void parse_cmd_server(int argc, char **argv, test_params *params, validation_par
         } else if (0 == strcmp(argv[i], "--exec") || 0 == strcmp(argv[i], "-e")) {
             i++;
             if (NULL != argv[i]) {
-                params->binary = strdup(argv[i]);
+                l_params->binary = strdup(argv[i]);
             }
         } else if (0 == strcmp(argv[i], "--nservers") || 0 == strcmp(argv[i], "-s")){
             i++;
@@ -214,24 +211,24 @@ void parse_cmd_server(int argc, char **argv, test_params *params, validation_par
             }
         } else if( 0 == strcmp(argv[i], "--verbose") || 0 == strcmp(argv[i],"-v") ){
             PMIXT_VERBOSE_ON();
-            params->verbose = 1;
+            l_params->verbose = 1;
         } else if (0 == strcmp(argv[i], "--timeout") || 0 == strcmp(argv[i], "-t")) {
             i++;
             if (NULL != argv[i]) {
-                params->timeout = atoi(argv[i]);
-                if( params->timeout == 0 ){
-                    params->timeout = TEST_DEFAULT_TIMEOUT;
+                l_params->timeout = atoi(argv[i]);
+                if( l_params->timeout == 0 ){
+                    l_params->timeout = TEST_DEFAULT_TIMEOUT;
                 }
             }
         } else if( 0 == strcmp(argv[i], "-o")) {
             i++;
             if (NULL != argv[i]) {
-                params->prefix = strdup(argv[i]);
+                l_params->prefix = strdup(argv[i]);
             }
         } else if( 0 == strcmp(argv[i], "--namespace")) {
             i++;
             if (NULL != argv[i]) {
-                strcpy(v_params->pmix_nspace, argv[i]);
+                pmix_strncpy(v_params->pmix_nspace, argv[i], PMIX_MAX_NSLEN);
             }
         /*
         } else if (0 == strcmp(argv[i], "--collect-corrupt")) {
@@ -244,12 +241,12 @@ void parse_cmd_server(int argc, char **argv, test_params *params, validation_par
         } else if (0 == strcmp(argv[i], "--ns-size")) {
             i++;
             if (NULL != argv[i]) {
-                params->ns_size = strtol(argv[i], NULL, 10);
+                l_params->ns_size = strtol(argv[i], NULL, 10);
             }
         } else if (0 == strcmp(argv[i], "--ns-id")) {
             i++;
             if (NULL != argv[i]) {
-                params->ns_id = strtol(argv[i], NULL, 10);
+                l_params->ns_id = strtol(argv[i], NULL, 10);
             }
         /*
         } else if (0 == strcmp(argv[i], "--validate-params")) {
@@ -271,7 +268,7 @@ void parse_cmd_server(int argc, char **argv, test_params *params, validation_par
             i++;
             if (NULL != argv[i]) {
                 //char **tmp;
-                params->binary = strdup(argv[i]);
+                l_params->binary = strdup(argv[i]);
                 // create a separate argv for the client from the args specified after the test binary name
                 i++;
                 if (i < argc) {
@@ -308,17 +305,17 @@ void parse_cmd_server(int argc, char **argv, test_params *params, validation_par
         populate_nodes_default_placement(v_params->pmix_num_nodes, v_params->pmix_univ_size);
     }
 
-    if (NULL == params->binary) {
+    if (NULL == l_params->binary) {
         char *basename = NULL;
         basename = strrchr(argv[0], '/');
         if (basename) {
             *basename = '\0';
-            if (0 > asprintf(&params->binary, "%s/../pmix_client", argv[0])) {
+            if (0 > asprintf(&l_params->binary, "%s/../pmix_client", argv[0])) {
                 exit(1);
             }
             *basename = '/';
         } else {
-            if (0 > asprintf(&params->binary, "pmix_client")) {
+            if (0 > asprintf(&l_params->binary, "pmix_client")) {
                 exit(1);
             }
         }
@@ -345,7 +342,7 @@ static void set_namespace(validation_params *v_params)
     char *regex, *ppn, *tmp;
     char *ranks = NULL, **node_string = NULL;
     char **rks = NULL;
-    int i, j;
+    unsigned int i, j;
     int rc;
 
     PMIX_INFO_CREATE(info, ninfo);
@@ -365,9 +362,10 @@ static void set_namespace(validation_params *v_params)
     TEST_VERBOSE(("Server id: %d local_size: %d", my_server_id, v_params->pmix_local_size));
     fill_seq_ranks_array(v_params->pmix_local_size, &ranks);
     if (NULL == ranks) {
+        PMIX_INFO_FREE(info, ninfo);
         return;
     }
-    strncpy(v_params->pmix_local_peers, ranks, PMIX_MAX_KEYLEN);
+    pmix_strncpy(v_params->pmix_local_peers, ranks, PMIX_MAX_KEYLEN);
     TEST_VERBOSE(("Server id: %d Local peers array: %s", my_server_id, ranks));
     pmix_strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
     info[3].value.type = PMIX_STRING;
@@ -384,6 +382,9 @@ static void set_namespace(validation_params *v_params)
         node_string = NULL;
         if (PMIX_SUCCESS != (rc = PMIx_generate_regex(tmp, &regex))) {
             PMIX_ERROR_LOG(rc);
+            free(ranks);
+            free(tmp);
+            PMIX_INFO_FREE(info, ninfo);
             return;
         }
         free(tmp);
@@ -394,7 +395,9 @@ static void set_namespace(validation_params *v_params)
     if (2 <= v_params->pmix_num_nodes) {
         for (j = 0; j < v_params->pmix_num_nodes; j++) {
             for (i = 0; i < nodes[j].pmix_local_size; i++) {
-                asprintf(&ppn, "%d", nodes[j].pmix_rank[i]);
+                if ( -1 == asprintf(&ppn, "%d", nodes[j].pmix_rank[i]) ){
+                    TEST_ERROR_EXIT(("Error in asprintf call. Out of memory?"));
+                }
                 pmix_argv_append_nosize(&node_string, ppn);
                 TEST_VERBOSE(("multiserver, server id: %d, ppn: %s, node_string: %s", my_server_id,
                               ppn, node_string[i]));
@@ -478,7 +481,7 @@ static void server_unpack_procs(char *buf, size_t size)
             } else {
                 assert(ns_item->ntasks == ntasks);
             }
-            size_t i;
+
             for (i = 0; i < ltasks; i++) {
                 int rank;
                 memcpy(&rank, ptr, sizeof(int));
@@ -556,13 +559,13 @@ static int srv_wait_all(double timeout)
     server_info_t *server, *next;
     pid_t pid;
     int status;
-    struct timeval tv;
+    struct timeval tval;
     double start_time, cur_time;
     signed char exit_status;
     int ret = 0;
 
-    gettimeofday(&tv, NULL);
-    start_time = tv.tv_sec + 1E-6 * tv.tv_usec;
+    gettimeofday(&tval, NULL);
+    start_time = tval.tv_sec + 1E-6 * tval.tv_usec;
     cur_time = start_time;
 
     /* Remove this server from the list */
@@ -595,8 +598,8 @@ static int srv_wait_all(double timeout)
             }
         }
         // calculate current timestamp
-        gettimeofday(&tv, NULL);
-        cur_time = tv.tv_sec + 1E-6 * tv.tv_usec;
+        gettimeofday(&tval, NULL);
+        cur_time = tval.tv_sec + 1E-6 * tval.tv_usec;
     }
     TEST_VERBOSE(("Inside serv_wait_all, ret = %d", ret));
     return ret;
@@ -818,7 +821,7 @@ static void server_read_cb(int fd, short event, void *arg)
         }
         break;
     case CMD_FENCE_COMPLETE:
-        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %d", my_server_id, msg_hdr.size));
+        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %d", my_server_id, (int)msg_hdr.size));
         server->modex_cbfunc(PMIX_SUCCESS, msg_buf, msg_hdr.size, server->cbdata, _libpmix_cb,
                              msg_buf);
         msg_buf = NULL;
@@ -1041,10 +1044,9 @@ done:
     test_complete = true;
 }
 
-int server_init(test_params *params, validation_params *v_params)
+int server_init(validation_params *v_params)
 {
     pmix_info_t info[2];
-    uint32_t local_size;
     int rc = PMIX_SUCCESS;
 
     /* fork/init servers procs */
@@ -1061,8 +1063,14 @@ int server_init(test_params *params, validation_params *v_params)
             int fd1[2];
             int fd2[2];
 
-            pipe(fd1);
-            pipe(fd2);
+            rc = pipe(fd1);
+            if (0 != rc) {
+                TEST_ERROR_EXIT(("Creation of pipe failed with error: %d", rc));
+            }
+            rc = pipe(fd2);
+            if (0 != rc) {
+                TEST_ERROR_EXIT(("Creation of pipe failed with error: %d", rc));
+            }
 
             // copy hostname from nodes array
             server_info->hostname = strdup(nodes[i].pmix_hostname);
@@ -1201,20 +1209,18 @@ exit:
     return total_ret;
 }
 
-int server_launch_clients(test_params *params, validation_params *v_params, char ***client_env,
+int server_launch_clients(test_params *l_params, validation_params *v_params, char ***client_env,
                           char ***base_argv)
 {
-    int n;
     uid_t myuid;
     gid_t mygid;
-    char *ranks = NULL;
     char digit[MAX_DIGIT_LEN];
     int rc;
     static int cli_counter = 0;
     static int num_ns = 0;
     pmix_proc_t proc;
     int custom_rank_val, rank_counter = 0;
-    uint32_t local_size, univ_size;
+    uint32_t n, local_size, univ_size;
     validation_params local_v_params;
     char *vptr;
     server_nspace_t *nspace_item = PMIX_NEW(server_nspace_t);
@@ -1227,10 +1233,6 @@ int server_launch_clients(test_params *params, validation_params *v_params, char
     strncpy(v_params->pmix_nspace, proc.nspace, PMIX_MAX_NSLEN);
 
     set_namespace(v_params);
-    if (NULL != ranks) {
-        free(ranks);
-    }
-
     local_size = v_params->pmix_local_size;
     univ_size = v_params->pmix_univ_size;
     /* add namespace entry */
@@ -1340,7 +1342,7 @@ int server_launch_clients(test_params *params, validation_params *v_params, char
                     return 0;
                 }
             }
-            execve(params->binary, client_argv, *client_env);
+            execve(l_params->binary, client_argv, *client_env);
             /* Does not return */
             TEST_ERROR(("execve() failed"));
             return 0;

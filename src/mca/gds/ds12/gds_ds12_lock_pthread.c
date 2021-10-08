@@ -74,6 +74,7 @@ pmix_status_t pmix_gds_ds12_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
     pthread_rwlockattr_t attr;
     ds12_lock_pthread_ctx_t *lock_ctx = (ds12_lock_pthread_ctx_t*)ctx;
 
+    PMIX_HIDE_UNUSED_PARAMS(name, local_size);
     if (*ctx != NULL) {
         return PMIX_SUCCESS;
     }

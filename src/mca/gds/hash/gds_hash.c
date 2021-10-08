@@ -101,6 +101,9 @@ pmix_gds_base_module_t pmix_hash_module = {.name = "hash",
 
 static pmix_status_t hash_init(pmix_info_t info[], size_t ninfo)
 {
+
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
     return PMIX_SUCCESS;
 }
 
@@ -1236,6 +1239,8 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *pro
                         "[%s:%d] gds:hash:store_modex for nspace %s", pmix_globals.myid.nspace,
                         pmix_globals.myid.rank, proc->nspace);
 
+    PMIX_HIDE_UNUSED_PARAMS(ctx);
+
     /* find the hash table for this nspace */
     trk = pmix_gds_hash_get_tracker(proc->nspace, true);
     if (NULL == trk) {
@@ -1284,6 +1289,9 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *pro
 
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 {
+
+    PMIX_HIDE_UNUSED_PARAMS(proc, env);
+
     /* we don't need to add anything */
     return PMIX_SUCCESS;
 }
@@ -1291,6 +1299,9 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env)
 static pmix_status_t nspace_add(const char *nspace, uint32_t nlocalprocs, pmix_info_t info[],
                                 size_t ninfo)
 {
+
+    PMIX_HIDE_UNUSED_PARAMS(nspace, nlocalprocs, info, ninfo);
+
     /* we don't need to do anything here */
     return PMIX_SUCCESS;
 }
@@ -1298,6 +1309,7 @@ static pmix_status_t nspace_add(const char *nspace, uint32_t nlocalprocs, pmix_i
 static pmix_status_t nspace_del(const char *nspace)
 {
     pmix_job_t *t;
+
 
     /* find the hash table for this nspace */
     PMIX_LIST_FOREACH (t, &mca_gds_hash_component.myjobs, pmix_job_t) {

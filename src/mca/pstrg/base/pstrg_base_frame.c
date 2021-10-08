@@ -39,8 +39,16 @@
 /*
  * Global variables
  */
-pmix_pstrg_API_module_t pmix_pstrg = {pmix_pstrg_base_query};
-pmix_pstrg_base_t pmix_pstrg_base = {{{0}}};
+pmix_pstrg_API_module_t pmix_pstrg = {
+    .query = pmix_pstrg_base_query
+};
+
+pmix_pstrg_base_t pmix_pstrg_base = {
+    .actives = PMIX_LIST_STATIC_INIT,
+    .evbase = NULL,
+    .selected = false,
+    .init = false
+};
 
 static int pmix_pstrg_base_close(void)
 {

@@ -23,9 +23,6 @@
 # $HEADER$
 #
 
-AM_LFLAGS = -Ppmix_show_help_yy
-LEX_OUTPUT_ROOT = lex.pmix_show_help_yy
-
 # Source code files
 
 headers += \
@@ -44,7 +41,6 @@ headers += \
         util/basename.h \
         util/keyval_parse.h \
         util/show_help.h \
-        util/show_help_lex.h \
         util/path.h \
         util/getid.h \
         util/strnlen.h \
@@ -75,7 +71,6 @@ sources += \
         util/basename.c \
         util/keyval_parse.c \
         util/show_help.c \
-        util/show_help_lex.l \
         util/path.c \
         util/getid.c \
         util/hash.c \
@@ -90,6 +85,8 @@ sources += \
         util/pmix_getcwd.c
 
 libpmix_la_LIBADD += \
-        util/keyval/libpmixutilkeyval.la
+        util/keyval/libpmixutilkeyval.la \
+        util/showhelp/libpmixutilshowhelp.la
 libpmix_la_DEPENDENCIES += \
-        util/keyval/libpmixutilkeyval.la
+        util/keyval/libpmixutilkeyval.la \
+        util/showhelp/libpmixutilshowhelp.la

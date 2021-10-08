@@ -36,25 +36,23 @@
 
 static pmix_status_t init(void);
 static void finalize(void);
-static pmix_status_t register_type(const char *name, pmix_data_type_t type,
-                                   pmix_bfrop_pack_fn_t pack, pmix_bfrop_unpack_fn_t unpack,
-                                   pmix_bfrop_copy_fn_t copy, pmix_bfrop_print_fn_t print);
 static const char *data_type_string(pmix_data_type_t type);
 
-pmix_bfrops_module_t pmix_bfrops_pmix20_module = {.version = "v20",
-                                                  .init = init,
-                                                  .finalize = finalize,
-                                                  .pack = pmix20_bfrop_pack,
-                                                  .unpack = pmix20_bfrop_unpack,
-                                                  .copy = pmix20_bfrop_copy,
-                                                  .print = pmix20_bfrop_print,
-                                                  .copy_payload = pmix20_bfrop_copy_payload,
-                                                  .value_xfer = pmix20_bfrop_value_xfer,
-                                                  .value_load = pmix20_bfrop_value_load,
-                                                  .value_unload = pmix20_bfrop_value_unload,
-                                                  .value_cmp = pmix20_bfrop_value_cmp,
-                                                  .register_type = register_type,
-                                                  .data_type_string = data_type_string};
+pmix_bfrops_module_t pmix_bfrops_pmix20_module = {
+    .version = "v20",
+    .init = init,
+    .finalize = finalize,
+    .pack = pmix20_bfrop_pack,
+    .unpack = pmix20_bfrop_unpack,
+    .copy = pmix20_bfrop_copy,
+    .print = pmix20_bfrop_print,
+    .copy_payload = pmix20_bfrop_copy_payload,
+    .value_xfer = pmix20_bfrop_value_xfer,
+    .value_load = pmix20_bfrop_value_load,
+    .value_unload = pmix20_bfrop_value_unload,
+    .value_cmp = pmix20_bfrop_value_cmp,
+    .data_type_string = data_type_string
+};
 
 static pmix_status_t init(void)
 {
@@ -187,7 +185,7 @@ static pmix_status_t init(void)
                        &mca_bfrops_v20_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_SCOPE", PMIX_SCOPE, pmix20_bfrop_pack_scope, pmix20_bfrop_unpack_scope,
-                       pmix20_bfrop_std_copy, pmix20_bfrop_std_copy,
+                       pmix20_bfrop_std_copy, pmix20_bfrop_print_scope,
                        &mca_bfrops_v20_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_DATA_RANGE", PMIX_DATA_RANGE, pmix20_bfrop_pack_range,
@@ -259,21 +257,12 @@ static void finalize(void)
     }
 }
 
-static pmix_status_t register_type(const char *name, pmix_data_type_t type,
-                                   pmix_bfrop_pack_fn_t pack, pmix_bfrop_unpack_fn_t unpack,
-                                   pmix_bfrop_copy_fn_t copy, pmix_bfrop_print_fn_t print)
-{
-    PMIX_REGISTER_TYPE(name, type, pack, unpack, copy, print, &mca_bfrops_v20_component.types);
-    return PMIX_SUCCESS;
-}
-
 static const char *data_type_string(pmix_data_type_t type)
 {
     pmix_bfrop_type_info_t *info;
 
-    if (NULL
-        == (info = (pmix_bfrop_type_info_t *)
-                pmix_pointer_array_get_item(&mca_bfrops_v20_component.types, type))) {
+    info = (pmix_bfrop_type_info_t *)pmix_pointer_array_get_item(&mca_bfrops_v20_component.types, type);
+    if (NULL == info) {
         return NULL;
     }
     return info->odti_name;
@@ -287,14 +276,14 @@ pmix_data_type_t pmix20_v21_to_v20_datatype(pmix_data_type_t v21type)
      * a PMIx v20 compatible client. The data type was redefined
      * in v21, and so we have to do some conversions here */
     switch (v21type) {
-    case PMIX_COMMAND:
-        /* the peer unfortunately didn't separate these out,
-         * but instead set them to PMIX_UINT32 */
-        v20type = PMIX_UINT32;
-        break;
+        case PMIX_COMMAND:
+            /* the peer unfortunately didn't separate these out,
+             * but instead set them to PMIX_UINT32 */
+            v20type = PMIX_UINT32;
+            break;
 
-    default:
-        v20type = v21type;
+        default:
+            v20type = v21type;
     }
     return v20type;
 }

@@ -22,6 +22,7 @@
 #        include <sys/fcntl.h>
 #    endif
 #endif
+#include <ctype.h>
 
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
@@ -46,14 +47,15 @@
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
 
-static void msgcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                      void *cbdata)
+static void msgcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                      pmix_buffer_t *buf, void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
     int32_t m;
     pmix_status_t rc, status;
     size_t refid = SIZE_MAX;
     size_t localid = SIZE_MAX;
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     PMIX_ACQUIRE_OBJECT(cd);
 
@@ -131,6 +133,7 @@ static void process_cache(int sd, short args, void *cbdata)
     size_t n;
     pmix_status_t rc;
     pmix_buffer_t *msg;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_LIST_FOREACH_SAFE (iof, ionext, &pmix_server_globals.iof, pmix_iof_cache_t) {
         /* if the channels don't match, then ignore it */
@@ -217,6 +220,7 @@ static void process_cache(int sd, short args, void *cbdata)
 static void myreg(int sd, short args, void *cbdata)
 {
     pmix_iof_req_t *req = (pmix_iof_req_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     if (NULL != req->regcbfunc) {
         req->regcbfunc(PMIX_SUCCESS, req->local_id, req->cbdata);
@@ -502,12 +506,13 @@ static PMIX_CLASS_INSTANCE(pmix_ltcaddy_t, pmix_object_t, ltcon, ltdes);
 static pmix_event_t stdinsig_ev;
 static pmix_iof_read_event_t *stdinev_global = NULL;
 
-static void stdincbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                        void *cbdata)
+static void stdincbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                        pmix_buffer_t *buf, void *cbdata)
 {
     pmix_ltcaddy_t *cd = (pmix_ltcaddy_t *) cbdata;
     int cnt;
     pmix_status_t rc, status;
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -588,7 +593,11 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_b
                                             __FILE__, __LINE__, errno);
                             } else {
                                 flags |= O_NONBLOCK;
-                                fcntl(fd, F_SETFL, flags);
+                                if (0 != fcntl(fd, F_SETFL, flags)) {
+                                    pmix_output(pmix_client_globals.iof_output,
+                                                "[%s:%d]: fcntl(F_SETFL) failed with errno=%d\n",
+                                                __FILE__, __LINE__, errno);
+                                }
                             }
                         }
                         if (isatty(fd)) {
@@ -1190,33 +1199,33 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
      */
     if (myflags.xml) {
         if (myflags.tag) {
-            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s nspace=\"%s\" rank=\"%s\"", suffix,
                      name->nspace, PMIX_RANK_PRINT(name->rank));
         } else if (myflags.rank) {
-            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         } else if (myflags.timestamp) {
-            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         } else {
-            snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
                      PMIX_RANK_PRINT(name->rank));
         }
-        snprintf(endtag, PMIX_IOF_BASE_TAG_MAX,
+        pmix_snprintf(endtag, PMIX_IOF_BASE_TAG_MAX,
                  "</%s>", suffix);
     } else {
         if (myflags.tag) {
-            snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
                      "[%s,%s]<%s>",
                      name->nspace,
                      PMIX_RANK_PRINT(name->rank),
                      suffix);
         } else if (myflags.rank) {
-            snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
                      "[%s]",
                      PMIX_RANK_PRINT(name->rank));
         }
@@ -1232,15 +1241,15 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         cptr[strlen(cptr) - 1] = '\0'; /* remove trailing newline */
 
         if (myflags.xml && !myflags.tag && !myflags.rank) {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
                      " timestamp=\"%s\"", cptr);
         } else if (myflags.xml && (myflags.tag || myflags.rank)) {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
                      " timestamp=\"%s\"", cptr);
         } else if (myflags.tag || myflags.rank) {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
         } else {
-            snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s", cptr, suffix);
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s", cptr, suffix);
         }
     }
 
@@ -1291,7 +1300,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
                     goto process;
                 }
-                snprintf(qprint, 10, "&amp;");
+                pmix_snprintf(qprint, 10, "&amp;");
                 for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
                     output->data[k++] = qprint[j];
                 }
@@ -1300,7 +1309,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
                     goto process;
                 }
-                snprintf(qprint, 10, "&lt;");
+                pmix_snprintf(qprint, 10, "&lt;");
                 for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
                     output->data[k++] = qprint[j];
                 }
@@ -1309,17 +1318,17 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
                     goto process;
                 }
-                snprintf(qprint, 10, "&gt;");
+                pmix_snprintf(qprint, 10, "&gt;");
                 for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
                     output->data[k++] = qprint[j];
                 }
-            } else if (bo->bytes[i] < 32 || bo->bytes[i] > 127) {
+            } else if (!isprint(bo->bytes[i])) {
                 /* this is a non-printable character, so escape it too */
                 if (k + 7 >= PMIX_IOF_BASE_TAGGED_OUT_MAX) {
                     PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
                     goto process;
                 }
-                snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[i]);
+                pmix_snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[i]);
                 for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
                     output->data[k++] = qprint[j];
                 }
@@ -1422,13 +1431,14 @@ void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
     }
 }
 
-void pmix_iof_write_handler(int _fd, short event, void *cbdata)
+void pmix_iof_write_handler(int sd, short args, void *cbdata)
 {
     pmix_iof_sink_t *sink = (pmix_iof_sink_t *) cbdata;
     pmix_iof_write_event_t *wev = &sink->wev;
     pmix_list_item_t *item;
     pmix_iof_write_output_t *output;
     int num_written, total_written = 0;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(sink);
 
@@ -1521,10 +1531,11 @@ bool pmix_iof_stdin_check(int fd)
     return true;
 }
 
-void pmix_iof_stdin_cb(int fd, short event, void *cbdata)
+void pmix_iof_stdin_cb(int sd, short args, void *cbdata)
 {
     bool should_process;
     pmix_iof_read_event_t *stdinev = (pmix_iof_read_event_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(stdinev);
 
@@ -1539,12 +1550,13 @@ void pmix_iof_stdin_cb(int fd, short event, void *cbdata)
     }
 }
 
-static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                             void *cbdata)
+static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                             pmix_buffer_t *buf, void *cbdata)
 {
     pmix_iof_read_event_t *stdinev = (pmix_iof_read_event_t *) cbdata;
     int cnt;
     pmix_status_t rc, ret;
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     PMIX_ACQUIRE_OBJECT(stdinev);
 
@@ -1576,12 +1588,14 @@ static void iof_stdin_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix
 static void opcbfn(pmix_status_t status, void *cbdata)
 {
     pmix_byte_object_t *boptr = (pmix_byte_object_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     PMIX_ACQUIRE_OBJECT(boptr);
     PMIX_BYTE_OBJECT_FREE(boptr, 1);
 }
 
 /* this is the read handler for stdin */
-void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
+void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
 {
     pmix_iof_read_event_t *rev = (pmix_iof_read_event_t *) cbdata;
     unsigned char data[PMIX_IOF_BASE_MSG_MAX];
@@ -1592,6 +1606,7 @@ void pmix_iof_read_local_handler(int unusedfd, short event, void *cbdata)
     pmix_byte_object_t bo, *boptr;
     int fd;
     pmix_pfexec_child_t *child = (pmix_pfexec_child_t *) rev->childproc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(rev);
 
@@ -1800,6 +1815,7 @@ static void iof_write_event_construct(pmix_iof_write_event_t *wev)
     wev->pending = false;
     wev->always_writable = false;
     wev->numtries = 0;
+    wev->ev = (pmix_event_t*)malloc(sizeof(pmix_event_t));
     wev->fd = -1;
     PMIX_CONSTRUCT(&wev->outputs, pmix_list_t);
     wev->tv.tv_sec = 0;
@@ -1808,8 +1824,9 @@ static void iof_write_event_construct(pmix_iof_write_event_t *wev)
 static void iof_write_event_destruct(pmix_iof_write_event_t *wev)
 {
     if (wev->pending) {
-        pmix_event_del(&wev->ev);
+        pmix_event_del(wev->ev);
     }
+    free(wev->ev);
     if (2 < wev->fd) {
         PMIX_OUTPUT_VERBOSE((20, pmix_client_globals.iof_output,
                              "%s iof: closing fd %d for write event",

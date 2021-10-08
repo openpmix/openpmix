@@ -41,6 +41,7 @@
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"
+#include "src/util/printf.h"
 #include "src/util/pmix_environ.h"
 
 #include "pnet_opa.h"
@@ -120,12 +121,12 @@ static char *transports_print(uint64_t *unique_key)
                 int_ptr[i] |= j << j;
             }
         }
-        snprintf(string_key + written_len, string_key_len - written_len, format, int_ptr[i]);
+        pmix_snprintf(string_key + written_len, string_key_len - written_len, format, int_ptr[i]);
         written_len = strlen(string_key);
     }
 
     /* print the middle dash */
-    snprintf(string_key + written_len, string_key_len - written_len, "-");
+    pmix_snprintf(string_key + written_len, string_key_len - written_len, "-");
     written_len = strlen(string_key);
 
     /* print the second number */
@@ -137,7 +138,7 @@ static char *transports_print(uint64_t *unique_key)
                 int_ptr[i] |= j << j;
             }
         }
-        snprintf(string_key + written_len, string_key_len - written_len, format, int_ptr[i]);
+        pmix_snprintf(string_key + written_len, string_key_len - written_len, format, int_ptr[i]);
         written_len = strlen(string_key);
     }
     free(format);
@@ -373,6 +374,8 @@ static pmix_status_t collect_inventory(pmix_info_t directives[], size_t ndirs,
                                        pmix_list_t *inventory)
 {
     /* search the topology for OPA NICs */
+    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs, inventory);
+
 
     return PMIX_SUCCESS;
 }
@@ -381,6 +384,8 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo,
                                        pmix_info_t directives[], size_t ndirs)
 {
     /* look for our inventory blob */
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo, directives, ndirs);
+
 
     return PMIX_SUCCESS;
 }

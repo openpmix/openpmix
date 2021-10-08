@@ -19,18 +19,18 @@
 #
 
 
-AM_LFLAGS = -Ppmix_util_keyval_yy
+AM_LFLAGS = -Ppmix_showhelp_yy
 # we do NOT want picky compilers down here
 CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
-LEX_OUTPUT_ROOT = lex.pmix_util_keyval_yy
+LEX_OUTPUT_ROOT = lex.pmix_showhelp_yy
 
-noinst_LTLIBRARIES = libpmixutilkeyval.la
+noinst_LTLIBRARIES = libpmixutilshowhelp.la
 
 # Source code files
 
-libpmixutilkeyval_la_SOURCES = \
-	keyval_lex.h \
-        keyval_lex.l
+libpmixutilshowhelp_la_SOURCES = \
+	showhelp_lex.h \
+    showhelp_lex.l
 
-MAINTAINERCLEANFILES = keyval_lex.c
+MAINTAINERCLEANFILES = showhelp_lex.c

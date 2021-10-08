@@ -3,6 +3,7 @@
  *                         All rights reserved.
  *
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -110,6 +111,7 @@ static uint8_t* pmix_ds12_data_ptr(uint8_t *addr)
 
 static size_t pmix_ds12_data_size(uint8_t *addr, uint8_t* data_ptr)
 {
+    PMIX_HIDE_UNUSED_PARAMS(data_ptr);
     return ESH_DATA_SIZE_V12(addr);
 }
 
@@ -153,6 +155,7 @@ static bool pmix_ds12_is_ext_slot(uint8_t *addr)
 static bool pmix_ds12_kname_match(uint8_t *addr, const char *key, size_t key_hash)
 {
     bool ret = 0;
+    PMIX_HIDE_UNUSED_PARAMS(key_hash);
 
     ret =  (0 == strncmp(ESH_KNAME_PTR_V12(addr),
                          key, ESH_KNAME_LEN_V12(key)));

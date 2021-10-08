@@ -45,8 +45,16 @@
 #include "src/mca/prm/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_prm_globals_t pmix_prm_globals = {{0}};
-pmix_prm_API_module_t pmix_prm = {.notify = pmix_prm_base_notify};
+pmix_prm_globals_t pmix_prm_globals = {
+    .lock = PMIX_LOCK_STATIC_INIT,
+    .actives = PMIX_LIST_STATIC_INIT,
+    .initialized = false,
+    .selected = false
+};
+
+pmix_prm_API_module_t pmix_prm = {
+    .notify = pmix_prm_base_notify
+};
 
 static pmix_status_t pmix_prm_close(void)
 {

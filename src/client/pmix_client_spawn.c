@@ -381,6 +381,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     /* init */
     memset(nspace, 0, PMIX_MAX_NSLEN + 1);

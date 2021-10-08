@@ -10,7 +10,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2006-2020 Cisco Systems, Inc.  All rights reserved
+dnl Copyright (c) 2006-2021 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009-2021 IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
@@ -399,6 +399,23 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_CHECK_ATTRIBUTES
     PMIX_CHECK_COMPILER_VERSION_ID
 
+    # OpenPMIx only supports GCC >=v4.8.1.  Notes:
+    #
+    # 1. The default compiler that comes with RHEL 7 is v4.8.5
+    #    (version ID 264197).
+    # 2. We regularly test with GCC v4.8.1 (version ID 264193).
+    # 3. GCC 4.8.0 probably also works; we just haven't tested it.
+    #
+    # Since we regularly test with 4.8.1, that's what we check for.
+    AS_IF([test "$pmix_cv_compiler_FAMILYNAME" = "GNU" && \
+               test "$pmix_cv_compiler_VERSION" -lt 264193],
+          [AC_MSG_WARN([OpenPMIx no longer supports versions of the GNU compiler suite])
+           AC_MSG_WARN([less than v4.8.1.])
+           AC_MSG_WARN([Please upgrade your GNU compiler suite, or use])
+           AC_MSG_WARN([a different compiler to build OpenPMIx.])
+           AC_MSG_ERROR([Cannot continue])
+          ])
+
     ##################################
     # Assembler Configuration
     ##################################
@@ -413,6 +430,10 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     ##################################
 
     pmix_show_title "Header file tests"
+
+    PMIX_VAR_SCOPE_PUSH(PMIX_CFLAGS_save_for_headers)
+    PMIX_CFLAGS_save_for_headers=$CFLAGS
+    _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror, Werror)
 
     AC_CHECK_HEADERS([arpa/inet.h \
                       fcntl.h ifaddrs.h inttypes.h libgen.h \
@@ -492,6 +513,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED(PMIX_USE_STDBOOL_H, $PMIX_USE_STDBOOL_H,
                        [Whether to use <stdbool.h> or not])
     AC_MSG_RESULT([$MSG])
+
+    CFLAGS=$PMIX_CFLAGS_save_for_headers
+    PMIX_VAR_SCOPE_POP
 
     # checkpoint results
     AC_CACHE_SAVE
@@ -973,6 +997,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/Makefile]
         pmix_config_prefix[src/include/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
+        pmix_config_prefix[src/util/showhelp/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
         pmix_config_prefix[src/tools/pevent/Makefile]
         pmix_config_prefix[src/tools/pmix_info/Makefile]
@@ -1061,11 +1086,33 @@ else
     WANT_PICKY_COMPILER=0
 fi
 #################### Early development override ####################
-if test "$WANT_PICKY_COMPILER" = "0" && test -z "$enable_picky" && test "$PMIX_DEVEL" = "1"; then
-    WANT_PICKY_COMPILER=1
-    echo "--> developer override: enable picky compiler by default"
-fi
+#if test "$WANT_PICKY_COMPILER" = "0" && test -z "$enable_picky" && test "$PMIX_DEVEL" = "1"; then
+#    WANT_PICKY_COMPILER=1
+#    echo "--> developer override: enable picky compiler by default"
+#fi
 #################### Early development override ####################
+
+AC_DEFINE_UNQUOTED(PMIX_PICKY_COMPILERS, $WANT_PICKY_COMPILER,
+                   [Whether or not we are using picky compiler settings])
+
+AC_MSG_CHECKING([if want memory sanitizers])
+AC_ARG_ENABLE(memory-sanitizers,
+    AS_HELP_STRING([--memory-sanitizers],
+                   [enable developer-level memory sanitizers when building PMIx (default: disabled)]))
+if test "$enable_memory_sanitizers" = "yes"; then
+    AC_MSG_RESULT([yes])
+    WANT_MEMORY_SANITIZERS=1
+    AC_MSG_WARN([******************************************************])
+    AC_MSG_WARN([**** Memory sanitizers may require that you LD_PRELOAD])
+    AC_MSG_WARN([**** libasan in order to run an executable.])
+    AC_MSG_WARN([******************************************************])
+else
+    AC_MSG_RESULT([no])
+    WANT_MEMORY_SANITIZERS=0
+fi
+
+AC_DEFINE_UNQUOTED(PMIX_MEMORY_SANITIZERS, $WANT_MEMORY_SANITIZERS,
+                   [Whether or not we are using memory sanitizers])
 
 #
 # Developer debugging
@@ -1253,12 +1300,11 @@ if test "$enable_python_bindings" != "yes"; then
 else
     AC_MSG_RESULT([yes])
     WANT_PYTHON_BINDINGS=1
+    AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
 fi
 
 AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
-
-AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
-
+PYTHON=
 if test "$WANT_PYTHON_BINDINGS" = "1"; then
     if test "$pmix_python_good" = "no"; then
         AC_MSG_WARN([Python bindings were enabled, but no suitable])
@@ -1304,12 +1350,14 @@ fi
 # If we didn't find a good Python and we don't have dictionary.h, then
 # see if we can find an older Python (because construct_dictionary.py
 # can use an older Python).
-AS_IF([test "$PYTHON" = ":" && test ! -f $srcdir/include/dictionary.h],
-      [PYTHON=
+AS_IF([test "$PYTHON" = "" && test ! -f $srcdir/include/dictionary.h],
+      [AC_MSG_CHECKING([python])
+       PYTHON=
        AM_PATH_PYTHON
        # If we still can't find Python (and we don't have
        # dictionary.h), then give up.
-       AS_IF([test "$PYTHON" = ":"],
+       AC_MSG_RESULT([$PYTHON])
+       AS_IF([test "$PYTHON" = ""],
              [AC_MSG_WARN([Could not find a modern enough Python])
               AC_MSG_WARN([Developer builds (e.g., git clones) of OpenPMIx must have Python available])
               AC_MSG_ERROR([Cannot continue])

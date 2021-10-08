@@ -38,6 +38,7 @@
 #include "src/util/cmd_line.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/printf.h"
 
 #include "include/pmix_common.h"
 #include "src/mca/base/pmix_mca_base_var.h"
@@ -575,7 +576,7 @@ char *pmix_cmd_line_get_usage_msg(pmix_cmd_line_t *cmd)
                 strncat(line, " ", sizeof(line) - 1);
                 for (i = 0; (int) i < option->clo_num_params; ++i) {
                     len = sizeof(temp);
-                    snprintf(temp, len, "<arg%d> ", (int) i);
+                    pmix_snprintf(temp, len, "<arg%d> ", (int) i);
                     strncat(line, temp, sizeof(line) - 1);
                 }
                 if (option->clo_num_params > 0) {
@@ -976,7 +977,7 @@ static int make_opt(pmix_cmd_line_t *cmd, pmix_cmd_line_init_t *e)
         (void) pmix_mca_base_var_env_name(e->ocl_mca_param_name, &option->clo_mca_param_env_var);
     }
 
-    option->clo_otype = e->ocl_otype;
+    option->clo_otype = PMIX_CMD_LINE_OTYPE_GENERAL;
 
     /* Append the item, serializing thread access */
 
@@ -1228,15 +1229,15 @@ static void fill(const pmix_cmd_line_option_t *a, char result[3][BUFSIZ])
     result[2][0] = '\0';
 
     if ('\0' != a->clo_short_name) {
-        snprintf(&result[i][0], BUFSIZ, "%c", a->clo_short_name);
+        pmix_snprintf(&result[i][0], BUFSIZ, "%c", a->clo_short_name);
         ++i;
     }
     if (NULL != a->clo_single_dash_name) {
-        snprintf(&result[i][0], BUFSIZ, "%s", a->clo_single_dash_name);
+        pmix_snprintf(&result[i][0], BUFSIZ, "%s", a->clo_single_dash_name);
         ++i;
     }
     if (NULL != a->clo_long_name) {
-        snprintf(&result[i][0], BUFSIZ, "%s", a->clo_long_name);
+        pmix_snprintf(&result[i][0], BUFSIZ, "%s", a->clo_long_name);
         ++i;
     }
 }
@@ -1328,17 +1329,17 @@ static char *build_parsable(pmix_cmd_line_option_t *option)
     char *line;
     int length;
 
-    length = snprintf(NULL, 0, "%c:%s:%s:%d:%s\n", option->clo_short_name,
+    length = pmix_snprintf(NULL, 0, "%c:%s:%s:%d:%s\n", option->clo_short_name,
                       option->clo_single_dash_name, option->clo_long_name, option->clo_num_params,
                       option->clo_description);
 
     line = (char *) malloc(length * sizeof(char));
 
     if ('\0' == option->clo_short_name) {
-        snprintf(line, length, "0:%s:%s:%d:%s\n", option->clo_single_dash_name,
+        pmix_snprintf(line, length, "0:%s:%s:%d:%s\n", option->clo_single_dash_name,
                  option->clo_long_name, option->clo_num_params, option->clo_description);
     } else {
-        snprintf(line, length, "%c:%s:%s:%d:%s\n", option->clo_short_name,
+        pmix_snprintf(line, length, "%c:%s:%s:%d:%s\n", option->clo_short_name,
                  option->clo_single_dash_name, option->clo_long_name, option->clo_num_params,
                  option->clo_description);
     }

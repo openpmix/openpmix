@@ -47,8 +47,8 @@ static void relcbfunc(void *cbdata)
     }
     PMIX_RELEASE(cd);
 }
-static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                         void *cbdata)
+static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
+                         pmix_buffer_t *buf, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_status_t rc;
@@ -56,6 +56,7 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr, pmix_buf
     int cnt;
     size_t n;
     pmix_kval_t *kv;
+    PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query cback from server");
 
@@ -140,6 +141,8 @@ static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
     pmix_cmd_t cmd = PMIX_QUERY_CMD;
     pmix_buffer_t *msg;
     pmix_status_t rc;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     /* if we are the server, then we just issue the query and
      * return the response */
@@ -260,6 +263,7 @@ static void localquery(int sd, short args, void *cbdata)
     pmix_kval_t *kv, *kvnxt;
     pmix_proc_t proc;
     bool rank_given = false;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* setup the list of local results */
     PMIX_CONSTRUCT(&results, pmix_list_t);

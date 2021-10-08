@@ -108,6 +108,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status,
+                            source, info, ninfo, results, nresults);
     /* this example doesn't do anything with default events */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -154,58 +156,75 @@ typedef struct {
     bool hostfns;
 } pmix_pattrs_globals_t;
 
-pmix_pattrs_globals_t pmix_pattrs_globals = {0};
+pmix_pattrs_globals_t pmix_pattrs_globals = {
+    .help = false,
+    .verbose = false,
+    .pid = 0,
+    .nspace = NULL,
+    .uri = NULL,
+    .sysfirst = false,
+    .system = false,
+    .client = NULL,
+    .server = NULL,
+    .tool = NULL,
+    .host = NULL,
+    .clientfns = false,
+    .serverfns = false,
+    .toolfns = false,
+    .hostfns = false
+};
 
 pmix_cmd_line_init_t cmd_line_opts[] = {
     {NULL, 'h', NULL, "help", 0, &pmix_pattrs_globals.help, PMIX_CMD_LINE_TYPE_BOOL,
-     "This help message"},
+     "This help message", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, 'v', NULL, "verbose", 0, &pmix_pattrs_globals.verbose, PMIX_CMD_LINE_TYPE_BOOL,
-     "Be Verbose"},
+     "Be Verbose", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, 'p', NULL, "pid", 1, &pmix_pattrs_globals.pid, PMIX_CMD_LINE_TYPE_INT,
-     "Specify server pid to connect to"},
+     "Specify server pid to connect to", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, 'n', NULL, "nspace", 1, &pmix_pattrs_globals.nspace, PMIX_CMD_LINE_TYPE_STRING,
-     "Specify server nspace to connect to"},
+     "Specify server nspace to connect to", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, '\0', NULL, "uri", 1, &pmix_pattrs_globals.uri, PMIX_CMD_LINE_TYPE_STRING,
-     "Specify URI of server to connect to"},
+     "Specify URI of server to connect to", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, '\0', NULL, "system-server-first", 0, &pmix_pattrs_globals.sysfirst,
-     PMIX_CMD_LINE_TYPE_BOOL, "Look for the system server first"},
+     PMIX_CMD_LINE_TYPE_BOOL, "Look for the system server first", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, '\0', NULL, "system-server", 0, &pmix_pattrs_globals.system, PMIX_CMD_LINE_TYPE_BOOL,
-     "Specifically connect to the system server"},
+     "Specifically connect to the system server", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, 'c', NULL, "client", 1, &pmix_pattrs_globals.client, PMIX_CMD_LINE_TYPE_STRING,
      "Comma-delimited list of client function whose attributes are to be printed (function or "
-     "all)"},
+     "all)", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, 's', NULL, "server", 1, &pmix_pattrs_globals.server, PMIX_CMD_LINE_TYPE_STRING,
      "Comma-delimited list of server function whose attributes are to be printed (function or "
-     "all)"},
+     "all)", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, 't', NULL, "tool", 1, &pmix_pattrs_globals.tool, PMIX_CMD_LINE_TYPE_STRING,
-     "Comma-delimited list of tool function whose attributes are to be printed (function or all)"},
+     "Comma-delimited list of tool function whose attributes are to be printed (function or all)", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, 'h', NULL, "host", 1, &pmix_pattrs_globals.host, PMIX_CMD_LINE_TYPE_STRING,
-     "Comma-delimited list of host function whose attributes are to be printed (function or all)"},
+     "Comma-delimited list of host function whose attributes are to be printed (function or all)", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, '\0', NULL, "client-fns", 0, &pmix_pattrs_globals.clientfns, PMIX_CMD_LINE_TYPE_BOOL,
-     "List the functions supported in this client library"},
+     "List the functions supported in this client library", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, '\0', NULL, "server-fns", 0, &pmix_pattrs_globals.serverfns, PMIX_CMD_LINE_TYPE_BOOL,
-     "List the functions supported in this server library"},
+     "List the functions supported in this server library", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, '\0', NULL, "tool-fns", 0, &pmix_pattrs_globals.toolfns, PMIX_CMD_LINE_TYPE_BOOL,
-     "List the functions supported in this tool library"},
+     "List the functions supported in this tool library", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     {NULL, '\0', NULL, "host-fns", 0, &pmix_pattrs_globals.hostfns, PMIX_CMD_LINE_TYPE_BOOL,
-     "List the functions supported by this host environment"},
+     "List the functions supported by this host environment", PMIX_CMD_LINE_OTYPE_GENERAL},
 
     /* End of list */
-    {NULL, '\0', NULL, NULL, 0, NULL, PMIX_CMD_LINE_TYPE_NULL, NULL}};
+    {NULL, '\0', NULL, NULL, 0, NULL, PMIX_CMD_LINE_TYPE_NULL, NULL, PMIX_CMD_LINE_OTYPE_GENERAL}
+};
 
 int main(int argc, char **argv)
 {

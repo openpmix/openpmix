@@ -14,6 +14,7 @@
 # Copyright (c) 2007-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -45,6 +46,7 @@ headers += \
         pmix_config_top.h \
         pmix_config_bottom.h \
         pmix_portable_platform.h \
+        pmix_portable_platform_real.h \
         frameworks.h \
         pmix_stdatomic.h \
         dictionary.h

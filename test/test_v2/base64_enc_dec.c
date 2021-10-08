@@ -129,7 +129,7 @@ ssize_t pmixt_decode(const char *data, void *decdata, size_t buffsz)
     for (i = 0, out_len = 0; i < input_len; i++, data += 4) {
         // check against size of buffer to make sure we don't overrun
         if (buffsz - out_len >= 1) {
-            out_len += pmixt_base64_decode_block(data, decdata + (3 * i));
+            out_len += pmixt_base64_decode_block(data, ((unsigned char *)(decdata) + (3 * i)) );
         } else {
             assert((buffsz - out_len) >= 1);
             exit(1);

@@ -922,7 +922,7 @@ cleanup:
 }
 
 /* process the returned data from the host RM server */
-static void _process_dmdx_reply(int fd, short args, void *cbdata)
+static void _process_dmdx_reply(int sd, short args, void *cbdata)
 {
     pmix_dmdx_reply_caddy_t *caddy = (pmix_dmdx_reply_caddy_t *) cbdata;
     pmix_server_caddy_t *cd;
@@ -940,6 +940,7 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
     pmix_cb_t cb;
 
     PMIX_ACQUIRE_OBJECT(caddy);
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_server_globals.get_output, "[%s:%d] process dmdx reply from %s:%u",
                         __FILE__, __LINE__, caddy->lcd->proc.nspace, caddy->lcd->proc.rank);
@@ -1003,14 +1004,21 @@ static void _process_dmdx_reply(int fd, short args, void *cbdata)
          * proc is different from the nspace of the proc whose data is being
          * returned, then we have to store it into our hash tables */
         PMIX_LIST_FOREACH (nm, &nspaces, pmix_nspace_caddy_t) {
-            if (NULL == nm->ns->compat.gds || 0 == nm->ns->nlocalprocs
-                || !PMIX_CHECK_NSPACE(nptr->nspace, nm->ns->nspace)) {
+            if (NULL == nm->ns->compat.gds || 0 == nm->ns->nlocalprocs ||
+                !PMIX_CHECK_NSPACE(nptr->nspace, nm->ns->nspace)) {
                 peer = pmix_globals.mypeer;
             } else {
                 /* there must be at least one local proc */
                 rinfo = (pmix_rank_info_t *) pmix_list_get_first(&nm->ns->ranks);
-                peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                                   rinfo->peerid);
+                if (NULL == rinfo) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+                    goto complete;
+                }
+                peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, rinfo->peerid);
+                if (NULL == peer) {
+                    PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+                    goto complete;
+                }
             }
             PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
             if (NULL == caddy->data) {
@@ -1120,6 +1128,7 @@ static void dmdx_cbfunc(pmix_status_t status, const char *data, size_t ndata, vo
 static void get_timeout(int sd, short args, void *cbdata)
 {
     pmix_dmdx_request_t *req = (pmix_dmdx_request_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_server_globals.get_output, "ALERT: get timeout fired");
     /* execute the provided callback function with the error */

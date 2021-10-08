@@ -64,9 +64,62 @@
 #define PMIX_MAX_MSG_SIZE 16
 
 /* Instantiate the global vars */
-pmix_ptl_base_t pmix_ptl_base = {0};
+pmix_ptl_base_t pmix_ptl_base = {
+    .initialized = false,
+    .selected = false,
+    .posted_recvs = PMIX_LIST_STATIC_INIT,
+    .unexpected_msgs = PMIX_LIST_STATIC_INIT,
+    .stop_thread = {0, 0},
+    .listen_thread_active = false,
+    .listener = PMIX_LISTENER_STATIC_INIT,
+    .connection = NULL,
+    .current_tag = 0,
+    .max_msg_size = 0,
+    .session_tmpdir = NULL,
+    .system_tmpdir = NULL,
+    .report_uri = NULL,
+    .uri = NULL,
+    .urifile = NULL,
+    .system_filename = NULL,
+    .session_filename = NULL,
+    .nspace_filename = NULL,
+    .pid_filename = NULL,
+    .rendezvous_filename = NULL,
+    .created_rendezvous_file = false,
+    .created_session_tmpdir = false,
+    .created_system_tmpdir = false,
+    .created_system_filename = false,
+    .created_session_filename = false,
+    .created_nspace_filename = false,
+    .created_pid_filename = false,
+    .created_urifile = false,
+    .remote_connections = false,
+    .system_tool = false,
+    .session_tool = false,
+    .tool_support = false,
+    .if_include = NULL,
+    .if_exclude = NULL,
+    .ipv4_port = 0,
+    .disable_ipv4_family = false,
+    .ipv6_port = 0,
+    .disable_ipv6_family = true,
+    .max_retries = 0,
+    .wait_to_connect = 0,
+    .handshake_wait_time = 0,
+    .handshake_max_retries = 0
+};
 int pmix_ptl_base_output = -1;
-pmix_ptl_module_t pmix_ptl = {0};
+pmix_ptl_module_t pmix_ptl = {
+    .name = NULL,
+    .init = NULL,
+    .finalize = NULL,
+    .recv = NULL,
+    .cancel = NULL,
+    .connect_to_peer = NULL,
+    .query_servers = NULL,
+    .setup_listener = NULL,
+    .setup_fork = NULL
+};
 
 static size_t max_msg_size = PMIX_MAX_MSG_SIZE;
 
@@ -185,6 +238,8 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 
 static pmix_status_t pmix_ptl_close(void)
 {
+    int rc;
+
     if (!pmix_ptl_base.initialized) {
         return PMIX_SUCCESS;
     }
@@ -200,7 +255,9 @@ static pmix_status_t pmix_ptl_close(void)
             pmix_client_globals.myserver->sd = -1;
         }
     }
-
+    if (NULL != pmix_ptl_base.connection) {
+        free(pmix_ptl_base.connection);
+    }
     /* the component will cleanup when closed */
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.posted_recvs);
     PMIX_LIST_DESTRUCT(&pmix_ptl_base.unexpected_msgs);
@@ -208,31 +265,56 @@ static pmix_status_t pmix_ptl_close(void)
 
     if (NULL != pmix_ptl_base.system_filename) {
         if (pmix_ptl_base.created_system_filename) {
-            remove(pmix_ptl_base.system_filename);
+            rc = remove(pmix_ptl_base.system_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.system_filename);
     }
     if (NULL != pmix_ptl_base.session_filename) {
         if (pmix_ptl_base.created_session_filename) {
-            remove(pmix_ptl_base.session_filename);
+            rc = remove(pmix_ptl_base.session_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.session_filename);
     }
     if (NULL != pmix_ptl_base.nspace_filename) {
         if (pmix_ptl_base.created_nspace_filename) {
-            remove(pmix_ptl_base.nspace_filename);
+            rc = remove(pmix_ptl_base.nspace_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.nspace_filename);
     }
     if (NULL != pmix_ptl_base.pid_filename) {
         if (pmix_ptl_base.created_pid_filename) {
-            remove(pmix_ptl_base.pid_filename);
+            rc = remove(pmix_ptl_base.pid_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.pid_filename);
     }
     if (NULL != pmix_ptl_base.rendezvous_filename) {
         if (pmix_ptl_base.created_rendezvous_file) {
-            remove(pmix_ptl_base.rendezvous_filename);
+            rc = remove(pmix_ptl_base.rendezvous_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.rendezvous_filename);
     }
@@ -242,7 +324,12 @@ static pmix_status_t pmix_ptl_close(void)
     if (NULL != pmix_ptl_base.urifile) {
         if (pmix_ptl_base.created_urifile) {
             /* remove the file */
-            remove(pmix_ptl_base.urifile);
+            rc = remove(pmix_ptl_base.urifile);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.system_filename, strerror(errno));
+            }
         }
         free(pmix_ptl_base.urifile);
         pmix_ptl_base.urifile = NULL;
@@ -276,6 +363,11 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     pmix_ptl_base.listen_thread_active = false;
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
     pmix_ptl_base.current_tag = PMIX_PTL_TAG_DYNAMIC;
+    pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
+    if (NULL == pmix_ptl_base.connection) {
+        return PMIX_ERR_NOMEM;
+    }
+    memset(pmix_ptl_base.connection, 0, sizeof(struct sockaddr_storage));
 
     /* check for environ-based directives
      * on system tmpdir to use */

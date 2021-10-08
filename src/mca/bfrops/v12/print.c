@@ -46,9 +46,8 @@ pmix_status_t pmix12_bfrop_print(char **output, char *prefix, void *src, pmix_da
 
     /* Lookup the print function for this type and call it */
 
-    if (NULL
-        == (info = (pmix_bfrop_type_info_t *)
-                pmix_pointer_array_get_item(&mca_bfrops_v12_component.types, type))) {
+    info = (pmix_bfrop_type_info_t *) pmix_pointer_array_get_item(&mca_bfrops_v12_component.types, type);
+    if (NULL == info) {
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
 
@@ -61,6 +60,8 @@ pmix_status_t pmix12_bfrop_print(char **output, char *prefix, void *src, pmix_da
 pmix_status_t pmix12_bfrop_print_bool(char **output, char *prefix, bool *src, pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -98,6 +99,8 @@ pmix_status_t pmix12_bfrop_print_byte(char **output, char *prefix, uint8_t *src,
 {
     char *prefx;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
@@ -132,6 +135,8 @@ pmix_status_t pmix12_bfrop_print_string(char **output, char *prefix, char *src,
                                         pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -168,7 +173,9 @@ pmix_status_t pmix12_bfrop_print_size(char **output, char *prefix, size_t *src,
 {
     char *prefx;
 
-    /* deal with NULL prefix */
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+   /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
@@ -201,6 +208,8 @@ pmix_status_t pmix12_bfrop_print_size(char **output, char *prefix, size_t *src,
 pmix_status_t pmix12_bfrop_print_pid(char **output, char *prefix, pid_t *src, pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -235,6 +244,8 @@ pmix_status_t pmix12_bfrop_print_int(char **output, char *prefix, int *src, pmix
 {
     char *prefx;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
@@ -268,6 +279,8 @@ pmix_status_t pmix12_bfrop_print_int(char **output, char *prefix, int *src, pmix
 pmix_status_t pmix12_bfrop_print_uint(char **output, char *prefix, uint *src, pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -304,6 +317,8 @@ pmix_status_t pmix12_bfrop_print_uint8(char **output, char *prefix, uint8_t *src
 {
     char *prefx;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
@@ -339,7 +354,9 @@ pmix_status_t pmix12_bfrop_print_uint16(char **output, char *prefix, uint16_t *s
 {
     char *prefx;
 
-    /* deal with NULL prefix */
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+   /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
@@ -373,6 +390,8 @@ pmix_status_t pmix12_bfrop_print_uint32(char **output, char *prefix, uint32_t *s
                                         pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -409,6 +428,8 @@ pmix_status_t pmix12_bfrop_print_int8(char **output, char *prefix, int8_t *src,
 {
     char *prefx;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
@@ -443,6 +464,8 @@ pmix_status_t pmix12_bfrop_print_int16(char **output, char *prefix, int16_t *src
                                        pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -479,6 +502,8 @@ pmix_status_t pmix12_bfrop_print_int32(char **output, char *prefix, int32_t *src
 {
     char *prefx;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
@@ -512,6 +537,8 @@ pmix_status_t pmix12_bfrop_print_uint64(char **output, char *prefix, uint64_t *s
                                         pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -548,6 +575,8 @@ pmix_status_t pmix12_bfrop_print_int64(char **output, char *prefix, int64_t *src
 {
     char *prefx;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
@@ -583,6 +612,8 @@ pmix_status_t pmix12_bfrop_print_float(char **output, char *prefix, float *src,
 {
     char *prefx;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
@@ -617,6 +648,8 @@ pmix_status_t pmix12_bfrop_print_double(char **output, char *prefix, double *src
                                         pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -654,7 +687,9 @@ pmix_status_t pmix12_bfrop_print_time(char **output, char *prefix, time_t *src,
     char *prefx;
     char *t;
 
-    /* deal with NULL prefix */
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+   /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
             return PMIX_ERR_NOMEM;
@@ -691,6 +726,8 @@ pmix_status_t pmix12_bfrop_print_timeval(char **output, char *prefix, struct tim
                                          pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -733,6 +770,8 @@ pmix_status_t pmix12_bfrop_print_value(char **output, char *prefix, pmix_value_t
 {
     char *prefx;
     int rc;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -843,6 +882,8 @@ pmix_status_t pmix12_bfrop_print_info(char **output, char *prefix, pmix_info_t *
     char *tmp;
     int rc;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     pmix12_bfrop_print_value(&tmp, NULL, &src->value, PMIX_VALUE);
     rc = asprintf(output, "%sKEY: %s %s", prefix, src->key,
                   (NULL == tmp) ? "PMIX_VALUE: NULL" : tmp);
@@ -860,6 +901,8 @@ pmix_status_t pmix12_bfrop_print_pdata(char **output, char *prefix, pmix_pdata_t
 {
     char *tmp1, *tmp2;
     int rc;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix12_bfrop_print_proc(&tmp1, NULL, &src->proc, PMIX_PROC);
     pmix12_bfrop_print_value(&tmp2, NULL, &src->value, PMIX_VALUE);
@@ -880,12 +923,16 @@ pmix_status_t pmix12_bfrop_print_pdata(char **output, char *prefix, pmix_pdata_t
 pmix_status_t pmix12_bfrop_print_buf(char **output, char *prefix, pmix_buffer_t *src,
                                      pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix12_bfrop_print_app(char **output, char *prefix, pmix_app_t *src,
                                      pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_SUCCESS;
 }
 
@@ -893,6 +940,8 @@ pmix_status_t pmix12_bfrop_print_proc(char **output, char *prefix, pmix_proc_t *
                                       pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -912,6 +961,8 @@ pmix_status_t pmix12_bfrop_print_proc(char **output, char *prefix, pmix_proc_t *
 pmix_status_t pmix12_bfrop_print_kval(char **output, char *prefix, pmix_kval_t *src,
                                       pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_SUCCESS;
 }
 
@@ -921,6 +972,8 @@ pmix_status_t pmix12_bfrop_print_array(char **output, char *prefix, pmix_info_ar
     size_t j;
     char *tmp, *tmp2, *tmp3, *pfx;
     pmix_info_t *s1;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     if (0 > asprintf(&tmp, "%sARRAY SIZE: %ld", prefix, (long) src->size)) {
         return PMIX_ERR_NOMEM;
@@ -949,6 +1002,8 @@ pmix_status_t pmix12_bfrop_print_array(char **output, char *prefix, pmix_info_ar
 pmix_status_t pmix12_bfrop_print_modex(char **output, char *prefix, pmix_modex_data_t *src,
                                        pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_SUCCESS;
 }
 
@@ -956,6 +1011,8 @@ pmix_status_t pmix12_bfrop_print_persist(char **output, char *prefix, pmix_persi
                                          pmix_data_type_t type)
 {
     char *prefx;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* deal with NULL prefix */
     if (NULL == prefix) {
@@ -992,6 +1049,8 @@ pmix_status_t pmix12_bfrop_print_bo(char **output, char *prefix, pmix_byte_objec
 {
     char *prefx;
 
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
     /* deal with NULL prefix */
     if (NULL == prefix) {
         if (0 > asprintf(&prefx, " ")) {
@@ -1025,63 +1084,85 @@ pmix_status_t pmix12_bfrop_print_bo(char **output, char *prefix, pmix_byte_objec
 pmix_status_t pmix12_bfrop_print_scope(char **output, char *prefix, pmix_scope_t *src,
                                        pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_status(char **output, char *prefix, pmix_status_t *src,
                                         pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_ptr(char **output, char *prefix, void *src, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_cmd(char **output, char *prefix, void *src, pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_info_directives(char **output, char *prefix, void *src,
                                                  pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_datatype(char **output, char *prefix, pmix_data_type_t *src,
                                           pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_proc_state(char **output, char *prefix, pmix_data_type_t *src,
                                             pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_darray(char **output, char *prefix, pmix_data_array_t *src,
                                         pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_proc_info(char **output, char *prefix, pmix_proc_info_t *src,
                                            pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_query(char **output, char *prefix, pmix_query_t *src,
                                        pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix12_bfrop_print_rank(char **output, char *prefix, pmix_rank_t *src,
                                       pmix_data_type_t type)
 {
+    PMIX_HIDE_UNUSED_PARAMS(output, prefix, src, type);
+
     return PMIX_ERR_NOT_SUPPORTED;
 }

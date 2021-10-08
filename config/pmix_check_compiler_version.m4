@@ -1,13 +1,11 @@
 dnl -*- shell-script -*-
 dnl
 dnl Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
-dnl Copyright (c) 2013-2017 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2019      Research Organization for Information Science
-dnl                         and Technology (RIST).  All rights reserved.
-dnl
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
 dnl                         reserved.
+dnl
+dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -19,7 +17,7 @@ dnl
 # PMIX_CHECK_COMPILER_VERSION_ID()
 # ----------------------------------------------------
 # Try to figure out the compiler's name and version to detect cases,
-# where users compile PMIx with one version and compile the application
+# where users compile Open MPI with one version and compile the application
 # with a different compiler.
 #
 AC_DEFUN([PMIX_CHECK_COMPILER_VERSION_ID],
@@ -32,109 +30,92 @@ AC_DEFUN([PMIX_CHECK_COMPILER_VERSION_ID],
 
 
 AC_DEFUN([PMIX_CHECK_COMPILER], [
-    lower=m4_tolower($1)
-    AC_CACHE_CHECK([for compiler $lower], pmix_cv_compiler_[$1],
+    AS_LITERAL_IF([$1], [],
+                  [m4_fatal([PMIX_CHECK_COMPILER argument must be a literal])])
+    lower=m4_tolower([$1])
+    AC_CACHE_CHECK([for compiler $lower], [pmix_cv_compiler_$1],
     [
             CPPFLAGS_orig=$CPPFLAGS
-            CPPFLAGS="-I${top_srcdir}/src/include $CPPFLAGS"
-AC_RUN_IFELSE([AC_LANG_SOURCE([[
+            CPPFLAGS="-I${PMIX_TOP_SRCDIR}/pmix/include $CPPFLAGS"
+            AC_RUN_IFELSE([AC_LANG_PROGRAM([[
 #include <stdio.h>
 #include <stdlib.h>
-#include "pmix_portable_platform.h"
-
-int main (int argc, char * argv[])
-{
+#include "src/include/pmix_portable_platform.h"
+]],[[
     FILE * f;
     f=fopen("conftestval", "w");
     if (!f) exit(1);
     fprintf (f, "%d", PLATFORM_COMPILER_$1);
-    fclose(f);
-    return 0;
-}
-            ]])],
-            [
-                eval pmix_cv_compiler_$1=`cat conftestval`;
-            ],
-            [
-                eval pmix_cv_compiler_$1=0
-            ],
-            [
-                eval pmix_cv_compiler_$1=0
+            ]])], [
+                pmix_cv_compiler_$1=`cat conftestval`
+            ], [
+                pmix_cv_compiler_$1=0
+            ], [
+                pmix_cv_compiler_$1=0
             ])
             CPPFLAGS=$CPPFLAGS_orig
     ])
-    AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], $pmix_cv_compiler_[$1],
-                       [The compiler $lower which PMIx was built with])
+    AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], [$pmix_cv_compiler_$1],
+                       [The compiler $lower which OMPI was built with])
 ])dnl
 
 AC_DEFUN([PMIX_CHECK_COMPILER_STRING], [
-    lower=m4_tolower($1)
-    AC_CACHE_CHECK([for compiler $lower], pmix_cv_compiler_[$1],
+    AS_LITERAL_IF([$1], [],
+                  [m4_fatal([PMIX_CHECK_COMPILER_STRING argument must be a literal])])
+    lower=m4_tolower([$1])
+    AC_CACHE_CHECK([for compiler $lower], [pmix_cv_compiler_$1],
     [
             CPPFLAGS_orig=$CPPFLAGS
-            CPPFLAGS="-I${top_srcdir}/src/include $CPPFLAGS"
-AC_RUN_IFELSE([AC_LANG_SOURCE([[
+            CPPFLAGS="-I${PMIX_TOP_SRCDIR}/pmix/include $CPPFLAGS"
+            AC_RUN_IFELSE([AC_LANG_PROGRAM([[
 #include <stdio.h>
 #include <stdlib.h>
-#include "pmix_portable_platform.h"
-
-int main (int argc, char * argv[])
-{
+#include "src/include/pmix_portable_platform.h"
+]],[[
     FILE * f;
     f=fopen("conftestval", "w");
     if (!f) exit(1);
     fprintf (f, "%s", PLATFORM_COMPILER_$1);
-    fclose(f);
-    return 0;
-}
-            ]])],
-            [
-                eval pmix_cv_compiler_$1=`cat conftestval`;
-            ],
-            [
-                eval pmix_cv_compiler_$1=UNKNOWN
-            ],
-            [
-                eval pmix_cv_compiler_$1=UNKNOWN
+            ]])], [
+                pmix_cv_compiler_$1=`cat conftestval`
+            ], [
+                pmix_cv_compiler_$1=UNKNOWN
+            ], [
+                pmix_cv_compiler_$1=UNKNOWN
             ])
             CPPFLAGS=$CPPFLAGS_orig
     ])
-    AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], $pmix_cv_compiler_[$1],
-                       [The compiler $lower which PMIx was built with])
+    AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], [$pmix_cv_compiler_$1],
+                       [The compiler $lower which OMPI was built with])
 ])dnl
 
 
-
-
 AC_DEFUN([PMIX_CHECK_COMPILER_STRINGIFY], [
-    lower=m4_tolower($1)
-    AC_CACHE_CHECK([for compiler $lower], pmix_cv_compiler_[$1],
+    AS_LITERAL_IF([$1], [],
+                  [m4_fatal([PMIX_CHECK_COMPILER_STRINGIFY argument must be a literal])])
+    lower=m4_tolower([$1])
+    AC_CACHE_CHECK([for compiler $lower], [pmix_cv_compiler_$1],
     [
             CPPFLAGS_orig=$CPPFLAGS
-            CPPFLAGS="-I${top_srcdir}/src/include $CPPFLAGS"
-            AC_RUN_IFELSE([AC_LANG_SOURCE([[
+            CPPFLAGS="-I${PMIX_TOP_SRCDIR}/pmix/include $CPPFLAGS"
+            AC_RUN_IFELSE([AC_LANG_PROGRAM([[
 #include <stdio.h>
 #include <stdlib.h>
-#include "pmix_portable_platform.h"
-
-int main (int argc, char * argv[])
-{
+#include "src/include/pmix_portable_platform.h"
+]],[[
     FILE * f;
     f=fopen("conftestval", "w");
     if (!f) exit(1);
-    fprintf (f, "%s", _STRINGIFY(PLATFORM_COMPILER_$1));
-    fclose(f);
-    return 0;
-}
+    fprintf (f, "%s", PLATFORM_STRINGIFY(PLATFORM_COMPILER_$1));
             ]])], [
-                eval pmix_cv_compiler_$1=`cat conftestval`;
+                pmix_cv_compiler_$1=`cat conftestval`
             ], [
-                eval pmix_cv_compiler_$1=UNKNOWN
+                pmix_cv_compiler_$1=UNKNOWN
             ], [
-                eval pmix_cv_compiler_$1=UNKNOWN
+                pmix_cv_compiler_$1=UNKNOWN
             ])
             CPPFLAGS=$CPPFLAGS_orig
     ])
-    AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], $pmix_cv_compiler_[$1],
-                       [The compiler $lower which PMIX was built with])
+    AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], [$pmix_cv_compiler_$1],
+                       [The compiler $lower which OMPI was built with])
 ])dnl

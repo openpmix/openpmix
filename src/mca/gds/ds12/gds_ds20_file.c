@@ -156,6 +156,7 @@ static bool pmix_ds20_kname_match(uint8_t *addr, const char *key, size_t key_has
 {
     bool ret = 0;
     size_t klen;
+    PMIX_HIDE_UNUSED_PARAMS(key_hash);
     ESH_KNAME_LEN_V20(klen, key);
     ret = (0 == strncmp(ESH_KNAME_PTR_V20(addr),
                         key, klen));

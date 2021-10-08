@@ -35,7 +35,7 @@
 #include "src/util/output.h"
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
-#include "src/util/show_help_lex.h"
+#include "src/util/showhelp/showhelp_lex.h"
 
 /*
  * Private variables
@@ -149,8 +149,8 @@ static int open_file(const char *base, const char *topic)
          */
         for (i = 0; NULL != search_dirs[i]; i++) {
             filename = pmix_os_path(false, search_dirs[i], base, NULL);
-            pmix_show_help_yyin = fopen(filename, "r");
-            if (NULL == pmix_show_help_yyin) {
+            pmix_showhelp_yyin = fopen(filename, "r");
+            if (NULL == pmix_showhelp_yyin) {
                 if (0 > asprintf(&err_msg, "%s: %s", filename, strerror(errno))) {
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
@@ -161,18 +161,18 @@ static int open_file(const char *base, const char *topic)
                         > asprintf(&filename, "%s%s%s.txt", search_dirs[i], PMIX_PATH_SEP, base)) {
                         return PMIX_ERR_OUT_OF_RESOURCE;
                     }
-                    pmix_show_help_yyin = fopen(filename, "r");
+                    pmix_showhelp_yyin = fopen(filename, "r");
                 }
             }
             free(filename);
-            if (NULL != pmix_show_help_yyin) {
+            if (NULL != pmix_showhelp_yyin) {
                 break;
             }
         }
     }
 
     /* If we still couldn't open it, then something is wrong */
-    if (NULL == pmix_show_help_yyin) {
+    if (NULL == pmix_showhelp_yyin) {
         pmix_output(output_stream,
                     "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
                     "the help file:\n    %s.  Sorry!\n%s",
@@ -187,7 +187,7 @@ static int open_file(const char *base, const char *topic)
 
     /* Set the buffer */
 
-    pmix_show_help_init_buffer(pmix_show_help_yyin);
+    pmix_showhelp_init_buffer(pmix_showhelp_yyin);
 
     /* Happiness */
 
@@ -206,10 +206,10 @@ static int find_topic(const char *base, const char *topic)
     /* Examine every topic */
 
     while (1) {
-        token = pmix_show_help_yylex();
+        token = pmix_showhelp_yylex();
         switch (token) {
         case PMIX_SHOW_HELP_PARSE_TOPIC:
-            tmp = strdup(pmix_show_help_yytext);
+            tmp = strdup(pmix_showhelp_yytext);
             if (NULL == tmp) {
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
@@ -248,11 +248,11 @@ static int read_topic(char ***array)
     int token, rc;
 
     while (1) {
-        token = pmix_show_help_yylex();
+        token = pmix_showhelp_yylex();
         switch (token) {
         case PMIX_SHOW_HELP_PARSE_MESSAGE:
             /* pmix_argv_append_nosize does strdup(pmix_show_help_yytext) */
-            rc = pmix_argv_append_nosize(array, pmix_show_help_yytext);
+            rc = pmix_argv_append_nosize(array, pmix_showhelp_yytext);
             if (rc != PMIX_SUCCESS) {
                 return rc;
             }
@@ -279,8 +279,8 @@ static int load_array(char ***array, const char *filename, const char *topic)
         ret = read_topic(array);
     }
 
-    fclose(pmix_show_help_yyin);
-    pmix_show_help_yylex_destroy();
+    fclose(pmix_showhelp_yyin);
+    pmix_showhelp_yylex_destroy();
 
     if (PMIX_SUCCESS != ret) {
         pmix_argv_free(*array);

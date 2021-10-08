@@ -331,6 +331,20 @@ typedef struct pmix_listener_t {
 } pmix_listener_t;
 PMIX_CLASS_DECLARATION(pmix_listener_t);
 
+#define PMIX_LISTENER_STATIC_INIT           \
+{                                           \
+    .super = PMIX_LIST_ITEM_STATIC_INIT,    \
+    .protocol = PMIX_PROTOCOL_UNDEF,        \
+    .socket = 0,                            \
+    .varname = NULL,                        \
+    .uri = NULL,                            \
+    .owner = 0,                             \
+    .owner_given = false,                   \
+    .group = 0,                             \
+    .mode = 0,                              \
+    .cbfunc = NULL                          \
+}
+
 /* provide a backdoor to the framework output for debugging */
 PMIX_EXPORT extern int pmix_ptl_base_output;
 

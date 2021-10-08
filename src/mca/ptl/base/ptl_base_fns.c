@@ -221,6 +221,8 @@ pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo)
 
 pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
+    PMIX_HIDE_UNUSED_PARAMS(proc);
+
     pmix_setenv("PMIX_SERVER_TMPDIR", pmix_ptl_base.session_tmpdir, true, env);
     pmix_setenv("PMIX_SYSTEM_TMPDIR", pmix_ptl_base.system_tmpdir, true, env);
 
@@ -280,7 +282,7 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connecti
      * be configured to support tool connections, or this
      * user isn't authorized to access it - or it may just
      * not exist yet! Check for existence */
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (0 != access(filename, R_OK)) {
         if (ENOENT == errno) {
             /* the file does not exist, so give it
@@ -307,7 +309,7 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connecti
                 }
                 PMIX_WAIT_THREAD(&lock);
                 PMIX_DESTRUCT_LOCK(&lock);
-                /* coverity[toctou] */
+                /* coverity[TOCTOU] */
                 if (0 == access(filename, R_OK)) {
                     goto process;
                 }
@@ -401,7 +403,7 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
             continue;
         }
         newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
-        /* coverity[toctou] */
+        /* coverity[TOCTOU] */
         if (-1 == stat(newdir, &buf)) {
             free(newdir);
             continue;
@@ -670,7 +672,7 @@ void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace, pmix_ran
     /* store the URI for subsequent lookups */
     PMIX_KVAL_NEW(urikv, PMIX_SERVER_URI);
     urikv->value->type = PMIX_STRING;
-    asprintf(&urikv->value->data.string, "%s.%u;%s", nspace, rank, suri);
+    pmix_asprintf(&urikv->value->data.string, "%s.%u;%s", nspace, rank, suri);
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
@@ -954,6 +956,7 @@ pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
 
 void pmix_ptl_base_setup_socket(pmix_peer_t *peer)
 {
+    PMIX_HIDE_UNUSED_PARAMS(peer);
 #if defined(TCP_NODELAY)
     int optval;
     optval = 1;
@@ -1083,7 +1086,7 @@ static void check_server(char *filename, pmix_list_t *servers)
      * be configured to support tool connections, or this
      * user isn't authorized to access it - or it may just
      * not exist yet! Check for existence */
-    /* coverity[toctou] */
+    /* coverity[TOCTOU] */
     if (0 == access(filename, R_OK)) {
         goto process;
     } else {
@@ -1112,7 +1115,7 @@ static void check_server(char *filename, pmix_list_t *servers)
                 }
                 PMIX_WAIT_THREAD(&lock);
                 PMIX_DESTRUCT_LOCK(&lock);
-                /* coverity[toctou] */
+                /* coverity[TOCTOU] */
                 if (0 == access(filename, R_OK)) {
                     goto process;
                 }
@@ -1161,6 +1164,7 @@ process:
         if (NULL != nspace) {
             free(nspace);
         }
+        free(srvr);
         return;
     }
 
@@ -1303,7 +1307,7 @@ static void query_servers(char *dirname, pmix_list_t *servers)
             continue;
         }
         newdir = pmix_os_path(false, dname, dir_entry->d_name, NULL);
-        /* coverity[toctou] */
+        /* coverity[TOCTOU] */
         if (-1 == stat(newdir, &buf)) {
             free(newdir);
             continue;
@@ -1346,6 +1350,8 @@ void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
     pmix_infolist_t *iptr;
     pmix_status_t rc;
 
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     PMIX_CONSTRUCT(&servers, pmix_list_t);
 
     query_servers(NULL, &servers);
@@ -1372,6 +1378,8 @@ void pmix_ptl_base_query_servers(int sd, short args, void *cbdata)
 static void timeout(int sd, short args, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
     PMIX_WAKEUP_THREAD(lock);
 }
 
