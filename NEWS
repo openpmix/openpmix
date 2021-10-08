@@ -43,6 +43,9 @@ multiple release branches.
     - Expand the tm/pbs config to check for lib64
     - Update portable platform file
     - Abort configure if gcc is <= v4.8.1
+    - Enable support for address sanitizers, but only on request
+    - Fix issues raised by picky compiler checks
+    - Don't check for Python 3.4+ if not building the Python bindings
     - Update VERSION and NEWS
  - PR #2299: Update 4.1.1 rc2
     - Update VERSION and NEWS
