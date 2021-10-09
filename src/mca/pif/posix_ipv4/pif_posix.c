@@ -247,6 +247,7 @@ static int if_posix_open(void)
                         (unsigned long) sizeof(pmix_pif_t));
             free(ifconf.ifc_req);
             close(sd);
+            free(ifr);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
         intf->af_family = AF_INET;

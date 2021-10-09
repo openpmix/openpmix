@@ -1332,7 +1332,9 @@ static char *build_parsable(pmix_cmd_line_option_t *option)
     length = pmix_snprintf(NULL, 0, "%c:%s:%s:%d:%s\n", option->clo_short_name,
                       option->clo_single_dash_name, option->clo_long_name, option->clo_num_params,
                       option->clo_description);
-
+    if (0 >= length) {
+        return NULL;
+    }
     line = (char *) malloc(length * sizeof(char));
 
     if ('\0' == option->clo_short_name) {

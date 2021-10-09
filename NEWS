@@ -23,7 +23,7 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.1.1 -- TBD
+4.1.1 -- 15 Oct 2021
 ----------------------
 **** NOTE: As of v4.1.1, PMIx includes an EXCEPTIONS file that lists
 **** all deviations from the PMIx Standard. This primarily includes
