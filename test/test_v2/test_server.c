@@ -1345,6 +1345,7 @@ int server_init(validation_params *v_params)
             if (0 != rc) {
                 TEST_ERROR_EXIT(("Creation of pipe failed with error: %d", rc));
             }
+#ifdef F_GETPIPE_SZ
             pipesz1 = fcntl(fd1[0], F_GETPIPE_SZ);
             pipesz2 = fcntl(fd2[0], F_GETPIPE_SZ);
             if (pipesz1 < 0 || pipesz2 < 0) {
@@ -1361,7 +1362,7 @@ int server_init(validation_params *v_params)
                     TEST_ERROR_EXIT(("Problem setting pipe size; check permissions. Exiting"));
                 }
             }
-
+#endif
             // copy hostname from nodes array
             server_info->hostname = strdup(nodes[i].pmix_hostname);
             strncpy(v_params->pmix_hostname, server_info->hostname, PMIX_MAX_KEYLEN - 1);
