@@ -27,8 +27,6 @@
 headers = cli_stages.h server_callbacks.h test_common.h test_server.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/src/api
-# we do NOT want picky compilers down here
-CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
 # Can be added in for purposes of debugging on platforms building with gcc (gcc-specific flags)
 #AM_CFLAGS = -fno-omit-frame-pointer -g -Wfatal-errors #-Wall -Wextra -Wpedantic -Wconversion -Wshadow

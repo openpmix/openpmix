@@ -10,7 +10,6 @@
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix $(pmix_check_jansson_CPPFLAGS)
 # we do NOT want picky compilers down here
-CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
 if HAVE_JANSSON
 noinst_PROGRAMS = generate server daemon testcoord
