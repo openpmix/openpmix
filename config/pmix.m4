@@ -431,10 +431,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     pmix_show_title "Header file tests"
 
-    PMIX_VAR_SCOPE_PUSH(PMIX_CFLAGS_save_for_headers)
-    PMIX_CFLAGS_save_for_headers=$CFLAGS
-    _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror, Werror)
-
     AC_CHECK_HEADERS([arpa/inet.h \
                       fcntl.h ifaddrs.h inttypes.h libgen.h \
                       net/uio.h netinet/in.h \
@@ -513,9 +509,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED(PMIX_USE_STDBOOL_H, $PMIX_USE_STDBOOL_H,
                        [Whether to use <stdbool.h> or not])
     AC_MSG_RESULT([$MSG])
-
-    CFLAGS=$PMIX_CFLAGS_save_for_headers
-    PMIX_VAR_SCOPE_POP
 
     # checkpoint results
     AC_CACHE_SAVE
@@ -1068,22 +1061,16 @@ fi
 #
 
 AC_MSG_CHECKING([if want developer-level compiler pickyness])
-AC_ARG_ENABLE(picky,
-    AS_HELP_STRING([--enable-picky],
+AC_ARG_ENABLE(devel-check,
+    AS_HELP_STRING([--enable-devel-check],
                    [enable developer-level compiler pickyness when building PMIx (default: disabled)]))
-if test "$enable_picky" = "yes"; then
+if test "$enable_devel_check" = "yes"; then
     AC_MSG_RESULT([yes])
     WANT_PICKY_COMPILER=1
 else
     AC_MSG_RESULT([no])
     WANT_PICKY_COMPILER=0
 fi
-#################### Early development override ####################
-if test "$WANT_PICKY_COMPILER" = "0" && test -z "$enable_picky" && test "$PMIX_DEVEL" = "1"; then
-    WANT_PICKY_COMPILER=1
-    echo "--> developer override: enable picky compiler by default"
-fi
-#################### Early development override ####################
 
 AC_DEFINE_UNQUOTED(PMIX_PICKY_COMPILERS, $WANT_PICKY_COMPILER,
                    [Whether or not we are using picky compiler settings])
@@ -1407,7 +1394,6 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
         AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
-        AM_CONDITIONAL(WANT_PMI_BACKWARD, test "$WANT_PMI_BACKWARD" = 1)
         AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
         AM_CONDITIONAL([PMIX_HAVE_JANSSON], [test "x$pmix_check_jansson_happy" = "xyes"])
         AM_CONDITIONAL([PMIX_HAVE_CURL], [test "x$pmix_check_curl_happy" = "xyes"])
