@@ -93,6 +93,9 @@ static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata);
 static void release_cb(pmix_status_t status, void *cbdata)
 {
     int *ptr = (int *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     *ptr = 0;
 }
 
@@ -425,6 +428,7 @@ static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size)
 {
     size_t ret = 0;
     server_info_t *server = NULL, *server_tmp;
+
     if (0 == my_server_id) {
         PMIX_LIST_FOREACH (server_tmp, server_list, server_info_t) {
             if (server_tmp->idx == msg_hdr->dst_id) {
@@ -450,6 +454,8 @@ static int server_send_msg(msg_hdr_t *msg_hdr, char *data, size_t size)
 static void _send_procs_cb(pmix_status_t status, const char *data, size_t ndata, void *cbdata,
                            pmix_release_cbfunc_t relfn, void *relcbd)
 {
+    PMIX_HIDE_UNUSED_PARAMS(status, relfn, relcbd);
+
     server_info_t *server = (server_info_t *) cbdata;
 
     server_unpack_procs((char *) data, ndata);
@@ -538,6 +544,8 @@ static void server_read_cb(int fd, short event, void *arg)
     static size_t barrier_cnt = 0;
     static size_t contrib_cnt = 0;
     static size_t fence_buf_offset = 0;
+
+    PMIX_HIDE_UNUSED_PARAMS(fd, event);
 
     rc = read(server->rd_fd, &msg_hdr, sizeof(msg_hdr_t));
     if (rc <= 0) {
@@ -705,6 +713,8 @@ static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata)
     msg_hdr_t msg_hdr;
     int *sender_id = (int *) cbdata;
 
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     msg_hdr.cmd = CMD_DMDX_RESPONSE;
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = sz;
@@ -778,6 +788,8 @@ static void wait_signal_callback(int fd, short event, void *arg)
     int status;
     pid_t pid;
     int i;
+
+    PMIX_HIDE_UNUSED_PARAMS(fd, event);
 
     if (SIGCHLD != pmix_event_get_signal(sig)) {
         return;

@@ -51,6 +51,9 @@ static void add_noise(char *noise_param, char *my_nspace, pmix_rank_t my_rank)
 static void release_cb(pmix_status_t status, void *cbdata)
 {
     int *ptr = (int *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     *ptr = 0;
 }
 
