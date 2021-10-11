@@ -23,6 +23,8 @@ static void spawn_cb(pmix_status_t status, char nspace[], void *cbdata)
 {
     spawn_cbdata *cb = (spawn_cbdata *) cbdata;
 
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     PMIX_LOAD_NSPACE(cb->nspace, nspace);
     cb->in_progress = 0;
 }
@@ -33,6 +35,9 @@ static int test_spawn_common(char *my_nspace, int my_rank, int blocking)
     pmix_app_t *apps;
     size_t napps;
     pmix_nspace_t nspace;
+
+    PMIX_HIDE_UNUSED_PARAMS(my_nspace, my_rank);
+
     memset(nspace, 0, PMIX_MAX_NSLEN + 1);
     napps = 1;
     PMIX_APP_CREATE(apps, napps);

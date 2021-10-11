@@ -24,6 +24,9 @@ typedef struct {
 static void release_cb(pmix_status_t status, void *cbdata)
 {
     int *ptr = (int *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     *ptr = 0;
 }
 
@@ -32,6 +35,8 @@ static void lookup_cb(pmix_status_t status, pmix_pdata_t pdata[], size_t npdata,
     size_t i, j;
     lookup_cbdata *cb = (lookup_cbdata *) cbdata;
     pmix_pdata_t *tgt = cb->pdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     /* find the matching key in the provided info array - error if not found */
     for (i = 0; i < npdata; i++) {

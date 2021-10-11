@@ -200,6 +200,8 @@ void errhandler(size_t evhdlr_registration_id, pmix_status_t status, const pmix_
                 pmix_info_t info[], size_t ninfo, pmix_info_t results[], size_t nresults,
                 pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, info, ninfo, results, nresults);
+
     TEST_ERROR((" PMIX server event handler for %s:%d with status = %d", source->nspace,
                 source->rank, status));
     cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -207,11 +209,15 @@ void errhandler(size_t evhdlr_registration_id, pmix_status_t status, const pmix_
 
 void op_callbk(pmix_status_t status, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+
     TEST_VERBOSE(("OP CALLBACK CALLED WITH STATUS %d", status));
 }
 
 void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+
     TEST_VERBOSE(("ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu", status,
                   (unsigned long) errhandler_ref));
 }
