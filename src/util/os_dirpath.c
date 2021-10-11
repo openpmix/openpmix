@@ -114,12 +114,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         }
 
         /* Now that we have the name, try to create it */
-        if (0 != mkdir(tmp, mode)) {
-            pmix_show_help("help-pmix-util.txt", "mkdir-failed", true, tmp, strerror(errno));
-            pmix_argv_free(parts);
-            free(tmp);
-            return PMIX_ERROR;
-        }
+        mkdir(tmp, mode);
         ret = errno; // save the errno for an error msg, if needed
         /* coverity[TOCTOU] */
         if (0 != stat(tmp, &buf)) {
