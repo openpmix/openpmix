@@ -75,7 +75,7 @@ extern FILE *pmixt_outfile;
     {                                                                                        \
         struct timeval tv;                                                                   \
         gettimeofday(&tv, NULL);                                                             \
-        double ts = tv.tv_sec + 1E-6 * tv.tv_usec;                                           \
+        double ts = (double)tv.tv_sec + 1E-6 * (double)tv.tv_usec;                           \
         fprintf(pmixt_outfile, "==%d== [%lf] %s:%s: %s\n", getpid(), ts, STRIPPED_FILE_NAME, \
                 __func__, pmix_test_output_prepare x);                                       \
         fflush(pmixt_outfile);                                                               \
@@ -94,7 +94,7 @@ extern FILE *pmixt_outfile;
     {                                                                                            \
         struct timeval tv;                                                                       \
         gettimeofday(&tv, NULL);                                                                 \
-        double ts = tv.tv_sec + 1E-6 * tv.tv_usec;                                               \
+        double ts = (double)tv.tv_sec + 1E-6 * (double)tv.tv_usec;                               \
         fprintf(stderr, "==%d== [%lf] ERROR [%s:%d:%s]: %s\n", getpid(), ts, STRIPPED_FILE_NAME, \
                 __LINE__, __func__, pmix_test_output_prepare x);                                 \
         fflush(stderr);                                                                          \

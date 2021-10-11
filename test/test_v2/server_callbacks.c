@@ -121,8 +121,8 @@ pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs, const pmix_in
     size_t n;
 
     for (n = 0; n < nprocs; n++){
-        TEST_VERBOSE(("Participating in this fence on node: %d procs[%d].nspace: %s,"
-                      " procs[%d].rank: %d, nprocs: %d", my_server_id, n, procs[n].nspace, n,
+        TEST_VERBOSE(("Participating in this fence on node: %d procs[%lu].nspace: %s,"
+                      " procs[%d].rank: %u, nprocs: %lu", my_server_id, n, procs[n].nspace, n,
                       procs[n].rank, nprocs));
     }
 
@@ -149,7 +149,7 @@ pmix_status_t dmodex_fn(const pmix_proc_t *proc, const pmix_info_t info[], size_
 {
     size_t n;
 
-    TEST_VERBOSE(("Getting data for %s:%d", proc->nspace, proc->rank));
+    TEST_VERBOSE(("Getting data for %s:%u", proc->nspace, proc->rank));
 
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
