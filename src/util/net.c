@@ -146,7 +146,7 @@ int pmix_net_init(void)
 
             if ((a > 255) || (b > 255) || (c > 255) || (d > 255) || (bits > 32)) {
                 if (0 == found_bad) {
-                    pmix_show_help("help-pmix-runtime.txt", "malformed net_private_ipv4", true,
+                    pmix_show_help("help-pmix-util.txt", "malformed net_private_ipv4", true,
                                    args[i]);
                     found_bad = 1;
                 }
