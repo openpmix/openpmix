@@ -33,6 +33,8 @@
 
 #include <pmix.h>
 
+#include "examples.h"
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -42,6 +44,8 @@ int main(int argc, char **argv)
     uint32_t nprocs;
     pmix_info_t *info;
     pmix_pdata_t *pdata;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {

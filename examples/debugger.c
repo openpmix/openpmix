@@ -98,6 +98,8 @@ static pmix_proc_t myproc;
 static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                         pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
+    (void)status;  /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
 
@@ -132,6 +134,9 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)evhdlr_registration_id; (void)status; (void)source; (void)info; (void)ninfo; (void)results; (void)nresults;
+
     /* this example doesn't do anything with default events */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -150,6 +155,9 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
                        pmix_info_t results[], size_t nresults,
                        pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)evhdlr_registration_id; (void)status; (void)source; (void)info; (void)ninfo; (void)results; (void)nresults;
+
     /* tell the event handler state machine that we are the last step */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -429,6 +437,8 @@ static int attach_to_running_job(char *nspace)
     pmix_query_t *query;
     size_t nq;
     myquery_data_t *q;
+
+    (void)nspace; /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
 
     /* query the active nspaces so we can verify that the
      * specified one exists */
