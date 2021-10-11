@@ -82,6 +82,9 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)evhdlr_registration_id; (void)source; (void)info; (void)ninfo; (void)results; (void)nresults;
+
     fprintf(stderr, "Client %s:%d NOTIFIED with status %d\n", myproc.nspace, myproc.rank, status);
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -98,6 +101,9 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 
 static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)errhandler_ref;
+
     mylock_t *lock = (mylock_t *) cbdata;
 
     lock->status = status;
@@ -107,6 +113,9 @@ static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, v
 static void grpcomplete(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                         pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)status; (void)info; (void)ninfo; (void)cbdata; (void)release_fn; (void)release_cbdata;
+
     fprintf(stderr, "%s:%d GRPCOMPLETE\n", myproc.nspace, myproc.rank);
     DEBUG_WAKEUP_THREAD(&invitedlock);
 }
@@ -118,6 +127,9 @@ static void invitefn(size_t evhdlr_registration_id, pmix_status_t status, const 
     size_t n;
     char *grp = NULL;
     pmix_status_t rc;
+
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)evhdlr_registration_id; (void)results; (void)nresults;
 
     /* if I am the leader, I can ignore this event */
     if (PMIX_CHECK_PROCID(source, &myproc)) {
@@ -162,6 +174,9 @@ int main(int argc, char **argv)
     pmix_status_t code;
     pmix_info_t *results;
     size_t nresults;
+
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)argc; (void)argv;
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {

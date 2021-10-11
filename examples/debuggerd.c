@@ -61,6 +61,8 @@ static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
 
+    (void)status; /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+
     /* save the returned info - it will be
      * released in the release_fn */
     if (0 < ninfo) {
@@ -90,6 +92,9 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)evhdlr_registration_id; (void)status; (void)source; (void)info; (void)ninfo; (void)results; (void)nresults;
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     }
@@ -124,6 +129,8 @@ int main(int argc, char **argv)
     pmix_query_t *query;
     size_t nq, n;
     myquery_data_t myquery_data;
+
+    (void)argc; (void)argv; /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
 
     fprintf(stderr, "I AM HERE\n");
     fflush(stderr);

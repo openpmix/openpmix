@@ -47,6 +47,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo, results, nresults);
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     }
@@ -75,6 +77,8 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
 static void infocbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                        pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
+    EXAMPLES_HIDE_UNUSED_PARAMS(info, ninfo);
+
     mylock_t *lock = (mylock_t *) cbdata;
 
     /* release the caller */
@@ -96,6 +100,8 @@ int main(int argc, char **argv)
     bool flag;
     mylock_t mylock;
     pmix_data_array_t *dptr;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us - note that the call to "init" includes the return of
      * any job-related info provided by the RM. */

@@ -122,3 +122,19 @@ typedef struct {
             free((r)->nspace);             \
         }                                  \
     } while (0)
+
+/* XXX: Quick hack to define locally here in examples header */
+#define EXAMPLES_PICKY_COMPILERS 1
+
+#if EXAMPLES_PICKY_COMPILERS
+#define EXAMPLES_HIDE_UNUSED_PARAMS(...)            \
+    do {                                            \
+        int __x = 3;                                \
+        examples_hide_unused_params(__x, __VA_ARGS__);  \
+    } while(0)
+
+void examples_hide_unused_params(int x, ...);
+
+#else
+#define EXAMPLES_HIDE_UNUSED_PARAMS(...)
+#endif

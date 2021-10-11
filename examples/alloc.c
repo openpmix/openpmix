@@ -93,6 +93,8 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
     myrel_t *lock;
     size_t n;
 
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
+
     /* find the return object */
     lock = NULL;
     for (n = 0; n < ninfo; n++) {
@@ -158,6 +160,8 @@ int main(int argc, char **argv)
     mylock_t mylock;
     pmix_status_t code;
     myrel_t myrel;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {

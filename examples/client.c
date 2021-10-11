@@ -49,6 +49,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     }
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo, results, nresults);
 }
 
 /* this is an event notification function that we explicitly request
@@ -64,6 +66,8 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
 {
     myrel_t *lock;
     size_t n;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo, results, nresults);
 
     /* find the return object */
     lock = NULL;
@@ -129,6 +133,8 @@ int main(int argc, char **argv)
     pmix_status_t dbg = PMIX_ERR_DEBUGGER_RELEASE;
     pid_t pid;
     pmix_topology_t mytopo;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     pid = getpid();
     fprintf(stderr, "Client %lu: Running\n", (unsigned long) pid);

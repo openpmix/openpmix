@@ -79,6 +79,10 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)evhdlr_registration_id; (void)source; (void)info; (void)ninfo; (void)results; (void)nresults;
+    (void)cbfunc; (void)cbdata;
+
     fprintf(stderr, "Client %s:%d NOTIFIED with status %d\n", myproc.nspace, myproc.rank, status);
 }
 
@@ -112,6 +116,9 @@ int main(int argc, char **argv)
     mylock_t lock;
     pmix_info_t *results, info;
     size_t nresults, cid;
+
+    /* XXX: EXAMPLES_HIDE_UNUSED_PARAMS */
+    (void)argc; (void)argv;
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
