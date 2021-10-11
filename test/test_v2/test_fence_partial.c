@@ -61,19 +61,19 @@ int parse_fence_client(int *index, int argc, char **argv, test_params *params, v
 int main(int argc, char *argv[]) {
 
     pmix_value_t *val;
-    int rc, i, j, k, node_num_participants, my_node_num;
-    int *local_size;
-    int **local_ranks_array;
+    int rc;
+    long int my_node_num;
+    size_t i, j, k, node_num_participants;
     uint32_t num_procs, num_nodes;
-    size_t ninfo = 0, nprocs = 0;
+    size_t ninfo = 0;
     test_params params;
     validation_params v_params;
     pmix_proc_t job_proc, this_proc;
     pmix_proc_t *node_procs;
     struct timeval start, end;
-    unsigned long usecs_elapsed, sleep_time_ms;
+    long usecs_elapsed;
+    unsigned long sleep_time_ms;
     double secs_elapsed, fence_time, sleep_time, padded_fence_time;
-    char **client_argv;
 
     // pass in function pointer for custom argument processing, if no custom processing, will be null
     pmixt_pre_init(argc, argv, &params, &v_params, &parse_fence_client);
@@ -101,9 +101,9 @@ int main(int argc, char *argv[]) {
         // padded_fence_time is the time permitted just for the fence call
         padded_fence_time = params.fence_time_multiplier * fence_time;
         sleep_time = params.fence_timeout_ratio * padded_fence_time;
-        sleep_time_ms = (long)(sleep_time * 1000.0);
+        sleep_time_ms = (unsigned long)(sleep_time * 1000.0);
 
-        TEST_VERBOSE(("Rank %d fence timeout ratio: %lf fence time multiplier: %lf",
+        TEST_VERBOSE(("Rank %u fence timeout ratio: %lf fence time multiplier: %lf",
             this_proc.rank, params.fence_timeout_ratio, params.fence_time_multiplier));
 
         // a barrier to sync up everyone
@@ -123,7 +123,7 @@ int main(int argc, char *argv[]) {
         for (i = 0, my_node_num = -1; i < num_nodes; i++){
             for (k = 0; k < nodes[i].pmix_local_size; k++) {
                 if (this_proc.rank == nodes[i].pmix_rank[k]) {
-                    my_node_num = i;
+                    my_node_num = (long)i;
                     break;
                 }
             }
@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
                     PMIX_PROC_CONSTRUCT(&node_procs[j]);
                     strncpy(node_procs[j].nspace, this_proc.nspace, PMIX_MAX_NSLEN);
                     node_procs[j].rank = nodes[i].pmix_rank[k];
-                    TEST_VERBOSE(("participating node_procs[%d].rank = %d", j, node_procs[j].rank));
+                    TEST_VERBOSE(("participating node_procs[%d].rank = %u", j, node_procs[j].rank));
                     j++;
                 }
             }
@@ -169,7 +169,7 @@ int main(int argc, char *argv[]) {
         }
         // now our node-dependent fence
         if (my_node_num % 2) {
-            TEST_VERBOSE(("Before fence call, node-dependent fence, rank: %d", this_proc.rank));
+            TEST_VERBOSE(("Before fence call, node-dependent fence, rank: %u", this_proc.rank));
             gettimeofday(&start, NULL);
             rc = PMIx_Fence(node_procs, node_num_participants, NULL, 0);
             gettimeofday(&end, NULL);
@@ -181,17 +181,17 @@ int main(int argc, char *argv[]) {
             secs_elapsed = (double) usecs_elapsed / 1E6;
             // secs_elapsed must be less than padded_fence_time since no one waits for rank 0
             if (secs_elapsed > padded_fence_time) {
-                TEST_ERROR(("%s: PMIx_Fence timeout: Rank %d elapsed fence time: %lf exceeded cutoff of: %lf",
-                    this_proc.rank, this_proc.nspace, secs_elapsed, padded_fence_time));
+                TEST_ERROR(("%s: PMIx_Fence timeout: Rank %u elapsed fence time: %lf exceeded cutoff of: %lf",
+                    this_proc.nspace, this_proc.rank, secs_elapsed, padded_fence_time));
                 pmixt_exit(PMIX_ERR_TIMEOUT);
             }
-            TEST_VERBOSE(("Completed node-dependent fence, participant rank: %d", this_proc.rank));
+            TEST_VERBOSE(("Completed node-dependent fence, participant rank: %u", this_proc.rank));
             // clean up procs array
             for (j = 0; j < node_num_participants; j++) {
                 PMIX_PROC_DESTRUCT(&node_procs[j]);
             }
         }
-        TEST_VERBOSE(("After node-dependent fence, rank: %d", this_proc.rank));
+        TEST_VERBOSE(("After node-dependent fence, rank: %u", this_proc.rank));
     }
     else {
         TEST_ERROR(("Partial fence functionality only enabled if fence is timed. Please re-run with"

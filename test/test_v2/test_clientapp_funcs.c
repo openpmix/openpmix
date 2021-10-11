@@ -355,7 +355,7 @@ void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_v
 double avg_fence_time(void) {
     double avg_fence = 0.0;
     int i, retval = 0;
-    unsigned long usecs;
+    long usecs;
     struct timeval local_start, local_end;
 
     // Synchronize before timing
