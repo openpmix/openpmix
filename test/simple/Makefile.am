@@ -22,7 +22,6 @@
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 # we do NOT want picky compilers down here
-CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
 headers = simptest.h
 
