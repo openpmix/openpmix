@@ -22,6 +22,9 @@ static void comfail_errhandler(size_t evhdlr_registration_id, pmix_status_t stat
 {
     TEST_ERROR(("comfail errhandler called for error status = %d ninfo = %lu", status,
                 (unsigned long) ninfo));
+
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, info, results, nresults);
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
     }
@@ -33,6 +36,9 @@ static void timeout_errhandler(size_t evhdlr_registration_id, pmix_status_t stat
                                pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     TEST_ERROR(("timeout errhandler called for error status = %d ninfo = %d", status, (int) ninfo));
+
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, info, results, nresults);
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
     }
@@ -41,6 +47,9 @@ static void timeout_errhandler(size_t evhdlr_registration_id, pmix_status_t stat
 static void op1_callbk(pmix_status_t status, void *cbdata)
 {
     TEST_VERBOSE(("op1_callbk CALLED WITH STATUS %d", status));
+
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+
     done = true;
 }
 
@@ -58,6 +67,8 @@ int test_error(char *my_nspace, int my_rank, test_params params)
     struct timespec ts;
     pmix_status_t status;
     pmix_proc_t source;
+
+    PMIX_HIDE_UNUSED_PARAMS(params);
 
     TEST_VERBOSE(("test-error: running  error handling test cases"));
     /* register specific client error handlers and test their invocation

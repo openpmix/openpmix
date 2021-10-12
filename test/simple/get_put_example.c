@@ -6,15 +6,25 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdarg.h>
+
+static void hide_unused_params(int x, ...)
+{
+    va_list ap;
+
+    va_start(ap, x);
+    va_end(ap);
+}
 
 int main(int argc, char **argv)
 {
-    int rc;
+    int rc=0;
     pmix_value_t value;
     pmix_value_t *val = &value;
     pmix_value_t pvalue;
     pmix_proc_t myproc, rootproc;
     pmix_info_t info;
+    hide_unused_params(rc, argc, argv);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         fprintf(stderr, "Init failed.\n");

@@ -25,6 +25,8 @@
 
 # Source code files
 
+dist_pmixdata_DATA += util/help-pmix-util.txt
+
 headers += \
         util/alfg.h \
         util/argv.h \

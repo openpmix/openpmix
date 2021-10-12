@@ -107,6 +107,8 @@ static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata);
 static void release_cb(pmix_status_t status, void *cbdata)
 {
     int *ptr = (int *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     *ptr = 0;
 }
 
@@ -569,7 +571,7 @@ static int srv_wait_all(double timeout)
     int ret = 0;
 
     gettimeofday(&tval, NULL);
-    start_time = tval.tv_sec + 1E-6 * tval.tv_usec;
+    start_time = (double)tval.tv_sec + 1E-6 * (double)tval.tv_usec;
     cur_time = start_time;
 
     /* Remove this server from the list */
@@ -667,6 +669,7 @@ static void _send_procs_cb(pmix_status_t status, const char *data, size_t ndata,
                            pmix_release_cbfunc_t relfn, void *relcbd)
 {
     server_info_t *server = (server_info_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status, relfn, relcbd);
 
     server_unpack_procs((char *) data, ndata);
     free((char *) data);
@@ -757,7 +760,7 @@ static void server_read_cb(int fd, short event, void *arg)
     msg_hdr_t msg_hdr;
     char *msg_buf = NULL;
     static char *fence_buf = NULL;
-    int i, n, p, temp_nodeid, fence_idx, rc;
+    int i, n, p, temp_nodeid, fence_idx=0, rc;
     static int fences_in_flight = 0;
     bool fence_found = false, node_found = false;
     // hard limits to fences in flight, procs, and nodes below
@@ -769,8 +772,7 @@ static void server_read_cb(int fd, short event, void *arg)
     static size_t contrib_cnt = 0;
     static size_t fence_buf_offset = 0;
 
-    TEST_VERBOSE(("sizeof(msg_hdr_t): %d, sizeof(pmix_proc_t): %d",
-                 sizeof(msg_hdr_t), sizeof(pmix_proc_t)));
+    PMIX_HIDE_UNUSED_PARAMS(fd, event);
 
     rc = read(server->rd_fd, &msg_hdr, sizeof(msg_hdr_t));
     if (rc <= 0) {
@@ -821,7 +823,7 @@ static void server_read_cb(int fd, short event, void *arg)
         // assumption is that procs array will be constructed in the same order for every
         // participating server
         if (msg_hdr.nprocs > 0 && msg_hdr.procs[0].rank != PMIX_RANK_WILDCARD) {
-            TEST_VERBOSE(("Inside partial fence processing, source: %d, nprocs: %d"
+            TEST_VERBOSE(("Inside partial fence processing, source: %d, nprocs: %lu"
                          " fences_in_flight : %d", msg_hdr.src_id, msg_hdr.nprocs, fences_in_flight));
             // init fence_nodes array (must only happen first pass)
             if (fences_in_flight == 0) {
@@ -835,17 +837,17 @@ static void server_read_cb(int fd, short event, void *arg)
             // see if we already have this fence signature or not
             fence_found = false;
             for (i = 0; i < fences_in_flight; i++) { // if we enter loop, some in-flight fences must exist
-                for (p = 0; p < msg_hdr.nprocs; p++) {
+                for (p = 0; p < (int)msg_hdr.nprocs; p++) {
                     if (msg_hdr.procs[p].rank != fence_sig[i][p].rank
                         || strcmp(msg_hdr.procs[p].nspace, fence_sig[i][p].nspace)) {
-                        TEST_VERBOSE(("No match to existing fence, msg_hdr.procs[%d].rank: %d,"
-                                    " fence_sig[%d][%d].rank: %d "
+                        TEST_VERBOSE(("No match to existing fence, msg_hdr.procs[%d].rank: %u,"
+                                    " fence_sig[%d][%d].rank: %u "
                                     "msg_hdr.procs[p].nspace: <%s>, fence_sig[i][p].nspace: <%s>",
                                     p, msg_hdr.procs[p].rank, i, p, fence_sig[i][p].rank,
                                     msg_hdr.procs[p].nspace,fence_sig[i][p].nspace));
                         break;
                     }
-                    if (p == (msg_hdr.nprocs - 1)) {
+                    if (p == (int)(msg_hdr.nprocs - 1)) {
                         fence_found = true;
                         TEST_VERBOSE(("Fence was found for fence: %d", i));
                     }
@@ -863,18 +865,19 @@ static void server_read_cb(int fd, short event, void *arg)
                 }
                 fence_idx = fences_in_flight - 1;
                 // loop over procs in this fence
-                for (p = 0; p < msg_hdr.nprocs; p++) {
+                for (p = 0; p < (int)msg_hdr.nprocs; p++) {
                     fence_sig[fence_idx][p].rank = msg_hdr.procs[p].rank;
-                    strncpy(fence_sig[fence_idx][p].nspace, msg_hdr.procs[p].nspace, 255);
+                    pmix_strncpy(fence_sig[fence_idx][p].nspace, msg_hdr.procs[p].nspace, 255);
                     // loop over all nodes to find which node has this proc
-                    for (n = 0; n < g_num_nodes; n++) {
+                    for (n = 0; n < (int)g_num_nodes; n++) {
                         temp_nodeid = -1;
                         // look for a match for this fence proc within the procs on this node
-                        for (i = 0; i < nodes[n].pmix_local_size; i++) {
-                            TEST_VERBOSE(("Node: %d Local size: %d rank: %d", n, nodes[n].pmix_local_size, nodes[n].pmix_rank[i]));
+                        for (i = 0; i < (int)nodes[n].pmix_local_size; i++) {
+                            TEST_VERBOSE(("Node: %d Local size: %lu rank: %u", n,
+                                          nodes[n].pmix_local_size, nodes[n].pmix_rank[i]));
                             if (nodes[n].pmix_rank[i] == msg_hdr.procs[p].rank) {
                                 temp_nodeid = nodes[n].pmix_nodeid;
-                                TEST_VERBOSE(("Node: %d found for proc: %d", temp_nodeid, nodes[n].pmix_rank[i]));
+                                TEST_VERBOSE(("Node: %d found for proc: %u", temp_nodeid, nodes[n].pmix_rank[i]));
                                 break;
                             }
                         }
@@ -904,7 +907,7 @@ static void server_read_cb(int fd, short event, void *arg)
             }
 
             // mark which node contributed this message, increment contributed count
-            for (n = 0; n < num_nodes_participating[fence_idx]; n++) {
+            for (n = 0; n < (int)num_nodes_participating[fence_idx]; n++) {
                 if (msg_hdr.src_id == fence_nodes[fence_idx][n].node) {
                     fence_nodes[fence_idx][n].contributed = true;
                     num_nodes_contributed[fence_idx]++;
@@ -915,7 +918,7 @@ static void server_read_cb(int fd, short event, void *arg)
             }
 
             if (num_nodes_contributed[fence_idx] == num_nodes_participating[fence_idx]) {
-                for (n = 0; n < num_nodes_participating[fence_idx]; n++) {
+                for (n = 0; n < (int)num_nodes_participating[fence_idx]; n++) {
                     msg_hdr_t resp_hdr;
                     resp_hdr.dst_id = fence_nodes[fence_idx][n].node;
                     resp_hdr.src_id = my_server_id;
@@ -924,8 +927,8 @@ static void server_read_cb(int fd, short event, void *arg)
                     // is the fence_index field helping anything here?
                     resp_hdr.fence_index = fence_idx;
                     resp_hdr.nprocs = msg_hdr.nprocs;
-                    for (i = 0; i < msg_hdr.nprocs; i++) {
-                        strcpy(resp_hdr.procs[i].nspace, msg_hdr.procs[i].nspace);
+                    for (i = 0; i < (int)msg_hdr.nprocs; i++) {
+                        pmix_strncpy(resp_hdr.procs[i].nspace, msg_hdr.procs[i].nspace, 255);
                         resp_hdr.procs[i].rank = msg_hdr.procs[i].rank;
                     }
                     server_send_msg(&resp_hdr, fence_buf, fence_buf_offset);
@@ -937,14 +940,14 @@ static void server_read_cb(int fd, short event, void *arg)
                     fence_buf = NULL;
                     fence_buf_offset = 0;
                 }
-                for (n = 0; n < num_nodes_participating[fence_idx]; n++) {
+                for (n = 0; n < (int)num_nodes_participating[fence_idx]; n++) {
                     fence_nodes[fence_idx][n].node = -1;
                     fence_nodes[fence_idx][n].contributed = false;
                 }
                 num_nodes_contributed[fence_idx] = 0;
                 num_nodes_participating[fence_idx] = 0;
                 for (i = fence_idx; i < fences_in_flight && i < (PMIXT_MAX_FENCES-1); i++) {
-                    for (n = 0; n < num_nodes_participating[i+1]; n++) {
+                    for (n = 0; n < (int)num_nodes_participating[i+1]; n++) {
                         fence_nodes[i][n].node = fence_nodes[i+1][n].node;
                         fence_nodes[i][n].contributed = fence_nodes[i+1][n].contributed;
                     }
@@ -1026,12 +1029,12 @@ static void server_read_cb(int fd, short event, void *arg)
                 tmp_server = (server_info_t *) pmix_list_get_first(server_list);
             }
             for (i = 0; i < tmp_server->num_fences; i++) {
-                for (p = 0; p < msg_hdr.nprocs; p++) {
+                for (p = 0; p < (int)msg_hdr.nprocs; p++) {
                     if (msg_hdr.procs[p].rank != tmp_server->procs[i][p].rank
                        || strcmp(msg_hdr.procs[p].nspace, tmp_server->procs[i][p].nspace)) {
                         break;
                     }
-                    if (p == (msg_hdr.nprocs - 1)) {
+                    if (p == (int)(msg_hdr.nprocs - 1)) {
                         fence_found = true;
                     }
                 }
@@ -1050,9 +1053,9 @@ static void server_read_cb(int fd, short event, void *arg)
                                                 tmp_server->cbdata[fence_idx], _libpmix_cb, msg_buf);
             // remove this fence signature from this process's entries; shift remaining fences left in array
             for (i = fence_idx; i < tmp_server->num_fences && i < (PMIXT_MAX_FENCES-1); i++) {
-                for (p = 0; p < tmp_server->nprocs[i+1]; p++) {
+                for (p = 0; p < (int)tmp_server->nprocs[i+1]; p++) {
                     tmp_server->procs[i][p].rank = tmp_server->procs[i][p+1].rank;
-                    strncpy(tmp_server->procs[i][p].nspace, tmp_server->procs[i][p+1].nspace, 255);
+                    pmix_strncpy(tmp_server->procs[i][p].nspace, tmp_server->procs[i][p+1].nspace, 255);
                     TEST_VERBOSE(("tmp_server->procs[%d][%d].rank: %d",i, p, tmp_server->procs[i][p].rank));
                 }
                 tmp_server->nprocs[i] = tmp_server->nprocs[i+1];
@@ -1121,8 +1124,8 @@ int server_fence_contrib(const pmix_proc_t procs[], size_t nprocs, char *data,
     fence_idx = server->num_fences - 1;
     server->nprocs[fence_idx] = msg_hdr.nprocs;
     for (n = 0; n < msg_hdr.nprocs; n++) {
-        strncpy(msg_hdr.procs[n].nspace, procs[n].nspace, 255);
-        strncpy(server->procs[fence_idx][n].nspace, procs[n].nspace, 255);
+        pmix_strncpy(msg_hdr.procs[n].nspace, procs[n].nspace, 255);
+        pmix_strncpy(server->procs[fence_idx][n].nspace, procs[n].nspace, 255);
         msg_hdr.procs[n].rank = procs[n].rank;
         server->procs[fence_idx][n].rank = procs[n].rank;
     }
@@ -1178,6 +1181,7 @@ static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata)
 {
     msg_hdr_t msg_hdr;
     int *sender_id = (int *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     msg_hdr.cmd = CMD_DMDX_RESPONSE;
     msg_hdr.src_id = my_server_id;
@@ -1265,6 +1269,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
     int status;
     pid_t pid;
     int i;
+    PMIX_HIDE_UNUSED_PARAMS(fd, event);
 
     if (SIGCHLD != pmix_event_get_signal(sig)) {
         return;
@@ -1321,7 +1326,9 @@ int server_init(validation_params *v_params)
 {
     pmix_info_t info[2];
     int rc = PMIX_SUCCESS;
-    int i, retval, pipesz1 = 0, pipesz2 = 0;
+#ifdef F_GETPIPE_SZ
+    int retval = PMIX_SUCCESS, pipesz1 = 0, pipesz2 = 0;
+#endif
 
     /* fork/init servers procs */
     if (v_params->pmix_num_nodes >= 1) {
@@ -1365,7 +1372,7 @@ int server_init(validation_params *v_params)
 #endif
             // copy hostname from nodes array
             server_info->hostname = strdup(nodes[i].pmix_hostname);
-            strncpy(v_params->pmix_hostname, server_info->hostname, PMIX_MAX_KEYLEN - 1);
+            pmix_strncpy(v_params->pmix_hostname, server_info->hostname, PMIX_MAX_KEYLEN - 1);
             if (0 != i) {
                 pid = fork();
                 if (pid < 0) {
@@ -1515,12 +1522,12 @@ int server_launch_clients(test_params *l_params, validation_params *v_params, ch
     char *vptr;
     server_nspace_t *nspace_item = PMIX_NEW(server_nspace_t);
 
-    TEST_VERBOSE(("Server ID: %d: pmix_local_size: %d, pmix_univ_size: %d, num_nodes %d",
+    TEST_VERBOSE(("Server ID: %d: pmix_local_size: %u, pmix_univ_size: %d, num_nodes %d",
                   my_server_id, v_params->pmix_local_size, v_params->pmix_univ_size,
                   v_params->pmix_num_nodes));
 
     (void) snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
-    strncpy(v_params->pmix_nspace, proc.nspace, PMIX_MAX_NSLEN);
+    pmix_strncpy(v_params->pmix_nspace, proc.nspace, PMIX_MAX_NSLEN);
 
     set_namespace(v_params);
     local_size = v_params->pmix_local_size;

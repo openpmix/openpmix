@@ -50,6 +50,8 @@ int main(int argc, char **argv)
     char **nodes, **procs;
     pmix_status_t rc;
 
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
         TEST_ERROR(("ERROR IN COMPUTING CONSTANTS: PMIX_SUCCESS = %d", PMIX_SUCCESS));

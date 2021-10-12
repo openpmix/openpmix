@@ -5,6 +5,15 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdarg.h>
+
+static void hide_unused_params(int x, ...)
+{
+    va_list ap;
+
+    va_start(ap, x);
+    va_end(ap);
+}
 
 typedef struct {
     pthread_mutex_t mutex;
@@ -77,12 +86,13 @@ static void setup_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo,
 
 int main(int argc, char **argv)
 {
-    pmix_status_t rc;
+    pmix_status_t rc=0;
     myxfer_t x;
     pmix_proc_t myproc;
     pmix_info_t *info;
     size_t n, ninfo;
     char *myvni = NULL;
+    hide_unused_params(rc, argc, argv);
 
     /* setup the PMIx tool library - don't need to connect
      * to a PMIx server */

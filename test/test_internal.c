@@ -16,6 +16,9 @@
 static void release_cb(pmix_status_t status, void *cbdata)
 {
     int *ptr = (int *) cbdata;
+
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
     *ptr = 0;
 }
 

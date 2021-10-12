@@ -49,6 +49,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, info, ninfo, results, nresults);
     pmix_output(0, "Client %s:%d NOTIFIED with status %s", myproc.nspace, myproc.rank,
                 PMIx_Error_string(status));
     if (NULL != cbfunc) {
@@ -60,6 +61,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     volatile bool *active = (volatile bool *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
     *active = false;
 }
 
@@ -76,6 +78,7 @@ static void model_callback(size_t evhdlr_registration_id, pmix_status_t status,
                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, results, nresults);
 
     /* just let us know it was received */
     fprintf(stderr, "%s:%d Model event handler called with status %d(%s)\n", myproc.nspace,
