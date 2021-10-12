@@ -1,6 +1,15 @@
 #include <stdio.h>
+#include <stdarg.h>
 
 #include <pmix.h>
+
+static void hide_unused_params(int x, ...)
+{
+    va_list ap;
+
+    va_start(ap, x);
+    va_end(ap);
+}
 
 //<EG BEGIN ID="declare_model_cb">
 static void model_declared_cb(size_t evhdlr_registration_id, pmix_status_t status,
@@ -10,6 +19,7 @@ static void model_declared_cb(size_t evhdlr_registration_id, pmix_status_t statu
 {
     printf("Entered %s\n", __func__);
     size_t n;
+    hide_unused_params(evhdlr_registration_id, status, source, results, nresults);
 
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL)
@@ -33,6 +43,8 @@ static void parallel_region_OMP_cb(size_t evhdlr_registration_id, pmix_status_t 
                                    pmix_info_t results[], size_t nresults,
                                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    hide_unused_params(evhdlr_registration_id, status, source, info, ninfo,
+                       results, nresults);
     printf("Entered %s\n", __func__);
     /* do what we need OpenMP to do on entering a parallel region */
     if (NULL != cbfunc) {
@@ -48,6 +60,8 @@ static void parallel_region_MPI_cb(size_t evhdlr_registration_id, pmix_status_t 
                                    pmix_info_t results[], size_t nresults,
                                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    hide_unused_params(evhdlr_registration_id, status, source, info, ninfo,
+                       results, nresults);
     printf("Entered %s\n", __func__);
     /* do what we need MPI to do on entering a parallel region */
     if (NULL != cbfunc) {
@@ -107,6 +121,7 @@ static int mpi_handler(void)
 static void notify_complete(pmix_status_t status, void *cbdata)
 {
     volatile bool *flag = (volatile bool *) cbdata;
+    hide_unused_params(status);
     *flag = true;
 }
 
@@ -116,6 +131,7 @@ int main(int argc, char **argv)
     pmix_proc_t myproc;
     pmix_info_t *info;
     volatile bool wearedone = false;
+    hide_unused_params(argc, argv);
 
     PMIX_INFO_CREATE(info, 4);
     PMIX_INFO_LOAD(&info[0], PMIX_PROGRAMMING_MODEL, "MPI", PMIX_STRING);

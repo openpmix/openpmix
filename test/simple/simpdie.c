@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "src/class/pmix_object.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
@@ -46,6 +47,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, results, nresults);
 
     pmix_output(0, "Client %s:%d NOTIFIED with status %s source %s:%d and %d info", myproc.nspace,
                 myproc.rank, PMIx_Error_string(status), source->nspace, source->rank, (int) ninfo);
@@ -66,11 +68,13 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 
 static void op_callbk(pmix_status_t status, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
     pmix_output(0, "CLIENT: OP CALLBACK CALLED WITH STATUS %d", status);
 }
 
 static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
     pmix_output(0, "Client: ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu",
                 status, (unsigned long) errhandler_ref);
 }

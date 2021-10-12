@@ -2,6 +2,7 @@
  * Copyright (c) 2021      Triad National Security, LLC.
  *                         All rights reserved.
  *
+ * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,10 +15,9 @@
 #include "pmix.h"
 #include "test_common.h"
 
-void client_help(char *);
 int parse_fence_client(int *, int, char **, test_params *, validation_params *);
 
-void client_help(char *binary) {
+static void client_help(char *binary) {
     fprintf(stderr, "Usage: %s [OPTION...]\n", binary);
     fprintf(stderr, "    -h            Display this message\n");
     fprintf(stderr, "    --time-fence  Time the fence calls (best on a quiet system)\n");
@@ -34,6 +34,8 @@ void client_help(char *binary) {
 // client-specific command parser logic
 int parse_fence_client(int *index, int argc, char **argv, test_params *lparams, validation_params *v_params)
 {
+    PMIX_HIDE_UNUSED_PARAMS(argc, v_params);
+
     if (0 == strcmp(argv[*index], "-h") || 0 == strcmp(argv[*index], "--help")) {
         // produce client-specific help
         client_help(argv[0]);

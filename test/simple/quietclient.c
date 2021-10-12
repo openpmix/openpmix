@@ -45,6 +45,7 @@
 #include <unistd.h>
 
 #include "src/class/pmix_object.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
 
@@ -58,6 +59,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo,
+                            results, nresults);
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
     }
@@ -67,6 +70,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
     volatile bool *active = (volatile bool *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status, errhandler_ref);
 
     *active = false;
 }
@@ -83,6 +87,8 @@ static void model_callback(size_t evhdlr_registration_id, pmix_status_t status,
                            pmix_info_t results[], size_t nresults,
                            pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo,
+                            results, nresults);
     /* we must NOT tell the event handler state machine that we
      * are the last step as that will prevent it from notifying
      * anyone else that might be listening for declarations */
@@ -95,6 +101,7 @@ static void model_callback(size_t evhdlr_registration_id, pmix_status_t status,
 static void model_registration_callback(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
     volatile int *active = (volatile int *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status, evhandler_ref);
 
     *active = false;
 }
@@ -115,6 +122,7 @@ int main(int argc, char **argv)
     char **peers;
     bool all_local, local;
     pmix_rank_t *locals = NULL;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us and declare we are a test programming model */
     PMIX_INFO_CREATE(iptr, 2);

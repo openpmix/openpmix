@@ -64,6 +64,8 @@ static int finalized_count = 0;
 pmix_status_t connected(const pmix_proc_t *proc, void *server_object, pmix_op_cbfunc_t cbfunc,
                         void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(proc, server_object);
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
@@ -75,6 +77,8 @@ pmix_status_t finalized(const pmix_proc_t *proc, void *server_object, pmix_op_cb
 {
     cli_info_t *cli = NULL;
     int i;
+    PMIX_HIDE_UNUSED_PARAMS(server_object);
+
     for (i = 0; i < cli_info_cnt; i++) {
         if ((proc->rank == cli_info[i].rank) && (0 == strcmp(proc->nspace, cli_info[i].ns))) {
             cli = &cli_info[i];
@@ -106,6 +110,8 @@ pmix_status_t finalized(const pmix_proc_t *proc, void *server_object, pmix_op_cb
 pmix_status_t abort_fn(const pmix_proc_t *proc, void *server_object, int status, const char msg[],
                        pmix_proc_t procs[], size_t nprocs, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(proc, server_object, procs, nprocs);
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
@@ -119,6 +125,7 @@ pmix_status_t fencenb_fn(const pmix_proc_t procs[], size_t nprocs, const pmix_in
                          void *cbdata)
 {
     size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
 
     for (n = 0; n < nprocs; n++){
         TEST_VERBOSE(("Participating in this fence on node: %d procs[%lu].nspace: %s,"
@@ -206,6 +213,8 @@ pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys, const pmix_info_t 
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_pdata_t *pdata;
     pmix_test_info_t *tinfo;
+    PMIX_HIDE_UNUSED_PARAMS(proc, info, ninfo);
+
     if (NULL == pmix_test_published_list) {
         return PMIX_ERR_NOT_FOUND;
     }
@@ -242,6 +251,8 @@ pmix_status_t unpublish_fn(const pmix_proc_t *proc, char **keys, const pmix_info
 {
     size_t i;
     pmix_test_info_t *iptr, *next;
+    PMIX_HIDE_UNUSED_PARAMS(proc, info);
+
     if (NULL == pmix_test_published_list) {
         return PMIX_ERR_NOT_FOUND;
     }
@@ -288,6 +299,7 @@ static void *_release_cb(void *arg)
 static void release_cb(pmix_status_t status, void *cbdata)
 {
     pthread_t thread;
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     if (0 > pthread_create(&thread, NULL, _release_cb, cbdata)) {
         spawn_wait = false;
@@ -301,6 +313,7 @@ pmix_status_t spawn_fn(const pmix_proc_t *proc, const pmix_info_t job_info[], si
                        void *cbdata)
 {
     release_cbdata *cb = malloc(sizeof(release_cbdata));
+    PMIX_HIDE_UNUSED_PARAMS(apps, ninfo, job_info, proc);
 
     cb->status = PMIX_SUCCESS;
     cb->cbfunc = cbfunc;
@@ -315,6 +328,8 @@ static int numconnect = 0;
 pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs, const pmix_info_t info[],
                          size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(procs, nprocs, info, ninfo);
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
@@ -325,6 +340,8 @@ pmix_status_t connect_fn(const pmix_proc_t procs[], size_t nprocs, const pmix_in
 pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs, const pmix_info_t info[],
                             size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(procs, nprocs, info, ninfo);
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
     }
@@ -334,6 +351,8 @@ pmix_status_t disconnect_fn(const pmix_proc_t procs[], size_t nprocs, const pmix
 pmix_status_t regevents_fn(pmix_status_t *codes, size_t ncodes, const pmix_info_t info[],
                            size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(codes, ncodes, info, ninfo);
+
     TEST_VERBOSE((" pmix host server regevents_fn called "));
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);
@@ -344,6 +363,8 @@ pmix_status_t regevents_fn(pmix_status_t *codes, size_t ncodes, const pmix_info_
 pmix_status_t deregevents_fn(pmix_status_t *codes, size_t ncodes, pmix_op_cbfunc_t cbfunc,
                              void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(codes, ncodes);
+
     TEST_VERBOSE((" pmix host server deregevents_fn called "));
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, cbdata);

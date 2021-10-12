@@ -35,6 +35,7 @@
 #include <unistd.h>
 
 #include "src/class/pmix_object.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
 
@@ -52,6 +53,7 @@ int main(int argc, char **argv)
     pmix_coord_t *coords;
     char *hostname;
     pmix_byte_object_t *bptr;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Init failed: %s", myproc.nspace, myproc.rank,

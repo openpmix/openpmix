@@ -238,6 +238,8 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, validation_params *v_params)
 
 void pmixt_post_init(pmix_proc_t *this_proc, test_params *l_params, validation_params *v_params)
 {
+    PMIX_HIDE_UNUSED_PARAMS(l_params);
+
     pmixt_fix_rank_and_ns(this_proc, v_params);
     TEST_VERBOSE(
         (" Client/PMIX ns %s rank %d: PMIx_Init success", this_proc->nspace, this_proc->rank));

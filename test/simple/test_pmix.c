@@ -2,13 +2,28 @@
 #include "include/pmix.h"
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <ctype.h>
+
+static void hide_unused_params(int x, ...)
+{
+    va_list ap;
+
+    va_start(ap, x);
+    va_end(ap);
+}
 
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
-    pmix_status_t rc;
-
+    pmix_status_t rc=0;
     int rank;
+    hide_unused_params(rc, argc, argv);
+
     rc = PMIx_Init(&myproc, NULL, 0);
     assert(PMIX_SUCCESS == rc);
 
