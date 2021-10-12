@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "src/class/pmix_object.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
@@ -45,6 +46,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, info, ninfo, results, nresults);
     pmix_output(0, "Client %s:%d NOTIFIED with status %d", myproc.nspace, myproc.rank, status);
     if (NULL != cbfunc) {
         cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
@@ -54,11 +56,13 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 
 static void op_callbk(pmix_status_t status, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
     pmix_output(0, "CLIENT: OP CALLBACK CALLED WITH STATUS %d", status);
 }
 
 static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(errhandler_ref, cbdata);
     pmix_output(0, "Client: ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu",
                 status, (unsigned long) errhandler_ref);
 }
@@ -70,6 +74,7 @@ int main(int argc, char **argv)
     pmix_value_t *val = &value;
     pmix_proc_t proc;
     uint32_t nprocs;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {

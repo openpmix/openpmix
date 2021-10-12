@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "src/class/pmix_object.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
@@ -53,6 +54,7 @@ int main(int argc, char **argv)
     pmix_proc_t *peers;
     size_t npeers, ntmp = 0;
     char *nodelist;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     gethostname(hostname, sizeof(hostname));
 

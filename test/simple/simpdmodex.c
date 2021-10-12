@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "src/class/pmix_object.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
 
@@ -50,6 +51,7 @@ static uint32_t getcount = 0;
 static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     bool *active = (bool *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     pmix_output(0, "%s:%d completed fence_nb", myproc.nspace, myproc.rank);
     *active = false;
@@ -111,6 +113,7 @@ int main(int argc, char **argv)
     bool local, all_local;
     char **peers;
     pmix_rank_t *locals = NULL;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     if (NULL != getenv("PMIX_SIMPDMODEX_ASYNC")) {
         dofence = false;
