@@ -42,6 +42,7 @@
 #include <unistd.h>
 
 #include "src/class/pmix_list.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/argv.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
@@ -70,6 +71,7 @@ static void setup_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo,
 {
     mycaddy_t *mq = (mycaddy_t *) provided_cbdata;
     size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(status);
 
     /* transfer it to the caddy for return to the main thread */
     if (0 < ninfo) {
@@ -102,6 +104,7 @@ int main(int argc, char **argv)
     mylock_t lock;
     mycaddy_t cd;
     pmix_value_t *val;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
