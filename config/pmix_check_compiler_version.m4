@@ -23,9 +23,7 @@ dnl
 AC_DEFUN([PMIX_CHECK_COMPILER_VERSION_ID],
 [
     PMIX_CHECK_COMPILER(FAMILYID)
-    PMIX_CHECK_COMPILER_STRINGIFY(FAMILYNAME)
     PMIX_CHECK_COMPILER(VERSION)
-    PMIX_CHECK_COMPILER_STRING(VERSION_STR)
 ])dnl
 
 
@@ -52,67 +50,6 @@ AC_DEFUN([PMIX_CHECK_COMPILER], [
                 pmix_cv_compiler_$1=0
             ], [
                 pmix_cv_compiler_$1=0
-            ])
-            CPPFLAGS=$CPPFLAGS_orig
-    ])
-    AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], [$pmix_cv_compiler_$1],
-                       [The compiler $lower which OMPI was built with])
-])dnl
-
-AC_DEFUN([PMIX_CHECK_COMPILER_STRING], [
-    AS_LITERAL_IF([$1], [],
-                  [m4_fatal([PMIX_CHECK_COMPILER_STRING argument must be a literal])])
-    lower=m4_tolower([$1])
-    AC_CACHE_CHECK([for compiler $lower], [pmix_cv_compiler_$1],
-    [
-            CPPFLAGS_orig=$CPPFLAGS
-            CPPFLAGS="-I${PMIX_TOP_SRCDIR}/pmix/include $CPPFLAGS"
-            AC_RUN_IFELSE([AC_LANG_PROGRAM([[
-#include <stdio.h>
-#include <stdlib.h>
-#include "src/include/pmix_portable_platform.h"
-]],[[
-    FILE * f;
-    f=fopen("conftestval", "w");
-    if (!f) exit(1);
-    fprintf (f, "%s", PLATFORM_COMPILER_$1);
-            ]])], [
-                pmix_cv_compiler_$1=`cat conftestval`
-            ], [
-                pmix_cv_compiler_$1=UNKNOWN
-            ], [
-                pmix_cv_compiler_$1=UNKNOWN
-            ])
-            CPPFLAGS=$CPPFLAGS_orig
-    ])
-    AC_DEFINE_UNQUOTED([PMIX_BUILD_PLATFORM_COMPILER_$1], [$pmix_cv_compiler_$1],
-                       [The compiler $lower which OMPI was built with])
-])dnl
-
-
-AC_DEFUN([PMIX_CHECK_COMPILER_STRINGIFY], [
-    AS_LITERAL_IF([$1], [],
-                  [m4_fatal([PMIX_CHECK_COMPILER_STRINGIFY argument must be a literal])])
-    lower=m4_tolower([$1])
-    AC_CACHE_CHECK([for compiler $lower], [pmix_cv_compiler_$1],
-    [
-            CPPFLAGS_orig=$CPPFLAGS
-            CPPFLAGS="-I${PMIX_TOP_SRCDIR}/pmix/include $CPPFLAGS"
-            AC_RUN_IFELSE([AC_LANG_PROGRAM([[
-#include <stdio.h>
-#include <stdlib.h>
-#include "src/include/pmix_portable_platform.h"
-]],[[
-    FILE * f;
-    f=fopen("conftestval", "w");
-    if (!f) exit(1);
-    fprintf (f, "%s", PLATFORM_STRINGIFY(PLATFORM_COMPILER_$1));
-            ]])], [
-                pmix_cv_compiler_$1=`cat conftestval`
-            ], [
-                pmix_cv_compiler_$1=UNKNOWN
-            ], [
-                pmix_cv_compiler_$1=UNKNOWN
             ])
             CPPFLAGS=$CPPFLAGS_orig
     ])
