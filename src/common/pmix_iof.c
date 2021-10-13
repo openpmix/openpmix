@@ -923,10 +923,14 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_FILE)) {
         flags->file = strdup(info->value.data.string);
         flags->set = true;
+        flags->local_output = true;
+        flags->local_output_given = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_DIRECTORY) ||
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_DIRECTORY)) {
         flags->directory = strdup(info->value.data.string);
         flags->set = true;
+        flags->local_output = true;
+        flags->local_output_given = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_ONLY) ||
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_NOCOPY)) {
         flags->nocopy = PMIX_INFO_TRUE(info);
