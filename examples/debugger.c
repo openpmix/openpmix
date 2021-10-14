@@ -32,52 +32,7 @@
 #include <unistd.h>
 
 #include <pmix_tool.h>
-
-typedef struct {
-    pthread_mutex_t mutex;
-    pthread_cond_t cond;
-    volatile bool active;
-    pmix_status_t status;
-} mylock_t;
-
-#define DEBUG_CONSTRUCT_LOCK(l)                \
-    do {                                       \
-        pthread_mutex_init(&(l)->mutex, NULL); \
-        pthread_cond_init(&(l)->cond, NULL);   \
-        (l)->active = true;                    \
-        (l)->status = PMIX_SUCCESS;            \
-    } while (0)
-
-#define DEBUG_DESTRUCT_LOCK(l)              \
-    do {                                    \
-        pthread_mutex_destroy(&(l)->mutex); \
-        pthread_cond_destroy(&(l)->cond);   \
-    } while (0)
-
-#define DEBUG_WAIT_THREAD(lck)                              \
-    do {                                                    \
-        pthread_mutex_lock(&(lck)->mutex);                  \
-        while ((lck)->active) {                             \
-            pthread_cond_wait(&(lck)->cond, &(lck)->mutex); \
-        }                                                   \
-        pthread_mutex_unlock(&(lck)->mutex);                \
-    } while (0)
-
-#define DEBUG_WAKEUP_THREAD(lck)              \
-    do {                                      \
-        pthread_mutex_lock(&(lck)->mutex);    \
-        (lck)->active = false;                \
-        pthread_cond_broadcast(&(lck)->cond); \
-        pthread_mutex_unlock(&(lck)->mutex);  \
-    } while (0)
-
-/* define a structure for collecting returned
- * info from a query */
-typedef struct {
-    mylock_t lock;
-    pmix_info_t *info;
-    size_t ninfo;
-} myquery_data_t;
+#include "examples.h"
 
 static int attach_to_running_job(char *nspace);
 static mylock_t waiting_for_debugger;
@@ -98,6 +53,8 @@ static pmix_proc_t myproc;
 static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                         pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
+    EXAMPLES_HIDE_UNUSED_PARAMS(status);
+
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
 
@@ -132,6 +89,9 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source,
+                                info, ninfo, results, nresults);
+
     /* this example doesn't do anything with default events */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -150,6 +110,9 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
                        pmix_info_t results[], size_t nresults,
                        pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source,
+                                info, ninfo, results, nresults);
+
     /* tell the event handler state machine that we are the last step */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -429,6 +392,8 @@ static int attach_to_running_job(char *nspace)
     pmix_query_t *query;
     size_t nq;
     myquery_data_t *q;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(nspace);
 
     /* query the active nspaces so we can verify that the
      * specified one exists */

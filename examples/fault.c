@@ -50,6 +50,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     size_t n;
     pmix_proc_t *affected = NULL;
 
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
+
     /* find our return object */
     lock = NULL;
     found = false;
@@ -116,6 +118,8 @@ int main(int argc, char **argv)
     mylock_t mylock;
     myrel_t myrel;
     pmix_status_t code[2] = {PMIX_ERR_PROC_ABORTED, PMIX_ERR_JOB_TERMINATED};
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {

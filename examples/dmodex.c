@@ -25,8 +25,10 @@
  *
  */
 
+#include "examples.h"
 #include "src/include/pmix_config.h"
 #include "../include/pmix.h"
+
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -48,6 +50,8 @@ int main(int argc, char **argv)
     char **peers;
     pmix_rank_t *locals = NULL;
     uint8_t j;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
