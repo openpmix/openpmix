@@ -17,13 +17,14 @@
  */
 
 /* Helper functions for examples */
+#include "src/include/pmix_config.h"
 
 #include <stdio.h>
 #include <stdarg.h>
 
 #include "examples.h"
 
-#if EXAMPLES_PICKY_COMPILERS
+#if PMIX_PICKY_COMPILERS
 void examples_hide_unused_params(int x, ...)
 {
     va_list ap;
