@@ -30,10 +30,6 @@ if !WANT_HIDDEN
 noinst_PROGRAMS += server
 endif
 
-client_SOURCES = examples.h examples.c
-client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-client_LDADD =  $(top_builddir)/src/libpmix.la
-
 client_SOURCES = client.c examples.h examples.c
 client_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 client_LDADD =  $(top_builddir)/src/libpmix.la
