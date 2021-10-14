@@ -1660,6 +1660,17 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
         if (0 > rc) {
             PMIX_ERROR_LOG(rc);
         }
+        /* if the number of bytes is zero, then we just delete the event - there
+         * is no need to pass it upstream as WE are the ones holding the event
+         * and associated file descriptor */
+        if (0 == numbytes) {
+            if (NULL != child && child->completed &&
+                (NULL == child->stdoutev || !child->stdoutev->active) &&
+                (NULL == child->stderrev || !child->stderrev->active)) {
+                PMIX_PFEXEC_CHK_COMPLETE(child);
+            }
+            return;
+        }
         goto reactivate;
     }
 
