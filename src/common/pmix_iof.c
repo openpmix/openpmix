@@ -923,10 +923,14 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_FILE)) {
         flags->file = strdup(info->value.data.string);
         flags->set = true;
+        flags->local_output = true;
+        flags->local_output_given = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_TO_DIRECTORY) ||
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_TO_DIRECTORY)) {
         flags->directory = strdup(info->value.data.string);
         flags->set = true;
+        flags->local_output = true;
+        flags->local_output_given = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_ONLY) ||
                PMIX_CHECK_KEY(info, PMIX_OUTPUT_NOCOPY)) {
         flags->nocopy = PMIX_INFO_TRUE(info);
@@ -1639,18 +1643,6 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
         numbytes = 0;
     }
 
-    /* if the number of bytes is zero, then we just delete the event - there
-     * is no need to pass it upstream as WE are the ones holding the event
-     * and associated file descriptor */
-    if (0 == numbytes) {
-        if (NULL != child && child->completed &&
-            (NULL == child->stdoutev || !child->stdoutev->active) &&
-            (NULL == child->stderrev || !child->stderrev->active)) {
-            PMIX_PFEXEC_CHK_COMPLETE(child);
-        }
-        return;
-    }
-
     bo.bytes = (char *) data;
     bo.size = numbytes;
 
@@ -1667,6 +1659,17 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
         }
         if (0 > rc) {
             PMIX_ERROR_LOG(rc);
+        }
+        /* if the number of bytes is zero, then we just delete the event - there
+         * is no need to pass it upstream as WE are the ones holding the event
+         * and associated file descriptor */
+        if (0 == numbytes) {
+            if (NULL != child && child->completed &&
+                (NULL == child->stdoutev || !child->stdoutev->active) &&
+                (NULL == child->stderrev || !child->stderrev->active)) {
+                PMIX_PFEXEC_CHK_COMPLETE(child);
+            }
+            return;
         }
         goto reactivate;
     }

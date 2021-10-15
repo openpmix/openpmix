@@ -81,6 +81,8 @@ static void release_fn(size_t evhdlr_registration_id, pmix_status_t status,
     size_t n;
     pmix_proc_t *affected = NULL;
 
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
+
     /* find the return object */
     lock = NULL;
     found = false;

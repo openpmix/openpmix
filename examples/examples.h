@@ -24,7 +24,8 @@
  *
  */
 
-#define _GNU_SOURCE
+#include "src/include/pmix_config.h"
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -78,6 +79,7 @@ typedef struct {
 /* define a structure for collecting returned
  * info from a query */
 typedef struct {
+    volatile bool active;
     mylock_t lock;
     pmix_info_t *info;
     size_t ninfo;
@@ -85,6 +87,7 @@ typedef struct {
 
 #define DEBUG_CONSTRUCT_MYQUERY(q)          \
     do {                                    \
+        (q)->active = false;                \
         DEBUG_CONSTRUCT_LOCK(&((q)->lock)); \
         (q)->info = NULL;                   \
         (q)->ninfo = 0;                     \
@@ -122,3 +125,16 @@ typedef struct {
             free((r)->nspace);             \
         }                                  \
     } while (0)
+
+#if PMIX_PICKY_COMPILERS
+#define EXAMPLES_HIDE_UNUSED_PARAMS(...)            \
+    do {                                            \
+        int __x = 3;                                \
+        examples_hide_unused_params(__x, __VA_ARGS__);  \
+    } while(0)
+
+void examples_hide_unused_params(int x, ...);
+
+#else
+#define EXAMPLES_HIDE_UNUSED_PARAMS(...)
+#endif

@@ -52,6 +52,8 @@ int main(int argc, char **argv)
     char hostname[1024], dir[1024];
     size_t ntmp = 0;
 
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
+
     if (0 > gethostname(hostname, sizeof(hostname))) {
         exit(1);
     }

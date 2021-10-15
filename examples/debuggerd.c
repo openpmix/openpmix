@@ -32,14 +32,7 @@
 #include <unistd.h>
 
 #include <pmix_tool.h>
-
-/* define a structure for collecting returned
- * info from a query */
-typedef struct {
-    volatile bool active;
-    pmix_info_t *info;
-    size_t ninfo;
-} myquery_data_t;
+#include "examples.h"
 
 static pmix_proc_t myproc;
 
@@ -60,6 +53,8 @@ static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
 {
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(status);
 
     /* save the returned info - it will be
      * released in the release_fn */
@@ -90,6 +85,9 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             pmix_info_t results[], size_t nresults,
                             pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source,
+                                info, ninfo, results, nresults);
+
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     }
@@ -124,6 +122,8 @@ int main(int argc, char **argv)
     pmix_query_t *query;
     size_t nq, n;
     myquery_data_t myquery_data;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     fprintf(stderr, "I AM HERE\n");
     fflush(stderr);
