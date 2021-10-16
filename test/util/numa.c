@@ -32,12 +32,14 @@ int main(int argc, char **argv)
     /* since we are loading this from an external source, we have to
      * explicitly set a flag so hwloc sets things up correctly
      */
+#if HWLOC_API_VERSION >= 0x20000
     ret = hwloc_topology_set_io_types_filter(topo, HWLOC_TYPE_FILTER_KEEP_IMPORTANT);
     if (0 != ret) {
         fprintf(stderr, "IOTYPES FAILED\n");
         hwloc_topology_destroy(topo);
         return ret;
     }
+#endif
     if (0 != hwloc_topology_set_flags(topo, HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM)) {
         fprintf(stderr, "SETFLAGS FAILED\n");
         hwloc_topology_destroy(topo);
