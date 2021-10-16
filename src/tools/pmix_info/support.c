@@ -124,7 +124,7 @@ int pmix_info_init(int argc, char **argv)
 
     /* add the cmd line options */
     pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'V', NULL, "version", 0,
-                            "Show version of Open MPI");
+                            "Show version of PMIx");
     pmix_cmd_line_make_opt3(
         pmix_info_cmd_line, '\0', NULL, "param", 2,
         "Show MCA parameters.  The first parameter is the framework (or the keyword \"all\"); the "
@@ -134,10 +134,10 @@ int pmix_info_init(int argc, char **argv)
                             "Show internal MCA parameters (not meant to be modified by users)");
     pmix_cmd_line_make_opt3(
         pmix_info_cmd_line, '\0', NULL, "path", 1,
-        "Show paths that Open MPI was configured with.  Accepts the following parameters: prefix, "
+        "Show paths that PMIx was configured with.  Accepts the following parameters: prefix, "
         "bindir, libdir, incdir, mandir, pkglibdir, sysconfdir, all");
     pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "arch", 0,
-                            "Show architecture Open MPI was compiled on");
+                            "Show architecture PMIx was compiled on");
     pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'c', NULL, "config", 0,
                             "Show configuration options");
     pmix_cmd_line_make_opt3(pmix_info_cmd_line, 't', NULL, "type", 1,
@@ -152,7 +152,7 @@ int pmix_info_init(int argc, char **argv)
     pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "parseable", 0,
                             "Synonym for --parsable");
     pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "hostname", 0,
-                            "Show the hostname that Open MPI was configured and built on");
+                            "Show the hostname that PMIx was configured and built on");
     pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'a', NULL, "all", 0,
                             "Show all configuration options and MCA parameters");
     pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'l', NULL, "level", 1,
