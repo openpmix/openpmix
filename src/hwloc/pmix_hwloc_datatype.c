@@ -130,6 +130,12 @@ void pmix_hwloc_destruct_cpuset(pmix_cpuset_t *src)
     free(src->source);
 }
 
+// avoid ABI break
+void pmix_ploc_base_destruct_cpuset(pmix_cpuset_t *cpuset)
+{
+    return pmix_hwloc_destruct_cpuset(cpuset);
+}
+
 void pmix_hwloc_release_cpuset(pmix_cpuset_t *ptr, size_t sz)
 {
     size_t n;
@@ -142,6 +148,12 @@ void pmix_hwloc_release_cpuset(pmix_cpuset_t *ptr, size_t sz)
         pmix_hwloc_destruct_cpuset(&ptr[n]);
     }
     free(ptr);
+}
+
+// avoid ABI break
+void pmix_ploc_base_release_cpuset(pmix_cpuset_t *cpuset, size_t n)
+{
+    return pmix_hwloc_release_cpuset(cpuset, n);
 }
 
 pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
@@ -477,6 +489,12 @@ void pmix_hwloc_destruct_topology(pmix_topology_t *src)
     free(src->source);
 }
 
+// avoid ABI break
+void pmix_ploc_base_destruct_topology(pmix_topology_t *topo)
+{
+    return pmix_hwloc_destruct_topology(topo);
+}
+
 void pmix_hwloc_release_topology(pmix_topology_t *src, size_t sz)
 {
     size_t n;
@@ -489,4 +507,10 @@ void pmix_hwloc_release_topology(pmix_topology_t *src, size_t sz)
         pmix_hwloc_destruct_topology(&src[n]);
     }
     free(src);
+}
+
+// avoid ABI break
+void pmix_ploc_base_release_topology(pmix_topology_t *topo, size_t n)
+{
+    return pmix_hwloc_release_topology(topo, n);
 }
