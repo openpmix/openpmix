@@ -103,6 +103,16 @@ void pmix_hwloc_destruct_topology(pmix_topology_t *topo);
 
 void pmix_hwloc_release_topology(pmix_topology_t *topo, size_t n);
 
+/***********************************  to avoid ABI break  *****************************************************/
+void pmix_ploc_base_destruct_cpuset(pmix_cpuset_t *cpuset);
+
+void pmix_ploc_base_release_cpuset(pmix_cpuset_t *cpuset, size_t n);
+
+void pmix_ploc_base_destruct_topology(pmix_topology_t *topo);
+
+void pmix_ploc_base_release_topology(pmix_topology_t *topo, size_t n);
+/**************************************************************************************************************/
+
 void* pmix_info_list_start(void);
 
 pmix_status_t pmix_info_list_add(void *ptr, const char *key, void *value, pmix_data_type_t type);
