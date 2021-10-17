@@ -206,15 +206,21 @@ bool pmix_net_islocalhost(const struct sockaddr *addr)
     }
 }
 
-bool pmix_net_samenetwork(const struct sockaddr *addr1, const struct sockaddr *addr2, uint32_t plen)
+bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
+                          const struct sockaddr_storage *addr2,
+                          uint32_t plen)
 {
     uint32_t prefixlen;
+    struct sockaddr a1, a2;
 
-    if (addr1->sa_family != addr2->sa_family) {
-        return false; /* address families must be equal */
+    memcpy(&a1, addr1, sizeof(a1));
+    memcpy(&a2, addr2, sizeof(a2));
+
+    if (a1.sa_family != a2.sa_family) {
+        return false; // address families must be equal
     }
 
-    switch (addr1->sa_family) {
+    switch (a1.sa_family) {
     case AF_INET: {
         if (0 == plen) {
             prefixlen = 32;
@@ -263,7 +269,7 @@ bool pmix_net_samenetwork(const struct sockaddr *addr1, const struct sockaddr *a
     }
 
     default:
-        pmix_output(0, "unhandled sa_family %d passed to pmix_samenetwork", addr1->sa_family);
+        pmix_output(0, "unhandled sa_family %d passed to pmix_samenetwork", a1.sa_family);
     }
 
     return false;
