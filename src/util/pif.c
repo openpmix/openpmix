@@ -250,7 +250,6 @@ int16_t pmix_ifaddrtokindex(const char *if_addr)
         PMIX_LIST_FOREACH (intf, &pmix_if_list, pmix_pif_t) {
             if (AF_INET == r->ai_family && AF_INET == intf->af_family) {
                 struct sockaddr_storage ipv4, intv4;
-                memset(&ipv4, 0, sizeof(struct sockaddr));
                 len = (r->ai_addrlen < sizeof(struct sockaddr_in)) ? r->ai_addrlen
                                                                    : sizeof(struct sockaddr_in);
                 memset(&ipv4, 0, sizeof(struct sockaddr_storage));
@@ -264,7 +263,6 @@ int16_t pmix_ifaddrtokindex(const char *if_addr)
                 }
             } else if (AF_INET6 == r->ai_family && AF_INET6 == intf->af_family) {
                 struct sockaddr_storage ipv6, intv6;
-                memset(&ipv6, 0, sizeof(struct sockaddr_in6));
                 len = (r->ai_addrlen < sizeof(struct sockaddr_in6)) ? r->ai_addrlen
                                                                     : sizeof(struct sockaddr_in6);
                 memset(&ipv6, 0, sizeof(struct sockaddr_storage));
