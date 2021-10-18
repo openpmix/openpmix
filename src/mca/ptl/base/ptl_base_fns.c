@@ -1459,8 +1459,7 @@ char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
         /* Go through all interfaces and see if we can find a match */
         for (if_index = pmix_ifbegin(); if_index >= 0; if_index = pmix_ifnext(if_index)) {
             pmix_ifindextoaddr(if_index, (struct sockaddr *) &if_inaddr, sizeof(if_inaddr));
-            if (pmix_net_samenetwork((struct sockaddr *) &argv_inaddr,
-                                     (struct sockaddr *) &if_inaddr, argv_prefix)) {
+            if (pmix_net_samenetwork(&argv_inaddr, &if_inaddr, argv_prefix)) {
                 break;
             }
         }
