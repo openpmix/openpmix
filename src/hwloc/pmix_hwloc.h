@@ -153,6 +153,11 @@ PMIX_EXPORT void pmix_hwloc_destruct_topology(pmix_topology_t *ptr);
 
 PMIX_EXPORT void pmix_hwloc_release_topology(pmix_topology_t *ptr, size_t sz);
 
+/****  PRESERVE ABI  ****/
+PMIX_EXPORT void pmix_ploc_base_destruct_cpuset(pmix_cpuset_t *cpuset);
+PMIX_EXPORT void pmix_ploc_base_release_cpuset(pmix_cpuset_t *ptr, size_t sz);
+PMIX_EXPORT void pmix_ploc_base_destruct_topology(pmix_topology_t *ptr);
+PMIX_EXPORT void pmix_ploc_base_release_topology(pmix_topology_t *ptr, size_t sz);
 
 END_C_DECLS
 
