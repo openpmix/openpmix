@@ -133,7 +133,8 @@ void pmix_hwloc_destruct_cpuset(pmix_cpuset_t *src)
 // avoid ABI break
 void pmix_ploc_base_destruct_cpuset(pmix_cpuset_t *cpuset)
 {
-    return pmix_hwloc_destruct_cpuset(cpuset);
+    pmix_hwloc_destruct_cpuset(cpuset);
+    return;
 }
 
 void pmix_hwloc_release_cpuset(pmix_cpuset_t *ptr, size_t sz)
@@ -153,7 +154,8 @@ void pmix_hwloc_release_cpuset(pmix_cpuset_t *ptr, size_t sz)
 // avoid ABI break
 void pmix_ploc_base_release_cpuset(pmix_cpuset_t *cpuset, size_t n)
 {
-    return pmix_hwloc_release_cpuset(cpuset, n);
+    pmix_hwloc_release_cpuset(cpuset, n);
+    return;
 }
 
 pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
@@ -492,7 +494,8 @@ void pmix_hwloc_destruct_topology(pmix_topology_t *src)
 // avoid ABI break
 void pmix_ploc_base_destruct_topology(pmix_topology_t *topo)
 {
-    return pmix_hwloc_destruct_topology(topo);
+    pmix_hwloc_destruct_topology(topo);
+    return;
 }
 
 void pmix_hwloc_release_topology(pmix_topology_t *src, size_t sz)
@@ -512,5 +515,6 @@ void pmix_hwloc_release_topology(pmix_topology_t *src, size_t sz)
 // avoid ABI break
 void pmix_ploc_base_release_topology(pmix_topology_t *topo, size_t n)
 {
-    return pmix_hwloc_release_topology(topo, n);
+    pmix_hwloc_release_topology(topo, n);
+    return;
 }
