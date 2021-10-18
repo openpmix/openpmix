@@ -1979,6 +1979,14 @@ typedef struct {
 
 
 /****    PMIX DATA BUFFER MACROS   ****/
+#define PMIX_DATA_BUFFER_STATIC_INIT    \
+{                                       \
+    .base_ptr = NULL,                   \
+    .pack_ptr = NULL,                   \
+    .unpack_ptr = NULL,                 \
+    .bytes_allocated = 0,               \
+    .bytes_used = 0                     \
+}
 #define PMIX_DATA_BUFFER_CREATE(m)                                          \
     do {                                                                    \
         (m) = (pmix_data_buffer_t*)pmix_calloc(1, sizeof(pmix_data_buffer_t));   \
