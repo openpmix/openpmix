@@ -53,6 +53,7 @@
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/threads.h"
 #include "src/util/argv.h"
+#include "src/util/construct_config.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"
@@ -79,6 +80,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
 {
     pmix_value_t *ival;
     size_t n;
+    pmix_status_t rc;
 
     /* if the proc is NULL, then the caller is assuming
      * that the key is universally unique within the caller's
@@ -150,6 +152,15 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             *val = ival;
         }
         return PMIX_OPERATION_SUCCEEDED;
+    }
+
+    /* if they want the library's config, pass it back */
+    if (NULL != key && 0 == strncmp(key, PMIX_CONFIGURATION, PMIX_MAX_KEYLEN)) {
+        rc = pmix_util_construct_config(val, lg);
+        if (PMIX_SUCCESS == rc) {
+            rc = PMIX_OPERATION_SUCCEEDED;
+        }
+        return rc;
     }
 
     /* if the given proc param is NULL, or the nspace is

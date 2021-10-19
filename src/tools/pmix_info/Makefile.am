@@ -12,6 +12,7 @@
 # Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -33,7 +34,8 @@ AM_CFLAGS = \
             -DPMIX_CC_ABSOLUTE="\"@PMIX_CC_ABSOLUTE@\"" \
             -DPMIX_GREEK_VERSION="\"@PMIX_GREEK_VERSION@\"" \
             -DPMIX_REPO_REV="\"@PMIX_REPO_REV@\"" \
-            -DPMIX_RELEASE_DATE="\"@PMIX_RELEASE_DATE@\""
+            -DPMIX_RELEASE_DATE="\"@PMIX_RELEASE_DATE@\"" \
+            -DPMIX_ARCH_STRING="\"@PMIX_ARCH_STRING@\""
 
 if PMIX_INSTALL_BINARIES
 

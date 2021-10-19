@@ -29,7 +29,7 @@ noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
                   test_pmix simptool simpdie simptimeout \
                   gwtest gwclient stability quietclient simpjctrl simpio simpsched \
                   simpcoord simpcycle doubleget simpfabric get_put_example simpvni \
-                  hybrid
+                  hybrid simpconfig
 
 simptest_SOURCES = $(headers) \
         simptest.c
@@ -175,3 +175,8 @@ hybrid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 hybrid_LDADD = \
     $(top_builddir)/src/libpmix.la
 
+simpconfig_SOURCES = $(headers) \
+        simpconfig.c
+simpconfig_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simpconfig_LDADD = \
+    $(top_builddir)/src/libpmix.la

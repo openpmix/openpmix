@@ -92,6 +92,8 @@ pmix_show_title "Configuring PMIx"
 
 # This must be before AM_INIT_AUTOMAKE
 AC_CANONICAL_TARGET
+PMIX_ARCH_STRING="$target"
+AC_SUBST(PMIX_ARCH_STRING)
 
 # Init automake
 AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.13.4])

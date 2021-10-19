@@ -756,7 +756,7 @@ void pmix_info_show_mca_params(const char *type, const char *component,
 
 void pmix_info_do_arch()
 {
-    pmix_info_out("Configured architecture", "config:arch", PMIX_ARCH);
+    pmix_info_out("Configured architecture", "config:arch", PMIX_ARCH_STRING);
 }
 
 void pmix_info_do_hostname()
@@ -1288,18 +1288,18 @@ void pmix_info_show_pmix_version(const char *scope)
     }
     tmp2 = pmix_info_make_version_str(scope, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
                                       PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV);
-    pmix_info_out("PMIX", tmp, tmp2);
+    pmix_info_out("PMIx", tmp, tmp2);
     free(tmp);
     free(tmp2);
     if (0 > asprintf(&tmp, "%s:version:repo", pmix_info_type_pmix)) {
         return;
     }
-    pmix_info_out("PMIX repo revision", tmp, PMIX_REPO_REV);
+    pmix_info_out("PMIx repo revision", tmp, PMIX_REPO_REV);
     free(tmp);
     if (0 > asprintf(&tmp, "%s:version:release_date", pmix_info_type_pmix)) {
         return;
     }
-    pmix_info_out("PMIX release date", tmp, PMIX_RELEASE_DATE);
+    pmix_info_out("PMIx release date", tmp, PMIX_RELEASE_DATE);
     free(tmp);
 }
 

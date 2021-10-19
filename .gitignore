@@ -173,6 +173,7 @@ test/simple/simpfabric
 test/simple/get_put_example
 test/simple/simpvni
 test/simple/hybrid
+test/simple/simpconfig
 
 test/sshot/daemon
 test/sshot/generate
