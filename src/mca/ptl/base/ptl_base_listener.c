@@ -299,7 +299,7 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
 {
     int flags = 0;
     pmix_listener_t *lt;
-    int i, rc = 0, saveindex = -1;
+    int i, rc = 0, saveindex = -1, savelpbk = -1;
     char **interfaces = NULL;
     bool including = false;
     char name[32];
@@ -407,13 +407,11 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         /* if this is the loopback device and they didn't enable
          * remote connections, then we are done */
         if (pmix_ifisloopback(i)) {
-            if (pmix_ptl_base.remote_connections) {
-                /* ignore loopback */
-                continue;
-            } else {
-                pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                                    "ptl:tool:init loopback interface %s selected", name);
-                saveindex = i;
+            pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
+                                "ptl:tool:init loopback interface %s found", name);
+            savelpbk = i;
+            if (!pmix_ptl_base.remote_connections) {
+                saveindex = savelpbk;
                 break;
             }
         } else {
@@ -429,9 +427,16 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
         pmix_argv_free(interfaces);
     }
 
-    /* if we didn't find anything, then we cannot operate */
+    /* if we didn't find anything, that could be a problem */
     if (saveindex < 0) {
-        return PMIX_ERR_NOT_AVAILABLE;
+        /* if ONLY a loopback is available, then even if they
+         * enabled remote connections, it's the best we can do */
+        if (savelpbk < 0) {
+            /* if NOTHING is available, then neither are we */
+            return PMIX_ERR_NOT_AVAILABLE;
+        } else {
+            saveindex = savelpbk;
+        }
     }
 
     /* save the connection */
