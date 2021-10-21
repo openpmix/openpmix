@@ -38,10 +38,7 @@ EXTRA_DIST = AUTHORS README HACKING INSTALL VERSION LICENSE autogen.pl EXCEPTION
 # Only install the valgrind suppressions file and man pages
 # if we're building in standalone mode
 dist_pmixdata_DATA =
-if ! PMIX_EMBEDDED_MODE
 dist_pmixdata_DATA += contrib/pmix-valgrind.supp
-
-endif
 
 if PMIX_TESTS_EXAMPLES
 SUBDIRS += . test/test_v2 test examples

@@ -24,27 +24,13 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                 [AS_HELP_STRING([--with-hwloc-libdir=DIR],
                                 [Search for hwloc libraries in DIR ])])
 
-    AC_ARG_WITH([hwloc-header],
-                [AS_HELP_STRING([--with-hwloc-header=HEADER],
-                                [The value that should be included in C files to include hwloc.h])])
-
     pmix_hwloc_support=0
-    pmix_hwloc_header_given=0
     pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
     pmix_check_hwloc_save_LDFLAGS="$LDFLAGS"
     pmix_check_hwloc_save_LIBS="$LIBS"
     pmix_have_topology_dup=0
 
-    if test "x$with_hwloc_header" != "x"; then
-        AS_IF([test "$with_hwloc_header" = "yes"],
-              [PMIX_HWLOC_HEADER="<hwloc.h>"],
-              [PMIX_HWLOC_HEADER="\"$with_hwloc_header\""
-               pmix_hwloc_header_given=1])
-        pmix_hwloc_support=1
-        pmix_hwloc_source="external header"
-        pmix_have_topology_dup=1
-
-    elif test "$with_hwloc" == "no"; then
+    if test "$with_hwloc" == "no"; then
         AC_MSG_WARN([PRRTE requires HWLOC topology library support.])
         AC_MSG_WARN([Please reconfigure so we can find the library.])
         AC_MSG_ERROR([Cannot continue.])
@@ -167,9 +153,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     AC_DEFINE_UNQUOTED([PMIX_HWLOC_HEADER], [$PMIX_HWLOC_HEADER],
                        [Location of hwloc.h])
     AC_MSG_RESULT([$PMIX_HWLOC_HEADER])
-
-    AC_DEFINE_UNQUOTED([PMIX_HWLOC_HEADER_GIVEN], [$pmix_hwloc_header_given],
-                       [Whether or not the hwloc header was given to us])
 
     AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC_TOPOLOGY_DUP], [$pmix_have_topology_dup],
                        [Whether or not hwloc_topology_dup is available])

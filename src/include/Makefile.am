@@ -35,7 +35,6 @@ headers = pmix_globals.h
 nodist_headers = \
     pmix_config.h
 
-if ! PMIX_EMBEDDED_MODE
 headers += \
         align.h \
         hash_string.h \
@@ -50,8 +49,6 @@ headers += \
         frameworks.h \
         pmix_stdatomic.h \
         dictionary.h
-
-endif ! PMIX_EMBEDDED_MODE
 
 if WANT_INSTALL_HEADERS
 nobase_pmix_HEADERS = $(headers)
