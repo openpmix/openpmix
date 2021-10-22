@@ -751,6 +751,30 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_CHECK_VISIBILITY
 
     ##################################
+    # Package checks
+    ##################################
+
+    # Sometimes we are in situations where we cannot check the dependent
+    # libraries for presence or correctness. Allow the user to ask us to
+    # take it all on faith that it will eventually build correctly.
+
+    AC_MSG_CHECKING([disable package checks])
+    AC_ARG_ENABLE([package-checks],
+                  [AS_HELP_STRING([--disable-package-checks],
+                                  [Do not check dependent libraries for presence or correctness.
+                                   Take it on faith that they will be present when needed. This
+                                   is not advisable, but necessary in some circumstances])])
+    if test "$enable_package_checks" = "no" ; then
+        PMIX_DISABLE_PACKAGE_CHECKS=1
+        AC_MSG_RESULT([disabled])
+    else
+        PMIX_DISABLE_PACKAGE_CHECKS=0
+        AC_MSG_RESULT([enabled by default])
+    fi
+    AC_DEFINE_UNQUOTED(PMIX_DISABLE_PACKAGE_CHECKS, $PMIX_DISABLE_PACKAGE_CHECKS,
+                       [Disable package checks])
+
+    ##################################
     # Libevent
     ##################################
     pmix_show_title "Event libraries"

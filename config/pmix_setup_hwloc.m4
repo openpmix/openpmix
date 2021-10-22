@@ -34,56 +34,58 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
         AC_MSG_WARN([PRRTE requires HWLOC topology library support.])
         AC_MSG_WARN([Please reconfigure so we can find the library.])
         AC_MSG_ERROR([Cannot continue.])
+    fi
 
-    else
-        # get rid of any trailing slash(es)
-        hwloc_prefix=$(echo $with_hwloc | sed -e 'sX/*$XXg')
-        hwlocdir_prefix=$(echo $with_hwloc_libdir | sed -e 'sX/*$XXg')
+    # get rid of any trailing slash(es)
+    hwloc_prefix=$(echo $with_hwloc | sed -e 'sX/*$XXg')
+    hwlocdir_prefix=$(echo $with_hwloc_libdir | sed -e 'sX/*$XXg')
 
-        AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
-                     [pmix_hwloc_dir="$hwloc_prefix"],
-                     [pmix_hwloc_dir=""])
-        _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
-                                   [pmix_hwloc_support=1],
-                                   [pmix_hwloc_support=0])
+    AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
+                 [pmix_hwloc_dir="$hwloc_prefix"],
+                 [pmix_hwloc_dir=""])
+    _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
+                               [pmix_hwloc_support=1],
+                               [pmix_hwloc_support=0])
 
-        if test $pmix_hwloc_support -eq 0 && test -z $pmix_hwloc_dir; then
-            # try default locations
-            if test -d /usr/include; then
-                pmix_hwloc_dir=/usr
-                _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
-                                           [pmix_hwloc_support=1],
-                                           [pmix_hwloc_support=0])
-            fi
-            if test $pmix_hwloc_support -eq 0 && test -d /usr/local/include; then
-                pmix_hwloc_dir=/usr/local
-                _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
-                                           [pmix_hwloc_support=1],
-                                           [pmix_hwloc_support=0])
-            fi
+    if test $pmix_hwloc_support -eq 0 && test -z $pmix_hwloc_dir; then
+        # try default locations
+        if test -d /usr/include; then
+            pmix_hwloc_dir=/usr
+            _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
+                                       [pmix_hwloc_support=1],
+                                       [pmix_hwloc_support=0])
         fi
-
-        if test $pmix_hwloc_support -eq 0; then
-            AC_MSG_WARN([PRRTE requires HWLOC topology library support, but])
-            AC_MSG_WARN([an adequate version of that library was not found.])
-            AC_MSG_WARN([Please reconfigure and point to a location where])
-            AC_MSG_WARN([the HWLOC library can be found.])
-            AC_MSG_ERROR([Cannot continue.])
+        if test $pmix_hwloc_support -eq 0 && test -d /usr/local/include; then
+            pmix_hwloc_dir=/usr/local
+            _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
+                                       [pmix_hwloc_support=1],
+                                       [pmix_hwloc_support=0])
         fi
+    fi
 
-        AS_IF([test ! -z "$hwlocdir_prefix" && test "$hwlocdir_prefix" != "yes"],
-                     [pmix_hwloc_libdir="$hwlocdir_prefix"],
-                     [AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
-                            [if test -d $hwloc_prefix/lib64; then
-                                pmix_hwloc_libdir=$hwloc_prefix/lib64
-                             elif test -d $hwloc_prefix/lib; then
-                                pmix_hwloc_libdir=$hwloc_prefix/lib
-                             else
-                                AC_MSG_WARN([Could not find $hwloc_prefix/lib or $hwloc_prefix/lib64])
-                                AC_MSG_ERROR([Can not continue])
-                             fi
-                            ],
-                            [pmix_hwloc_libdir=""])])
+    if test $pmix_hwloc_support -eq 0; then
+        AC_MSG_WARN([PRRTE requires HWLOC topology library support, but])
+        AC_MSG_WARN([an adequate version of that library was not found.])
+        AC_MSG_WARN([Please reconfigure and point to a location where])
+        AC_MSG_WARN([the HWLOC library can be found.])
+        AC_MSG_ERROR([Cannot continue.])
+    fi
+
+    AS_IF([test ! -z "$hwlocdir_prefix" && test "$hwlocdir_prefix" != "yes"],
+                 [pmix_hwloc_libdir="$hwlocdir_prefix"],
+                 [AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
+                        [if test -d $hwloc_prefix/lib64; then
+                            pmix_hwloc_libdir=$hwloc_prefix/lib64
+                         elif test -d $hwloc_prefix/lib; then
+                            pmix_hwloc_libdir=$hwloc_prefix/lib
+                         else
+                            AC_MSG_WARN([Could not find $hwloc_prefix/lib or $hwloc_prefix/lib64])
+                            AC_MSG_ERROR([Can not continue])
+                         fi
+                        ],
+                        [pmix_hwloc_libdir=""])])
+
+    if test $PMIX_DISABLE_PACKAGE_CHECKS -eq 0; then
         _PMIX_CHECK_PACKAGE_LIB([pmix_hwloc], [hwloc], [hwloc_topology_init],
                                 [], [$pmix_hwloc_dir],
                                 [$pmix_hwloc_libdir],
@@ -127,10 +129,12 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
               [AC_MSG_RESULT([yes])
                pmix_have_topology_dup=1],
               [AC_MSG_RESULT([no])])
-
-        # set the header
-        PMIX_HWLOC_HEADER="<hwloc.h>"
+    else
+        pmix_have_topology_dup=1
     fi
+
+    # set the header
+    PMIX_HWLOC_HEADER="<hwloc.h>"
 
     CPPFLAGS=$pmix_check_hwloc_save_CPPFLAGS
     LDFLAGS=$pmix_check_hwloc_save_LDFLAGS
