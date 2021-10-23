@@ -23,7 +23,7 @@
 # $HEADER$
 #
 
-AM_LDFLAGS = $(PMIX_EXTRA_LIB_LDFLAGS) $(pmix_hwloc_LDFLAGS) $(pmix_libevent_LDFLAGS)
+AM_LDFLAGS = $(pmix_hwloc_LDFLAGS) $(pmix_libevent_LDFLAGS)
 
 if PMIX_INSTALL_BINARIES
 
@@ -37,7 +37,6 @@ pmixcc_SOURCES = \
         pmixcc.c
 
 pmixcc_LDADD = \
-    $(PMIXEXTRA_LTLIB) \
     $(pmix_libevent_LIBS) \
     $(pmix_hwloc_LIBS) \
 	$(top_builddir)/src/libpmix.la
