@@ -46,5 +46,4 @@ endif # PMIX_INSTALL_BINARIES
 
 pquery_SOURCES = pquery.c
 pquery_LDADD = \
-    $(PMIX_EXTRA_LTLIB) \
 	$(top_builddir)/src/libpmix.la

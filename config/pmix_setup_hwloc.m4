@@ -64,7 +64,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     fi
 
     if test $pmix_hwloc_support -eq 0; then
-        AC_MSG_WARN([PRRTE requires HWLOC topology library support, but])
+        AC_MSG_WARN([PMIx requires HWLOC topology library support, but])
         AC_MSG_WARN([an adequate version of that library was not found.])
         AC_MSG_WARN([Please reconfigure and point to a location where])
         AC_MSG_WARN([the HWLOC library can be found.])
@@ -85,53 +85,49 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                         ],
                         [pmix_hwloc_libdir=""])])
 
-    if test $PMIX_DISABLE_PACKAGE_CHECKS -eq 0; then
-        _PMIX_CHECK_PACKAGE_LIB([pmix_hwloc], [hwloc], [hwloc_topology_init],
-                                [], [$pmix_hwloc_dir],
-                                [$pmix_hwloc_libdir],
-                                [],
-                                [AC_MSG_WARN([PMIX requires HWLOC support using])
-                                 AC_MSG_WARN([an external copy that you supply.])
-                                 AC_MSG_WARN([The library was not found in $pmix_hwloc_libdir.])
-                                 AC_MSG_ERROR([Cannot continue])])
+    _PMIX_CHECK_PACKAGE_LIB([pmix_hwloc], [hwloc], [hwloc_topology_init],
+                            [], [$pmix_hwloc_dir],
+                            [$pmix_hwloc_libdir],
+                            [],
+                            [AC_MSG_WARN([PMIX requires HWLOC support using])
+                             AC_MSG_WARN([an external copy that you supply.])
+                             AC_MSG_WARN([The library was not found in $pmix_hwloc_libdir.])
+                             AC_MSG_ERROR([Cannot continue])])
 
-        # update global flags to test for HWLOC version
-        if test ! -z "$pmix_hwloc_CPPFLAGS"; then
-            PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
-        fi
-        if test ! -z "$pmix_hwloc_LDFLAGS"; then
-            PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)
-        fi
-        if test ! -z "$pmix_hwloc_LIBS"; then
-            PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
-        fi
-
-        AC_MSG_CHECKING([if external hwloc version is 1.5 or greater])
-        AC_COMPILE_IFELSE(
-              [AC_LANG_PROGRAM([[#include <hwloc.h>]],
-              [[
-        #if HWLOC_API_VERSION < 0x00010500
-        #error "hwloc API version is less than 0x00010500"
-        #endif
-              ]])],
-              [AC_MSG_RESULT([yes])],
-              [AC_MSG_RESULT([no])
-               AC_MSG_ERROR([Cannot continue])])
-
-        AC_MSG_CHECKING([if external hwloc version is 1.8 or greater])
-        AC_COMPILE_IFELSE(
-              [AC_LANG_PROGRAM([[#include <hwloc.h>]],
-              [[
-        #if HWLOC_API_VERSION < 0x00010800
-        #error "hwloc API version is less than 0x00010800"
-        #endif
-              ]])],
-              [AC_MSG_RESULT([yes])
-               pmix_have_topology_dup=1],
-              [AC_MSG_RESULT([no])])
-    else
-        pmix_have_topology_dup=1
+    # update global flags to test for HWLOC version
+    if test ! -z "$pmix_hwloc_CPPFLAGS"; then
+        PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
     fi
+    if test ! -z "$pmix_hwloc_LDFLAGS"; then
+        PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)
+    fi
+    if test ! -z "$pmix_hwloc_LIBS"; then
+        PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
+    fi
+
+    AC_MSG_CHECKING([if external hwloc version is 1.5 or greater])
+    AC_COMPILE_IFELSE(
+          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [[
+    #if HWLOC_API_VERSION < 0x00010500
+    #error "hwloc API version is less than 0x00010500"
+    #endif
+          ]])],
+          [AC_MSG_RESULT([yes])],
+          [AC_MSG_RESULT([no])
+           AC_MSG_ERROR([Cannot continue])])
+
+    AC_MSG_CHECKING([if external hwloc version is 1.8 or greater])
+    AC_COMPILE_IFELSE(
+          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [[
+    #if HWLOC_API_VERSION < 0x00010800
+    #error "hwloc API version is less than 0x00010800"
+    #endif
+          ]])],
+          [AC_MSG_RESULT([yes])
+           pmix_have_topology_dup=1],
+          [AC_MSG_RESULT([no])])
 
     # set the header
     PMIX_HWLOC_HEADER="<hwloc.h>"

@@ -46,5 +46,4 @@ endif # PMIX_INSTALL_BINARIES
 
 pattrs_SOURCES = pattrs.c
 pattrs_LDADD = \
-    $(PMIX_EXTRA_LTLIB) \
 	$(top_builddir)/src/libpmix.la

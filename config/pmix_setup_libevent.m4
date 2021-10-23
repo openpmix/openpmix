@@ -72,36 +72,34 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                              fi
                             ],
                             [pmix_event_libdir=""])])
-        if test $PMIX_DISABLE_PACKAGE_CHECKS -eq 0; then
-            _PMIX_CHECK_PACKAGE_LIB([pmix_libevent], [event_core], [event_config_new],
-                                    [-levent_pthreads], [$pmix_event_dir],
-                                    [$pmix_event_libdir],
-                                    [pmix_libevent_support=1],
-                                    [pmix_libevent_support=0])
+        _PMIX_CHECK_PACKAGE_LIB([pmix_libevent], [event_core], [event_config_new],
+                                [-levent_pthreads], [$pmix_event_dir],
+                                [$pmix_event_libdir],
+                                [pmix_libevent_support=1],
+                                [pmix_libevent_support=0])
 
-            # Check to see if the above check failed because it conflicted with LSF's libevent.so
-            # This can happen if LSF's library is in the LDFLAGS envar or default search
-            # path. The 'event_getcode4name' function is only defined in LSF's libevent.so and not
-            # in Libevent's libevent.so
-            if test $pmix_libevent_support -eq 0; then
-                AC_CHECK_LIB([event], [event_getcode4name],
-                             [AC_MSG_WARN([===================================================================])
-                              AC_MSG_WARN([Possible conflicting libevent.so libraries detected on the system.])
-                              AC_MSG_WARN([])
-                              AC_MSG_WARN([LSF provides a libevent.so that is not from Libevent in its])
-                              AC_MSG_WARN([library path. It is possible that you have installed Libevent])
-                              AC_MSG_WARN([on the system, but the linker is picking up the wrong version.])
-                              AC_MSG_WARN([])
-                              AC_MSG_WARN([You will need to address this linker path issue. One way to do so is])
-                              AC_MSG_WARN([to make sure the libevent system library path occurs before the])
-                              AC_MSG_WARN([LSF library path.])
-                              AC_MSG_WARN([===================================================================])
-                              ])
-            fi
+        # Check to see if the above check failed because it conflicted with LSF's libevent.so
+        # This can happen if LSF's library is in the LDFLAGS envar or default search
+        # path. The 'event_getcode4name' function is only defined in LSF's libevent.so and not
+        # in Libevent's libevent.so
+        if test $pmix_libevent_support -eq 0; then
+            AC_CHECK_LIB([event], [event_getcode4name],
+                         [AC_MSG_WARN([===================================================================])
+                          AC_MSG_WARN([Possible conflicting libevent.so libraries detected on the system.])
+                          AC_MSG_WARN([])
+                          AC_MSG_WARN([LSF provides a libevent.so that is not from Libevent in its])
+                          AC_MSG_WARN([library path. It is possible that you have installed Libevent])
+                          AC_MSG_WARN([on the system, but the linker is picking up the wrong version.])
+                          AC_MSG_WARN([])
+                          AC_MSG_WARN([You will need to address this linker path issue. One way to do so is])
+                          AC_MSG_WARN([to make sure the libevent system library path occurs before the])
+                          AC_MSG_WARN([LSF library path.])
+                          AC_MSG_WARN([===================================================================])
+                          ])
         fi
     fi
 
-    if test $pmix_libevent_support -eq 1 && test $PMIX_DISABLE_PACKAGE_CHECKS -eq 0; then
+    if test $pmix_libevent_support -eq 1; then
         # need to add resulting flags to global ones so we can
         # test for thread support
         if test ! -z "$pmix_libevent_CPPFLAGS"; then
@@ -125,7 +123,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                       pmix_libevent_support=0])
     fi
 
-    if test $pmix_libevent_support -eq 1 && test $PMIX_DISABLE_PACKAGE_CHECKS -eq 0; then
+    if test $pmix_libevent_support -eq 1; then
         AC_CHECK_LIB([event_pthreads], [evthread_use_pthreads],
                      [],
                      [AC_MSG_WARN([libevent does not have thread support])
@@ -134,7 +132,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                       pmix_libevent_support=0])
     fi
 
-    if test $pmix_libevent_support -eq 1 && test $PMIX_DISABLE_PACKAGE_CHECKS -eq 0; then
+    if test $pmix_libevent_support -eq 1; then
         # Pin the "oldest supported" version to 2.0.21
         AC_MSG_CHECKING([if libevent version is 2.0.21 or greater])
         AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <event2/event.h>]],
