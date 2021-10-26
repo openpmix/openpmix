@@ -236,7 +236,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //          the members of the newly defined process set.
 #define PMIX_REINCARNATION                  "pmix.reinc"            // (uint32_t) number of times this process has been instantiated - i.e.,
                                                                     //            tracks the number of times it has been restarted
-#define PMIX_CONFIGURATION                  "pmix.config"           // (pmix_data_array_t*) Returns an array containing information on
+#define PMIX_LIBRARY_CONFIGURATION          "pmix.config"           // (pmix_data_array_t*) Returns an array containing information on
                                                                     //          the implementation's configuration and control parameters
                                                                     //          (e.g., the OpenPMIx MCA parameters)
 

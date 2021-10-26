@@ -62,7 +62,7 @@ int main(int argc, char **argv)
                 myproc.nspace, myproc.rank, pmix_globals.hostname);
 
     /* get the config */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_CONFIGURATION, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_LIBRARY_CONFIGURATION, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get configuration failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);
@@ -81,13 +81,9 @@ int main(int argc, char **argv)
     }
 
     /* finalize us */
-    pmix_output(0, "Client ns %s rank %d: Finalizing", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_tool_finalize())) {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
-    } else {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
-                myproc.nspace, myproc.rank);
     }
     fflush(stderr);
     return (rc);

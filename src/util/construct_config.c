@@ -42,6 +42,8 @@
 #include "include/pmix_common.h"
 #include "src/util/construct_config.h"
 
+#define BFRSIZE 1024
+
 /* Return a pmix_data_array_t of key-value pairs corresponding
  * to what pmix_info presents */
 pmix_status_t pmix_util_construct_config(pmix_value_t **val,
@@ -49,11 +51,17 @@ pmix_status_t pmix_util_construct_config(pmix_value_t **val,
 {
     void *list;
     pmix_status_t rc;
-    char *tmp;
+    char *tmp, *debug, *have_dl, *symbol_visibility;
+    char bfr[BFRSIZE];
     pmix_data_array_t *darray;
     pmix_value_t *ival;
 
     PMIX_INFO_LIST_START(list);
+
+    /* setup the strings that don't require allocations*/
+    debug = PMIX_ENABLE_DEBUG ? "yes" : "no";
+    have_dl = PMIX_HAVE_PDL_SUPPORT ? "yes" : "no";
+    symbol_visibility = PMIX_HAVE_VISIBILITY ? "yes" : "no";
 
     PMIX_INFO_LIST_ADD(rc, list, "Package", PMIX_PACKAGE_STRING, PMIX_STRING);
 
@@ -77,6 +85,30 @@ pmix_status_t pmix_util_construct_config(pmix_value_t **val,
     PMIX_INFO_LIST_ADD(rc, list, "Prefix", pmix_pinstall_dirs.prefix, PMIX_STRING);
     PMIX_INFO_LIST_ADD(rc, list, "Configured architecture", PMIX_ARCH_STRING, PMIX_STRING);
     PMIX_INFO_LIST_ADD(rc, list, "Configure host", PMIX_CONFIGURE_HOST, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Configured by", PMIX_CONFIGURE_USER, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Configured on", PMIX_CONFIGURE_DATE, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Configure command line", PMIX_CONFIGURE_CLI, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Built by", PMIX_BUILD_USER, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Built on", PMIX_BUILD_DATE, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Built host", PMIX_BUILD_HOST, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "C compiler", PMIX_CC, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "C compiler absolute", PMIX_CC_ABSOLUTE, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "C compiler family name",
+                       PLATFORM_STRINGIFY(PLATFORM_COMPILER_FAMILYNAME), PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "C compiler version",
+                       PLATFORM_STRINGIFY(PLATFORM_COMPILER_VERSION_STR), PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "C compiler absolute", PMIX_CC_ABSOLUTE, PMIX_STRING);
+
+    PMIX_INFO_LIST_ADD(rc, list, "Build CFLAGS", PMIX_BUILD_CFLAGS, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Build LDFLAGS", PMIX_BUILD_LDFLAGS, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Build LIBS", PMIX_BUILD_LIBS, PMIX_STRING);
+
+    PMIX_INFO_LIST_ADD(rc, list, "Internal debug support", debug, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "dl support", have_dl, PMIX_STRING);
+    PMIX_INFO_LIST_ADD(rc, list, "Symbol vis. support", symbol_visibility, PMIX_STRING);
+
+    pmix_snprintf(bfr, BFRSIZE, "%"PRIsize_t"", sizeof(char));
+    PMIX_INFO_LIST_ADD(rc, list, "C char size", bfr, PMIX_STRING);
 
     darray = (pmix_data_array_t*)malloc(sizeof(pmix_data_array_t));
     PMIX_INFO_LIST_CONVERT(rc, list, darray);

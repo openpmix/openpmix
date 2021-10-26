@@ -155,7 +155,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     }
 
     /* if they want the library's config, pass it back */
-    if (NULL != key && 0 == strncmp(key, PMIX_CONFIGURATION, PMIX_MAX_KEYLEN)) {
+    if (NULL != key && 0 == strncmp(key, PMIX_LIBRARY_CONFIGURATION, PMIX_MAX_KEYLEN)) {
         rc = pmix_util_construct_config(val, lg);
         if (PMIX_SUCCESS == rc) {
             rc = PMIX_OPERATION_SUCCEEDED;
