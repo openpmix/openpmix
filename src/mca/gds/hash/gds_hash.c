@@ -635,7 +635,7 @@ static pmix_status_t register_info(pmix_peer_t *peer, pmix_namespace_t *ns, pmix
                             "FETCHING PROC INFO FOR RANK %s", PMIX_RANK_PRINT(rank));
         val = NULL;
         rc = pmix_hash_fetch(ht, rank, NULL, &val);
-        if (PMIX_SUCCESS != rc && PMIX_ERR_PROC_ENTRY_NOT_FOUND != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             PMIX_ERROR_LOG(rc);
             if (NULL != val) {
                 PMIX_VALUE_RELEASE(val);

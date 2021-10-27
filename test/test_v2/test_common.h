@@ -317,7 +317,7 @@ typedef struct {
         TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, r, key));  \
         if (blocking) {                                                                         \
             if (PMIX_SUCCESS != (rc = PMIx_Get(&foobar, key, NULL, 0, &val))) {                 \
-                if (!((rc == PMIX_ERR_NOT_FOUND || rc == PMIX_ERR_PROC_ENTRY_NOT_FOUND)         \
+                if (!((rc == PMIX_ERR_NOT_FOUND)         \
                       && ok_notfnd)) {                                                          \
                     TEST_ERROR(("%s:%d: PMIx_Get failed: %s from %s:%d, key %s", my_nspace,     \
                                 my_rank, PMIx_Error_string(rc), ns, r, key));                   \
@@ -347,8 +347,7 @@ typedef struct {
         }                                                                                       \
         if (PMIX_SUCCESS == rc) {                                                               \
             if (PMIX_SUCCESS != cbdata.status) {                                                \
-                if (!((cbdata.status == PMIX_ERR_NOT_FOUND                                      \
-                       || cbdata.status == PMIX_ERR_PROC_ENTRY_NOT_FOUND)                       \
+                if (!((cbdata.status == PMIX_ERR_NOT_FOUND)                                     \
                       && ok_notfnd)) {                                                          \
                     TEST_ERROR(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s", my_nspace,  \
                                 my_rank, PMIx_Error_string(rc), my_nspace, r, key));            \
