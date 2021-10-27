@@ -115,9 +115,9 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank, const 
     id = (uint64_t) rank;
 
     /* - PMIX_RANK_UNDEF should return following statuses
-     *     PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_SUCCESS
+     *     PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
      * - specified rank can return following statuses
-     *     PMIX_ERR_PROC_ENTRY_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
+     *     PMIX_ERR_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
      * special logic is basing on these statuses on a client and a server */
     if (PMIX_RANK_UNDEF == rank) {
         rc = pmix_hash_table_get_first_key_uint64(table, &id, (void **) &proc_data,
@@ -126,7 +126,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank, const 
             pmix_output_verbose(10, pmix_globals.debug_output,
                                 "HASH:FETCH[%s:%d] proc data for rank %d not found", __func__,
                                 __LINE__, rank);
-            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+            return PMIX_ERR_NOT_FOUND;
         }
     }
 
@@ -136,7 +136,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank, const 
             pmix_output_verbose(10, pmix_globals.debug_output,
                                 "HASH:FETCH[%s:%d] proc data for rank %d not found", __func__,
                                 __LINE__, rank);
-            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+            return PMIX_ERR_NOT_FOUND;
         }
 
         /* if the key is NULL, then the user wants -all- data
@@ -198,7 +198,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank, const 
             pmix_output_verbose(10, pmix_globals.debug_output,
                                 "%s:%d HASH:FETCH data for key %s not found", __func__, __LINE__,
                                 key);
-            return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+            return PMIX_ERR_NOT_FOUND;
         }
     }
 
@@ -216,11 +216,11 @@ pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key, 
     static const char *key_r = NULL;
 
     if (key == NULL && (node = *last) == NULL) {
-        return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        return PMIX_ERR_NOT_FOUND;
     }
 
     if (key == NULL && key_r == NULL) {
-        return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        return PMIX_ERR_NOT_FOUND;
     }
 
     if (key) {
@@ -238,7 +238,7 @@ pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key, 
     if (PMIX_SUCCESS != rc) {
         pmix_output_verbose(10, pmix_globals.debug_output,
                             "HASH:FETCH proc data for key %s not found", key_r);
-        return PMIX_ERR_PROC_ENTRY_NOT_FOUND;
+        return PMIX_ERR_NOT_FOUND;
     }
 
     /* find the value from within this proc_data object */
