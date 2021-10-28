@@ -32,7 +32,6 @@ EXTRA_DIST = \
 	getdate.sh \
     pmix_check_alps.m4 \
 	pmix_check_attributes.m4 \
-	pmix_check_broken_qsort.m4 \
     pmix_check_cflags.m4 \
 	pmix_check_compiler_version.m4 \
     pmix_check_curl.m4 \
