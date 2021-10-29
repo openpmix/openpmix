@@ -32,6 +32,25 @@ multiple release branches.
 **** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
 **** for building and installing man pages.
 
+ - PR #2380: Update 4.1.1 rc5
+    - Improve handling of compiler version string
+    - Fix corner case on iof flags
+    - Squash unused variable warnings
+    - Remove duplicate defines of client build dependencies
+    - Ensure we terminate the input channel when done
+    - Ensure pmix library gets a chance to cleanly terminate children
+    - Avoid ABI break in mid-series
+    - Define a static initializer for data_buffer_t
+    - Fix typos - replace OMPI with PMIx
+    - Silence Coverity concerns
+    - Make the backward-compatible ABI functions visible
+    - Avoid warning on void function return
+    - Allow operation if ONLY a loopback device is present
+ - PR #2332: Update 4.1.1 rc4
+    - Modify configure logic
+    - Add a missing helpfile (util) and few fixups
+    - Fix --output to ignore err on existing dirs
+    - Squash unused param warnings
  - PR #2317: Update 4.1.1 rc3
     - Add test_v2 to autoconf/automake processing
     - Silence Coverity warnings

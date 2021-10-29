@@ -750,7 +750,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     pmix_show_title "System-specific tests"
 
     AC_C_BIGENDIAN
-    PMIX_CHECK_BROKEN_QSORT
 
     #
     # Check out what thread support we have
