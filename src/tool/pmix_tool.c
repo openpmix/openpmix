@@ -1024,23 +1024,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         if (PMIX_SUCCESS != rc) {
             return rc;
         }
-        /* restore our original primary server */
-        rc = PMIx_tool_set_server(&myserver, NULL, 0);
-        if (PMIX_SUCCESS != rc) {
-            return rc;
-        }
-    }
 
-    /* register the tool supported attrs */
-    rc = pmix_register_tool_attrs();
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-
-    /* see if we were asked to stop in init */
-    PMIX_INFO_LOAD(&ginfo, PMIX_OPTIONAL, NULL, PMIX_BOOL);
-    rc = PMIx_Get(&wildcard, PMIX_DEBUG_STOP_IN_INIT, &ginfo, 1, &val);
-    if (PMIX_SUCCESS == rc) {
         /* if the value was found, then we need to wait for debugger attach here */
         /* register for the debugger release notification */
         PMIX_CONSTRUCT_LOCK(&reglock);
@@ -1061,10 +1045,18 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         /* wait for release to arrive */
         PMIX_WAIT_THREAD(&releaselock);
         PMIX_DESTRUCT_LOCK(&releaselock);
-        PMIX_VALUE_RELEASE(val);
+
+        /* restore our original primary server */
+        rc = PMIx_tool_set_server(&myserver, NULL, 0);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
     }
 
-    return PMIX_SUCCESS;
+    /* register the tool supported attrs */
+    rc = pmix_register_tool_attrs();
+
+    return rc;
 }
 
 PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)

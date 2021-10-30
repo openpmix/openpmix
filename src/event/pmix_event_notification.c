@@ -1080,8 +1080,8 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         /* cycle across our registered events and send the message to
          * any client who registered for it */
         PMIX_LIST_FOREACH (reginfoptr, &pmix_server_globals.events, pmix_regevents_info_t) {
-            if ((PMIX_MAX_ERR_CONSTANT == reginfoptr->code && !cd->nondefault)
-                || cd->status == reginfoptr->code) {
+            if ((PMIX_MAX_ERR_CONSTANT == reginfoptr->code && !cd->nondefault) ||
+                cd->status == reginfoptr->code) {
                 PMIX_LIST_FOREACH (pr, &reginfoptr->peers, pmix_peer_events_info_t) {
                     /* if this client was the source of the event, then
                      * don't send it back as they will have processed it
