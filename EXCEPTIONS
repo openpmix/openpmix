@@ -62,6 +62,34 @@ pmix_net_stats_t - contains statistics on network activity
 pmix_node_stats_t - contains statistics on node resource usage
 pmix_proc_stats_t - contains statistics on process resource usage
 
+Datatype static initializers
+----------------------------
+Static initializers were added for each complex data type (i.e., a data type
+defined as a struct):
+PMIX_COORD_STATIC_INIT
+PMIX_CPUSET_STATIC_INIT
+PMIX_TOPOLOGY_STATIC_INIT
+PMIX_GEOMETRY_STATIC_INIT
+PMIX_DEVICE_DIST_STATIC_INIT
+PMIX_BYTE_OBJECT_STATIC_INIT
+PMIX_ENDPOINT_STATIC_INIT
+PMIX_ENVAR_STATIC_INIT
+PMIX_PROC_STATIC_INIT
+PMIX_PROC_INFO_STATIC_INIT
+PMIX_DATA_ARRAY_STATIC_INIT
+PMIX_DATA_BUFFER_STATIC_INIT
+PMIX_PROC_STATS_STATIC_INIT
+PMIX_DISK_STATS_STATIC_INIT
+PMIX_NET_STATS_STATIC_INIT
+PMIX_NODE_STATS_STATIC_INIT
+PMIX_VALUE_STATIC_INIT
+PMIX_INFO_STATIC_INIT
+PMIX_LOOKUP_STATIC_INIT
+PMIX_APP_STATIC_INIT
+PMIX_QUERY_STATIC_INIT
+PMIX_REGATTR_STATIC_INIT
+PMIX_FABRIC_STATIC_INIT
+
 Macros
 ---------
 PMIX_VALUE_XFER_DIRECT - directly transfer a pmix_value_t to another one (non-destructive copy)

@@ -32,6 +32,11 @@ multiple release branches.
 **** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
 **** for building and installing man pages.
 
+ - PR #2384: Final update for v4.1.1 rc5
+    - Ensure a param is always initialized
+    - Provide static initializers for all structures
+    - Stop in init if rndz URI given
+    - Update EXCEPTIONS/NEWS files
  - PR #2380: Update 4.1.1 rc5
     - Improve handling of compiler version string
     - Fix corner case on iof flags
