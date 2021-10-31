@@ -111,6 +111,7 @@ pmix_status_t pmix_hwloc_register(void)
         pmix_output_set_verbosity(pmix_hwloc_verbose, pmix_hwloc_verbose);
     }
 
+    vmhole = "biggest";
     (void) pmix_mca_base_var_register("pmix", "pmix", "hwloc", "hole_kind",
                                       "Kind of VM hole to identify - none, begin, biggest, libs, heap, stack (default=biggest)",
                                       PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,

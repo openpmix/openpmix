@@ -27,7 +27,9 @@
 
 #include "pmix_tool_ops.h"
 
-static void tool_switchyard(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+static void tool_switchyard(struct pmix_peer_t *pr,
+                            pmix_ptl_hdr_t *hdr,
+                            pmix_buffer_t *buf,
                             void *cbdata);
 
 /* the following function is used by the PMIx server
@@ -53,8 +55,8 @@ static void tool_switchyard(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_bu
  *
  * bfr - the buffer containing the request
  */
-pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer, pmix_buffer_t *bfr,
-                                 uint32_t tag)
+pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer,
+                                 pmix_buffer_t *bfr, uint32_t tag)
 {
     pmix_shift_caddy_t *s;
     pmix_status_t rc;
