@@ -14,7 +14,7 @@ int main(int argc, char **argv)
     unsigned width, w;
     hwloc_bitmap_t numas[100], result;
     int n, m;
-    char *tmp;
+    char *tmp, cpus[2048];
     bool overlap = false;
 
     if (2 != argc) {
@@ -65,7 +65,8 @@ int main(int argc, char **argv)
         obj = hwloc_get_obj_by_type(topo, HWLOC_OBJ_NUMANODE, w);
         /* how many pu's are under it? */
         weight = hwloc_bitmap_weight(obj->cpuset);
-        fprintf(stderr, "NUMA: %u NPUS: %d\n", w, weight);
+        hwloc_bitmap_list_snprintf(cpus, 2048, obj->cpuset);
+        fprintf(stderr, "NUMA: %u OSINDX: %u NPUS: %d PUS: %s\n", w, obj->os_index, weight, cpus);
         /* check for overlap with all preceding numas */
         for (m=0; m < N; m++) {
             if (hwloc_bitmap_intersects(obj->cpuset, numas[m])) {
