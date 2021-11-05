@@ -33,7 +33,7 @@
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
 #endif
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "include/pmix.h"
 #include "include/pmix_common.h"

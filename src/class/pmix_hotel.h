@@ -61,7 +61,7 @@
 #include "src/class/pmix_object.h"
 #include "src/include/prefetch.h"
 #include "src/include/types.h"
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/util/output.h"
 

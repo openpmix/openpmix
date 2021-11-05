@@ -44,7 +44,7 @@
 #    include <sys/types.h>
 #endif
 
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
