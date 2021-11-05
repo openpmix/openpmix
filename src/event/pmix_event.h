@@ -25,7 +25,7 @@
 
 #include "src/include/pmix_config.h"
 #include "src/include/types.h"
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "include/pmix_common.h"
 #include "src/class/pmix_list.h"

@@ -47,7 +47,7 @@
 #include "src/util/keyval_parse.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"

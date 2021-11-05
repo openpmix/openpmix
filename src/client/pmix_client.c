@@ -45,9 +45,9 @@
 #    include <sys/types.h>
 #endif
 
-#include PMIX_EVENT_HEADER
-#ifdef PMIX_EVENT2_THREAD_HEADER
-#    include PMIX_EVENT2_THREAD_HEADER
+#include <event.h>
+#if !PMIX_HAVE_LIBEV
+#    include <event2/thread.h>
 #endif
 
 #ifdef PMIX_GIT_REPO_BUILD
