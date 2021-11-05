@@ -869,9 +869,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         cpp_includes="$PMIX_top_srcdir $PMIX_top_srcdir/src"
     fi
     CPP_INCLUDES="$(echo $cpp_includes | $SED 's/[[^ \]]* */'"$pmix_cc_iquote"'&/g')"
-    CPPFLAGS="$CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS $PMIX_FINAL_CPPFLAGS"
-    LDFLAGS="$LDFLAGS $PMIX_FINAL_LDFLAGS"
-    LIBS="$LIBS $PMIX_FINAL_LIBS"
+    CPPFLAGS="$PMIX_FINAL_CPPFLAGS $CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS"
+    LDFLAGS="$PMIX_FINAL_LDFLAGS $LDFLAGS"
+    LIBS="$PMIX_FINAL_LIBS $LIBS"
 
     ############################################################################
     # final wrapper compiler config

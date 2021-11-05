@@ -1,6 +1,7 @@
 # -*- shell-script -*-
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,6 +24,6 @@ AC_DEFUN([MCA_pmix_common_sse_CONFIG], [
           [$2
            pmix_common_sse_happy=no])
 
-    PMIX_SUMMARY_ADD([[Optional Support]],[[SSE]], [common_sse], [$pmix_check_curl_happy])
+    PMIX_SUMMARY_ADD([[Optional Support]],[[SSE]], [common_sse], [$pmix_common_sse_happy])
 
 ])dnl

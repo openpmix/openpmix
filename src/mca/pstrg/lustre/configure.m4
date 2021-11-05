@@ -13,6 +13,7 @@
 # Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Sandia National Laboratories.  All rights reserved.
 # Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -31,8 +32,12 @@ AC_DEFUN([MCA_pmix_pstrg_lustre_CONFIG],[
                       [pstrg_lustre_happy="no"])
 
 
-    AS_IF([test "$pstrg_lustre_happy" = "yes" || test "1" = "1"],
-          [PMIX_SUMMARY_ADD([[Optional Support]],[[Lustre]], [pstrg_lustre], [yes ($pmix_check_lustre_dir)])
+    AS_IF([test "$pstrg_lustre_happy" = "yes"],
+          [if test -z "$pmix_check_lustre_dir"; then
+               PMIX_SUMMARY_ADD([[Optional Support]],[[Lustre]], [pstrg_lustre], [yes (Standard locations)])
+           else
+               PMIX_SUMMARY_ADD([[Optional Support]],[[Lustre]], [pstrg_lustre], [yes ($pmix_check_lustre_dir)])
+           fi
            $1],
           [PMIX_SUMMARY_ADD([[Optional Support]],[[Lustre]], [pstrg_lustre], [no])
            $2])
