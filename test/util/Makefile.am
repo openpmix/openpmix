@@ -20,14 +20,25 @@
 # $HEADER$
 #
 
-AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
-# we do NOT want picky compilers down here
-
 noinst_PROGRAMS = numa
+
+if PMIX_HWLOC_VERSION_HIGH
+noinst_PROGRAMS += convert
+endif
 
 numa_SOURCES =  \
         numa.c
 numa_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 numa_LDADD = \
+    $(pmix_hwloc_LIBS) \
     $(top_builddir)/src/libpmix.la
 
+convert_SOURCES =  \
+        convert.c
+convert_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+convert_LDADD = \
+    $(pmix_hwloc_LIBS) \
+    $(top_builddir)/src/libpmix.la
+
+clean-local:
+	rm -f convert numa

@@ -53,7 +53,7 @@ AC_DEFUN([MCA_pmix_pcompress_zlib_CONFIG],[
                   [AC_MSG_RESULT([$with_zlib_libdir])])
         else
             AC_MSG_RESULT([(default search paths)])
-            pmix_zlib_source=standard
+            pmix_zlib_source="Standard locations"
             pmix_zlib_standard_header_location=yes
             pmix_zlib_standard_lib_location=yes
         fi
