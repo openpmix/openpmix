@@ -96,5 +96,5 @@ EOF
           [$2],
           [AS_IF([test -n "$with_lustre" && test "$with_lustre" != "no"],
                  [AC_MSG_ERROR([Lustre support requested but not found.  Aborting])])
-                  $3])
+           $3])
 ])

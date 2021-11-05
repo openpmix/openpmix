@@ -42,35 +42,45 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_HEADER], [
     # get rid of the trailing slash(es)
     hdir_prefix=$(echo $3 | sed -e 'sX/*$XXg')
 
-    AS_IF([test "$hdir_prefix" = "" || \
-           test "$hdir_prefix" = "/usr" || \
-           test "$hdir_prefix" = "/usr/local"],
-           [ # try as is...
-            AC_MSG_NOTICE([looking for header without includes])
-            AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [])
-            AS_IF([test "$pmix_check_package_header_happy" = "no"],
-                  [# no go on the as is - reset the cache and try again
-                   unset pmix_Header])])
+    # We cannot just blindly use AC_CHECK_HEADERS as it will
+    # _always_ include the standard locations, even it we try
+    # to restrain it by setting CPPFLAGS to point to only our
+    # specified location.  Thus, if we use that macro we can
+    # (and often will) return 'success' by finding the header
+    # in a standard location without ever checking the specified
+    # location, leading us down a bad path
+    #
+    # Instead, we start by simply checking for existence of
+    # the specified file as that is the best we can do
 
-    AS_IF([test "$pmix_check_package_header_happy" = "no"],
-          [AS_IF([test "$hdir_prefix" != ""],
-                 [$1_CPPFLAGS="$$1_CPPFLAGS -I$hdir_prefix"
-                  CPPFLAGS="$CPPFLAGS -I$hdir_prefix"
-                  AC_MSG_NOTICE([looking for header in $hdir_prefix])
-                  AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [], [$6])
-                  AS_IF([test "$pmix_check_package_header_happy" = "no"],
-                        [unset pmix_Header
-                         $1_CPPFLAGS="$$1_CPPFLAGS -I$hdir_prefix/include"
-                         CPPFLAGS="$CPPFLAGS -I$hdir_prefix/include"
-                         AC_MSG_NOTICE([looking for header in $hdir_prefix/include])
-                         AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [], [$6])])])])
+    if test "$hdir_prefix" != ""; then
+        AC_MSG_CHECKING([for header $2 in $hdir_prefix])
+        if test -f $hdir_prefix/$2; then
+            AC_MSG_RESULT([yes])
+            $1_CPPFLAGS="-I$hdir_prefix"
+            pmix_check_package_header_happy="yes"
+        else
+            AC_MSG_RESULT([no])
+            AC_MSG_CHECKING([for header $2 in $hdir_prefix/include])
+            if test -f $hdir_prefix/include/$2; then
+                AC_MSG_RESULT([yes])
+                $1_CPPFLAGS="-I$hdir_prefix/include"
+                pmix_check_package_header_happy="yes"
+            else
+                AC_MSG_RESULT([no])
+            fi
+        fi
+    else
+        # try in standard paths
+        AC_MSG_CHECKING([looking for header $2 in standard paths])
+        AC_MSG_RESULT([])
+        AC_CHECK_HEADERS([$2], [pmix_check_package_header_happy="yes"], [])
+    fi
 
     AS_IF([test "$pmix_check_package_header_happy" = "yes"],
           [$4], [$5])
 
     unset pmix_check_package_header_happy
-
-    AS_VAR_POPDEF([pmix_Header])dnl
 ])
 
 
@@ -91,80 +101,54 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
     # get rid of the trailing slash(es)
     libdir_prefix=$(echo $6 | sed -e 'sX/*$XXg')
 
-    AS_IF([test "$libdir_prefix" != ""],
-          [# libdir was specified - search only there
-           $1_LDFLAGS="$$1_LDFLAGS -L$libdir_prefix"
-           LDFLAGS="$LDFLAGS -L$libdir_prefix"
-           AC_SEARCH_LIBS([$3], [$2],
-                        [pmix_check_package_lib_happy="yes"],
-                        [pmix_check_package_lib_happy="no"], [$4])
-           AS_IF([test "$pmix_check_package_lib_happy" = "no"],
-                 [LDFLAGS="$pmix_check_package_$1_save_LDFLAGS"
-                  $1_LDFLAGS="$pmix_check_package_$1_orig_LDFLAGS"
-                  unset pmix_Lib])],
-          [ # libdir was not specified - go through search path
-            # get rid of the trailing slash(es)
-            libdir_prefix=$(echo $5 | sed -e 'sX/*$XXg')
+    if test "$libdir_prefix" != ""; then
+        # libdir was specified - unfortunately, AC_SEARCH_LIBS
+        # _always_ looks at the default location. You cannot
+        # constrain it to just one place. So if the library
+        # doesn't exist in the specified location, but does
+        # exist in a standard location, then the test will
+        # return "success" - and we will have the wrong lib.
+        # Thus, we simply check to see if the library even
+        # exists in the specified location - not bullet-proof,
+        # but better than blindly getting the wrong answer.
+        #
+        # The vulnerability here is that the specified lib
+        # might not be compilable in this environment, but
+        # one in a standard location is. This test will pass
+        # and set an LDFLAG to include the "bad" version in
+        # the library path, possibly causing problems down
+        # the road.
+        #
+        # No perfect solution
 
-            # first try standard locations as otherwise our
-            # searches with libdir_prefix locations might come
-            # back positive and unnecessarily add an LDFLAG
-            AC_MSG_NOTICE([looking for library without search path])
-            AC_SEARCH_LIBS([$3], [$2],
-                           [pmix_check_package_lib_happy="yes"],
-                           [pmix_check_package_lib_happy="no"], [$4])
-            AS_IF([test "$pmix_check_package_lib_happy" = "no"],
-                  [ # no go on the as is..  see what happens later...
-                   LDFLAGS="$pmix_check_package_$1_save_LDFLAGS"
-                   $1_LDFLAGS="$pmix_check_package_$1_orig_LDFLAGS"
-                   unset pmix_Lib])
+        AC_MSG_CHECKING([library $2 in $libdir_prefix])
+        checkloc="`ls $libdir_prefix/lib$2* >& /dev/null`"
+        if test "$?" == "0"; then
+            AC_MSG_RESULT([found])
+            $1_LDFLAGS="-L$libdir_prefix"
+            pmix_check_package_lib_happy=yes
+            $1_LIBS="-l$2 $4"
+        else
+            AC_MSG_RESULT([not found])
+            pmix_check_package_lib_happy=no
+        fi
 
-           AS_IF([test "$pmix_check_package_lib_happy" = "no"],
-           # if we didn't find it, check the libdir_prefix/lib64 directory
-               [AS_IF([test "$libdir_prefix" != "" && \
-                       test "$libdir_prefix" != "/usr" && \
-                       test "$libdir_prefix" != "/usr/local"],
-                    [$1_LDFLAGS="$$1_LDFLAGS -L$libdir_prefix/lib64"
-                     LDFLAGS="$LDFLAGS -L$libdir_prefix/lib64"
-                     AC_MSG_NOTICE([looking for library in $libdir_prefix/lib64])
-                     AC_SEARCH_LIBS([$3], [$2],
-                               [pmix_check_package_lib_happy="yes"],
-                               [pmix_check_package_lib_happy="no"], [$4])
-                     AS_IF([test "$pmix_check_package_lib_happy" = "no"],
-                         [ # no go on the as is..  see what happens later...
-                          LDFLAGS="$pmix_check_package_$1_save_LDFLAGS"
-                          $1_LDFLAGS="$pmix_check_package_$1_orig_LDFLAGS"
-                          unset pmix_Lib])])])
+    else
 
-           AS_IF([test "$pmix_check_package_lib_happy" = "no"],
-           # if we still haven't found it, check the libdir_prefix/lib directory
-               [AS_IF([test "$libdir_prefix" != "" && \
-                       test "$libdir_prefix" != "/usr" && \
-                       test "$libdir_prefix" != "/usr/local"],
-                    [$1_LDFLAGS="$$1_LDFLAGS -L$libdir_prefix/lib"
-                     LDFLAGS="$LDFLAGS -L$libdir_prefix/lib"
-                     AC_MSG_NOTICE([looking for library in $libdir_prefix/lib])
-                     AC_SEARCH_LIBS([$3], [$2],
-                               [pmix_check_package_lib_happy="yes"],
-                               [pmix_check_package_lib_happy="no"], [$4])
-                     AS_IF([test "$pmix_check_package_lib_happy" = "no"],
-                         [ # no go on the as is..  see what happens later...
-                          LDFLAGS="$pmix_check_package_$1_save_LDFLAGS"
-                          $1_LDFLAGS="$pmix_check_package_$1_orig_LDFLAGS"
-                          unset pmix_Lib])])])
-         ])
-
+        # try standard locations
+        AC_MSG_CHECKING([looking for library without search path])
+        AC_MSG_RESULT([])
+        AC_SEARCH_LIBS([$3], [$2],
+                       [pmix_check_package_lib_happy="yes"],
+                       [pmix_check_package_lib_happy="no"], [$4])
+        AS_IF([test "$ac_cv_search_$3" != "no" &&
+               test "$ac_cv_search_$3" != "none required"],
+              [$1_LIBS="$ac_cv_search_$3 $4"],
+              [$1_LIBS="$4"])
+    fi
 
     AS_IF([test "$pmix_check_package_lib_happy" = "yes"],
-          [$1_LIBS="-l$2 $4"
-           $7], [$8])
-    AS_IF([test "$pmix_check_package_lib_happy" = "yes"],
-          [ # The result of AC SEARCH_LIBS is cached in $ac_cv_search_[function]
-           AS_IF([test "$ac_cv_search_$3" != "no" &&
-                  test "$ac_cv_search_$3" != "none required"],
-                 [$1_LIBS="$ac_cv_search_$3 $4"],
-                 [$1_LIBS="$4"])
-           $7],
+          [$7],
           [$8])
 
     AS_VAR_POPDEF([pmix_Lib])dnl

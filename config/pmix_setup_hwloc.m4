@@ -43,33 +43,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
                  [pmix_hwloc_dir="$hwloc_prefix"],
                  [pmix_hwloc_dir=""])
-    _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
-                               [pmix_hwloc_support=1],
-                               [pmix_hwloc_support=0])
-
-    if test $pmix_hwloc_support -eq 0 && test -z $pmix_hwloc_dir; then
-        # try default locations
-        if test -d /usr/include; then
-            pmix_hwloc_dir=/usr
-            _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
-                                       [pmix_hwloc_support=1],
-                                       [pmix_hwloc_support=0])
-        fi
-        if test $pmix_hwloc_support -eq 0 && test -d /usr/local/include; then
-            pmix_hwloc_dir=/usr/local
-            _PMIX_CHECK_PACKAGE_HEADER([pmix_hwloc], [hwloc.h], [$pmix_hwloc_dir],
-                                       [pmix_hwloc_support=1],
-                                       [pmix_hwloc_support=0])
-        fi
-    fi
-
-    if test $pmix_hwloc_support -eq 0; then
-        AC_MSG_WARN([PMIx requires HWLOC topology library support, but])
-        AC_MSG_WARN([an adequate version of that library was not found.])
-        AC_MSG_WARN([Please reconfigure and point to a location where])
-        AC_MSG_WARN([the HWLOC library can be found.])
-        AC_MSG_ERROR([Cannot continue.])
-    fi
 
     AS_IF([test ! -z "$hwlocdir_prefix" && test "$hwlocdir_prefix" != "yes"],
                  [pmix_hwloc_libdir="$hwlocdir_prefix"],
@@ -85,16 +58,26 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                         ],
                         [pmix_hwloc_libdir=""])])
 
-    _PMIX_CHECK_PACKAGE_LIB([pmix_hwloc], [hwloc], [hwloc_topology_init],
-                            [], [$pmix_hwloc_dir],
-                            [$pmix_hwloc_libdir],
-                            [],
-                            [AC_MSG_WARN([PMIX requires HWLOC support using])
-                             AC_MSG_WARN([an external copy that you supply.])
-                             AC_MSG_WARN([The library was not found in $pmix_hwloc_libdir.])
-                             AC_MSG_ERROR([Cannot continue])])
+    PMIX_CHECK_PACKAGE([pmix_hwloc],
+                       [hwloc.h],
+                       [hwloc],
+                       [hwloc_topology_init],
+                       [],
+                       [$pmix_hwloc_dir],
+                       [$pmix_hwloc_libdir],
+                       [pmix_hwloc_support=1],
+                       [pmix_hwloc_support=0],
+                       [])
 
-    # update global flags to test for HWLOC version
+    if test $pmix_hwloc_support -eq 0; then
+        AC_MSG_WARN([PMIx requires HWLOC topology library support, but])
+        AC_MSG_WARN([an adequate version of that library was not found.])
+        AC_MSG_WARN([Please reconfigure and point to a location where])
+        AC_MSG_WARN([the HWLOC library can be found.])
+        AC_MSG_ERROR([Cannot continue.])
+    fi
+
+   # update global flags to test for HWLOC version
     if test ! -z "$pmix_hwloc_CPPFLAGS"; then
         PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
     fi
@@ -105,7 +88,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
         PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
     fi
 
-    AC_MSG_CHECKING([if external hwloc version is 1.5 or greater])
+    AC_MSG_CHECKING([if hwloc version is 1.5 or greater])
     AC_COMPILE_IFELSE(
           [AC_LANG_PROGRAM([[#include <hwloc.h>]],
           [[
@@ -117,7 +100,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
           [AC_MSG_RESULT([no])
            AC_MSG_ERROR([Cannot continue])])
 
-    AC_MSG_CHECKING([if external hwloc version is 1.8 or greater])
+    AC_MSG_CHECKING([if hwloc version is 1.8 or greater])
     AC_COMPILE_IFELSE(
           [AC_LANG_PROGRAM([[#include <hwloc.h>]],
           [[
@@ -128,6 +111,19 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
           [AC_MSG_RESULT([yes])
            pmix_have_topology_dup=1],
           [AC_MSG_RESULT([no])])
+
+    AC_MSG_CHECKING([if hwloc version is 2.0 or greater])
+    AC_COMPILE_IFELSE(
+          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [[
+    #if HWLOC_API_VERSION < 0x00020000
+    #error "hwloc API version is less than 0x00020000"
+    #endif
+          ]])],
+          [AC_MSG_RESULT([yes])
+           pmix_version_high=1],
+          [AC_MSG_RESULT([no])
+           pmix_version_high=0])
 
     # set the header
     PMIX_HWLOC_HEADER="<hwloc.h>"
@@ -157,8 +153,14 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC_TOPOLOGY_DUP], [$pmix_have_topology_dup],
                        [Whether or not hwloc_topology_dup is available])
 
+    AM_CONDITIONAL([PMIX_HWLOC_VERSION_HIGH], [test $pmix_version_high -eq 1])
+
     pmix_hwloc_support_will_build=yes
-    pmix_hwloc_source=$pmix_hwloc_dir
+    if test -z "$pmix_hwloc_dir"; then
+        pmix_hwloc_source="Standard locations"
+    else
+        pmix_hwloc_source=$pmix_hwloc_dir
+    fi
 
     PMIX_SUMMARY_ADD([[Required Packages]],[[HWLOC]], [pmix_hwloc], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
 
