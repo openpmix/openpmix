@@ -32,7 +32,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/ptl_types.h"

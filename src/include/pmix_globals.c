@@ -38,7 +38,7 @@
 #    include <sys/types.h>
 #endif
 #include <ctype.h>
-#include PMIX_EVENT_HEADER
+#include <event.h>
 #if HAVE_SYS_STAT_H
 #    include <sys/stat.h>
 #endif /* HAVE_SYS_STAT_H */

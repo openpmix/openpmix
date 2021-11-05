@@ -86,9 +86,6 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
     AC_MSG_CHECKING([will libev support be built])
     if test $pmix_libev_support -eq 1; then
         AC_MSG_RESULT([yes])
-        PMIX_EVENT_HEADER="<event.h>"
-        AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
-                           [Location of event.h])
         PMIX_SUMMARY_ADD([[External Packages]],[[libev]],[libev],[$pmix_libev_dir])
     else
         AC_MSG_RESULT([no])

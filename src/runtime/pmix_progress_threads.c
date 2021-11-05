@@ -20,7 +20,7 @@
 #endif
 #include <pthread.h>
 #include <string.h>
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"

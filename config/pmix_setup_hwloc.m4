@@ -125,9 +125,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
           [AC_MSG_RESULT([no])
            pmix_version_high=0])
 
-    # set the header
-    PMIX_HWLOC_HEADER="<hwloc.h>"
-
     CPPFLAGS=$pmix_check_hwloc_save_CPPFLAGS
     LDFLAGS=$pmix_check_hwloc_save_LDFLAGS
     LIBS=$pmix_check_hwloc_save_LIBS
@@ -144,11 +141,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
         PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_hwloc_LIBS)
         PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_hwloc_LIBS)
     fi
-
-    AC_MSG_CHECKING([location of hwloc header])
-    AC_DEFINE_UNQUOTED([PMIX_HWLOC_HEADER], [$PMIX_HWLOC_HEADER],
-                       [Location of hwloc.h])
-    AC_MSG_RESULT([$PMIX_HWLOC_HEADER])
 
     AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC_TOPOLOGY_DUP], [$pmix_have_topology_dup],
                        [Whether or not hwloc_topology_dup is available])

@@ -139,8 +139,6 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     else
         pmix_libevent_source=$pmix_event_dir
     fi
-    PMIX_EVENT_HEADER="<event.h>"
-    PMIX_EVENT2_THREAD_HEADER="<event2/thread.h>"
 
     AC_MSG_CHECKING([will libevent support be built])
     if test $pmix_libevent_support -eq 1; then
@@ -158,10 +156,6 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
             PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libevent_LIBS)
         fi
         # Set output variables
-        AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
-                           [Location of event.h])
-        AC_DEFINE_UNQUOTED([PMIX_EVENT2_THREAD_HEADER], [$PMIX_EVENT2_THREAD_HEADER],
-                           [Location of event2/thread.h])
         PMIX_SUMMARY_ADD([[Required Packages]],[[Libevent]], [pmix_libevent], [yes ($pmix_libevent_source)])
     else
         AC_MSG_RESULT([no])

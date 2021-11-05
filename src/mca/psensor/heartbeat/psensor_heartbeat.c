@@ -24,7 +24,7 @@
 #endif /* HAVE_STRING_H */
 #include <pthread.h>
 #include <stdio.h>
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
