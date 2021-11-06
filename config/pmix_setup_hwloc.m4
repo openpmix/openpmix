@@ -79,13 +79,13 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
 
    # update global flags to test for HWLOC version
     if test ! -z "$pmix_hwloc_CPPFLAGS"; then
-        PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
+        PMIX_FLAGS_PREPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
     fi
     if test ! -z "$pmix_hwloc_LDFLAGS"; then
-        PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)
+        PMIX_FLAGS_PREPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)
     fi
     if test ! -z "$pmix_hwloc_LIBS"; then
-        PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
+        PMIX_FLAGS_PREPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
     fi
 
     AC_MSG_CHECKING([if hwloc version is 1.5 or greater])

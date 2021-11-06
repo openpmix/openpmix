@@ -122,7 +122,7 @@ AC_DEFUN([_PMIX_CHECK_PACKAGE_LIB], [
         # No perfect solution
 
         AC_MSG_CHECKING([library $2 in $libdir_prefix])
-        checkloc="`ls $libdir_prefix/lib$2* >& /dev/null`"
+        checkloc="`ls $libdir_prefix/lib$2.* >& /dev/null`"
         if test "$?" == "0"; then
             AC_MSG_RESULT([found])
             $1_LDFLAGS="-L$libdir_prefix"
