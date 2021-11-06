@@ -498,7 +498,7 @@ dnl #######################################################################
 #
 # This macro assumes a space seperated list.
 AC_DEFUN([PMIX_FLAGS_PREPEND_UNIQ], [
-    PMIX_VAR_SCOPE_PUSH([pmix_tmp pmix_append])
+    PMIX_VAR_SCOPE_PUSH([pmix_tmp pmix_prepend])
 
     for arg in $2; do
         pmix_tmp=`echo $arg | cut -c1-2`
