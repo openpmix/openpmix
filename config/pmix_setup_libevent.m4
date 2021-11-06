@@ -89,13 +89,13 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
         # need to add resulting flags to global ones so we can
         # test for thread support
         if test ! -z "$pmix_libevent_CPPFLAGS"; then
-            PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
+            PMIX_FLAGS_PREPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
         fi
         if test ! -z "$pmix_libevent_LDFLAGS"; then
-            PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)
+            PMIX_FLAGS_PREPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)
         fi
         if test ! -z "$pmix_libevent_LIBS"; then
-            PMIX_FLAGS_APPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
+            PMIX_FLAGS_PREPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
         fi
 
         # Ensure that this libevent has the symbol
