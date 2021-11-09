@@ -376,8 +376,9 @@ PMIX_EXPORT extern int pmix_bfrops_base_output;
 
 #define PMIX_BFROPS_PACK(r, p, b, s, n, t)                                                   \
     do {                                                                                     \
-        pmix_output_verbose(2, pmix_bfrops_base_output, "[%s:%d] PACK version %s", __FILE__, \
-                            __LINE__, (p)->nptr->compat.bfrops->version);                    \
+        pmix_output_verbose(2, pmix_bfrops_base_output, "[%s:%d] PACK version %s type %s",   \
+                            __FILE__, __LINE__, (p)->nptr->compat.bfrops->version,           \
+                            PMIx_Data_type_string(t));                                      \
         if (PMIX_BFROP_BUFFER_UNDEF == (b)->type) {                                          \
             (b)->type = (p)->nptr->compat.type;                                              \
             (r) = (p)->nptr->compat.bfrops->pack(b, s, n, t);                                \
@@ -390,8 +391,9 @@ PMIX_EXPORT extern int pmix_bfrops_base_output;
 
 #define PMIX_BFROPS_UNPACK(r, p, b, d, m, t)                                                   \
     do {                                                                                       \
-        pmix_output_verbose(2, pmix_bfrops_base_output, "[%s:%d] UNPACK version %s", __FILE__, \
-                            __LINE__, (p)->nptr->compat.bfrops->version);                      \
+        pmix_output_verbose(2, pmix_bfrops_base_output, "[%s:%d] UNPACK version %s type %s",   \
+                            __FILE__, __LINE__, (p)->nptr->compat.bfrops->version,             \
+                            PMIx_Data_type_string(t));                                         \
         if ((b)->type == (p)->nptr->compat.type) {                                             \
             (r) = (p)->nptr->compat.bfrops->unpack(b, d, m, t);                                \
         } else {                                                                               \
