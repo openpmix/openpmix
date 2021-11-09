@@ -433,18 +433,6 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 #        define vsnprintf pmix_vsnprintf
 #    endif
 
-/*
- * Some platforms (Solaris) have a broken qsort implementation.  Work
- * around by using our own.
- */
-#    if PMIX_HAVE_BROKEN_QSORT
-#        ifdef qsort
-#            undef qsort
-#        endif
-
-#        include "util/qsort.h"
-#        define qsort pmix_qsort
-#    endif
 
 /*
  * Define __func__-preprocessor directive if the compiler does not
