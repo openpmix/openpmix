@@ -26,8 +26,93 @@ multiple release branches.
 Master (not on release branches yet)
 ------------------------------------
 
-4.1.1 -- TBD
+4.1.1lz1 (not official release)
 ----------------------
+**** NOTE: As of v4.1.1, PMIx includes an EXCEPTIONS file that lists
+**** all deviations from the PMIx Standard. This primarily includes
+**** extensions that have not yet been adopted by the Standard.
+
+**** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
+**** for building and installing man pages.
+
+ - PR #2394: Update for landing zone 1
+    - Update NEWS/Version
+ - PR #2393:
+    - Correct copy/paste error - use correct procID
+    - Add a little debug info to a verbose output
+ - PR #2389: delete use of PMIX_CHECK_BROKEN_QSORT refs
+ - PR #2384: Final update for v4.1.1 rc5
+    - Ensure a param is always initialized
+    - Provide static initializers for all structures
+    - Stop in init if rndz URI given
+    - Update EXCEPTIONS/NEWS files
+ - PR #2380: Update 4.1.1 rc5
+    - Improve handling of compiler version string
+    - Fix corner case on iof flags
+    - Squash unused variable warnings
+    - Remove duplicate defines of client build dependencies
+    - Ensure we terminate the input channel when done
+    - Ensure pmix library gets a chance to cleanly terminate children
+    - Avoid ABI break in mid-series
+    - Define a static initializer for data_buffer_t
+    - Fix typos - replace OMPI with PMIx
+    - Silence Coverity concerns
+    - Make the backward-compatible ABI functions visible
+    - Avoid warning on void function return
+    - Allow operation if ONLY a loopback device is present
+ - PR #2332: Update 4.1.1 rc4
+    - Modify configure logic
+    - Add a missing helpfile (util) and few fixups
+    - Fix --output to ignore err on existing dirs
+    - Squash unused param warnings
+ - PR #2317: Update 4.1.1 rc3
+    - Add test_v2 to autoconf/automake processing
+    - Silence Coverity warnings
+    - Fix resource leak
+    - Change construct.py to mark PMIx functions with nogil
+    - Enable ultra-picky compiler options
+    - Ensure picky flags not set until after AC is done
+    - Add missing simptest.h file to tarball
+    - Expand the tm/pbs config to check for lib64
+    - Update portable platform file
+    - Abort configure if gcc is <= v4.8.1
+    - Enable support for address sanitizers, but only on request
+    - Fix issues raised by picky compiler checks
+    - Don't check for Python 3.4+ if not building the Python bindings
+    - Update VERSION and NEWS
+ - PR #2299: Update 4.1.1 rc2
+    - Update VERSION and NEWS
+    - Add some spawn-specific timeout attributes
+    - Resolve race condition in lost connection
+    - Provide "partial_success" error when collectives not complete
+    - Only conditionally decode the nspace return value when we
+        are sure the spawn was successful
+    - Correctly copy stone age hwloc topologies
+    - Remove man page Markdown source and build dependency on pandoc
+ - PR #2277: Update v4.1.1 release candidate
+    - Add missing m4 file
+    - Add a Standard extension value to the compliance version
+    - Properly read/output stdout/err from a fork/exec'd child
+    - Default to using our local_output flag
+    - Cleanup compiler warnings for ancient hwloc versions
+    - Prefix the output files with "pmix"
+    - Ensure tools wait until all active events are processed
+    - autogen.pl: ignore all excluded components
+    - Don't treat inability to open shmem file as fatal
+    - Avoid use of MCA params for singleton and report-uri
+    - Ensure the server waits for all IOF and message events to complete
+    - Restore the thread join in progress thread "stop"
+    - Mark the read event as no longer active
+    - Avoid blocking in the stdin read handler
+    - Some cleanup of IOF output
+    - Add missing .m4 files to extra_dist
+    - Check for libevent minimum 2.0.21
+    - Add Intel GPU component
+    - Correct vendor IDs and generalize check_vendor
+    - Add missing storage-related datatype support
+    - Add missing storage constants
+    - Improve pnet component selection
+    - Cleanup the device distance computation
  - PR #2257: Check for libevent minimum 2.0.21
  - PR #2253: Fix up string creation functions, take the GIL in the callback code,
              and system malloc instead of the Python malloc for datastructures
