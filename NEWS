@@ -23,7 +23,7 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.1.1 -- 15 Oct 2021
+4.1.1 -- (tag point, not official release)
 ----------------------
 **** NOTE: As of v4.1.1, PMIx includes an EXCEPTIONS file that lists
 **** all deviations from the PMIx Standard. This primarily includes
@@ -32,6 +32,12 @@ multiple release branches.
 **** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
 **** for building and installing man pages.
 
+ - PR #: Update for landing zone 1
+    - Update NEWS/Version
+ - PR #2393:
+    - Correct copy/paste error - use correct procID
+    - Add a little debug info to a verbose output
+ - PR #2389: delete use of PMIX_CHECK_BROKEN_QSORT refs
  - PR #2384: Final update for v4.1.1 rc5
     - Ensure a param is always initialized
     - Provide static initializers for all structures
@@ -104,6 +110,11 @@ multiple release branches.
     - Add missing storage constants
     - Improve pnet component selection
     - Cleanup the device distance computation
+ - PR #2257: Check for libevent minimum 2.0.21
+ - PR #2253: Fix up string creation functions, take the GIL in the callback code,
+             and system malloc instead of the Python malloc for datastructures
+             going to PMIx
+ - PR #2250: Update attribute support tables
 
 
 4.1.0 -- 29 July 2021
