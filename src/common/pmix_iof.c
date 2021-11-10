@@ -756,6 +756,12 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
     char *outdir, *outfile;
     int np, numdigs, fdout;
     pmix_iof_sink_t *snk;
+    pmix_proc_t src;
+
+    pmix_output_verbose(5, pmix_server_globals.iof_output,
+                        "IOF SETUP %s %u",
+                        nptr->nspace, rank);
+    PMIX_LOAD_PROCID(&src, nptr->nspace, rank);
 
     np = nptr->nprocs / 10;
     /* determine the number of digits required for max vpid */
@@ -792,10 +798,10 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
             if (nptr->iof_flags.merge) {
-                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                      PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
             } else {
-                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                      PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
             }
             pmix_list_append(&nptr->sinks, &snk->super);
@@ -814,7 +820,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             }
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
-            PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+            PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                  PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
             pmix_list_append(&nptr->sinks, &snk->super);
             free(outdir);
@@ -860,10 +866,10 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
             if (nptr->iof_flags.merge) {
-                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                      PMIX_FWD_ALL_CHANNELS, pmix_iof_write_handler);
             } else {
-                PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+                PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                      PMIX_FWD_STDOUT_CHANNEL, pmix_iof_write_handler);
             }
             pmix_list_append(&nptr->sinks, &snk->super);
@@ -893,7 +899,7 @@ static pmix_iof_write_event_t* pmix_iof_setup(pmix_namespace_t *nptr,
             }
             /* define a sink to that file descriptor */
             snk = PMIX_NEW(pmix_iof_sink_t);
-            PMIX_IOF_SINK_DEFINE(snk, &pmix_globals.myid, fdout,
+            PMIX_IOF_SINK_DEFINE(snk, &src, fdout,
                                  PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
             pmix_list_append(&nptr->sinks, &snk->super);
             return &snk->wev;
