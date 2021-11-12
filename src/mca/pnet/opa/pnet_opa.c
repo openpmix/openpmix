@@ -251,8 +251,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             }
             /* pack anything that was found */
             PMIX_LIST_FOREACH (kv, &cache, pmix_kval_t) {
-                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &kv->value->data.envar, 1,
-                                 PMIX_ENVAR);
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata,
+                                 &kv->value->data.envar, 1, PMIX_ENVAR);
             }
             PMIX_LIST_DESTRUCT(&cache);
         }
@@ -325,10 +325,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
                 data = (uint8_t *) info[n].value.data.bo.bytes;
                 size = info[n].value.data.bo.size;
             }
-
-            bkt.base_ptr = (char*)data;
-            bkt.unpack_ptr = bkt.base_ptr;
-            bkt.bytes_used = size;
+            PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &bkt, data, size);
 
             /* all we packed was envars, so just cycle thru */
             ev = PMIX_NEW(pmix_envar_list_item_t);
@@ -337,8 +334,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
             while (PMIX_SUCCESS == rc) {
                 pmix_list_append(&ns->envars, &ev->super);
                 /* if this is the transport key, save it */
-                if (0 == strncmp(ev->envar.envar, "OMPI_MCA_orte_precondition_transports",
-                               PMIX_MAX_KEYLEN)) {
+                if (0 == strncmp(ev->envar.envar, "OMPI_MCA_orte_precondition_transports", PMIX_MAX_KEYLEN)) {
                     /* add it to the job-level info */
                     PMIX_LOAD_PROCID(&proc, ns->ns->nspace, PMIX_RANK_WILDCARD);
                     PMIX_KVAL_NEW(kv, PMIX_CREDENTIAL);

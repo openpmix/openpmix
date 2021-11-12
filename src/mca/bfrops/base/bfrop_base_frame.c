@@ -48,14 +48,15 @@
 #include "src/mca/bfrops/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_bfrops_globals_t pmix_bfrops_globals = {.actives = PMIX_LIST_STATIC_INIT,
-                                             .initialized = false,
-                                             .initial_size = 0,
-                                             .threshold_size = 0,
+pmix_bfrops_globals_t pmix_bfrops_globals = {
+    .actives = PMIX_LIST_STATIC_INIT,
+    .initialized = false,
+    .initial_size = 0,
+    .threshold_size = 0,
 #if PMIX_ENABLE_DEBUG
-                                             .default_type = PMIX_BFROP_BUFFER_FULLY_DESC
+    .default_type = PMIX_BFROP_BUFFER_FULLY_DESC
 #else
-                                             .default_type = PMIX_BFROP_BUFFER_NON_DESC
+    .default_type = PMIX_BFROP_BUFFER_NON_DESC
 #endif
 };
 int pmix_bfrops_base_output = 0;
@@ -141,7 +142,7 @@ PMIX_CLASS_INSTANCE(pmix_bfrops_base_active_module_t, pmix_list_item_t, NULL, mo
 static void pmix_buffer_construct(pmix_buffer_t *buffer)
 {
     /** set the default buffer type */
-    buffer->type = PMIX_BFROP_BUFFER_UNDEF;
+    buffer->type = pmix_bfrops_globals.default_type;
 
     /* Make everything NULL to begin with */
     buffer->base_ptr = buffer->pack_ptr = buffer->unpack_ptr = NULL;

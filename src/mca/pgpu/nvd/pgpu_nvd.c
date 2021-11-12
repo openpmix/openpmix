@@ -187,10 +187,7 @@ static pmix_status_t setup_local(pmix_nspace_env_cache_t *ns,
                 data = (uint8_t *) info[n].value.data.bo.bytes;
                 size = info[n].value.data.bo.size;
             }
-
-            bkt.base_ptr = (char*)data;
-            bkt.unpack_ptr = bkt.base_ptr;
-            bkt.bytes_used = size;
+            PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &bkt, data, size);
 
             /* all we packed was envars, so just cycle thru */
             ev = PMIX_NEW(pmix_envar_list_item_t);
