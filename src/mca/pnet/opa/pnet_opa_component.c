@@ -104,7 +104,7 @@ static pmix_status_t component_open(void)
 {
     pmix_status_t rc;
 
-    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x8086, 0x207);
+    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x8086, 0x208);
     return rc;
 }
 
