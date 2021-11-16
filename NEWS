@@ -23,7 +23,7 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.1.1 -- (tag point, not official release)
+4.1.1LZ1 -- (tag point, not official release)
 ----------------------
 **** NOTE: As of v4.1.1, PMIx includes an EXCEPTIONS file that lists
 **** all deviations from the PMIx Standard. This primarily includes
@@ -32,6 +32,7 @@ multiple release branches.
 **** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
 **** for building and installing man pages.
 
+ - PR #2396: Fix the network support components
  - PR #2394: Update for landing zone 1
     - Update NEWS/Version
  - PR #2393:
