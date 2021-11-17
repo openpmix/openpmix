@@ -40,7 +40,7 @@
 #include <stdlib.h>
 #include <sys/mman.h>
 
-#include PMIX_HWLOC_HEADER
+#include <hwloc.h>
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"

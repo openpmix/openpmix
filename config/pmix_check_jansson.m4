@@ -42,7 +42,7 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
                     [Search for Jansson libraries in DIR])])
 
     pmix_check_jansson_happy=no
-    pmix_jansson_source=unknown
+    pmix_jansson_source=
     pmix_check_jansson_dir=
     pmix_check_jansson_libdir=
     pmix_check_jansson_basedir=
@@ -109,7 +109,11 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
 
     AM_CONDITIONAL([HAVE_JANSSON], [test "$pmix_check_jansson_happy" = "yes"])
 
-    PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
+    if test -z $pmix_jansson_source; then
+        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy])
+    else
+        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
+    fi
 
     PMIX_VAR_SCOPE_POP
 ])

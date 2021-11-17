@@ -181,6 +181,7 @@ test/sshot/mytopo.json
 test/sshot/testcoord
 
 test/util/numa
+test/util/convert
 
 test/test_v2/pmix_test
 test/test_v2/test_fence_basic

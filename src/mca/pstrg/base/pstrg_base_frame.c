@@ -18,7 +18,7 @@
 #include "include/pmix_common.h"
 
 #include <pthread.h>
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/class/pmix_list.h"
 #include "src/include/types.h"

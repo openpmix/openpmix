@@ -49,7 +49,7 @@
 #ifdef HAVE_TIME_H
 #    include <time.h>
 #endif
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"

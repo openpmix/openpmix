@@ -141,6 +141,16 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_buffer_t);
         (s) = 0;                                        \
     } while (0)
 
+#define PMIX_LOAD_BUFFER_NON_DESTRUCT(p, b, d, s)       \
+    do {                                                \
+        (b)->type = (p)->nptr->compat.type;             \
+        (b)->base_ptr = (char *) (d);                   \
+        (b)->bytes_used = (s);                          \
+        (b)->bytes_allocated = (s);                     \
+        (b)->pack_ptr = ((char *) (b)->base_ptr) + (s); \
+        (b)->unpack_ptr = (b)->base_ptr;                \
+    } while (0)
+
 /* Convenience macro for extracting a pmix_buffer_t's payload
  * as a data blob
  *

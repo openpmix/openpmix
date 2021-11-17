@@ -1302,7 +1302,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
                     if (WIFSIGNALED(status)) {
                         cli_info[i].exit_code = WTERMSIG(status) + 128;
                         TEST_VERBOSE(
-                            ("WIFSIGNALED, pid = %d, exit_code = %d", pid, cli_info[i].exit_code));
+                            ("WIFSIGNALED, pid = %d, signal = %d, exit_code = %d", pid, WTERMSIG(status), cli_info[i].exit_code));
                     }
                 }
                 cli_cleanup(&cli_info[i]);

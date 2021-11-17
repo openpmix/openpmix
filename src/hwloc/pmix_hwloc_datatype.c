@@ -16,7 +16,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include PMIX_HWLOC_HEADER
+#include <hwloc.h>
 
 #include "include/pmix_common.h"
 #include "src/mca/bfrops/base/base.h"
