@@ -23,8 +23,30 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-Master (not on release branches yet)
-------------------------------------
+4.2.0 -- TBD
+----------------------
+***** NOTE: The primary change from the 4.1 series to
+***** the 4.2 series lies in a revamp of the configure
+***** system that removed logic aimed at embedding PRRTE
+***** inside another package's build system. This code
+***** proved problematic due to interdependencies between
+***** various required packages. Hence, the 4.1 series has
+***** been kept up-to-date with bug fixes for the convenience
+***** of the embedding packagers, but will not be publicly
+***** released. Attention instead has been switched
+***** to the 4.2 series and beyond.
+
+- PR #2397: V2 suite test case for multiple inits and finalizes
+- PR #2390: Remove PMIX_CHECK_BROKEN_QSORT refs
+- PR #2388: Fix copy/paste error
+- PR #2387: Ensure configure cmd line trumps environment
+- PR #2386: Remove stale abstraction names for event and hwloc headers
+- PR #2385: Extend NUMA utility and cleanup configure logic errors
+- PR #2375: Remove stale qsort checks
+- PR #2372: Backup a bit to remove disable-package-checks
+- PR #2370: Cleanup the configure logic
+- PR #2369: Cleanup configure to correctly handle default paths
+
 
 4.1.1lz1 (not official release)
 ----------------------
@@ -35,6 +57,7 @@ Master (not on release branches yet)
 **** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
 **** for building and installing man pages.
 
+ - PR #2396: Fix the network support components
  - PR #2394: Update for landing zone 1
     - Update NEWS/Version
  - PR #2393:
