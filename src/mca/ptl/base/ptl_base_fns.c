@@ -1405,8 +1405,8 @@ static char *pmix_getline(FILE *fp)
  */
 char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
 {
-    int i, ret, save, if_index;
-    char **argv, *str, *tmp;
+    int i, n, ret, if_index, match_count, interface_count;
+    char **argv, **interfaces, *str, *tmp;
     char if_name[PMIX_IF_NAMESIZE];
     struct sockaddr_storage argv_inaddr, if_inaddr;
     uint32_t argv_prefix;
@@ -1420,9 +1420,22 @@ char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
     if (NULL == argv) {
         return NULL;
     }
-    for (save = i = 0; NULL != argv[i]; ++i) {
+    interface_count = 0;
+    interfaces = NULL;
+    for (i = 0; NULL != argv[i]; ++i) {
         if (isalpha(argv[i][0])) {
-            argv[save++] = argv[i];
+            /* This is an interface name. If not already in the interfaces array, add it */
+            for (n = 0; n < interface_count; n++) {
+                if (0 == strcmp(argv[i], interfaces[n])) {
+                    break;
+                }
+            }
+            if (n == interface_count) {
+                pmix_output_verbose(20,
+                                    pmix_ptl_base_framework.framework_output,
+                                    "ptl:tool: Using interface: %s ", argv[i]);
+                pmix_argv_append(&interface_count, &interfaces, argv[i]);
+            }
             continue;
         }
 
@@ -1434,7 +1447,6 @@ char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
         if (NULL == str) {
             pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true, name, tmp,
                            "Invalid specification (missing \"/\")");
-            free(argv[i]);
             free(tmp);
             continue;
         }
@@ -1444,7 +1456,6 @@ char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
         /* Now convert the IPv4 address */
         ((struct sockaddr *) &argv_inaddr)->sa_family = AF_INET;
         ret = inet_pton(AF_INET, argv[i], &((struct sockaddr_in *) &argv_inaddr)->sin_addr);
-        free(argv[i]);
 
         if (1 != ret) {
             pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true, name, tmp,
@@ -1458,33 +1469,47 @@ char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name)
 
         /* Go through all interfaces and see if we can find a match */
         for (if_index = pmix_ifbegin(); if_index >= 0; if_index = pmix_ifnext(if_index)) {
-            pmix_ifindextoaddr(if_index, (struct sockaddr *) &if_inaddr, sizeof(if_inaddr));
-            if (pmix_net_samenetwork(&argv_inaddr, &if_inaddr, argv_prefix)) {
-                break;
+            pmix_ifindextoaddr(if_index,
+                               (struct sockaddr*) &if_inaddr,
+                               sizeof(if_inaddr));
+            if (pmix_net_samenetwork((struct sockaddr*) &argv_inaddr,
+                                     (struct sockaddr*) &if_inaddr,
+                                     argv_prefix)) {
+                /* We found a match. If it's not already in the interfaces array,
+                   add it. If it's already in the array, treat it as a match */
+                match_count = match_count + 1;
+                pmix_ifindextoname(if_index, if_name, sizeof(if_name));
+                for (n = 0; n < interface_count; n++) {
+                    if (0 == strcmp(if_name, interfaces[n])) {
+                        break;
+                    }
+                }
+                if (n == interface_count) {
+                    pmix_output_verbose(20,
+                                        pmix_ptl_base_framework.framework_output,
+                                        "ptl:tool: Found match: %s (%s)",
+                                        pmix_net_get_hostname((struct sockaddr*) &if_inaddr),
+                                        if_name);
+                    pmix_argv_append(&interface_count, &interfaces, if_name);
+                }
             }
+
         }
         /* If we didn't find a match, keep trying */
-        if (if_index < 0) {
+        if (0 == match_count) {
             pmix_show_help("help-ptl-base.txt", "invalid if_inexclude", true, name, tmp,
                            "Did not find interface matching this subnet");
             free(tmp);
             continue;
         }
-
-        /* We found a match; get the name and replace it in the
-           argv */
-        pmix_ifindextoname(if_index, if_name, sizeof(if_name));
-        pmix_output_verbose(20, pmix_ptl_base_framework.framework_output,
-                            "ptl:tool: Found match: %s (%s)",
-                            pmix_net_get_hostname((struct sockaddr *) &if_inaddr), if_name);
-        argv[save++] = strdup(if_name);
-        free(tmp);
     }
 
-    /* The list may have been compressed if there were invalid
-       entries, so ensure we end it with a NULL entry */
-    argv[save] = NULL;
+    /* Mark the end of the interface name array with NULL */
+    if (NULL != interfaces) {
+        interfaces[interface_count] = NULL;
+    }
+    pmix_argv_free(argv);
     free(*orig_str);
-    *orig_str = pmix_argv_join(argv, ',');
-    return argv;
+    *orig_str = pmix_argv_join(interfaces, ',');
+    return interfaces;
 }
