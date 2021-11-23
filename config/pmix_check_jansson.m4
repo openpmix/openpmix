@@ -32,10 +32,12 @@
 AC_DEFUN([PMIX_CHECK_JANSSON],[
 
     PMIX_VAR_SCOPE_PUSH(pmix_check_jansson_save_CPPFLAGS pmix_check_jansson_save_LDFLAGS pmix_check_jansson_save_LIBS)
-	AC_ARG_WITH([jansson],
-		    [AS_HELP_STRING([--with-jansson(=DIR)],
-				    [Build jansson support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])],
-            [], [with_jansson=no])
+
+    dnl Intentionally disable Jansson unless explicitly requested
+    AC_ARG_WITH([jansson],
+                [AS_HELP_STRING([--with-jansson(=DIR)],
+                   [Build jansson support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])],
+                [], [with_jansson=no])
 
     AC_ARG_WITH([jansson-libdir],
             [AS_HELP_STRING([--with-jansson-libdir=DIR],
@@ -45,22 +47,15 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
     pmix_jansson_source=unknown
     pmix_check_jansson_dir=
     pmix_check_jansson_libdir=
-    pmix_check_jansson_basedir=
 
     if test "$with_jansson" != "no"; then
-        AS_IF([test "$with_jansson" = "yes" || test -z "$with_jansson"],
-              [pmix_check_jansson_dir=/usr
-               pmix_check_jansson_basedir=/usr
-               pmix_jansson_source=standard],
-    	      [PMIX_CHECK_WITHDIR([jansson], [$with_jansson], [include/jansson.h])
-               pmix_check_jansson_dir=$with_jansson/include
-               pmix_check_jansson_basedir=$with_jansson
-               pmix_jansson_source=$with_jansson])
+        PMIX_CHECK_WITHDIR([jansson-libdir], [$with_jansson_libdir], [libjansson.*])
 
-        AS_IF([test -z "$with_jansson_libdir" || test "$with_jansson_libdir" = "yes"],
-              [pmix_check_jansson_libdir=$pmix_check_jansson_basedir/lib],
-    	      [PMIX_CHECK_WITHDIR([jansson-libdir], [$with_jansson_libdir], [libjansson.*])
-               pmix_check_jansson_libdir=$with_jansson_libdir])
+        AS_IF([test "$with_jansson" = "yes" -o -z "$with_jansson"],
+              [pmix_jansson_source="Standard locations"],
+              [pmix_check_jansson_dir="$with_jansson"])
+        AS_IF([test "$with_jansson_libdir" != "yes" -a "$with_jansson_libdir" != "no"],
+              [pmix_check_jansson_libdir="$with_jansson_libdir"])
 
     	pmix_check_jansson_save_CPPFLAGS="$CPPFLAGS"
     	pmix_check_jansson_save_LDFLAGS="$LDFLAGS"
@@ -109,7 +104,21 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
 
     AM_CONDITIONAL([HAVE_JANSSON], [test "$pmix_check_jansson_happy" = "yes"])
 
+<<<<<<< HEAD
     PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
+||||||| parent of 410ad7e9 (Remove curl/jansson default search assumption)
+    if test -z $pmix_jansson_source; then
+        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy])
+    else
+        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
+    fi
+=======
+    if test -z "$pmix_jansson_source"; then
+        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy])
+    else
+        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
+    fi
+>>>>>>> 410ad7e9 (Remove curl/jansson default search assumption)
 
     PMIX_VAR_SCOPE_POP
 ])
