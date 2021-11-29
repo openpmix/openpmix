@@ -53,7 +53,7 @@ by any of the following:
   directives versus built plugins (i.e., you excluded all the plugins
   that were built and/or could execute)
 
-* the PMIX_INSTALL_PREFIX environment variable, or the MCA parameter
+* the PMIX_PREFIX environment variable, or the MCA parameter
   "mca_base_component_path", is set and doesn't point to any location
   that includes at least one usable plugin for this framework.
 
