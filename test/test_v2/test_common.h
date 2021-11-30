@@ -233,7 +233,7 @@ void free_nodes(int num_nodes);
 void free_params(test_params *params, validation_params *vparams);
 void set_client_argv(test_params *params, char ***argv, char **ltest_argv);
 
-void pmixt_exit(int exit_code);
+void pmixt_exit(int exit_code) __attribute__((__noreturn__));
 void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, validation_params *v_params);
 void pmixt_post_init(pmix_proc_t *this_proc, test_params *params, validation_params *val_params);
 void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params, validation_params *v_params);
