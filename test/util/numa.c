@@ -13,7 +13,7 @@ int main(int argc, char **argv)
     hwloc_obj_t obj;
     unsigned width, w;
     hwloc_bitmap_t numas[100], result;
-    int n, m;
+    int m;
     char *tmp, cpus[2048];
     bool overlap = false;
 
