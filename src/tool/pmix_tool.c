@@ -436,7 +436,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_iof_req_t *iofreq;
     pmix_lock_t reglock, releaselock;
     pmix_status_t code;
-    pmix_value_t *val, value;
+    pmix_value_t value;
     bool outputio = true;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
