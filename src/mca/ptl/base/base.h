@@ -170,7 +170,8 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct ti
 PMIX_EXPORT void pmix_ptl_base_setup_socket(pmix_peer_t *peer);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer, pmix_status_t reply);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp);
-PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(char **orig_str, char *name);
+PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(const char *orig_str,
+                                                   const char *name);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info,
                                                         size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar);
