@@ -9,6 +9,8 @@
 # Copyright (c) 2020      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -183,6 +185,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
 
         # need to add resulting flags to global ones so we can
         # test for thread support
+<<<<<<< HEAD
         AS_IF([test "$pmix_event_defaults" = "no"],
               [PMIX_FLAGS_APPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
                PMIX_FLAGS_APPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)])
@@ -223,6 +226,41 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                                AC_MSG_WARN([libevent version is too old (2.0.21 or later required)])
                                pmix_libevent_support=0])
         fi
+||||||| parent of 9011ac23 (config: Remove string checks in hwloc/libevent)
+        if test ! -z "$pmix_libevent_CPPFLAGS"; then
+            PMIX_FLAGS_PREPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
+        fi
+        if test ! -z "$pmix_libevent_LDFLAGS"; then
+            PMIX_FLAGS_PREPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)
+        fi
+        if test ! -z "$pmix_libevent_LIBS"; then
+            PMIX_FLAGS_PREPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
+        fi
+
+        # Ensure that this libevent has the symbol
+        # "evthread_set_lock_callbacks", which will only exist if
+        # libevent was configured with thread support.
+        AC_CHECK_LIB([event_core], [evthread_set_lock_callbacks],
+                     [],
+                     [AC_MSG_WARN([libevent does not have thread support])
+                      AC_MSG_WARN([PMIX requires libevent to be compiled with])
+                      AC_MSG_WARN([thread support enabled])
+                      pmix_libevent_support=0])
+=======
+        PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_libevent_CPPFLAGS])
+        PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_libevent_LDFLAGS])
+        PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_libevent_LIBS])
+
+        # Ensure that this libevent has the symbol
+        # "evthread_set_lock_callbacks", which will only exist if
+        # libevent was configured with thread support.
+        AC_CHECK_LIB([event_core], [evthread_set_lock_callbacks],
+                     [],
+                     [AC_MSG_WARN([libevent does not have thread support])
+                      AC_MSG_WARN([PMIX requires libevent to be compiled with])
+                      AC_MSG_WARN([thread support enabled])
+                      pmix_libevent_support=0])
+>>>>>>> 9011ac23 (config: Remove string checks in hwloc/libevent)
     fi
 
     CPPFLAGS="$pmix_check_libevent_save_CPPFLAGS"
@@ -232,6 +270,30 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
     AC_MSG_CHECKING([will libevent support be built])
     if test $pmix_libevent_support -eq 1; then
         AC_MSG_RESULT([yes])
+<<<<<<< HEAD
+||||||| parent of 9011ac23 (config: Remove string checks in hwloc/libevent)
+        if test ! -z "$pmix_libevent_CPPFLAGS"; then
+            PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_libevent_CPPFLAGS)
+            PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_libevent_CPPFLAGS)
+        fi
+        if test ! -z "$pmix_libevent_LDFLAGS"; then
+            PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LDFLAGS, $pmix_libevent_LDFLAGS)
+            PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libevent_LDFLAGS)
+        fi
+        if test ! -z "$pmix_libevent_LIBS"; then
+            PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_libevent_LIBS)
+            PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libevent_LIBS)
+        fi
+=======
+        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_CPPFLAGS], [$pmix_libevent_CPPFLAGS])
+        PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_libevent_CPPFLAGS])
+
+        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_libevent_LDFLAGS])
+        PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_libevent_LDFLAGS])
+
+        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_libevent_LIBS])
+        PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libevent_LIBS])
+>>>>>>> 9011ac23 (config: Remove string checks in hwloc/libevent)
         # Set output variables
         PMIX_EVENT_HEADER="<event.h>"
         PMIX_EVENT2_THREAD_HEADER="<event2/thread.h>"

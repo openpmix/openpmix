@@ -6,6 +6,8 @@
 # Copyright (c) 2020      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -76,9 +78,27 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
 
     PMIX_SUMMARY_ADD([[External Packages]],[[HWLOC]], [pmix_hwloc], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
 
+<<<<<<< HEAD
     AS_IF([test $pmix_hwloc_support -eq 1],
           [$1], [$2])
 ])
+||||||| parent of 9011ac23 (config: Remove string checks in hwloc/libevent)
+   # update global flags to test for HWLOC version
+    if test ! -z "$pmix_hwloc_CPPFLAGS"; then
+        PMIX_FLAGS_PREPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
+    fi
+    if test ! -z "$pmix_hwloc_LDFLAGS"; then
+        PMIX_FLAGS_PREPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)
+    fi
+    if test ! -z "$pmix_hwloc_LIBS"; then
+        PMIX_FLAGS_PREPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
+    fi
+=======
+    # update global flags to test for HWLOC version
+    PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+    PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_hwloc_LDFLAGS])
+    PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_hwloc_LIBS])
+>>>>>>> 9011ac23 (config: Remove string checks in hwloc/libevent)
 
 AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
     AC_MSG_CHECKING([for hwloc])
@@ -120,6 +140,7 @@ AC_DEFUN([_PMIX_HWLOC_EMBEDDED_MODE],[
 AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
     PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_hwloc_standard_lib_location pmix_hwloc_standard_header_location pmix_check_hwloc_save_CPPFLAGS pmix_check_hwloc_save_LDFLAGS pmix_check_hwloc_save_LIBS])
 
+<<<<<<< HEAD
     pmix_hwloc_support=0
     pmix_hwloc_have_dup=0
     pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
@@ -190,6 +211,29 @@ AC_DEFUN([_PMIX_HWLOC_EXTERNAL],[
         AC_MSG_WARN([HWLOC SUPPORT REQUESTED AND NOT FOUND])
         AC_MSG_ERROR([CANNOT CONTINUE])
     fi
+||||||| parent of 9011ac23 (config: Remove string checks in hwloc/libevent)
+    if test ! -z "$pmix_hwloc_CPPFLAGS"; then
+        PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_hwloc_CPPFLAGS)
+        PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
+    fi
+    if test ! -z "$pmix_hwloc_LDFLAGS"; then
+        PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LDFLAGS, $pmix_hwloc_LDFLAGS)
+        PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_hwloc_LDFLAGS)
+    fi
+    if test ! -z "$pmix_hwloc_LIBS"; then
+        PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_hwloc_LIBS)
+        PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_hwloc_LIBS)
+    fi
+=======
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_hwloc_LDFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_hwloc_LDFLAGS])
+
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_hwloc_LIBS])
+    PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_hwloc_LIBS])
+>>>>>>> 9011ac23 (config: Remove string checks in hwloc/libevent)
 
     if test $pmix_hwloc_support = "1"; then
         AC_MSG_CHECKING([if external hwloc version is 1.5 or greater])
