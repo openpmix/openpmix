@@ -7,6 +7,8 @@
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -88,15 +90,9 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     if test $pmix_libevent_support -eq 1; then
         # need to add resulting flags to global ones so we can
         # test for thread support
-        if test ! -z "$pmix_libevent_CPPFLAGS"; then
-            PMIX_FLAGS_PREPEND_UNIQ(CPPFLAGS, $pmix_libevent_CPPFLAGS)
-        fi
-        if test ! -z "$pmix_libevent_LDFLAGS"; then
-            PMIX_FLAGS_PREPEND_UNIQ(LDFLAGS, $pmix_libevent_LDFLAGS)
-        fi
-        if test ! -z "$pmix_libevent_LIBS"; then
-            PMIX_FLAGS_PREPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
-        fi
+        PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_libevent_CPPFLAGS])
+        PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_libevent_LDFLAGS])
+        PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_libevent_LIBS])
 
         # Ensure that this libevent has the symbol
         # "evthread_set_lock_callbacks", which will only exist if
@@ -143,18 +139,14 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     AC_MSG_CHECKING([will libevent support be built])
     if test $pmix_libevent_support -eq 1; then
         AC_MSG_RESULT([yes])
-        if test ! -z "$pmix_libevent_CPPFLAGS"; then
-            PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_libevent_CPPFLAGS)
-            PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_libevent_CPPFLAGS)
-        fi
-        if test ! -z "$pmix_libevent_LDFLAGS"; then
-            PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LDFLAGS, $pmix_libevent_LDFLAGS)
-            PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libevent_LDFLAGS)
-        fi
-        if test ! -z "$pmix_libevent_LIBS"; then
-            PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_libevent_LIBS)
-            PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libevent_LIBS)
-        fi
+        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_CPPFLAGS], [$pmix_libevent_CPPFLAGS])
+        PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_libevent_CPPFLAGS])
+
+        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_libevent_LDFLAGS])
+        PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_libevent_LDFLAGS])
+
+        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_libevent_LIBS])
+        PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libevent_LIBS])
         # Set output variables
         PMIX_SUMMARY_ADD([[Required Packages]],[[Libevent]], [pmix_libevent], [yes ($pmix_libevent_source)])
     else
