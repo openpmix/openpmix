@@ -18,6 +18,7 @@
 # $HEADER$
 #
 
+<<<<<<< HEAD
 #
 # We have three modes for building libevent.
 #
@@ -42,7 +43,24 @@
 # libevent.  This mode is used whenever the other modes are not used.
 #
 # MCA_libevent_CONFIG([action-if-found], [action-if-not-found])
+||||||| parent of 2d5761f4 (Clean up libevent/libev selection logic)
+# MCA_libevent_CONFIG([action-if-found], [action-if-not-found])
+=======
+# PMIX_LIBEVENT_CONFIG([action-if-found], [action-if-not-found])
+>>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
 # --------------------------------------------------------------------
+# Attempt to find a libevent package.  If found, evaluate
+# action-if-found.  Otherwise, evaluate action-if-not-found.
+#
+# Modifies the following in the environment:
+#  * pmix_libevent_CPPFLAGS
+#  * pmix_libevent_LDFLAGS
+#  * pmix_libevent_LIBS
+#
+# Adds the following to the wrapper compilers:
+#  * CPPFLAGS: none
+#  * LDLFGAS: add pmix_libevent_LDFLAGS
+#  * LIBS: add pmix_libevent_LIBS
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 
     AC_ARG_WITH([libevent],
@@ -53,12 +71,27 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                 [AS_HELP_STRING([--with-libevent-libdir=DIR],
                                 [Search for libevent libraries in DIR ])])
 
+<<<<<<< HEAD
     AC_ARG_WITH([libevent-header],
                 [AS_HELP_STRING([--with-libevent-header=HEADER],
                                 [The value that should be included in C files to include event.h.  This option only has meaning if --enable-embedded-mode is enabled.])])
 
     pmix_libevent_support=0
+||||||| parent of 2d5761f4 (Clean up libevent/libev selection logic)
+    pmix_libevent_support=0
+=======
+    pmix_libevent_support=1
 
+    AS_IF([test "$with_libevent" = "no"],
+          [AC_MSG_NOTICE([Libevent support disabled by user.])
+           pmix_libevent_support=0])
+
+    AS_IF([test $pmix_libevent_support -eq 1],
+          [PMIX_CHECK_WITHDIR([libevent], [$with_libevent], [include/event.h])
+           PMIX_CHECK_WITHDIR([libevent-libdir], [$with_libevent_libdir], [libevent.*])
+>>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
+
+<<<<<<< HEAD
     # figure out our mode...
     AS_IF([test "$with_libevent" = "cobuild"],
           [_PMIX_LIBEVENT_EMBEDDED_MODE(cobuild)],
@@ -115,11 +148,31 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
     pmix_check_libevent_save_LDFLAGS="$LDFLAGS"
     pmix_check_libevent_save_LIBS="$LIBS"
     pmix_event_defaults=yes
+||||||| parent of 2d5761f4 (Clean up libevent/libev selection logic)
+    pmix_check_libevent_save_CPPFLAGS="$CPPFLAGS"
+    pmix_check_libevent_save_LDFLAGS="$LDFLAGS"
+    pmix_check_libevent_save_LIBS="$LIBS"
+=======
+           pmix_check_libevent_save_CPPFLAGS="$CPPFLAGS"
+           pmix_check_libevent_save_LDFLAGS="$LDFLAGS"
+           pmix_check_libevent_save_LIBS="$LIBS"
+>>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
 
+<<<<<<< HEAD
     # get rid of the trailing slash(es)
     libevent_prefix=$(echo $with_libevent | sed -e 'sX/*$XXg')
     libeventdir_prefix=$(echo $with_libevent_libdir | sed -e 'sX/*$XXg')
+||||||| parent of 2d5761f4 (Clean up libevent/libev selection logic)
+    # get rid of any trailing slash(es)
+    libevent_prefix=$(echo $with_libevent | sed -e 'sX/*$XXg')
+    libeventdir_prefix=$(echo $with_libevent_libdir | sed -e 'sX/*$XXg')
+=======
+           # get rid of any trailing slash(es)
+           libevent_prefix=$(echo $with_libevent | sed -e 'sX/*$XXg')
+           libeventdir_prefix=$(echo $with_libevent_libdir | sed -e 'sX/*$XXg')
+>>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
 
+<<<<<<< HEAD
     if test "$libevent_prefix" != "no"; then
         AC_MSG_CHECKING([for libevent in])
         if test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"; then
@@ -182,6 +235,105 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                           AC_MSG_WARN([===================================================================])
                           ])
         fi
+||||||| parent of 2d5761f4 (Clean up libevent/libev selection logic)
+    AS_IF([test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"],
+          [pmix_event_dir="$libevent_prefix"],
+          [pmix_event_dir=""])
+
+    AS_IF([test ! -z "$libeventdir_prefix" && test "$libeventdir_prefix" != "yes"],
+                 [pmix_event_libdir="$libeventdir_prefix"],
+                 [AS_IF([test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"],
+                        [if test -d $libevent_prefix/lib64; then
+                            pmix_event_libdir=$libevent_prefix/lib64
+                         elif test -d $libevent_prefix/lib; then
+                            pmix_event_libdir=$libevent_prefix/lib
+                         else
+                            AC_MSG_WARN([Could not find $libevent_prefix/lib or $libevent_prefix/lib64])
+                            AC_MSG_ERROR([Can not continue])
+                         fi
+                        ],
+                        [pmix_event_libdir=""])])
+
+    PMIX_CHECK_PACKAGE([pmix_libevent],
+                       [event.h],
+                       [event_core],
+                       [event_config_new],
+                       [-levent_pthreads],
+                       [$pmix_event_dir],
+                       [$pmix_event_libdir],
+                       [pmix_libevent_support=1],
+                       [pmix_libevent_support=0],
+                       [])
+
+    # Check to see if the above check failed because it conflicted with LSF's libevent.so
+    # This can happen if LSF's library is in the LDFLAGS envar or default search
+    # path. The 'event_getcode4name' function is only defined in LSF's libevent.so and not
+    # in Libevent's libevent.so
+    if test $pmix_libevent_support -eq 0; then
+        AC_CHECK_LIB([event], [event_getcode4name],
+                     [AC_MSG_WARN([===================================================================])
+                      AC_MSG_WARN([Possible conflicting libevent.so libraries detected on the system.])
+                      AC_MSG_WARN([])
+                      AC_MSG_WARN([LSF provides a libevent.so that is not from Libevent in its])
+                      AC_MSG_WARN([library path. It is possible that you have installed Libevent])
+                      AC_MSG_WARN([on the system, but the linker is picking up the wrong version.])
+                      AC_MSG_WARN([])
+                      AC_MSG_WARN([You will need to address this linker path issue. One way to do so is])
+                      AC_MSG_WARN([to make sure the libevent system library path occurs before the])
+                      AC_MSG_WARN([LSF library path.])
+                      AC_MSG_WARN([===================================================================])
+                      ])
+    fi
+=======
+           AS_IF([test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"],
+                 [pmix_event_dir="$libevent_prefix"],
+                 [pmix_event_dir=""])
+
+           AS_IF([test ! -z "$libeventdir_prefix" -a "$libeventdir_prefix" != "yes"],
+                 [pmix_event_libdir="$libeventdir_prefix"],
+                 [AS_IF([test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"],
+                        [if test -d $libevent_prefix/lib64; then
+                            pmix_event_libdir=$libevent_prefix/lib64
+                         elif test -d $libevent_prefix/lib; then
+                            pmix_event_libdir=$libevent_prefix/lib
+                         else
+                            AC_MSG_WARN([Could not find $libevent_prefix/lib or $libevent_prefix/lib64])
+                            AC_MSG_ERROR([Can not continue])
+                         fi
+                        ],
+                        [pmix_event_libdir=""])])
+
+           PMIX_CHECK_PACKAGE([pmix_libevent],
+                              [event.h],
+                              [event_core],
+                              [event_config_new],
+                              [-levent_pthreads],
+                              [$pmix_event_dir],
+                              [$pmix_event_libdir],
+                              [],
+                              [pmix_libevent_support=0],
+                              [])])
+
+    # Check to see if the above check failed because it conflicted with LSF's libevent.so
+    # This can happen if LSF's library is in the LDFLAGS envar or default search
+    # path. The 'event_getcode4name' function is only defined in LSF's libevent.so and not
+    # in Libevent's libevent.so
+    if test $pmix_libevent_support -eq 0; then
+        AC_CHECK_LIB([event], [event_getcode4name],
+                     [AC_MSG_WARN([===================================================================])
+                      AC_MSG_WARN([Possible conflicting libevent.so libraries detected on the system.])
+                      AC_MSG_WARN([])
+                      AC_MSG_WARN([LSF provides a libevent.so that is not from Libevent in its])
+                      AC_MSG_WARN([library path. It is possible that you have installed Libevent])
+                      AC_MSG_WARN([on the system, but the linker is picking up the wrong version.])
+                      AC_MSG_WARN([])
+                      AC_MSG_WARN([You will need to address this linker path issue. One way to do so is])
+                      AC_MSG_WARN([to make sure the libevent system library path occurs before the])
+                      AC_MSG_WARN([LSF library path.])
+                      AC_MSG_WARN([===================================================================])
+                      ])
+    fi
+>>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
 
         # need to add resulting flags to global ones so we can
         # test for thread support
@@ -267,6 +419,11 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
     LDFLAGS="$pmix_check_libevent_save_LDFLAGS"
     LIBS="$pmix_check_libevent_save_LIBS"
 
+    # restore global flags
+    CPPFLAGS="$pmix_check_libevent_save_CPPFLAGS"
+    LDFLAGS="$pmix_check_libevent_save_LDFLAGS"
+    LIBS="$pmix_check_libevent_save_LIBS"
+
     AC_MSG_CHECKING([will libevent support be built])
     if test $pmix_libevent_support -eq 1; then
         AC_MSG_RESULT([yes])
@@ -295,6 +452,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
         PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libevent_LIBS])
 >>>>>>> 9011ac23 (config: Remove string checks in hwloc/libevent)
         # Set output variables
+<<<<<<< HEAD
         PMIX_EVENT_HEADER="<event.h>"
         PMIX_EVENT2_THREAD_HEADER="<event2/thread.h>"
         AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
@@ -307,10 +465,28 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_libevent_LDFLAGS)])
         PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_libevent_LIBS)
         PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_libevent_LIBS)
+||||||| parent of 2d5761f4 (Clean up libevent/libev selection logic)
+        PMIX_SUMMARY_ADD([[Required Packages]],[[Libevent]], [pmix_libevent], [yes ($pmix_libevent_source)])
+=======
+        PMIX_SUMMARY_ADD([[Required Packages]],[[Libevent]], [pmix_libevent], [yes ($pmix_libevent_source)])
+
+        $1
+>>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
     else
         AC_MSG_RESULT([no])
+
+<<<<<<< HEAD
+||||||| parent of 2d5761f4 (Clean up libevent/libev selection logic)
+    # restore global flags
+    CPPFLAGS="$pmix_check_libevent_save_CPPFLAGS"
+    LDFLAGS="$pmix_check_libevent_save_LDFLAGS"
+    LIBS="$pmix_check_libevent_save_LIBS"
+
+=======
+        $2
     fi
 
+>>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
     AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEVENT], [$pmix_libevent_support], [Whether we are building against libevent])
 
     PMIX_VAR_SCOPE_POP
