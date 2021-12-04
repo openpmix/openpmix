@@ -389,6 +389,7 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
             PMIX_FLAGS_PREPEND_UNIQ(LIBS, $pmix_libevent_LIBS)
         fi
 
+<<<<<<< HEAD
         # Ensure that this libevent has the symbol
         # "evthread_set_lock_callbacks", which will only exist if
         # libevent was configured with thread support.
@@ -402,7 +403,36 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
         PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_libevent_CPPFLAGS])
         PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_libevent_LDFLAGS])
         PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_libevent_LIBS])
+||||||| parent of 4d142d81 (libevent: prefer compiler tests over linking tests)
+        # Ensure that this libevent has the symbol
+        # "evthread_set_lock_callbacks", which will only exist if
+        # libevent was configured with thread support.
+        AC_CHECK_LIB([event_core], [evthread_set_lock_callbacks],
+                     [],
+                     [AC_MSG_WARN([libevent does not have thread support])
+                      AC_MSG_WARN([PMIX requires libevent to be compiled with])
+                      AC_MSG_WARN([thread support enabled])
+                      pmix_libevent_support=0])
+    fi
+=======
+        # Check for general threading support
+        AC_MSG_CHECKING([if libevent threads enabled])
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
+#include <event.h>
+#include <event2/thread.h>
+          ], [[
+#if !(EVTHREAD_LOCK_API_VERSION >= 1)
+#  error "No threads!"
+#endif
+          ]])],
+          [AC_MSG_RESULT([yes])],
+          [AC_MSG_RESULT([no])
+           AC_MSG_WARN([PMIX rquires libevent to be compiled with thread support enabled])
+           pmix_libevent_support=0])
+    fi
+>>>>>>> 4d142d81 (libevent: prefer compiler tests over linking tests)
 
+<<<<<<< HEAD
         # Ensure that this libevent has the symbol
         # "evthread_set_lock_callbacks", which will only exist if
         # libevent was configured with thread support.
@@ -413,6 +443,30 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                       AC_MSG_WARN([thread support enabled])
                       pmix_libevent_support=0])
 >>>>>>> 9011ac23 (config: Remove string checks in hwloc/libevent)
+||||||| parent of 4d142d81 (libevent: prefer compiler tests over linking tests)
+    if test $pmix_libevent_support -eq 1; then
+        AC_CHECK_LIB([event_pthreads], [evthread_use_pthreads],
+                     [],
+                     [AC_MSG_WARN([libevent does not have thread support])
+                      AC_MSG_WARN([PMIX requires libevent to be compiled with])
+                      AC_MSG_WARN([thread support enabled])
+                      pmix_libevent_support=0])
+=======
+    if test $pmix_libevent_support -eq 1; then
+        AC_MSG_CHECKING([for libevent pthreads support])
+        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([
+#include <event.h>
+#include <event2/thread.h>
+          ], [[
+#if !defined(EVTHREAD_USE_PTHREADS_IMPLEMENTED) || !EVTHREAD_USE_PTHREADS_IMPLEMENTED
+#  error "No pthreads!"
+#endif
+          ]])],
+          [AC_MSG_RESULT([yes])],
+          [AC_MSG_RESULT([no])
+           AC_MSG_WARN([PMIX requires libevent to be compiled with pthread support enabled])
+           pmix_libevent_support=0])
+>>>>>>> 4d142d81 (libevent: prefer compiler tests over linking tests)
     fi
 
     CPPFLAGS="$pmix_check_libevent_save_CPPFLAGS"
