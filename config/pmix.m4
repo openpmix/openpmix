@@ -925,6 +925,34 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # executables) need perl.
     AC_PATH_PROG(PERL, perl, perl)
 
+    # What's the suffix of shared libraries?  Inspired by generated
+    # Libtool code (even though we don't support several of these
+    # platforms, there didn't seem to be any harm in leaving in some of
+    # them, alhtough I did remove some that we have never/will never
+    # support, like OS/2).
+    case $host_os in
+    mingw* | pw32* | cegcc*)
+        PMIX_DYN_LIB_SUFFIX=dll
+        ;;
+    darwin* | rhapsody*)
+        PMIX_DYN_LIB_SUFFIX=dylib
+        ;;
+    hpux9* | hpux10* | hpux11*)
+        case $host_cpu in
+            ia64*)
+            PMIX_DYN_LIB_SUFFIX=so
+          ;;
+        *)
+            PMIX_DYN_LIB_SUFFIX=sl
+            ;;
+        esac
+        ;;
+    *)
+       PMIX_DYN_LIB_SUFFIX=so
+       ;;
+    esac
+    AC_SUBST(PMIX_DYN_LIB_SUFFIX)
+
     # Need the libtool executable before the rpathify stuff
     LT_OUTPUT
 
