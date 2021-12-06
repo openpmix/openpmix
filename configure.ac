@@ -24,6 +24,8 @@
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -298,32 +300,6 @@ AC_MSG_RESULT([$LDFLAGS])
 
 AC_MSG_CHECKING([final LIBS])
 AC_MSG_RESULT([$LIBS])
-
-####################################################################
-# Setup variables for pkg-config file (maint/pmix.pc.in)
-####################################################################
-
-#
-# Dependencies that themselves have a pkg-config file available.
-#
-PC_REQUIRES=""
-AS_IF([test $pmix_hwloc_support -eq 1],
-      [PC_REQUIRES="$PC_REQUIRES hwloc"])
-AS_IF([test $pmix_libevent_support -eq 1],
-      [PC_REQUIRES="$PC_REQUIRES libevent"])
-AS_IF([test "$pmix_zlib_support" = "1"],
-      [PC_REQUIRES="$PC_REQUIRES zlib"])
-AC_SUBST([PC_REQUIRES], ["$PC_REQUIRES"])
-
-#
-# Dependencies that don't have a pkg-config file available.
-# In this case we need to manually add -L<path> and -l<lib>
-# to the PC_PRIVATE_LIBS variable.
-#
-PC_PRIVATE_LIBS=""
-AS_IF([test $pmix_libev_support -eq 1],
-      [PC_PRIVATE_LIBS="$PC_PRIVATE_LIBS $pmix_libev_LDFLAGS $pmix_libev_LIBS"])
-AC_SUBST([PC_PRIVATE_LIBS], ["$PC_PRIVATE_LIBS"])
 
 ####################################################################
 # -Werror for CI scripts
