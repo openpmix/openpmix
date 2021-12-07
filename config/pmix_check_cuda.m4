@@ -49,4 +49,6 @@ AC_DEFUN([PMIX_CHECK_CUDA],[
     AC_MSG_CHECKING([if have cuda support])
     AC_MSG_RESULT([$pmix_cuda_happy])
 
+    PMIX_SUMMARY_ADD([[External Packages]],[[CUDA]],[pmix_cuda],[$pmix_cuda_happy])])])
+
 ])

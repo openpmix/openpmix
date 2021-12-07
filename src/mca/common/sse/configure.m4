@@ -24,6 +24,12 @@ AC_DEFUN([MCA_pmix_common_sse_CONFIG], [
           [$2
            pmix_common_sse_happy=no])
 
+<<<<<<< HEAD
     PMIX_SUMMARY_ADD([[Optional Support]],[[SSE]], [common_sse], [$pmix_check_curl_happy])
 
+||||||| parent of 0e1b933f (Final minor diddles of configure summary categories)
+    PMIX_SUMMARY_ADD([[Optional Support]],[[SSE]], [common_sse], [$pmix_common_sse_happy])
+
+=======
+>>>>>>> 0e1b933f (Final minor diddles of configure summary categories)
 ])dnl
