@@ -4,6 +4,8 @@
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -77,16 +79,10 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
         AC_MSG_ERROR([Cannot continue.])
     fi
 
-   # update global flags to test for HWLOC version
-    if test ! -z "$pmix_hwloc_CPPFLAGS"; then
-        PMIX_FLAGS_PREPEND_UNIQ(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
-    fi
-    if test ! -z "$pmix_hwloc_LDFLAGS"; then
-        PMIX_FLAGS_PREPEND_UNIQ(LDFLAGS, $pmix_hwloc_LDFLAGS)
-    fi
-    if test ! -z "$pmix_hwloc_LIBS"; then
-        PMIX_FLAGS_PREPEND_UNIQ(LIBS, $pmix_hwloc_LIBS)
-    fi
+    # update global flags to test for HWLOC version
+    PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+    PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_hwloc_LDFLAGS])
+    PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_hwloc_LIBS])
 
     AC_MSG_CHECKING([if hwloc version is 1.5 or greater])
     AC_COMPILE_IFELSE(
@@ -129,18 +125,14 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     LDFLAGS=$pmix_check_hwloc_save_LDFLAGS
     LIBS=$pmix_check_hwloc_save_LIBS
 
-    if test ! -z "$pmix_hwloc_CPPFLAGS"; then
-        PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_CPPFLAGS, $pmix_hwloc_CPPFLAGS)
-        PMIX_WRAPPER_FLAGS_ADD(CPPFLAGS, $pmix_hwloc_CPPFLAGS)
-    fi
-    if test ! -z "$pmix_hwloc_LDFLAGS"; then
-        PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LDFLAGS, $pmix_hwloc_LDFLAGS)
-        PMIX_WRAPPER_FLAGS_ADD(LDFLAGS, $pmix_hwloc_LDFLAGS)
-    fi
-    if test ! -z "$pmix_hwloc_LIBS"; then
-        PMIX_FLAGS_APPEND_UNIQ(PMIX_FINAL_LIBS, $pmix_hwloc_LIBS)
-        PMIX_WRAPPER_FLAGS_ADD(LIBS, $pmix_hwloc_LIBS)
-    fi
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_hwloc_LDFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_hwloc_LDFLAGS])
+
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_hwloc_LIBS])
+    PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_hwloc_LIBS])
 
     AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC_TOPOLOGY_DUP], [$pmix_have_topology_dup],
                        [Whether or not hwloc_topology_dup is available])
