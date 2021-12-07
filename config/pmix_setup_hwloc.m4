@@ -54,6 +54,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
           [_PMIX_HWLOC_EMBEDDED_MODE],
           [_PMIX_HWLOC_EXTERNAL])
 
+<<<<<<< HEAD
     AS_IF([test $pmix_hwloc_support -eq 1],
           [AC_MSG_CHECKING([hwloc header])
            AC_MSG_RESULT([$PMIX_HWLOC_HEADER])],
@@ -77,6 +78,88 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                    [Whether or not we have hwloc_topology_dup support])
 
     PMIX_SUMMARY_ADD([[External Packages]],[[HWLOC]], [pmix_hwloc], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
+||||||| parent of d129da79 (Add configure support for the pgpu and pnet components)
+    # get rid of any trailing slash(es)
+    hwloc_prefix=$(echo $with_hwloc | sed -e 'sX/*$XXg')
+    hwlocdir_prefix=$(echo $with_hwloc_libdir | sed -e 'sX/*$XXg')
+
+    AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
+                 [pmix_hwloc_dir="$hwloc_prefix"],
+                 [pmix_hwloc_dir=""])
+
+    AS_IF([test ! -z "$hwlocdir_prefix" && test "$hwlocdir_prefix" != "yes"],
+                 [pmix_hwloc_libdir="$hwlocdir_prefix"],
+                 [AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
+                        [if test -d $hwloc_prefix/lib64; then
+                            pmix_hwloc_libdir=$hwloc_prefix/lib64
+                         elif test -d $hwloc_prefix/lib; then
+                            pmix_hwloc_libdir=$hwloc_prefix/lib
+                         else
+                            AC_MSG_WARN([Could not find $hwloc_prefix/lib or $hwloc_prefix/lib64])
+                            AC_MSG_ERROR([Can not continue])
+                         fi
+                        ],
+                        [pmix_hwloc_libdir=""])])
+
+    PMIX_CHECK_PACKAGE([pmix_hwloc],
+                       [hwloc.h],
+                       [hwloc],
+                       [hwloc_topology_init],
+                       [],
+                       [$pmix_hwloc_dir],
+                       [$pmix_hwloc_libdir],
+                       [pmix_hwloc_support=1],
+                       [pmix_hwloc_support=0],
+                       [])
+
+    if test $pmix_hwloc_support -eq 0; then
+        AC_MSG_WARN([PMIx requires HWLOC topology library support, but])
+        AC_MSG_WARN([an adequate version of that library was not found.])
+        AC_MSG_WARN([Please reconfigure and point to a location where])
+        AC_MSG_WARN([the HWLOC library can be found.])
+        AC_MSG_ERROR([Cannot continue.])
+    fi
+=======
+    hwloc_prefix=$with_hwloc
+    hwlocdir_prefix=$with_hwloc_libdir
+
+    AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
+                 [pmix_hwloc_dir="$hwloc_prefix"],
+                 [pmix_hwloc_dir=""])
+
+    AS_IF([test ! -z "$hwlocdir_prefix" && test "$hwlocdir_prefix" != "yes"],
+                 [pmix_hwloc_libdir="$hwlocdir_prefix"],
+                 [AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
+                        [if test -d $hwloc_prefix/lib64; then
+                            pmix_hwloc_libdir=$hwloc_prefix/lib64
+                         elif test -d $hwloc_prefix/lib; then
+                            pmix_hwloc_libdir=$hwloc_prefix/lib
+                         else
+                            AC_MSG_WARN([Could not find $hwloc_prefix/lib or $hwloc_prefix/lib64])
+                            AC_MSG_ERROR([Can not continue])
+                         fi
+                        ],
+                        [pmix_hwloc_libdir=""])])
+
+    PMIX_CHECK_PACKAGE([pmix_hwloc],
+                       [hwloc.h],
+                       [hwloc],
+                       [hwloc_topology_init],
+                       [],
+                       [$pmix_hwloc_dir],
+                       [$pmix_hwloc_libdir],
+                       [pmix_hwloc_support=1],
+                       [pmix_hwloc_support=0],
+                       [])
+
+    if test $pmix_hwloc_support -eq 0; then
+        AC_MSG_WARN([PMIx requires HWLOC topology library support, but])
+        AC_MSG_WARN([an adequate version of that library was not found.])
+        AC_MSG_WARN([Please reconfigure and point to a location where])
+        AC_MSG_WARN([the HWLOC library can be found.])
+        AC_MSG_ERROR([Cannot continue.])
+    fi
+>>>>>>> d129da79 (Add configure support for the pgpu and pnet components)
 
 <<<<<<< HEAD
     AS_IF([test $pmix_hwloc_support -eq 1],

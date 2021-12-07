@@ -852,13 +852,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_CHECK_CURL
 
     ##################################
-    # OFI
+    # OFI (for Transports)
     ##################################
     pmix_show_title "OFI"
 
     PMIX_CHECK_OFI
 
     ##################################
+<<<<<<< HEAD
     # Dstore Locking
     ##################################
 
@@ -868,6 +869,16 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 
     ##################################
+||||||| parent of d129da79 (Add configure support for the pgpu and pnet components)
+=======
+    # CUDA (for GPUs)
+    ##################################
+    pmix_show_title "CUDA"
+
+    PMIX_CHECK_CUDA
+
+    ##################################
+>>>>>>> d129da79 (Add configure support for the pgpu and pnet components)
     # MCA
     ##################################
 
