@@ -38,9 +38,8 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
         AC_MSG_ERROR([Cannot continue.])
     fi
 
-    # get rid of any trailing slash(es)
-    hwloc_prefix=$(echo $with_hwloc | sed -e 'sX/*$XXg')
-    hwlocdir_prefix=$(echo $with_hwloc_libdir | sed -e 'sX/*$XXg')
+    hwloc_prefix=$with_hwloc
+    hwlocdir_prefix=$with_hwloc_libdir
 
     AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
                  [pmix_hwloc_dir="$hwloc_prefix"],
