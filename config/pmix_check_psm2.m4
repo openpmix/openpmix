@@ -50,4 +50,5 @@ AC_DEFUN([OMPI_CHECK_PSM2],[
     AC_MSG_CHECKING([if have psm2 support])
     AC_MSG_RESULT([$pmix_psm2_happy])
 
+    PMIX_SUMMARY_ADD([[External Packages]],[[PSM2]],[pmix_psm2],[$pmix_psm2_happy])])])
 ])
