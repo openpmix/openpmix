@@ -560,8 +560,9 @@ AC_DEFUN([PMIX_FLAGS_APPEND_MOVE], [
                      AS_IF([test "x$val" != "x$arg"],
                            [PMIX_APPEND([pmix_tmp_variable], [$val])])
                  done
-                 PMIX_APPEND([pmix_tmp_variable], [$arg])])
-                 $1="$pmix_tmp_variable"
+                 PMIX_APPEND([pmix_tmp_variable], [$arg])
+                 $1="$pmix_tmp_variable"],
+                [PMIX_APPEND([$1], [$arg])])
     done
 
     PMIX_VAR_SCOPE_POP
