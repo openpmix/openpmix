@@ -168,6 +168,9 @@ AC_DEFUN([_PMIX_CHECK_OFI],[
                  [AC_MSG_WARN([OFI libfabric support requested (via --with-ofi or --with-libfabric), but not found.])
                   AC_MSG_ERROR([Cannot continue.])])
            ])
+
+    PMIX_SUMMARY_ADD([[External Packages]],[[OFI]],[pmix_ofi],[$pmix_ofi_happy])])])
+
 ])dnl
 
 

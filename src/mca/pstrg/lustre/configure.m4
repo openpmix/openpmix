@@ -39,7 +39,7 @@ AC_DEFUN([MCA_pmix_pstrg_lustre_CONFIG],[
                PMIX_SUMMARY_ADD([[Optional Support]],[[Lustre]], [pstrg_lustre], [yes ($pmix_check_lustre_dir)])
            fi
            $1],
-          [PMIX_SUMMARY_ADD([[Optional Support]],[[Lustre]], [pstrg_lustre], [no])
+          [PMIX_SUMMARY_ADD([[External Packages]],[[Lustre]], [pstrg_lustre], [no])
            $2])
 
     # substitute in the things needed to build lustre support

@@ -24,6 +24,4 @@ AC_DEFUN([MCA_pmix_common_sse_CONFIG], [
           [$2
            pmix_common_sse_happy=no])
 
-    PMIX_SUMMARY_ADD([[Optional Support]],[[SSE]], [common_sse], [$pmix_common_sse_happy])
-
 ])dnl
