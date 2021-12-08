@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020      Triad National Security, LLC.
+ * Copyright (c) 2020-2021 Triad National Security, LLC.
  *                         All rights reserved.
  *
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
@@ -83,12 +83,10 @@ int main(int argc, char *argv[])
     free(val);
     TEST_VERBOSE(("after PMIX_HOSTNAME check"));
 
-    // Code hangs when PMIx_Get of PMIX_RANK is enabled
-    /*
-     job_proc.rank = PMIX_RANK_UNDEF;
-     PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_RANK, NULL, 0, &val), l_params, v_params);
-     pmixt_validate_predefined(&job_proc, PMIX_RANK, val, PMIX_PROC_RANK, &v_params);
-     */
+    job_proc.rank = PMIX_RANK_INVALID;
+    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_RANK, NULL, 0, &val), l_params, v_params);
+    pmixt_validate_predefined(&job_proc, PMIX_RANK, val, PMIX_PROC_RANK, &v_params);
+    TEST_VERBOSE(("after PMIX_RANK check"));
 
     /* finalize */
     PMIXT_CHECK(PMIx_Finalize(NULL, 0), l_params, v_params);

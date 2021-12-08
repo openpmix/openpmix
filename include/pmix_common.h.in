@@ -6,6 +6,9 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2021      Triad National Security, LLC. All rights
+ *                         reserved.
+ *
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -2714,6 +2717,8 @@ typedef struct pmix_value {
             (n) = (t)((m)->data.dval);                  \
         } else if (PMIX_PID == (m)->type) {             \
             (n) = (t)((m)->data.pid);                   \
+        } else if (PMIX_PROC_RANK == (m)->type) {       \
+            (n) = (t)((m)->data.rank);                  \
         } else {                                        \
             (s) = PMIX_ERR_BAD_PARAM;                   \
         }                                               \
