@@ -540,8 +540,14 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
         $2
     fi
 
+<<<<<<< HEAD
 >>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
     AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEVENT], [$pmix_libevent_support], [Whether we are building against libevent])
 
+||||||| parent of ef358184 (The PMIX_HAVE_LIBEV and PMIX_HAVE_LIBEVENT flags must always be defined)
+    AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEVENT], [$pmix_libevent_support], [Whether we are building against libevent])
+
+=======
+>>>>>>> ef358184 (The PMIX_HAVE_LIBEV and PMIX_HAVE_LIBEVENT flags must always be defined)
     PMIX_VAR_SCOPE_POP
 ])dnl

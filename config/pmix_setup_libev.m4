@@ -118,7 +118,5 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
         $2
     fi
 
-    AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEV], [$pmix_libev_support], [Whether we are building against libev])
-
     PMIX_VAR_SCOPE_POP
 ])dnl

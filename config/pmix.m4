@@ -804,6 +804,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     dnl poking at $with_libevent and $with_libev is a bit of an
     dnl abstraction break, but makes implementing this logic
     dnl significantly easier.
+    pmix_libev_support=0
+    pmix_libevent_support=0
+
     AS_IF([test ! -z "$with_libevent" -a "$with_libevent" != "no"],
           [want_libevent=1])
     AS_IF([test ! -z "$with_libev" -a "$with_libev" != "no"],
@@ -822,6 +825,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
           [PMIX_LIBEVENT_CONFIG([pmix_found_event_lib=1])])
     AS_IF([test $pmix_found_event_lib -eq 0],
           [PMIX_LIBEV_CONFIG([pmix_found_event_lib=1])])
+
+    dnl The following must _always_ be defined, regardless of which
+    dnl event library was selected/requested
+    AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEV], [$pmix_libev_support], [Whether we are building against libev])
+    AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEVENT], [$pmix_libevent_support], [Whether we are building against libevent])
 
     AS_IF([test $pmix_found_event_lib -eq 0],
           [AC_MSG_WARN([Either libevent or libev support is required, but neither])
