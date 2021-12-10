@@ -195,7 +195,5 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
         $2
     fi
 
-    AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEVENT], [$pmix_libevent_support], [Whether we are building against libevent])
-
     PMIX_VAR_SCOPE_POP
 ])
