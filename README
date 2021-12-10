@@ -141,7 +141,8 @@ INSTALLATION OPTIONS
 --enable-static
   Build libpmix as a static library.  Note that this option does *not* imply
   --disable-shared; enabling static libraries and disabling shared
-  libraries are two independent options.
+  libraries are two independent options.  Please see the Static Builds
+  section below for important details on building PMIx as a static library.
 
  --disable-show-load-errors-by-default
    Set the default value of the mca_base_component_show_load_errors MCA
@@ -190,6 +191,23 @@ is ensure that <prefix>/lib is in their LD_LIBRARY_PATH.  Users may
 need to ensure to set LD_LIBRARY_PATH in their shell setup files (e.g.,
 .bashrc, .cshrc) so that non-interactive rsh/ssh-based logins will
 be able to find the OpenPMIx library.
+
+Building Static Libraries
+-------------------------
+
+PMIx depends on a number of external libraries for critical
+functionality.  Some of these libraries, such as HWLOC, can have
+dependencies on a varying number of additional libraries (such as
+libpci or libudev).  While PMIx's wrapper compiler will add the
+correct direct dependencies for third party packages, it will
+frequently not pull in the right sub-libraries.  When linking against
+dyanamic library versions of these dependencies, this is not a problem
+(and is preferred behavior to avoid adding unnecessary indirect
+linking dependencies).  However, this does cause problems for building
+entirely static versions of PMIx.  It may be necessary in some
+circumstances to add these dependencies via the LIBSenvironment
+variable (for building PMIx binaries) or --with-wrapper-libs=LIBS for
+the wrapper compiler.
 
 ===========================================================================
 
