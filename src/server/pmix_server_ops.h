@@ -63,6 +63,7 @@ typedef struct {
     pmix_app_t *apps;
     size_t napps;
     pmix_iof_channel_t channels;
+    pmix_iof_flags_t flags;
     pmix_byte_object_t *bo;
     size_t nbo;
     /* timestamp receipt of the notification so we

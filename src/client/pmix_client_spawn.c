@@ -130,7 +130,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_SPAWNNB_CMD;
     pmix_status_t rc;
-    pmix_cb_t *cb;
     size_t n, m;
     pmix_app_t *aptr;
     bool jobenvars = false;
@@ -352,15 +351,24 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = PMIX_NEW(pmix_cb_t);
-    cb->cbfunc.spawnfn = cbfunc;
-    cb->cbdata = cbdata;
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    cd->spcbfunc = cbfunc;
+    cd->cbdata = cbdata;
+    cd->info = (pmix_info_t*)job_info;
+    cd->ninfo = ninfo;
+    // mark that we are using the input data
+    cd->copied = false;
+    /* check for IOF flags */
+    pmix_server_spawn_parser(pmix_globals.mypeer, cd);
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) cd);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
-        PMIX_RELEASE(cb);
+        PMIX_RELEASE(cd);
     }
 
     return rc;
@@ -370,16 +378,17 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
                         void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     char nspace[PMIX_MAX_NSLEN + 1];
     char *n2 = NULL;
     pmix_status_t rc, ret;
     int32_t cnt;
+    pmix_namespace_t *nptr, *ns;
 
-    PMIX_ACQUIRE_OBJECT(cb);
+    PMIX_ACQUIRE_OBJECT(cd);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:client recv callback activated with %d bytes",
+                        "pmix:client recv spawn callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -411,7 +420,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
-    pmix_output_verbose(1, pmix_globals.debug_output, "pmix:client recv '%s'", n2);
+    pmix_output_verbose(1, pmix_globals.debug_output,
+                        "pmix:client recv '%s'", n2);
 
     if (NULL != n2) {
         /* protect length */
@@ -423,13 +433,39 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
             PMIX_ERROR_LOG(rc);
             ret = rc;
         }
+        /* process any IOF flags - we are only concerned if we are a TOOL
+         * and need to know if/how we should output any IO */
+        if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+            nptr = NULL;
+            PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t)
+            {
+                if (0 == strcmp(ns->nspace, n2)) {
+                    nptr = ns;
+                    break;
+                }
+            }
+            if (NULL == nptr) {
+                /* shouldn't happen, but protect us */
+                nptr = PMIX_NEW(pmix_namespace_t);
+                nptr->nspace = strdup(n2);
+                pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+            }
+            /* as a client, we only handle a select set of the flags */
+            memcpy(&nptr->iof_flags, &cd->flags, sizeof(pmix_iof_flags_t));
+            nptr->iof_flags.file = NULL;
+            nptr->iof_flags.directory = NULL;
+            /* since we are not a server, nocopy equates to no_local_output */
+            if (cd->flags.nocopy) {
+                nptr->iof_flags.local_output = false;
+            }
+        }
     }
 
 report:
-    if (NULL != cb->cbfunc.spawnfn) {
-        cb->cbfunc.spawnfn(ret, nspace, cb->cbdata);
+    if (NULL != cd->spcbfunc) {
+        cd->spcbfunc(ret, nspace, cd->cbdata);
     }
-    PMIX_RELEASE(cb);
+    PMIX_RELEASE(cd);
 }
 
 static void spawn_cbfunc(pmix_status_t status, char nspace[], void *cbdata)
