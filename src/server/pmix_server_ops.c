@@ -54,6 +54,7 @@
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
+#include "src/common/pmix_iof.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/base/base.h"
@@ -1594,6 +1595,8 @@ void pmix_server_spawn_parser(pmix_peer_t *peer, pmix_setup_caddy_t *cd)
             if (PMIX_INFO_TRUE(&cd->info[n])) {
                 cd->channels |= PMIX_FWD_STDDIAG_CHANNEL;
             }
+        } else {
+            pmix_iof_check_flags(&cd->info[n], &cd->flags);
         }
     }
     /* we will construct any required iof request tracker upon completion of the spawn
@@ -4887,6 +4890,7 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->copied = false;
     p->keys = NULL;
     p->channels = PMIX_FWD_NO_CHANNELS;
+    memset(&p->flags, 0, sizeof(pmix_iof_flags_t));
     p->bo = NULL;
     p->nbo = 0;
     p->cbfunc = NULL;
@@ -4914,6 +4918,12 @@ static void scaddes(pmix_setup_caddy_t *p)
         PMIX_BYTE_OBJECT_FREE(p->bo, p->nbo);
     }
     PMIX_DESTRUCT_LOCK(&p->lock);
+    if (NULL != p->flags.file) {
+        free(p->flags.file);
+    }
+    if (NULL != p->flags.directory) {
+        free(p->flags.directory);
+    }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t, pmix_object_t, scadcon, scaddes);
 
