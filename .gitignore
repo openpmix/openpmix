@@ -191,6 +191,7 @@ test/test_v2/test_get_peers
 test/test_v2/test_helloworld
 test/test_v2/test_init_fin
 test/test_v2/test_fence_partial
+test/test_v2/test_modex_basic
 
 # coverity
 cov-int

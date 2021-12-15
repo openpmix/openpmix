@@ -45,7 +45,8 @@ check_PROGRAMS = # test_init_fin (etc)
 
 noinst_PROGRAMS = pmix_test test_init_fin test_helloworld \
 				   test_get_basic test_get_peers \
-				   test_fence_basic test_fence_wildcard test_fence_partial
+				   test_fence_basic test_fence_wildcard test_fence_partial \
+				   test_modex_basic
 
 PCFILES = pmix_test.c test_common.c cli_stages.c test_server.c \
 		  server_callbacks.c base64_enc_dec.c
@@ -57,6 +58,7 @@ TC4FILES = test_get_peers.c $(TCCOMMONFILES)
 TC5FILES = test_fence_basic.c $(TCCOMMONFILES)
 TC6FILES = test_fence_wildcard.c $(TCCOMMONFILES)
 TC7FILES = test_fence_partial.c $(TCCOMMONFILES)
+TC8FILES = test_modex_basic.c $(TCCOMMONFILES)
 
 # Note the use of -no-install in LDFLAGS to force rpath
 # into binaries and prevent libtool from creating the usual scripts.
@@ -98,3 +100,8 @@ test_fence_wildcard_LDADD = $(top_builddir)/src/libpmix.la
 test_fence_partial_SOURCES = $(headers) $(TC7FILES)
 test_fence_partial_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
 test_fence_partial_LDADD = $(top_builddir)/src/libpmix.la
+
+test_modex_basic_SOURCES = $(headers) $(TC8FILES)
+test_modex_basic_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS) $(INSTALLFLAG)
+test_modex_basic_LDADD = $(top_builddir)/src/libpmix.la
+    
