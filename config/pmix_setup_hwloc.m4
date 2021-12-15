@@ -39,14 +39,33 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     AC_ARG_WITH([hwloc],
                 [AS_HELP_STRING([--with-hwloc=DIR],
                                 [Search for hwloc headers and libraries in DIR ])])
-
     AC_ARG_WITH([hwloc-libdir],
                 [AS_HELP_STRING([--with-hwloc-libdir=DIR],
                                 [Search for hwloc libraries in DIR ])])
+<<<<<<< HEAD
 
     pmix_hwloc_support=0
     pmix_hwloc_source=""
     pmix_hwloc_support_will_build=no
+||||||| parent of 9efb154c (build: Be more flexible in library handling)
+
+    pmix_hwloc_support=0
+    pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
+    pmix_check_hwloc_save_LDFLAGS="$LDFLAGS"
+    pmix_check_hwloc_save_LIBS="$LIBS"
+=======
+    AC_ARG_WITH([hwloc-extra-libs],
+                [AS_HELP_STRING([--with-hwloc-extra-libs=LIBS],
+                                [Add LIBS as dependencies of hwloc])])
+    AC_ARG_ENABLE([hwloc-lib-checks],
+                  [AS_HELP_STRING([--disable-hwloc-lib-checks],
+                                  [If --disable-hwloc-lib-checks is specified, configure will assume that -lhwloc is available])])
+
+    pmix_hwloc_support=1
+    pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
+    pmix_check_hwloc_save_LDFLAGS="$LDFLAGS"
+    pmix_check_hwloc_save_LIBS="$LIBS"
+>>>>>>> 9efb154c (build: Be more flexible in library handling)
     pmix_have_topology_dup=0
 
     # figure out our mode...
@@ -119,7 +138,16 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
         AC_MSG_WARN([the HWLOC library can be found.])
         AC_MSG_ERROR([Cannot continue.])
     fi
+<<<<<<< HEAD
 =======
+||||||| parent of 9efb154c (build: Be more flexible in library handling)
+
+=======
+
+    AS_IF([test "$with_hwloc_extra_libs" = "yes" -o "$with_hwloc_extra_libs" = "no"],
+	  [AC_MSG_ERROR([--with-hwloc-extra-libs requires an argument other than yes or no])])
+
+>>>>>>> 9efb154c (build: Be more flexible in library handling)
     hwloc_prefix=$with_hwloc
     hwlocdir_prefix=$with_hwloc_libdir
 
@@ -141,16 +169,18 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                         ],
                         [pmix_hwloc_libdir=""])])
 
-    PMIX_CHECK_PACKAGE([pmix_hwloc],
-                       [hwloc.h],
-                       [hwloc],
-                       [hwloc_topology_init],
-                       [],
-                       [$pmix_hwloc_dir],
-                       [$pmix_hwloc_libdir],
-                       [pmix_hwloc_support=1],
-                       [pmix_hwloc_support=0],
-                       [])
+    AS_IF([test "$enable_hwloc_lib_checks" != "no"],
+          [PMIX_CHECK_PACKAGE([pmix_hwloc],
+                              [hwloc.h],
+                              [hwloc],
+                              [hwloc_topology_init],
+                              [$with_hwloc_extra_libs],
+                              [$pmix_hwloc_dir],
+                              [$pmix_hwloc_libdir],
+                              [],
+                              [pmix_hwloc_support=0],
+                              [])],
+          [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_hwloc_extra_libs])])
 
     if test $pmix_hwloc_support -eq 0; then
         AC_MSG_WARN([PMIx requires HWLOC topology library support, but])

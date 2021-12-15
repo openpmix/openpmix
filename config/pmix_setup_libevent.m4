@@ -66,10 +66,15 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     AC_ARG_WITH([libevent],
                 [AS_HELP_STRING([--with-libevent=DIR],
                                 [Search for libevent headers and libraries in DIR ])])
-
     AC_ARG_WITH([libevent-libdir],
                 [AS_HELP_STRING([--with-libevent-libdir=DIR],
                                 [Search for libevent libraries in DIR ])])
+    AC_ARG_WITH([libevent-extra-libs],
+                [AS_HELP_STRING([--with-libevent-extra-libs=LIBS],
+                                [Add LIBS as dependencies of Libevent])])
+    AC_ARG_ENABLE([libevent-lib-checks],
+                   [AS_HELP_STRING([--disable-libevent-lib-checks],
+                                   [If --disable-libevent-lib-checks is specified, configure will assume that -levent is available])])
 
 <<<<<<< HEAD
     AC_ARG_WITH([libevent-header],
@@ -85,6 +90,9 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     AS_IF([test "$with_libevent" = "no"],
           [AC_MSG_NOTICE([Libevent support disabled by user.])
            pmix_libevent_support=0])
+
+    AS_IF([test "$with_libevent_extra_libs" = "yes" -o "$with_libevent_extra_libs" = "no"],
+	  [AC_MSG_ERROR([--with-libevent-extra-libs requires an argument other than yes or no])])
 
     AS_IF([test $pmix_libevent_support -eq 1],
           [PMIX_CHECK_WITHDIR([libevent], [$with_libevent], [include/event.h])
@@ -303,16 +311,18 @@ AC_DEFUN([_PMIX_LIBEVENT_EXTERNAL],[
                         ],
                         [pmix_event_libdir=""])])
 
-           PMIX_CHECK_PACKAGE([pmix_libevent],
-                              [event.h],
-                              [event_core],
-                              [event_config_new],
-                              [-levent_pthreads],
-                              [$pmix_event_dir],
-                              [$pmix_event_libdir],
-                              [],
-                              [pmix_libevent_support=0],
-                              [])])
+           AS_IF([test "$enable_libevent_lib_checks" != "no"],
+                 [PMIX_CHECK_PACKAGE([pmix_libevent],
+                                     [event.h],
+                                     [event_core],
+                                     [event_config_new],
+                                     [-levent_pthreads $with_libevent_extra_libs],
+                                     [$pmix_event_dir],
+                                     [$pmix_event_libdir],
+                                     [],
+                                     [pmix_libevent_support=0],
+                                     [])],
+                 [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_libevent_extra_libs])])])
 
     # Check to see if the above check failed because it conflicted with LSF's libevent.so
     # This can happen if LSF's library is in the LDFLAGS envar or default search
