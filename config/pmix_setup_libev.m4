@@ -38,12 +38,21 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
     AC_ARG_WITH([libev-libdir],
                 [AS_HELP_STRING([--with-libev-libdir=DIR],
                                 [Search for libev libraries in DIR ])])
+    AC_ARG_WITH([libev-extra-libs],
+                [AS_HELP_STRING([--with-libev-extra-libs=LIBS],
+                                [Add LIBS as dependencies of Libev])])
+    AC_ARG_ENABLE([libev-lib-checks],
+                   [AS_HELP_STRING([--disable-libev-lib-checks],
+                                   [If --disable-libev-lib-checks is specified, configure will assume that -lev is available])])
 
     pmix_libev_support=1
 
     AS_IF([test "$with_libev" = "no"],
           [AC_MSG_NOTICE([Libev support disabled by user.])
            pmix_libev_support=0])
+
+    AS_IF([test "$with_libev_extra_libs" = "yes" -o "$with_libev_extra_libs" = "no"],
+	  [AC_MSG_ERROR([--with-libev-extra-libs requires an argument other than yes or no])])
 
     AS_IF([test $pmix_libev_support -eq 1],
           [PMIX_CHECK_WITHDIR([libev], [$with_libev], [include/event.h])
@@ -72,15 +81,17 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
            AS_IF([test ! -z "$with_libev_libdir" && test "$with_libev_libdir" != "yes"],
                  [pmix_libev_libdir="$with_libev_libdir"])
 
-           PMIX_CHECK_PACKAGE([pmix_libev],
-                              [event.h],
-                              [ev],
-                              [ev_async_send],
-                              [],
-                              [$pmix_libev_dir],
-                              [$pmix_libev_libdir],
-                              [],
-                              [pmix_libev_support=0])
+           AS_IF([test "$enable_libev_lib_checks" != "no"],
+                 [PMIX_CHECK_PACKAGE([pmix_libev],
+                                     [event.h],
+                                     [ev],
+                                     [ev_async_send],
+                                     [$with_libev_extra_libs],
+                                     [$pmix_libev_dir],
+                                     [$pmix_libev_libdir],
+                                     [],
+                                     [pmix_libev_support=0])],
+                 [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_libev_extra_libs])])
            CPPFLAGS="$pmix_check_libev_save_CPPFLAGS"
            LDFLAGS="$pmix_check_libev_save_LDFLAGS"
            LIBS="$pmix_check_libev_save_LIBS"])
