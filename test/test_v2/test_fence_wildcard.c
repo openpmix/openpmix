@@ -15,7 +15,7 @@
 #include "pmix.h"
 #include "test_common.h"
 
-int parse_fence_client(int *, int, char **, test_params *, validation_params *);
+static int parse_fence_client(int *, int, char **, test_params *, validation_params *);
 
 static void client_help(char *binary) {
     fprintf(stderr, "Usage: %s [OPTION...]\n", binary);
@@ -32,7 +32,7 @@ static void client_help(char *binary) {
     */
 }
 // client-specific command parser logic
-int parse_fence_client(int *index, int argc, char **argv, test_params *lparams, validation_params *v_params)
+static int parse_fence_client(int *index, int argc, char **argv, test_params *lparams, validation_params *v_params)
 {
     PMIX_HIDE_UNUSED_PARAMS(argc, v_params);
 
