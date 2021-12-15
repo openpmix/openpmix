@@ -142,16 +142,16 @@ static inline bool pmix_iof_fd_always_ready(int fd)
 
 #define PMIX_IOF_SINK_BLOCKSIZE (1024)
 
-#define PMIX_IOF_SINK_ACTIVATE(wev)                                    \
+#define PMIX_IOF_SINK_ACTIVATE(w)                                      \
     do {                                                               \
         struct timeval *tv = NULL;                                     \
-        wev->pending = true;                                           \
-        PMIX_POST_OBJECT(wev);                                         \
-        if (wev->always_writable) {                                    \
+        (w)->pending = true;                                           \
+        PMIX_POST_OBJECT((w));                                         \
+        if ((w)->always_writable) {                                    \
             /* Regular is always write ready. Use timer to activate */ \
-            tv = &wev->tv;                                             \
+            tv = &(w)->tv;                                             \
         }                                                              \
-        if (pmix_event_add(wev->ev, tv)) {                             \
+        if (pmix_event_add((w)->ev, tv)) {                             \
             PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);                        \
         }                                                              \
     } while (0);
