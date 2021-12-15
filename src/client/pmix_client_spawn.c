@@ -144,7 +144,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.spawn_output, "%s pmix: spawn_nb called",
+    pmix_output_verbose(2, pmix_client_globals.spawn_output,
+                        "%s pmix: spawn_nb called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     if (pmix_globals.init_cntr <= 0) {
