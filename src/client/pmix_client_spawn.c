@@ -440,7 +440,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
             nptr = NULL;
             PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t)
             {
-                if (0 == strcmp(ns->nspace, n2)) {
+                if (PMIX_CHECK_NSPACE(ns->nspace, nspace)) {
                     nptr = ns;
                     break;
                 }
@@ -448,7 +448,7 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
             if (NULL == nptr) {
                 /* shouldn't happen, but protect us */
                 nptr = PMIX_NEW(pmix_namespace_t);
-                nptr->nspace = strdup(n2);
+                nptr->nspace = strdup(nspace);
                 pmix_list_append(&pmix_globals.nspaces, &nptr->super);
             }
             /* as a client, we only handle a select set of the flags */
