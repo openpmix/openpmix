@@ -197,42 +197,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CONFIG_HEADERS(pmix_config_prefix[src/include/pmix_config.h])
 
 
-    # Add any extra lib?
-    AC_ARG_WITH([pmix-extra-lib],
-                AS_HELP_STRING([--with-pmix-extra-lib=LIB],
-                               [Link the output PMIx library to this extra lib (used in embedded mode)]))
-    AC_MSG_CHECKING([for extra lib])
-    AS_IF([test ! -z "$with_pmix_extra_lib"],
-          [AS_IF([test "$with_pmix_extra_lib" = "yes" || test "$with_pmix_extra_lib" = "no"],
-                 [AC_MSG_RESULT([ERROR])
-                  AC_MSG_WARN([Invalid value for --with-extra-pmix-lib:])
-                  AC_MSG_WARN([    $with_pmix_extra_lib])
-                  AC_MSG_WARN([Must be path name of the library to add])
-                  AC_MSG_ERROR([Cannot continue])],
-                 [AC_MSG_RESULT([$with_pmix_extra_lib])
-                  PMIX_EXTRA_LIB=$with_pmix_extra_lib])],
-          [AC_MSG_RESULT([no])
-           PMIX_EXTRA_LIB=])
-    AC_SUBST(PMIX_EXTRA_LIB)
-
-    # Add any extra libtool lib?
-    AC_ARG_WITH([pmix-extra-ltlib],
-                AS_HELP_STRING([--with-pmix-extra-ltlib=LIB],
-                               [Link any embedded components/tools that require it to the provided libtool lib (used in embedded mode)]))
-    AC_MSG_CHECKING([for extra ltlib])
-    AS_IF([test ! -z "$with_pmix_extra_ltlib"],
-          [AS_IF([test "$with_pmix_extra_ltlib" = "yes" || test "$with_pmix_extra_ltlib" = "no"],
-                 [AC_MSG_RESULT([ERROR])
-                  AC_MSG_WARN([Invalid value for --with-pmix-extra-ltlib:])
-                  AC_MSG_WARN([    $with_pmix_extra_ltlib])
-                  AC_MSG_WARN([Must be path name of the library to add])
-                  AC_MSG_ERROR([Cannot continue])],
-                 [AC_MSG_RESULT([$with_pmix_extra_ltlib])
-                  PMIX_EXTRA_LTLIB=$with_pmix_extra_ltlib])],
-          [AC_MSG_RESULT([no])
-           PMIX_EXTRA_LTLIB=])
-    AC_SUBST(PMIX_EXTRA_LTLIB)
-
     #
     # Package/brand string
     #
@@ -845,12 +809,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     PMIX_SETUP_HWLOC
 
+
     ##################################
     # JANSSON
     ##################################
     pmix_show_title "JANSSON"
 
     PMIX_CHECK_JANSSON
+
 
     ##################################
     # CURL
@@ -867,18 +833,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_CHECK_OFI
 
     ##################################
-<<<<<<< HEAD
-    # Dstore Locking
-    ##################################
-
-    pmix_show_title "Dstore Locking"
-
-    PMIX_CHECK_DSTOR_LOCK
-
-
-    ##################################
-||||||| parent of d129da79 (Add configure support for the pgpu and pnet components)
-=======
     # CUDA (for GPUs)
     ##################################
     pmix_show_title "CUDA"
@@ -886,7 +840,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_CHECK_CUDA
 
     ##################################
->>>>>>> d129da79 (Add configure support for the pgpu and pnet components)
+    # Dstore Locking
+    ##################################
+    pmix_show_title "Dstore Locking"
+
+    PMIX_CHECK_DSTOR_LOCK
+
+    ##################################
     # MCA
     ##################################
 
@@ -955,9 +915,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         cpp_includes="$PMIX_top_srcdir $PMIX_top_srcdir/src"
     fi
     CPP_INCLUDES="$(echo $cpp_includes | $SED 's/[[^ \]]* */'"$pmix_cc_iquote"'&/g')"
-    CPPFLAGS="$CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS $PMIX_FINAL_CPPFLAGS"
-    LDFLAGS="$LDFLAGS $PMIX_FINAL_LDFLAGS"
-    LIBS="$LIBS $PMIX_FINAL_LIBS"
+    CPPFLAGS="$PMIX_FINAL_CPPFLAGS $CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS"
+    LDFLAGS="$PMIX_FINAL_LDFLAGS $LDFLAGS"
+    LIBS="$PMIX_FINAL_LIBS $LIBS"
 
     ############################################################################
     # final wrapper compiler config
@@ -1072,11 +1032,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/wrapper/pmixcc-wrapper-data.txt]
         )
 
-    # publish any embedded flags so external wrappers can use them
-    AC_SUBST(PMIX_EMBEDDED_LIBS)
-    AC_SUBST(PMIX_EMBEDDED_LDFLAGS)
-    AC_SUBST(PMIX_EMBEDDED_CPPFLAGS)
-
     # Success
     $2
 ])dnl
@@ -1100,19 +1055,6 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
            AC_MSG_RESULT([yes])])
     AC_DEFINE_UNQUOTED(PMIX_ENABLE_DLOPEN_SUPPORT, $PMIX_ENABLE_DLOPEN_SUPPORT,
                       [Whether we want to enable dlopen support])
-
-    # Embedded mode, or standalone?
-    AC_MSG_CHECKING([if embedded mode is enabled])
-    AC_ARG_ENABLE([embedded-mode],
-        [AS_HELP_STRING([--enable-embedded-mode],
-                [Using --enable-embedded-mode causes PMIx to skip a few configure checks and install nothing.  It should only be used when building PMIx within the scope of a larger package.])])
-    AS_IF([test "$enable_embedded_mode" = "yes"],
-          [pmix_mode=embedded
-           pmix_install_primary_headers=no
-           AC_MSG_RESULT([yes])],
-          [pmix_mode=standalone
-           pmix_install_primary_headers=yes
-           AC_MSG_RESULT([no])])
 
 #
 # Is this a developer copy?
@@ -1148,6 +1090,7 @@ else
     AC_MSG_RESULT([no])
     WANT_PICKY_COMPILER=0
 fi
+
 AC_DEFINE_UNQUOTED(PMIX_PICKY_COMPILERS, $WANT_PICKY_COMPILER,
                    [Whether or not we are using picky compiler settings])
 
@@ -1213,6 +1156,20 @@ else
     WANT_INSTALL_HEADERS=0
 fi
 
+AC_MSG_CHECKING([if want to install PMIx header files])
+AC_ARG_WITH(pmix-headers,
+    AS_HELP_STRING([--with-pmix-headers],
+                   [Install the PMIx header files (default: enabled)]))
+if test "$with_pmix_headers" != "no"; then
+    AC_MSG_RESULT([yes])
+    WANT_PRIMARY_HEADERS=1
+    pmix_install_primary_headers=yes
+else
+    AC_MSG_RESULT([no])
+    WANT_PRIMARY_HEADERS=0
+    pmix_install_primary_headers=no
+fi
+
 # Install tests and examples?
 AC_MSG_CHECKING([if tests and examples are to be installed])
 AC_ARG_WITH([tests-examples],
@@ -1224,8 +1181,6 @@ AS_IF([test "$pmix_install_primary_headers" = "no"],
               AC_MSG_RESULT([no])],
              [AC_MSG_RESULT([no])
               AC_MSG_WARN([Cannot install tests/examples without installing primary headers.])
-              AC_MSG_WARN([This situation arises when configured in embedded mode])
-              AC_MSG_WARN([and without devel headers.])
               AC_MSG_ERROR([Please correct the configure line and retry])])],
       [AS_IF([test ! -z "$with_tests_examples" && test "$with_tests_examples" = "no"],
              [pmix_tests=no
@@ -1282,6 +1237,7 @@ else
     DSTORE_PTHREAD_LOCK="1"
 fi
 
+#
 #
 # Ident string
 #
@@ -1433,11 +1389,6 @@ else
     pmix_need_libpmix=1
 fi
 
-# if someone enables embedded mode but doesn't want to install the
-# devel headers, then default nonglobal-dlopen to false
-AS_IF([test -z "$enable_nonglobal_dlopen" && test "x$pmix_mode" = "xembedded" && test $WANT_INSTALL_HEADERS -eq 0 && test $pmix_need_libpmix -eq 1],
-      [pmix_need_libpmix=0])
-
 #
 # Do we want PTY support?
 #
@@ -1478,7 +1429,6 @@ AM_CONDITIONAL(MCA_BUILD_PSEC_DUMMY_HANDSHAKE, test "$DISABLE_psec_dummy_handsha
 # PMIX_INIT and an external caller (if PMIX_INIT is not invoked).
 AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
     AS_IF([test "$pmix_did_am_conditionals" != "yes"],[
-        AM_CONDITIONAL([PMIX_EMBEDDED_MODE], [test "x$pmix_mode" = "xembedded"])
         AM_CONDITIONAL([PMIX_TESTS_EXAMPLES], [test "x$pmix_tests" = "xyes"])
         AM_CONDITIONAL([PMIX_COMPILE_TIMING], [test "$WANT_TIMING" = "1"])
         AM_CONDITIONAL([PMIX_WANT_MUNGE], [test "$pmix_munge_support" = "1"])

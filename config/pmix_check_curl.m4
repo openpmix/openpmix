@@ -44,16 +44,8 @@ AC_DEFUN([PMIX_CHECK_CURL],[
                     [Search for Curl libraries in DIR])])
 
     pmix_check_curl_happy=no
-<<<<<<< HEAD
-    pmix_curl_source=unknown
-    pmix_check_curl_dir=unknown
-||||||| parent of 410ad7e9 (Remove curl/jansson default search assumption)
-    pmix_curl_source=
-    pmix_check_curl_dir=unknown
-=======
     pmix_curl_source=
     pmix_check_curl_dir=
->>>>>>> 410ad7e9 (Remove curl/jansson default search assumption)
     pmix_check_curl_libdir=
 
     if test "$with_curl" != "no"; then
@@ -90,21 +82,11 @@ AC_DEFUN([PMIX_CHECK_CURL],[
     AC_MSG_CHECKING([libcurl support available])
     AC_MSG_RESULT([$pmix_check_curl_happy])
 
-<<<<<<< HEAD
-    PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy ($pmix_curl_source)])
-||||||| parent of 410ad7e9 (Remove curl/jansson default search assumption)
-    if test -z $pmix_curl_source; then
-        PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy])
-    else
-        PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy ($pmix_curl_source)])
-    fi
-=======
     if test -z "$pmix_curl_source"; then
         PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy])
     else
         PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy ($pmix_curl_source)])
     fi
->>>>>>> 410ad7e9 (Remove curl/jansson default search assumption)
 
     AC_SUBST(pmix_check_curl_CPPFLAGS)
     AC_SUBST(pmix_check_curl_LDFLAGS)

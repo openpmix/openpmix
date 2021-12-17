@@ -46,9 +46,9 @@
 #ifdef HAVE_ARPA_INET_H
 #    include <arpa/inet.h>
 #endif
-#include PMIX_EVENT_HEADER
+#include <event.h>
 #if !PMIX_HAVE_LIBEV
-#    include PMIX_EVENT2_THREAD_HEADER
+#    include <event2/thread.h>
 #endif
 
 #if PMIX_ENABLE_DEBUG

@@ -44,7 +44,7 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
                     [Search for Jansson libraries in DIR])])
 
     pmix_check_jansson_happy=no
-    pmix_jansson_source=unknown
+    pmix_jansson_source=
     pmix_check_jansson_dir=
     pmix_check_jansson_libdir=
 
@@ -104,21 +104,11 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
 
     AM_CONDITIONAL([HAVE_JANSSON], [test "$pmix_check_jansson_happy" = "yes"])
 
-<<<<<<< HEAD
-    PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
-||||||| parent of 410ad7e9 (Remove curl/jansson default search assumption)
-    if test -z $pmix_jansson_source; then
-        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy])
-    else
-        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
-    fi
-=======
     if test -z "$pmix_jansson_source"; then
         PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy])
     else
         PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
     fi
->>>>>>> 410ad7e9 (Remove curl/jansson default search assumption)
 
     PMIX_VAR_SCOPE_POP
 ])

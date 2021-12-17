@@ -499,38 +499,6 @@ dnl #######################################################################
 dnl #######################################################################
 dnl #######################################################################
 
-<<<<<<< HEAD
-||||||| parent of ef45686b (Add wrapper compiler mca link argument passing)
-# PMIX_FLAGS_PREPEND_UNIQ(variable, new_argument)
-# ----------------------------------------------
-# Prepend new_argument to variable if:
-#
-# - the argument does not begin with -I, -L, or -l, or
-# - the argument begins with -I, -L, or -l, and it's not already in variable
-#
-# This macro assumes a space seperated list.
-AC_DEFUN([PMIX_FLAGS_PREPEND_UNIQ], [
-    PMIX_VAR_SCOPE_PUSH([pmix_tmp pmix_prepend])
-
-    for arg in $2; do
-        pmix_tmp=`echo $arg | cut -c1-2`
-        pmix_prepend=1
-        AS_IF([test "$pmix_tmp" = "-I" || test "$pmix_tmp" = "-L" || test "$pmix_tmp" = "-l"],
-              [for val in ${$1}; do
-                   AS_IF([test "x$val" = "x$arg"], [pmix_prepend=0])
-               done])
-        AS_IF([test "$pmix_prepend" = "1"],
-              [AS_IF([test -z "$$1"], [$1=$arg], [$1="$arg $$1"])])
-    done
-
-    PMIX_VAR_SCOPE_POP
-])
-
-dnl #######################################################################
-dnl #######################################################################
-dnl #######################################################################
-
-=======
 # PMIX_FLAGS_PREPEND_UNIQ(variable, new_argument)
 # ----------------------------------------------
 # Prepend new_argument to variable if:
@@ -604,7 +572,6 @@ dnl #######################################################################
 dnl #######################################################################
 dnl #######################################################################
 
->>>>>>> ef45686b (Add wrapper compiler mca link argument passing)
 # Macro that serves as an alternative to using `which <prog>`. It is
 # preferable to simply using `which <prog>` because backticks (`) (aka
 # backquotes) invoke a sub-shell which may source a "noisy"

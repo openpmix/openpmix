@@ -109,17 +109,8 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
     AC_MSG_CHECKING([will libev support be built])
     if test $pmix_libev_support -eq 1; then
         AC_MSG_RESULT([yes])
-<<<<<<< HEAD
-        PMIX_EVENT_HEADER="<event.h>"
-        AC_DEFINE_UNQUOTED([PMIX_EVENT_HEADER], [$PMIX_EVENT_HEADER],
-                           [Location of event.h])
-        PMIX_SUMMARY_ADD([[External Packages]],[[libev]],[libev],[$pmix_libev_dir])
-||||||| parent of 2d5761f4 (Clean up libevent/libev selection logic)
-        PMIX_SUMMARY_ADD([[External Packages]],[[libev]],[libev],[$pmix_libev_dir])
-=======
         $1
         PMIX_SUMMARY_ADD([[Required Packages]], [[Libev]], [pmix_libev], [yes ($pmix_libev_dir)])
->>>>>>> 2d5761f4 (Clean up libevent/libev selection logic)
     else
         AC_MSG_RESULT([no])
         # if they asked us to use it, then this is an error
