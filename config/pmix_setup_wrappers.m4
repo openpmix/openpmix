@@ -17,6 +17,8 @@ dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2016      IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+dnl                         All Rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -306,4 +308,10 @@ AC_DEFUN([PMIX_SETUP_WRAPPER_FINAL],[
    PMIX_FLAGS_UNIQ(PMIX_WRAPPER_EXTRA_LIBS)
    AC_SUBST([PMIX_WRAPPER_EXTRA_LIBS])
    AC_MSG_RESULT([$PMIX_WRAPPER_EXTRA_LIBS])
+
+   ####################################################################
+   # Setup variables for pkg-config file (maint/pmix.pc.in)
+   ####################################################################
+   PC_PRIVATE_LIBS="$PMIX_WRAPPER_EXTRA_LDFLAGS $PMIX_WRAPPER_EXTRA_LIBS"
+   AC_SUBST([PC_PRIVATE_LIBS], ["$PC_PRIVATE_LIBS"])
 ])

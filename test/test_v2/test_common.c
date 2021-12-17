@@ -51,7 +51,7 @@ void pmixt_exit(int exit_code)
     if ((stdout != pmixt_outfile) && (stderr != pmixt_outfile)) {
         fclose(pmixt_outfile);
     }
-    exit(exit_code);
+    _exit(exit_code);
 }
 
 // initialize the global *nodes array

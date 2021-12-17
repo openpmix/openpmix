@@ -1057,7 +1057,7 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     char starttag[PMIX_IOF_BASE_TAG_MAX], endtag[PMIX_IOF_BASE_TAG_MAX], *suffix;
     char timestamp[PMIX_IOF_BASE_TAG_MAX], outtag[PMIX_IOF_BASE_TAG_MAX];
     char begintag[PMIX_IOF_BASE_TAG_MAX];
-    pmix_iof_write_output_t *output;
+    pmix_iof_write_output_t *output, *copy;
     size_t i;
     int j, k, taglen, endtaglen, num_buffered;
     bool endtagged;
@@ -1067,6 +1067,8 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
     pmix_namespace_t *nptr, *ns;
     pmix_iof_sink_t *sink;
     bool outputio;
+    bool copystdout = false;
+    bool copystderr = false;
 
     /* find the nspace for this source */
     nptr = NULL;
@@ -1107,6 +1109,13 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                         return PMIX_ERR_IOF_FAILURE;
                     }
                 }
+                if (!nptr->iof_flags.nocopy && pmix_globals.iof_flags.local_output) {
+                    if (PMIX_FWD_STDOUT_CHANNEL & stream) {
+                        copystdout = true;
+                    } else {
+                        copystderr = true;
+                    }
+                }
             } else if (NULL != nptr->iof_flags.file) {
                 /* see if we already have one - we reuse the same sink for
                  * all streams */
@@ -1121,6 +1130,13 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                     channel = pmix_iof_setup(nptr, name->rank, stream);
                     if (NULL == channel) {
                         return PMIX_ERR_IOF_FAILURE;
+                    }
+                }
+                if (!nptr->iof_flags.nocopy && pmix_globals.iof_flags.local_output) {
+                    if (PMIX_FWD_STDOUT_CHANNEL & stream) {
+                        copystdout = true;
+                    } else {
+                        copystderr = true;
                     }
                 }
             }
@@ -1403,6 +1419,24 @@ process:
     /* add this data to the write list for this fd */
     pmix_list_append(&channel->outputs, &output->super);
 
+    if (copystdout){
+        copy = PMIX_NEW(pmix_iof_write_output_t);
+        memcpy(copy->data, output->data, output->numbytes);
+        copy->numbytes = output->numbytes;
+        pmix_list_append(&pmix_client_globals.iof_stdout.wev.outputs, &copy->super);
+        if (!pmix_client_globals.iof_stdout.wev.pending) {
+            PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stdout.wev);
+        }
+    }
+    if (copystderr){
+        copy = PMIX_NEW(pmix_iof_write_output_t);
+        memcpy(copy->data, output->data, output->numbytes);
+        copy->numbytes = output->numbytes;
+        pmix_list_append(&pmix_client_globals.iof_stderr.wev.outputs, &copy->super);
+        if (!pmix_client_globals.iof_stderr.wev.pending) {
+            PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stderr.wev);
+        }
+    }
     /* record how big the buffer is */
     num_buffered = pmix_list_get_size(&channel->outputs);
 

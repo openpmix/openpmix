@@ -18,6 +18,8 @@ dnl Copyright (c) 2017      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+dnl                         All Rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -430,6 +432,18 @@ dnl #######################################################################
 dnl #######################################################################
 dnl #######################################################################
 
+# PMIX_APPEND(variable, new_argument)
+# ----------------------------------------
+# Append new_argument to variable, assuming a space separated list.
+#
+AC_DEFUN([PMIX_APPEND], [
+  AS_IF([test -z "$$1"], [$1="$2"], [$1="$$1 $2"])
+])
+
+dnl #######################################################################
+dnl #######################################################################
+dnl #######################################################################
+
 # PMIX_APPEND_UNIQ(variable, new_argument)
 # ----------------------------------------
 # Append new_argument to variable if not already in variable.  This assumes a
@@ -446,11 +460,7 @@ for arg in $2; do
         fi
     done
     if test "$pmix_found" = "0" ; then
-        if test -z "$$1"; then
-            $1="$arg"
-        else
-            $1="$$1 $arg"
-        fi
+        PMIX_APPEND([$1], [$arg])
     fi
 done
 unset pmix_found
@@ -479,7 +489,80 @@ AC_DEFUN([PMIX_FLAGS_APPEND_UNIQ], [
                    AS_IF([test "x$val" = "x$arg"], [pmix_append=0])
                done])
         AS_IF([test "$pmix_append" = "1"],
-              [AS_IF([test -z "$$1"], [$1=$arg], [$1="$$1 $arg"])])
+              [PMIX_APPEND([$1], [$arg])])
+    done
+
+    PMIX_VAR_SCOPE_POP
+])
+
+dnl #######################################################################
+dnl #######################################################################
+dnl #######################################################################
+
+# PMIX_FLAGS_PREPEND_UNIQ(variable, new_argument)
+# ----------------------------------------------
+# Prepend new_argument to variable if:
+#
+# - the argument does not begin with -I, -L, or -l, or
+# - the argument begins with -I, -L, or -l, and it's not already in variable
+#
+# This macro assumes a space seperated list.
+AC_DEFUN([PMIX_FLAGS_PREPEND_UNIQ], [
+    PMIX_VAR_SCOPE_PUSH([pmix_tmp pmix_prepend])
+
+    for arg in $2; do
+        pmix_tmp=`echo $arg | cut -c1-2`
+        pmix_prepend=1
+        AS_IF([test "$pmix_tmp" = "-I" || test "$pmix_tmp" = "-L" || test "$pmix_tmp" = "-l"],
+              [for val in ${$1}; do
+                   AS_IF([test "x$val" = "x$arg"], [pmix_prepend=0])
+               done])
+        AS_IF([test "$pmix_prepend" = "1"],
+              [PMIX_APPEND([$1], [$arg])])
+    done
+
+    PMIX_VAR_SCOPE_POP
+])
+
+dnl #######################################################################
+dnl #######################################################################
+dnl #######################################################################
+
+# PMIX_FLAGS_APPEND_MOVE(variable, new_argument)
+# ----------------------------------------------
+# add new_arguments to the end of variable.
+#
+# If an argument in new_arguments does not begin with -I, -L, or -l OR
+# the argument begins with -I, -L, or -l and it is not already in
+# variable, it is appended to variable.
+#
+# If an argument in new_argument begins with a -l and is already in
+# variable, the existing occurances of the argument are removed from
+# variable and the argument is appended to variable.  This behavior
+# is most useful in LIBS, where ordering matters and being rightmost
+# is usually the right behavior.
+#
+# This macro assumes a space separated list.
+AC_DEFUN([PMIX_FLAGS_APPEND_MOVE], [
+    PMIX_VAR_SCOPE_PUSH([pmix_tmp_variable pmix_tmp pmix_append])
+
+    for arg in $2; do
+        AS_CASE([$arg],
+                [-I*|-L*],
+                [pmix_append=1
+                 for val in ${$1} ; do
+                     AS_IF([test "x$val" = "x$arg"], [pmix_append=0])
+                 done
+                 AS_IF([test $pmix_append -eq 1], [PMIX_APPEND([$1], [$arg])])],
+                [-l*],
+                [pmix_tmp_variable=
+                 for val in ${$1}; do
+                     AS_IF([test "x$val" != "x$arg"],
+                           [PMIX_APPEND([pmix_tmp_variable], [$val])])
+                 done
+                 PMIX_APPEND([pmix_tmp_variable], [$arg])
+                 $1="$pmix_tmp_variable"],
+                [PMIX_APPEND([$1], [$arg])])
     done
 
     PMIX_VAR_SCOPE_POP

@@ -56,24 +56,6 @@ libpmix_la_DEPENDENCIES = \
 	mca/base/libpmix_mca_base.la \
 	$(MCA_pmix_FRAMEWORK_LIBS)
 
-if PMIX_EMBEDDED_MODE
-
-if WANT_INSTALL_HEADERS
-
-lib_LTLIBRARIES = libpmix.la
-libpmix_la_SOURCES = $(headers) $(sources)
-libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
-
-else
-
-noinst_LTLIBRARIES = libpmix.la
-libpmix_la_SOURCES = $(headers) $(sources)
-libpmix_la_LDFLAGS =
-
-endif
-
-else
-
 lib_LTLIBRARIES = libpmix.la
 libpmix_la_SOURCES = $(headers) $(sources)
 libpmix_la_LDFLAGS = -version-info $(libpmix_so_version)
@@ -81,8 +63,6 @@ libpmix_la_LIBADD += \
         include/libpmixglobal.la
 libpmix_la_DEPENDENCIES += \
         include/libpmixglobal.la
-
-endif !PMIX_EMBEDDED_MODE
 
 include atomics/sys/Makefile.include
 include threads/Makefile.include

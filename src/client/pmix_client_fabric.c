@@ -44,7 +44,7 @@
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
 #endif
-#include PMIX_EVENT_HEADER
+#include <event.h>
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"

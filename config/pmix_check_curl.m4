@@ -32,53 +32,37 @@
 AC_DEFUN([PMIX_CHECK_CURL],[
 
     PMIX_VAR_SCOPE_PUSH(pmix_check_curl_save_CPPFLAGS pmix_check_curl_save_LDFLAGS pmix_check_curl_save_LIBS)
-	AC_ARG_WITH([curl],
-		    [AS_HELP_STRING([--with-curl(=DIR)],
-				    [Build curl support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])],
-            [], [with_curl=no])
+
+    dnl Intentionally disable CURL unless explicitly requested
+    AC_ARG_WITH([curl],
+                [AS_HELP_STRING([--with-curl(=DIR)],
+                   [Build curl support (default=no), optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])],
+                [], [with_curl=no])
 
     AC_ARG_WITH([curl-libdir],
             [AS_HELP_STRING([--with-curl-libdir=DIR],
                     [Search for Curl libraries in DIR])])
 
     pmix_check_curl_happy=no
-    pmix_curl_source=unknown
-    pmix_check_curl_dir=unknown
+    pmix_curl_source=
+    pmix_check_curl_dir=
     pmix_check_curl_libdir=
-    pmix_check_curl_basedir=
 
     if test "$with_curl" != "no"; then
-        AC_MSG_CHECKING([where to find curl.h])
-        AS_IF([test "$with_curl" = "yes" || test -z "$with_curl"],
-              [AS_IF([test -f /usr/include/curl.h],
-                     [pmix_check_curl_dir=/usr
-                      pmix_check_curl_basedir=/usr
-                      pmix_curl_source=standard],
-                     [AS_IF([test -f /usr/include/curl/curl.h],
-                            [pmix_check_curl_dir=/usr/include/curl
-                             pmix_check_curl_basedir=/usr
-                             pmix_curl_source=standard])])],
-    	      [AS_IF([test -f $with_curl/include/curl.h],
-                     [pmix_check_curl_dir=$with_curl/include
-                      pmix_check_curl_basedir=$with_curl
-                      pmix_curl_source=$with_curl],
-                      [AS_IF([test -f $with_curl/include/curl/curl.h],
-                             [pmix_check_curl_dir=$with_curl/include/curl
-                              pmix_check_curl_basedir=$with_curl
-                              pmix_curl_source=$with_curl])])])
-        AC_MSG_RESULT([$pmix_check_curl_dir])
+        PMIX_CHECK_WITHDIR([curl-libdir], [$with_curl_libdir], [libcurl.*])
 
-        AS_IF([test -z "$with_curl_libdir" || test "$with_curl_libdir" = "yes"],
-              [pmix_check_curl_libdir=$pmix_check_curl_basedir],
-    	      [PMIX_CHECK_WITHDIR([curl-libdir], [$with_curl_libdir], [libcurl.*])
-               pmix_check_curl_libdir=$with_curl_libdir])
+        AS_IF([test "$with_curl" = "yes" -o -z "$with_curl"],
+              [pmix_curl_source="Standard locations"],
+              [pmix_check_curl_dir="$with_curl"])
+        AS_IF([test "$with_curl_libdir" != "yes" -a "$with_curl_libdir" != "no"],
+              [pmix_check_curl_libdir="$with_curl_libdir"])
 
     	pmix_check_curl_save_CPPFLAGS="$CPPFLAGS"
     	pmix_check_curl_save_LDFLAGS="$LDFLAGS"
     	pmix_check_curl_save_LIBS="$LIBS"
 
         PMIX_CHECK_PACKAGE([pmix_check_curl],
-		   [curl.h],
+		   [curl/curl.h],
 		   [curl],
 		   [curl_easy_getinfo],
 		   [],
@@ -98,7 +82,11 @@ AC_DEFUN([PMIX_CHECK_CURL],[
     AC_MSG_CHECKING([libcurl support available])
     AC_MSG_RESULT([$pmix_check_curl_happy])
 
-    PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy ($pmix_curl_source)])
+    if test -z "$pmix_curl_source"; then
+        PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy])
+    else
+        PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy ($pmix_curl_source)])
+    fi
 
     AC_SUBST(pmix_check_curl_CPPFLAGS)
     AC_SUBST(pmix_check_curl_LDFLAGS)

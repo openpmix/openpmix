@@ -17,7 +17,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#include PMIX_EVENT_HEADER
+#include <event.h>
 #include "src/class/pmix_hotel.h"
 
 static void local_eviction_callback(int fd, short flags, void *arg)

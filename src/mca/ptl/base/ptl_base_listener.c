@@ -45,7 +45,7 @@
 #endif
 #include <ctype.h>
 #include <sys/stat.h>
-#include PMIX_EVENT_HEADER
+#include <event.h>
 #include <pthread.h>
 
 #include "src/class/pmix_list.h"
@@ -324,10 +324,10 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
      * subnet+mask
      */
     if (NULL != pmix_ptl_base.if_include) {
-        interfaces = pmix_ptl_base_split_and_resolve(&pmix_ptl_base.if_include, "include");
+        interfaces = pmix_ptl_base_split_and_resolve(pmix_ptl_base.if_include, "include");
         including = true;
     } else if (NULL != pmix_ptl_base.if_exclude) {
-        interfaces = pmix_ptl_base_split_and_resolve(&pmix_ptl_base.if_exclude, "exclude");
+        interfaces = pmix_ptl_base_split_and_resolve(pmix_ptl_base.if_exclude, "exclude");
         including = false;
     }
 

@@ -45,7 +45,7 @@
 #    include <sys/types.h>
 #endif
 
-#include PMIX_EVENT_HEADER
+#include <event.h>
 #ifdef PMIX_EVENT2_THREAD_HEADER
 #    include PMIX_EVENT2_THREAD_HEADER
 #endif

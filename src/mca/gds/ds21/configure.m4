@@ -13,6 +13,7 @@
 # Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Sandia National Laboratories.  All rights reserved.
 # Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
