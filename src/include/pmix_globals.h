@@ -205,6 +205,7 @@ typedef struct {
     bool local_output;
     bool local_output_given;
     bool pattern;
+    bool raw;
 } pmix_iof_flags_t;
 
 /* objects used by servers for tracking active nspaces */

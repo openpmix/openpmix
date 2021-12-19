@@ -60,7 +60,6 @@ BEGIN_C_DECLS
  */
 #define PMIX_IOF_BASE_MSG_MAX        8192
 #define PMIX_IOF_BASE_TAG_MAX        1024
-#define PMIX_IOF_BASE_TAGGED_OUT_MAX 16384
 #define PMIX_IOF_MAX_INPUT_BUFFERS   50
 #define PMIX_IOF_MAX_RETRIES         4
 
@@ -110,7 +109,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_sink_t);
 
 typedef struct {
     pmix_list_item_t super;
-    char data[PMIX_IOF_BASE_TAGGED_OUT_MAX];
+    char *data;
     int numbytes;
 } pmix_iof_write_output_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_write_output_t);
@@ -131,6 +130,18 @@ typedef struct {
     size_t ndirs;
 } pmix_iof_read_event_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_read_event_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_proc_t name;
+    pmix_iof_write_event_t *channel;
+    pmix_iof_flags_t flags;
+    pmix_iof_channel_t stream;
+    bool copystdout;
+    bool copystderr;
+    pmix_byte_object_t bo;
+} pmix_iof_residual_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_iof_residual_t);
 
 /* Write event macro's */
 
@@ -265,6 +276,7 @@ PMIX_EXPORT pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels,
                                                const pmix_info_t *info, size_t ninfo,
                                                const pmix_iof_req_t *req);
 PMIX_EXPORT void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags);
+PMIX_EXPORT void pmix_iof_flush_residuals(void);
 
 END_C_DECLS
 
