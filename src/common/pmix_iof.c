@@ -949,6 +949,9 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
         flags->local_output = PMIX_INFO_TRUE(info);
         flags->set = true;
         flags->local_output_given = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_OUTPUT_RAW)) {
+        flags->raw = PMIX_INFO_TRUE(info);
+        flags->set = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_FILE_PATTERN)) {
         flags->pattern = PMIX_INFO_TRUE(info);
         /* don't mark as set here as this is just a qualifier */
@@ -1051,24 +1054,301 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     return PMIX_OPERATION_SUCCEEDED;
 }
 
-pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t stream,
-                                    const pmix_byte_object_t *bo)
+static pmix_status_t write_output_line(const pmix_proc_t *name,
+                                       pmix_iof_write_event_t *channel,
+                                       pmix_iof_flags_t *myflags,
+                                       pmix_iof_channel_t stream,
+                                       bool copystdout, bool copystderr,
+                                       const pmix_byte_object_t *bo)
 {
     char starttag[PMIX_IOF_BASE_TAG_MAX], endtag[PMIX_IOF_BASE_TAG_MAX], *suffix;
     char timestamp[PMIX_IOF_BASE_TAG_MAX], outtag[PMIX_IOF_BASE_TAG_MAX];
     char begintag[PMIX_IOF_BASE_TAG_MAX];
+    char **segments = NULL;
     pmix_iof_write_output_t *output, *copy;
-    size_t i;
-    int j, k, taglen, endtaglen, num_buffered;
-    bool endtagged;
-    char qprint[10];
+    size_t offset, j, n, m, bufsize;
+    char *buffer, qprint[15];
+    bool bufcopy;
+
+    /* setup output object */
+    output = PMIX_NEW(pmix_iof_write_output_t);
+    memset(begintag, 0, PMIX_IOF_BASE_TAG_MAX);
+    memset(starttag, 0, PMIX_IOF_BASE_TAG_MAX);
+    memset(endtag, 0, PMIX_IOF_BASE_TAG_MAX);
+    memset(timestamp, 0, PMIX_IOF_BASE_TAG_MAX);
+    memset(outtag, 0, PMIX_IOF_BASE_TAG_MAX);
+
+    /* write output data to the corresponding tag */
+    if (PMIX_FWD_STDIN_CHANNEL & stream) {
+        /* copy over the data to be written */
+        if (0 < bo->size) {
+            /* don't copy 0 bytes - we just need to pass
+             * the zero bytes so the fd can be closed
+             * after it writes everything out
+             */
+            output->data = (char*)malloc(bo->size);
+            memcpy(output->data, bo->bytes, bo->size);
+        }
+        output->numbytes = bo->size;
+        goto process;
+    } else if (PMIX_FWD_STDOUT_CHANNEL & stream) {
+        /* write the bytes to stdout */
+        suffix = "stdout";
+    } else if (PMIX_FWD_STDERR_CHANNEL & stream) {
+        /* write the bytes to stderr */
+        suffix = "stderr";
+    } else if (PMIX_FWD_STDDIAG_CHANNEL & stream) {
+        /* write the bytes to stderr */
+        suffix = "stddiag";
+    } else {
+        /* error - this should never happen */
+        PMIX_ERROR_LOG(PMIX_ERR_VALUE_OUT_OF_BOUNDS);
+        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output, "%s stream %0x",
+                             PMIX_NAME_PRINT(&pmix_globals.myid), stream));
+        return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
+    }
+
+    /* if 0 bytes, then just pass it so the fd can be closed
+     * after it writes everything out
+     */
+    if (0 == bo->size) {
+        output->numbytes = 0;
+        goto process;
+    }
+
+    if (!myflags->set) {
+        /* the data is not to be tagged - just copy it
+         * and move on to processing
+         */
+        output->data = (char*)malloc(bo->size);
+        memcpy(output->data, bo->bytes, bo->size);
+        output->numbytes = bo->size;
+        goto process;
+    }
+
+    /* if this is to be xml tagged, create a tag with the correct syntax - we do not allow
+     * timestamping of xml output
+     */
+    if (myflags->xml) {
+        if (myflags->tag) {
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                     "<%s nspace=\"%s\" rank=\"%s\"", suffix,
+                     name->nspace, PMIX_RANK_PRINT(name->rank));
+        } else if (myflags->rank) {
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                     "<%s rank=\"%s\"", suffix,
+                     PMIX_RANK_PRINT(name->rank));
+        } else if (myflags->timestamp) {
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                     "<%s rank=\"%s\"", suffix,
+                     PMIX_RANK_PRINT(name->rank));
+        } else {
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                     "<%s rank=\"%s\"", suffix,
+                     PMIX_RANK_PRINT(name->rank));
+        }
+        pmix_snprintf(endtag, PMIX_IOF_BASE_TAG_MAX,
+                 "</%s>", suffix);
+    } else {
+        if (myflags->tag) {
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                     "[%s,%s]<%s>: ",
+                     name->nspace,
+                     PMIX_RANK_PRINT(name->rank),
+                     suffix);
+        } else if (myflags->rank) {
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                     "[%s]<%s>: ",
+                     PMIX_RANK_PRINT(name->rank), suffix);
+        }
+    }
+
+    /* if we are to timestamp output, start the tag with that */
+    if (myflags->timestamp) {
+        time_t mytime;
+        char *cptr;
+        /* get the timestamp */
+        time(&mytime);
+        cptr = ctime(&mytime);
+        cptr[strlen(cptr) - 1] = '\0'; /* remove trailing newline */
+
+        if (myflags->xml && !myflags->tag && !myflags->rank) {
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
+                     " timestamp=\"%s\"", cptr);
+        } else if (myflags->xml && (myflags->tag || myflags->rank)) {
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
+                     " timestamp=\"%s\"", cptr);
+        } else if (myflags->tag || myflags->rank) {
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
+        } else {
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s>: ", cptr, suffix);
+        }
+    }
+
+    /* start with the starttag */
+    if (0 < strlen(begintag)) {
+        pmix_argv_append_nosize(&segments, begintag);
+    }
+    /* add the timestamp */
+    if (0 < strlen(timestamp)) {
+        pmix_argv_append_nosize(&segments, timestamp);
+    }
+    /* add the output tag */
+    if (0 < strlen(outtag)) {
+        pmix_argv_append_nosize(&segments, outtag);
+    }
+    /* if xml, end the starttag with a '>' */
+    if (myflags->xml) {
+        pmix_argv_append_nosize(&segments, ">");
+    }
+
+    /* if we are doing XML, then we need to replace key characters */
+    if (myflags->xml) {
+        bufsize = bo->size;
+        for (n = 0; n < bo->size; n++) {
+            if ('&' == bo->bytes[n]) {
+                bufsize += 5;
+            } else if ('<' == bo->bytes[n] || '>' == bo->bytes[n]) {
+                bufsize += 4;
+            } else if (!isprint(bo->bytes[n])) {
+                pmix_snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[n]);
+                bufsize += strlen(qprint);
+            }
+        }
+        if (bo->size < bufsize) {
+            /* we need to increase the size of our buffer to handle the
+             * extra characters we need to add to represent these special
+             * cases */
+            buffer = malloc(bufsize);
+            memset(buffer, 0, bufsize);
+            bufcopy = true;
+            m = 0;
+            for (n = 0; n < bo->size; n++) {
+                if ('&' == bo->bytes[n]) {
+                    buffer[m++] = '&';
+                    buffer[m++] = 'a';
+                    buffer[m++] = 'p';
+                    buffer[m++] = ';';
+                } else if ('<' == bo->bytes[n]) {
+                    buffer[m++] = '&';
+                    buffer[m++] = 'l';
+                    buffer[m++] = 't';
+                    buffer[m++] = ';';
+                } else if ('>' == bo->bytes[n]) {
+                    buffer[m++] = '&';
+                    buffer[m++] = 'g';
+                    buffer[m++] = 't';
+                    buffer[m++] = ';';
+                } else if (!isprint(bo->bytes[n])) {
+                    pmix_snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[n]);
+                    for (j = 0; j < strlen(qprint); j++) {
+                        buffer[m++] = qprint[j];
+                    }
+                } else {
+                    buffer[m++] = bo->bytes[n];
+                }
+            }
+        } else {
+            buffer = bo->bytes;
+            bufsize = bo->size;
+            bufcopy = false;
+        }
+    } else {
+        buffer = bo->bytes;
+        bufsize = bo->size;
+        bufcopy = false;
+    }
+
+    /* assemble the output line */
+    if (NULL != segments) {
+        for (n=0; NULL != segments[n]; n++) {
+            output->numbytes += strlen(segments[n]);
+        }
+    }
+    output->numbytes += bufsize;
+    output->numbytes += strlen(endtag);
+    if (myflags->xml) {
+        // add a spot for a trailing newline
+        output->numbytes++;
+    }
+
+    output->data = (char*)malloc(output->numbytes);
+    offset = 0;
+    if (NULL != segments) {
+        for (n=0; NULL != segments[n]; n++) {
+            memcpy(&output->data[offset], segments[n], strlen(segments[n]));
+            offset += strlen(segments[n]);
+        }
+    }
+    memcpy(&output->data[offset], buffer, bufsize);
+    offset += bufsize;
+    if (0 < strlen(endtag)) {
+        memcpy(&output->data[offset], endtag, strlen(endtag));
+    }
+    if (myflags->xml) {
+        output->data[output->numbytes-1] = '\n';
+    }
+    if (bufcopy) {
+        free(buffer);
+    }
+
+process:
+    /* add this data to the write list for this fd */
+    pmix_list_append(&channel->outputs, &output->super);
+
+    if (copystdout){
+        copy = PMIX_NEW(pmix_iof_write_output_t);
+        memcpy(copy->data, output->data, output->numbytes);
+        copy->numbytes = output->numbytes;
+        pmix_list_append(&pmix_client_globals.iof_stdout.wev.outputs, &copy->super);
+        if (!pmix_client_globals.iof_stdout.wev.pending) {
+            PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stdout.wev);
+        }
+    }
+    if (copystderr){
+        copy = PMIX_NEW(pmix_iof_write_output_t);
+        memcpy(copy->data, output->data, output->numbytes);
+        copy->numbytes = output->numbytes;
+        pmix_list_append(&pmix_client_globals.iof_stderr.wev.outputs, &copy->super);
+        if (!pmix_client_globals.iof_stderr.wev.pending) {
+            PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stderr.wev);
+        }
+    }
+
+    /* is the write event issued? */
+    if (!channel->pending) {
+        /* issue it */
+        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
+                             "%s write:output adding write event",
+                             PMIX_NAME_PRINT(&pmix_globals.myid)));
+        PMIX_IOF_SINK_ACTIVATE(channel);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t stream,
+                                    const pmix_byte_object_t *bo)
+{
+    pmix_status_t rc;
+    size_t n, start;
+    pmix_byte_object_t bopass;
     pmix_iof_write_event_t *channel;
     pmix_iof_flags_t myflags;
     pmix_namespace_t *nptr, *ns;
-    pmix_iof_sink_t *sink;
     bool outputio;
     bool copystdout = false;
     bool copystderr = false;
+    pmix_iof_sink_t *sink;
+    pmix_iof_residual_t *res;
+    char *inputdata;
+    size_t inputsize;
+    bool copied;
+
+    /* stdin doesn't come thru here*/
+    if (PMIX_FWD_STDIN_CHANNEL & stream) {
+        return PMIX_ERR_BAD_PARAM;
+    }
 
     /* find the nspace for this source */
     nptr = NULL;
@@ -1166,290 +1446,97 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                          PMIx_IOF_channel_string(stream), PMIX_NAME_PRINT(name),
                          (NULL == channel) ? -1 : channel->fd));
 
-    /* setup output object */
-    output = PMIX_NEW(pmix_iof_write_output_t);
-    memset(begintag, 0, PMIX_IOF_BASE_TAG_MAX);
-    memset(starttag, 0, PMIX_IOF_BASE_TAG_MAX);
-    memset(endtag, 0, PMIX_IOF_BASE_TAG_MAX);
-    memset(timestamp, 0, PMIX_IOF_BASE_TAG_MAX);
-    memset(outtag, 0, PMIX_IOF_BASE_TAG_MAX);
-
-    /* write output data to the corresponding tag */
-    if (PMIX_FWD_STDIN_CHANNEL & stream) {
-        /* copy over the data to be written */
-        if (0 < bo->size) {
-            /* don't copy 0 bytes - we just need to pass
-             * the zero bytes so the fd can be closed
-             * after it writes everything out
-             */
-            memcpy(output->data, bo->bytes, bo->size);
-        }
-        output->numbytes = bo->size;
-        goto process;
-    } else if (PMIX_FWD_STDOUT_CHANNEL & stream) {
-        /* write the bytes to stdout */
-        suffix = "stdout";
-    } else if (PMIX_FWD_STDERR_CHANNEL & stream) {
-        /* write the bytes to stderr */
-        suffix = "stderr";
-    } else if (PMIX_FWD_STDDIAG_CHANNEL & stream) {
-        /* write the bytes to stderr */
-        suffix = "stddiag";
-    } else {
-        /* error - this should never happen */
-        PMIX_ERROR_LOG(PMIX_ERR_VALUE_OUT_OF_BOUNDS);
-        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output, "%s stream %0x",
-                             PMIX_NAME_PRINT(&pmix_globals.myid), stream));
-        return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
-    }
-
-    /* if 0 bytes, then just pass it so the fd can be closed
-     * after it writes everything out
-     */
+    /* zero bytes can just be passed along */
     if (0 == bo->size) {
-        output->numbytes = 0;
-        goto process;
+        rc = write_output_line(name, channel, &myflags, stream,
+                               false, false, bo);
+        return rc;
     }
 
-    if (!myflags.set) {
-        /* the data is not to be tagged - just copy it
-         * and move on to processing
-         */
-        memcpy(output->data, bo->bytes, bo->size);
-        output->numbytes = bo->size;
-        goto process;
-    }
-
-    /* if this is to be xml tagged, create a tag with the correct syntax - we do not allow
-     * timestamping of xml output
-     */
-    if (myflags.xml) {
-        if (myflags.tag) {
-            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
-                     "<%s nspace=\"%s\" rank=\"%s\"", suffix,
-                     name->nspace, PMIX_RANK_PRINT(name->rank));
-        } else if (myflags.rank) {
-            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
-                     "<%s rank=\"%s\"", suffix,
-                     PMIX_RANK_PRINT(name->rank));
-        } else if (myflags.timestamp) {
-            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
-                     "<%s rank=\"%s\"", suffix,
-                     PMIX_RANK_PRINT(name->rank));
-        } else {
-            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
-                     "<%s rank=\"%s\"", suffix,
-                     PMIX_RANK_PRINT(name->rank));
-        }
-        pmix_snprintf(endtag, PMIX_IOF_BASE_TAG_MAX,
-                 "</%s>", suffix);
-    } else {
-        if (myflags.tag) {
-            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
-                     "[%s,%s]<%s>",
-                     name->nspace,
-                     PMIX_RANK_PRINT(name->rank),
-                     suffix);
-        } else if (myflags.rank) {
-            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
-                     "[%s]",
-                     PMIX_RANK_PRINT(name->rank));
+    /* see if we have some residual for this name/stream */
+    inputdata = bo->bytes;
+    inputsize = bo->size;
+    copied = false;
+    PMIX_LIST_FOREACH(res, &pmix_server_globals.iof_residuals, pmix_iof_residual_t) {
+        if (PMIX_CHECK_PROCID(name, &res->name) || (stream & res->stream)) {
+            /* we need to pre-pend the residual data to the new
+             * data so any lines can be completed */
+            inputdata = (char*)malloc(inputsize + res->bo.size);
+            memcpy(inputdata, res->bo.bytes, res->bo.size);
+            memcpy(&inputdata[res->bo.size], bo->bytes, bo->size);
+            inputsize += res->bo.size;
+            copied = true;
+            pmix_list_remove_item(&pmix_server_globals.iof_residuals, &res->super);
+            PMIX_RELEASE(res);
+            break;
         }
     }
 
-    /* if we are to timestamp output, start the tag with that */
-    if (myflags.timestamp) {
-        time_t mytime;
-        char *cptr;
-        /* get the timestamp */
-        time(&mytime);
-        cptr = ctime(&mytime);
-        cptr[strlen(cptr) - 1] = '\0'; /* remove trailing newline */
-
-        if (myflags.xml && !myflags.tag && !myflags.rank) {
-            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
-                     " timestamp=\"%s\"", cptr);
-        } else if (myflags.xml && (myflags.tag || myflags.rank)) {
-            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
-                     " timestamp=\"%s\"", cptr);
-        } else if (myflags.tag || myflags.rank) {
-            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
-        } else {
-            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s", cptr, suffix);
+    /* search the input data stream for '\n' */
+    start = 0;
+    for (n=0; n < inputsize; n++) {
+        if ('\n' == inputdata[n]) {
+            bopass.bytes = &inputdata[start];
+            bopass.size = n - start + 1;
+            rc = write_output_line(name, channel, &myflags, stream,
+                                   copystdout, copystderr, &bopass);
+            if (PMIX_SUCCESS != rc) {
+                if (copied) {
+                    free(inputdata);
+                }
+                return rc;
+            }
+            start = n + 1;
         }
     }
 
-    endtaglen = strlen(endtag);
-    endtagged = false;
-    k = 0;
-    /* start with the starttag */
-    taglen = strlen(begintag);
-    for (j = 0; j < taglen && k < PMIX_IOF_BASE_TAG_MAX; j++) {
-        starttag[k++] = begintag[j];
-    }
-    /* add the timestamp */
-    taglen = strlen(timestamp);
-    for (j = 0; j < taglen && k < PMIX_IOF_BASE_TAG_MAX; j++) {
-        starttag[k++] = timestamp[j];
-    }
-    /* add the output tag */
-    taglen = strlen(outtag);
-    for (j = 0; j < taglen && k < PMIX_IOF_BASE_TAG_MAX; j++) {
-        starttag[k++] = outtag[j];
-    }
-    if (PMIX_IOF_BASE_TAG_MAX == k) {
-        return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
-    }
-    /* if xml, end the starttag with a '>' */
-    if (myflags.xml) {
-        starttag[k++] = '>';
-    } else if (myflags.rank) {
-        starttag[k++] = ' ';
-    } else if (myflags.tag || myflags.timestamp) {
-        starttag[k++] = ':';
-    }
-
-    /* transfer to output */
-    k = 0;
-    taglen = strlen(starttag);
-    for (j = 0; j < taglen && k < PMIX_IOF_BASE_TAG_MAX; j++) {
-        output->data[k++] = starttag[j];
-    }
-
-    /* cycle through the data looking for <cr>
-     * and replace those with the tag
-     */
-    for (i = 0; i < bo->size && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; i++) {
-        if (myflags.xml) {
-            if ('&' == bo->bytes[i]) {
-                if (k + 5 >= PMIX_IOF_BASE_TAGGED_OUT_MAX) {
-                    PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-                    goto process;
+    if (start < inputsize) {
+        if (myflags.raw) {
+            bopass.bytes = &inputdata[start];
+            bopass.size = inputsize - start;
+            rc = write_output_line(name, channel, &myflags, stream,
+                                   copystdout, copystderr, &bopass);
+            if (PMIX_SUCCESS != rc) {
+                if (copied) {
+                    free(inputdata);
                 }
-                pmix_snprintf(qprint, 10, "&amp;");
-                for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
-                    output->data[k++] = qprint[j];
-                }
-            } else if ('<' == bo->bytes[i]) {
-                if (k + 4 >= PMIX_IOF_BASE_TAGGED_OUT_MAX) {
-                    PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-                    goto process;
-                }
-                pmix_snprintf(qprint, 10, "&lt;");
-                for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
-                    output->data[k++] = qprint[j];
-                }
-            } else if ('>' == bo->bytes[i]) {
-                if (k + 4 >= PMIX_IOF_BASE_TAGGED_OUT_MAX) {
-                    PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-                    goto process;
-                }
-                pmix_snprintf(qprint, 10, "&gt;");
-                for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
-                    output->data[k++] = qprint[j];
-                }
-            } else if (!isprint(bo->bytes[i])) {
-                /* this is a non-printable character, so escape it too */
-                if (k + 7 >= PMIX_IOF_BASE_TAGGED_OUT_MAX) {
-                    PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-                    goto process;
-                }
-                pmix_snprintf(qprint, 10, "&#%03d;", (int) bo->bytes[i]);
-                for (j = 0; j < (int) strlen(qprint) && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
-                    output->data[k++] = qprint[j];
-                }
-                /* if this was a \n, then we also need to break the line with the end tag */
-                if ('\n' == bo->bytes[i] && (k + endtaglen + 1) < PMIX_IOF_BASE_TAGGED_OUT_MAX) {
-                    /* we need to break the line with the end tag */
-                    for (j = 0; j < endtaglen && k < PMIX_IOF_BASE_TAGGED_OUT_MAX - 1; j++) {
-                        output->data[k++] = endtag[j];
-                    }
-                    if (k == PMIX_IOF_BASE_TAGGED_OUT_MAX) {
-                        /* out of space */
-                        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-                        goto process;
-                    }
-                    /* move the <cr> over */
-                    output->data[k++] = '\n';
-                    /* if this isn't the end of the data buffer, add a new start tag */
-                    if (i < bo->size - 1 && (k + taglen) < PMIX_IOF_BASE_TAGGED_OUT_MAX) {
-                        for (j = 0; j < taglen && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
-                            output->data[k++] = starttag[j];
-                            endtagged = false;
-                        }
-                    } else {
-                        endtagged = true;
-                    }
-                }
-            } else {
-                output->data[k++] = bo->bytes[i];
+                return rc;
             }
         } else {
-            if ('\n' == bo->bytes[i]) {
-                /* we need to break the line with the end tag */
-                for (j = 0; j < endtaglen && k < PMIX_IOF_BASE_TAGGED_OUT_MAX - 1; j++) {
-                    output->data[k++] = endtag[j];
-                }
-                /* move the <cr> over */
-                output->data[k++] = '\n';
-                /* if this isn't the end of the data buffer, add a new start tag */
-                if (i < bo->size - 1) {
-                    for (j = 0; j < taglen && k < PMIX_IOF_BASE_TAGGED_OUT_MAX; j++) {
-                        output->data[k++] = starttag[j];
-                        endtagged = false;
-                    }
-                } else {
-                    endtagged = true;
-                }
-            } else {
-                output->data[k++] = bo->bytes[i];
-            }
+            /* we have some residual that needs to be cached until
+             * the rest of the line is seen */
+            res = PMIX_NEW(pmix_iof_residual_t);
+            PMIX_XFER_PROCID(&res->name, name);
+            res->channel = channel;
+            memcpy(&res->flags, &myflags, sizeof(pmix_iof_flags_t));
+            res->stream = stream;
+            res->copystdout = copystdout;
+            res->copystderr = copystderr;
+            res->bo.bytes = (char*)malloc(inputsize - start);
+            memcpy(res->bo.bytes, &inputdata[start], inputsize - start);
+            res->bo.size = inputsize - start;
+            pmix_list_append(&pmix_server_globals.iof_residuals, &res->super);
         }
     }
-    if (!endtagged && k < PMIX_IOF_BASE_TAGGED_OUT_MAX) {
-        /* need to add an endtag */
-        for (j = 0; j < endtaglen && k < PMIX_IOF_BASE_TAGGED_OUT_MAX - 1; j++) {
-            output->data[k++] = endtag[j];
-        }
-        output->data[k] = '\n';
+    if (copied) {
+        free(inputdata);
     }
-    output->numbytes = k;
+    return PMIX_SUCCESS;
+}
 
-process:
-    /* add this data to the write list for this fd */
-    pmix_list_append(&channel->outputs, &output->super);
+void pmix_iof_flush_residuals(void)
+{
+    pmix_status_t rc;
+    pmix_iof_residual_t *res;
 
-    if (copystdout){
-        copy = PMIX_NEW(pmix_iof_write_output_t);
-        memcpy(copy->data, output->data, output->numbytes);
-        copy->numbytes = output->numbytes;
-        pmix_list_append(&pmix_client_globals.iof_stdout.wev.outputs, &copy->super);
-        if (!pmix_client_globals.iof_stdout.wev.pending) {
-            PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stdout.wev);
+    PMIX_LIST_FOREACH(res, &pmix_server_globals.iof_residuals, pmix_iof_residual_t) {
+        rc = write_output_line(&res->name, res->channel, &res->flags,
+                               res->stream, res->copystdout, res->copystderr, &res->bo);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return;
         }
     }
-    if (copystderr){
-        copy = PMIX_NEW(pmix_iof_write_output_t);
-        memcpy(copy->data, output->data, output->numbytes);
-        copy->numbytes = output->numbytes;
-        pmix_list_append(&pmix_client_globals.iof_stderr.wev.outputs, &copy->super);
-        if (!pmix_client_globals.iof_stderr.wev.pending) {
-            PMIX_IOF_SINK_ACTIVATE(&pmix_client_globals.iof_stderr.wev);
-        }
-    }
-    /* record how big the buffer is */
-    num_buffered = pmix_list_get_size(&channel->outputs);
-
-    /* is the write event issued? */
-    if (!channel->pending) {
-        /* issue it */
-        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
-                             "%s write:output adding write event",
-                             PMIX_NAME_PRINT(&pmix_globals.myid)));
-        PMIX_IOF_SINK_ACTIVATE(channel);
-    }
-
-    return num_buffered;
 }
 
 void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
@@ -1881,4 +1968,31 @@ static void iof_write_event_destruct(pmix_iof_write_event_t *wev)
 PMIX_CLASS_INSTANCE(pmix_iof_write_event_t, pmix_list_item_t, iof_write_event_construct,
                     iof_write_event_destruct);
 
-PMIX_CLASS_INSTANCE(pmix_iof_write_output_t, pmix_list_item_t, NULL, NULL);
+static void wocon(pmix_iof_write_output_t *p)
+{
+    p->data = NULL;
+    p->numbytes = 0;
+}
+static void wodes(pmix_iof_write_output_t *p)
+{
+    if (NULL != p->data) {
+        free(p->data);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_iof_write_output_t,
+                    pmix_list_item_t,
+                    wocon, wodes);
+
+static void iofrescon(pmix_iof_residual_t *p)
+{
+    PMIX_BYTE_OBJECT_CONSTRUCT(&p->bo);
+}
+static void iofresdes(pmix_iof_residual_t *p)
+{
+    if (NULL != p->bo.bytes) {
+        free(p->bo.bytes);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_iof_residual_t,
+                    pmix_list_item_t,
+                    iofrescon, iofresdes);

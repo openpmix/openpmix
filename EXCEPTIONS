@@ -54,6 +54,8 @@ PMIX_IOF_OUTPUT_TO_DIRECTORY        "pmix.iof.dir"          // (char*) direct ap
 PMIX_IOF_OUTPUT_TO_FILE             "pmix.iof.file"         // (char*) direct application output into files of form
                                                             //         "<filename>.rank" with both stdout and stderr redirected into it
 PMIX_IOF_RANK_OUTPUT                "pmix.iof.rank"         // (bool) Tag output with the rank it came from
+PMIX_IOF_OUTPUT_RAW                 "pmix.iof.raw"          // (bool) Do not buffer output to be written as complete lines - output
+                                                            //        characters as the stream delivers them
 PMIX_NODE_OVERSUBSCRIBED            "pmix.ndosub"           // (bool) true if number of procs from this job on this node
                                                             //        exceeds the number of slots allocated to it
 PMIX_SINGLETON                      "pmix.singleton"        // (char*) String representation (nspace.rank) of proc ID for the singleton
@@ -179,6 +181,8 @@ PMIX_IOF_FILE_ONLY                  "pmix.iof.fonly"        // (bool) output onl
 PMIX_IOF_FILE_PATTERN               "pmix.iof.fpt"          // (bool) Specified output file is to be treated as a pattern and not
                                                             //        automatically annotated by nspace, rank, or other parameters
 PMIX_IOF_LOCAL_OUTPUT               "pmix.iof.local"        // (bool) Write output streams to local stdout/err
+PMIX_IOF_OUTPUT_RAW                 "pmix.iof.raw"          // (bool) Do not buffer output to be written as complete lines - output
+                                                            //        characters as the stream delivers them
 PMIX_IOF_MERGE_STDERR_STDOUT        "pmix.iof.mrg"          // (bool) merge stdout and stderr streams from application procs
 PMIX_IOF_OUTPUT_TO_DIRECTORY        "pmix.iof.dir"          // (char*) direct application output into files of form
                                                             //         "<directory>/<jobid>/rank.<rank>/stdout[err]"
