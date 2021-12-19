@@ -119,10 +119,12 @@ struct pmix_list_item_t {
 typedef struct pmix_list_item_t pmix_list_item_t;
 
 /* static initializer for pmix_list_t */
-#define PMIX_LIST_ITEM_STATIC_INIT                                            \
-    {                                                                         \
-        .super = PMIX_OBJ_STATIC_INIT(pmix_object_t), .pmix_list_next = NULL, \
-        .pmix_list_prev = NULL, .item_free = 0                                \
+#define PMIX_LIST_ITEM_STATIC_INIT                      \
+    {                                                   \
+        .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+        .pmix_list_next = NULL,                         \
+        .pmix_list_prev = NULL,                         \
+        .item_free = 0                                  \
     }
 
 /**
@@ -164,10 +166,11 @@ struct pmix_list_t {
 typedef struct pmix_list_t pmix_list_t;
 
 /* static initializer for pmix_list_t */
-#define PMIX_LIST_STATIC_INIT                                                   \
-    {                                                                           \
-        .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),                           \
-        .pmix_list_sentinel = PMIX_LIST_ITEM_STATIC_INIT, .pmix_list_length = 0 \
+#define PMIX_LIST_STATIC_INIT                               \
+    {                                                       \
+        .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),       \
+        .pmix_list_sentinel = PMIX_LIST_ITEM_STATIC_INIT,   \
+        .pmix_list_length = 0                               \
     }
 
 /** Cleanly destruct a list

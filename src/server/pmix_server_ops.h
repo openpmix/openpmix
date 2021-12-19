@@ -184,13 +184,13 @@ typedef struct {
     pmix_list_t collectives;      // list of active pmix_server_trkr_t
     pmix_list_t remote_pnd; // list of pmix_dmdx_remote_t awaiting arrival of data fror servicing
                             // remote req's
-    pmix_list_t
-        local_reqs;     // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
+    pmix_list_t local_reqs;     // list of pmix_dmdx_local_t awaiting arrival of data from local neighbours
     pmix_list_t gdata;  // cache of data given to me for passing to all clients
     char **genvars;     // argv array of envars given to me for passing to all clients
     pmix_list_t events; // list of pmix_regevents_info_t registered events
     pmix_list_t groups; // list of pmix_group_t group memberships
     pmix_list_t iof;    // IO to be forwarded to clients
+    pmix_list_t iof_residuals;  // leftover bytes waiting for newline
     pmix_list_t psets;  // list of known psets and memberships
     size_t max_iof_cache; // max number of IOF messages to cache
     bool tool_connections_allowed;
