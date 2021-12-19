@@ -12,6 +12,7 @@
 # Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -50,5 +51,4 @@ pmix_info_SOURCES =  \
     support.c
 
 pmix_info_LDADD = \
-    $(PMIX_EXTRA_LTLIB) \
     $(top_builddir)/src/libpmix.la

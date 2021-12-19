@@ -24,7 +24,7 @@ AC_DEFUN([MCA_pmix_pgpu_intel_CONFIG],[
 
 # eventually need to check for L0 library
 
-    AS_IF([test "yes" = "yes"],
+    AS_IF([test "yes" = "no"],
           [$1],
           [$2])
 

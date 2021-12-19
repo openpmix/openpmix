@@ -23,7 +23,7 @@ release=1
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=lz1
+greek=rc6
 
 # PMIx Standard Compliance Level
 # The major and minor numbers indicate the version
