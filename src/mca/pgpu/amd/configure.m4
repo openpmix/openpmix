@@ -17,15 +17,15 @@
 
 # MCA_pmix_pgpu_amd_CONFIG(prefix, [action-if-found], [action-if-not-found])
 # --------------------------------------------------------
-# check if CUDA support can be found.  runs action-if-found if there is
-# support, otherwise executes action-if-not-found
 AC_DEFUN([MCA_pmix_pgpu_amd_CONFIG],[
     AC_CONFIG_FILES([src/mca/pgpu/amd/Makefile])
 
-    AS_IF([test "$pmix_cuda_happy" = "yes"],
-          [$1],
-          [$2])
+    AS_IF([test "yes" = "no"],
+          [$1
+           pmix_pgpu_amd_happy=yes],
+          [$2
+           pmix_pgpu_amd_happy=no])
 
-    PMIX_SUMMARY_ADD([[GPUs]],[[AMD]],[pgpu_amd],[$pmix_cuda_happy])])])
+    PMIX_SUMMARY_ADD([[GPUs]],[[AMD]],[pgpu_amd],[$pmix_pgpu_amd_happy])])])
 ])
 

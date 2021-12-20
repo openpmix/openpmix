@@ -14,7 +14,7 @@
 AC_DEFUN([MCA_pmix_pnet_opa_CONFIG], [
     AC_CONFIG_FILES([src/mca/pnet/opa/Makefile])
 
-    AS_IF([test "$pmix_ofi_happy" = "yes" || test "$pmix_psm2_happy" = "yes"],
+    AS_IF([test "yes" = "yes"],
           [$1
            pmix_pnet_opa=yes],
           [$2
