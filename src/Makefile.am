@@ -50,8 +50,7 @@ pmixdir = $(pmixincludedir)/$(subdir)
 
 libpmix_la_LIBADD = \
 	mca/base/libpmix_mca_base.la \
-	$(MCA_pmix_FRAMEWORK_LIBS) \
-	$(PMIX_EXTRA_LIB)
+	$(MCA_pmix_FRAMEWORK_LIBS)
 libpmix_la_DEPENDENCIES = \
 	mca/base/libpmix_mca_base.la \
 	$(MCA_pmix_FRAMEWORK_LIBS)

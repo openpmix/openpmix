@@ -92,6 +92,7 @@ pmix_server_globals_t pmix_server_globals = {
     .events = PMIX_LIST_STATIC_INIT,
     .groups = PMIX_LIST_STATIC_INIT,
     .iof = PMIX_LIST_STATIC_INIT,
+    .iof_residuals = PMIX_LIST_STATIC_INIT,
     .psets = PMIX_LIST_STATIC_INIT,
     .max_iof_cache = 0,
     .tool_connections_allowed = false,
@@ -400,13 +401,15 @@ pmix_status_t pmix_server_initialize(void)
     /* setup the server-specific globals */
     PMIX_CONSTRUCT(&pmix_server_globals.clients, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_server_globals.clients, 1, INT_MAX, 1);
+    PMIX_CONSTRUCT(&pmix_server_globals.nspaces, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.collectives, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.remote_pnd, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.local_reqs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.gdata, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.events, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_server_globals.local_reqs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.groups, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.iof, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_server_globals.iof_residuals, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_server_globals.psets, pmix_list_t);
 
     pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server init called");
@@ -964,6 +967,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
      * of any events objects may be holding */
     (void) pmix_progress_thread_pause(NULL);
 
+    /* flush any residual IOF into their respective channels */
+    pmix_iof_flush_residuals();
     /* flush anything that is still trying to be written out */
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
@@ -995,6 +1000,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     }
     PMIX_LIST_DESTRUCT(&pmix_server_globals.groups);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
+    PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.psets);
 
     if (NULL != security_mode) {

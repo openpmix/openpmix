@@ -62,7 +62,8 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr);
 static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***priors);
 static void deregister_nspace(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
-pmix_pmdl_module_t pmix_pmdl_ompi_module = {.name = "ompi",
+pmix_pmdl_module_t pmix_pmdl_ompi_module = {
+    .name = "ompi",
     .init = ompi_init,
     .finalize = ompi_finalize,
     .harvest_envars = harvest_envars,
@@ -70,7 +71,8 @@ pmix_pmdl_module_t pmix_pmdl_ompi_module = {.name = "ompi",
     .setup_nspace_kv = setup_nspace_kv,
     .register_nspace = register_nspace,
     .setup_fork = setup_fork,
-    .deregister_nspace = deregister_nspace};
+    .deregister_nspace = deregister_nspace
+};
 
 /* internal structures */
 typedef struct {
@@ -162,6 +164,9 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
     }
     /* flag that we worked on this */
     pmix_argv_append_nosize(priors, "ompi");
+
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                        "pmdl:ompi:harvest envars active");
 
     /* are we to harvest envars? */
     for (n=0; n < ninfo; n++) {

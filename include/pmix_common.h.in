@@ -906,6 +906,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        The original output stream(s) destination is restored upon
                                                                     //        termination of the tool.
 #define PMIX_IOF_LOCAL_OUTPUT               "pmix.iof.local"        // (bool) Write output streams to local stdout/err
+#define PMIX_IOF_OUTPUT_RAW                 "pmix.iof.raw"          // (bool) Do not buffer output to be written as complete lines - output
+                                                                    //        characters as the stream delivers them
 
 /* Attributes for controlling contents of application setup data */
 #define PMIX_SETUP_APP_ENVARS               "pmix.setup.env"        // (bool) harvest and include relevant envars

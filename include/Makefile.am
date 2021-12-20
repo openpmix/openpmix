@@ -1,6 +1,7 @@
 #
 # Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 #
+# Copyright (c) 2021      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -8,9 +9,10 @@
 # $HEADER$
 #
 
-# Only install the headers if we're in standalone mode
+# Install the PMIx headers unless told not to
 
 if WANT_PRIMARY_HEADERS
+
 include_HEADERS = \
         pmix.h \
         pmix_server.h \

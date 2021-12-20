@@ -57,14 +57,16 @@ static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info);
 static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv);
 static pmix_status_t register_nspace(pmix_namespace_t *nptr);
 static void deregister_nspace(pmix_namespace_t *nptr);
-pmix_pmdl_module_t pmix_pmdl_oshmem_module = {.name = "oshmem",
-                                              .init = oshmem_init,
-                                              .finalize = oshmem_finalize,
-                                              .harvest_envars = harvest_envars,
-                                              .setup_nspace = setup_nspace,
-                                              .setup_nspace_kv = setup_nspace_kv,
-                                              .register_nspace = register_nspace,
-                                              .deregister_nspace = deregister_nspace};
+pmix_pmdl_module_t pmix_pmdl_oshmem_module = {
+    .name = "oshmem",
+    .init = oshmem_init,
+    .finalize = oshmem_finalize,
+    .harvest_envars = harvest_envars,
+    .setup_nspace = setup_nspace,
+    .setup_nspace_kv = setup_nspace_kv,
+    .register_nspace = register_nspace,
+    .deregister_nspace = deregister_nspace
+};
 
 /* internal structures */
 typedef struct {
@@ -157,6 +159,9 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
     }
     /* flag that we worked on this */
     pmix_argv_append_nosize(priors, "oshmem");
+
+    pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
+                        "pmdl:oshmem:harvest envars active");
 
     /* are we to harvest envars? */
     for (n=0; n < ninfo; n++) {
