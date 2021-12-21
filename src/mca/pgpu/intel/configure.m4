@@ -24,10 +24,12 @@ AC_DEFUN([MCA_pmix_pgpu_intel_CONFIG],[
 
 # eventually need to check for L0 library
 
-    AS_IF([test "yes" = "yes"],
-          [$1],
-          [$2])
+    AS_IF([test "yes" = "no"],
+          [$1
+          pmix_pgpu_intel_happy=yes],
+          [$2
+           pmix_pgpu_intel_happy=no])
 
-    PMIX_SUMMARY_ADD([[GPUs]],[[Intel]],[pgpu_intel],[yes])
+    PMIX_SUMMARY_ADD([[GPUs]],[[Intel]],[pgpu_intel],[$pmix_pgpu_intel_happy])
 ])
 

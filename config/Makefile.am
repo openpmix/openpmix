@@ -27,7 +27,6 @@
 #
 
 EXTRA_DIST = \
-	pmix_get_version.sh \
 	distscript.sh \
 	getdate.sh \
     pmix_check_alps.m4 \
@@ -40,7 +39,6 @@ EXTRA_DIST = \
 	pmix_check_ident.m4 \
     pmix_check_jansson.m4 \
     pmix_check_lustre.m4 \
-    pmix_check_ofi.m4 \
     pmix_check_os_flavors.m4 \
 	pmix_check_package.m4 \
     pmix_check_pthread_pids.m4 \
@@ -68,6 +66,7 @@ EXTRA_DIST = \
 	pmix_setup_libev.m4 \
 	pmix_setup_libevent.m4 \
 	pmix_setup_wrappers.m4 \
+    pmix_summary.m4 \
 	pmix_try_assemble.m4 \
 	pmix.m4 \
 	mca_library_paths.txt \

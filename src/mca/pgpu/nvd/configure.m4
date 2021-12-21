@@ -17,15 +17,15 @@
 
 # MCA_pmix_pgpu_nvd_CONFIG(prefix, [action-if-found], [action-if-not-found])
 # --------------------------------------------------------
-# check if CUDA support can be found.  runs action-if-found if there is
-# support, otherwise executes action-if-not-found
 AC_DEFUN([MCA_pmix_pgpu_nvd_CONFIG],[
     AC_CONFIG_FILES([src/mca/pgpu/nvd/Makefile])
 
-    AS_IF([test "$pmix_cuda_happy" = "yes"],
-          [$1],
-          [$2])
+    AS_IF([test "yes" = "no"],
+          [$1
+           pmix_pgpu_nvd_happy=yes],
+          [$2
+           pmix_pgpu_nvd_happy=no])
 
-    PMIX_SUMMARY_ADD([[GPUs]],[[NVIDIA]],[pgpu_nvd],[$pmix_cuda_happy])])])
+    PMIX_SUMMARY_ADD([[GPUs]],[[NVIDIA]],[pgpu_nvd],[$pmix_pgpu_nvd_happy])])])
 ])
 

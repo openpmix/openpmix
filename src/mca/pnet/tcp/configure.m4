@@ -14,9 +14,12 @@
 AC_DEFUN([MCA_pmix_pnet_tcp_CONFIG], [
     AC_CONFIG_FILES([src/mca/pnet/tcp/Makefile])
 
-    AS_IF([test "yes" = "yes"],
-          [$1], [$2])
+    AS_IF([test "yes" = "no"],
+          [$1
+           pmix_pnet_tcp_happy=yes],
+          [$2
+           pmix_pnet_tcp_happy=no])
 
-    PMIX_SUMMARY_ADD([[Transports]],[[TCP]],[[pnet_tcp]],[yes])
+    PMIX_SUMMARY_ADD([[Transports]],[[TCP]],[[pnet_tcp]],[$pmix_pnet_tcp_happy])
 
 ])dnl
