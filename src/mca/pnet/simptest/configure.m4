@@ -19,9 +19,8 @@ AC_DEFUN([MCA_pmix_pnet_simptest_CONFIG], [
                 [pmix_want_simptest=yes], [pmix_want_simptest=no])
 
     AS_IF([test "$pmix_want_simptest" = "yes"],
-          [$1
-           PMIX_SUMMARY_ADD([[Transports]],[[Simptest]],[[pnet_simptest]],[$pmix_want_simptest])],
+          [$1],
           [$2])
 
-
+    PMIX_SUMMARY_ADD([[Transports]],[[Simptest]],[[pnet_simptest]],[$pmix_want_simptest])
 ])dnl

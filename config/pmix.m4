@@ -826,20 +826,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     PMIX_CHECK_CURL
 
     ##################################
-    # OFI (for Transports)
-    ##################################
-    pmix_show_title "OFI"
-
-    PMIX_CHECK_OFI
-
-    ##################################
-    # CUDA (for GPUs)
-    ##################################
-    pmix_show_title "CUDA"
-
-    PMIX_CHECK_CUDA
-
-    ##################################
     # Dstore Locking
     ##################################
     pmix_show_title "Dstore Locking"
