@@ -312,6 +312,6 @@ AC_DEFUN([PMIX_SETUP_WRAPPER_FINAL],[
    ####################################################################
    # Setup variables for pkg-config file (maint/pmix.pc.in)
    ####################################################################
-   PC_PRIVATE_LIBS="$PMIX_WRAPPER_EXTRA_LDFLAGS $PMIX_WRAPPER_EXTRA_LIBS"
+   PC_PRIVATE_LIBS="$PMIX_PKG_CONFIG_LDFLAGS $PMIX_WRAPPER_EXTRA_LIBS"
    AC_SUBST([PC_PRIVATE_LIBS], ["$PC_PRIVATE_LIBS"])
 ])
