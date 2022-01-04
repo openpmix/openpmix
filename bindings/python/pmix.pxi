@@ -58,7 +58,7 @@ class myLock(threading.Event):
 
 ctypedef struct pmix_pyshift_t:
     char *op
-    pmix_byte_object_t *payload
+    pmix_byte_object_t payload
     size_t idx
     pmix_modex_cbfunc_t modex
     pmix_status_t status
@@ -90,11 +90,17 @@ ctypedef struct pmix_pyshift_t:
 
 cdef void iofhdlr_cache(capsule, ret):
     cdef pmix_pyshift_t *shifter
+    cdef pmix_byte_object_t *bo
     shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "iofhdlr_cache")
+    if NULL == shifter[0].payload.bytes:
+        bo = NULL
+    else:
+        bo = &shifter[0].payload
     pyiofhandler(shifter[0].idx, shifter[0].channel, &shifter[0].source,
-                 shifter[0].payload, shifter[0].info, shifter[0].ndata)
+                 bo, shifter[0].info, shifter[0].ndata)
     if 0 < shifter[0].ndata:
         pmix_free_info(shifter[0].info, shifter[0].ndata)
+    free(shifter[0].payload.bytes)
     return
 
 cdef void event_cache_cb(capsule, ret):
