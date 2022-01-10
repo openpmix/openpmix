@@ -23,7 +23,7 @@
 # Copyright (c) 2016      IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -313,6 +313,23 @@ AC_ARG_ENABLE(werror,
 ])
 
 ####################################################################
+# no-undefined needed on some platform for shared lib
+####################################################################
+
+AC_MSG_CHECKING([if libtool needs -no-undefined flag to build shared libraries])
+case "`uname`" in
+  CYGWIN*|MINGW*|AIX*)
+    ## Add in the -no-undefined flag to LDFLAGS for libtool.
+    AC_MSG_RESULT([yes])
+    LDFLAGS="$LDFLAGS -no-undefined"
+    ;;
+  *)
+    ## Don't add in anything.
+    AC_MSG_RESULT([no])
+    ;;
+esac
+
++####################################################################
 # Version information
 ####################################################################
 
