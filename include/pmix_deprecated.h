@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -183,6 +183,74 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) ***** DEPRECATED ***** Stop forwarding the specified channel(s)
 #define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) ***** DEPRECATED ***** notify the requestor upon launch of the child job and return
                                                                     //        its namespace in the event
+#define PMIX_VALUE_LOAD(v, d, t) \
+    PMIx_Value_load((v), (d), (t))
+
+#define PMIX_VALUE_UNLOAD(r, k, d, s)      \
+    (r) = PMIx_Value_unload((k), (d), (s))
+
+#define PMIX_VALUE_XFER(r, v, s)                                \
+    do {                                                        \
+        if (NULL == (v)) {                                      \
+            (v) = (pmix_value_t*)pmix_malloc(sizeof(pmix_value_t));  \
+            if (NULL == (v)) {                                  \
+                (r) = PMIX_ERR_NOMEM;                           \
+            } else {                                            \
+                (r) = PMIx_Value_xfer((v), (s));                \
+            }                                                   \
+        } else {                                                \
+            (r) = PMIx_Value_xfer((v), (s));                    \
+        }                                                       \
+    } while(0)
+
+#define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
+    (r) = PMIx_Value_xfer((v), (s))
+
+#define PMIX_INFO_LOAD(i, k, d, t)  \
+    (void) PMIx_Info_load(i, k, d, t)
+
+#define PMIX_INFO_XFER(d, s)    \
+    (void) PMIx_Info_xfer(d, s)
+
+#define PMIX_PDATA_LOAD(m, p, k, v, t)                                      \
+    do {                                                                    \
+        if (NULL != (m)) {                                                  \
+            memset((m), 0, sizeof(pmix_pdata_t));                           \
+            PMIX_LOAD_NSPACE((m)->proc.nspace, (p)->nspace);                \
+            (m)->proc.rank = (p)->rank;                                     \
+            PMIX_LOAD_KEY((m)->key, k);                                     \
+            PMIx_Value_load(&((m)->value), (v), (t));                       \
+        }                                                                   \
+    } while (0)
+
+#define PMIX_PDATA_XFER(d, s)                                                   \
+    do {                                                                        \
+        if (NULL != (d)) {                                                      \
+            memset((d), 0, sizeof(pmix_pdata_t));                               \
+            PMIX_LOAD_NSPACE((d)->proc.nspace, (s)->proc.nspace);               \
+            (d)->proc.rank = (s)->proc.rank;                                    \
+            PMIX_LOAD_KEY((d)->key, (s)->key);                                  \
+            PMIx_Value_xfer(&((d)->value), &((s)->value));                      \
+        }                                                                       \
+    } while (0)
+
+#define PMIX_INFO_LIST_START(p)    \
+    (p) = PMIx_Info_list_start()
+
+#define PMIX_INFO_LIST_ADD(r, p, a, v, t)     \
+    (r) = PMIx_Info_list_add((p), (a), (v), (t))
+
+#define PMIX_INFO_LIST_XFER(r, p, a)     \
+    (r) = PMIx_Info_list_xfer((p), (a))
+
+#define PMIX_INFO_LIST_CONVERT(r, p, m)     \
+    (r) = PMIx_Info_list_convert((p), (m))
+
+#define PMIX_INFO_LIST_RELEASE(p) \
+    PMIx_Info_list_release((p))
+
+#define PMIX_TOPOLOGY_DESTRUCT(x) \
+    PMIx_Topology_destruct(x)
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

@@ -17,7 +17,7 @@
  *
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -78,50 +78,6 @@ PMIX_EXPORT pmix_status_t pmix_argv_append(int *argc, char ***argv, const char *
     __pmix_attribute_nonnull__(1) __pmix_attribute_nonnull__(3);
 
 /**
- * Append to an argv-style array, but ignore the size of the array.
- *
- * @param argv Pointer to an argv array.
- * @param str Pointer to the string to append.
- *
- * @retval PMIX_SUCCESS On success
- * @retval PMIX_ERROR On failure
- *
- * This function is identical to the pmix_argv_append() function
- * except that it does not take a pointer to an argc (integer
- * representing the size of the array).  This is handy for
- * argv-style arrays that do not have integers that are actively
- * maintaing their sizes.
- */
-PMIX_EXPORT pmix_status_t pmix_argv_append_nosize(char ***argv, const char *arg);
-
-/**
- * Insert the provided arg at the beginning of the array
- *
- * @param argv Pointer to an argv array
- * @param str Pointer to the string to prepend
- *
- * @retval PMIX_SUCCESS On success
- * @retval PMIX_ERROR On failure
- */
-PMIX_EXPORT pmix_status_t pmix_argv_prepend_nosize(char ***argv, const char *arg);
-
-/**
- * Append to an argv-style array, but only if the provided argument
- * doesn't already exist somewhere in the array. Ignore the size of the array.
- *
- * @param argv Pointer to an argv array.
- * @param str Pointer to the string to append.
- *
- * @retval PMIX_SUCCESS On success
- * @retval PMIX_ERROR On failure
- *
- * This function is identical to the pmix_argv_append_nosize() function
- * except that it only appends the provided argument if it does not already
- * exist in the provided array.
- */
-PMIX_EXPORT pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const char *arg);
-
-/**
  * Append to an argv-style array, but only if the provided argument
  * doesn't already exist somewhere in the array. Ignore the size of the array.
  * Defines the index of the found/added item in the array.
@@ -137,39 +93,6 @@ PMIX_EXPORT pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const cha
  * but it has an extra argument defining the index of the item in the array.
  */
 PMIX_EXPORT pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *arg);
-
-/**
- * Free a NULL-terminated argv array.
- *
- * @param argv Argv array to free.
- *
- * This function frees an argv array and all of the strings that it
- * contains.  Since the argv parameter is passed by value, it is not
- * set to NULL in the caller's scope upon return.
- *
- * It is safe to invoke this function with a NULL pointer.  It is
- * not safe to invoke this function with a non-NULL-terminated argv
- * array.
- */
-PMIX_EXPORT void pmix_argv_free(char **argv);
-
-/**
- * Split a string into a NULL-terminated argv array. Do not include empty
- * strings in result array.
- *
- * @param src_string Input string.
- * @param delimiter Delimiter character.
- *
- * @retval argv pointer to new argv array on success
- * @retval NULL on error
- *
- * All strings are inserted into the argv array by value; the
- * newly-allocated array makes no references to the src_string
- * argument (i.e., it can be freed after calling this function
- * without invalidating the output argv).
- */
-PMIX_EXPORT char **pmix_argv_split(const char *src_string, int delimiter)
-    __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
 /**
  * Split a string into a NULL-terminated argv array. Include empty
@@ -189,37 +112,6 @@ PMIX_EXPORT char **pmix_argv_split(const char *src_string, int delimiter)
 PMIX_EXPORT char **pmix_argv_split_with_empty(const char *src_string, int delimiter)
     __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
-/**
- * Return the length of a NULL-terminated argv array.
- *
- * @param argv The input argv array.
- *
- * @retval 0 If NULL is passed as argv.
- * @retval count Number of entries in the argv array.
- *
- * The argv array must be NULL-terminated.
- */
-PMIX_EXPORT int pmix_argv_count(char **argv);
-
-/**
- * Join all the elements of an argv array into a single
- * newly-allocated string.
- *
- * @param argv The input argv array.
- * @param delimiter Delimiter character placed between each argv string.
- *
- * @retval new_string Output string on success.
- * @retval NULL On failure.
- *
- * Similar to the Perl join function, this function takes an input
- * argv and joins them into into a single string separated by the
- * delimiter character.
- *
- * It is the callers responsibility to free the returned string.
- */
-PMIX_EXPORT char *pmix_argv_join(char **argv, int delimiter)
-    __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
-
 PMIX_EXPORT char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
     __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
@@ -233,21 +125,6 @@ PMIX_EXPORT char *pmix_argv_join_range(char **argv, size_t start, size_t end, in
  * strings as well as the pointers used in the argv array.
  */
 PMIX_EXPORT size_t pmix_argv_len(char **argv);
-
-/**
- * Copy a NULL-terminated argv array.
- *
- * @param argv The input argv array.
- *
- * @retval argv Copied argv array on success.
- * @retval NULL On failure.
- *
- * Copy an argv array, including copying all off its strings.
- * Specifically, the output argv will be an array of the same length
- * as the input argv, and strcmp(argv_in[i], argv_out[i]) will be 0.
- */
-PMIX_EXPORT char **
-pmix_argv_copy(char **argv) __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
 /**
  * Delete one or more tokens from the middle of an argv.

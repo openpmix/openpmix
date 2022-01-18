@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
- * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,6 +27,7 @@ int main(int argc, char *argv[])
     pmix_status_t ret;
     int ret_int;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+
     /*
      * mess with environ
      */

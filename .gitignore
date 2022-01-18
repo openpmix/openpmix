@@ -85,6 +85,7 @@ examples/server
 examples/tool
 examples/group
 examples/asyncgroup
+examples/hello
 
 include/pmix_version.h
 include/pmix_rename.h

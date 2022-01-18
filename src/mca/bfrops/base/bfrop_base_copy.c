@@ -12,7 +12,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -293,7 +293,7 @@ pmix_status_t pmix_bfrops_base_copy_app(pmix_app_t **dest, pmix_app_t *src, pmix
     (*dest)->info = (pmix_info_t *) malloc(src->ninfo * sizeof(pmix_info_t));
     for (j = 0; j < src->ninfo; j++) {
         pmix_strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_KEYLEN);
-        pmix_value_xfer(&(*dest)->info[j].value, &src->info[j].value);
+        PMIx_Value_xfer(&(*dest)->info[j].value, &src->info[j].value);
     }
     return PMIX_SUCCESS;
 }

@@ -664,7 +664,7 @@ static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb)
     n=0;
     PMIX_LIST_FOREACH(kv, kvs, pmix_kval_t) {
         pmix_strncpy(info[n].key, kv->key, PMIX_MAX_KEYLEN);
-        pmix_value_xfer(&info[n].value, kv->value);
+        PMIx_Value_xfer(&info[n].value, kv->value);
         ++n;
     }
     val->data.darray->size = ninfo;
