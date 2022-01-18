@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -337,7 +337,7 @@ pmix_status_t pmix12_bfrop_copy_value(pmix_value_t **dest, pmix_value_t *src, pm
     /* copy the type */
     p->type = src->type;
     /* copy the data */
-    return pmix_value_xfer(p, src);
+    return PMIx_Value_xfer(p, src);
 }
 
 pmix_status_t pmix12_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src, pmix_data_type_t type)
@@ -346,7 +346,7 @@ pmix_status_t pmix12_bfrop_copy_info(pmix_info_t **dest, pmix_info_t *src, pmix_
 
     *dest = (pmix_info_t *) malloc(sizeof(pmix_info_t));
     pmix_strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
-    return pmix_value_xfer(&(*dest)->value, &src->value);
+    return PMIx_Value_xfer(&(*dest)->value, &src->value);
 }
 
 pmix_status_t pmix12_bfrop_copy_buf(pmix_buffer_t **dest, pmix_buffer_t *src, pmix_data_type_t type)
@@ -373,7 +373,7 @@ pmix_status_t pmix12_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src, pmix_dat
     (*dest)->info = (pmix_info_t *) malloc(src->ninfo * sizeof(pmix_info_t));
     for (j = 0; j < src->ninfo; j++) {
         pmix_strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_KEYLEN);
-        pmix_value_xfer(&(*dest)->info[j].value, &src->info[j].value);
+        PMIx_Value_xfer(&(*dest)->info[j].value, &src->info[j].value);
     }
     return PMIX_SUCCESS;
 }
@@ -394,7 +394,7 @@ pmix_status_t pmix12_bfrop_copy_kval(pmix_kval_t **dest, pmix_kval_t *src, pmix_
     /* copy the type */
     p->value->type = src->value->type;
     /* copy the data */
-    return pmix_value_xfer(p->value, src->value);
+    return PMIx_Value_xfer(p->value, src->value);
 }
 
 pmix_status_t pmix12_bfrop_copy_array(pmix_info_array_t **dest, pmix_info_array_t *src,
@@ -484,7 +484,7 @@ pmix_status_t pmix12_bfrop_copy_pdata(pmix_pdata_t **dest, pmix_pdata_t *src, pm
     pmix_strncpy((*dest)->proc.nspace, src->proc.nspace, PMIX_MAX_NSLEN);
     (*dest)->proc.rank = src->proc.rank;
     pmix_strncpy((*dest)->key, src->key, PMIX_MAX_KEYLEN);
-    return pmix_value_xfer(&(*dest)->value, &src->value);
+    return PMIx_Value_xfer(&(*dest)->value, &src->value);
 }
 
 pmix_status_t pmix12_bfrop_copy_darray(pmix_pdata_t **dest, pmix_data_array_t *src,

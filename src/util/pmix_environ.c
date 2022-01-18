@@ -16,9 +16,9 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -129,124 +129,6 @@ pmix_status_t pmix_environ_merge_inplace(char ***orig, char **adders)
 }
 
 
-/*
- * Portable version of setenv(), allowing editing of any environ-like
- * array
- */
-pmix_status_t pmix_setenv(const char *name, const char *value, bool overwrite, char ***env)
-{
-    int i;
-    char *newvalue, *compare;
-    size_t len;
-    bool valid;
-
-    /* Check the bozo case */
-    if (NULL == env) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    if (NULL != value) {
-        /* check the string for unacceptable length - i.e., ensure
-         * it is NULL-terminated */
-        valid = false;
-        for (i = 0; i < PMIX_MAX_ENVAR_LENGTH; i++) {
-            if ('\0' == value[i]) {
-                valid = true;
-                break;
-            }
-        }
-        if (!valid) {
-            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-            return PMIX_ERR_BAD_PARAM;
-        }
-    }
-
-    /* If this is the "environ" array, use putenv or setenv */
-    if (*env == environ) {
-        /* THIS IS POTENTIALLY A MEMORY LEAK!  But I am doing it
-           because so that we don't violate the law of least
-           astonishmet for PMIX developers (i.e., those that don't
-           check the return code of pmix_setenv() and notice that we
-           returned an error if you passed in the real environ) */
-#if defined(HAVE_SETENV)
-        if (NULL == value) {
-            /* this is actually an unsetenv request */
-            unsetenv(name);
-        } else {
-            setenv(name, value, overwrite);
-        }
-#else
-        /* Make the new value */
-        if (NULL == value) {
-            i = asprintf(&newvalue, "%s=", name);
-        } else {
-            i = asprintf(&newvalue, "%s=%s", name, value);
-        }
-        if (NULL == newvalue || 0 > i) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        putenv(newvalue);
-        /* cannot free it as putenv doesn't copy the value */
-#endif
-        return PMIX_SUCCESS;
-    }
-
-    /* Make the new value */
-    if (NULL == value) {
-        i = asprintf(&newvalue, "%s=", name);
-    } else {
-        i = asprintf(&newvalue, "%s=%s", name, value);
-    }
-    if (NULL == newvalue || 0 > i) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-
-    if (NULL == *env) {
-        i = 0;
-        pmix_argv_append(&i, env, newvalue);
-        free(newvalue);
-        return PMIX_SUCCESS;
-    }
-
-    /* Make something easy to compare to */
-
-    i = asprintf(&compare, "%s=", name);
-    if (NULL == compare || 0 > i) {
-        free(newvalue);
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    len = strlen(compare);
-
-    /* Look for a duplicate that's already set in the env */
-
-    for (i = 0; (*env)[i] != NULL; ++i) {
-        if (0 == strncmp((*env)[i], compare, len)) {
-            if (overwrite) {
-                free((*env)[i]);
-                (*env)[i] = newvalue;
-                free(compare);
-                return PMIX_SUCCESS;
-            } else {
-                free(compare);
-                free(newvalue);
-                return PMIX_EXISTS;
-            }
-        }
-    }
-
-    /* If we found no match, append this value */
-
-    i = pmix_argv_count(*env);
-    pmix_argv_append(&i, env, newvalue);
-
-    /* All done */
-
-    free(compare);
-    free(newvalue);
-    return PMIX_SUCCESS;
-}
-
-
 char * pmix_getenv(const char *name, char **env)
 {
     /* bozo case */
@@ -291,7 +173,6 @@ char * pmix_getenv(const char *name, char **env)
 
     return NULL;
 }
-
 
 /*
  * Portable version of unsetenv(), allowing editing of any

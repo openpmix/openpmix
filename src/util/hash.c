@@ -12,7 +12,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -167,7 +167,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank, const 
             n = 0;
             PMIX_LIST_FOREACH (hv, &proc_data->data, pmix_kval_t) {
                 pmix_strncpy(info[n].key, hv->key, PMIX_MAX_KEYLEN);
-                pmix_value_xfer(&info[n].value, hv->value);
+                PMIx_Value_xfer(&info[n].value, hv->value);
                 ++n;
             }
             val->data.darray->size = ninfo;

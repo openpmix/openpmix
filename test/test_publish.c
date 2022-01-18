@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -45,7 +45,7 @@ static void lookup_cb(pmix_status_t status, pmix_pdata_t pdata[], size_t npdata,
                 /* transfer the value to the pmix_pdata_t */
                 pmix_strncpy(tgt[j].proc.nspace, pdata[i].proc.nspace, PMIX_MAX_NSLEN);
                 tgt[j].proc.rank = pdata[i].proc.rank;
-                pmix_value_xfer(&tgt[j].value, &pdata[i].value);
+                PMIx_Value_xfer(&tgt[j].value, &pdata[i].value);
                 break;
             }
         }
