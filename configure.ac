@@ -20,7 +20,7 @@
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
 # Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2016      IBM Corporation.  All rights reserved.
+# Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
@@ -329,7 +329,7 @@ case "`uname`" in
     ;;
 esac
 
-+####################################################################
+####################################################################
 # Version information
 ####################################################################
 
