@@ -7,7 +7,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -490,6 +490,7 @@ done:
                         "pmix: get_nb looking for requested key");
     PMIX_LIST_FOREACH_SAFE (cb, cb2, &pmix_client_globals.pending_requests, pmix_cb_t) {
         if (PMIX_CHECK_NSPACE(lg->p.nspace, cb->pname.nspace) && cb->pname.rank == lg->p.rank) {
+            pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
             /* we have the data for this proc - see if we can find the key */
             cb->proc = &lg->p;
             cb->scope = PMIX_SCOPE_UNDEF;
@@ -512,7 +513,6 @@ done:
                 }
             }
             cb->cbfunc.valuefn(rc, val, cb->cbdata);
-            pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
             PMIX_RELEASE(lg);
             PMIX_RELEASE(cb);
         }
