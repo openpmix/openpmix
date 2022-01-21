@@ -15,7 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -137,6 +137,7 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_FABRIC_REGISTER_CMD          30
 #define PMIX_FABRIC_UPDATE_CMD            31
 #define PMIX_COMPUTE_DEVICE_DISTANCES_CMD 32
+#define PMIX_REFRESH_CACHE                33
 
 /* provide a "pretty-print" function for cmds */
 const char *pmix_command_string(pmix_cmd_t cmd);

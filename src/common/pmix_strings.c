@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -239,6 +239,16 @@ PMIX_EXPORT const char *pmix_command_string(pmix_cmd_t cmd)
         return "GROUP LEAVE";
     case PMIX_GROUP_DESTRUCT_CMD:
         return "GROUP DESTRUCT";
+    case PMIX_IOF_DEREG_CMD:
+        return "IOF DEREG";
+    case PMIX_FABRIC_REGISTER_CMD:
+        return "FABRIC REGISTER";
+    case PMIX_FABRIC_UPDATE_CMD:
+        return "FABRIC UPDATE";
+    case PMIX_COMPUTE_DEVICE_DISTANCES_CMD:
+        return "COMPUTE DEVICE DIST";
+    case PMIX_REFRESH_CACHE:
+        return "REFRESH CACHE";
     default:
         return "UNKNOWN";
     }

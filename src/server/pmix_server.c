@@ -9,7 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -4725,6 +4725,14 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
     if (PMIX_COMPUTE_DEVICE_DISTANCES_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_device_dists(cd, buf, dist_cbfunc))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
+    if (PMIX_REFRESH_CACHE == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_refresh_cache(cd, buf, op_cbfunc))) {
             PMIX_RELEASE(cd);
         }
         return rc;
