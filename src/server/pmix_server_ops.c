@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -4795,6 +4795,14 @@ cleanup:
         pmix_hwloc_destruct_cpuset(&cpuset);
     }
     return rc;
+}
+
+pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
+                                        pmix_buffer_t *buf,
+                                        pmix_op_cbfunc_t cbfunc)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cd, buf, cbfunc);
+    return PMIX_ERR_NOT_SUPPORTED;
 }
 
 /*****    INSTANCE SERVER LIBRARY CLASSES    *****/

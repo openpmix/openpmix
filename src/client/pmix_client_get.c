@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -60,22 +60,24 @@
 
 #include "pmix_client_ops.h"
 
-static pmix_buffer_t *_pack_get(char *nspace, pmix_rank_t rank, char *key, const pmix_info_t info[],
-                                size_t ninfo, pmix_cmd_t cmd);
+static pmix_buffer_t *_pack_get(char *nspace, pmix_rank_t rank, char *key,
+                                const pmix_info_t info[], size_t ninfo,
+                                pmix_cmd_t cmd);
 
-static pmix_status_t get_data(const char *key, const pmix_info_t info[], size_t ninfo,
-                              pmix_value_t **val, pmix_cb_t *cb);
+static void get_data(int sd, short args, void *cbdata);
 
-static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                          void *cbdata);
+static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                          pmix_buffer_t *buf, void *cbdata);
 
 static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata);
 
-static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb);
+static pmix_status_t process_values(pmix_cb_t *cb);
+
+static pmix_status_t refresh_cache(void);
 
 static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
-                                     const pmix_info_t info[], size_t ninfo, pmix_get_logic_t *lg,
-                                     pmix_value_t **val)
+                                     const pmix_info_t info[], size_t ninfo,
+                                     pmix_get_logic_t *lg, pmix_value_t **val)
 {
     pmix_value_t *ival;
     size_t n;
@@ -229,25 +231,29 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
         return rc;
     }
 
+    /* if we are to refresh the cache, go do that */
+    if (lg->refresh_cache) {
+        rc = refresh_cache();
+        if (PMIX_SUCCESS != rc) {
+            // couldn't refresh for some reason
+            PMIX_RELEASE(lg);
+            return rc;
+        }
+    }
+
     /* the request is good - let's go get the data */
     cb = PMIX_NEW(pmix_cb_t);
     cb->lg = lg;
+    cb->key = (char*)key;
+    cb->info = (pmix_info_t*)info;
+    cb->ninfo = ninfo;
     cb->cbfunc.valuefn = _value_cbfunc;
     PMIX_RETAIN(cb);
     cb->cbdata = cb;
 
-    rc = get_data(key, info, ninfo, val, cb);
-
-    if (PMIX_OPERATION_SUCCEEDED == rc) {
-        PMIX_RELEASE(lg);
-        PMIX_RELEASE(cb);
-        return PMIX_SUCCESS;
-    } else if (PMIX_SUCCESS != rc) {
-        *val = NULL;
-        PMIX_RELEASE(lg);
-        PMIX_RELEASE(cb);
-        return rc;
-    }
+    /* MUST threadshift here to avoid touching global
+     * data while in the user's thread */
+    PMIX_THREADSHIFT(cb, get_data);
 
     /* wait for the data to be obtained */
     PMIX_WAIT_THREAD(&cb->lock);
@@ -323,43 +329,48 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         return rc;
     }
 
+    /* if we are to refresh the cache, go do that */
+    if (lg->refresh_cache) {
+        rc = refresh_cache();
+        if (PMIX_SUCCESS != rc) {
+            // couldn't refresh for some reason
+            PMIX_RELEASE(lg);
+            return rc;
+        }
+    }
+
     /* the request is good - let's go get the data */
     cb = PMIX_NEW(pmix_cb_t);
     cb->lg = lg;
+    cb->key = (char*)key;
+    cb->info = (pmix_info_t*)info;
+    cb->ninfo = ninfo;
+    cb->scope = lg->scope;
     cb->cbfunc.valuefn = cbfunc;
     cb->cbdata = cbdata;
-    rc = get_data(key, info, ninfo, &val, cb);
-    if (PMIX_OPERATION_SUCCEEDED == rc) {
-        /* we were able to obtain the data atomically, but
-         * we must threadshift to return it */
-        cb->status = PMIX_SUCCESS;
-        cb->value = val;
-        cb->cbfunc.valuefn = cbfunc;
-        cb->cbdata = cbdata;
-        PMIX_RELEASE(lg);
-        PMIX_THREADSHIFT(cb, gcbfn);
-        return PMIX_SUCCESS;
-    }
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(lg);
-        PMIX_RELEASE(cb);
-    }
+    // flag that we need to use an intermediate return point
+    cb->checked = true;
 
-    pmix_output_verbose(2, pmix_client_globals.get_output, "pmix:client get completed with %s",
-                        PMIx_Error_string(rc));
+    /* MUST threadshift here to avoid touching global
+     * data while in the user's thread */
+    PMIX_THREADSHIFT(cb, get_data);
+
+    pmix_output_verbose(2, pmix_client_globals.get_output,
+                        "pmix:client get_nb in progress");
 
     return rc;
 }
 
 static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_cb_t *cb;
     pmix_status_t rc;
 
     PMIX_ACQUIRE_OBJECT(cb);
+    cb = (pmix_cb_t *) cbdata;
     cb->status = status;
     if (PMIX_SUCCESS == status) {
-        PMIX_BFROPS_COPY(rc, pmix_client_globals.myserver, (void **) &cb->value, kv, PMIX_VALUE);
+        PMIX_BFROPS_COPY(rc, pmix_client_globals.myserver, (void **)&cb->value, kv, PMIX_VALUE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -428,8 +439,8 @@ static pmix_buffer_t *_pack_get(char *nspace, pmix_rank_t rank, char *key, const
 /* this callback is coming from the ptl recv, and thus
  * is occurring inside of our progress thread - hence, no
  * need to thread shift */
-static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                          void *cbdata)
+static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                          pmix_buffer_t *buf, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_cb_t *cb2;
@@ -519,7 +530,7 @@ done:
     }
 }
 
-static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb)
+static pmix_status_t process_values(pmix_cb_t *cb)
 {
     pmix_list_t *kvs = &cb->kvs;
     pmix_kval_t *kv;
@@ -529,7 +540,7 @@ static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb)
 
     if (NULL != cb->key && 1 == pmix_list_get_size(kvs)) {
         kv = (pmix_kval_t *) pmix_list_get_first(kvs);
-        *v = kv->value;
+        cb->value = kv->value;
         kv->value = NULL; // protect the value
         return PMIX_SUCCESS;
     }
@@ -563,40 +574,38 @@ static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb)
     }
     val->data.darray->size = ninfo;
     val->data.darray->array = info;
-    *v = val;
+    cb->value = val;
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t get_data(const char *key, const pmix_info_t info[], size_t ninfo,
-                              pmix_value_t **val, pmix_cb_t *cb)
+static void get_data(int sd, short args, void *cbdata)
 {
+    pmix_cb_t *cb;
     pmix_cb_t *cbret;
     pmix_buffer_t *msg;
     pmix_status_t rc;
     pmix_proc_t proc;
-    pmix_get_logic_t *lg = cb->lg;
+    pmix_get_logic_t *lg;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    pmix_output_verbose(2, pmix_client_globals.get_output, "pmix: getnbfn value for proc %s key %s",
-                        PMIX_NAME_PRINT(&lg->p), (NULL == key) ? "NULL" : key);
+    PMIX_ACQUIRE_OBJECT(cb);
+    cb = (pmix_cb_t*)cbdata;
+    lg = cb->lg;
+
+    pmix_output_verbose(2, pmix_client_globals.get_output,
+                        "pmix:client:get_data value for proc %s key %s",
+                        PMIX_NAME_PRINT(&lg->p), (NULL == cb->key) ? "NULL" : cb->key);
 
     /* check the data provided to us by the server first */
-    if (NULL != key) {
-        cb->key = strdup(key);
-    }
     cb->proc = &lg->p;
     cb->scope = lg->scope;
-    cb->info = (pmix_info_t*)info;
-    cb->ninfo = ninfo;
 
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
     if (PMIX_SUCCESS == rc) {
         pmix_output_verbose(5, pmix_client_globals.get_output,
                             "pmix:client data found in server-provided data");
-        rc = process_values(val, cb);
-        if (PMIX_SUCCESS == rc) {
-            rc = PMIX_OPERATION_SUCCEEDED;
-        }
-        return rc;
+        cb->status = process_values(cb);
+        goto done;
     }
     pmix_output_verbose(5, pmix_client_globals.get_output,
                         "pmix:client data NOT found in server-provided data");
@@ -610,14 +619,12 @@ static pmix_status_t get_data(const char *key, const pmix_info_t info[], size_t 
         if (PMIX_SUCCESS == rc) {
             pmix_output_verbose(5, pmix_client_globals.get_output,
                                 "pmix:client data found in internal hash data");
-            rc = process_values(val, cb);
-            if (PMIX_SUCCESS == rc) {
-                rc = PMIX_OPERATION_SUCCEEDED;
-            }
-            return rc;
+            cb->status = process_values(cb);
+            goto done;
         }
     }
-    pmix_output_verbose(5, pmix_client_globals.get_output, "pmix:client job-level data NOT found");
+    pmix_output_verbose(5, pmix_client_globals.get_output,
+                        "pmix:client job-level data NOT found");
 
     /* we may wind up requesting the data using a different rank as an
      * indicator of the breadth of data we want, but we will need to
@@ -644,27 +651,37 @@ static pmix_status_t get_data(const char *key, const pmix_info_t info[], size_t 
              * server, they should ask us to refresh the cache */
             pmix_output_verbose(5, pmix_client_globals.get_output,
                                 "pmix:client returning NOT FOUND error");
-            return PMIX_ERR_NOT_FOUND;
+            cb->status = PMIX_ERR_NOT_FOUND;
+            goto done;
         }
     }
 
     /* if we got here, then we don't have the data for this proc. If we
      * are a server, or we are a client and not connected, then there is
      * nothing more we can do */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)
-        || (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !pmix_globals.connected)) {
-        return PMIX_ERR_NOT_FOUND;
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !pmix_globals.connected)) {
+        cb->status = PMIX_ERR_NOT_FOUND;
+        goto done;
+    }
+
+    /* since we are looking for a non-reserved key, check to see if we already
+     * have the data for this proc - if we do, then no point in asking for
+     * it again */
+    if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
+        cb->status = rc;
+        goto done;
     }
 
     /* we also have to check the user's directives to see if they do not want
      * us to attempt to retrieve it from the server */
     if (lg->optional) {
         /* they don't want us to try and retrieve it */
-        pmix_output_verbose(
-            2, pmix_client_globals.get_output,
-            "PMIx_Get key=%s for rank = %u, namespace = %s was not found - request was optional",
-            cb->key, cb->pname.rank, cb->pname.nspace);
-        return PMIX_ERR_NOT_FOUND;
+        pmix_output_verbose(2, pmix_client_globals.get_output,
+                            "PMIx_Get key=%s for rank = %u, namespace = %s was not found - request was optional",
+                            cb->key, cb->pname.rank, cb->pname.nspace);
+        cb->status = PMIX_ERR_NOT_FOUND;
+        goto done;
     }
 
     /* see if we already have a request in place with the server for data from
@@ -675,16 +692,18 @@ static pmix_status_t get_data(const char *key, const pmix_info_t info[], size_t 
             /* we do have a pending request, but we still need to track this
              * outstanding request so we can satisfy it once the data is returned */
             pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
-            return PMIX_SUCCESS; // indicate waiting for response
+            cb->status = PMIX_SUCCESS; // indicate waiting for response
+            goto done;
         }
     }
 
     /* we don't have a pending request, so let's create one */
-    msg = _pack_get(cb->proc->nspace, proc.rank, cb->key, info, ninfo, PMIX_GETNB_CMD);
+    msg = _pack_get(cb->proc->nspace, proc.rank, cb->key,
+                    cb->info, cb->ninfo, PMIX_GETNB_CMD);
     if (NULL == msg) {
-        rc = PMIX_ERROR;
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        cb->status = PMIX_ERROR;
+        PMIX_ERROR_LOG(cb->status);
+        goto done;
     }
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
@@ -698,10 +717,94 @@ static pmix_status_t get_data(const char *key, const pmix_info_t info[], size_t 
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, _getnb_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
-        return PMIX_ERROR;
+        cb->status = PMIX_ERROR;
+        goto done;
     }
+    return;
+
+done:
     /* we made a lot of changes to cb, so ensure they get
      * written out before we return */
     PMIX_POST_OBJECT(cb);
-    return PMIX_SUCCESS;
+    if (cb->checked) {
+        gcbfn(0, 0, cb);
+    } else {
+        cb->cbfunc.valuefn(cb->status, cb->value, cb->cbdata);
+    }
+    return;
+}
+
+static void refcb(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                  pmix_buffer_t *buf, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    int32_t cnt;
+    pmix_status_t rc, ret;
+
+    PMIX_ACQUIRE_OBJECT(cb);
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
+
+    if (NULL == cb) {
+        /* nothing we can do */
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return;
+    }
+    /* a zero-byte buffer indicates that this recv is being
+     * completed due to a lost connection */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        pmix_output_verbose(2, pmix_client_globals.get_output,
+                            "pmix: refcb server lost connection");
+        ret = PMIX_ERR_LOST_CONNECTION;
+        goto done;
+    }
+
+    /* unpack the status */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+    }
+
+done:
+    cb->status = ret;
+    /* release the lock */
+    PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
+    return;
+}
+
+static pmix_status_t refresh_cache(void)
+{
+    pmix_cb_t cb;
+    pmix_buffer_t *msg;
+    pmix_status_t rc;
+    pmix_cmd_t cmd = PMIX_REFRESH_CACHE;
+
+    pmix_output_verbose(2, pmix_client_globals.get_output,
+                        "%s REQUESTING CACHE REFRESH BY SERVER",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    /* pack a quick message to the server asking it
+     * to refresh our cache */
+    msg = PMIX_NEW(pmix_buffer_t);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
+
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+
+    /* send to the server */
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, refcb, (void *)&cb);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&cb);
+        return rc;
+    }
+    PMIX_WAIT_THREAD(&cb.lock);
+    rc = cb.status;
+    PMIX_DESTRUCT(&cb);
+    return rc;
 }
