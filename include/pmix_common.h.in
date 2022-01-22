@@ -46,7 +46,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -184,6 +184,10 @@ typedef uint32_t pmix_rank_t;
                                                                     //        GPU, and other devices
 #define PMIX_SINGLETON                      "pmix.singleton"        // (char*) String representation (nspace.rank) of proc ID for the singleton
                                                                     //         the server was started to support
+#define PMIX_BIND_PROGRESS_THREAD           "pmix.bind.pt"          // (char*) Comma-delimited ranges of CPUs that the internal PMIx progress
+                                                                    //         thread shall be bound to
+#define PMIX_BIND_REQUIRED                  "pmix.bind.reqd"        // (bool) Return error if the internal PMIx progress thread cannot be bound
+
 
 /* tool-related attributes */
 #define PMIX_TOOL_NSPACE                    "pmix.tool.nspace"      // (char*) Name of the nspace to use for this tool

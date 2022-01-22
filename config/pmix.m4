@@ -733,6 +733,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_PROG_GREP
     AC_PROG_EGREP
 
+    # This check must come after PMIX_CONFIG_THREADS
+    AC_CHECK_FUNCS([pthread_setaffinity_np])
+
     ##################################
     # Visibility
     ##################################

@@ -52,8 +52,22 @@ PMIX_IOF_OUTPUT_TO_DIRECTORY        "pmix.iof.dir"          // (char*) direct ap
 PMIX_IOF_OUTPUT_TO_FILE             "pmix.iof.file"         // (char*) direct application output into files of form
                                                             //         "<filename>.rank" with both stdout and stderr redirected into it
 PMIX_IOF_RANK_OUTPUT                "pmix.iof.rank"         // (bool) Tag output with the rank it came from
+PMIX_IOF_OUTPUT_RAW                 "pmix.iof.raw"          // (bool) Do not buffer output to be written as complete lines - output
+                                                            //        characters as the stream delivers them
 PMIX_NODE_OVERSUBSCRIBED            "pmix.ndosub"           // (bool) true if number of procs from this job on this node
                                                             //        exceeds the number of slots allocated to it
+PMIX_SINGLETON                      "pmix.singleton"        // (char*) String representation (nspace.rank) of proc ID for the singleton
+                                                            //         the server was started to support
+PMIX_JOB_TIMEOUT                    "pmix.job.time"         // (int) time in sec before job should time out (0 => infinite)
+PMIX_SPAWN_TIMEOUT                  "pmix.sp.time"          // (int) time in sec before spawn operation should time out (0 => infinite)
+                                                            //       Logically equivalent to passing the PMIX_TIMEOUT attribute to the
+                                                            //       PMIx_Spawn API, it is provided as a separate attribute to distinguish
+                                                            //       it from the PMIX_JOB_TIMEOUT attribute
+PMIX_LOCAL_COLLECTIVE_STATUS        "pmix.loc.col.st"       // (pmix_status_t) status code for local collective operation bei>
+                                                            //         reported to host by server library
+PMIX_BIND_PROGRESS_THREAD           "pmix.bind.pt"          // (char*) Comma-delimited ranges of CPUs that the internal PMIx progress
+                                                            //         thread shall be bound to
+PMIX_BIND_REQUIRED                  "pmix.bind.reqd"        // (bool) Return error if the internal PMIx progress thread cannot be bound
 
 
 
