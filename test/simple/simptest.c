@@ -17,7 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -397,7 +397,7 @@ int main(int argc, char **argv)
     PMIX_INFO_FREE(info, ninfo);
 
     /* get our own event base */
-    simptest_evbase = pmix_progress_thread_init("simptest");
+    simptest_evbase = pmix_progress_thread_init("simptest", NULL, false);
     pmix_progress_thread_start("simptest");
 
     /* register the default errhandler */
