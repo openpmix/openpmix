@@ -23,7 +23,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -49,6 +49,8 @@ static bool pmix_register_done = false;
 char *pmix_net_private_ipv4 = NULL;
 int pmix_event_caching_window = 1;
 bool pmix_suppress_missing_data_warning = false;
+char *pmix_progress_thread_cpus = NULL;
+bool pmix_bind_progress_thread_reqd = false;
 
 pmix_status_t pmix_register_params(void)
 {
@@ -296,6 +298,19 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_1,
                                       PMIX_MCA_BASE_VAR_SCOPE_ALL,
                                       &pmix_server_globals.max_iof_cache);
+
+    (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "progress_thread_cpus",
+                                      "Comma-delimited list of ranges of CPUs to which"
+                                      "the internal PMIx progress thread is to be bound",
+                                      PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
+                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+                                      PMIX_MCA_BASE_VAR_SCOPE_ALL, &pmix_progress_thread_cpus);
+
+    (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "bind_progress_thread_reqd",
+                                      "Whether binding of internal PMIx progress thread is required",
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
+                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+                                      PMIX_MCA_BASE_VAR_SCOPE_ALL, &pmix_bind_progress_thread_reqd);
 
     pmix_hwloc_register();
     return PMIX_SUCCESS;

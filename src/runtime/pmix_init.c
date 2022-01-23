@@ -74,20 +74,22 @@ PMIX_EXPORT bool pmix_init_called = false;
  * Initialize only those entries that are not covered
  * by MCA params or are complex structures initialized
  * below */
-PMIX_EXPORT pmix_globals_t pmix_globals = {.init_cntr = 0,
-                                           .mypeer = NULL,
-                                           .hostname = NULL,
-                                           .nodeid = UINT32_MAX,
-                                           .pindex = 0,
-                                           .evbase = NULL,
-                                           .debug_output = -1,
-                                           .connected = false,
-                                           .commits_pending = false,
-                                           .pushstdin = false,
-                                           .topology = {NULL, NULL},
-                                           .cpuset = {NULL, NULL},
-                                           .external_topology = false,
-                                           .external_progress = false};
+PMIX_EXPORT pmix_globals_t pmix_globals = {
+    .init_cntr = 0,
+    .mypeer = NULL,
+    .hostname = NULL,
+    .nodeid = UINT32_MAX,
+    .pindex = 0,
+    .evbase = NULL,
+    .debug_output = -1,
+    .connected = false,
+    .commits_pending = false,
+    .pushstdin = false,
+    .topology = {NULL, NULL},
+    .cpuset = {NULL, NULL},
+    .external_topology = false,
+    .external_progress = false
+};
 
 static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_num, void *occupant)
 {
@@ -106,8 +108,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_info_t *iptr;
     size_t minfo;
     bool keepfqdn = false;
-    char *cpuset = NULL;
-    bool bind_reqd = false;
 
     if (++pmix_initialized != 1) {
         if (pmix_initialized < 1) {
@@ -215,9 +215,12 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
                 keepfqdn = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_BIND_PROGRESS_THREAD)) {
-                cpuset = info[n].value.data.string;
+                if (NULL != pmix_progress_thread_cpus) {
+                    free(pmix_progress_thread_cpus);
+                }
+                pmix_progress_thread_cpus = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_BIND_REQUIRED)) {
-                bind_reqd = PMIX_INFO_TRUE(&info[n]);
+                pmix_bind_progress_thread_reqd = PMIX_INFO_TRUE(&info[n]);
             } else {
                 pmix_iof_check_flags(&info[n], &pmix_globals.iof_flags);
             }
@@ -227,7 +230,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_event_use_threads();
 
     /* create an event base and progress thread for us */
-    if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL, cpuset, bind_reqd))) {
+    if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
         error = "progress thread";
         ret = PMIX_ERROR;
         goto return_error;
