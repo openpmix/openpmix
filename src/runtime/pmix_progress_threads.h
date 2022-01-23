@@ -33,9 +33,7 @@
  * already-running progress thread will be returned (i.e., no new
  * progress thread will be started).
  */
-PMIX_EXPORT pmix_event_base_t *pmix_progress_thread_init(const char *name,
-                                                         const char *cpuset,
-                                                         bool bind_reqd);
+PMIX_EXPORT pmix_event_base_t *pmix_progress_thread_init(const char *name);
 
 PMIX_EXPORT pmix_status_t pmix_progress_thread_start(const char *name);
 

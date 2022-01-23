@@ -15,11 +15,6 @@
 
 #include "src/include/pmix_config.h"
 
-#ifdef HAVE_PTHREAD_SETAFFINITY_NP
-#define _GNU_SOURCE 1
-#define __USE_GNU 1
-#endif
-
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
@@ -30,6 +25,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/runtime/pmix_progress_threads.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/threads/threads.h"
 #include "src/util/error.h"
 #include "src/util/fd.h"
@@ -50,8 +46,6 @@ typedef struct {
     /* This event will always be set on the ev_base (so that the
        ev_base is not empty!) */
     pmix_event_t block;
-    char *cpuset;
-    bool bind_required;
     bool engine_constructed;
     pmix_thread_t engine;
 #if PMIX_HAVE_LIBEV
@@ -68,8 +62,6 @@ static void tracker_constructor(pmix_progress_tracker_t *p)
     p->name = NULL;
     p->ev_base = NULL;
     p->ev_active = false;
-    p->cpuset = NULL;
-    p->bind_required = false;
     p->engine_constructed = false;
 #if PMIX_HAVE_LIBEV
     pthread_mutex_init(&p->mutex, NULL);
@@ -86,9 +78,6 @@ static void tracker_destructor(pmix_progress_tracker_t *p)
     }
     if (NULL != p->ev_base) {
         pmix_event_base_free(p->ev_base);
-    }
-    if (NULL != p->cpuset) {
-        free(p->cpuset);
     }
     if (p->engine_constructed) {
         PMIX_DESTRUCT(&p->engine);
@@ -282,10 +271,10 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
     }
 
 #ifdef HAVE_PTHREAD_SETAFFINITY_NP
-    if (NULL != trk->cpuset) {
+    if (NULL != pmix_progress_thread_cpus) {
         CPU_ZERO(&cpuset);
         // comma-delimited list of cpu ranges
-        ranges = pmix_argv_split(trk->cpuset, ',');
+        ranges = pmix_argv_split(pmix_progress_thread_cpus, ',');
         for (n=0; NULL != ranges[n]; n++) {
             // look for '-'
             start = strtoul(ranges[n], &dash, 10);
@@ -300,7 +289,7 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
             }
         }
         rc = pthread_setaffinity_np(trk->engine.t_handle, sizeof(cpu_set_t), &cpuset);
-        if (0 != rc && trk->bind_required) {
+        if (0 != rc && pmix_bind_progress_thread_reqd) {
             pmix_output(0, "Failed to bind progress thread %s",
                         (NULL == trk->name) ? "NULL" : trk->name);
             rc = PMIX_ERR_NOT_SUPPORTED;
@@ -312,9 +301,7 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
     return rc;
 }
 
-pmix_event_base_t *pmix_progress_thread_init(const char *name,
-                                             const char *cpuset,
-                                             bool bind_required)
+pmix_event_base_t *pmix_progress_thread_init(const char *name)
 {
     pmix_progress_tracker_t *trk;
 
@@ -349,10 +336,6 @@ pmix_event_base_t *pmix_progress_thread_init(const char *name,
         PMIX_RELEASE(trk);
         return NULL;
     }
-    if (NULL != cpuset) {
-        trk->cpuset = strdup(cpuset);
-    }
-    trk->bind_required = bind_required;
 
     if (NULL == (trk->ev_base = pmix_event_base_create())) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);

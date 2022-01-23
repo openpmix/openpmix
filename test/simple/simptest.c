@@ -397,7 +397,7 @@ int main(int argc, char **argv)
     PMIX_INFO_FREE(info, ninfo);
 
     /* get our own event base */
-    simptest_evbase = pmix_progress_thread_init("simptest", NULL, false);
+    simptest_evbase = pmix_progress_thread_init("simptest");
     pmix_progress_thread_start("simptest");
 
     /* register the default errhandler */
