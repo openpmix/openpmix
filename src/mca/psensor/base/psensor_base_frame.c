@@ -51,8 +51,6 @@ pmix_psensor_base_t pmix_psensor_base = {
 };
 
 static bool use_separate_thread = false;
-static char *cpuset = NULL;
-static bool bind_reqd = false;
 
 static int pmix_psensor_register(pmix_mca_base_register_flag_t flags)
 {
@@ -62,16 +60,6 @@ static int pmix_psensor_register(pmix_mca_base_register_flag_t flags)
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
                                       PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
                                       PMIX_MCA_BASE_VAR_SCOPE_READONLY, &use_separate_thread);
-    (void) pmix_mca_base_var_register("pmix", "psensor", "base", "cpuset",
-                                      "Bind the sensor thread to the specified CPUs",
-                                      PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY, &cpuset);
-    (void) pmix_mca_base_var_register("pmix", "psensor", "base", "bind_required",
-                                      "Binding of sensor thread is required",
-                                      PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY, &bind_reqd);
     return PMIX_SUCCESS;
 }
 
@@ -99,7 +87,7 @@ static int pmix_psensor_base_open(pmix_mca_base_open_flag_t flags)
 
     if (use_separate_thread) {
         /* create an event base and progress thread for us */
-        pmix_psensor_base.evbase = pmix_progress_thread_init("PSENSOR", cpuset, bind_reqd);
+        pmix_psensor_base.evbase = pmix_progress_thread_init("PSENSOR");
         if (NULL == pmix_psensor_base.evbase) {
             return PMIX_ERROR;
         }
