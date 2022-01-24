@@ -18,7 +18,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -74,20 +74,22 @@ PMIX_EXPORT bool pmix_init_called = false;
  * Initialize only those entries that are not covered
  * by MCA params or are complex structures initialized
  * below */
-PMIX_EXPORT pmix_globals_t pmix_globals = {.init_cntr = 0,
-                                           .mypeer = NULL,
-                                           .hostname = NULL,
-                                           .nodeid = UINT32_MAX,
-                                           .pindex = 0,
-                                           .evbase = NULL,
-                                           .debug_output = -1,
-                                           .connected = false,
-                                           .commits_pending = false,
-                                           .pushstdin = false,
-                                           .topology = {NULL, NULL},
-                                           .cpuset = {NULL, NULL},
-                                           .external_topology = false,
-                                           .external_progress = false};
+PMIX_EXPORT pmix_globals_t pmix_globals = {
+    .init_cntr = 0,
+    .mypeer = NULL,
+    .hostname = NULL,
+    .nodeid = UINT32_MAX,
+    .pindex = 0,
+    .evbase = NULL,
+    .debug_output = -1,
+    .connected = false,
+    .commits_pending = false,
+    .pushstdin = false,
+    .topology = {NULL, NULL},
+    .cpuset = {NULL, NULL},
+    .external_topology = false,
+    .external_progress = false
+};
 
 static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_num, void *occupant)
 {
@@ -178,6 +180,52 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
         goto return_error;
     }
 
+    /* scan incoming info for directives */
+    if (NULL != info) {
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
+                if (NULL != pmix_globals.hostname) {
+                    free(pmix_globals.hostname);
+                }
+                pmix_globals.hostname = strdup(info[n].value.data.string);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
+                PMIX_VALUE_GET_NUMBER(ret, &info[n].value, pmix_globals.nodeid, uint32_t);
+                if (PMIX_SUCCESS != ret) {
+                    goto return_error;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
+                /* contains info about our node */
+                iptr = (pmix_info_t *) info[n].value.data.darray->array;
+                minfo = info[n].value.data.darray->size;
+                for (m = 0; m < minfo; m++) {
+                    if (PMIX_CHECK_KEY(&iptr[m], PMIX_HOSTNAME)) {
+                        if (NULL != pmix_globals.hostname) {
+                            free(pmix_globals.hostname);
+                        }
+                        pmix_globals.hostname = strdup(iptr[m].value.data.string);
+                    } else if (PMIX_CHECK_KEY(&iptr[m], PMIX_NODEID)) {
+                        PMIX_VALUE_GET_NUMBER(ret, &iptr[m].value, pmix_globals.nodeid, uint32_t);
+                        if (PMIX_SUCCESS != ret) {
+                            goto return_error;
+                        }
+                    }
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_PROGRESS)) {
+                pmix_globals.external_progress = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
+                keepfqdn = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_BIND_PROGRESS_THREAD)) {
+                if (NULL != pmix_progress_thread_cpus) {
+                    free(pmix_progress_thread_cpus);
+                }
+                pmix_progress_thread_cpus = strdup(info[n].value.data.string);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_BIND_REQUIRED)) {
+                pmix_bind_progress_thread_reqd = PMIX_INFO_TRUE(&info[n]);
+            } else {
+                pmix_iof_check_flags(&info[n], &pmix_globals.iof_flags);
+            }
+        }
+    }
     /* tell libevent that we need thread support */
     pmix_event_use_threads();
 
@@ -294,45 +342,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
         goto return_error;
     }
 
-    /* scan incoming info for directives */
-    if (NULL != info) {
-        for (n = 0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
-                if (NULL != pmix_globals.hostname) {
-                    free(pmix_globals.hostname);
-                }
-                pmix_globals.hostname = strdup(info[n].value.data.string);
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
-                PMIX_VALUE_GET_NUMBER(ret, &info[n].value, pmix_globals.nodeid, uint32_t);
-                if (PMIX_SUCCESS != ret) {
-                    goto return_error;
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
-                /* contains info about our node */
-                iptr = (pmix_info_t *) info[n].value.data.darray->array;
-                minfo = info[n].value.data.darray->size;
-                for (m = 0; m < minfo; m++) {
-                    if (PMIX_CHECK_KEY(&iptr[m], PMIX_HOSTNAME)) {
-                        if (NULL != pmix_globals.hostname) {
-                            free(pmix_globals.hostname);
-                        }
-                        pmix_globals.hostname = strdup(iptr[m].value.data.string);
-                    } else if (PMIX_CHECK_KEY(&iptr[m], PMIX_NODEID)) {
-                        PMIX_VALUE_GET_NUMBER(ret, &iptr[m].value, pmix_globals.nodeid, uint32_t);
-                        if (PMIX_SUCCESS != ret) {
-                            goto return_error;
-                        }
-                    }
-                }
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_PROGRESS)) {
-                pmix_globals.external_progress = PMIX_INFO_TRUE(&info[n]);
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
-                keepfqdn = PMIX_INFO_TRUE(&info[n]);
-            } else {
-                pmix_iof_check_flags(&info[n], &pmix_globals.iof_flags);
-            }
-        }
-    }
 
     /* the passed-in hostname trumps all, so don't overwrite it
      * if we were given one */

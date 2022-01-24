@@ -16,7 +16,7 @@
 # Copyright (c) 2010      Oracle and/or its affiliates.  All rights
 #                         reserved.
 # Copyright (c) 2016      Intel, Inc. All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # Copyright (c) 2021      IBM Corporation.  All rights reserved.
 #
 # $COPYRIGHT$
@@ -35,7 +35,6 @@ EXTRA_DIST = \
 	pmix_check_compiler_version.m4 \
     pmix_check_curl.m4 \
     pmix_check_cython.py \
-	pmix_check_icc.m4 \
 	pmix_check_ident.m4 \
     pmix_check_jansson.m4 \
     pmix_check_lustre.m4 \

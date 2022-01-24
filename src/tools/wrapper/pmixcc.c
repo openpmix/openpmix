@@ -18,7 +18,7 @@
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -352,7 +352,6 @@ static void data_callback(const char *key, const char *value)
             free(line);
         }
     } else if (0 == strcmp(key, "pmixincludedir")) {
-        printf("EXPANDING!\n");
         if (NULL != value) {
             options_data[parse_options_idx].path_pmixincludedir = pmix_pinstall_dirs_expand(value);
             if (0 != strcmp(options_data[parse_options_idx].path_pmixincludedir, "/usr/include")) {
@@ -377,14 +376,14 @@ static void data_callback(const char *key, const char *value)
     }
 }
 
-static int data_init(const char *appname)
+static int data_init(void)
 {
     int ret;
     char *datafile;
 
     /* now load the data */
-    pmix_asprintf(&datafile, "%s%s%s-wrapper-data.txt", pmix_pinstall_dirs.pmixdatadir,
-                  PMIX_PATH_SEP, appname);
+    pmix_asprintf(&datafile, "%s%spmixcc-wrapper-data.txt", pmix_pinstall_dirs.pmixdatadir,
+                  PMIX_PATH_SEP);
     if (NULL == datafile)
         return PMIX_ERR_OUT_OF_RESOURCE;
 
@@ -541,7 +540,7 @@ int main(int argc, char *argv[])
     }
 #endif /* defined(EXEEXT) */
 
-    if (PMIX_SUCCESS != (ret = data_init(base_argv0))) {
+    if (PMIX_SUCCESS != (ret = data_init())) {
         fprintf(stderr, "Error parsing data file %s: %s\n", base_argv0, PMIx_Error_string(ret));
         return ret;
     }

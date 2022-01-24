@@ -23,7 +23,7 @@ dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
 dnl
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
@@ -347,11 +347,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         CFLAGS=$PMIX_CFLAGS_save
     fi
     PMIX_VAR_SCOPE_POP
-
-    if test "x$CC" = "xicc"; then
-        PMIX_CHECK_ICC_VARARGS
-    fi
-
 
     ##################################
     # Only after setting up
@@ -737,6 +732,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Check for some common system programs that we need
     AC_PROG_GREP
     AC_PROG_EGREP
+
+    # This check must come after PMIX_CONFIG_THREADS
+    AC_CHECK_FUNCS([pthread_setaffinity_np])
 
     ##################################
     # Visibility

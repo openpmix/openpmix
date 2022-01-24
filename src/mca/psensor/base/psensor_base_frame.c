@@ -5,7 +5,7 @@
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -87,7 +87,8 @@ static int pmix_psensor_base_open(pmix_mca_base_open_flag_t flags)
 
     if (use_separate_thread) {
         /* create an event base and progress thread for us */
-        if (NULL == (pmix_psensor_base.evbase = pmix_progress_thread_init("PSENSOR"))) {
+        pmix_psensor_base.evbase = pmix_progress_thread_init("PSENSOR");
+        if (NULL == pmix_psensor_base.evbase) {
             return PMIX_ERROR;
         }
 

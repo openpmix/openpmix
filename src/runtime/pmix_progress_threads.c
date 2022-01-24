@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,6 +25,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/runtime/pmix_progress_threads.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/threads/threads.h"
 #include "src/util/error.h"
 #include "src/util/fd.h"
@@ -45,7 +46,6 @@ typedef struct {
     /* This event will always be set on the ev_base (so that the
        ev_base is not empty!) */
     pmix_event_t block;
-
     bool engine_constructed;
     pmix_thread_t engine;
 #if PMIX_HAVE_LIBEV
@@ -251,6 +251,12 @@ static void stop_progress_engine(pmix_progress_tracker_t *trk)
 
 static int start_progress_engine(pmix_progress_tracker_t *trk)
 {
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
+    cpu_set_t cpuset;
+    char **ranges, *dash;
+    int k, n, start, end;
+#endif
+
     assert(!trk->ev_active);
     trk->ev_active = true;
 
@@ -261,7 +267,37 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
     int rc = pmix_thread_start(&trk->engine);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        return rc;
     }
+
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
+    if (NULL != pmix_progress_thread_cpus) {
+        CPU_ZERO(&cpuset);
+        // comma-delimited list of cpu ranges
+        ranges = pmix_argv_split(pmix_progress_thread_cpus, ',');
+        for (n=0; NULL != ranges[n]; n++) {
+            // look for '-'
+            start = strtoul(ranges[n], &dash, 10);
+            if (NULL == dash) {
+                CPU_SET(start, &cpuset);
+            } else {
+                ++dash;  // skip over the '-'
+                end = strtoul(dash, NULL, 10);
+                for (k=start; k < end; k++) {
+                    CPU_SET(k, &cpuset);
+                }
+            }
+        }
+        rc = pthread_setaffinity_np(trk->engine.t_handle, sizeof(cpu_set_t), &cpuset);
+        if (0 != rc && pmix_bind_progress_thread_reqd) {
+            pmix_output(0, "Failed to bind progress thread %s",
+                        (NULL == trk->name) ? "NULL" : trk->name);
+            rc = PMIX_ERR_NOT_SUPPORTED;
+        } else {
+            rc = PMIX_SUCCESS;
+        }
+    }
+#endif
     return rc;
 }
 
