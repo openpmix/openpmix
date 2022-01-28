@@ -3,7 +3,7 @@
 # Copyright (c) 2009-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -92,6 +92,27 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
     PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_hwloc_LDFLAGS])
     PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_hwloc_LIBS])
+
+    AC_MSG_CHECKING([if hwloc version is 2.5 or greater])
+    AC_COMPILE_IFELSE(
+          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [[
+    #if HWLOC_API_VERSION < 0x00020500
+    #error "hwloc API version is less than 0x00020500"
+    #endif
+          ]])],
+          [AC_MSG_RESULT([yes])
+           AC_MSG_WARN([***********************************************************])
+           AC_MSG_WARN([PMIx is not compatible with HWLOC versions 2.5.0 or greater])
+           AC_MSG_WARN([due to a bug in HWLOC's setting of environmental variables])
+           AC_MSG_WARN([and due to introduction of dependency on third-party libraries.])
+           AC_MSG_WARN([It is unclear when these issues will be resolved in new HWLOC.])
+           AC_MSG_WARN([Support for future releases will resume once that has occurred.])
+           AC_MSG_WARN([For now, please downgrade the HWLOC installation to v2.4.x or])
+           AC_MSG_WARN([earlier.])
+           AC_MSG_WARN([***********************************************************])
+           AC_MSG_ERROR([Cannot continue])])
+
 
     AC_MSG_CHECKING([if hwloc version is 1.5 or greater])
     AC_COMPILE_IFELSE(
