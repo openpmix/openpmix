@@ -17,7 +17,7 @@
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  *
  * Copyright (c) 2017      Intel, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,8 +29,6 @@
 #define PMIX_MUTEX_H 1
 
 #include "pmix_config.h"
-
-#include "src/threads/thread_usage.h"
 
 BEGIN_C_DECLS
 
