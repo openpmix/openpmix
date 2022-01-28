@@ -14,7 +14,7 @@
 # Copyright (c) 2007-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -37,6 +37,7 @@ nodist_headers = \
 
 headers += \
         align.h \
+        atomic.h \
         hash_string.h \
         pmix_socket_errno.h \
         pmix_stdint.h \
@@ -47,7 +48,6 @@ headers += \
         pmix_portable_platform.h \
         pmix_portable_platform_real.h \
         frameworks.h \
-        pmix_stdatomic.h \
         dictionary.h
 
 if WANT_INSTALL_HEADERS
