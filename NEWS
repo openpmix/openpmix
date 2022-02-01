@@ -1,6 +1,6 @@
 Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2020 IBM Corporation.  All rights reserved.
-Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
                         All Rights reserved.
 $COPYRIGHT$
@@ -23,7 +23,7 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.1.1 -- TBD
+4.1.1 -- 1 Feb 2022
 ----------------------
 **** NOTE: As of v4.1.1, PMIx includes an EXCEPTIONS file that lists
 **** all deviations from the PMIx Standard. This primarily includes
@@ -31,6 +31,17 @@ multiple release branches.
 
 **** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
 **** for building and installing man pages.
+
+**** NOTE: PMIx has identified a bug in HWLOC versions 2.5.0 thru
+**** 2.7.0 (inclusive) that causes PMIx to segfault during certain
+**** operations. We have worked with the HWLOC developers to fix
+**** that problem, and the fix will be included beginning in HWLOC
+**** version 2.7.1. Accordingly, PMIx now checks for the problem
+**** HWLOC versions and will error out of configure if they are
+**** encountered.
+
+ - PR #2445 and 2447: Update HWLOC version detection
+    - Reject versions 2.5.0-2.7.0, inclusive
  - PR #2428: Update for rc6
     - Enable buffered IOF output
     - Cleanups and docs for rc6
