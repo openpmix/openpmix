@@ -1,6 +1,6 @@
 Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2020 IBM Corporation.  All rights reserved.
-Copyright (c) 2021      Nanook Consulting  All rights reserved.
+Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
                         All Rights reserved.
 $COPYRIGHT$
@@ -26,7 +26,7 @@ multiple release branches.
 Master (not on release branches yet)
 ------------------------------------
 
-4.1.1lz1 (not official release)
+4.1.1 -- 1 Feb 2022
 ----------------------
 **** NOTE: As of v4.1.1, PMIx includes an EXCEPTIONS file that lists
 **** all deviations from the PMIx Standard. This primarily includes
@@ -35,6 +35,50 @@ Master (not on release branches yet)
 **** NOTE: As of v4.1.1, PMIx no longer has a dependency on "pandoc"
 **** for building and installing man pages.
 
+**** NOTE: PMIx has identified a bug in HWLOC versions 2.5.0 thru
+**** 2.7.0 (inclusive) that causes PMIx to segfault during certain
+**** operations. We have worked with the HWLOC developers to fix
+**** that problem, and the fix will be included beginning in HWLOC
+**** version 2.7.1. Accordingly, PMIx now checks for the problem
+**** HWLOC versions and will error out of configure if they are
+**** encountered.
+
+ - PR #2445 and 2447: Update HWLOC version detection
+    - Reject versions 2.5.0-2.7.0, inclusive
+ - PR #2428: Update for rc6
+    - Enable buffered IOF output
+    - Cleanups and docs for rc6
+ - PR #2426: Updates from master
+    - Updates to cleanup conflicts and touchups
+    - Silence Coverity warnings
+    - Be more flexible in library handling
+    - Finish cleaning up nocopy behavior
+    - test_v2: use static declaration for client parser
+    - Respect the nocopy qualifier
+    - Add static library note to README
+    - PMIX_HAVE_LIBEV and PMIX_HAVE_LIBEVENT flags must always
+        be defined
+    - Fix two bugs in PMIX_FLAGS_APPEND_MOVE
+    - Fix a problem using PMIX_RANK
+    - Final minor diddles of configure summary categories
+    - Add configure support for pgpu/pnet components
+    - libevent: prefer compiler tests over linking tests
+    - Cleanup libevent/libev selection logic
+    - Remove pkg-config dependency list
+    - Add wrapper compiler mca link argument passing
+    - Reintroduce PMIX_DYN_LIB_SUFFIX define
+    - config: remove string checks in hwloc/libevent
+    - Fix devel-check of test_v2
+    - Silence Coverity warning and cleanup code
+    - Fix a number of warnings and cleanup a few things
+    - Select all adapters with IPv4 addresses with specified
+        subnet ranges
+    - Fix environmental variable name in help-pmix-runtime
+    - Remove curl/jansson default search assumption
+    - Remove cobuild remnants from configure
+    - V2 suite test case for multiple inits and finalizes
+ - PR #2410: Mark dependencies private in pkg-config file
+ - PR #2396: Fix the network support components
  - PR #2394: Update for landing zone 1
     - Update NEWS/Version
  - PR #2393:
@@ -118,6 +162,7 @@ Master (not on release branches yet)
              and system malloc instead of the Python malloc for datastructures
              going to PMIx
  - PR #2250: Update attribute support tables
+
 
 4.1.0 -- 29 July 2021
 ----------------------
