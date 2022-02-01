@@ -93,33 +93,33 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_hwloc_LDFLAGS])
     PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_hwloc_LIBS])
 
-    AC_MSG_CHECKING([if hwloc version is 2.5 or greater])
+    AC_MSG_CHECKING([if hwloc version is in 2.5.0-2.7.0 range])
     AC_COMPILE_IFELSE(
-          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [AC_LANG_PROGRAM([#include <hwloc.h>],
           [[
-    #if HWLOC_API_VERSION < 0x00020500
-    #error "hwloc API version is less than 0x00020500"
+    #if HWLOC_VERSION_MAJOR == 2
+    #if (HWLOC_VERSION_MINOR == 7 && HWLOC_VERSION_RELEASE == 0) || HWLOC_VERSION_MINOR == 6 || HWLOC_VERSION_MINOR == 5
+    #error "hwloc version is in blocklist range"
+    #endif
     #endif
           ]])],
+          [AC_MSG_RESULT([no])],
           [AC_MSG_RESULT([yes])
            AC_MSG_WARN([***********************************************************])
-           AC_MSG_WARN([PMIx is not compatible with HWLOC versions 2.5.0 or greater])
-           AC_MSG_WARN([due to a bug in HWLOC's setting of environmental variables])
-           AC_MSG_WARN([and due to introduction of dependency on third-party libraries.])
-           AC_MSG_WARN([It is unclear when these issues will be resolved in new HWLOC.])
-           AC_MSG_WARN([Support for future releases will resume once that has occurred.])
-           AC_MSG_WARN([For now, please downgrade the HWLOC installation to v2.4.x or])
-           AC_MSG_WARN([earlier.])
+           AC_MSG_WARN([PMIx is not compatible with HWLOC versions 2.5.0-2.7.0 (inclusive)])
+           AC_MSG_WARN([due to a bug in HWLOC's setting of environmental variables.])
+           AC_MSG_WARN([Please switch the HWLOC installation to a version outside])
+           AC_MSG_WARN([of that range.])
            AC_MSG_WARN([***********************************************************])
            AC_MSG_ERROR([Cannot continue])])
 
 
     AC_MSG_CHECKING([if hwloc version is 1.5 or greater])
     AC_COMPILE_IFELSE(
-          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [AC_LANG_PROGRAM([#include <hwloc.h>],
           [[
     #if HWLOC_API_VERSION < 0x00010500
-    #error "hwloc API version is less than 0x00010500"
+    #error "hwloc version is less than 0x00010500"
     #endif
           ]])],
           [AC_MSG_RESULT([yes])],
@@ -128,10 +128,10 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
 
     AC_MSG_CHECKING([if hwloc version is 1.8 or greater])
     AC_COMPILE_IFELSE(
-          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [AC_LANG_PROGRAM([#include <hwloc.h>],
           [[
     #if HWLOC_API_VERSION < 0x00010800
-    #error "hwloc API version is less than 0x00010800"
+    #error "hwloc version is less than 0x00010800"
     #endif
           ]])],
           [AC_MSG_RESULT([yes])
@@ -140,10 +140,10 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
 
     AC_MSG_CHECKING([if hwloc version is 2.0 or greater])
     AC_COMPILE_IFELSE(
-          [AC_LANG_PROGRAM([[#include <hwloc.h>]],
+          [AC_LANG_PROGRAM([#include <hwloc.h>],
           [[
-    #if HWLOC_API_VERSION < 0x00020000
-    #error "hwloc API version is less than 0x00020000"
+    #if HWLOC_VERSION_MAJOR < 2
+    #error "hwloc version is less than 2.x"
     #endif
           ]])],
           [AC_MSG_RESULT([yes])
