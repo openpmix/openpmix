@@ -250,26 +250,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     #
 
     AC_CHECK_SIZEOF(_Bool)
-    AC_CHECK_SIZEOF(char)
     AC_CHECK_SIZEOF(short)
     AC_CHECK_SIZEOF(int)
     AC_CHECK_SIZEOF(long)
-    if test "$ac_cv_type_long_long" = yes; then
-        AC_CHECK_SIZEOF(long long)
-    fi
-    AC_CHECK_SIZEOF(float)
-    AC_CHECK_SIZEOF(double)
-
     AC_CHECK_SIZEOF(void *)
     AC_CHECK_SIZEOF(size_t)
-    if test "$ac_cv_type_ssize_t" = yes ; then
-        AC_CHECK_SIZEOF(ssize_t)
-    fi
-    if test "$ac_cv_type_ptrdiff_t" = yes; then
-        AC_CHECK_SIZEOF(ptrdiff_t)
-    fi
-    AC_CHECK_SIZEOF(wchar_t)
-
     AC_CHECK_SIZEOF(pid_t)
 
     #
@@ -278,26 +263,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_CHECK_ALIGNOF(bool, [AC_INCLUDES_DEFAULT
                             #include <stdbool.h>])
-    AC_CHECK_ALIGNOF(int8_t)
-    AC_CHECK_ALIGNOF(int16_t)
-    AC_CHECK_ALIGNOF(int32_t)
-    AC_CHECK_ALIGNOF(int64_t)
-    AC_CHECK_ALIGNOF(char)
-    AC_CHECK_ALIGNOF(short)
-    AC_CHECK_ALIGNOF(wchar_t)
     AC_CHECK_ALIGNOF(int)
     AC_CHECK_ALIGNOF(long)
+    AC_CHECK_ALIGNOF(size_t)
     if test "$ac_cv_type_long_long" = yes; then
         AC_CHECK_ALIGNOF(long long)
     fi
-    AC_CHECK_ALIGNOF(float)
     AC_CHECK_ALIGNOF(double)
-    if test "$ac_cv_type_long_double" = yes; then
-        AC_CHECK_ALIGNOF(long double)
-    fi
-    AC_CHECK_ALIGNOF(void *)
-    AC_CHECK_ALIGNOF(size_t)
-
 
     #
     # Does the C compiler native support "bool"? (i.e., without

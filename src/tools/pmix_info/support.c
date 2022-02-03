@@ -18,7 +18,7 @@
  * Copyright (c) 2017      IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -1344,19 +1344,11 @@ void pmix_info_do_config(bool want_all)
                   PLATFORM_STRINGIFY(PLATFORM_COMPILER_VERSION_STR));
 
     if (want_all) {
-        pmix_info_out_int("C char size", "compiler:c:sizeof:char", sizeof(char));
         pmix_info_out_int("C bool size", "compiler:c:sizeof:bool", sizeof(bool));
         pmix_info_out_int("C short size", "compiler:c:sizeof:short", sizeof(short));
         pmix_info_out_int("C int size", "compiler:c:sizeof:int", sizeof(int));
         pmix_info_out_int("C long size", "compiler:c:sizeof:long", sizeof(long));
-        pmix_info_out_int("C float size", "compiler:c:sizeof:float", sizeof(float));
-        pmix_info_out_int("C double size", "compiler:c:sizeof:double", sizeof(double));
         pmix_info_out_int("C pointer size", "compiler:c:sizeof:pointer", sizeof(void *));
-        pmix_info_out_int("C char align", "compiler:c:align:char", ALIGNOF_CHAR);
-        pmix_info_out("C bool align", "compiler:c:align:bool", "skipped");
-        pmix_info_out_int("C int align", "compiler:c:align:int", ALIGNOF_INT);
-        pmix_info_out_int("C float align", "compiler:c:align:float", ALIGNOF_FLOAT);
-        pmix_info_out_int("C double align", "compiler:c:align:double", ALIGNOF_DOUBLE);
     }
 
     if (want_all) {
