@@ -572,6 +572,26 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
         pmix_class_initialize(cls);
     }
     if (NULL != object) {
+#if PMIX_ENABLE_DEBUG
+        pthread_mutexattr_t attr;
+        pthread_mutexattr_init(&attr);
+
+        /* set type to ERRORCHECK so that we catch recursive locks */
+#    if PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP
+        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK_NP);
+#    elif PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK
+        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+#    endif /* PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP */
+
+        pthread_mutex_init(&object->obj_lock, &attr);
+        pthread_mutexattr_destroy(&attr);
+
+#else
+
+        /* Without debugging, choose the fastest available mutexes */
+        pthread_mutex_init(&object->obj_lock, NULL);
+
+#endif /* PMIX_ENABLE_DEBUG */
         object->obj_class = cls;
         object->obj_reference_count = 1;
         if (NULL == tma) {
