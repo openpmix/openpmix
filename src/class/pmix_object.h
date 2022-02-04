@@ -14,7 +14,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -128,8 +128,9 @@
 #ifdef HAVE_STDLIB_H
 #    include <stdlib.h>
 #endif /* HAVE_STDLIB_H */
-
-#include "src/threads/thread_usage.h"
+#include <pthread.h>
+#include <stdio.h>
+#include <errno.h>
 
 BEGIN_C_DECLS
 
@@ -220,18 +221,27 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
  * @param NAME   Name of the class to initialize
  */
 #if PMIX_ENABLE_DEBUG
-#    define PMIX_OBJ_STATIC_INIT(BASE_CLASS)                                        \
-        {                                                                           \
-            .obj_magic_id = PMIX_OBJ_MAGIC_ID, .obj_class = PMIX_CLASS(BASE_CLASS), \
-            .obj_reference_count = 1, .obj_tma.malloc = NULL, .obj_tma.data = NULL, \
-            .obj_tma.dontfree = false, .cls_init_file_name = __FILE__,              \
-            .cls_init_lineno = __LINE__,                                            \
+#    define PMIX_OBJ_STATIC_INIT(BASE_CLASS)        \
+        {                                           \
+            .obj_magic_id = PMIX_OBJ_MAGIC_ID,      \
+            .obj_class = PMIX_CLASS(BASE_CLASS),    \
+            .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
+            .obj_reference_count = 1,               \
+            .obj_tma.malloc = NULL,                 \
+            .obj_tma.data = NULL,                   \
+            .obj_tma.dontfree = false,              \
+            .cls_init_file_name = __FILE__,         \
+            .cls_init_lineno = __LINE__,            \
         }
 #else
-#    define PMIX_OBJ_STATIC_INIT(BASE_CLASS)                                                       \
-        {                                                                                          \
-            .obj_class = PMIX_CLASS(BASE_CLASS), .obj_reference_count = 1, .obj_tma.malloc = NULL, \
-            .obj_tma.data = NULL, .obj_tma.dontfree = false,                                       \
+#    define PMIX_OBJ_STATIC_INIT(BASE_CLASS)        \
+        {                                           \
+            .obj_class = PMIX_CLASS(BASE_CLASS),    \
+            .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
+            .obj_reference_count = 1,               \
+            .obj_tma.malloc = NULL,                 \
+            .obj_tma.data = NULL,                   \
+            .obj_tma.dontfree = false,              \
         }
 #endif
 
@@ -246,12 +256,12 @@ struct pmix_object_t {
         struct's memory */
     uint64_t obj_magic_id;
 #endif
+    pthread_mutex_t obj_lock;
     pmix_class_t *obj_class;                 /**< class descriptor */
-    pmix_atomic_int32_t obj_reference_count; /**< reference count */
+    int32_t obj_reference_count;             /**< reference count */
     pmix_tma_t obj_tma;                      /**< allocator for this object */
 #if PMIX_ENABLE_DEBUG
-    const char
-        *cls_init_file_name; /**< In debug mode store the file where the object get contructed */
+    const char *cls_init_file_name; /**< In debug mode store the file where the object get contructed */
     int cls_init_lineno; /**< In debug mode store the line number where the object get contructed */
 #endif                   /* PMIX_ENABLE_DEBUG */
 };
@@ -342,7 +352,7 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
             assert(((pmix_object_t *) (object))->obj_reference_count >= 0);          \
         } while (0)
 #else
-#    define PMIX_RETAIN(object) pmix_obj_update((pmix_object_t *) (object), 1);
+#    define PMIX_RETAIN(object) pmix_obj_update((pmix_object_t *) (object), 1)
 #endif
 
 /**
@@ -562,6 +572,26 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
         pmix_class_initialize(cls);
     }
     if (NULL != object) {
+#if PMIX_ENABLE_DEBUG
+        pthread_mutexattr_t attr;
+        pthread_mutexattr_init(&attr);
+
+        /* set type to ERRORCHECK so that we catch recursive locks */
+#    if PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP
+        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK_NP);
+#    elif PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK
+        pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+#    endif /* PMIX_HAVE_PTHREAD_MUTEX_ERRORCHECK_NP */
+
+        pthread_mutex_init(&object->obj_lock, &attr);
+        pthread_mutexattr_destroy(&attr);
+
+#else
+
+        /* Without debugging, choose the fastest available mutexes */
+        pthread_mutex_init(&object->obj_lock, NULL);
+
+#endif /* PMIX_ENABLE_DEBUG */
         object->obj_class = cls;
         object->obj_reference_count = 1;
         if (NULL == tma) {
@@ -594,7 +624,15 @@ static inline pmix_object_t *pmix_obj_new(pmix_class_t *cls)
 static inline int pmix_obj_update(pmix_object_t *object, int inc) __pmix_attribute_always_inline__;
 static inline int pmix_obj_update(pmix_object_t *object, int inc)
 {
-    return PMIX_THREAD_ADD_FETCH32(&object->obj_reference_count, inc);
+    int ret = pthread_mutex_lock(&object->obj_lock);
+    if (ret == EDEADLK) {
+        errno = ret;
+        perror("pthread_mutex_lock()");
+        abort();
+    }
+    object->obj_reference_count += inc;
+    pthread_mutex_unlock(&object->obj_lock);
+    return object->obj_reference_count;
 }
 
 END_C_DECLS

@@ -14,7 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -63,7 +63,6 @@ libpmix_la_LIBADD += \
 libpmix_la_DEPENDENCIES += \
         include/libpmixglobal.la
 
-include atomics/sys/Makefile.include
 include threads/Makefile.include
 include class/Makefile.include
 include event/Makefile.include

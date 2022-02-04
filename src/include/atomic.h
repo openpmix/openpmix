@@ -17,7 +17,7 @@
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
  *                         reserved.
  * $COPYRIGHT$
@@ -57,12 +57,46 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/include/pmix_stdatomic.h"
-
 #if PMIX_ATOMIC_C11
-#    include "atomic_stdc.h"
+
+#include <stdatomic.h>
+
+static inline void pmix_atomic_wmb(void)
+{
+    atomic_thread_fence(memory_order_release);
+}
+
+static inline void pmix_atomic_rmb(void)
+{
+#    if defined(PMIX_ATOMIC_X86_64)
+    /* work around a bug in older gcc versions (observed in gcc 6.x)
+     * where acquire seems to get treated as a no-op instead of being
+     * equivalent to __asm__ __volatile__("": : :"memory") on x86_64 */
+    __asm__ __volatile__("" : : : "memory");
+#    else
+    atomic_thread_fence(memory_order_acquire);
+#    endif
+}
+
 #elif PMIX_ATOMIC_GCC_BUILTIN
-#    include "atomic_gcc_builtin.h"
+
+static inline void pmix_atomic_wmb(void)
+{
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+}
+
+static inline void pmix_atomic_rmb(void)
+{
+#if defined(PMIX_ATOMIC_X86_64)
+    /* work around a bug in older gcc versions where ACQUIRE seems to get
+     * treated as a no-op instead of being equivalent to
+     * __asm__ __volatile__("": : :"memory") */
+    __asm__ __volatile__("" : : : "memory");
+#else
+    __atomic_thread_fence(__ATOMIC_ACQUIRE);
+#endif
+}
+
 #endif
 
 #endif /* PMIX_SYS_ATOMIC_H */
