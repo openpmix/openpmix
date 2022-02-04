@@ -93,27 +93,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_hwloc_LDFLAGS])
     PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_hwloc_LIBS])
 
-    AC_MSG_CHECKING([if hwloc version is in 2.5.0-2.7.0 range])
-    AC_COMPILE_IFELSE(
-          [AC_LANG_PROGRAM([#include <hwloc.h>],
-          [[
-    #if HWLOC_VERSION_MAJOR == 2
-    #if (HWLOC_VERSION_MINOR == 7 && HWLOC_VERSION_RELEASE == 0) || HWLOC_VERSION_MINOR == 6 || HWLOC_VERSION_MINOR == 5
-    #error "hwloc version is in blocklist range"
-    #endif
-    #endif
-          ]])],
-          [AC_MSG_RESULT([no])],
-          [AC_MSG_RESULT([yes])
-           AC_MSG_WARN([***********************************************************])
-           AC_MSG_WARN([PMIx is not compatible with HWLOC versions 2.5.0-2.7.0 (inclusive)])
-           AC_MSG_WARN([due to a bug in HWLOC's setting of environmental variables.])
-           AC_MSG_WARN([Please switch the HWLOC installation to a version outside])
-           AC_MSG_WARN([of that range.])
-           AC_MSG_WARN([***********************************************************])
-           AC_MSG_ERROR([Cannot continue])])
-
-
     AC_MSG_CHECKING([if hwloc version is 1.5 or greater])
     AC_COMPILE_IFELSE(
           [AC_LANG_PROGRAM([#include <hwloc.h>],
