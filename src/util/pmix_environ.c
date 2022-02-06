@@ -17,6 +17,8 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+ *                         All Rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -96,6 +98,36 @@ char **pmix_environ_merge(char **minor, char **major)
 
     return ret;
 }
+
+
+pmix_status_t pmix_environ_merge_inplace(char ***orig, char **adders)
+{
+    pmix_status_t ret;
+
+    assert(*orig != environ);
+
+    for (size_t adders_idx = 0 ; adders[adders_idx] != NULL ; adders_idx++) {
+        const char *adder_string = adders[adders_idx];
+
+        /* See if the addr is in the original, because we only add.
+         * Don't use setenv, to avoid having to split the string,
+         * which is kind of expensive as we can't modify the strings
+         * in adders (and setenv is going to do this same search loop
+         * anyway).
+         */
+        if (NULL == pmix_getenv(adder_string, *orig)) {
+            /* note that append_nosize strdup()s the added argument,
+               so both orig and adders can later be freed */
+            ret = pmix_argv_append_nosize(orig, adder_string);
+            if (PMIX_SUCCESS != ret) {
+                return ret;
+            }
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
 
 /*
  * Portable version of setenv(), allowing editing of any environ-like
@@ -213,6 +245,53 @@ pmix_status_t pmix_setenv(const char *name, const char *value, bool overwrite, c
     free(newvalue);
     return PMIX_SUCCESS;
 }
+
+
+char * pmix_getenv(const char *name, char **env)
+{
+    /* bozo case */
+    if (NULL == env) {
+        return NULL;
+    }
+
+    for (size_t env_idx = 0 ; env[env_idx] != NULL ; env_idx++) {
+        size_t str_idx = 0;
+
+        while (true) {
+            if (name[str_idx] == '\0') {
+                /* if name is a bare key, then finding an equals sign
+                 * in the env string at the same position as the
+                 * terminator is a match.
+                 */
+                if (env[env_idx][str_idx] == '=') {
+                    return &(env[env_idx][str_idx + 1]);
+                }
+
+                break;
+            }
+
+            if (env[env_idx][str_idx] == '\0') {
+                break;
+            }
+
+            if (name[str_idx] != env[env_idx][str_idx]) {
+                break;
+            }
+
+            if (name[str_idx] == '=') {
+                /* we know that env[env_idx][str_idx] is also '=',
+                 * from the inequality check above, so this is a match
+                 */
+                return &(env[env_idx][str_idx + 1]);
+            }
+
+            str_idx++;
+        }
+    }
+
+    return NULL;
+}
+
 
 /*
  * Portable version of unsetenv(), allowing editing of any
