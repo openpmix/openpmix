@@ -257,7 +257,7 @@ static void expand_flags(char **argv)
 static void data_callback(const char *key, const char *value)
 {
     /* handle case where text file does not contain any special
-       compiler options field */
+     compiler options field */
     if (parse_options_idx < 0 && 0 != strcmp(key, "compiler_args")) {
         options_data_expand(NULL);
     }

@@ -38,7 +38,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1065,6 +1065,8 @@ PMIX_EXPORT pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
 PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo);
 
 
+PMIX_EXPORT void PMIx_Topology_destruct(pmix_topology_t *topo);
+
 /* Get the PU binding bitmap from its string representation
  *
  * cpuset_string - string representation of the binding bitmap
@@ -1548,7 +1550,39 @@ PMIX_EXPORT bool PMIx_Data_decompress(const uint8_t *inbytes,
                                       uint8_t **outbytes,
                                       size_t *nbytes);
 
+/* Utility functions */
+PMIX_EXPORT pmix_status_t PMIx_Value_load(pmix_value_t *val,
+                                          const void *data,
+                                          pmix_data_type_t type);
 
+PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
+                                            void **data,
+                                            size_t *sz);
+
+PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
+                                          const pmix_value_t *src);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
+                                         const char *key,
+                                         const void *data,
+                                         pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
+                                         const pmix_info_t *src);
+
+PMIX_EXPORT void* PMIx_Info_list_start(void);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
+                                             const char *key,
+                                             const void *value,
+                                             pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
+                                              const pmix_info_t *info);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
+
+PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

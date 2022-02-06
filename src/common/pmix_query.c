@@ -6,7 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -225,7 +225,7 @@ static void nxtcbfunc(pmix_status_t status, pmix_list_t *results, void *cbdata)
         n = 0;
         PMIX_LIST_FOREACH_SAFE (kv, kvnxt, results, pmix_kval_t) {
             PMIX_LOAD_KEY(cd->info[n].key, kv->key);
-            rc = pmix_value_xfer(&cd->info[n].value, kv->value);
+            rc = PMIx_Value_xfer(&cd->info[n].value, kv->value);
             if (PMIX_SUCCESS != rc) {
                 cd->status = rc;
                 PMIX_INFO_FREE(cd->info, cd->ninfo);
@@ -342,7 +342,7 @@ nextstep:
             n = 0;
             PMIX_LIST_FOREACH_SAFE (kv, kvnxt, &results, pmix_kval_t) {
                 PMIX_LOAD_KEY(cd->info[n].key, kv->key);
-                rc = pmix_value_xfer(&cd->info[n].value, kv->value);
+                rc = PMIx_Value_xfer(&cd->info[n].value, kv->value);
                 if (PMIX_SUCCESS != rc) {
                     cd->status = rc;
                     PMIX_INFO_FREE(cd->info, cd->ninfo);

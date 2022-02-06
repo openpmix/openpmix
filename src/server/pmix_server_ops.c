@@ -2811,7 +2811,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf, pmix_info
         n = 0;
         PMIX_LIST_FOREACH_SAFE (kv, kvnxt, &results, pmix_kval_t) {
             PMIX_LOAD_KEY(cd->info[n].key, kv->key);
-            rc = pmix_value_xfer(&cd->info[n].value, kv->value);
+            rc = PMIx_Value_xfer(&cd->info[n].value, kv->value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_INFO_FREE(cd->info, cd->ninfo);
                 cd->info = NULL;

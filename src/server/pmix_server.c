@@ -2482,7 +2482,7 @@ static void _setup_app(int sd, short args, void *cbdata)
         n = 0;
         PMIX_LIST_FOREACH (kv, &ilist, pmix_kval_t) {
             pmix_strncpy(fcd->info[n].key, kv->key, PMIX_MAX_KEYLEN);
-            pmix_value_xfer(&fcd->info[n].value, kv->value);
+            PMIx_Value_xfer(&fcd->info[n].value, kv->value);
             ++n;
         }
     }
@@ -2774,7 +2774,7 @@ static void clct(int sd, short args, void *cbdata)
     }
 
     /* convert list to an array of info */
-    rc = pmix_info_list_convert((void*)&inventory, &darray);
+    rc = PMIx_Info_list_convert((void*)&inventory, &darray);
     if (PMIX_ERR_EMPTY == rc) {
         rc = PMIX_SUCCESS;
     } else if (PMIX_SUCCESS == rc) {

@@ -129,8 +129,6 @@ static pmix_status_t setup_path(pmix_app_t *app)
 
 void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
 {
-    (void) sd;
-    (void) args;
     pmix_pfexec_fork_caddy_t *fcd = (pmix_pfexec_fork_caddy_t *) cbdata;
     pmix_app_t *app;
     int i, n;
@@ -143,8 +141,9 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     pmix_rank_info_t *info;
     pmix_namespace_t *nptr;
     pmix_rank_t rank = 0;
-    char tmp[2048], *ptr;
+    char tmp[2048];
     bool nohup = false;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output, "%s pfexec:base spawn proc",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
@@ -360,10 +359,9 @@ complete:
 
 void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
 {
-    (void) sd;
-    (void) args;
     pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t *) cbdata;
     pmix_pfexec_child_t *child, *cd;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* find the process */
     child = NULL;
@@ -418,10 +416,9 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
 
 void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
 {
-    (void) sd;
-    (void) args;
     pmix_pfexec_signal_caddy_t *scd = (pmix_pfexec_signal_caddy_t *) cbdata;
     pmix_pfexec_child_t *child, *cd;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* find the process */
     child = NULL;
