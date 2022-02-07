@@ -23,6 +23,7 @@ int main(int argc, char *argv[])
 {
     char **test_array;
     char **new_array;
+    const char *tmp;
     pmix_status_t ret;
     int ret_int;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -52,9 +53,14 @@ int main(int argc, char *argv[])
         printf("pmix_setenv returned %d\n", ret);
         return 1;
     }
-    if (strcmp(getenv("pmix_environ_test_string_3"), "four") != 0) {
+    tmp = getenv("pmix_environ_test_string_3");
+    if (NULL == tmp) {
+        printf("could not getenv(\"pmix_environ_test_string_3\")\n");
+        return 1;
+    }
+    if (strcmp(tmp, "four") != 0) {
         printf("pmix_setenv overwrote.  Found %s expected %s\n",
-               getenv("pmix_environ_test_string_3"), "four");
+               tmp, "four");
         return 1;
     }
 
@@ -156,29 +162,54 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (strcmp("old_one", pmix_getenv("pmix_environ_test_string_1", test_array)) != 0) {
-        printf("wrong value.  expected %s, found %s\n",
-               "old_one", pmix_getenv("pmix_environ_test_string_1", test_array));
+    tmp = pmix_getenv("pmix_environ_test_string_1", test_array);
+    if (NULL == tmp) {
+        printf("could not getenv(\"pmix_environ_test_string_1\")\n");
         return 1;
     }
-    if (strcmp("old_two", pmix_getenv("pmix_environ_test_string_2", test_array)) != 0) {
+    if (strcmp("old_one", tmp) != 0) {
         printf("wrong value.  expected %s, found %s\n",
-               "old_two", pmix_getenv("pmix_environ_test_string_2", test_array));
+               "old_one", tmp);
         return 1;
     }
-    if (strcmp("old_three", pmix_getenv("pmix_environ_test_string_3", test_array)) != 0) {
-        printf("wrong value.  expected %s, found %s\n",
-               "old_three", pmix_getenv("pmix_environ_test_string_3", test_array));
+    tmp = pmix_getenv("pmix_environ_test_string_2", test_array);
+    if (NULL == tmp) {
+        printf("could not getenv(\"pmix_environ_test_string_2\")\n");
         return 1;
     }
-    if (strcmp("old_four", pmix_getenv("pmix_environ_test_string_4", test_array)) != 0) {
+    if (strcmp("old_two", tmp) != 0) {
         printf("wrong value.  expected %s, found %s\n",
-               "old_four", pmix_getenv("pmix_environ_test_string_4", test_array));
+               "old_two", tmp);
         return 1;
     }
-    if (strcmp("new_five", pmix_getenv("pmix_environ_test_string_5", test_array)) != 0) {
+    tmp = pmix_getenv("pmix_environ_test_string_3", test_array);
+    if (NULL == tmp) {
+        printf("could not getenv(\"pmix_environ_test_string_3\")\n");
+        return 1;
+    }
+    if (strcmp("old_three", tmp) != 0) {
         printf("wrong value.  expected %s, found %s\n",
-               "new_five", pmix_getenv("pmix_environ_test_string_5", test_array));
+               "old_three", tmp);
+        return 1;
+    }
+    tmp = pmix_getenv("pmix_environ_test_string_4", test_array);
+    if (NULL == tmp) {
+        printf("could not getenv(\"pmix_environ_test_string_4\")\n");
+        return 1;
+    }
+    if (strcmp("old_four", tmp) != 0) {
+        printf("wrong value.  expected %s, found %s\n",
+               "old_four", tmp);
+        return 1;
+    }
+    tmp = pmix_getenv("pmix_environ_test_string_5", test_array);
+    if (NULL == tmp) {
+        printf("could not getenv(\"pmix_environ_test_string_5\")\n");
+        return 1;
+    }
+    if (strcmp("new_five", tmp) != 0) {
+        printf("wrong value.  expected %s, found %s\n",
+               "new_five", tmp);
         return 1;
     }
 
