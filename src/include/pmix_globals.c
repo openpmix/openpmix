@@ -8,7 +8,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,7 +20,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
 #include "src/include/types.h"
@@ -46,14 +46,14 @@
 #    include <dirent.h>
 #endif /* HAVE_DIRENT_H */
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops_types.h"
 #include "src/threads/threads.h"
-#include "src/util/argv.h"
-#include "src/util/os_path.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_os_path.h"
 
 
 static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd,

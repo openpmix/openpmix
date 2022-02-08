@@ -5,7 +5,7 @@
  * Copyright (c) 2007      Sun Microsystem, Inc.  All rights reserved.
  * Copyright (c) 2010      Sandia National Laboratories. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,7 +20,7 @@
 
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
-#include "src/util/os_path.h"
+#include "src/util/pmix_os_path.h"
 
 /* Support both ${name} and @{name} forms.  The latter allows us to
    pass values through AC_SUBST without being munged by m4 (e.g., if

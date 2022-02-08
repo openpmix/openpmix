@@ -3,7 +3,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,7 +13,7 @@
 #include "src/include/pmix_config.h"
 
 #include "include/pmix.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "include/pmix_server.h"
 
 #include "src/threads/threads.h"

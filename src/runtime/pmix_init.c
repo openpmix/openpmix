@@ -50,7 +50,7 @@
 #include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/name_fns.h"
-#include "src/util/net.h"
+#include "src/util/pmix_net.h"
 #include "src/util/output.h"
 #include "src/util/show_help.h"
 

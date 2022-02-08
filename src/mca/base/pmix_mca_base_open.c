@@ -14,7 +14,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,14 +33,14 @@
 #    include <unistd.h>
 #endif
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 /*
  * Public variables

@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,7 +35,7 @@
 #endif
 #include <errno.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/include/pmix_stdint.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
 #include "src/mca/mca.h"

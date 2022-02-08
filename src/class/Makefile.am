@@ -12,6 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -19,26 +20,35 @@
 # $HEADER$
 #
 
-# This makefile.am does not stand on its own - it is included from
-# Makefile.am
+AM_CPPFLAGS = \
+    $(LTDLINCL)
+
+noinst_LTLIBRARIES = libpmix_class.la
 
 # Source code files
-headers += \
-        class/pmix_bitmap.h \
-        class/pmix_object.h \
-        class/pmix_list.h \
-        class/pmix_pointer_array.h \
-        class/pmix_hash_table.h \
-        class/pmix_hotel.h \
-        class/pmix_ring_buffer.h \
-        class/pmix_value_array.h
+headers = \
+        pmix_bitmap.h \
+        pmix_object.h \
+        pmix_list.h \
+        pmix_pointer_array.h \
+        pmix_hash_table.h \
+        pmix_hotel.h \
+        pmix_ring_buffer.h \
+        pmix_value_array.h
 
-sources += \
-        class/pmix_bitmap.c \
-        class/pmix_object.c \
-        class/pmix_list.c \
-        class/pmix_pointer_array.c \
-        class/pmix_hash_table.c \
-        class/pmix_hotel.c \
-        class/pmix_ring_buffer.c \
-        class/pmix_value_array.c
+sources = \
+        pmix_bitmap.c \
+        pmix_object.c \
+        pmix_list.c \
+        pmix_pointer_array.c \
+        pmix_hash_table.c \
+        pmix_hotel.c \
+        pmix_ring_buffer.c \
+        pmix_value_array.c
+
+libpmix_class_la_SOURCES = $(headers) $(sources)
+
+# Unconditionally install the header files
+
+pmixdir = $(pmixincludedir)/$(subdir)
+pmix_HEADERS = $(headers)

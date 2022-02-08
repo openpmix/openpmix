@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014-2015 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,9 +24,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/mca/base/base.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/cmd_line.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"

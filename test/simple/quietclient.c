@@ -46,9 +46,9 @@
 
 #include "src/class/pmix_object.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/output.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 #define MAXCNT 1
 

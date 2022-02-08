@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,10 +30,10 @@
 #    include <unistd.h>
 #endif
 
-#include "include/pmix_common.h"
-#include "src/util/argv.h"
-#include "src/util/basename.h"
-#include "src/util/few.h"
+#include "pmix_common.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_basename.h"
+#include "src/util/pmix_few.h"
 
 int pmix_few(char *argv[], int *status)
 {

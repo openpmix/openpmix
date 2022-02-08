@@ -33,7 +33,7 @@
 #    include <stdlib.h>
 #endif
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/common/pmix_attributes.h"
 #include "src/include/pmix_globals.h"

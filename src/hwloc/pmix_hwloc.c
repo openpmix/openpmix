@@ -48,15 +48,15 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/error.h"
-#include "src/util/fd.h"
+#include "src/util/pmix_fd.h"
 #include "src/util/name_fns.h"
-#include "src/util/path.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_path.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/show_help.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "pmix_hwloc.h"
 #if HWLOC_API_VERSION >= 0x20000

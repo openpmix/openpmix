@@ -17,7 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,13 +34,13 @@
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_object.h"
 #include "src/threads/mutex.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/cmd_line.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 
 /*

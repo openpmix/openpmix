@@ -8,7 +8,7 @@
  *                         All rights reserved.
  * Copyright (c) 2020-2021 Triad National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,7 +33,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 
 #define TEST_NAMESPACE "smoky_nspace"
 

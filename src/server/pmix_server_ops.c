@@ -63,7 +63,7 @@
 #include "src/mca/prm/prm.h"
 #include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"

@@ -967,7 +967,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[etc/Makefile]
         pmix_config_prefix[include/Makefile]
         pmix_config_prefix[src/Makefile]
+        pmix_config_prefix[src/class/Makefile]
         pmix_config_prefix[src/include/Makefile]
+        pmix_config_prefix[src/util/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
         pmix_config_prefix[src/util/showhelp/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
@@ -1356,6 +1358,25 @@ else
     eval "DISABLE_psec_dummy_handshake=0"
 fi
 AM_CONDITIONAL(MCA_BUILD_PSEC_DUMMY_HANDSHAKE, test "$DISABLE_psec_dummy_handshake" = "0")
+
+#
+# Do we want to enable IPv6 support?
+#
+AC_MSG_CHECKING([if want IPv6 support])
+AC_ARG_ENABLE([ipv6],
+    [AS_HELP_STRING([--enable-ipv6],
+        [Enable IPv6 support, but only if the underlying system supports it (default: disabled)])])
+if test "$enable_ipv6" = "yes"; then
+    AC_MSG_RESULT([yes])
+    pmix_want_ipv6=1
+else
+    AC_MSG_RESULT([no])
+    pmix_want_ipv6=0
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_IPV6], [$pmix_want_ipv6],
+                   [Enable IPv6 support, but only if the underlying system supports it])
+
+
 ])dnl
 
 # This must be a standalone routine so that it can be called both by

@@ -21,7 +21,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,7 +35,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/include/types.h"
 
 #ifdef HAVE_UNISTD_H

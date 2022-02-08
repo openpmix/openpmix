@@ -34,10 +34,10 @@
 #include "src/include/pmix_globals.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 pmix_status_t pmix_bfrops_base_print(pmix_pointer_array_t *regtypes, char **output, char *prefix,
                                      void *src, pmix_data_type_t type)

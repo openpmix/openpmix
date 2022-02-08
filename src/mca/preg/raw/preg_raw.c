@@ -4,7 +4,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,12 +27,12 @@
 #include <ctype.h>
 
 #include "include/pmix.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/mca/bfrops/base/base.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/error.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 #include "preg_raw.h"
 #include "src/mca/preg/base/base.h"

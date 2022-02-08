@@ -14,7 +14,7 @@
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2013      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,7 +27,7 @@
 #ifndef PMIX_PIF_UTIL_
 #define PMIX_PIF_UTIL_
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
@@ -38,6 +38,8 @@
 #ifdef HAVE_NETINET_IN_H
 #    include <netinet/in.h>
 #endif
+
+#include "pmix_common.h"
 
 #define PMIX_IF_NAMESIZE 256
 
@@ -211,6 +213,11 @@ PMIX_EXPORT bool pmix_ifisloopback(int if_index);
  * Determine if a specified interface is included in a NULL-terminated argv array
  */
 PMIX_EXPORT int pmix_ifmatches(int kidx, char **nets);
+
+/*
+ * Provide a list of strings that contain all known aliases for this node
+ */
+PMIX_EXPORT void pmix_ifgetaliases(char ***aliases);
 
 END_C_DECLS
 

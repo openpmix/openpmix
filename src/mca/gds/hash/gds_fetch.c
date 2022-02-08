@@ -31,7 +31,7 @@
 #endif
 #include <time.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
@@ -41,7 +41,7 @@
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/error.h"
 #include "src/util/hash.h"
 #include "src/util/name_fns.h"

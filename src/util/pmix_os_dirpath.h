@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,7 +42,7 @@
 #ifndef PMIX_OS_DIRPATH_CREATE_H
 #define PMIX_OS_DIRPATH_CREATE_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 #ifdef HAVE_SYS_STAT_H
 #    include <sys/stat.h>
 #endif

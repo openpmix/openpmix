@@ -15,7 +15,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -44,7 +44,7 @@
 
 #include "src/class/pmix_list.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 BEGIN_C_DECLS
 

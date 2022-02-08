@@ -17,7 +17,7 @@
  * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,7 +26,7 @@
  */
 
 #include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -63,11 +63,11 @@
 #include <ctype.h>
 
 #include "src/class/pmix_list.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/error.h"
-#include "src/util/net.h"
+#include "src/util/pmix_net.h"
 #include "src/util/output.h"
-#include "src/util/pif.h"
+#include "src/util/pmix_if.h"
 #include "src/util/show_help.h"
 
 #include "src/mca/pif/base/base.h"
@@ -673,6 +673,42 @@ int pmix_ifmatches(int kidx, char **nets)
     return PMIX_ERR_NOT_FOUND;
 }
 
+void pmix_ifgetaliases(char ***aliases)
+{
+    pmix_pif_t *intf;
+    char ipv4[INET_ADDRSTRLEN];
+    struct sockaddr_in *addr;
+#    if PMIX_ENABLE_IPV6
+    char ipv6[INET6_ADDRSTRLEN];
+    struct sockaddr_in6 *addr6;
+#    endif
+
+    PMIX_LIST_FOREACH(intf, &pmix_if_list, pmix_pif_t)
+    {
+        addr = (struct sockaddr_in *) &intf->if_addr;
+        /* ignore purely loopback interfaces */
+        if ((intf->if_flags & IFF_LOOPBACK) != 0) {
+            continue;
+        }
+        /* ignore the obvious */
+        if (addr->sin_family == AF_INET) {
+            inet_ntop(AF_INET, &(addr->sin_addr.s_addr), ipv4, INET_ADDRSTRLEN);
+            if (0 == strcmp(ipv4, "localhost") || 0 == strcmp(ipv4, "127.0.0.1")) {
+                continue;
+            }
+            pmix_argv_append_nosize(aliases, ipv4);
+        }
+#    if PMIX_ENABLE_IPV6
+        else {
+            addr6 = (struct sockaddr_in6 *) &intf->if_addr;
+            inet_ntop(AF_INET6, &(addr6->sin6_addr), ipv6, INET6_ADDRSTRLEN);
+            pmix_argv_append_nosize(aliases, ipv6);
+        }
+#    endif
+    }
+}
+
+
 #else /* HAVE_STRUCT_SOCKADDR_IN */
 
 /* if we don't have struct sockaddr_in, we don't have traditional
@@ -751,6 +787,11 @@ int pmix_iftupletoaddr(const char *inaddr, uint32_t *net, uint32_t *mask)
 int pmix_ifmatches(int idx, char **nets)
 {
     return PMIX_ERR_NOT_SUPPORTED;
+}
+
+void pmix_ifgetaliases(char ***aliases)
+{
+    return;
 }
 
 #endif /* HAVE_STRUCT_SOCKADDR_IN */

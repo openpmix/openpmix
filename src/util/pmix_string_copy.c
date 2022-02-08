@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2018-2020 Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,7 +13,7 @@
 
 #include <assert.h>
 
-#include "src/util/string_copy.h"
+#include "src/util/pmix_string_copy.h"
 
 void pmix_string_copy(char *dest, const char *src, size_t dest_len)
 {

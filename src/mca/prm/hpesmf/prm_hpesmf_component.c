@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,7 +16,7 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "prm_hpesmf.h"
 #include "src/mca/prm/prm.h"

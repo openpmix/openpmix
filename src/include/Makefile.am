@@ -32,17 +32,14 @@ libpmixglobal_la_SOURCES = \
 
 headers = pmix_globals.h
 
-nodist_headers = \
-    pmix_config.h
-
 headers += \
-        align.h \
-        atomic.h \
+        pmix_atomic.h \
         hash_string.h \
         pmix_socket_errno.h \
         pmix_stdint.h \
         prefetch.h \
         types.h \
+        pmix_config.h \
         pmix_config_top.h \
         pmix_config_bottom.h \
         pmix_portable_platform.h \
@@ -50,10 +47,7 @@ headers += \
         frameworks.h \
         dictionary.h
 
-if WANT_INSTALL_HEADERS
 nobase_pmix_HEADERS = $(headers)
-nobase_nodist_pmix_HEADERS = $(nodist_headers)
-endif
 
 # Need to ensure that dictionary.h is built first -- before any other
 # targets.

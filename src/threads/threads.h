@@ -31,7 +31,7 @@
 #include <signal.h>
 
 #include "src/class/pmix_object.h"
-#include "src/include/atomic.h"
+#include "src/include/pmix_atomic.h"
 #if PMIX_ENABLE_DEBUG
 #    include "src/util/output.h"
 #endif

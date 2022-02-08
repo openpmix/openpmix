@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,7 +27,7 @@
 #endif
 #include <time.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
@@ -35,11 +35,11 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/preg/preg.h"
 #include "src/util/alfg.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/error.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 #include "pstrg_lustre.h"
 #include "src/mca/pstrg/base/base.h"

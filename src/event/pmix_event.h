@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,7 +27,7 @@
 #include "src/include/types.h"
 #include <event.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/class/pmix_list.h"
 #include "src/util/output.h"
 

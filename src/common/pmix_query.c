@@ -19,7 +19,7 @@
 #include "src/include/pmix_stdint.h"
 
 #include "include/pmix.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "include/pmix_server.h"
 
 #include "src/common/pmix_attributes.h"
@@ -27,7 +27,7 @@
 #include "src/mca/pstrg/pstrg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/threads.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
 #include "src/util/output.h"

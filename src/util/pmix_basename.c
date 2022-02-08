@@ -13,7 +13,7 @@
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,8 +31,8 @@
 #    include <libgen.h>
 #endif /* HAVE_LIBGEN_H */
 
-#include "src/util/basename.h"
-#include "src/util/os_path.h"
+#include "src/util/pmix_basename.h"
+#include "src/util/pmix_os_path.h"
 
 /**
  * Return a pointer into the original string where the last PATH delimiter

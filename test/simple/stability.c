@@ -41,10 +41,10 @@
 #include <unistd.h>
 
 #include "src/class/pmix_list.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 #include "simptest.h"
 

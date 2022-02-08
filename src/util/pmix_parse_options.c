@@ -14,7 +14,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,7 +22,7 @@
  * $HEADER$
  */
 #include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,11 +34,11 @@
 #    include <sys/types.h>
 #endif
 
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/output.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
-#include "src/util/parse_options.h"
+#include "src/util/pmix_parse_options.h"
 
 void pmix_util_parse_range_options(char *inp, char ***output)
 {
