@@ -23,6 +23,18 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
+4.1.2 -- 11 Feb 2022
+----------------------
+**** NOTE: This release contains a workaround that resolves the prior
+**** conflict with HWLOC versions 2.5.0 through 2.7.0 (inclusive).
+**** Those versions of HWLOC are now supported.
+
+ - PR #2453: Avoid string literals in environ
+    - Be defensive against string literals in env
+    - Remove block of hwloc 2.5 - 2.7
+    - Adjust Mellanox CI Dockerfile so it can build
+
+
 4.1.1 -- 1 Feb 2022
 ----------------------
 **** NOTE: As of v4.1.1, PMIx includes an EXCEPTIONS file that lists
