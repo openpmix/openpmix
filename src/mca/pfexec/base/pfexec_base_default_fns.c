@@ -19,7 +19,9 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      Mellanox Technologies Ltd. All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+ *                         All Rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -194,18 +196,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
      * launch their procs */
     for (m = 0; m < fcd->napps; m++) {
         app = (pmix_app_t *) &fcd->apps[m];
-
         /* merge our launch environment into the app's */
-        for (i = 0; NULL != environ[i]; i++) {
-            ptr = strchr(environ[i], '=');
-            if (NULL == ptr) {
-                continue;
-            }
-            *ptr = '\0';
-            ++ptr;
-            pmix_setenv(environ[i], ptr, false, &app->env); // do not overwrite a given value
-            --ptr;
-            *ptr = '=';
+        rc = pmix_environ_merge_inplace(&app->env, environ);
+        if (PMIX_SUCCESS != rc) {
+            goto complete;
         }
 
         /* process any job-info */
