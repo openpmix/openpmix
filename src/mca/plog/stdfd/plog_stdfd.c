@@ -30,7 +30,7 @@
 
 #include "src/common/pmix_iof.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/name_fns.h"
 #include "src/util/show_help.h"
 

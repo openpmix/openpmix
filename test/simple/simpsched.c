@@ -30,7 +30,7 @@
 #include "include/pmix.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -44,7 +44,7 @@
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_printf.h"
 

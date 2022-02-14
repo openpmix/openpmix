@@ -27,7 +27,7 @@
 #include <stdlib.h>
 
 #include "src/class/pmix_pointer_array.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 static void pmix_pointer_array_construct(pmix_pointer_array_t *);
 static void pmix_pointer_array_destruct(pmix_pointer_array_t *);

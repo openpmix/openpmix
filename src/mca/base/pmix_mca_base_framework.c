@@ -15,7 +15,7 @@
 #include "src/include/pmix_config.h"
 
 #include "pmix_common.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 #include "pmix_mca_base_framework.h"
 #include "pmix_mca_base_var.h"

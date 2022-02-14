@@ -19,7 +19,7 @@
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pif/base/static-components.h"
 #include "src/mca/pif/pif.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 /* instantiate the global list of interfaces */
 pmix_list_t pmix_if_list = PMIX_LIST_STATIC_INIT;

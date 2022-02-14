@@ -16,7 +16,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -39,7 +39,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/mca.h"
 #include "src/util/cmd_line.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
 

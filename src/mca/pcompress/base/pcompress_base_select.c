@@ -26,7 +26,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/mca.h"
 #include "src/mca/pcompress/base/base.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 int pmix_compress_base_select(void)
 {

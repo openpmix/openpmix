@@ -28,7 +28,7 @@
 #ifndef PMIX_MUTEX_H
 #define PMIX_MUTEX_H 1
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 BEGIN_C_DECLS
 
@@ -92,6 +92,6 @@ static inline void pmix_mutex_atomic_unlock(pmix_mutex_t *mutex);
 
 END_C_DECLS
 
-#include "mutex_unix.h"
+#include "pmix_mutex_unix.h"
 
 #endif /* PMIX_MUTEX_H */

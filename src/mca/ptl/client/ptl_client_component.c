@@ -33,8 +33,8 @@
 
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/client/ptl_client.h"

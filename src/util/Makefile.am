@@ -36,9 +36,9 @@ headers = \
         alfg.h \
         pmix_argv.h \
         cmd_line.h \
-        error.h \
+        pmix_error.h \
         pmix_printf.h \
-        output.h \
+        pmix_output.h \
         pmix_environ.h \
         pmix_fd.h \
         timings.h \
@@ -65,9 +65,9 @@ sources = \
         alfg.c \
         pmix_argv.c \
         cmd_line.c \
-        error.c \
+        pmix_error.c \
         pmix_printf.c \
-        output.c \
+        pmix_output.c \
         pmix_environ.c \
         pmix_fd.c \
         timings.c \

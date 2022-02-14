@@ -25,7 +25,7 @@
 #ifndef PMIX_THREAD_H
 #define PMIX_THREAD_H 1
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <pthread.h>
 #include <signal.h>
@@ -33,10 +33,10 @@
 #include "src/class/pmix_object.h"
 #include "src/include/pmix_atomic.h"
 #if PMIX_ENABLE_DEBUG
-#    include "src/util/output.h"
+#    include "src/util/pmix_output.h"
 #endif
 
-#include "mutex.h"
+#include "pmix_mutex.h"
 
 BEGIN_C_DECLS
 

@@ -56,7 +56,7 @@
 #include "src/mca/pdl/base/base.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 

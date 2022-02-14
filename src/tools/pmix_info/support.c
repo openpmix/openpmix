@@ -43,12 +43,12 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/cmd_line.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/show_help.h"
 
-#include "src/include/frameworks.h"
+#include "src/include/pmix_frameworks.h"
 #include "src/include/pmix_portable_platform.h"
 
 #include "pinfo.h"

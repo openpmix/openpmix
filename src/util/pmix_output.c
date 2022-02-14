@@ -41,8 +41,8 @@
 #    include <sys/param.h>
 #endif
 
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_printf.h"
 
@@ -866,7 +866,7 @@ static int output(int output_id, const char *format, va_list arglist)
         /* File output -- first check to see if the file opening was
          * delayed.  If so, try to open it.  If we failed to open it,
          * then just discard (there are big warnings in the
-         * pmix_output.h docs about this!). */
+         * pmix_pmix_output.h docs about this!). */
 
         if (ldi->ldi_file) {
             if (ldi->ldi_fd == -1) {

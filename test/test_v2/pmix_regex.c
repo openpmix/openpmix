@@ -32,7 +32,7 @@
 #include "src/mca/preg/preg.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
 #include "server_callbacks.h"

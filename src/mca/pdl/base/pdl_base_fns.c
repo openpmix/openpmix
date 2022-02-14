@@ -22,7 +22,7 @@
 #include "pmix_common.h"
 
 #include "src/mca/pdl/base/base.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 int pmix_pdl_open(const char *fname, bool use_ext, bool private_namespace,
                   pmix_pdl_handle_t **handle, char **err_msg)

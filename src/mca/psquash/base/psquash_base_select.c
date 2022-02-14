@@ -28,7 +28,7 @@
 
 #include "src/mca/base/base.h"
 #include "src/mca/mca.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/show_help.h"
 
 #include "src/mca/psquash/base/base.h"

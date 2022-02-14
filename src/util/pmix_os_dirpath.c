@@ -40,10 +40,10 @@
 
 #include "pmix_common.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_os_path.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/show_help.h"
 
 static const char path_sep[] = PMIX_PATH_SEP;

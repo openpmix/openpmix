@@ -34,17 +34,17 @@ headers = pmix_globals.h
 
 headers += \
         pmix_atomic.h \
-        hash_string.h \
+        pmix_hash_string.h \
         pmix_socket_errno.h \
         pmix_stdint.h \
-        prefetch.h \
-        types.h \
+        pmix_prefetch.h \
+        pmix_types.h \
         pmix_config.h \
         pmix_config_top.h \
         pmix_config_bottom.h \
         pmix_portable_platform.h \
         pmix_portable_platform_real.h \
-        frameworks.h \
+        pmix_frameworks.h \
         dictionary.h
 
 nobase_pmix_HEADERS = $(headers)

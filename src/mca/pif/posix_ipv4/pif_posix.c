@@ -51,7 +51,7 @@
 
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pif/pif.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_if.h"
 
 static int if_posix_open(void);

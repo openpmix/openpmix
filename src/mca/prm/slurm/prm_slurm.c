@@ -22,7 +22,7 @@
 
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_printf.h"
 

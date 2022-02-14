@@ -16,7 +16,7 @@
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021      Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -45,7 +45,7 @@
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/keyval_parse.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/show_help.h"
 #include <event.h>
 

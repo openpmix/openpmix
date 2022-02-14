@@ -27,7 +27,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_var_enum.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 #include <errno.h>
 #include <stdio.h>

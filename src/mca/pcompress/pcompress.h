@@ -7,7 +7,7 @@
  *                         reserved.
  *
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -87,7 +87,7 @@ struct pmix_compress_base_component_2_0_0_t {
     /** Verbosity Level */
     int verbose;
     /** Output Handle for pmix_output */
-    int output_handle;
+    int pmix_output_handle;
     /** Default Priority */
     int priority;
 };

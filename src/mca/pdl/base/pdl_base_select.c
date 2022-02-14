@@ -26,7 +26,7 @@
 #include "src/mca/mca.h"
 #include "src/mca/pdl/base/base.h"
 #include "src/mca/pdl/pdl.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 int pmix_pdl_base_select(void)
 {

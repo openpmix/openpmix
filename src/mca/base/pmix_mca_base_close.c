@@ -28,7 +28,7 @@
 #include "src/mca/base/base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 extern int pmix_mca_base_opened;
 

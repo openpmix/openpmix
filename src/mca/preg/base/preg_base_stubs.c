@@ -30,7 +30,7 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/preg/base/base.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 pmix_status_t pmix_preg_base_generate_node_regex(const char *input, char **regex)
 {

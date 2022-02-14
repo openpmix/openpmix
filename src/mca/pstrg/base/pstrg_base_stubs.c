@@ -14,7 +14,7 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 #include "src/mca/pstrg/base/base.h"
 

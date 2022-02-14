@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2017      Intel, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,10 +31,10 @@
 #ifndef PMIX_POINTER_ARRAY_H
 #define PMIX_POINTER_ARRAY_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/class/pmix_object.h"
-#include "src/include/prefetch.h"
+#include "src/include/pmix_prefetch.h"
 
 BEGIN_C_DECLS
 

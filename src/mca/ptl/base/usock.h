@@ -36,7 +36,7 @@
 #include "src/include/pmix_config.h"
 
 #include "pmix_common.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>

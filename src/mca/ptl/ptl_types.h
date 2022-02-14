@@ -13,7 +13,7 @@
  * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,7 +30,7 @@
 #define PMIX_PTL_TYPES_H_
 
 #include "src/include/pmix_config.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
@@ -55,7 +55,7 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops_types.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
 

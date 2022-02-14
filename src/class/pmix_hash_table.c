@@ -27,7 +27,7 @@
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 #include "pmix_common.h"
 

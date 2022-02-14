@@ -32,7 +32,7 @@
 
 #include "pmix_config.h"
 #include "pmix_common.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include "src/mca/mca.h"
 

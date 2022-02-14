@@ -7,7 +7,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -83,7 +83,7 @@ pmix_compress_base_component_t pmix_compress_base_selected_component = {
     .base_version = PMIX_BASE_COMPONENT_STATIC_INIT,
     .base_data = PMIX_BASE_DATA_STATIC_INIT,
     .verbose = 0,
-    .output_handle = 0,
+    .pmix_output_handle = 0,
     .priority = 0
 };
 

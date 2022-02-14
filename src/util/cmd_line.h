@@ -15,7 +15,7 @@
  * Copyright (c) 2016-2017 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -121,7 +121,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_object.h"
-#include "src/threads/mutex.h"
+#include "src/threads/pmix_mutex.h"
 
 BEGIN_C_DECLS
 /**

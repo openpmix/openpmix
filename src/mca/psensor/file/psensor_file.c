@@ -43,8 +43,8 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 #include "src/util/show_help.h"
 
 #include "psensor_file.h"

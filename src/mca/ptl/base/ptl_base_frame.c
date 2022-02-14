@@ -45,7 +45,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/mca.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"

@@ -27,7 +27,7 @@
 #define PMIX_GLOBALS_H
 
 #include "src/include/pmix_config.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -43,7 +43,7 @@
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"

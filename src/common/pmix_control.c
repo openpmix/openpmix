@@ -24,11 +24,11 @@
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/ptl/ptl.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/name_fns.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"

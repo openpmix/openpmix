@@ -32,7 +32,7 @@
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_os_path.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/show_help.h"
 #include "src/util/showhelp/showhelp_lex.h"

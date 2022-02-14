@@ -58,11 +58,11 @@
 #include "src/mca/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/runtime/pmix_rte.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/cmd_line.h"
 #include "src/util/keyval_parse.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 

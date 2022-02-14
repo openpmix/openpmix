@@ -35,8 +35,8 @@
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/mca.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 #include "src/util/show_help.h"
 
 /*

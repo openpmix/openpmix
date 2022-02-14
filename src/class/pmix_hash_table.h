@@ -36,7 +36,7 @@
 #define PMIX_HASH_TABLE_H
 
 #include "src/include/pmix_config.h"
-#include "src/include/prefetch.h"
+#include "src/include/pmix_prefetch.h"
 
 #ifdef HAVE_STDINT_H
 #    include <stdint.h>
@@ -62,6 +62,19 @@ struct pmix_hash_table_t {
 };
 typedef struct pmix_hash_table_t pmix_hash_table_t;
 
+#define PMIX_HASH_TABLE_STATIC_INIT                 \
+{                                                   \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+    .ht_table = NULL,                               \
+    .ht_capacity = 0,                               \
+    .ht_size = 0,                                   \
+    .ht_growth_trigger = 0,                         \
+    .ht_density_numer = 0,                          \
+    .ht_density_denom = 0,                          \
+    .ht_growth_numer = 0,                           \
+    .ht_growth_denom = 0,                           \
+    .ht_type_methods = NULL                         \
+}
 /**
  *  Initializes the table size, must be called before using
  *  the table.

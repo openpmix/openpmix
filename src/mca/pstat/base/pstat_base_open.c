@@ -29,7 +29,7 @@
 #include "src/mca/mca.h"
 #include "src/mca/pstat/base/base.h"
 #include "src/mca/pstat/pstat.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 /*
  * The following file was created by configure.  It contains extern

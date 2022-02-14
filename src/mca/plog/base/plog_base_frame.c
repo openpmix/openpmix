@@ -21,7 +21,7 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/base/base.h"
 #include "src/mca/plog/base/base.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 
 /*

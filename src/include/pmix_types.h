@@ -52,7 +52,7 @@
 #endif
 
 #if PMIX_ENABLE_DEBUG
-#    include "src/util/output.h"
+#    include "src/util/pmix_output.h"
 #endif
 
 #include <pthread.h>

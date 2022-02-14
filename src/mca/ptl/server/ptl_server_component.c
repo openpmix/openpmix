@@ -37,7 +37,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/mca/ptl/server/ptl_server.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 static int component_query(pmix_mca_base_module_t **module, int *priority);
 

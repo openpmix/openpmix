@@ -35,7 +35,7 @@
 #endif
 
 #include "src/util/pmix_argv.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
 #include "src/util/pmix_parse_options.h"

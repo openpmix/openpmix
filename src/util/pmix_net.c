@@ -61,10 +61,10 @@
 #endif
 
 #include "src/runtime/pmix_rte.h"
-#include "src/threads/tsd.h"
+#include "src/threads/pmix_tsd.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_net.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/show_help.h"
 
 /* this function doesn't depend on sockaddr_h */

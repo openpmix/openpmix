@@ -9,7 +9,7 @@
  ***********************
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,7 +29,7 @@
 #include <unistd.h>
 
 #include "src/class/pmix_object.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 
 typedef enum { PMIX_HTTP_UNDEF = -1, PMIX_HTTP_GET = 0, PMIX_HTTP_POST = 1 } pmix_sse_verb_t;
 

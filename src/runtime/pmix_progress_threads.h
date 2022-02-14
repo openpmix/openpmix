@@ -17,7 +17,7 @@
 #include <pthread.h>
 #include <event.h>
 
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 /**
  * Initialize a progress thread name; if a progress thread is not

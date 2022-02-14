@@ -22,12 +22,12 @@
 
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include "include/pmix_server.h"
 #include "src/class/pmix_hotel.h"
 #include "src/include/pmix_globals.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/hash.h"
 
 #define PMIX_IOF_HOTEL_SIZE 256

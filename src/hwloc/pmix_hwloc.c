@@ -49,7 +49,7 @@
 #include "src/mca/pnet/pnet.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
 #include "src/util/name_fns.h"
 #include "src/util/pmix_path.h"

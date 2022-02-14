@@ -71,7 +71,7 @@
 
 #include "pmix_config.h"
 #include "pmix.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -112,13 +112,13 @@
 #include <ctype.h>
 
 #include "src/class/pmix_pointer_array.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/show_help.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/name_fns.h"
 
 #include "src/mca/pfexec/base/base.h"

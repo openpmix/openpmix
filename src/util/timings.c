@@ -38,7 +38,7 @@
 #    include "src/class/pmix_list.h"
 #    include "src/class/pmix_pointer_array.h"
 #    include "src/util/pmix_basename.h"
-#    include "src/util/output.h"
+#    include "src/util/pmix_output.h"
 
 #    include "src/util/timings.h"
 

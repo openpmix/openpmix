@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,8 +23,8 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix.h"
-#include "src/util/output.h"
+#include "pmix.h"
+#include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
 

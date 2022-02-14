@@ -28,7 +28,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include "sse.h"
 #include "sse_internal.h"

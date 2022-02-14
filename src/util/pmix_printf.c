@@ -30,7 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
 /*
