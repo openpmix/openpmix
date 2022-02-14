@@ -6,7 +6,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2020-2021 Triad National Security, LLC
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,7 +26,7 @@
 #include "pmix_server.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/error.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 #include "cli_stages.h"
 #include "server_callbacks.h"

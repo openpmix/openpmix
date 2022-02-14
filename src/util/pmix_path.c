@@ -17,7 +17,7 @@
  * Copyright (c) 2016      University of Houston. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -72,10 +72,10 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_stdint.h"
-#include "src/util/argv.h"
-#include "src/util/os_path.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_os_path.h"
 #include "src/util/output.h"
-#include "src/util/path.h"
+#include "src/util/pmix_path.h"
 
 /*
  * Sanity check to ensure we have either statfs or statvfs
@@ -533,7 +533,7 @@ bool pmix_path_nfs(char *fname, char **ret_fstype)
 
     /*
      * First, get the OS-dependent struct stat(v)fs buf.  This may
-     * return the ESTALE error on NFS, if the underlying file/path has
+     * return the ESTALE error on NFS, if the underlying file/pmix_path.has
      * changed.
      */
 again:

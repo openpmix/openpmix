@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2007-2020 Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -10,7 +10,7 @@
  */
 
 #include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,9 +25,9 @@
 #endif
 #include <string.h>
 
-#include "src/util/basename.h"
+#include "src/util/pmix_basename.h"
 #include "src/util/pmix_getcwd.h"
-#include "src/util/string_copy.h"
+#include "src/util/pmix_string_copy.h"
 
 /*
  * Use $PWD instead of getcwd() a) if $PWD exists and b) is a valid

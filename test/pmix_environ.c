@@ -17,7 +17,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 
 int main(int argc, char *argv[])
 {

@@ -61,7 +61,7 @@
 #endif
 
 #include "include/pmix.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "include/pmix_server.h"
 
 #include "src/include/pmix_globals.h"
@@ -69,16 +69,16 @@
 #include "src/mca/gds/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/threads.h"
-#include "src/util/argv.h"
-#include "src/util/context_fns.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_context_fns.h"
 #include "src/util/error.h"
 #include "src/util/name_fns.h"
-#include "src/util/os_dirpath.h"
-#include "src/util/os_path.h"
-#include "src/util/path.h"
+#include "src/util/pmix_os_dirpath.h"
+#include "src/util/pmix_os_path.h"
+#include "src/util/pmix_path.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_pty.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/show_help.h"
 
 #include "src/client/pmix_client_ops.h"

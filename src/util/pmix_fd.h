@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,6 +19,7 @@
 #define PMIX_UTIL_FD_H_
 
 #include "src/include/pmix_config.h"
+#include "pmix_common.h"
 
 BEGIN_C_DECLS
 
@@ -96,6 +97,14 @@ PMIX_EXPORT bool pmix_fd_is_chardev(int fd);
  * @returns false otherwise.
  */
 PMIX_EXPORT bool pmix_fd_is_blkdev(int fd);
+
+/**
+ * Close all open sockets other than stdin/out/err prior to
+ * exec'ing a new binary
+ */
+PMIX_EXPORT void pmix_close_open_file_descriptors(int protected_fd);
+
+PMIX_EXPORT const char *pmix_fd_get_peer_name(int fd);
 
 END_C_DECLS
 

@@ -19,7 +19,7 @@
 #define TEST_COMMON_H
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -30,7 +30,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 
 #define TEST_NAMESPACE  "smoky_nspace"
 #define TEST_CREDENTIAL "dummy"

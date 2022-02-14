@@ -25,7 +25,7 @@
  */
 
 #include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -39,7 +39,7 @@
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/threads.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/util/cmd_line.h"
 #include "src/util/keyval_parse.h"
 #include "src/util/show_help.h"

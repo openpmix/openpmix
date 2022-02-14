@@ -21,7 +21,7 @@
 #endif
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/include/types.h"
 
 #include "include/pmix_server.h"

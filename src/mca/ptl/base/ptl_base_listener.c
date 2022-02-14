@@ -49,16 +49,16 @@
 #include <pthread.h>
 
 #include "src/class/pmix_list.h"
-#include "src/util/argv.h"
-#include "src/util/basename.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_basename.h"
 #include "src/util/error.h"
-#include "src/util/fd.h"
-#include "src/util/net.h"
-#include "src/util/os_dirpath.h"
+#include "src/util/pmix_fd.h"
+#include "src/util/pmix_net.h"
+#include "src/util/pmix_os_dirpath.h"
 #include "src/util/output.h"
-#include "src/util/pif.h"
+#include "src/util/pmix_if.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/show_help.h"
 
 #include "src/mca/ptl/base/base.h"

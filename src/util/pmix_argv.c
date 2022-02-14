@@ -32,7 +32,8 @@
 #    include <string.h>
 #endif /* HAVE_STRING_H */
 
-#include "src/util/argv.h"
+#include "pmix_common.h"
+#include "src/util/pmix_argv.h"
 
 #define ARGSIZE 128
 
@@ -159,6 +160,55 @@ size_t pmix_argv_len(char **argv)
     }
 
     return length;
+}
+
+/*
+ * Copy a NULL-terminated argv array, stripping any leading/trailing
+ * quotes from each element
+ */
+char **pmix_argv_copy_strip(char **argv)
+{
+    char **dupv = NULL;
+    int n;
+    char *start;
+    bool mod;
+    size_t len;
+
+    if (NULL == argv) {
+        return NULL;
+    }
+
+    /* create an "empty" list, so that we return something valid if we
+     were passed a valid list with no contained elements */
+    dupv = (char **) malloc(sizeof(char *));
+    dupv[0] = NULL;
+
+    for (n=0; NULL != argv[n]; n++) {
+        mod = false;
+        start = argv[n];
+        if ('\"' == argv[n][0]) {
+            ++start;
+        }
+        len = strlen(argv[n]);
+        if ('\"' == argv[n][len-1]) {
+            argv[n][len-1] = '\0';
+            mod = true;
+        }
+        if (PMIX_SUCCESS != pmix_argv_append_nosize(&dupv, start)) {
+            pmix_argv_free(dupv);
+            if (mod) {
+                argv[n][len-1] = '\"';
+            }
+            return NULL;
+        }
+        if (mod) {
+            argv[n][len-1] = '\"';
+        }
+    }
+
+    /* All done */
+
+    return dupv;
 }
 
 pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, int num_to_delete)

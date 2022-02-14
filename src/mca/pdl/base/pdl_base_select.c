@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
@@ -21,7 +21,7 @@
 #    include "unistd.h"
 #endif
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/mca/base/base.h"
 #include "src/mca/mca.h"
 #include "src/mca/pdl/base/base.h"

@@ -26,7 +26,7 @@
 #define PMIX_RTE_H
 
 #include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/class/pmix_object.h"
 
 #include <stdio.h>

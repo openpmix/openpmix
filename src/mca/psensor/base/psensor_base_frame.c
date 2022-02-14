@@ -15,7 +15,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <pthread.h>
 #include <event.h>

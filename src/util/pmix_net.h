@@ -12,7 +12,7 @@
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2017      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,7 +25,7 @@
 #ifndef PMIX_UTIL_NET_H
 #define PMIX_UTIL_NET_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
@@ -36,6 +36,8 @@
 #ifdef HAVE_NETINET_IN_H
 #    include <netinet/in.h>
 #endif
+
+#include "pmix_common.h"
 
 BEGIN_C_DECLS
 

@@ -14,7 +14,7 @@
 #include "src/include/pmix_config.h"
 
 #include "include/pmix.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "include/pmix_server.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -22,7 +22,7 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/base/base.h"
 #include "src/threads/threads.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 
 #include "src/common/pmix_attributes.h"
 #include "src/include/dictionary.h"

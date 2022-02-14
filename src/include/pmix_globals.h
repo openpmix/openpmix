@@ -36,7 +36,7 @@
 #include <event.h>
 
 #include "include/pmix.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "include/pmix_tool.h"
 
 #include "src/class/pmix_hash_table.h"

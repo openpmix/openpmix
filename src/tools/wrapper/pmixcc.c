@@ -45,19 +45,19 @@
 #endif /* HAVE_SYS_WAIT_H */
 #include <string.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/runtime/pmix_rte.h"
-#include "src/util/argv.h"
-#include "src/util/basename.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_basename.h"
 #include "src/util/error.h"
-#include "src/util/few.h"
+#include "src/util/pmix_few.h"
 #include "src/util/keyval_parse.h"
-#include "src/util/os_path.h"
-#include "src/util/path.h"
+#include "src/util/pmix_os_path.h"
+#include "src/util/pmix_path.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/show_help.h"
 
 #define PMIX_INCLUDE_FLAG "-I"

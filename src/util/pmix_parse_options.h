@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2016      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,7 +26,7 @@
 #ifndef _PMIX_PARSE_OPTIONS_H_
 #define _PMIX_PARSE_OPTIONS_H_
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 BEGIN_C_DECLS
 

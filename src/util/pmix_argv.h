@@ -41,7 +41,7 @@
 #    include <sys/types.h>
 #endif
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 BEGIN_C_DECLS
 
@@ -198,6 +198,10 @@ PMIX_EXPORT pmix_status_t pmix_argv_insert(char ***target, int start, char **sou
  * target).
  */
 PMIX_EXPORT pmix_status_t pmix_argv_insert_element(char ***target, int location, char *source);
+
+PMIX_EXPORT
+char **pmix_argv_copy_strip(char **argv) __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
+
 
 END_C_DECLS
 

@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2014      Artem Polyakov <artpol84@gmail.com>
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -11,7 +11,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -37,7 +37,7 @@
 
 #    include "src/class/pmix_list.h"
 #    include "src/class/pmix_pointer_array.h"
-#    include "src/util/basename.h"
+#    include "src/util/pmix_basename.h"
 #    include "src/util/output.h"
 
 #    include "src/util/timings.h"
