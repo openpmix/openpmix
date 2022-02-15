@@ -1298,6 +1298,7 @@ process:
 
     if (copystdout){
         copy = PMIX_NEW(pmix_iof_write_output_t);
+        copy->data = (char *) malloc(output->numbytes);
         memcpy(copy->data, output->data, output->numbytes);
         copy->numbytes = output->numbytes;
         pmix_list_append(&pmix_client_globals.iof_stdout.wev.outputs, &copy->super);
@@ -1307,6 +1308,7 @@ process:
     }
     if (copystderr){
         copy = PMIX_NEW(pmix_iof_write_output_t);
+        copy->data = (char *) malloc(output->numbytes);
         memcpy(copy->data, output->data, output->numbytes);
         copy->numbytes = output->numbytes;
         pmix_list_append(&pmix_client_globals.iof_stderr.wev.outputs, &copy->super);
