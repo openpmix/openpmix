@@ -40,7 +40,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/mca.h"

@@ -22,7 +22,7 @@
 #endif
 
 #include "pmix_common.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 #include "src/mca/pdl/base/base.h"
 #include "src/mca/pdl/pdl.h"

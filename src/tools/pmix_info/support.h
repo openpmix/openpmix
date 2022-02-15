@@ -4,7 +4,7 @@
  * Copyright (c) 2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2017 IBM Corporation.  All rights reserved.
  * Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,8 +21,8 @@
 
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/mca/base/base.h"
-#include "src/util/cmd_line.h"
+#include "src/mca/base/pmix_base.h"
+#include "src/util/pmix_cmd_line.h"
 
 BEGIN_C_DECLS
 

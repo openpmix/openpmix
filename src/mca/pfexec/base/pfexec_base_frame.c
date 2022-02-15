@@ -37,7 +37,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_iof.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_error.h"

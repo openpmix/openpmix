@@ -237,7 +237,7 @@ const char *pmix_home_directory(uid_t uid)
 {
     const char *home = NULL;
 
-    if (uid == geteuid()) {
+    if (UINT_MAX == uid || uid == geteuid()) {
         home = getenv("HOME");
     }
     if (NULL == home) {

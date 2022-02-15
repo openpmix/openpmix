@@ -38,7 +38,7 @@
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/mca.h"
-#include "src/util/cmd_line.h"
+#include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
@@ -153,13 +153,6 @@ PMIX_EXPORT int pmix_mca_base_select(const char *type_name, int output_id,
 PMIX_EXPORT int pmix_mca_base_is_component_required(pmix_list_t *components_available,
                                                     pmix_mca_base_component_t *component,
                                                     bool exclusive, bool *is_required);
-
-/* mca_base_cmd_line.c */
-
-PMIX_EXPORT int pmix_mca_base_cmd_line_setup(pmix_cmd_line_t *cmd);
-PMIX_EXPORT int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd, char ***app_env,
-                                                    char ***global_env);
-PMIX_EXPORT void pmix_mca_base_cmd_line_wrap_args(char **args);
 
 /* pmix_mca_base_component_compare.c */
 

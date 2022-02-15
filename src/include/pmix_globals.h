@@ -624,6 +624,9 @@ PMIX_EXPORT pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
+PMIX_EXPORT extern const char* PMIX_PROXY_VERSION;
+PMIX_EXPORT extern const char* PMIX_PROXY_BUGREPORT;
+PMIX_EXPORT extern const char* pmix_tool_basename;
 
 static inline bool pmix_check_node_info(const char *key)
 {

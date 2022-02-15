@@ -30,12 +30,14 @@ AM_CPPFLAGS = \
 
 noinst_LTLIBRARIES = libpmix_util.la
 
-dist_pmixdata_DATA = help-pmix-util.txt
+dist_pmixdata_DATA = \
+    help-pmix-util.txt \
+    help-cli.txt
 
 headers = \
         alfg.h \
         pmix_argv.h \
-        cmd_line.h \
+        pmix_cmd_line.h \
         pmix_error.h \
         pmix_printf.h \
         pmix_output.h \
@@ -64,7 +66,7 @@ headers = \
 sources = \
         alfg.c \
         pmix_argv.c \
-        cmd_line.c \
+        pmix_cmd_line.c \
         pmix_error.c \
         pmix_printf.c \
         pmix_output.c \

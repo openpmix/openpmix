@@ -19,7 +19,7 @@
 
 #include "pmix_mca_base_framework.h"
 #include "pmix_mca_base_var.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 
 bool pmix_mca_base_framework_is_registered(struct pmix_mca_base_framework_t *framework)
 {

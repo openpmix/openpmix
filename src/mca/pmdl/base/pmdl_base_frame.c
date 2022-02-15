@@ -33,7 +33,7 @@
 #endif
 
 #include "src/class/pmix_list.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_alias.h"
 #include "src/mca/pmdl/base/base.h"
 

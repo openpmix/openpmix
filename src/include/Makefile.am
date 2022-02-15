@@ -22,6 +22,10 @@
 # $HEADER$
 #
 
+AM_CFLAGS = \
+            -DPMIX_PROXY_VERSION_STRING="\"@PMIX_VERSION@\"" \
+            -DPMIX_PROXY_BUGREPORT_STRING="\"@PMIX_PROXY_BUGREPORT_STRING@\""
+
 pmixdir = $(pmixincludedir)/$(subdir)
 
 noinst_LTLIBRARIES = libpmixglobal.la

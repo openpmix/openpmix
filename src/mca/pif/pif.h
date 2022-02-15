@@ -15,7 +15,7 @@
 #ifndef PMIX_MCA_PIF_PIF_H
 #define PMIX_MCA_PIF_PIF_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -50,7 +50,7 @@
 #    include <ifaddrs.h>
 #endif
 
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 #include "src/util/pmix_if.h"
 

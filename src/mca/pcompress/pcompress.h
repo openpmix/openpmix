@@ -33,7 +33,7 @@
 
 #include "pmix_config.h"
 #include "src/class/pmix_object.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 
 #if defined(c_plusplus) || defined(__cplusplus)

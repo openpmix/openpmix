@@ -18,7 +18,7 @@
 #include "pmix_config.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/pcompress/base/static-components.h"
 #include "src/mca/ptl/ptl_types.h"

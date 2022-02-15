@@ -43,11 +43,11 @@
 
 #include "src/class/pmix_object.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/cmd_line.h"
+#include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_error.h"
 #include "src/util/keyval_parse.h"
 #include "src/util/pmix_output.h"
@@ -60,7 +60,8 @@
  * Public variables
  */
 
-pmix_cmd_line_t *pmix_info_cmd_line = NULL;
+pmix_cli_result_t *pmix_info_cmd_line = NULL;
+pmix_cli_result_t results = PMIX_CLI_RESULT_STATIC_INIT;
 pmix_pointer_array_t pmix_component_map = PMIX_POINTER_ARRAY_STATIC_INIT;
 pmix_pointer_array_t mca_types = PMIX_POINTER_ARRAY_STATIC_INIT;
 
@@ -74,9 +75,15 @@ int main(int argc, char *argv[])
     int i;
     pmix_info_component_map_t *map;
 
+    pmix_info_cmd_line = &results;
+    PMIX_CONSTRUCT(&results, pmix_cli_result_t);
+
     /* protect against problems if someone passes us thru a pipe
      * and then abnormally terminates the pipe early */
     signal(SIGPIPE, SIG_IGN);
+
+    /* init globals */
+    pmix_tool_basename = "pmix_info";
 
     /* initialize the output system */
     if (!pmix_output_init()) {
@@ -120,14 +127,6 @@ int main(int argc, char *argv[])
     if (PMIX_SUCCESS != (ret = pmix_register_params())) {
         fprintf(stderr, "pmix_register_params failed with %d\n", ret);
         return PMIX_ERROR;
-    }
-
-    pmix_info_cmd_line = PMIX_NEW(pmix_cmd_line_t);
-    if (NULL == pmix_info_cmd_line) {
-        ret = errno;
-        pmix_show_help("help-pmix-info.txt", "lib-call-fail", true, "pmix_cmd_line_create",
-                       __FILE__, __LINE__, NULL);
-        exit(ret);
     }
 
     if (PMIX_SUCCESS != (ret = pmix_info_init(argc, argv))) {
@@ -199,7 +198,7 @@ int main(int argc, char *argv[])
 
     /* All done */
     pmix_info_close_components();
-    PMIX_RELEASE(pmix_info_cmd_line);
+    PMIX_DESTRUCT(pmix_info_cmd_line);
     PMIX_DESTRUCT(&mca_types);
     for (i = 0; i < pmix_component_map.size; i++) {
         if (NULL

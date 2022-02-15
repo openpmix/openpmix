@@ -55,12 +55,12 @@
 #    include <dirent.h>
 #endif /* HAVE_DIRENT_H */
 
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_basename.h"
-#include "src/util/cmd_line.h"
+#include "src/util/pmix_cmd_line.h"
 #include "src/util/keyval_parse.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
@@ -105,44 +105,24 @@ static char *pretty_node_state(pmix_node_state_t state);
 static int parseable_print(pmix_ps_mpirun_info_t *hnpinfo);
 #endif
 
-/*****************************************
- * Global Vars for Command line Arguments
- *****************************************/
-typedef struct {
-    bool help;
-    bool parseable;
-    bool nodes;
-    char *nspace;
-    pid_t pid;
-} pmix_ps_globals_t;
+static struct option ppsoptions[] = {
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
 
-pmix_ps_globals_t pmix_ps_globals = {
-    .help = false,
-    .parseable = false,
-    .nodes = false,
-    .nspace = NULL,
-    .pid = 0
+    PMIX_OPTION_DEFINE(PMIX_CLI_SYS_SERVER_FIRST, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SYSTEM_SERVER, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_WAIT_TO_CONNECT, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_NUM_CONNECT_RETRIES, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PID, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_NAMESPACE, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE("nodes", PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
+
+    PMIX_OPTION_END
 };
-
-pmix_cmd_line_init_t cmd_line_opts[]
-    = {{NULL, 'h', NULL, "help", 0, &pmix_ps_globals.help, PMIX_CMD_LINE_TYPE_BOOL,
-        "This help message", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, '\0', NULL, "parseable", 0, &pmix_ps_globals.parseable, PMIX_CMD_LINE_TYPE_BOOL,
-        "Provide parseable output", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, '\0', NULL, "nspace", 0, &pmix_ps_globals.nspace, PMIX_CMD_LINE_TYPE_STRING,
-        "Nspace of job whose status is being requested", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, 'p', NULL, "pid", 1, &pmix_ps_globals.pid, PMIX_CMD_LINE_TYPE_INT,
-        "Specify pid of launcher to be contacted (default is to system server", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, 'n', NULL, "nodes", 0, &pmix_ps_globals.nodes, PMIX_CMD_LINE_TYPE_BOOL,
-        "Display Node Information", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       /* End of list */
-       {NULL, '\0', NULL, NULL, 0, NULL, PMIX_CMD_LINE_TYPE_NULL, NULL, PMIX_CMD_LINE_OTYPE_GENERAL}
-    };
+static char *ppsshorts = "h::vV";
 
 /* this is a callback function for the PMIx_Query
  * API. The query will callback with a status indicating
@@ -229,11 +209,15 @@ int main(int argc, char *argv[])
     size_t nq;
     myquery_data_t myquery_data;
     mylock_t mylock;
-    pmix_cmd_line_t cmd_line;
+    pmix_cli_result_t results;
+    PMIX_HIDE_UNUSED_PARAMS(argc);
 
     /* protect against problems if someone passes us thru a pipe
      * and then abnormally terminates the pipe early */
     signal(SIGPIPE, SIG_IGN);
+
+    /* init globals */
+    pmix_tool_basename = "pps";
 
     /* initialize the output system */
     if (!pmix_output_init()) {
@@ -241,9 +225,9 @@ int main(int argc, char *argv[])
     }
 
     /* initialize install dirs code */
-    if (PMIX_SUCCESS
-        != (rc = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
-                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    rc = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
+                                      PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
         fprintf(stderr,
                 "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
                 "returned %d instead of PMIX_SUCCESS)\n",
@@ -280,30 +264,15 @@ int main(int argc, char *argv[])
     }
 
     /* Parse the command line options */
-    pmix_cmd_line_create(&cmd_line, cmd_line_opts);
-
-    pmix_mca_base_open();
-    pmix_mca_base_cmd_line_setup(&cmd_line);
-    rc = pmix_cmd_line_parse(&cmd_line, false, false, argc, argv);
+    PMIX_CONSTRUCT(&results, pmix_cli_result_t);
+    rc = pmix_cmd_line_parse(argv, ppsshorts, ppsoptions,
+                             NULL, &results, "help-pps.txt");
 
     if (PMIX_SUCCESS != rc) {
         if (PMIX_ERR_SILENT != rc) {
             fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
         }
         return rc;
-    }
-
-    if (pmix_ps_globals.help) {
-        char *str, *args = NULL;
-        args = pmix_cmd_line_get_usage_msg(&cmd_line);
-        str = pmix_show_help_string("help-pps.txt", "usage", true, args);
-        if (NULL != str) {
-            printf("%s", str);
-            free(str);
-        }
-        free(args);
-        /* If we show the help message, that should be all we do */
-        exit(0);
     }
 
     /* if we were given the pid of a starter, then direct that

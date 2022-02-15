@@ -98,6 +98,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED([PMIX_VERSION], ["$PMIX_VERSION"],
                        [The library version is always available, contrary to VERSION])
 
+    PMIX_PROXY_BUGREPORT_STRING="https://github.com/openpmix/openpmix"
+    AC_SUBST(PMIX_PROXY_BUGREPORT_STRING)
+    AC_DEFINE_UNQUOTED([PMIX_PROXY_BUGREPORT_STRING], ["$PMIX_PROXY_BUGREPORT_STRING"],
+                       [Where to report bugs])
+
     PMIX_RELEASE_DATE="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --release-date`"
     AC_SUBST(PMIX_RELEASE_DATE)
 
