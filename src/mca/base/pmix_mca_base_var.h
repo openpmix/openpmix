@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -119,52 +119,6 @@ typedef enum {
     PMIX_MCA_BASE_VAR_SOURCE_MAX
 } pmix_mca_base_var_source_t;
 
-/**
- * MCA variable scopes
- *
- * Equivalent to MPI_T scopes with the same base name (e.g.,
- * MCA_BASE_VAR_SCOPE_CONSTANT corresponts to MPI_T_SCOPE_CONSTANT).
- */
-typedef enum {
-    /** The value of this variable will not change after it is
-        registered.  This flag is incompatible with
-        MCA_BASE_VAR_FLAG_SETTABLE, and also implies
-        MCA_BASE_VAR_SCOPE_READONLY. */
-    PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
-    /** Setting the READONLY flag means that the pmix_mca_base_var_set()
-        function cannot be used to set the value of this variable
-        (e.g., the MPI_T_cvar_write() MPI_T function). */
-    PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-    /** The value of this variable may be changed locally. */
-    PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-    /** The value of this variable must be set to a consistent value
-        within a group */
-    PMIX_MCA_BASE_VAR_SCOPE_GROUP,
-    /** The value of this variable must be set to the same value
-        within a group */
-    PMIX_MCA_BASE_VAR_SCOPE_GROUP_EQ,
-    /** The value of this variable must be set to a consistent value
-        for all processes */
-    PMIX_MCA_BASE_VAR_SCOPE_ALL,
-    /** The value of this variable must be set to the same value
-        for all processes */
-    PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
-    PMIX_MCA_BASE_VAR_SCOPE_MAX
-} pmix_mca_base_var_scope_t;
-
-typedef enum {
-    PMIX_INFO_LVL_1,
-    PMIX_INFO_LVL_2,
-    PMIX_INFO_LVL_3,
-    PMIX_INFO_LVL_4,
-    PMIX_INFO_LVL_5,
-    PMIX_INFO_LVL_6,
-    PMIX_INFO_LVL_7,
-    PMIX_INFO_LVL_8,
-    PMIX_INFO_LVL_9,
-    PMIX_INFO_LVL_MAX
-} pmix_mca_base_var_info_lvl_t;
-
 typedef enum {
     PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED = 0x0001,
     PMIX_MCA_BASE_VAR_SYN_FLAG_INTERNAL = 0x0002
@@ -172,13 +126,8 @@ typedef enum {
 
 typedef enum {
     PMIX_MCA_BASE_VAR_FLAG_NONE = 0x0000,
-    /** Variable is internal (hidden from *_info/MPIT) */
+    /** Variable is internal (hidden from *_info) */
     PMIX_MCA_BASE_VAR_FLAG_INTERNAL = 0x0001,
-    /** Variable will always be the default value. Implies
-        !MCA_BASE_VAR_FLAG_SETTABLE */
-    PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY = 0x0002,
-    /** Variable can be set with pmix_mca_base_var_set() */
-    PMIX_MCA_BASE_VAR_FLAG_SETTABLE = 0x0004,
     /** Variable is deprecated */
     PMIX_MCA_BASE_VAR_FLAG_DEPRECATED = 0x0008,
     /** Variable has been overridden */
@@ -232,9 +181,6 @@ struct pmix_mca_base_var_t {
         is deregistered with pmix_mca_base_var_group_deregister() */
     int mbv_group_index;
 
-    /** Info level of this variable */
-    pmix_mca_base_var_info_lvl_t mbv_info_lvl;
-
     /** Enum indicating the type of the variable (integer, string, boolean) */
     pmix_mca_base_var_type_t mbv_type;
 
@@ -256,9 +202,6 @@ struct pmix_mca_base_var_t {
 
     /** Variable flags */
     pmix_mca_base_var_flag_t mbv_flags;
-
-    /** Variable scope */
-    pmix_mca_base_var_scope_t mbv_scope;
 
     /** Source of the current value */
     pmix_mca_base_var_source_t mbv_source;
@@ -361,9 +304,6 @@ PMIX_EXPORT int pmix_mca_base_var_init(void);
  * {flags} indicate attributes of this variable (internal, settable,
  * default only, etc.), as listed below.
  *
- * If MCA_BASE_VAR_FLAG_SETTABLE is set in {flags}, this variable may
- * be set using pmix_mca_base_var_set_value() (i.e., the MPI_T interface).
- *
  * If MCA_BASE_VAR_FLAG_INTERNAL is set in {flags}, this variable
  * is not shown by default in the output of ompi_info.  That is,
  * this variable is considered internal to the PMIX implementation
@@ -404,9 +344,7 @@ PMIX_EXPORT int pmix_mca_base_var_register(const char *project_name, const char 
                                            const char *component_name, const char *variable_name,
                                            const char *description, pmix_mca_base_var_type_t type,
                                            pmix_mca_base_var_enum_t *enumerator, int bind,
-                                           pmix_mca_base_var_flag_t flags,
-                                           pmix_mca_base_var_info_lvl_t info_lvl,
-                                           pmix_mca_base_var_scope_t scope, void *storage);
+                                           pmix_mca_base_var_flag_t flags, void *storage);
 
 /**
  * Convenience function for registering a variable associated with a
@@ -420,8 +358,7 @@ PMIX_EXPORT int pmix_mca_base_var_register(const char *project_name, const char 
 PMIX_EXPORT int pmix_mca_base_component_var_register(
     const pmix_mca_base_component_t *component, const char *variable_name, const char *description,
     pmix_mca_base_var_type_t type, pmix_mca_base_var_enum_t *enumerator, int bind,
-    pmix_mca_base_var_flag_t flags, pmix_mca_base_var_info_lvl_t info_lvl,
-    pmix_mca_base_var_scope_t scope, void *storage);
+    pmix_mca_base_var_flag_t flags, void *storage);
 
 /**
  * Convenience function for registering a variable associated with a framework. This
@@ -431,8 +368,7 @@ PMIX_EXPORT int pmix_mca_base_component_var_register(
 PMIX_EXPORT int pmix_mca_base_framework_var_register(
     const pmix_mca_base_framework_t *framework, const char *variable_name, const char *help_msg,
     pmix_mca_base_var_type_t type, pmix_mca_base_var_enum_t *enumerator, int bind,
-    pmix_mca_base_var_flag_t flags, pmix_mca_base_var_info_lvl_t info_level,
-    pmix_mca_base_var_scope_t scope, void *storage);
+    pmix_mca_base_var_flag_t flags, void *storage);
 
 /**
  * Register a synonym name for an MCA variable.
@@ -512,31 +448,6 @@ PMIX_EXPORT int pmix_mca_base_var_deregister(int vari);
 PMIX_EXPORT int pmix_mca_base_var_get_value(int vari, void *value,
                                             pmix_mca_base_var_source_t *source,
                                             const char **source_file);
-
-/**
- * Sets an "override" value for an integer MCA variable.
- *
- * @param[in] vari Index of MCA variable to set
- * @param[in] value Pointer to the value to set. Should point to
- * a char * for string variables or a int * for integer variables.
- * @param[in] size Size of value.
- * @param[in] source Source of this value.
- * @param[in] source_file Source file if source is MCA_BASE_VAR_SOURCE_FILE.
- *
- * @retval PMIX_SUCCESS  Upon success.
- * @retval PMIX_ERR_PERM If the variable is not settable.
- * @retval PMIX_ERR_BAD_PARAM If the variable does not exist or has
- * been deregistered.
- * @retval PMIX_ERROR On other error.
- *
- * This function sets the value of an MCA variable. This value will
- * overwrite the current value of the variable (or if index represents
- * a synonym the variable the synonym represents) if the value is
- * settable.
- */
-PMIX_EXPORT int pmix_mca_base_var_set_value(int vari, const void *value, size_t size,
-                                            pmix_mca_base_var_source_t source,
-                                            const char *source_file);
 
 /**
  * Get the string name corresponding to the MCA variable

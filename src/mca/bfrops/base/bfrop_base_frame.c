@@ -71,7 +71,6 @@ static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
     pmix_bfrops_globals.initial_size = PMIX_BFROP_DEFAULT_INITIAL_SIZE;
     pmix_mca_base_var_register("pmix", "bfrops", "base", "initial_size", "Initial size of a buffer",
                                PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                               PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &pmix_bfrops_globals.initial_size);
 
     pmix_bfrops_globals.threshold_size = PMIX_BFROP_DEFAULT_THRESHOLD_SIZE;
@@ -79,7 +78,6 @@ static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
                                "Size at which we switch from extending a buffer by doubling to "
                                "extending by a smaller value",
                                PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                               PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &pmix_bfrops_globals.threshold_size);
 
 #if PMIX_ENABLE_DEBUG
@@ -89,7 +87,6 @@ static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
 #endif
     pmix_mca_base_var_register("pmix", "bfrops", "base", "default_type", "Default type for buffers",
                                PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                               PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                &pmix_bfrops_globals.default_type);
     return PMIX_SUCCESS;
 }

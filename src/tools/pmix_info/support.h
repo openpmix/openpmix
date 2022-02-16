@@ -74,7 +74,6 @@ PMIX_EXPORT void pmix_info_show_path(const char *type, const char *value);
 PMIX_EXPORT void pmix_info_do_path(bool want_all);
 
 PMIX_EXPORT void pmix_info_show_mca_params(const char *type, const char *component,
-                                           pmix_mca_base_var_info_lvl_t max_level,
                                            bool want_internal);
 
 PMIX_EXPORT void pmix_info_show_mca_version(const pmix_mca_base_component_t *component,

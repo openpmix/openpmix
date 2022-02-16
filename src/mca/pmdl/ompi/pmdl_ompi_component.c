@@ -63,8 +63,8 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &mca_pmdl_ompi_component.incparms);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+        &mca_pmdl_ompi_component.incparms);
     if (NULL != mca_pmdl_ompi_component.incparms) {
         mca_pmdl_ompi_component.include = pmix_argv_split(mca_pmdl_ompi_component.incparms, ',');
     }
@@ -73,8 +73,8 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &mca_pmdl_ompi_component.excparms);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+         &mca_pmdl_ompi_component.excparms);
     if (NULL != mca_pmdl_ompi_component.excparms) {
         mca_pmdl_ompi_component.exclude = pmix_argv_split(mca_pmdl_ompi_component.excparms, ',');
     }

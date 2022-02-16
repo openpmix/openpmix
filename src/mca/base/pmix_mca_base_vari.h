@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -131,13 +131,6 @@ PMIX_EXPORT int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t
  * Add a variable to a group
  */
 PMIX_EXPORT int pmix_mca_base_var_group_add_var(const int group_index, const int param_index);
-
-/**
- * \internal
- *
- * Add a performance variable to a group
- */
-PMIX_EXPORT int pmix_mca_base_var_group_add_pvar(const int group_index, const int param_index);
 
 /**
  * \internal

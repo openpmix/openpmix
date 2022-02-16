@@ -73,13 +73,12 @@ static pmix_status_t component_register(void)
 
     (void) pmix_mca_base_component_var_register(
         component, "config_file", "Path of file containing Slingshot fabric configuration",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &mca_pnet_sshot_component.configfile);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+        &mca_pnet_sshot_component.configfile);
 
     (void) pmix_mca_base_component_var_register(component, "num_nodes",
                                                 "Number of nodes to simulate (0 = no simulation)",
                                                 PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                                PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                                 &mca_pnet_sshot_component.numnodes);
     (void) pmix_mca_base_component_var_register(
         component, "devs_per_node", "Number of devices/node to simulate (0 = no simulation)",
@@ -88,7 +87,6 @@ static pmix_status_t component_register(void)
 
     (void) pmix_mca_base_component_var_register(component, "ppn", "PPN to simulate",
                                                 PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                                PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                                 &mca_pnet_sshot_component.ppn);
 
     return PMIX_SUCCESS;

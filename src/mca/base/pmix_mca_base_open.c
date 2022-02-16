@@ -102,8 +102,7 @@ int pmix_mca_base_open(void)
     var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_path",
                                         "Path where to look for additional components",
                                         PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                        PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-                                        PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                        PMIX_MCA_BASE_VAR_FLAG_NONE,
                                         &pmix_mca_base_component_path);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "component_path",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
@@ -112,10 +111,10 @@ int pmix_mca_base_open(void)
     pmix_mca_base_component_show_load_errors = (bool) PMIX_SHOW_LOAD_ERRORS_DEFAULT;
     ;
     var_id = pmix_mca_base_var_register(
-        "pmix", "mca", "base", "component_show_load_errors",
-        "Whether to show errors for components that failed to load or not",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_component_show_load_errors);
+                                        "pmix", "mca", "base", "component_show_load_errors",
+                                        "Whether to show errors for components that failed to load or not",
+                                        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+                                        &pmix_mca_base_component_show_load_errors);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL,
                                               "component_show_load_errors",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
@@ -124,15 +123,15 @@ int pmix_mca_base_open(void)
     var_id = pmix_mca_base_var_register(
         "pmix", "mca", "base", "component_track_load_errors",
         "Whether to track errors for components that failed to load or not",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_component_track_load_errors);
+        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+         &pmix_mca_base_component_track_load_errors);
 
     pmix_mca_base_component_disable_dlopen = false;
     var_id = pmix_mca_base_var_register(
         "pmix", "mca", "base", "component_disable_dlopen",
         "Whether to attempt to disable opening dynamic components or not",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_component_disable_dlopen);
+        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+        &pmix_mca_base_component_disable_dlopen);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL,
                                               "component_disable_dlopen",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
@@ -147,8 +146,8 @@ int pmix_mca_base_open(void)
         "syslog notices), file[:filename] (if filename is not specified, a default filename is "
         "used), fileappend (if not specified, the file is opened for truncation), level[:N] (if "
         "specified, integer verbose level; otherwise, 0 is implied)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_verbose);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+        &pmix_mca_base_verbose);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "verbose",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 

@@ -74,7 +74,7 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
         &mca_pnet_nvd_component.incparms);
     if (NULL != mca_pnet_nvd_component.incparms) {
         mca_pnet_nvd_component.include = pmix_argv_split(mca_pnet_nvd_component.incparms, ',');
@@ -84,7 +84,7 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
         &mca_pnet_nvd_component.excparms);
     if (NULL != mca_pnet_nvd_component.excparms) {
         mca_pnet_nvd_component.exclude = pmix_argv_split(mca_pnet_nvd_component.excparms, ',');

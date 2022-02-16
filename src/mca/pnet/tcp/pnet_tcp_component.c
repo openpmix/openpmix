@@ -64,8 +64,8 @@ static pmix_status_t component_register(void)
         "Static ports for procs, expressed as a semi-colon delimited "
         "list of type:(optional)plane:Comma-delimited list of ranges (e.g., "
         "\"tcp:10.10.10.0/24:32000-32100,33000;udp:40000,40005\")",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &mca_pnet_tcp_component.static_ports);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+        &mca_pnet_tcp_component.static_ports);
 
     (void) pmix_mca_base_component_var_register(
         component, "default_network_allocation",
@@ -73,14 +73,14 @@ static pmix_status_t component_register(void)
         "ranges  "
         "(e.g., \"udp:10.10.10.0/24:3\", or \"5\" if the choice of "
         "type and plane isn't critical)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &mca_pnet_tcp_component.default_request);
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+         &mca_pnet_tcp_component.default_request);
 
     mca_pnet_tcp_component.incparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
         &mca_pnet_tcp_component.incparms);
     if (NULL != mca_pnet_tcp_component.incparms) {
         mca_pnet_tcp_component.include = pmix_argv_split(mca_pnet_tcp_component.incparms, ',');
@@ -90,7 +90,7 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
         &mca_pnet_tcp_component.excparms);
     if (NULL != mca_pnet_tcp_component.excparms) {
         mca_pnet_tcp_component.exclude = pmix_argv_split(mca_pnet_tcp_component.excparms, ',');
