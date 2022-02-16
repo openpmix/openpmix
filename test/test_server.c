@@ -849,14 +849,23 @@ int server_init(test_params *params)
 
         TEST_VERBOSE(("pmix server %d started PID:%d", my_server_id, getpid()));
         for (i = params->nservers - 1; i >= 0; i--) {
+            int ret;
             pid_t pid;
             server_info = PMIX_NEW(server_info_t);
 
             int fd1[2];
             int fd2[2];
 
-            pipe(fd1);
-            pipe(fd2);
+            ret = pipe(fd1);
+            if (ret != 0) {
+                TEST_ERROR(("pipe failed"));
+                return -1;
+            }
+            ret = pipe(fd2);
+            if (ret != 0) {
+                TEST_ERROR(("pipe failed"));
+                return -1;
+            }
 
             if (0 != i) {
                 pid = fork();
