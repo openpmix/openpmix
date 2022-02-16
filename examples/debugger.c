@@ -153,7 +153,10 @@ static pmix_status_t spawn_debugger(char *appspace)
     PMIX_APP_CREATE(debugger, 1);
     debugger[0].cmd = strdup("./debuggerd");
     PMIX_ARGV_APPEND(rc, debugger[0].argv, "./debuggerd");
-    getcwd(cwd, 1024); // point us to our current directory
+    if (NULL == getcwd(cwd, 1024)) { // point us to our current directory
+        fprintf(stderr, "Debugger: getcwd() failed\n");
+        return PMIX_ERROR;
+    }
     debugger[0].cwd = strdup(cwd);
     /* provide directives so the daemons go where we want, and
      * let the RM know these are debugger daemons */
@@ -341,7 +344,11 @@ int main(int argc, char **argv)
             /* setup the executable */
             app[0].cmd = strdup("client");
             PMIX_ARGV_APPEND(rc, app[0].argv, "./client");
-            getcwd(cwd, 1024); // point us to our current directory
+            if (NULL == getcwd(cwd, 1024)) { // point us to our current directory
+                fprintf(stderr, "Debugger: getcwd failed\n");
+                rc = PMIX_ERROR;
+                goto done;
+            }
             app[0].cwd = strdup(cwd);
             app[0].maxprocs = 2;
             /* provide job-level directives so the apps do what the user requested */
