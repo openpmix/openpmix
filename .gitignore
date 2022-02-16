@@ -84,6 +84,7 @@ examples/pubi
 examples/server
 examples/tool
 examples/group
+examples/group_dmodex
 examples/asyncgroup
 examples/hello
 examples/bad_exit
