@@ -53,32 +53,20 @@ static int pstat_test_component_query(pmix_mca_base_module_t **module, int *prio
  */
 
 const pmix_pstat_base_component_t mca_pstat_test_component = {
+    /* Indicate that we are a pstat v1.1.0 component (which also
+       implies a specific MCA version) */
 
-    /* First, the mca_component_t struct containing meta information
-       about the component itself */
+    PMIX_PSTAT_BASE_VERSION_1_0_0,
 
-    .base_version = {
-        /* Indicate that we are a pstat v1.1.0 component (which also
-           implies a specific MCA version) */
+    /* Component name and version */
 
-        PMIX_PSTAT_BASE_VERSION_1_0_0,
+    .pmix_mca_component_name = "test",
+    PMIX_MCA_BASE_MAKE_VERSION(component,
+                               PMIX_MAJOR_VERSION,
+                               PMIX_MINOR_VERSION,
+                               PMIX_RELEASE_VERSION),
 
-        /* Component name and version */
-
-        .pmix_mca_component_name = "test",
-        PMIX_MCA_BASE_MAKE_VERSION(component,
-                                   PMIX_MAJOR_VERSION,
-                                   PMIX_MINOR_VERSION,
-                                   PMIX_RELEASE_VERSION),
-
-        .pmix_mca_query_component = pstat_test_component_query,
-    },
-    /* Next the MCA v1.0.0 component meta data */
-    .base_data = {
-        /* The component is checkpoint ready */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-        .reserved = {0}
-    }
+    .pmix_mca_query_component = pstat_test_component_query,
 };
 
 static int pstat_test_component_query(pmix_mca_base_module_t **module, int *priority)

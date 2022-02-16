@@ -85,11 +85,7 @@ PMIX_EXPORT extern pmix_plog_API_module_t pmix_plog;
 /*
  * the standard component data structure
  */
-struct pmix_plog_base_component_t {
-    pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
-};
-typedef struct pmix_plog_base_component_t pmix_plog_base_component_t;
+typedef pmix_mca_base_component_t pmix_plog_base_component_t;
 
 /*
  * Macro for use in components that are of type plog

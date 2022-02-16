@@ -4,7 +4,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -102,7 +102,6 @@ typedef struct {
  */
 struct pmix_psquash_base_component_t {
     pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
     int priority;
 };
 typedef struct pmix_psquash_base_component_t pmix_psquash_base_component_t;

@@ -146,9 +146,6 @@ typedef int (*pmix_pdl_base_module_foreachfile_fn_t)(
 struct pmix_pdl_base_component_1_0_0_t {
     /** MCA base component */
     pmix_mca_base_component_t base_version;
-    /** MCA base data */
-    pmix_mca_base_component_data_t base_data;
-
     /** Default priority */
     int priority;
 };

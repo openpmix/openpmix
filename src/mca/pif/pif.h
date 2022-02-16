@@ -98,16 +98,7 @@ extern bool pmix_if_retain_loopback;
 /**
  * Structure for if components.
  */
-struct pmix_pif_base_component_2_0_0_t {
-    /** MCA base component */
-    pmix_mca_base_component_t base;
-    /** MCA base data */
-    pmix_mca_base_component_data_t data;
-};
-/**
- * Convenience typedef
- */
-typedef struct pmix_pif_base_component_2_0_0_t pmix_pif_base_component_t;
+typedef pmix_mca_base_component_t pmix_pif_base_component_t;
 
 /*
  * Macro for use in components that are of type pif

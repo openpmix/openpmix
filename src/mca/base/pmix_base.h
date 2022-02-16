@@ -179,14 +179,9 @@ PMIX_EXPORT int pmix_mca_base_component_parse_requested(const char *requested, b
                                                         char ***requested_component_names);
 
 /**
- * Filter a list of components based on a comma-delimted list of names and/or
- * a set of meta-data flags.
+ * Filter a list of components based on a comma-delimted list of names
  *
- * @param[in,out] components List of components to filter
- * @param[in] output_id Output id to write to for error/warning/debug messages
- * @param[in] filter_names Comma delimited list of components to use. Negate with ^.
- * May be NULL.
- * @param[in] filter_flags Metadata flags components are required to have set (CR ready)
+ * @param[in] framework
  *
  * @returns PMIX_SUCCESS On success
  * @returns PMIX_ERR_NOT_FOUND If some component in {filter_names} is not found in
@@ -196,8 +191,7 @@ PMIX_EXPORT int pmix_mca_base_component_parse_requested(const char *requested, b
  * This function closes and releases any components that do not match the filter_name and
  * filter flags.
  */
-PMIX_EXPORT int pmix_mca_base_components_filter(pmix_mca_base_framework_t *framework,
-                                                uint32_t filter_flags);
+PMIX_EXPORT int pmix_mca_base_components_filter(pmix_mca_base_framework_t *framework);
 
 /* Safely release some memory allocated by pmix_mca_base_component_find()
    (i.e., is safe to call even if you never called

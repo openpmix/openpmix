@@ -52,18 +52,7 @@ typedef int (*pmix_pstat_base_module_fini_fn_t)(void);
 /**
  * Structure for pstat components.
  */
-struct pmix_pstat_base_component_2_0_0_t {
-    /** MCA base component */
-    pmix_mca_base_component_t base_version;
-    /** MCA base data */
-    pmix_mca_base_component_data_t base_data;
-};
-
-/**
- * Convenience typedef
- */
-typedef struct pmix_pstat_base_component_2_0_0_t pmix_pstat_base_component_2_0_0_t;
-typedef struct pmix_pstat_base_component_2_0_0_t pmix_pstat_base_component_t;
+typedef pmix_mca_base_component_t pmix_pstat_base_component_t;
 
 /**
  * Structure for pstat modules

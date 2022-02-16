@@ -78,27 +78,13 @@ int pmix_mca_base_framework_components_open(pmix_mca_base_framework_t *framework
 static int open_components(pmix_mca_base_framework_t *framework)
 {
     pmix_list_t *components = &framework->framework_components;
-    uint32_t open_only_flags = PMIX_MCA_BASE_METADATA_PARAM_NONE;
     int output_id = framework->framework_output;
     pmix_mca_base_component_list_item_t *cli, *next;
     int ret;
 
-    /*
-     * Pre-process the list with parameter constraints
-     * e.g., If requested to select only CR enabled components
-     *       then only make available those components.
-     *
-     * JJH Note: Currently checkpoint/restart is the only user of this
-     *           functionality. If other component constraint options are
-     *           added, then this logic can be used for all contraint
-     *           options.
-     *
-     * NTH: Logic moved to pmix_mca_base_components_filter.
-     */
-
     /* If pmix_mca_base_framework_register_components was called with the MCA_BASE_COMPONENTS_ALL
        flag we need to trim down and close any extra components we do not want open */
-    ret = pmix_mca_base_components_filter(framework, open_only_flags);
+    ret = pmix_mca_base_components_filter(framework);
     if (PMIX_SUCCESS != ret) {
         return ret;
     }

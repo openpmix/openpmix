@@ -61,12 +61,6 @@ pmix_pdl_pdlopen_component_t mca_pdl_pdlopen_component = {
             .pmix_mca_query_component = pdlopen_component_query,
         },
 
-        .base_data = {
-            /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-            .reserved = {0}
-        },
-
         /* The pdl framework members */
         .priority = 80
     },

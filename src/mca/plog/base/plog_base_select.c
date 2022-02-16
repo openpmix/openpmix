@@ -197,7 +197,7 @@ int pmix_plog_base_select(void)
             if (NULL
                 != (mod = (pmix_plog_base_active_module_t *)
                         pmix_pointer_array_get_item(&pmix_plog_globals.actives, n))) {
-                pmix_output(0, "\tplog[%d]: %s", n, mod->component->base.pmix_mca_component_name);
+                pmix_output(0, "\tplog[%d]: %s", n, mod->component->pmix_mca_component_name);
             }
         }
     }

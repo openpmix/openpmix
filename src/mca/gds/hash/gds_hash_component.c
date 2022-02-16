@@ -59,11 +59,6 @@ pmix_gds_hash_component_t mca_gds_hash_component = {
             .pmix_mca_query_component = component_query,
             .reserved = {0}
         },
-        .data = {
-            /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-            .reserved = {0}
-        },
         .priority = 10
     },
     .mysessions = PMIX_LIST_STATIC_INIT,

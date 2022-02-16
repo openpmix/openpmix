@@ -46,7 +46,8 @@ PMIX_EXPORT pmix_mca_base_component_t mca_pcompress_zlib_component = {
                                PMIX_RELEASE_VERSION),
 
     /* Component open and close functions */
-    .pmix_mca_query_component = compress_zlib_query};
+    .pmix_mca_query_component = compress_zlib_query
+};
 
 static int compress_zlib_query(pmix_mca_base_module_t **module, int *priority)
 {

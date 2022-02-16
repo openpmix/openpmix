@@ -79,14 +79,6 @@ pmix_compress_base_t pmix_compress_base = {
     .silent = false
 };
 
-pmix_compress_base_component_t pmix_compress_base_selected_component = {
-    .base_version = PMIX_BASE_COMPONENT_STATIC_INIT,
-    .base_data = PMIX_BASE_DATA_STATIC_INIT,
-    .verbose = 0,
-    .pmix_output_handle = 0,
-    .priority = 0
-};
-
 static int pmix_compress_base_register(pmix_mca_base_register_flag_t flags)
 {
     (void) flags;

@@ -44,11 +44,6 @@ pmix_psquash_base_component_t mca_psquash_native_component = {
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
     },
-    .data = {
-        /* The component is checkpoint ready */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-        .reserved = {0}
-    }
 };
 
 static int component_open(void)

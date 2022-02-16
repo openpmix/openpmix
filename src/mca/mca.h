@@ -14,7 +14,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -282,38 +282,6 @@ struct pmix_mca_base_component_2_1_0_t {
 typedef struct pmix_mca_base_component_2_1_0_t pmix_mca_base_component_t;
 /** Versioned convenience typedef */
 typedef struct pmix_mca_base_component_2_1_0_t pmix_mca_base_component_2_1_0_t;
-
-/*
- * Metadata Bit field parameters
- */
-#define PMIX_MCA_BASE_METADATA_PARAM_NONE       (uint32_t) 0x00 /**< No Metadata flags */
-#define PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT (uint32_t) 0x02 /**< Checkpoint enabled Component \
-                                                                 */
-#define PMIX_MCA_BASE_METADATA_PARAM_DEBUG (uint32_t) 0x04      /**< Debug enabled/only Component */
-
-/**
- * Meta data for MCA v2.0.0 components.
- */
-struct pmix_mca_base_component_data_2_0_0_t {
-    uint32_t param_field;
-    /**< Metadata parameter bit field filled in by the parameters
-         defined above */
-
-    /** Extra space to allow for expansion in the future without
-        breaking older components. */
-    char reserved[32];
-};
-#define PMIX_BASE_DATA_STATIC_INIT      \
-{                                       \
-    .param_field = 0,                   \
-    .reserved = {0}                     \
-}
-
-/** Unversioned convenience typedef; use this name in
-    frameworks/components to stay forward source-compatible */
-typedef struct pmix_mca_base_component_data_2_0_0_t pmix_mca_base_component_data_t;
-/** Versioned convenience typedef */
-typedef struct pmix_mca_base_component_data_2_0_0_t pmix_mca_base_component_data_2_0_0_t;
 
 /**
  * Macro for framework author convenience.

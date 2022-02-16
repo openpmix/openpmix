@@ -113,7 +113,7 @@ int pmix_pgpu_base_select(void)
         pmix_output(0, "Final pgpu priorities");
         /* show the prioritized list */
         PMIX_LIST_FOREACH (mod, &pmix_pgpu_globals.actives, pmix_pgpu_base_active_module_t) {
-            pmix_output(0, "\tpgpu: %s Priority: %d", mod->component->base.pmix_mca_component_name,
+            pmix_output(0, "\tpgpu: %s Priority: %d", mod->component->pmix_mca_component_name,
                         mod->pri);
         }
     }

@@ -3,7 +3,7 @@
  * Copyright (c) 2012      Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -66,10 +66,7 @@ typedef struct pmix_pstrg_base_module_1_0_0_t {
 /*
  * the standard component data structure
  */
-typedef struct pmix_pstrg_base_component_1_0_0_t {
-    pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
-} pmix_pstrg_base_component_t;
+typedef pmix_mca_base_component_t pmix_pstrg_base_component_t;
 
 typedef struct pmix_pstrg_API_module_1_0_0_t {
     pmix_pstrg_base_module_query_fn_t query;

@@ -202,7 +202,6 @@ PMIX_EXPORT extern void pmix_ptl_base_cancel_recv(int sd, short args, void *cbda
  */
 struct pmix_ptl_base_component_t {
     pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
     int priority;
     char *uri;
 };

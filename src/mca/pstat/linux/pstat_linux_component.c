@@ -54,22 +54,16 @@ static int pstat_linux_component_query(pmix_mca_base_module_t **module, int *pri
 
 const pmix_pstat_base_component_t mca_pstat_linux_component = {
 
-    /* First, the mca_component_t struct containing meta information
-       about the component itself */
+    PMIX_PSTAT_BASE_VERSION_1_0_0,
 
-    .base_version = {
-        PMIX_PSTAT_BASE_VERSION_1_0_0,
+    /* Component name and version */
+    .pmix_mca_component_name = "linux",
+    PMIX_MCA_BASE_MAKE_VERSION(component,
+                               PMIX_MAJOR_VERSION,
+                               PMIX_MINOR_VERSION,
+                               PMIX_RELEASE_VERSION),
 
-        /* Component name and version */
-        .pmix_mca_component_name = "linux",
-        PMIX_MCA_BASE_MAKE_VERSION(component,
-                                   PMIX_MAJOR_VERSION,
-                                   PMIX_MINOR_VERSION,
-                                   PMIX_RELEASE_VERSION),
-
-        .pmix_mca_query_component = pstat_linux_component_query,
-    },
-    .base_data = PMIX_BASE_DATA_STATIC_INIT
+    .pmix_mca_query_component = pstat_linux_component_query,
 };
 
 static int pstat_linux_component_query(pmix_mca_base_module_t **module, int *priority)

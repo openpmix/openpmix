@@ -62,11 +62,6 @@ pmix_pdl_plibltpdl_component_t mca_pdl_plibltpdl_component = {
             .mca_query_component = plibltpdl_component_query,
         },
 
-        .base_data = {
-            /* The component is checkpoint ready */
-            MCA_BASE_METADATA_PARAM_CHECKPOINT
-        },
-
         /* The dl framework members */
         .priority = 50
     }

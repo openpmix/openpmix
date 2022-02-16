@@ -6,7 +6,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -192,7 +192,6 @@ typedef pmix_psec_module_t *(*pmix_psec_base_component_assign_module_fn_t)(void)
  */
 struct pmix_psec_base_component_t {
     pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
     int priority;
     pmix_psec_base_component_init_fn_t init;
     pmix_psec_base_component_finalize_fn_t finalize;

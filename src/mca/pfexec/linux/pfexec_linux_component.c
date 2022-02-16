@@ -52,22 +52,18 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  */
 
 pmix_pfexec_base_component_t mca_pfexec_linux_component = {
-    /* First, the mca_component_t struct containing meta information
-    about the component itself */
-    .version = {
-        PMIX_PFEXEC_BASE_VERSION_1_0_0,
-        /* Component name and version */
-        .pmix_mca_component_name = "linux",
-        PMIX_MCA_BASE_MAKE_VERSION(component,
-                                   PMIX_MAJOR_VERSION,
-                                   PMIX_MINOR_VERSION,
-                                   PMIX_RELEASE_VERSION),
+    PMIX_PFEXEC_BASE_VERSION_1_0_0,
+    /* Component name and version */
+    .pmix_mca_component_name = "linux",
+    PMIX_MCA_BASE_MAKE_VERSION(component,
+                               PMIX_MAJOR_VERSION,
+                               PMIX_MINOR_VERSION,
+                               PMIX_RELEASE_VERSION),
 
-        /* Component open and close functions */
-        .pmix_mca_open_component = component_open,
-        .pmix_mca_close_component = component_close,
-        .pmix_mca_query_component = component_query,
-    },
+    /* Component open and close functions */
+    .pmix_mca_open_component = component_open,
+    .pmix_mca_close_component = component_close,
+    .pmix_mca_query_component = component_query,
 };
 
 static pmix_status_t component_open(void)

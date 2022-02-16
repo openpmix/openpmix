@@ -412,7 +412,6 @@ typedef struct {
 /* define the component structure */
 struct pmix_gds_base_component_t {
     pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
     int priority;
 };
 typedef struct pmix_gds_base_component_t pmix_gds_base_component_t;

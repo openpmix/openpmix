@@ -113,7 +113,7 @@ int pmix_pnet_base_select(void)
         pmix_output(0, "Final pnet priorities");
         /* show the prioritized list */
         PMIX_LIST_FOREACH (mod, &pmix_pnet_globals.actives, pmix_pnet_base_active_module_t) {
-            pmix_output(0, "\tpnet: %s Priority: %d", mod->component->base.pmix_mca_component_name,
+            pmix_output(0, "\tpnet: %s Priority: %d", mod->component->pmix_mca_component_name,
                         mod->pri);
         }
     }

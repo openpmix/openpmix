@@ -55,26 +55,17 @@ static int if_linux_ipv6_open(void);
 
 /* Discovers Linux IPv6 interfaces */
 pmix_pif_base_component_t mca_pif_linux_ipv6_component = {
-    /* First, the mca_component_t struct containing meta information
-       about the component itself */
-    .base = {
-        PMIX_PIF_BASE_VERSION_2_0_0,
+    PMIX_PIF_BASE_VERSION_2_0_0,
 
-        /* Component name and version */
-        "linux_ipv6",
-        PMIX_MAJOR_VERSION,
-        PMIX_MINOR_VERSION,
-        PMIX_RELEASE_VERSION,
+    /* Component name and version */
+    .pmix_mca_component_name = "linux_ipv6",
+    PMIX_MCA_BASE_MAKE_VERSION(component,
+                               PMIX_MAJOR_VERSION,
+                               PMIX_MINOR_VERSION,
+                               PMIX_RELEASE_VERSION),
 
-        /* Component open and close functions */
-        if_linux_ipv6_open,
-        NULL
-    },
-    .data = {
-        /* This component is checkpointable */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-        .reserved = {0}
-    },
+    /* Component open and close functions */
+    .pmix_mca_open_component = if_linux_ipv6_open
 };
 
 /* configure using getifaddrs(3) */

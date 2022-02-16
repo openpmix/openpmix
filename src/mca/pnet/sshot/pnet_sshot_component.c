@@ -46,26 +46,20 @@ static pmix_status_t component_register(void);
  */
 pmix_pnet_sshot_component_t mca_pnet_sshot_component = {
     .super = {
-        .base = {
-            PMIX_PNET_BASE_VERSION_1_0_0,
+        PMIX_PNET_BASE_VERSION_1_0_0,
 
-            /* Component name and version */
-            .pmix_mca_component_name = "sshot",
-            PMIX_MCA_BASE_MAKE_VERSION(component,
-                                       PMIX_MAJOR_VERSION,
-                                       PMIX_MINOR_VERSION,
-                                       PMIX_RELEASE_VERSION),
+        /* Component name and version */
+        .pmix_mca_component_name = "sshot",
+        PMIX_MCA_BASE_MAKE_VERSION(component,
+                                   PMIX_MAJOR_VERSION,
+                                   PMIX_MINOR_VERSION,
+                                   PMIX_RELEASE_VERSION),
 
-            /* Component open and close functions */
-            .pmix_mca_open_component = component_open,
-            .pmix_mca_close_component = component_close,
-            .pmix_mca_query_component = component_query,
-            .pmix_mca_register_component_params = component_register
-        },
-        .data = {
-            /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
-        }
+        /* Component open and close functions */
+        .pmix_mca_open_component = component_open,
+        .pmix_mca_close_component = component_close,
+        .pmix_mca_query_component = component_query,
+        .pmix_mca_register_component_params = component_register
     },
     .configfile = NULL,
     .numnodes = 0,
@@ -75,7 +69,7 @@ pmix_pnet_sshot_component_t mca_pnet_sshot_component = {
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &mca_pnet_sshot_component.super.base;
+    pmix_mca_base_component_t *component = &mca_pnet_sshot_component.super;
 
     (void) pmix_mca_base_component_var_register(
         component, "config_file", "Path of file containing Slingshot fabric configuration",

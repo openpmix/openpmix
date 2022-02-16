@@ -73,8 +73,6 @@ typedef void (*pmix_install_dirs_init_fn_t)(pmix_info_t info[], size_t ninfo);
 struct pmix_pinstalldirs_base_component_2_0_0_t {
     /** MCA base component */
     pmix_mca_base_component_t component;
-    /** MCA base data */
-    pmix_mca_base_component_data_t component_data;
     /** install directories provided by the given component */
     pmix_pinstall_dirs_t install_dirs_data;
     /* optional init function */

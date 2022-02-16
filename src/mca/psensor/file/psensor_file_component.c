@@ -26,21 +26,19 @@ static int psensor_file_query(pmix_mca_base_module_t **module, int *priority);
 
 pmix_psensor_file_component_t mca_psensor_file_component = {
     .super = {
-        .base = {
-            PMIX_PSENSOR_BASE_VERSION_1_0_0,
+        PMIX_PSENSOR_BASE_VERSION_1_0_0,
 
-            /* Component name and version */
-            .pmix_mca_component_name = "file",
-            PMIX_MCA_BASE_MAKE_VERSION(component,
-                                       PMIX_MAJOR_VERSION,
-                                       PMIX_MINOR_VERSION,
-                                       PMIX_RELEASE_VERSION),
+        /* Component name and version */
+        .pmix_mca_component_name = "file",
+        PMIX_MCA_BASE_MAKE_VERSION(component,
+                                   PMIX_MAJOR_VERSION,
+                                   PMIX_MINOR_VERSION,
+                                   PMIX_RELEASE_VERSION),
 
-            /* Component open and close functions */
-            psensor_file_open,  /* component open  */
-            psensor_file_close, /* component close */
-            psensor_file_query  /* component query */
-        },
+        /* Component open and close functions */
+        psensor_file_open,  /* component open  */
+        psensor_file_close, /* component close */
+        psensor_file_query  /* component query */
     }
 };
 

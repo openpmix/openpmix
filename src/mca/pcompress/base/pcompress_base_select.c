@@ -31,7 +31,7 @@
 int pmix_compress_base_select(void)
 {
     int ret = PMIX_SUCCESS;
-    pmix_compress_base_component_t *best_component = NULL;
+    pmix_mca_base_component_t *best_component = NULL;
     pmix_compress_base_module_t *best_module = NULL;
 
     if (pmix_compress_base.selected) {

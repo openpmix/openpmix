@@ -441,7 +441,6 @@ typedef pmix_bfrops_module_t *(*pmix_bfrop_base_component_assign_module_fn_t)(vo
  */
 struct pmix_bfrops_base_component_t {
     pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
     int priority;
     pmix_pointer_array_t types;
     pmix_bfrop_base_component_assign_module_fn_t assign_module;

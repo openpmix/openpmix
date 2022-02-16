@@ -46,15 +46,17 @@ static int component_query(pmix_mca_base_module_t **module, int *priority);
  * and pointers to our public functions in it
  */
 PMIX_EXPORT pmix_ptl_base_component_t mca_ptl_server_component = {
-    .base = {PMIX_PTL_BASE_VERSION_2_0_0,
+    .base = {
+        PMIX_PTL_BASE_VERSION_2_0_0,
 
-             /* Component name and version */
-             .pmix_mca_component_name = "server",
-             PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                                        PMIX_RELEASE_VERSION),
+        /* Component name and version */
+        .pmix_mca_component_name = "server",
+        PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                                   PMIX_RELEASE_VERSION),
 
-             /* Component open and close functions */
-             .pmix_mca_query_component = component_query},
+        /* Component open and close functions */
+        .pmix_mca_query_component = component_query
+    },
     .priority = 30,
     .uri = NULL,
 };
