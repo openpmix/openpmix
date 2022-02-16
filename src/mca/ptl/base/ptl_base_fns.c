@@ -33,9 +33,6 @@
 #ifdef HAVE_DIRENT_H
 #    include <dirent.h>
 #endif
-#ifdef HAVE_SYS_SYSCTL_H
-#    include <sys/sysctl.h>
-#endif
 #include <ctype.h>
 
 #include "src/include/pmix_globals.h"
