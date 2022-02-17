@@ -87,6 +87,8 @@ static inline void pmix_atomic_rmb(void)
 
 #elif PMIX_ATOMIC_GCC_BUILTIN
 
+typedef volatile int32_t pmix_atomic_int32_t;
+
 static inline void pmix_atomic_wmb(void)
 {
     __atomic_thread_fence(__ATOMIC_RELEASE);
