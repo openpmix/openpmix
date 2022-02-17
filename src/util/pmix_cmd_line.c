@@ -377,9 +377,9 @@ static void ides(pmix_cli_item_t *p)
         pmix_argv_free(p->values);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_cli_item_t,
-                    pmix_list_item_t,
-                    icon, ides);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cli_item_t,
+                                pmix_list_item_t,
+                                icon, ides);
 
 static void ocon(pmix_cli_result_t *p)
 {
@@ -393,6 +393,6 @@ static void odes(pmix_cli_result_t *p)
         pmix_argv_free(p->tail);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_cli_result_t,
-                    pmix_object_t,
-                    ocon, odes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cli_result_t,
+                                pmix_object_t,
+                                ocon, odes);
