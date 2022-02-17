@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -2235,7 +2235,7 @@ static pmix_status_t _dstore_fetch(pmix_common_dstore_ctx_t *ds_ctx,
                 }
                 pmix_strncpy(info[kval_cnt - 1].key, kname_ptr,
                         PMIX_DS_KNAME_LEN(ds_ctx, kname_ptr));
-                pmix_value_xfer(&info[kval_cnt - 1].value, &val);
+                PMIx_Value_xfer(&info[kval_cnt - 1].value, &val);
                 PMIX_VALUE_DESTRUCT(&val);
                 buffer.base_ptr = NULL;
                 buffer.bytes_used = 0;
