@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,7 +28,7 @@
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/mca/mca.h"
-#include "src/util/cmd_line.h"
+#include "src/util/pmix_cmd_line.h"
 
 BEGIN_C_DECLS
 
@@ -37,7 +37,7 @@ BEGIN_C_DECLS
  */
 
 extern bool pmix_info_pretty;
-extern pmix_cmd_line_t *pmix_info_cmd_line;
+extern pmix_cli_result_t *pmix_info_cmd_line;
 
 extern const char *pmix_info_type_base;
 

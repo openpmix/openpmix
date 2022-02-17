@@ -29,8 +29,8 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 #include "src/util/show_help.h"
 
 #include "psensor_heartbeat.h"

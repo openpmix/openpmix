@@ -23,7 +23,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/include/hash_string.h"
+#include "src/include/pmix_hash_string.h"
 #include "src/include/pmix_stdint.h"
 
 #include <string.h>
@@ -32,8 +32,8 @@
 #include "src/class/pmix_pointer_array.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 #include "src/util/hash.h"
 

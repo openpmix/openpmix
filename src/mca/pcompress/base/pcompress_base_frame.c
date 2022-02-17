@@ -7,7 +7,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +18,7 @@
 #include "pmix_config.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/pcompress/base/static-components.h"
 #include "src/mca/ptl/ptl_types.h"
@@ -79,31 +79,20 @@ pmix_compress_base_t pmix_compress_base = {
     .silent = false
 };
 
-pmix_compress_base_component_t pmix_compress_base_selected_component = {
-    .base_version = PMIX_BASE_COMPONENT_STATIC_INIT,
-    .base_data = PMIX_BASE_DATA_STATIC_INIT,
-    .verbose = 0,
-    .output_handle = 0,
-    .priority = 0
-};
-
 static int pmix_compress_base_register(pmix_mca_base_register_flag_t flags)
 {
     (void) flags;
     pmix_compress_base.compress_limit = 4096;
     (void) pmix_mca_base_var_register("pmix", "pcompress", "base", "limit",
                                       "Threshold beyond which data will be compressed",
-                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                      PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                       &pmix_compress_base.compress_limit);
 
     pmix_compress_base.silent = false;
     (void) pmix_mca_base_var_register("pmix", "pcompress", "base", "silence_warning",
                                       "Do not warn if compression unavailable",
-                                      PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_compress_base.silent);
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL,
+                                      &pmix_compress_base.silent);
     return PMIX_SUCCESS;
 }
 

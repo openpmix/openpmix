@@ -39,7 +39,7 @@
 #include <pmix_server.h>
 
 #include "src/class/pmix_object.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 
 typedef struct {

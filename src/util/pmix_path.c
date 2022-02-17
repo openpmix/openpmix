@@ -74,7 +74,7 @@
 #include "src/include/pmix_stdint.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_os_path.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_path.h"
 
 /*

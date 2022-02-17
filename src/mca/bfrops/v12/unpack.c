@@ -30,8 +30,8 @@
 #include "internal.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 pmix_status_t pmix12_bfrop_unpack(pmix_buffer_t *buffer, void *dst, int32_t *num_vals,
                                   pmix_data_type_t type)

@@ -15,7 +15,7 @@
 #ifndef PMIX_MCA_PIF_PIF_H
 #define PMIX_MCA_PIF_PIF_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -50,7 +50,7 @@
 #    include <ifaddrs.h>
 #endif
 
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 #include "src/util/pmix_if.h"
 
@@ -98,16 +98,7 @@ extern bool pmix_if_retain_loopback;
 /**
  * Structure for if components.
  */
-struct pmix_pif_base_component_2_0_0_t {
-    /** MCA base component */
-    pmix_mca_base_component_t base;
-    /** MCA base data */
-    pmix_mca_base_component_data_t data;
-};
-/**
- * Convenience typedef
- */
-typedef struct pmix_pif_base_component_2_0_0_t pmix_pif_base_component_t;
+typedef pmix_mca_base_component_t pmix_pif_base_component_t;
 
 /*
  * Macro for use in components that are of type pif

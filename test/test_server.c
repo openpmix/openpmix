@@ -23,7 +23,7 @@
 
 #include "pmix_server.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_printf.h"
 
 #include "cli_stages.h"

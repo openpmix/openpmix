@@ -24,8 +24,8 @@
 #include "pmix_config.h"
 
 #include "pmix_common.h"
-#include "src/threads/threads.h"
-#include "src/threads/tsd.h"
+#include "src/threads/pmix_threads.h"
+#include "src/threads/pmix_tsd.h"
 
 bool pmix_debug_threads = false;
 

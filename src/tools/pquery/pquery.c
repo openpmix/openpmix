@@ -37,11 +37,11 @@
 
 #include "include/pmix_tool.h"
 #include "src/common/pmix_attributes.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/runtime/pmix_rte.h"
-#include "src/threads/threads.h"
-#include "src/util/cmd_line.h"
+#include "src/threads/pmix_threads.h"
+#include "src/util/pmix_cmd_line.h"
 #include "src/util/keyval_parse.h"
 #include "src/util/show_help.h"
 
@@ -138,77 +138,31 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
     PMIX_WAKEUP_THREAD(&lock->lock);
 }
 
-/*****************************************
- * Global Vars for Command line Arguments
- *****************************************/
-typedef struct {
-    bool help;
-    bool verbose;
-    pid_t pid;
-    char *nspace;
-    char *uri;
-    bool sysfirst;
-    bool system;
-    char *client;
-    char *server;
-    char *tool;
-    char *host;
-    bool clientfns;
-    bool serverfns;
-    bool toolfns;
-    bool hostfns;
-} pmix_pquery_globals_t;
+static struct option pqoptions[] = {
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
 
-pmix_pquery_globals_t pmix_pquery_globals = {
-    .help = false,
-    .verbose = false,
-    .pid = 0,
-    .nspace = NULL,
-    .uri = NULL,
-    .sysfirst = false,
-    .system = false,
-    .client = NULL,
-    .server = NULL,
-    .tool = NULL,
-    .host = NULL,
-    .clientfns = false,
-    .serverfns = false,
-    .toolfns = false,
-    .hostfns = false
+    PMIX_OPTION_DEFINE(PMIX_CLI_SYS_SERVER_FIRST, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SYSTEM_SERVER, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_WAIT_TO_CONNECT, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_NUM_CONNECT_RETRIES, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PID, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_NAMESPACE, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
+
+    PMIX_OPTION_END
 };
-
-pmix_cmd_line_init_t cmd_line_opts[]
-    = {{NULL, 'h', NULL, "help", 0, &pmix_pquery_globals.help, PMIX_CMD_LINE_TYPE_BOOL,
-        "This help message", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, 'v', NULL, "verbose", 0, &pmix_pquery_globals.verbose, PMIX_CMD_LINE_TYPE_BOOL,
-        "Be Verbose", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, 'p', NULL, "pid", 1, &pmix_pquery_globals.pid, PMIX_CMD_LINE_TYPE_INT,
-        "Specify server pid to connect to", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, 'n', NULL, "nspace", 1, &pmix_pquery_globals.nspace, PMIX_CMD_LINE_TYPE_STRING,
-        "Specify server nspace to connect to", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, '\0', NULL, "uri", 1, &pmix_pquery_globals.uri, PMIX_CMD_LINE_TYPE_STRING,
-        "Specify URI of server to connect to", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, '\0', NULL, "system-server-first", 0, &pmix_pquery_globals.sysfirst,
-        PMIX_CMD_LINE_TYPE_BOOL, "Look for the system server first", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       {NULL, '\0', NULL, "system-server", 0, &pmix_pquery_globals.system, PMIX_CMD_LINE_TYPE_BOOL,
-        "Specifically connect to the system server", PMIX_CMD_LINE_OTYPE_GENERAL},
-
-       /* End of list */
-       {NULL, '\0', NULL, NULL, 0, NULL, PMIX_CMD_LINE_TYPE_NULL, NULL, PMIX_CMD_LINE_OTYPE_GENERAL}
-    };
+static char *pqshorts = "h::vV";
 
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
     pmix_info_t *info;
     mylock_t mylock;
-    pmix_cmd_line_t cmd_line;
+    pmix_cli_result_t results;
+    pmix_cli_item_t *opt;
     size_t n, m, k, nqueries, ninfo, ndarray;
     myquery_data_t mq = {
         .lock = PMIX_LOCK_STATIC_INIT,
@@ -216,7 +170,6 @@ int main(int argc, char **argv)
         .info = NULL,
         .ninfo = 0
     };
-    int count;
     char **qkeys = NULL;
     const char *attr;
     bool server = false;
@@ -225,14 +178,18 @@ int main(int argc, char **argv)
     char **qprs;
     char *strt, *endp, *kptr;
     pmix_infolist_t *iptr;
-    char *str, *args = NULL;
+    char *str;
     pmix_query_t *queries;
     pmix_info_t *infoptr, *ifptr;
     uint64_t u64;
+    PMIX_HIDE_UNUSED_PARAMS(argc);
 
     /* protect against problems if someone passes us thru a pipe
      * and then abnormally terminates the pipe early */
     signal(SIGPIPE, SIG_IGN);
+
+    /* init globals */
+    pmix_tool_basename = "pquery";
 
     /* initialize the output system */
     if (!pmix_output_init()) {
@@ -240,9 +197,9 @@ int main(int argc, char **argv)
     }
 
     /* initialize install dirs code */
-    if (PMIX_SUCCESS
-        != (rc = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
-                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    rc = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
+                                      PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
         fprintf(stderr,
                 "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
                 "returned %d instead of PMIX_SUCCESS)\n",
@@ -279,9 +236,9 @@ int main(int argc, char **argv)
     }
 
     /* Parse the command line options */
-    pmix_cmd_line_create(&cmd_line, cmd_line_opts);
-
-    rc = pmix_cmd_line_parse(&cmd_line, true, false, argc, argv);
+    PMIX_CONSTRUCT(&results, pmix_cli_result_t);
+    rc = pmix_cmd_line_parse(argv, pqshorts, pqoptions,
+                             NULL, &results, "help-pquery.txt");
 
     if (PMIX_SUCCESS != rc) {
         if (PMIX_ERR_SILENT != rc) {
@@ -290,30 +247,20 @@ int main(int argc, char **argv)
         return rc;
     }
 
-    if (pmix_pquery_globals.help) {
-        args = pmix_cmd_line_get_usage_msg(&cmd_line);
-        str = pmix_show_help_string("help-pquery.txt", "usage", true, args);
-        if (NULL != str) {
-            printf("%s", str);
-            free(str);
-        }
-        free(args);
-        /* If we show the help message, that should be all we do */
-        exit(0);
-    }
-
     /* get the argv array of keys they want us to query */
-    pmix_cmd_line_get_tail(&cmd_line, &count, &qkeys);
+    qkeys = results.tail;
 
     /* if they didn't give us an option, then we can't do anything */
     if (NULL == qkeys) {
-        args = pmix_cmd_line_get_usage_msg(&cmd_line);
-        str = pmix_show_help_string("help-pquery.txt", "usage", true, args);
+        str = pmix_show_help_string("help-pquery.txt", "usage", false,
+                                    pmix_tool_basename, "PMIx",
+                                    PMIX_PROXY_VERSION,
+                                    pmix_tool_basename,
+                                    PMIX_PROXY_BUGREPORT);
         if (NULL != str) {
             printf("%s", str);
             free(str);
         }
-        free(args);
         exit(1);
     }
 
@@ -330,22 +277,62 @@ int main(int argc, char **argv)
      * we connect to it */
     n = 1;
     PMIX_INFO_CREATE(info, n);
-    if (0 < pmix_pquery_globals.pid) {
-        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pmix_pquery_globals.pid, PMIX_PID);
-    } else if (NULL != pmix_pquery_globals.nspace) {
-        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_NSPACE, pmix_pquery_globals.nspace, PMIX_STRING);
-    } else if (NULL != pmix_pquery_globals.uri) {
-        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, pmix_pquery_globals.uri, PMIX_STRING);
-    } else if (pmix_pquery_globals.sysfirst) {
+    if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_PID))) {
+        /* see if it is an integer value */
+        char *leftover, *param;
+        pid_t pid;
+        leftover = NULL;
+        pid = strtol(opt->values[0], &leftover, 10);
+        if (NULL == leftover || 0 == strlen(leftover)) {
+            /* it is an integer */
+            PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
+        } else if (0 == strncasecmp(opt->values[0], "file", 4)) {
+            FILE *fp;
+            /* step over the file: prefix */
+            param = strchr(opt->values[0], ':');
+            if (NULL == param) {
+                /* malformed input */
+                pmix_show_help("help-pquery.txt", "bad-option-input", true, pmix_tool_basename,
+                               "--pid", opt->values[0], "file:path");
+                return PMIX_ERR_BAD_PARAM;
+            }
+            ++param;
+            fp = fopen(param, "r");
+            if (NULL == fp) {
+                pmix_show_help("help-pquery.txt", "file-open-error", true, pmix_tool_basename,
+                               "--pid", opt->values[0], param);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            rc = fscanf(fp, "%lu", (unsigned long *) &pid);
+            if (1 != rc) {
+                /* if we were unable to obtain the single conversion we
+                 * require, then error out */
+                pmix_show_help("help-pquery.txt", "bad-file", true, pmix_tool_basename,
+                               "--pid", opt->values[0], param);
+                fclose(fp);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            fclose(fp);
+            PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
+        } else { /* a string that's neither an integer nor starts with 'file:' */
+            pmix_show_help("help-pquery.txt", "bad-option-input", true,
+                           pmix_tool_basename, "--pid",
+                           opt->values[0], "file:path");
+            return PMIX_ERR_BAD_PARAM;
+        }
+    } else if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_NAMESPACE))) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_NSPACE, opt->values[0], PMIX_STRING);
+    } else if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_URI))) {
+        PMIX_INFO_LOAD(&info[0], PMIX_SERVER_URI, opt->values[0], PMIX_STRING);
+    } else if (pmix_cmd_line_is_taken(&results, PMIX_CLI_SYS_SERVER_FIRST)) {
         /* otherwise, use the system connection first, if available */
         PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_SYSTEM_FIRST, NULL, PMIX_BOOL);
-    } else if (pmix_pquery_globals.system) {
+    } else if (pmix_cmd_line_is_taken(&results, PMIX_CLI_SYSTEM_SERVER)) {
         PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYSTEM, NULL, PMIX_BOOL);
     } else {
         /* we set ourselves up as a server, but no connections required */
         PMIX_INFO_LOAD(&info[0], PMIX_GDS_MODULE, "hash", PMIX_STRING);
         server = true;
-        ;
     }
 
     if (server) {

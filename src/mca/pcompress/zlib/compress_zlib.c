@@ -29,7 +29,7 @@
 
 #include "src/include/pmix_stdint.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_printf.h"
 

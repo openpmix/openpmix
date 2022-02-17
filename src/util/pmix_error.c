@@ -33,7 +33,7 @@
 
 #include "pmix_common.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
 {

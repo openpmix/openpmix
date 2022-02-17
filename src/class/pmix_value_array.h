@@ -30,7 +30,7 @@
 
 #include "src/class/pmix_object.h"
 #if PMIX_ENABLE_DEBUG
-#    include "src/util/output.h"
+#    include "src/util/pmix_output.h"
 #endif
 #include "pmix_common.h"
 

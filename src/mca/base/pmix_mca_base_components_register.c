@@ -30,13 +30,13 @@
 
 #include "pmix_common.h"
 #include "src/class/pmix_list.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/mca.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 #include "src/util/show_help.h"
 
 /*
@@ -145,26 +145,6 @@ static int register_components(pmix_mca_base_framework_t *framework)
                                 "component %s register function successful",
                                 component->pmix_mca_component_name);
         }
-
-        /* Register this component's version */
-        pmix_mca_base_component_var_register(component, "major_version", NULL,
-                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
-                                             PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY
-                                                 | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                             PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
-                                             &component->pmix_mca_component_major_version);
-        pmix_mca_base_component_var_register(component, "minor_version", NULL,
-                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
-                                             PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY
-                                                 | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                             PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
-                                             &component->pmix_mca_component_minor_version);
-        pmix_mca_base_component_var_register(component, "release_version", NULL,
-                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
-                                             PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY
-                                                 | PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                             PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
-                                             &component->pmix_mca_component_release_version);
     }
 
     /* All done */

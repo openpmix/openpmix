@@ -39,7 +39,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/getid.h"
 #include "src/util/strnlen.h"
 

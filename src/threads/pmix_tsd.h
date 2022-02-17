@@ -16,7 +16,7 @@
 #ifndef PMIX_THREADS_TSD_H
 #define PMIX_THREADS_TSD_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <pthread.h>
 

@@ -30,7 +30,7 @@
 
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/show_help.h"
 
 #include "plog_default.h"

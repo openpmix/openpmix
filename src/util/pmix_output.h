@@ -14,7 +14,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -351,7 +351,7 @@ PMIX_EXPORT void pmix_output_reopen_all(void);
  * @param output_id Handle of the stream to close.
  *
  * Close an output stream.  No output will be sent to the stream
- * after it is closed.  Be aware that output handles tend to be
+ * after it is closed.  Be aware that pmix_output_handles tend to be
  * re-used; it is possible that after a stream is closed, if another
  * stream is opened, it will get the same handle value.
  */

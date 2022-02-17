@@ -7,7 +7,7 @@
  *                         reserved.
  *
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,7 +33,7 @@
 
 #include "pmix_config.h"
 #include "src/class/pmix_object.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 
 #if defined(c_plusplus) || defined(__cplusplus)
@@ -78,21 +78,7 @@ typedef bool (*pmix_compress_base_module_decompress_fn_t)(uint8_t **outbytes, si
 /**
  * Structure for COMPRESS components.
  */
-struct pmix_compress_base_component_2_0_0_t {
-    /** PMIX_MCA base component */
-    pmix_mca_base_component_t base_version;
-    /** PMIX_MCA base data */
-    pmix_mca_base_component_data_t base_data;
-
-    /** Verbosity Level */
-    int verbose;
-    /** Output Handle for pmix_output */
-    int output_handle;
-    /** Default Priority */
-    int priority;
-};
-typedef struct pmix_compress_base_component_2_0_0_t pmix_compress_base_component_2_0_0_t;
-typedef struct pmix_compress_base_component_2_0_0_t pmix_compress_base_component_t;
+typedef  pmix_mca_base_component_t pmix_compress_base_component_t;
 
 /**
  * Structure for COMPRESS modules

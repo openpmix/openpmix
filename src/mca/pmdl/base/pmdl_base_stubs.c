@@ -41,7 +41,7 @@
 #include "src/mca/preg/preg.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_environ.h"
 
 #include "src/mca/pmdl/base/base.h"

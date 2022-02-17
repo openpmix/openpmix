@@ -32,7 +32,7 @@ dist_pmixdata_DATA = help-pmix-mca-base.txt help-pmix-mca-var.txt
 # Source code files
 
 headers = \
-        base.h \
+        pmix_base.h \
         pmix_mca_base_component_repository.h \
         pmix_mca_base_var.h \
         pmix_mca_base_var_enum.h \
@@ -46,7 +46,6 @@ headers = \
 libpmix_mca_base_la_SOURCES = \
         $(headers) \
         pmix_mca_base_close.c \
-        pmix_mca_base_cmd_line.c \
         pmix_mca_base_component_compare.c \
         pmix_mca_base_component_find.c \
         pmix_mca_base_component_repository.c \

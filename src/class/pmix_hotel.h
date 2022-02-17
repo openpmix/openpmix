@@ -59,11 +59,12 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 #include "src/class/pmix_object.h"
-#include "src/include/prefetch.h"
-#include "src/include/types.h"
+#include "src/include/pmix_prefetch.h"
+#include "src/include/pmix_types.h"
 #include <event.h>
 
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
 
@@ -204,6 +205,22 @@ static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel, void *occupa
         pmix_event_add(&(room->eviction_timer_event), &(hotel->eviction_timeout));
     }
 
+    return PMIX_SUCCESS;
+}
+
+static inline int pmix_hotel_recheck(pmix_hotel_t *hotel, void *occupant, int room_num)
+{
+    pmix_hotel_room_t *room;
+
+    room = &(hotel->rooms[room_num]);
+    if (PMIX_UNLIKELY(NULL != room->occupant)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+    room->occupant = occupant;
+    /* Assign the event and make it pending */
+    if (NULL != hotel->evbase) {
+        pmix_event_add(&(room->eviction_timer_event), &(hotel->eviction_timeout));
+    }
     return PMIX_SUCCESS;
 }
 

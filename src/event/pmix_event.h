@@ -24,12 +24,12 @@
 #define PMIX_EVENT_H
 
 #include "src/include/pmix_config.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 #include <event.h>
 
 #include "pmix_common.h"
 #include "src/class/pmix_list.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
 

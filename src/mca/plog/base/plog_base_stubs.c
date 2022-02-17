@@ -17,7 +17,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 #include "src/mca/plog/base/base.h"
 

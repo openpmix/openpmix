@@ -5,7 +5,7 @@
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -184,11 +184,7 @@ PMIX_EXPORT extern pmix_pgpu_API_module_t pmix_pgpu;
 /*
  * the standard component data structure
  */
-struct pmix_pgpu_base_component_t {
-    pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
-};
-typedef struct pmix_pgpu_base_component_t pmix_pgpu_base_component_t;
+typedef pmix_mca_base_component_t pmix_pgpu_base_component_t;
 
 /*
  * Macro for use in components that are of type pgpu

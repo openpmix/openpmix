@@ -16,7 +16,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,8 +38,8 @@
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/mca.h"
-#include "src/util/cmd_line.h"
-#include "src/util/output.h"
+#include "src/util/pmix_cmd_line.h"
+#include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
 
@@ -154,13 +154,6 @@ PMIX_EXPORT int pmix_mca_base_is_component_required(pmix_list_t *components_avai
                                                     pmix_mca_base_component_t *component,
                                                     bool exclusive, bool *is_required);
 
-/* mca_base_cmd_line.c */
-
-PMIX_EXPORT int pmix_mca_base_cmd_line_setup(pmix_cmd_line_t *cmd);
-PMIX_EXPORT int pmix_mca_base_cmd_line_process_args(pmix_cmd_line_t *cmd, char ***app_env,
-                                                    char ***global_env);
-PMIX_EXPORT void pmix_mca_base_cmd_line_wrap_args(char **args);
-
 /* pmix_mca_base_component_compare.c */
 
 PMIX_EXPORT int
@@ -186,14 +179,9 @@ PMIX_EXPORT int pmix_mca_base_component_parse_requested(const char *requested, b
                                                         char ***requested_component_names);
 
 /**
- * Filter a list of components based on a comma-delimted list of names and/or
- * a set of meta-data flags.
+ * Filter a list of components based on a comma-delimted list of names
  *
- * @param[in,out] components List of components to filter
- * @param[in] output_id Output id to write to for error/warning/debug messages
- * @param[in] filter_names Comma delimited list of components to use. Negate with ^.
- * May be NULL.
- * @param[in] filter_flags Metadata flags components are required to have set (CR ready)
+ * @param[in] framework
  *
  * @returns PMIX_SUCCESS On success
  * @returns PMIX_ERR_NOT_FOUND If some component in {filter_names} is not found in
@@ -203,8 +191,7 @@ PMIX_EXPORT int pmix_mca_base_component_parse_requested(const char *requested, b
  * This function closes and releases any components that do not match the filter_name and
  * filter flags.
  */
-PMIX_EXPORT int pmix_mca_base_components_filter(pmix_mca_base_framework_t *framework,
-                                                uint32_t filter_flags);
+PMIX_EXPORT int pmix_mca_base_components_filter(pmix_mca_base_framework_t *framework);
 
 /* Safely release some memory allocated by pmix_mca_base_component_find()
    (i.e., is safe to call even if you never called

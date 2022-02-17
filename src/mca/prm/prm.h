@@ -101,11 +101,7 @@ PMIX_EXPORT extern pmix_prm_API_module_t pmix_prm;
 /*
  * the standard component data structure
  */
-struct pmix_prm_base_component_t {
-    pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
-};
-typedef struct pmix_prm_base_component_t pmix_prm_base_component_t;
+typedef pmix_mca_base_component_t pmix_prm_base_component_t;
 
 /*
  * Macro for use in components that are of type prm

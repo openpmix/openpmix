@@ -25,7 +25,7 @@
 
 #include <string.h>
 
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 
 #include "src/mca/prm/base/base.h"
@@ -113,7 +113,7 @@ int pmix_prm_base_select(void)
         pmix_output(0, "Final prm priorities");
         /* show the prioritized list */
         PMIX_LIST_FOREACH (mod, &pmix_prm_globals.actives, pmix_prm_base_active_module_t) {
-            pmix_output(0, "\tprm: %s Priority: %d", mod->component->base.pmix_mca_component_name,
+            pmix_output(0, "\tprm: %s Priority: %d", mod->component->pmix_mca_component_name,
                         mod->pri);
         }
     }

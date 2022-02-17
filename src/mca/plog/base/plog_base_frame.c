@@ -19,9 +19,9 @@
 #endif
 
 #include "src/class/pmix_list.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/plog/base/base.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 
 /*
@@ -48,8 +48,8 @@ static int pmix_plog_register(pmix_mca_base_register_flag_t flags)
     (void) flags;
     pmix_mca_base_var_register("pmix", "plog", "base", "order",
                                "Comma-delimited, prioritized list of logging channels",
-                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                               PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY, &order);
+                               PMIX_MCA_BASE_VAR_TYPE_STRING,
+                               &order);
     if (NULL != order) {
         pmix_plog_globals.channels = pmix_argv_split(order, ',');
     }

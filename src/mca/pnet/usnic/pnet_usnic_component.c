@@ -48,27 +48,20 @@ static pmix_status_t component_register(void);
  */
 pmix_pnet_usnic_component_t mca_pnet_usnic_component = {
     .super = {
-        .base = {
-            PMIX_PNET_BASE_VERSION_1_0_0,
+        PMIX_PNET_BASE_VERSION_1_0_0,
 
-            /* Component name and version */
-            .pmix_mca_component_name = "usnic",
-            PMIX_MCA_BASE_MAKE_VERSION(component,
-                                       PMIX_MAJOR_VERSION,
-                                       PMIX_MINOR_VERSION,
-                                       PMIX_RELEASE_VERSION),
+        /* Component name and version */
+        .pmix_mca_component_name = "usnic",
+        PMIX_MCA_BASE_MAKE_VERSION(component,
+                                   PMIX_MAJOR_VERSION,
+                                   PMIX_MINOR_VERSION,
+                                   PMIX_RELEASE_VERSION),
 
-            /* Component open and close functions */
-            .pmix_mca_open_component = component_open,
-            .pmix_mca_close_component = component_close,
-            .pmix_mca_register_component_params = component_register,
-            .pmix_mca_query_component = component_query,
-        },
-        .data = {
-            /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-            .reserved = {0}
-        }
+        /* Component open and close functions */
+        .pmix_mca_open_component = component_open,
+        .pmix_mca_close_component = component_close,
+        .pmix_mca_register_component_params = component_register,
+        .pmix_mca_query_component = component_query,
     },
     .include = NULL,
     .exclude = NULL,
@@ -81,13 +74,13 @@ static char *static_port_string6 = NULL;
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &mca_pnet_usnic_component.super.base;
+    pmix_mca_base_component_t *component = &mca_pnet_usnic_component.super;
 
     mca_pnet_usnic_component.incparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
         &mca_pnet_usnic_component.incparms);
     if (NULL != mca_pnet_usnic_component.incparms) {
         mca_pnet_usnic_component.include = pmix_argv_split(mca_pnet_usnic_component.incparms, ',');
@@ -97,7 +90,7 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
         &mca_pnet_usnic_component.excparms);
     if (NULL != mca_pnet_usnic_component.excparms) {
         mca_pnet_usnic_component.exclude = pmix_argv_split(mca_pnet_usnic_component.excparms, ',');
@@ -106,8 +99,7 @@ static pmix_status_t component_register(void)
     static_port_string = NULL;
     (void) pmix_mca_base_component_var_register(component, "static_ipv4_ports",
                                                 "Static ports for daemons (IPv4)",
-                                                PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                                PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+                                                PMIX_MCA_BASE_VAR_TYPE_INT,
                                                 &static_port_string);
     /* if ports were provided, parse the provided range */
     if (NULL != static_port_string) {
@@ -123,8 +115,7 @@ static pmix_status_t component_register(void)
     static_port_string6 = NULL;
     (void) pmix_mca_base_component_var_register(component, "static_ipv6_ports",
                                                 "Static ports for daemons (IPv6)",
-                                                PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                                PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
+                                                PMIX_MCA_BASE_VAR_TYPE_INT,
                                                 &static_port_string6);
     /* if ports were provided, parse the provided range */
     if (NULL != static_port_string6) {

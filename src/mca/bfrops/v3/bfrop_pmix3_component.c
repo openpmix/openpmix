@@ -30,12 +30,12 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include "bfrop_pmix3.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 extern pmix_bfrops_module_t pmix_bfrops_pmix3_module;
 

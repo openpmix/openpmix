@@ -43,10 +43,6 @@ pmix_psec_base_component_t mca_psec_dummy_handshake_component = {
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
     },
-    .data = {
-        /* The component is checkpoint ready */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
-    },
     .assign_module = assign_module
 };
 

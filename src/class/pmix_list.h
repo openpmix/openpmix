@@ -221,7 +221,11 @@ typedef struct pmix_list_t pmix_list_t;
          item != (type *) &(list)->pmix_list_sentinel;              \
          item = (type *) ((pmix_list_item_t *) (item))->pmix_list_next)
 
-/**
+#define PMIX_LIST_FOREACH_DECL(item, list, type)                          \
+    for (type *item = (type *) (list)->pmix_list_sentinel.pmix_list_next; \
+         item != (type *) &(list)->pmix_list_sentinel;                    \
+         item = (type *) ((pmix_list_item_t *) (item))->pmix_list_next)
+    /**
  * Loop over a list in reverse.
  *
  * @param[in] item Storage for each item

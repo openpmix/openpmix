@@ -19,7 +19,7 @@
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pif/base/static-components.h"
 #include "src/mca/pif/pif.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 /* instantiate the global list of interfaces */
 pmix_list_t pmix_if_list = PMIX_LIST_STATIC_INIT;
@@ -46,17 +46,13 @@ static int pmix_pif_base_register(pmix_mca_base_register_flag_t flags)
     pmix_if_do_not_resolve = false;
     (void) pmix_mca_base_framework_var_register(&pmix_pif_base_framework, "do_not_resolve",
                                                 "If nonzero, do not attempt to resolve interfaces",
-                                                PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
-                                                PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_9,
-                                                PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
+                                                PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                                 &pmix_if_do_not_resolve);
 
     pmix_if_retain_loopback = false;
     (void) pmix_mca_base_framework_var_register(&pmix_pif_base_framework, "retain_loopback",
                                                 "If nonzero, retain loopback interfaces",
-                                                PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
-                                                PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_9,
-                                                PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
+                                                PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                                 &pmix_if_retain_loopback);
 
     return PMIX_SUCCESS;

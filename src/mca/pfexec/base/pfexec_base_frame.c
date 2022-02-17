@@ -26,7 +26,7 @@
 
 #include "pmix_config.h"
 #include "pmix_common.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include <signal.h>
 #include <string.h>
@@ -37,10 +37,10 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_iof.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
-#include "src/threads/threads.h"
-#include "src/util/error.h"
+#include "src/threads/pmix_threads.h"
+#include "src/util/pmix_error.h"
 
 #include "src/mca/pfexec/base/base.h"
 
@@ -179,11 +179,10 @@ static int pmix_pfexec_register(pmix_mca_base_register_flag_t flags)
 {
     (void) flags;
     pmix_pfexec_globals.timeout_before_sigkill = 1;
-    pmix_mca_base_var_register(
-        "pmix", "pfexec", "base", "sigkill_timeout",
-        "Time to wait for a process to die after issuing a kill signal to it",
-        PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_pfexec_globals.timeout_before_sigkill);
+    pmix_mca_base_var_register("pmix", "pfexec", "base", "sigkill_timeout",
+                               "Time to wait for a process to die after issuing a kill signal to it",
+                               PMIX_MCA_BASE_VAR_TYPE_INT,
+                               &pmix_pfexec_globals.timeout_before_sigkill);
     return PMIX_SUCCESS;
 }
 

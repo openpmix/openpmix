@@ -25,7 +25,7 @@
 #include "pmix_common.h"
 #include "src/mca/pdl/pdl.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 #include "pdl_pdlopen.h"
 

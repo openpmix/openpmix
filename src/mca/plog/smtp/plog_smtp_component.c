@@ -43,23 +43,15 @@ static pmix_status_t smtp_register(void);
  * Struct of function pointers that need to be initialized
  */
 pmix_plog_smtp_component_t mca_plog_smtp_component = {
-    {
-        .base = {
-            PMIX_PLOG_BASE_VERSION_1_0_0,
+    PMIX_PLOG_BASE_VERSION_1_0_0,
 
-            .pmix_mca_component_name = "smtp",
+    .pmix_mca_component_name = "smtp",
 
-            PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                                       PMIX_RELEASE_VERSION),
-            .pmix_mca_close_component = smtp_close,
-            .pmix_mca_query_component = smtp_component_query,
-            .pmix_mca_register_component_params = smtp_register,
-        },
-        .data = {
-            /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT
-        },
-    },
+    PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                               PMIX_RELEASE_VERSION),
+    .pmix_mca_close_component = smtp_close,
+    .pmix_mca_query_component = smtp_component_query,
+    .pmix_mca_register_component_params = smtp_register,
 };
 
 static pmix_status_t smtp_register(void)

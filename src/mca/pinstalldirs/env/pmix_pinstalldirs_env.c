@@ -33,10 +33,6 @@ pmix_pinstalldirs_base_component_t mca_pinstalldirs_env_component = {
         PMIX_MINOR_VERSION,
         PMIX_RELEASE_VERSION,
     },
-    .component_data = {/* This component is checkpointable */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-        .reserved = {0}
-    },
 
     /* Next the pmix_pinstall_dirs_t install_dirs_data information */
     .install_dirs_data = {

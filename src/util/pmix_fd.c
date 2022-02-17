@@ -49,7 +49,7 @@
 #endif
 #include <ctype.h>
 
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
 #include "src/util/pmix_string_copy.h"
 

@@ -42,13 +42,13 @@
 #include "src/class/pmix_pointer_array.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/cmd_line.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_cmd_line.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/show_help.h"
 
-#include "src/include/frameworks.h"
+#include "src/include/pmix_frameworks.h"
 #include "src/include/pmix_portable_platform.h"
 
 #include "pinfo.h"
@@ -115,53 +115,32 @@ PMIX_CLASS_INSTANCE(pmix_info_component_map_t, pmix_list_item_t, component_map_c
 static void pmix_info_show_failed_component(const pmix_mca_base_component_repository_item_t *ri,
                                             const char *error_msg);
 
+static struct option poptions[] = {
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
+
+    PMIX_OPTION_SHORT_DEFINE("all", PMIX_ARG_NONE, 'a'),
+    PMIX_OPTION_DEFINE("arch", PMIX_ARG_NONE),
+    PMIX_OPTION_SHORT_DEFINE("config", PMIX_ARG_NONE, 'c'),
+    PMIX_OPTION_DEFINE("hostname", PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE("param", PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE("path", PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE("show-version", PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE("pretty-print", PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE("parsable", PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE("parseable", PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE("show-failed", PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE("selected-only", PMIX_ARG_NONE),
+
+    PMIX_OPTION_END
+};
+static char *pshorts = "h::vVac";
+
 int pmix_info_init(int argc, char **argv)
 {
     int ret;
-    bool want_help = false;
-    bool cmd_error = false;
-    char **app_env = NULL, **global_env = NULL;
-
-    /* add the cmd line options */
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'V', NULL, "version", 0,
-                            "Show version of PMIx");
-    pmix_cmd_line_make_opt3(
-        pmix_info_cmd_line, '\0', NULL, "param", 2,
-        "Show MCA parameters.  The first parameter is the framework (or the keyword \"all\"); the "
-        "second parameter is the specific component name (or the keyword \"all\").");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "params", 2, "Synonym for --param");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "internal", 0,
-                            "Show internal MCA parameters (not meant to be modified by users)");
-    pmix_cmd_line_make_opt3(
-        pmix_info_cmd_line, '\0', NULL, "path", 1,
-        "Show paths that PMIx was configured with.  Accepts the following parameters: prefix, "
-        "bindir, libdir, incdir, mandir, pkglibdir, sysconfdir, all");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "arch", 0,
-                            "Show architecture PMIx was compiled on");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'c', NULL, "config", 0,
-                            "Show configuration options");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, 't', NULL, "type", 1,
-                            "Show internal MCA parameters with the type specified in parameter.");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'h', NULL, "help", 0, "Show this help message");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "pretty-print", 0,
-                            "When used in conjunction with other parameters, the output is "
-                            "displayed in 'pretty-print' format (default)");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "parsable", 0,
-                            "When used in conjunction with other parameters, the output is "
-                            "displayed in a machine-parsable format");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "parseable", 0,
-                            "Synonym for --parsable");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, '\0', NULL, "hostname", 0,
-                            "Show the hostname that PMIx was configured and built on");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'a', NULL, "all", 0,
-                            "Show all configuration options and MCA parameters");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, 'l', NULL, "level", 1,
-                            "Show only variables with at most this level (1-9)");
-    pmix_cmd_line_make_opt3(pmix_info_cmd_line, 's', NULL, "selected-only", 0,
-                            "Show only variables from selected components");
-    pmix_cmd_line_make_opt3(
-        pmix_info_cmd_line, '\0', NULL, "show-failed", 0,
-        "Show the components that failed to load along with the reason why they failed.");
+    PMIX_HIDE_UNUSED_PARAMS(argc);
 
     if (PMIX_SUCCESS != pmix_mca_base_open()) {
         pmix_show_help("help-pinfo.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
@@ -169,47 +148,22 @@ int pmix_info_init(int argc, char **argv)
         PMIX_RELEASE(pmix_info_cmd_line);
         exit(1);
     }
-    pmix_mca_base_cmd_line_setup(pmix_info_cmd_line);
 
     /* Do the parsing */
-
-    ret = pmix_cmd_line_parse(pmix_info_cmd_line, false, false, argc, argv);
+    ret = pmix_cmd_line_parse(argv, pshorts, poptions,
+                              NULL, pmix_info_cmd_line, "help-pmix-info.txt");
     if (PMIX_SUCCESS != ret) {
         if (PMIX_ERR_SILENT != ret) {
             fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(ret));
         }
-        cmd_error = true;
+        exit(ret);
     }
-    if (!cmd_error
-        && (pmix_cmd_line_is_taken(pmix_info_cmd_line, "help")
-            || pmix_cmd_line_is_taken(pmix_info_cmd_line, "h"))) {
-        char *str, *usage;
-
-        want_help = true;
-        usage = pmix_cmd_line_get_usage_msg(pmix_info_cmd_line);
-        str = pmix_show_help_string("help-pmix-info.txt", "usage", true, usage);
-        if (NULL != str) {
-            printf("%s", str);
-            free(str);
-        }
-        free(usage);
-    }
-
-    /* If we had a cmd line parse error, or we showed the help
-       message, it's time to exit. */
-    if (cmd_error || want_help) {
-        pmix_mca_base_close();
-        PMIX_RELEASE(pmix_info_cmd_line);
-        exit(cmd_error ? 1 : 0);
-    }
-
-    pmix_mca_base_cmd_line_process_args(pmix_info_cmd_line, &app_env, &global_env);
 
     /* set the flags */
     if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "pretty-print")) {
         pmix_info_pretty = true;
-    } else if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "parsable")
-               || pmix_cmd_line_is_taken(pmix_info_cmd_line, "parseable")) {
+    } else if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "parsable") ||
+               pmix_cmd_line_is_taken(pmix_info_cmd_line, "parseable")) {
         pmix_info_pretty = false;
     }
 
@@ -350,16 +304,19 @@ void pmix_info_show_path(const char *type, const char *value)
 
 void pmix_info_do_path(bool want_all)
 {
-    int i, count;
+    int i;
     char *scope;
+    pmix_cli_item_t *opt;
 
     /* Check bozo case */
-    count = pmix_cmd_line_get_ninsts(pmix_info_cmd_line, "path");
-    for (i = 0; i < count; ++i) {
-        scope = pmix_cmd_line_get_param(pmix_info_cmd_line, "path", i, 0);
-        if (0 == strcmp("all", scope)) {
-            want_all = true;
-            break;
+    opt = pmix_cmd_line_get_param(pmix_info_cmd_line, "path");
+    if (NULL != opt) {
+        for (i=0; NULL != opt->values[i]; i++) {
+            scope = opt->values[i];
+            if (0 == strcmp("all", scope)) {
+                want_all = true;
+                break;
+            }
         }
     }
 
@@ -383,144 +340,121 @@ void pmix_info_do_path(bool want_all)
         pmix_info_show_path(pmix_info_path_pkglibdir, pmix_pinstall_dirs.pmixlibdir);
         pmix_info_show_path(pmix_info_path_pkgincludedir, pmix_pinstall_dirs.pmixincludedir);
     } else {
-        count = pmix_cmd_line_get_ninsts(pmix_info_cmd_line, "path");
-        for (i = 0; i < count; ++i) {
-            scope = pmix_cmd_line_get_param(pmix_info_cmd_line, "path", i, 0);
+        if (NULL != opt) {
+            for (i=0; NULL != opt->values[i]; i++) {
+                scope = opt->values[i];
 
-            if (0 == strcmp(pmix_info_path_prefix, scope)) {
-                pmix_info_show_path(pmix_info_path_prefix, pmix_pinstall_dirs.prefix);
-            } else if (0 == strcmp(pmix_info_path_bindir, scope)) {
-                pmix_info_show_path(pmix_info_path_bindir, pmix_pinstall_dirs.bindir);
-            } else if (0 == strcmp(pmix_info_path_libdir, scope)) {
-                pmix_info_show_path(pmix_info_path_libdir, pmix_pinstall_dirs.libdir);
-            } else if (0 == strcmp(pmix_info_path_incdir, scope)) {
-                pmix_info_show_path(pmix_info_path_incdir, pmix_pinstall_dirs.includedir);
-            } else if (0 == strcmp(pmix_info_path_mandir, scope)) {
-                pmix_info_show_path(pmix_info_path_mandir, pmix_pinstall_dirs.mandir);
-            } else if (0 == strcmp(pmix_info_path_pkglibdir, scope)) {
-                pmix_info_show_path(pmix_info_path_pkglibdir, pmix_pinstall_dirs.pmixlibdir);
-            } else if (0 == strcmp(pmix_info_path_sysconfdir, scope)) {
-                pmix_info_show_path(pmix_info_path_sysconfdir, pmix_pinstall_dirs.sysconfdir);
-            } else if (0 == strcmp(pmix_info_path_exec_prefix, scope)) {
-                pmix_info_show_path(pmix_info_path_exec_prefix, pmix_pinstall_dirs.exec_prefix);
-            } else if (0 == strcmp(pmix_info_path_sbindir, scope)) {
-                pmix_info_show_path(pmix_info_path_sbindir, pmix_pinstall_dirs.sbindir);
-            } else if (0 == strcmp(pmix_info_path_libexecdir, scope)) {
-                pmix_info_show_path(pmix_info_path_libexecdir, pmix_pinstall_dirs.libexecdir);
-            } else if (0 == strcmp(pmix_info_path_datarootdir, scope)) {
-                pmix_info_show_path(pmix_info_path_datarootdir, pmix_pinstall_dirs.datarootdir);
-            } else if (0 == strcmp(pmix_info_path_datadir, scope)) {
-                pmix_info_show_path(pmix_info_path_datadir, pmix_pinstall_dirs.datadir);
-            } else if (0 == strcmp(pmix_info_path_sharedstatedir, scope)) {
-                pmix_info_show_path(pmix_info_path_sharedstatedir,
-                                    pmix_pinstall_dirs.sharedstatedir);
-            } else if (0 == strcmp(pmix_info_path_localstatedir, scope)) {
-                pmix_info_show_path(pmix_info_path_localstatedir, pmix_pinstall_dirs.localstatedir);
-            } else if (0 == strcmp(pmix_info_path_infodir, scope)) {
-                pmix_info_show_path(pmix_info_path_infodir, pmix_pinstall_dirs.infodir);
-            } else if (0 == strcmp(pmix_info_path_pkgdatadir, scope)) {
-                pmix_info_show_path(pmix_info_path_pkgdatadir, pmix_pinstall_dirs.pmixdatadir);
-            } else if (0 == strcmp(pmix_info_path_pkgincludedir, scope)) {
-                pmix_info_show_path(pmix_info_path_pkgincludedir,
-                                    pmix_pinstall_dirs.pmixincludedir);
-            } else {
-                char *usage = pmix_cmd_line_get_usage_msg(pmix_info_cmd_line);
-                pmix_show_help("help-pmix_info.txt", "usage", true, usage);
-                free(usage);
-                exit(1);
+                if (0 == strcmp(pmix_info_path_prefix, scope)) {
+                    pmix_info_show_path(pmix_info_path_prefix, pmix_pinstall_dirs.prefix);
+                } else if (0 == strcmp(pmix_info_path_bindir, scope)) {
+                    pmix_info_show_path(pmix_info_path_bindir, pmix_pinstall_dirs.bindir);
+                } else if (0 == strcmp(pmix_info_path_libdir, scope)) {
+                    pmix_info_show_path(pmix_info_path_libdir, pmix_pinstall_dirs.libdir);
+                } else if (0 == strcmp(pmix_info_path_incdir, scope)) {
+                    pmix_info_show_path(pmix_info_path_incdir, pmix_pinstall_dirs.includedir);
+                } else if (0 == strcmp(pmix_info_path_mandir, scope)) {
+                    pmix_info_show_path(pmix_info_path_mandir, pmix_pinstall_dirs.mandir);
+                } else if (0 == strcmp(pmix_info_path_pkglibdir, scope)) {
+                    pmix_info_show_path(pmix_info_path_pkglibdir, pmix_pinstall_dirs.pmixlibdir);
+                } else if (0 == strcmp(pmix_info_path_sysconfdir, scope)) {
+                    pmix_info_show_path(pmix_info_path_sysconfdir, pmix_pinstall_dirs.sysconfdir);
+                } else if (0 == strcmp(pmix_info_path_exec_prefix, scope)) {
+                    pmix_info_show_path(pmix_info_path_exec_prefix, pmix_pinstall_dirs.exec_prefix);
+                } else if (0 == strcmp(pmix_info_path_sbindir, scope)) {
+                    pmix_info_show_path(pmix_info_path_sbindir, pmix_pinstall_dirs.sbindir);
+                } else if (0 == strcmp(pmix_info_path_libexecdir, scope)) {
+                    pmix_info_show_path(pmix_info_path_libexecdir, pmix_pinstall_dirs.libexecdir);
+                } else if (0 == strcmp(pmix_info_path_datarootdir, scope)) {
+                    pmix_info_show_path(pmix_info_path_datarootdir, pmix_pinstall_dirs.datarootdir);
+                } else if (0 == strcmp(pmix_info_path_datadir, scope)) {
+                    pmix_info_show_path(pmix_info_path_datadir, pmix_pinstall_dirs.datadir);
+                } else if (0 == strcmp(pmix_info_path_sharedstatedir, scope)) {
+                    pmix_info_show_path(pmix_info_path_sharedstatedir,
+                                        pmix_pinstall_dirs.sharedstatedir);
+                } else if (0 == strcmp(pmix_info_path_localstatedir, scope)) {
+                    pmix_info_show_path(pmix_info_path_localstatedir, pmix_pinstall_dirs.localstatedir);
+                } else if (0 == strcmp(pmix_info_path_infodir, scope)) {
+                    pmix_info_show_path(pmix_info_path_infodir, pmix_pinstall_dirs.infodir);
+                } else if (0 == strcmp(pmix_info_path_pkgdatadir, scope)) {
+                    pmix_info_show_path(pmix_info_path_pkgdatadir, pmix_pinstall_dirs.pmixdatadir);
+                } else if (0 == strcmp(pmix_info_path_pkgincludedir, scope)) {
+                    pmix_info_show_path(pmix_info_path_pkgincludedir, pmix_pinstall_dirs.pmixincludedir);
+                } else {
+                    pmix_show_help("help-pinfo.txt", "usage", true, "USAGE");
+                    exit(1);
+                }
             }
         }
     }
 }
 
-void pmix_info_do_params(bool want_all_in, bool want_internal)
+void pmix_info_do_params(bool want_all_in)
 {
-    pmix_mca_base_var_info_lvl_t max_level = PMIX_INFO_LVL_1;
-    int count;
-    char *type, *component, *str;
+    char *type, *str;
+    char **args = NULL, **tmp;
     bool found;
-    int i;
+    int i, j;
     bool want_all = false;
-    char *p;
+    pmix_cli_item_t *opt;
 
-    if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "param")) {
-        p = "param";
-    } else if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "params")) {
-        p = "params";
-    } else {
-        p = "foo"; /* should never happen, but protect against segfault */
-    }
-
-    if (NULL != (str = pmix_cmd_line_get_param(pmix_info_cmd_line, "level", 0, 0))) {
-        char *tmp;
-
-        errno = 0;
-        max_level = strtol(str, &tmp, 10) + PMIX_INFO_LVL_1 - 1;
-        if (0 != errno || '\0' != tmp[0] || max_level < PMIX_INFO_LVL_1
-            || max_level > PMIX_INFO_LVL_9) {
-            char *usage = pmix_cmd_line_get_usage_msg(pmix_info_cmd_line);
-            pmix_show_help("help-pmix_info.txt", "invalid-level", true, str);
-            free(usage);
-            exit(1);
-        }
-    } else if (want_all_in) {
-        /* if not specified default to level 9 if all components are requested */
-        max_level = PMIX_INFO_LVL_9;
-    }
+    opt = pmix_cmd_line_get_param(pmix_info_cmd_line, "param");
 
     if (want_all_in) {
         want_all = true;
     } else {
         /* See if the special param "all" was given to --param; that
-         * supercedes any individual type
+         * superceeds any individual type
          */
-        count = pmix_cmd_line_get_ninsts(pmix_info_cmd_line, p);
-        for (i = 0; i < count; ++i) {
-            type = pmix_cmd_line_get_param(pmix_info_cmd_line, p, (int) i, 0);
-            if (0 == strcmp(pmix_info_type_all, type)) {
+        if (NULL != opt) {
+            /* split the arguments at the colon */
+            args = pmix_argv_split(opt->values[0], ':');
+            if (0 == strcmp(args[0], "all")) {
                 want_all = true;
-                break;
             }
         }
     }
 
     /* Show the params */
-
     if (want_all) {
-        pmix_info_show_component_version(pmix_info_type_all, pmix_info_component_all,
-                                         pmix_info_ver_full, pmix_info_ver_all);
         for (i = 0; i < mca_types.size; ++i) {
             if (NULL == (type = (char *) pmix_pointer_array_get_item(&mca_types, i))) {
                 continue;
             }
-            pmix_info_show_mca_params(type, pmix_info_component_all, max_level, want_internal);
+            pmix_info_show_mca_params(type, pmix_info_component_all);
         }
     } else {
-        for (i = 0; i < count; ++i) {
-            type = pmix_cmd_line_get_param(pmix_info_cmd_line, p, (int) i, 0);
-            component = pmix_cmd_line_get_param(pmix_info_cmd_line, p, (int) i, 1);
+        if (NULL != opt && NULL != args) {
+            type = args[0];
+            if (NULL != args[1]) {
+                tmp = pmix_argv_split(args[1], ',');
 
-            for (found = false, i = 0; i < mca_types.size; ++i) {
-                if (NULL == (str = (char *) pmix_pointer_array_get_item(&mca_types, i))) {
-                    continue;
+                for (j=0; NULL != tmp[j]; j++) {
+                    for (found = false, i = 0; i < mca_types.size; ++i) {
+                        str = (char *) pmix_pointer_array_get_item(&mca_types, i);
+                        if (NULL == str) {
+                            continue;
+                        }
+                        if (0 == strcmp(str, type)) {
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        pmix_show_help("help-pinfo.txt", "not-found", true, type);
+                        exit(1);
+                    }
+
+                    pmix_info_show_mca_params(type, tmp[j]);
                 }
-                if (0 == strcmp(str, type)) {
-                    found = true;
-                    break;
-                }
+                pmix_argv_free(tmp);
+            } else {
+                pmix_info_show_mca_params(type, "*");
             }
-
-            if (!found) {
-                char *usage = pmix_cmd_line_get_usage_msg(pmix_info_cmd_line);
-                pmix_show_help("help-pmix_info.txt", "not-found", true, type);
-                free(usage);
-                exit(1);
-            }
-
-            pmix_info_show_component_version(type, component, pmix_info_ver_full,
-                                             pmix_info_ver_all);
-            pmix_info_show_mca_params(type, component, max_level, want_internal);
         }
+    }
+    if (NULL != args) {
+        pmix_argv_free(args);
     }
 }
 
@@ -544,16 +478,15 @@ void pmix_info_err_params(void)
         fprintf(stderr, "pmix_info_err_params: map not found\n");
         return;
     }
-    pmix_info_show_mca_params(map->type, pmix_info_component_all, PMIX_INFO_LVL_9, true);
+    pmix_info_show_mca_params(map->type, pmix_info_component_all);
     fprintf(stderr, "\n");
     return;
 }
 
 void pmix_info_do_type(void)
 {
-    pmix_mca_base_var_info_lvl_t max_level = PMIX_INFO_LVL_1;
     int count;
-    char *type, *str;
+    char *type;
     int i, j, k, len, ret;
     char *p;
     const pmix_mca_base_var_t *var;
@@ -561,32 +494,20 @@ void pmix_info_do_type(void)
     const pmix_mca_base_var_group_t *group;
     p = "type";
 
-    if (NULL != (str = pmix_cmd_line_get_param(pmix_info_cmd_line, "level", 0, 0))) {
-        char *tmp;
+    pmix_cli_item_t *opt;
 
-        errno = 0;
-        max_level = strtol(str, &tmp, 10) + PMIX_INFO_LVL_1 - 1;
-        if (0 != errno || '\0' != tmp[0] || max_level < PMIX_INFO_LVL_1
-            || max_level > PMIX_INFO_LVL_9) {
-            char *usage = pmix_cmd_line_get_usage_msg(pmix_info_cmd_line);
-            pmix_show_help("help-pmix_info.txt", "invalid-level", true, str);
-            free(usage);
-            exit(1);
-        }
-    }
-
-    count = pmix_cmd_line_get_ninsts(pmix_info_cmd_line, p);
+    opt = pmix_cmd_line_get_param(pmix_info_cmd_line, "type");
+    count = pmix_argv_count(opt->values);
     len = pmix_mca_base_var_get_count();
 
     for (k = 0; k < count; ++k) {
-        type = pmix_cmd_line_get_param(pmix_info_cmd_line, p, k, 0);
+        type = opt->values[k];
         for (i = 0; i < len; ++i) {
             ret = pmix_mca_base_var_get(i, &var);
             if (PMIX_SUCCESS != ret) {
                 continue;
             }
-            if (0 == strcmp(type, pmix_var_type_names[var->mbv_type])
-                && (var->mbv_info_lvl <= max_level)) {
+            if (0 == strcmp(type, pmix_var_type_names[var->mbv_type])) {
                 ret = pmix_mca_base_var_dump(var->mbv_index, &strings,
                                              !pmix_info_pretty ? PMIX_MCA_BASE_VAR_DUMP_PARSABLE
                                                                : PMIX_MCA_BASE_VAR_DUMP_READABLE);
@@ -612,9 +533,7 @@ void pmix_info_do_type(void)
     }
 }
 
-static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *group,
-                                            pmix_mca_base_var_info_lvl_t max_level,
-                                            bool want_internal)
+static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *group)
 {
     const int *variables, *groups;
     const char *group_component;
@@ -666,9 +585,7 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
 
     for (i = 0; i < count; ++i) {
         ret = pmix_mca_base_var_get(variables[i], &var);
-        if (PMIX_SUCCESS != ret
-            || ((var->mbv_flags & PMIX_MCA_BASE_VAR_FLAG_INTERNAL) && !want_internal)
-            || max_level < var->mbv_info_lvl) {
+        if (PMIX_SUCCESS != ret) {
             continue;
         }
 
@@ -723,13 +640,12 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
         if (PMIX_SUCCESS != ret) {
             continue;
         }
-        pmix_info_show_mca_group_params(group, max_level, want_internal);
+        pmix_info_show_mca_group_params(group);
     }
     free(component_msg);
 }
 
-void pmix_info_show_mca_params(const char *type, const char *component,
-                               pmix_mca_base_var_info_lvl_t max_level, bool want_internal)
+void pmix_info_show_mca_params(const char *type, const char *component)
 {
     const pmix_mca_base_var_group_t *group;
     int ret;
@@ -742,7 +658,7 @@ void pmix_info_show_mca_params(const char *type, const char *component,
 
         (void) pmix_mca_base_var_group_get(ret, &group);
 
-        pmix_info_show_mca_group_params(group, max_level, want_internal);
+        pmix_info_show_mca_group_params(group);
     } else {
         ret = pmix_mca_base_var_group_find("*", type, component);
         if (0 > ret) {
@@ -750,7 +666,7 @@ void pmix_info_show_mca_params(const char *type, const char *component,
         }
 
         (void) pmix_mca_base_var_group_get(ret, &group);
-        pmix_info_show_mca_group_params(group, max_level, want_internal);
+        pmix_info_show_mca_group_params(group);
     }
 }
 
@@ -1310,7 +1226,7 @@ void pmix_info_show_pmix_version(const char *scope)
  *                FALSE -> display selected options
  *
  * This function displays all the options with which the current
- * installation of pmix was configured. There are many options here
+ * pinstallation of pmix was configured. There are many options here
  * that are carried forward from OMPI-7 and are not mca parameters
  * in OMPI-10. I have to dig through the invalid options and replace
  * them with OMPI-10 options.

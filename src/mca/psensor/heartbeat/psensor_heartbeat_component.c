@@ -26,19 +26,20 @@ static int heartbeat_close(void);
 static int heartbeat_query(pmix_mca_base_module_t **module, int *priority);
 
 pmix_psensor_heartbeat_component_t mca_psensor_heartbeat_component = {
-    .super = {.base = {
-                  PMIX_PSENSOR_BASE_VERSION_1_0_0,
+    .super = {
+          PMIX_PSENSOR_BASE_VERSION_1_0_0,
 
-                  /* Component name and version */
-                  .pmix_mca_component_name = "heartbeat",
-                  PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                                             PMIX_RELEASE_VERSION),
+          /* Component name and version */
+          .pmix_mca_component_name = "heartbeat",
+          PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                                     PMIX_RELEASE_VERSION),
 
-                  /* Component open and close functions */
-                  heartbeat_open,  /* component open  */
-                  heartbeat_close, /* component close */
-                  heartbeat_query  /* component query */
-              }}};
+          /* Component open and close functions */
+          heartbeat_open,  /* component open  */
+          heartbeat_close, /* component close */
+          heartbeat_query  /* component query */
+    }
+};
 
 /**
  * component open/close/init function

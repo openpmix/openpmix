@@ -21,8 +21,8 @@
 #include <event.h>
 
 #include "src/class/pmix_list.h"
-#include "src/include/types.h"
-#include "src/mca/base/base.h"
+#include "src/include/pmix_types.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 #include "src/runtime/pmix_progress_threads.h"
 
@@ -57,9 +57,8 @@ static int pmix_psensor_register(pmix_mca_base_register_flag_t flags)
     (void) flags;
     (void) pmix_mca_base_var_register("pmix", "psensor", "base", "use_separate_thread",
                                       "Use a separate thread for monitoring local procs",
-                                      PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-                                      PMIX_MCA_BASE_VAR_SCOPE_READONLY, &use_separate_thread);
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL,
+                                      &use_separate_thread);
     return PMIX_SUCCESS;
 }
 

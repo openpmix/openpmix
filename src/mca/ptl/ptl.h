@@ -16,7 +16,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,7 +34,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
@@ -202,7 +202,6 @@ PMIX_EXPORT extern void pmix_ptl_base_cancel_recv(int sd, short args, void *cbda
  */
 struct pmix_ptl_base_component_t {
     pmix_mca_base_component_t base;
-    pmix_mca_base_component_data_t data;
     int priority;
     char *uri;
 };

@@ -4,7 +4,7 @@
  * Copyright (c) 2014 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2017 IBM Corporation.  All rights reserved.
  * Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,8 +21,8 @@
 
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/mca/base/base.h"
-#include "src/util/cmd_line.h"
+#include "src/mca/base/pmix_base.h"
+#include "src/util/pmix_cmd_line.h"
 
 BEGIN_C_DECLS
 
@@ -67,15 +67,13 @@ PMIX_EXPORT int pmix_info_register_framework_params(void);
 PMIX_EXPORT void pmix_info_close_components(void);
 PMIX_EXPORT void pmix_info_err_params(void);
 
-PMIX_EXPORT void pmix_info_do_params(bool want_all_in, bool want_internal);
+PMIX_EXPORT void pmix_info_do_params(bool want_all_in);
 
 PMIX_EXPORT void pmix_info_show_path(const char *type, const char *value);
 
 PMIX_EXPORT void pmix_info_do_path(bool want_all);
 
-PMIX_EXPORT void pmix_info_show_mca_params(const char *type, const char *component,
-                                           pmix_mca_base_var_info_lvl_t max_level,
-                                           bool want_internal);
+PMIX_EXPORT void pmix_info_show_mca_params(const char *type, const char *component);
 
 PMIX_EXPORT void pmix_info_show_mca_version(const pmix_mca_base_component_t *component,
                                             const char *scope, const char *ver_type);

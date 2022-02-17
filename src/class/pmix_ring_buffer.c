@@ -28,7 +28,7 @@
 
 #include "pmix_common.h"
 #include "src/class/pmix_ring_buffer.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 static void pmix_ring_buffer_construct(pmix_ring_buffer_t *);
 static void pmix_ring_buffer_destruct(pmix_ring_buffer_t *);

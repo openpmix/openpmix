@@ -27,7 +27,7 @@
 #define PMIX_GLOBALS_H
 
 #include "src/include/pmix_config.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -43,7 +43,7 @@
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
@@ -624,6 +624,9 @@ PMIX_EXPORT pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
+PMIX_EXPORT extern const char* PMIX_PROXY_VERSION;
+PMIX_EXPORT extern const char* PMIX_PROXY_BUGREPORT;
+PMIX_EXPORT extern const char* pmix_tool_basename;
 
 static inline bool pmix_check_node_info(const char *key)
 {

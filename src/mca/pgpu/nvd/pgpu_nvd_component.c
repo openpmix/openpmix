@@ -47,27 +47,20 @@ static pmix_status_t component_register(void);
  */
 pmix_pgpu_nvd_component_t mca_pgpu_nvd_component = {
     .super = {
-        .base = {
-            PMIX_PGPU_BASE_VERSION_1_0_0,
+        PMIX_PGPU_BASE_VERSION_1_0_0,
 
-            /* Component name and version */
-            .pmix_mca_component_name = "nvd",
-            PMIX_MCA_BASE_MAKE_VERSION(component,
-                                       PMIX_MAJOR_VERSION,
-                                       PMIX_MINOR_VERSION,
-                                       PMIX_RELEASE_VERSION),
+        /* Component name and version */
+        .pmix_mca_component_name = "nvd",
+        PMIX_MCA_BASE_MAKE_VERSION(component,
+                                   PMIX_MAJOR_VERSION,
+                                   PMIX_MINOR_VERSION,
+                                   PMIX_RELEASE_VERSION),
 
-            /* Component open and close functions */
-            .pmix_mca_open_component = component_open,
-            .pmix_mca_close_component = component_close,
-            .pmix_mca_register_component_params = component_register,
-            .pmix_mca_query_component = component_query,
-        },
-        .data = {
-            /* The component is checkpoint ready */
-            PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-            .reserved = {0}
-        }
+        /* Component open and close functions */
+        .pmix_mca_open_component = component_open,
+        .pmix_mca_close_component = component_close,
+        .pmix_mca_register_component_params = component_register,
+        .pmix_mca_query_component = component_query,
     },
     .include = NULL,
     .exclude = NULL

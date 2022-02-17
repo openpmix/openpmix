@@ -53,7 +53,7 @@
 #include "src/mca/gds/gds.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/getid.h"
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_printf.h"

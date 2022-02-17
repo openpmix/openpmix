@@ -4,7 +4,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,7 +51,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 
 BEGIN_C_DECLS
@@ -146,9 +146,6 @@ typedef int (*pmix_pdl_base_module_foreachfile_fn_t)(
 struct pmix_pdl_base_component_1_0_0_t {
     /** MCA base component */
     pmix_mca_base_component_t base_version;
-    /** MCA base data */
-    pmix_mca_base_component_data_t base_data;
-
     /** Default priority */
     int priority;
 };

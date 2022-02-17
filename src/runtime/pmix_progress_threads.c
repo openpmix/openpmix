@@ -26,8 +26,8 @@
 #include "src/include/pmix_globals.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
-#include "src/threads/threads.h"
-#include "src/util/error.h"
+#include "src/threads/pmix_threads.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
 
 /* create a tracking object for progress threads */

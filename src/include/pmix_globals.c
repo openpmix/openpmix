@@ -23,7 +23,7 @@
 #include "pmix_common.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -51,10 +51,13 @@
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops_types.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_os_path.h"
 
+const char* PMIX_PROXY_VERSION = PMIX_PROXY_VERSION_STRING;
+const char* PMIX_PROXY_BUGREPORT = PMIX_PROXY_BUGREPORT_STRING;
+const char* pmix_tool_basename = NULL;
 
 static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd,
                             pmix_epilog_t *epi);

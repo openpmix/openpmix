@@ -38,7 +38,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 #include "src/util/name_fns.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_os_path.h"

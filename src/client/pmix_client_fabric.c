@@ -21,7 +21,7 @@
 
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -50,8 +50,8 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
 static void fcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
