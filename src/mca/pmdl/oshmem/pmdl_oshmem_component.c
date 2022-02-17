@@ -63,7 +63,7 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
          &mca_pmdl_oshmem_component.incparms);
     if (NULL != mca_pmdl_oshmem_component.incparms) {
         mca_pmdl_oshmem_component.include = pmix_argv_split(mca_pmdl_oshmem_component.incparms,
@@ -74,7 +74,7 @@ static pmix_status_t component_register(void)
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
         &mca_pmdl_oshmem_component.excparms);
     if (NULL != mca_pmdl_oshmem_component.excparms) {
         mca_pmdl_oshmem_component.exclude = pmix_argv_split(mca_pmdl_oshmem_component.excparms,

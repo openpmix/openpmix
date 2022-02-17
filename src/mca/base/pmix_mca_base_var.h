@@ -120,29 +120,20 @@ typedef enum {
 } pmix_mca_base_var_source_t;
 
 typedef enum {
-    PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED = 0x0001,
-    PMIX_MCA_BASE_VAR_SYN_FLAG_INTERNAL = 0x0002
+    PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED = 0x0001
 } pmix_mca_base_var_syn_flag_t;
 
 typedef enum {
     PMIX_MCA_BASE_VAR_FLAG_NONE = 0x0000,
-    /** Variable is internal (hidden from *_info) */
-    PMIX_MCA_BASE_VAR_FLAG_INTERNAL = 0x0001,
     /** Variable is deprecated */
     PMIX_MCA_BASE_VAR_FLAG_DEPRECATED = 0x0008,
-    /** Variable has been overridden */
-    PMIX_MCA_BASE_VAR_FLAG_OVERRIDE = 0x0010,
-    /** Variable may not be set from a file */
-    PMIX_MCA_BASE_VAR_FLAG_ENVIRONMENT_ONLY = 0x0020,
-    /** Variable should be deregistered when the group is deregistered
-        (DWG = "deregister with group").  This flag is set
-        automatically when you register a variable with
-        pmix_mca_base_component_var_register(), but can also be set
-        manually when you register a variable with
-        pmix_mca_base_var_register().  Analogous to the
-        MCA_BASE_PVAR_FLAG_IWG. */
-    PMIX_MCA_BASE_VAR_FLAG_DWG = 0x0040
-} pmix_mca_base_var_flag_t;
+    /** Variable is valid */
+    PMIX_MCA_BASE_VAR_FLAG_VALID = 0x00010000,
+    /** Variable is a synonym */
+    PMIX_MCA_BASE_VAR_FLAG_SYNONYM = 0x00020000,
+    /** mbv_source_file needs to be freed */
+    PMIX_MCA_BASE_VAR_FLAG_SOURCE_FILE_NEEDS_FREE = 0x00040000
+} pmix_mca_base_var_flag_internal_t;
 
 /**
  * Types for MCA parameters.
@@ -201,7 +192,7 @@ struct pmix_mca_base_var_t {
     pmix_value_array_t mbv_synonyms;
 
     /** Variable flags */
-    pmix_mca_base_var_flag_t mbv_flags;
+    pmix_mca_base_var_flag_internal_t mbv_flags;
 
     /** Source of the current value */
     pmix_mca_base_var_source_t mbv_source;
@@ -343,8 +334,7 @@ PMIX_EXPORT int pmix_mca_base_var_init(void);
 PMIX_EXPORT int pmix_mca_base_var_register(const char *project_name, const char *framework_name,
                                            const char *component_name, const char *variable_name,
                                            const char *description, pmix_mca_base_var_type_t type,
-                                           pmix_mca_base_var_enum_t *enumerator, int bind,
-                                           pmix_mca_base_var_flag_t flags, void *storage);
+                                           void *storage);
 
 /**
  * Convenience function for registering a variable associated with a
@@ -357,8 +347,7 @@ PMIX_EXPORT int pmix_mca_base_var_register(const char *project_name, const char 
  */
 PMIX_EXPORT int pmix_mca_base_component_var_register(
     const pmix_mca_base_component_t *component, const char *variable_name, const char *description,
-    pmix_mca_base_var_type_t type, pmix_mca_base_var_enum_t *enumerator, int bind,
-    pmix_mca_base_var_flag_t flags, void *storage);
+    pmix_mca_base_var_type_t type, void *storage);
 
 /**
  * Convenience function for registering a variable associated with a framework. This
@@ -367,8 +356,7 @@ PMIX_EXPORT int pmix_mca_base_component_var_register(
  */
 PMIX_EXPORT int pmix_mca_base_framework_var_register(
     const pmix_mca_base_framework_t *framework, const char *variable_name, const char *help_msg,
-    pmix_mca_base_var_type_t type, pmix_mca_base_var_enum_t *enumerator, int bind,
-    pmix_mca_base_var_flag_t flags, void *storage);
+    pmix_mca_base_var_type_t type, void *storage);
 
 /**
  * Register a synonym name for an MCA variable.
@@ -528,19 +516,6 @@ PMIX_EXPORT int pmix_mca_base_var_check_exclusive(const char *project, const cha
                                                   const char *param_b);
 
 /**
- * Set or unset a flag on a variable.
- *
- * @param[in] vari Index of variable
- * @param[in] flag Flag(s) to set or unset.
- * @param[in] set Boolean indicating whether to set flag(s).
- *
- * @returns PMIX_SUCCESS If the flags are set successfully.
- * @returns PMIX_ERR_BAD_PARAM If the variable is not registered.
- * @returns PMIX_ERROR Otherwise
- */
-PMIX_EXPORT int pmix_mca_base_var_set_flag(int vari, pmix_mca_base_var_flag_t flag, bool set);
-
-/**
  * Obtain basic info on a single variable (name, help message, etc)
  *
  * @param[in] vari Valid variable index.
@@ -575,7 +550,6 @@ PMIX_EXPORT int pmix_mca_base_var_get_count(void);
  * strings, suitable for use in an environment
  * @param[out] num_env A pointer to an int, containing the length
  * of the env array (not including the final NULL entry).
- * @param[in] internal Whether to include internal variables.
  *
  * @retval PMIX_SUCCESS Upon success.
  * @retval PMIX_ERROR Upon failure.
@@ -584,7 +558,7 @@ PMIX_EXPORT int pmix_mca_base_var_get_count(void);
  * its output is in terms of an argv-style array of key=value
  * strings, suitable for using in an environment.
  */
-PMIX_EXPORT int pmix_mca_base_var_build_env(char ***env, int *num_env, bool internal);
+PMIX_EXPORT int pmix_mca_base_var_build_env(char ***env, int *num_env);
 
 /**
  * Shut down the MCA variable system (normally only invoked by the

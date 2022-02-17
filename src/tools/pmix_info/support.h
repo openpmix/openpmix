@@ -67,14 +67,13 @@ PMIX_EXPORT int pmix_info_register_framework_params(void);
 PMIX_EXPORT void pmix_info_close_components(void);
 PMIX_EXPORT void pmix_info_err_params(void);
 
-PMIX_EXPORT void pmix_info_do_params(bool want_all_in, bool want_internal);
+PMIX_EXPORT void pmix_info_do_params(bool want_all_in);
 
 PMIX_EXPORT void pmix_info_show_path(const char *type, const char *value);
 
 PMIX_EXPORT void pmix_info_do_path(bool want_all);
 
-PMIX_EXPORT void pmix_info_show_mca_params(const char *type, const char *component,
-                                           bool want_internal);
+PMIX_EXPORT void pmix_info_show_mca_params(const char *type, const char *component);
 
 PMIX_EXPORT void pmix_info_show_mca_version(const pmix_mca_base_component_t *component,
                                             const char *scope, const char *ver_type);

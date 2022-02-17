@@ -102,8 +102,7 @@ pmix_status_t pmix_hwloc_register(void)
 {
     (void) pmix_mca_base_var_register("pmix", "pmix", "hwloc", "verbose",
                                       "Verbosity for HWLOC operations",
-                                      PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE,
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_hwloc_verbose);
     if (0 < pmix_hwloc_verbose) {
         /* set default output */
@@ -114,8 +113,7 @@ pmix_status_t pmix_hwloc_register(void)
     vmhole = "biggest";
     (void) pmix_mca_base_var_register("pmix", "pmix", "hwloc", "hole_kind",
                                       "Kind of VM hole to identify - none, begin, biggest, libs, heap, stack (default=biggest)",
-                                      PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE, &vmhole);
+                                      PMIX_MCA_BASE_VAR_TYPE_STRING, &vmhole);
     if (0 == strcasecmp(vmhole, "none")) {
         hole_kind = VM_HOLE_NONE;
     } else if (0 == strcasecmp(vmhole, "begin")) {
@@ -135,13 +133,11 @@ pmix_status_t pmix_hwloc_register(void)
 
     (void) pmix_mca_base_var_register("pmix", "pmix", "hwloc", "topo_file",
                                       "Topology file to use instead of discovering it (mostly for testing purposes)",
-                                      PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
-                                      &topo_file);
+                                      PMIX_MCA_BASE_VAR_TYPE_STRING, &topo_file);
 
     (void) pmix_mca_base_var_register("pmix", "pmix", "hwloc", "test_cpuset",
                                       "Cpuset for testing purposes",
-                                      PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                      PMIX_MCA_BASE_VAR_FLAG_NONE,
+                                      PMIX_MCA_BASE_VAR_TYPE_STRING,
                                       &testcpuset);
 
     return PMIX_SUCCESS;

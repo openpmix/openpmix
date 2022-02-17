@@ -124,7 +124,6 @@ static struct option poptions[] = {
     PMIX_OPTION_DEFINE("arch", PMIX_ARG_NONE),
     PMIX_OPTION_SHORT_DEFINE("config", PMIX_ARG_NONE, 'c'),
     PMIX_OPTION_DEFINE("hostname", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("internal", PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE("param", PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE("path", PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE("show-version", PMIX_ARG_REQD),
@@ -389,7 +388,7 @@ void pmix_info_do_path(bool want_all)
     }
 }
 
-void pmix_info_do_params(bool want_all_in, bool want_internal)
+void pmix_info_do_params(bool want_all_in)
 {
     char *type, *str;
     char **args = NULL, **tmp;
@@ -421,7 +420,7 @@ void pmix_info_do_params(bool want_all_in, bool want_internal)
             if (NULL == (type = (char *) pmix_pointer_array_get_item(&mca_types, i))) {
                 continue;
             }
-            pmix_info_show_mca_params(type, pmix_info_component_all, want_internal);
+            pmix_info_show_mca_params(type, pmix_info_component_all);
         }
     } else {
         if (NULL != opt && NULL != args) {
@@ -446,11 +445,11 @@ void pmix_info_do_params(bool want_all_in, bool want_internal)
                         exit(1);
                     }
 
-                    pmix_info_show_mca_params(type, tmp[j], want_internal);
+                    pmix_info_show_mca_params(type, tmp[j]);
                 }
                 pmix_argv_free(tmp);
             } else {
-                pmix_info_show_mca_params(type, "*", want_internal);
+                pmix_info_show_mca_params(type, "*");
             }
         }
     }
@@ -479,7 +478,7 @@ void pmix_info_err_params(void)
         fprintf(stderr, "pmix_info_err_params: map not found\n");
         return;
     }
-    pmix_info_show_mca_params(map->type, pmix_info_component_all, true);
+    pmix_info_show_mca_params(map->type, pmix_info_component_all);
     fprintf(stderr, "\n");
     return;
 }
@@ -534,8 +533,7 @@ void pmix_info_do_type(void)
     }
 }
 
-static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *group,
-                                            bool want_internal)
+static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *group)
 {
     const int *variables, *groups;
     const char *group_component;
@@ -587,8 +585,7 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
 
     for (i = 0; i < count; ++i) {
         ret = pmix_mca_base_var_get(variables[i], &var);
-        if (PMIX_SUCCESS != ret
-            || ((var->mbv_flags & PMIX_MCA_BASE_VAR_FLAG_INTERNAL) && !want_internal)) {
+        if (PMIX_SUCCESS != ret) {
             continue;
         }
 
@@ -643,12 +640,12 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
         if (PMIX_SUCCESS != ret) {
             continue;
         }
-        pmix_info_show_mca_group_params(group, want_internal);
+        pmix_info_show_mca_group_params(group);
     }
     free(component_msg);
 }
 
-void pmix_info_show_mca_params(const char *type, const char *component, bool want_internal)
+void pmix_info_show_mca_params(const char *type, const char *component)
 {
     const pmix_mca_base_var_group_t *group;
     int ret;
@@ -661,7 +658,7 @@ void pmix_info_show_mca_params(const char *type, const char *component, bool wan
 
         (void) pmix_mca_base_var_group_get(ret, &group);
 
-        pmix_info_show_mca_group_params(group, want_internal);
+        pmix_info_show_mca_group_params(group);
     } else {
         ret = pmix_mca_base_var_group_find("*", type, component);
         if (0 > ret) {
@@ -669,7 +666,7 @@ void pmix_info_show_mca_params(const char *type, const char *component, bool wan
         }
 
         (void) pmix_mca_base_var_group_get(ret, &group);
-        pmix_info_show_mca_group_params(group, want_internal);
+        pmix_info_show_mca_group_params(group);
     }
 }
 

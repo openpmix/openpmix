@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
     if (PMIX_SUCCESS != (ret = pmix_info_register_framework_params())) {
         if (PMIX_ERR_BAD_PARAM == ret) {
             /* output what we got */
-            pmix_info_do_params(true, pmix_cmd_line_is_taken(pmix_info_cmd_line, "internal"));
+            pmix_info_do_params(true);
         }
         exit(1);
     }
@@ -175,7 +175,7 @@ int main(int argc, char *argv[])
     }
     if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, "param")
         || pmix_cmd_line_is_taken(pmix_info_cmd_line, "params")) {
-        pmix_info_do_params(want_all, pmix_cmd_line_is_taken(pmix_info_cmd_line, "internal"));
+        pmix_info_do_params(want_all);
         acted = true;
     }
     if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "type")) {

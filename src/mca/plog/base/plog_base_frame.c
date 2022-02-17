@@ -48,7 +48,7 @@ static int pmix_plog_register(pmix_mca_base_register_flag_t flags)
     (void) flags;
     pmix_mca_base_var_register("pmix", "plog", "base", "order",
                                "Comma-delimited, prioritized list of logging channels",
-                               PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE,
+                               PMIX_MCA_BASE_VAR_TYPE_STRING,
                                &order);
     if (NULL != order) {
         pmix_plog_globals.channels = pmix_argv_split(order, ',');

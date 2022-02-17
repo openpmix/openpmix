@@ -145,20 +145,6 @@ static int register_components(pmix_mca_base_framework_t *framework)
                                 "component %s register function successful",
                                 component->pmix_mca_component_name);
         }
-
-        /* Register this component's version */
-        pmix_mca_base_component_var_register(component, "major_version", NULL,
-                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
-                                             PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                             &component->pmix_mca_component_major_version);
-        pmix_mca_base_component_var_register(component, "minor_version", NULL,
-                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
-                                             PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                             &component->pmix_mca_component_minor_version);
-        pmix_mca_base_component_var_register(component, "release_version", NULL,
-                                             PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
-                                             PMIX_MCA_BASE_VAR_FLAG_INTERNAL,
-                                             &component->pmix_mca_component_release_version);
     }
 
     /* All done */
