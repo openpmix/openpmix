@@ -61,6 +61,8 @@
 
 #include <stdatomic.h>
 
+typedef _Atomic int32_t pmix_atomic_int32_t;
+
 static inline void pmix_atomic_wmb(void)
 {
     atomic_thread_fence(memory_order_release);
@@ -77,6 +79,11 @@ static inline void pmix_atomic_rmb(void)
     atomic_thread_fence(memory_order_acquire);
 #    endif
 }
+
+#    define pmix_atomic_compare_exchange_strong_32(addr, compare, value)                    \
+        atomic_compare_exchange_strong_explicit(addr, compare, value, memory_order_relaxed, \
+                                                memory_order_relaxed)
+
 
 #elif PMIX_ATOMIC_GCC_BUILTIN
 
@@ -95,6 +102,13 @@ static inline void pmix_atomic_rmb(void)
 #else
     __atomic_thread_fence(__ATOMIC_ACQUIRE);
 #endif
+}
+
+static inline bool pmix_atomic_compare_exchange_strong_32(pmix_atomic_int32_t *addr,
+                                                          int32_t *oldval, int32_t newval)
+{
+    return __atomic_compare_exchange_n(addr, oldval, newval, false,
+                                       __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
 }
 
 #endif

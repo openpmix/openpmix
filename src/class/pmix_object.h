@@ -206,6 +206,7 @@ struct pmix_object_t {
         struct's memory */
     uint64_t obj_magic_id;
 #endif
+    pthread_mutex_t obj_lock;
     pmix_class_t *obj_class;            /**< class descriptor */
     int32_t obj_reference_count;   /**< reference count */
 #if PMIX_ENABLE_DEBUG
