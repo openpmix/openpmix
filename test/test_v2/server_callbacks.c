@@ -5,7 +5,7 @@
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      Triad National Security, LLC
  *                         All rights reserved.
  * $COPYRIGHT$
@@ -194,7 +194,7 @@ pmix_status_t publish_fn(const pmix_proc_t *proc, const pmix_info_t info[], size
         if (!found) {
             new_info = PMIX_NEW(pmix_test_info_t);
             PMIX_LOAD_KEY(new_info->data.key, info[i].key);
-            pmix_value_xfer(&new_info->data.value, (pmix_value_t *) &info[i].value);
+            PMIx_Value_xfer(&new_info->data.value, (pmix_value_t *) &info[i].value);
             new_info->namespace_published = strdup(proc->nspace);
             new_info->rank_published = proc->rank;
             pmix_list_append(pmix_test_published_list, &new_info->super);
@@ -228,7 +228,7 @@ pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys, const pmix_info_t 
                 pdata[i].proc.rank = tinfo->rank_published;
                 memset(pdata[i].key, 0, PMIX_MAX_KEYLEN + 1);
                 pmix_strncpy(pdata[i].key, keys[i], PMIX_MAX_KEYLEN);
-                pmix_value_xfer(&pdata[i].value, &tinfo->data.value);
+                PMIx_Value_xfer(&pdata[i].value, &tinfo->data.value);
                 ret++;
                 break;
             }

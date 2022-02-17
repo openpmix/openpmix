@@ -2,7 +2,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +18,7 @@ static void get_cb(pmix_status_t status, pmix_value_t *kv, void *cbdata)
     get_cbdata *cb = (get_cbdata *) cbdata;
     PMIX_ACQUIRE_OBJECT(cb);
     if (PMIX_SUCCESS == status) {
-        pmix_value_xfer(cb->kv, kv);
+        PMIx_Value_xfer(cb->kv, kv);
     }
     cb->status = status;
     PMIX_POST_OBJECT(cb);

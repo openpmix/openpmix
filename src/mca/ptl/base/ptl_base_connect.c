@@ -42,7 +42,7 @@
 #ifdef HAVE_DIRENT_H
 #    include <dirent.h>
 #endif
-#ifdef HAVE_SYS_SYSCTL_H
+#if PMIX_HAVE_APPLE && defined(HAVE_SYS_SYSCTL_H)
 #    include <sys/sysctl.h>
 #endif
 

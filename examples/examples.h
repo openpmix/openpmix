@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,13 +24,12 @@
  *
  */
 
-#include "src/include/pmix_config.h"
-
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 #include <pmix_common.h>
 
@@ -126,15 +125,16 @@ typedef struct {
         }                                  \
     } while (0)
 
-#if PMIX_PICKY_COMPILERS
 #define EXAMPLES_HIDE_UNUSED_PARAMS(...)            \
     do {                                            \
         int __x = 3;                                \
         examples_hide_unused_params(__x, __VA_ARGS__);  \
     } while(0)
 
-void examples_hide_unused_params(int x, ...);
+static inline void examples_hide_unused_params(int x, ...)
+{
+    va_list ap;
 
-#else
-#define EXAMPLES_HIDE_UNUSED_PARAMS(...)
-#endif
+    va_start(ap, x);
+    va_end(ap);
+}

@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
+ * Copyright (c) 2022      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,6 +15,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "src/include/pmix_globals.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/argv.h"
 
@@ -24,6 +26,7 @@ int main(int argc, char *argv[])
     const char *tmp;
     pmix_status_t ret;
     int ret_int;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /*
      * mess with environ

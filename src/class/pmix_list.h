@@ -14,7 +14,7 @@
  * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -108,7 +108,7 @@ struct pmix_list_item_t {
 
 #if PMIX_ENABLE_DEBUG
     /** Atomic reference count for debugging */
-    pmix_atomic_int32_t pmix_list_item_refcount;
+    int32_t pmix_list_item_refcount;
     /** The list this item belong to */
     volatile struct pmix_list_t *pmix_list_item_belong_to;
 #endif
