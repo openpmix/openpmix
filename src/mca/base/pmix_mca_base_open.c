@@ -54,6 +54,7 @@ bool pmix_mca_base_component_track_load_errors = false;
 bool pmix_mca_base_component_disable_dlopen = false;
 
 static char *pmix_mca_base_verbose = NULL;
+static char *path_from_param = NULL;
 
 /*
  * Private functions
@@ -64,20 +65,50 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds);
 /*
  * Main MCA initialization.
  */
-int pmix_mca_base_open(void)
+int pmix_mca_base_open(const char *add_path)
 {
-    char *value;
+    char *value, **paths = NULL, **tmp = NULL;
     pmix_output_stream_t lds;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
     int var_id;
     int rc;
+    int n;
 
-    if (pmix_mca_base_opened++) {
+    if (0 < pmix_mca_base_opened) {
+        /* allow someone to extend the component search path */
+        if (NULL != add_path) {
+            /* put the requested added paths at the front */
+            tmp = pmix_argv_split(add_path, ',');
+            for (n=0; NULL != tmp[n]; n++) {
+                pmix_argv_append_nosize(&paths, tmp[n]);
+            }
+            pmix_argv_free(tmp);
+            tmp = pmix_argv_split(pmix_mca_base_component_path, PMIX_ENV_SEP);
+            for (n=0; NULL != tmp[n]; n++) {
+                pmix_argv_append_nosize(&paths, tmp[n]);
+            }
+            pmix_argv_free(tmp);
+            free(pmix_mca_base_component_path);
+            pmix_mca_base_component_path = pmix_argv_join(paths, PMIX_ENV_SEP);
+            pmix_argv_free(paths);
+        }
+        pmix_mca_base_opened++;  // track ref count
         return PMIX_SUCCESS;
+    }
+    pmix_mca_base_opened++;
+
+    if (NULL != add_path) {
+        /* put the requested added paths at the front */
+        tmp = pmix_argv_split(add_path, ',');
+        for (n=0; NULL != tmp[n]; n++) {
+            pmix_argv_append_nosize(&paths, tmp[n]);
+        }
+        pmix_argv_free(tmp);
     }
 
     /* define the system and user default paths */
     pmix_mca_base_system_default_path = strdup(pmix_pinstall_dirs.pmixlibdir);
+    pmix_argv_append_nosize(&paths, pmix_mca_base_system_default_path);
 #if PMIX_WANT_HOME_CONFIG_FILES
     value = (char *) pmix_home_directory(geteuid());
     rc = asprintf(&pmix_mca_base_user_default_path,
@@ -85,30 +116,26 @@ int pmix_mca_base_open(void)
     if (0 > rc) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
+    pmix_argv_append_nosize(&paths, pmix_mca_base_user_default_path);
 #endif
 
-    /* see if the user wants to override the defaults */
-    if (NULL == pmix_mca_base_user_default_path) {
-        value = strdup(pmix_mca_base_system_default_path);
-    } else {
-        rc = asprintf(&value, "%s%c%s", pmix_mca_base_system_default_path, PMIX_ENV_SEP,
-                      pmix_mca_base_user_default_path);
-        if (0 > rc) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-    }
-
-    pmix_mca_base_component_path = value;
     var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_path",
                                         "Path where to look for additional components",
                                         PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                        &pmix_mca_base_component_path);
+                                        &path_from_param);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "component_path",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
-    free(value);
+    if (NULL != path_from_param) {
+        tmp = pmix_argv_split(path_from_param, ',');
+        for (n=0; NULL != tmp[n]; n++) {
+            pmix_argv_append_nosize(&paths, tmp[n]);
+        }
+        pmix_argv_free(tmp);
+    }
+    pmix_mca_base_component_path = pmix_argv_join(paths, PMIX_ENV_SEP);
+    pmix_argv_free(paths);
 
     pmix_mca_base_component_show_load_errors = (bool) PMIX_SHOW_LOAD_ERRORS_DEFAULT;
-    ;
     var_id = pmix_mca_base_var_register(
                                         "pmix", "mca", "base", "component_show_load_errors",
                                         "Whether to show errors for components that failed to load or not",

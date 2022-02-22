@@ -117,7 +117,7 @@ enum {
  * invoked during the initialization stage and specifically
  * invoked in the special case of the *_info command.
  */
-PMIX_EXPORT int pmix_mca_base_open(void);
+PMIX_EXPORT int pmix_mca_base_open(const char *add_path);
 
 /**
  * Last function called in the MCA

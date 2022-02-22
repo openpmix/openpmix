@@ -175,7 +175,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* initialize the mca */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_open())) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_open(NULL))) {
         error = "mca_base_open";
         goto return_error;
     }

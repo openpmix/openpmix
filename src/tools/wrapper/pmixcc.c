@@ -511,7 +511,7 @@ int main(int argc, char *argv[])
     }
 
     /* initialize the mca */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_open())) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_open(NULL))) {
         pmix_show_help("help-pmix-runtime.txt", "pmix_init:startup:internal-failure", true,
                        "pmix_mca_base_open", ret);
         return ret;

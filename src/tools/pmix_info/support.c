@@ -142,7 +142,7 @@ int pmix_info_init(int argc, char **argv)
     int ret;
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
-    if (PMIX_SUCCESS != pmix_mca_base_open()) {
+    if (PMIX_SUCCESS != pmix_mca_base_open(NULL)) {
         pmix_show_help("help-pinfo.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
                        __LINE__);
         PMIX_RELEASE(pmix_info_cmd_line);
@@ -254,7 +254,7 @@ int pmix_info_register_framework_params(void)
     }
 
     /* Register mca/base parameters */
-    if (PMIX_SUCCESS != pmix_mca_base_open()) {
+    if (PMIX_SUCCESS != pmix_mca_base_open(NULL)) {
         pmix_show_help("help-pmix_info.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
                        __LINE__);
         return PMIX_ERROR;
