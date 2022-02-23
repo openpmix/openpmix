@@ -107,6 +107,7 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_HELP                   "help"                      // optional
 #define PMIX_CLI_VERSION                "version"                   // none
 #define PMIX_CLI_VERBOSE                "verbose"                   // number of instances => verbosity level
+#define PMIX_CLI_PMIXMCA                "pmixmca"                   // requires TWO
 
 // Tool connection options
 #define PMIX_CLI_SYS_SERVER_FIRST       "system-server-first"       // none

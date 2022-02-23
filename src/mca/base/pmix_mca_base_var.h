@@ -181,6 +181,7 @@ struct pmix_mca_base_var_t {
     char *mbv_full_name;
     /** Long variable name <project>_<framework>_<component>_<name> */
     char *mbv_long_name;
+    char *mbv_prefix;
 
     /** List of synonym names for this variable.  This *must* be a
         pointer (vs. a plain pmix_list_t) because we copy this whole
@@ -602,13 +603,6 @@ PMIX_EXPORT int pmix_mca_base_var_dump(int vari, char ***out,
 #define MCA_RUNTIME_VER     "print_runtime_version"
 
 PMIX_EXPORT int pmix_mca_base_var_cache_files(bool rel_path_search);
-
-/*
- * Parse a provided list of envars and add their local value, or
- * their assigned value, to the provided argv
- */
-PMIX_EXPORT int pmix_mca_base_var_process_env_list(char ***argv);
-PMIX_EXPORT int pmix_mca_base_var_process_env_list_from_file(char ***argv);
 
 END_C_DECLS
 
