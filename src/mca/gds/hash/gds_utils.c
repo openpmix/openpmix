@@ -58,7 +58,7 @@ pmix_job_t *pmix_gds_hash_get_tracker(const pmix_nspace_t nspace, bool create)
 
     /* find the hash table for this nspace */
     trk = NULL;
-    PMIX_LIST_FOREACH (t, &mca_gds_hash_component.myjobs, pmix_job_t) {
+    PMIX_LIST_FOREACH (t, &pmix_mca_gds_hash_component.myjobs, pmix_job_t) {
         if (0 == strcmp(nspace, t->ns)) {
             trk = t;
             break;
@@ -87,7 +87,7 @@ pmix_job_t *pmix_gds_hash_get_tracker(const pmix_nspace_t nspace, bool create)
         }
         PMIX_RETAIN(nptr);
         trk->nptr = nptr;
-        pmix_list_append(&mca_gds_hash_component.myjobs, &trk->super);
+        pmix_list_append(&pmix_mca_gds_hash_component.myjobs, &trk->super);
     }
     return trk;
 }

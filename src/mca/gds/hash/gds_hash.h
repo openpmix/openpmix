@@ -33,7 +33,7 @@ typedef struct {
 } pmix_gds_hash_component_t;
 
 /* the component must be visible data for the linker to find it */
-PMIX_EXPORT extern pmix_gds_hash_component_t mca_gds_hash_component;
+PMIX_EXPORT extern pmix_gds_hash_component_t pmix_mca_gds_hash_component;
 extern pmix_gds_base_module_t pmix_hash_module;
 
 /* Define a bitmask to track what information may not have

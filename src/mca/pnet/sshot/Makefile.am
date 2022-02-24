@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -38,10 +39,10 @@ sources = \
 if MCA_BUILD_pmix_pnet_sshot_DSO
 lib =
 lib_sources =
-component = mca_pnet_sshot.la
+component = pmix_mca_pnet_sshot.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_pnet_sshot.la
+lib = libpmix_mca_pnet_sshot.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -49,15 +50,15 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_pnet_sshot_la_SOURCES = $(component_sources)
-mca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS) \
+pmix_mca_pnet_sshot_la_SOURCES = $(component_sources)
+pmix_mca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS) \
     $(PMIX_TOP_BUILDDIR)/src/mca/common/sse/libmca_common_sse.la
-mca_pnet_sshot_la_LIBADD = -ljansson
+pmix_mca_pnet_sshot_la_LIBADD = -ljansson
 if NEED_LIBPMIX
-mca_pnet_sshot_la_LIBADD += $(top_builddir)/src/libpmix.la
+pmix_mca_pnet_sshot_la_LIBADD += $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_pnet_sshot_la_SOURCES = $(lib_sources)
-libmca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS)
-libmca_pnet_sshot_la_LIBADD = -ljansson
+libpmix_mca_pnet_sshot_la_SOURCES = $(lib_sources)
+libpmix_mca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS)
+libpmix_mca_pnet_sshot_la_LIBADD = -ljansson

@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -35,10 +36,10 @@ sources = \
 if MCA_BUILD_pmix_pnet_tcp_DSO
 lib =
 lib_sources =
-component = mca_pnet_tcp.la
+component = pmix_mca_pnet_tcp.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_pnet_tcp.la
+lib = libpmix_mca_pnet_tcp.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -46,14 +47,14 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_pnet_tcp_la_SOURCES = $(component_sources)
-mca_pnet_tcp_la_LIBADD = $(pnet_tcp_LIBS)
-mca_pnet_tcp_la_LDFLAGS = -module -avoid-version $(pnet_tcp_LDFLAGS)
+pmix_mca_pnet_tcp_la_SOURCES = $(component_sources)
+pmix_mca_pnet_tcp_la_LIBADD = $(pnet_tcp_LIBS)
+pmix_mca_pnet_tcp_la_LDFLAGS = -module -avoid-version $(pnet_tcp_LDFLAGS)
 if NEED_LIBPMIX
-mca_pnet_tcp_la_LIBADD += $(top_builddir)/src/libpmix.la
+pmix_mca_pnet_tcp_la_LIBADD += $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_pnet_tcp_la_SOURCES = $(lib_sources)
-libmca_pnet_tcp_la_LIBADD = $(pnet_tcp_LIBS)
-libmca_pnet_tcp_la_LDFLAGS = -module -avoid-version $(pnet_tcp_LDFLAGS)
+libpmix_mca_pnet_tcp_la_SOURCES = $(lib_sources)
+libpmix_mca_pnet_tcp_la_LIBADD = $(pnet_tcp_LIBS)
+libpmix_mca_pnet_tcp_la_LDFLAGS = -module -avoid-version $(pnet_tcp_LDFLAGS)

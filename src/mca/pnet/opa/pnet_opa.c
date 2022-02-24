@@ -233,17 +233,17 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
     if (envars) {
         pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                             "pnet: opa harvesting envars %s excluding %s",
-                            (NULL == mca_pnet_opa_component.incparms)
+                            (NULL == pmix_mca_pnet_opa_component.incparms)
                                 ? "NONE"
-                                : mca_pnet_opa_component.incparms,
-                            (NULL == mca_pnet_opa_component.excparms)
+                                : pmix_mca_pnet_opa_component.incparms,
+                            (NULL == pmix_mca_pnet_opa_component.excparms)
                                 ? "NONE"
-                                : mca_pnet_opa_component.excparms);
+                                : pmix_mca_pnet_opa_component.excparms);
         /* harvest envars to pass along */
         PMIX_CONSTRUCT(&cache, pmix_list_t);
-        if (NULL != mca_pnet_opa_component.include) {
-            rc = pmix_util_harvest_envars(mca_pnet_opa_component.include,
-                                          mca_pnet_opa_component.exclude, &cache);
+        if (NULL != pmix_mca_pnet_opa_component.include) {
+            rc = pmix_util_harvest_envars(pmix_mca_pnet_opa_component.include,
+                                          pmix_mca_pnet_opa_component.exclude, &cache);
             if (PMIX_SUCCESS != rc) {
                 PMIX_LIST_DESTRUCT(&cache);
                 PMIX_DESTRUCT(&mydata);

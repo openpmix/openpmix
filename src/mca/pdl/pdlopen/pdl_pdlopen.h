@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2015     Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -36,6 +37,6 @@ typedef struct {
     char **filename_suffixes;
 } pmix_pdl_pdlopen_component_t;
 
-extern pmix_pdl_pdlopen_component_t mca_pdl_pdlopen_component;
+extern pmix_pdl_pdlopen_component_t pmix_mca_pdl_pdlopen_component;
 
 #endif /* PMIX_PDL_PDLOPEN */

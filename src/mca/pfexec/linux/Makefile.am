@@ -12,6 +12,7 @@
 # Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017      IBM Corporation.  All rights reserved.
 # Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -32,17 +33,17 @@ sources = \
 
 if MCA_BUILD_pmix_pfexec_linux_DSO
 component_noinst =
-component_install = mca_pfexec_linux.la
+component_install = pmix_mca_pfexec_linux.la
 else
-component_noinst = libmca_pfexec_linux.la
+component_noinst = libpmix_mca_pfexec_linux.la
 component_install =
 endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component_install)
-mca_pfexec_linux_la_SOURCES = $(sources)
-mca_pfexec_linux_la_LDFLAGS = -module -avoid-version
+pmix_mca_pfexec_linux_la_SOURCES = $(sources)
+pmix_mca_pfexec_linux_la_LDFLAGS = -module -avoid-version
 
 noinst_LTLIBRARIES = $(component_noinst)
-libmca_pfexec_linux_la_SOURCES =$(sources)
-libmca_pfexec_linux_la_LDFLAGS = -module -avoid-version
+libpmix_mca_pfexec_linux_la_SOURCES =$(sources)
+libpmix_mca_pfexec_linux_la_LDFLAGS = -module -avoid-version

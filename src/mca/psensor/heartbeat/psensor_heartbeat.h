@@ -33,7 +33,7 @@ typedef struct {
     pmix_list_t trackers;
 } pmix_psensor_heartbeat_component_t;
 
-PMIX_EXPORT extern pmix_psensor_heartbeat_component_t mca_psensor_heartbeat_component;
+PMIX_EXPORT extern pmix_psensor_heartbeat_component_t pmix_mca_psensor_heartbeat_component;
 extern pmix_psensor_base_module_t pmix_psensor_heartbeat_module;
 
 void pmix_psensor_heartbeat_recv_beats(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,

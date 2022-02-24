@@ -24,7 +24,7 @@ static int component_query(pmix_mca_base_module_t **module, int *priority);
 /*
  * Struct of function pointers and all that to let us be initialized
  */
-pmix_prm_base_component_t mca_prm_slurm_component = {
+pmix_prm_base_component_t pmix_mca_prm_slurm_component = {
     PMIX_PRM_BASE_VERSION_1_0_0,
     .pmix_mca_component_name = "slurm",
     PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,

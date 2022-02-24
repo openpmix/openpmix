@@ -12,6 +12,7 @@
 # Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      IBM Corporation.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -30,20 +31,20 @@ sources = \
 
 if MCA_BUILD_pmix_plog_default_DSO
 component_noinst =
-component_install = mca_plog_default.la
+component_install = pmix_mca_plog_default.la
 else
-component_noinst = libmca_plog_default.la
+component_noinst = libpmix_mca_plog_default.la
 component_install =
 endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component_install)
-mca_plog_default_la_SOURCES = $(sources)
-mca_plog_default_la_LDFLAGS = -module -avoid-version
+pmix_mca_plog_default_la_SOURCES = $(sources)
+pmix_mca_plog_default_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_plog_default_la_LIBADD = $(top_builddir)/src/libpmix.la
+pmix_mca_plog_default_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(component_noinst)
-libmca_plog_default_la_SOURCES =$(sources)
-libmca_plog_default_la_LDFLAGS = -module -avoid-version
+libpmix_mca_plog_default_la_SOURCES =$(sources)
+libpmix_mca_plog_default_la_LDFLAGS = -module -avoid-version

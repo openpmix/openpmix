@@ -59,7 +59,7 @@ static int if_bsdx_open(void);
  * OpenBSD
  * DragonFly
  */
-pmix_pif_base_component_t mca_pif_bsdx_ipv4_component = {
+pmix_pif_base_component_t pmix_mca_pif_bsdx_ipv4_component = {
     PMIX_PIF_BASE_VERSION_2_0_0,
 
     /* Component name and version */

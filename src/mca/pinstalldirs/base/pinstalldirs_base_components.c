@@ -166,6 +166,6 @@ static int pmix_pinstalldirs_base_close(void)
 /* Declare the pinstalldirs framework */
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pinstalldirs, NULL, NULL, pmix_pinstalldirs_base_open,
                                 pmix_pinstalldirs_base_close,
-                                mca_pinstalldirs_base_static_components,
+                                pmix_mca_pinstalldirs_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_NOREGISTER
                                     | PMIX_MCA_BASE_FRAMEWORK_FLAG_NO_DSO);

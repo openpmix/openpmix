@@ -46,7 +46,7 @@ static pmix_status_t component_register(void);
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_pnet_usnic_component_t mca_pnet_usnic_component = {
+pmix_pnet_usnic_component_t pmix_mca_pnet_usnic_component = {
     .super = {
         PMIX_PNET_BASE_VERSION_1_0_0,
 
@@ -74,26 +74,26 @@ static char *static_port_string6 = NULL;
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &mca_pnet_usnic_component.super;
+    pmix_mca_base_component_t *component = &pmix_mca_pnet_usnic_component.super;
 
-    mca_pnet_usnic_component.incparms = NULL;
+    pmix_mca_pnet_usnic_component.incparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
         PMIX_MCA_BASE_VAR_TYPE_STRING,
-        &mca_pnet_usnic_component.incparms);
-    if (NULL != mca_pnet_usnic_component.incparms) {
-        mca_pnet_usnic_component.include = pmix_argv_split(mca_pnet_usnic_component.incparms, ',');
+        &pmix_mca_pnet_usnic_component.incparms);
+    if (NULL != pmix_mca_pnet_usnic_component.incparms) {
+        pmix_mca_pnet_usnic_component.include = pmix_argv_split(pmix_mca_pnet_usnic_component.incparms, ',');
     }
 
-    mca_pnet_usnic_component.excparms = NULL;
+    pmix_mca_pnet_usnic_component.excparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
         PMIX_MCA_BASE_VAR_TYPE_STRING,
-        &mca_pnet_usnic_component.excparms);
-    if (NULL != mca_pnet_usnic_component.excparms) {
-        mca_pnet_usnic_component.exclude = pmix_argv_split(mca_pnet_usnic_component.excparms, ',');
+        &pmix_mca_pnet_usnic_component.excparms);
+    if (NULL != pmix_mca_pnet_usnic_component.excparms) {
+        pmix_mca_pnet_usnic_component.exclude = pmix_argv_split(pmix_mca_pnet_usnic_component.excparms, ',');
     }
 
     static_port_string = NULL;
@@ -103,13 +103,13 @@ static pmix_status_t component_register(void)
                                                 &static_port_string);
     /* if ports were provided, parse the provided range */
     if (NULL != static_port_string) {
-        pmix_util_parse_range_options(static_port_string, &mca_pnet_usnic_component.tcp_static_ports);
-        if (0 == strcmp(mca_pnet_usnic_component.tcp_static_ports[0], "-1")) {
-            pmix_argv_free(mca_pnet_usnic_component.tcp_static_ports);
-            mca_pnet_usnic_component.tcp_static_ports = NULL;
+        pmix_util_parse_range_options(static_port_string, &pmix_mca_pnet_usnic_component.tcp_static_ports);
+        if (0 == strcmp(pmix_mca_pnet_usnic_component.tcp_static_ports[0], "-1")) {
+            pmix_argv_free(pmix_mca_pnet_usnic_component.tcp_static_ports);
+            pmix_mca_pnet_usnic_component.tcp_static_ports = NULL;
         }
     } else {
-        mca_pnet_usnic_component.tcp_static_ports = NULL;
+        pmix_mca_pnet_usnic_component.tcp_static_ports = NULL;
     }
 
     static_port_string6 = NULL;
@@ -119,13 +119,13 @@ static pmix_status_t component_register(void)
                                                 &static_port_string6);
     /* if ports were provided, parse the provided range */
     if (NULL != static_port_string6) {
-        pmix_util_parse_range_options(static_port_string6, &mca_pnet_usnic_component.tcp6_static_ports);
-        if (0 == strcmp(mca_pnet_usnic_component.tcp6_static_ports[0], "-1")) {
-            pmix_argv_free(mca_pnet_usnic_component.tcp6_static_ports);
-            mca_pnet_usnic_component.tcp6_static_ports = NULL;
+        pmix_util_parse_range_options(static_port_string6, &pmix_mca_pnet_usnic_component.tcp6_static_ports);
+        if (0 == strcmp(pmix_mca_pnet_usnic_component.tcp6_static_ports[0], "-1")) {
+            pmix_argv_free(pmix_mca_pnet_usnic_component.tcp6_static_ports);
+            pmix_mca_pnet_usnic_component.tcp6_static_ports = NULL;
         }
     } else {
-        mca_pnet_usnic_component.tcp6_static_ports = NULL;
+        pmix_mca_pnet_usnic_component.tcp6_static_ports = NULL;
     }
 
     return PMIX_SUCCESS;

@@ -39,7 +39,7 @@ pmix_status_t pmix20_bfrop_unpack(pmix_buffer_t *buffer, void *dst, int32_t *num
     pmix_status_t rc, ret;
     int32_t local_num, n = 1;
     pmix_data_type_t local_type;
-    pmix_pointer_array_t *regtypes = &mca_bfrops_v20_component.types;
+    pmix_pointer_array_t *regtypes = &pmix_mca_bfrops_v20_component.types;
 
     /* check for error */
     if (NULL == buffer || NULL == dst || NULL == num_vals) {

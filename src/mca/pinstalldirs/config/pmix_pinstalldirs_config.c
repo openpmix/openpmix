@@ -15,7 +15,7 @@
 #include "src/mca/pinstalldirs/config/pinstall_dirs.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 
-const pmix_pinstalldirs_base_component_t mca_pinstalldirs_config_component = {
+const pmix_pinstalldirs_base_component_t pmix_mca_pinstalldirs_config_component = {
     /* First, the mca_component_t struct containing meta information
        about the component itself */
     .component = {

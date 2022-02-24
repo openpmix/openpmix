@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009 Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -59,7 +59,7 @@ typedef struct {
 /*
  * Plog interfaces
  */
-PMIX_EXPORT extern pmix_plog_smtp_component_t mca_plog_smtp_component;
+PMIX_EXPORT extern pmix_plog_smtp_component_t pmix_mca_plog_smtp_component;
 extern pmix_plog_module_t pmix_plog_smtp_module;
 
 END_C_DECLS

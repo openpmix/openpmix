@@ -589,7 +589,7 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
                         PMIX_ERROR_LOG(rc);
                         return rc;
                     }
-                    PMIX_LIST_FOREACH (sptr, &mca_gds_hash_component.mysessions, pmix_session_t) {
+                    PMIX_LIST_FOREACH (sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
                         if (sptr->session == sid) {
                             /* see if they want info for a specific node */
                             rc = pmix_gds_hash_fetch_nodeinfo(key, trk, &sptr->nodeinfo, qualifiers,

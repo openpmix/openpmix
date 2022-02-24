@@ -31,20 +31,20 @@ sources = \
 
 if MCA_BUILD_pmix_plog_stdfd_DSO
 component_noinst =
-component_install = mca_plog_stdfd.la
+component_install = pmix_mca_plog_stdfd.la
 else
-component_noinst = libmca_plog_stdfd.la
+component_noinst = libpmix_mca_plog_stdfd.la
 component_install =
 endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component_install)
-mca_plog_stdfd_la_SOURCES = $(sources)
-mca_plog_stdfd_la_LDFLAGS = -module -avoid-version
+pmix_mca_plog_stdfd_la_SOURCES = $(sources)
+pmix_mca_plog_stdfd_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_plog_stdfd_la_LIBADD = $(top_builddir)/src/libpmix.la
+pmix_mca_plog_stdfd_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(component_noinst)
-libmca_plog_stdfd_la_SOURCES =$(sources)
-libmca_plog_stdfd_la_LDFLAGS = -module -avoid-version
+libpmix_mca_plog_stdfd_la_SOURCES =$(sources)
+libpmix_mca_plog_stdfd_la_LDFLAGS = -module -avoid-version

@@ -59,7 +59,7 @@ static int if_posix_open(void);
 /* Supports all flavors of posix except those
  * BSD-flavors supported elsewhere
  */
-pmix_pif_base_component_t mca_pif_posix_ipv4_component = {
+pmix_pif_base_component_t pmix_mca_pif_posix_ipv4_component = {
     PMIX_PIF_BASE_VERSION_2_0_0,
 
     /* Component name and version */

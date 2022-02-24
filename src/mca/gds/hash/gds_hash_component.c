@@ -41,7 +41,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_gds_hash_component_t mca_gds_hash_component = {
+pmix_gds_hash_component_t pmix_mca_gds_hash_component = {
     .super = {
         .base = {
             PMIX_GDS_BASE_VERSION_1_0_0,
@@ -67,8 +67,8 @@ pmix_gds_hash_component_t mca_gds_hash_component = {
 
 static int component_open(void)
 {
-    PMIX_CONSTRUCT(&mca_gds_hash_component.mysessions, pmix_list_t);
-    PMIX_CONSTRUCT(&mca_gds_hash_component.myjobs, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_gds_hash_component.mysessions, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_gds_hash_component.myjobs, pmix_list_t);
 
     return PMIX_SUCCESS;
 }
@@ -82,8 +82,8 @@ static int component_query(pmix_mca_base_module_t **module, int *priority)
 
 static int component_close(void)
 {
-    PMIX_LIST_DESTRUCT(&mca_gds_hash_component.mysessions);
-    PMIX_LIST_DESTRUCT(&mca_gds_hash_component.myjobs);
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_hash_component.mysessions);
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_hash_component.myjobs);
 
     return PMIX_SUCCESS;
 }

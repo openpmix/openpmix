@@ -49,7 +49,6 @@ int pmix_psquash_base_select(void)
         return PMIX_SUCCESS;
     }
     pmix_psquash_globals.selected = true;
-
     /* Query all available components and ask if they have a module */
     PMIX_LIST_FOREACH (cli, &pmix_psquash_base_framework.framework_components,
                        pmix_mca_base_component_list_item_t) {

@@ -485,7 +485,7 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
             }
             /* see if we already have this session - it could have
              * been defined by a separate PMIX_SESSION_ID key */
-            PMIX_LIST_FOREACH (sptr, &mca_gds_hash_component.mysessions, pmix_session_t) {
+            PMIX_LIST_FOREACH (sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
                 if (sptr->session == sid) {
                     s = sptr;
                     break;
@@ -495,7 +495,7 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
                 /* wasn't found, so create one */
                 s = PMIX_NEW(pmix_session_t);
                 s->session = sid;
-                pmix_list_append(&mca_gds_hash_component.mysessions, &s->super);
+                pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &s->super);
             }
         } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODE_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_node_array(&iptr[j].value, &ncache))) {

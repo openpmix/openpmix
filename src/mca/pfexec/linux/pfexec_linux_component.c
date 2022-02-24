@@ -51,7 +51,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * and pointers to our public functions in it
  */
 
-pmix_pfexec_base_component_t mca_pfexec_linux_component = {
+pmix_pfexec_base_component_t pmix_mca_pfexec_linux_component = {
     PMIX_PFEXEC_BASE_VERSION_1_0_0,
     /* Component name and version */
     .pmix_mca_component_name = "linux",

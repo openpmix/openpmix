@@ -21,7 +21,7 @@
 
 static void pinstalldirs_env_init(pmix_info_t info[], size_t ninfo);
 
-pmix_pinstalldirs_base_component_t mca_pinstalldirs_env_component = {
+pmix_pinstalldirs_base_component_t pmix_mca_pinstalldirs_env_component = {
     /* First, the mca_component_t struct containing meta information
        about the component itself */
     .component = {
@@ -62,7 +62,7 @@ pmix_pinstalldirs_base_component_t mca_pinstalldirs_env_component = {
         if (NULL != tmp && 0 == strlen(tmp)) {                        \
             tmp = NULL;                                               \
         }                                                             \
-        mca_pinstalldirs_env_component.install_dirs_data.field = tmp; \
+        pmix_mca_pinstalldirs_env_component.install_dirs_data.field = tmp; \
     } while (0)
 
 static void pinstalldirs_env_init(pmix_info_t info[], size_t ninfo)
@@ -73,7 +73,7 @@ static void pinstalldirs_env_init(pmix_info_t info[], size_t ninfo)
     /* check for a prefix value */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_PREFIX)) {
-            mca_pinstalldirs_env_component.install_dirs_data.prefix = info[n].value.data.string;
+            pmix_mca_pinstalldirs_env_component.install_dirs_data.prefix = info[n].value.data.string;
             prefix_given = true;
             break;
         }
