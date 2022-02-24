@@ -1,6 +1,7 @@
 # -*- makefile -*-
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -22,10 +23,10 @@ sources = \
 if MCA_BUILD_pmix_prm_tm_DSO
 lib =
 lib_sources =
-component = mca_prm_tm.la
+component = pmix_mca_prm_tm.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_prm_tm.la
+lib = libpmix_mca_prm_tm.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -33,13 +34,13 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_prm_tm_la_SOURCES = $(component_sources)
-mca_prm_tm_la_LIBADD = $(prm_tm_LIBS)
-mca_prm_tm_la_LDFLAGS = -module -avoid-version $(prm_tm_LDFLAGS)
+pmix_mca_prm_tm_la_SOURCES = $(component_sources)
+pmix_mca_prm_tm_la_LIBADD = $(prm_tm_LIBS)
+pmix_mca_prm_tm_la_LDFLAGS = -module -avoid-version $(prm_tm_LDFLAGS)
 if NEED_LIBPMIX
-mca_prm_tm_la_LIBADD += $(top_builddir)/src/libpmix.la
+pmix_mca_prm_tm_la_LIBADD += $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_prm_tm_la_SOURCES = $(lib_sources)
-libmca_prm_tm_la_LDFLAGS = -module -avoid-version $(prm_tm_LDFLAGS)
+libpmix_mca_prm_tm_la_SOURCES = $(lib_sources)
+libpmix_mca_prm_tm_la_LDFLAGS = -module -avoid-version $(prm_tm_LDFLAGS)

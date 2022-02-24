@@ -43,7 +43,7 @@ static pmix_psec_module_t *assign_module(void);
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_psec_base_component_t mca_psec_none_component = {
+pmix_psec_base_component_t pmix_mca_psec_none_component = {
     .base = {
         PMIX_PSEC_BASE_VERSION_1_0_0,
 

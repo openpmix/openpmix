@@ -224,7 +224,7 @@ int pmix_mca_base_components_filter(pmix_mca_base_framework_t *framework)
  * the specified type (and possibly of a given name).
  *
  * Note that we use our own path iteration functionality because we
- * need to look at companion .ompi_info files in the same directory as
+ * need to look at companion .pmix_info files in the same directory as
  * the library to generate dependencies, etc.
  */
 static void find_dyn_components(const char *path, pmix_mca_base_framework_t *framework,
@@ -239,7 +239,7 @@ static void find_dyn_components(const char *path, pmix_mca_base_framework_t *fra
                         framework->framework_name);
 
     if (NULL != path) {
-        ret = pmix_mca_base_component_repository_add(path);
+        ret = pmix_mca_base_component_repository_add(framework->framework_project, path);
         if (PMIX_SUCCESS != ret) {
             return;
         }

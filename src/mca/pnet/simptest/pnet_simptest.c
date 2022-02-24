@@ -135,15 +135,15 @@ static pmix_status_t simptest_init(void)
 
     /* if the configuration was given in a file, then build
      * the topology so we can respond to requests */
-    if (NULL == mca_pnet_simptest_component.configfile) {
+    if (NULL == pmix_mca_pnet_simptest_component.configfile) {
         /* we cannot function */
         return PMIX_ERR_INIT;
     }
 
-    fp = fopen(mca_pnet_simptest_component.configfile, "r");
+    fp = fopen(pmix_mca_pnet_simptest_component.configfile, "r");
     if (NULL == fp) {
         pmix_show_help("help-pnet-simptest.txt", "missing-file", true,
-                       mca_pnet_simptest_component.configfile);
+                       pmix_mca_pnet_simptest_component.configfile);
         return PMIX_ERR_FATAL;
     }
     while (NULL != (line = localgetline(fp))) {

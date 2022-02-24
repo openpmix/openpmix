@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2014-2018 Intel, Inc. All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,7 +33,7 @@ BEGIN_C_DECLS
  * Plog interfaces
  */
 
-PMIX_EXPORT extern pmix_plog_base_component_t mca_plog_stdfd_component;
+PMIX_EXPORT extern pmix_plog_base_component_t pmix_mca_plog_stdfd_component;
 extern pmix_plog_module_t pmix_plog_stdfd_module;
 
 END_C_DECLS

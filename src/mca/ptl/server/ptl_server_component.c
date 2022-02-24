@@ -45,7 +45,7 @@ static int component_query(pmix_mca_base_module_t **module, int *priority);
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-PMIX_EXPORT pmix_ptl_base_component_t mca_ptl_server_component = {
+PMIX_EXPORT pmix_ptl_base_component_t pmix_mca_ptl_server_component = {
     .base = {
         PMIX_PTL_BASE_VERSION_2_0_0,
 
@@ -66,7 +66,7 @@ static int component_query(pmix_mca_base_module_t **module, int *priority)
     /* if I am a server and not a tool, then take me */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         *module = (pmix_mca_base_module_t *) &pmix_ptl_server_module;
-        *priority = mca_ptl_server_component.priority;
+        *priority = pmix_mca_ptl_server_component.priority;
         return PMIX_SUCCESS;
     }
 

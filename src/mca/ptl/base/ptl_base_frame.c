@@ -402,7 +402,7 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
 }
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, ptl, "PMIx Transfer Layer", pmix_ptl_register, pmix_ptl_open,
-                                pmix_ptl_close, mca_ptl_base_static_components,
+                                pmix_ptl_close, pmix_mca_ptl_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 /***   INSTANTIATE INTERNAL CLASSES   ***/

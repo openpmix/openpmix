@@ -36,7 +36,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_pmdl_mpich_component_t mca_pmdl_mpich_component = {
+pmix_pmdl_mpich_component_t pmix_mca_pmdl_mpich_component = {
     .super = {
         PMIX_PMDL_BASE_VERSION_1_0_0,
 
@@ -57,26 +57,26 @@ pmix_pmdl_mpich_component_t mca_pmdl_mpich_component = {
 
 static pmix_status_t component_register(void)
 {
-    pmix_mca_base_component_t *component = &mca_pmdl_mpich_component.super;
+    pmix_mca_base_component_t *component = &pmix_mca_pmdl_mpich_component.super;
 
-    mca_pmdl_mpich_component.incparms = "MPIR_CVAR*";
+    pmix_mca_pmdl_mpich_component.incparms = "MPIR_CVAR*";
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
         PMIX_MCA_BASE_VAR_TYPE_STRING,
-        &mca_pmdl_mpich_component.incparms);
-    if (NULL != mca_pmdl_mpich_component.incparms) {
-        mca_pmdl_mpich_component.include = pmix_argv_split(mca_pmdl_mpich_component.incparms, ',');
+        &pmix_mca_pmdl_mpich_component.incparms);
+    if (NULL != pmix_mca_pmdl_mpich_component.incparms) {
+        pmix_mca_pmdl_mpich_component.include = pmix_argv_split(pmix_mca_pmdl_mpich_component.incparms, ',');
     }
 
-    mca_pmdl_mpich_component.excparms = NULL;
+    pmix_mca_pmdl_mpich_component.excparms = NULL;
     (void) pmix_mca_base_component_var_register(
         component, "exclude_envars",
         "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
         PMIX_MCA_BASE_VAR_TYPE_STRING,
-        &mca_pmdl_mpich_component.excparms);
-    if (NULL != mca_pmdl_mpich_component.excparms) {
-        mca_pmdl_mpich_component.exclude = pmix_argv_split(mca_pmdl_mpich_component.excparms, ',');
+        &pmix_mca_pmdl_mpich_component.excparms);
+    if (NULL != pmix_mca_pmdl_mpich_component.excparms) {
+        pmix_mca_pmdl_mpich_component.exclude = pmix_argv_split(pmix_mca_pmdl_mpich_component.excparms, ',');
     }
 
     return PMIX_SUCCESS;

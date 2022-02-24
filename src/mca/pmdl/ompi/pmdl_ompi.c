@@ -299,17 +299,17 @@ harvest:
     }
 
     /* harvest our local envars */
-    if (NULL != mca_pmdl_ompi_component.include) {
+    if (NULL != pmix_mca_pmdl_ompi_component.include) {
         pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                             "pmdl: ompi harvesting envars %s excluding %s",
-                            (NULL == mca_pmdl_ompi_component.incparms)
+                            (NULL == pmix_mca_pmdl_ompi_component.incparms)
                             ? "NONE"
-                            : mca_pmdl_ompi_component.incparms,
-                            (NULL == mca_pmdl_ompi_component.excparms)
+                            : pmix_mca_pmdl_ompi_component.incparms,
+                            (NULL == pmix_mca_pmdl_ompi_component.excparms)
                             ? "NONE"
-                            : mca_pmdl_ompi_component.excparms);
-        rc = pmix_util_harvest_envars(mca_pmdl_ompi_component.include,
-                                      mca_pmdl_ompi_component.exclude, ilist);
+                            : pmix_mca_pmdl_ompi_component.excparms);
+        rc = pmix_util_harvest_envars(pmix_mca_pmdl_ompi_component.include,
+                                      pmix_mca_pmdl_ompi_component.exclude, ilist);
         if (PMIX_SUCCESS != rc) {
             return rc;
         }

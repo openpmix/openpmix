@@ -163,7 +163,7 @@ pmix_status_t pmix_pnet_sshot_register_fabric(pmix_fabric_t *fabric, const pmix_
 
     /* if we were given a fabric topology configuration file, then parse
      * it to get the fabric groups and switches */
-    if (NULL == mca_pnet_sshot_component.configfile) {
+    if (NULL == pmix_mca_pnet_sshot_component.configfile) {
         /* we were not given a file - see if we can get it
          * from the fabric controller via REST interface */
         return ask_fabric_controller(fabric, directives, ndirs, cbfunc, cbdata);
@@ -178,7 +178,7 @@ pmix_status_t pmix_pnet_sshot_register_fabric(pmix_fabric_t *fabric, const pmix_
     pmix_pointer_array_init(&myvertices, 128, INT_MAX, 64);
 
     /* load the file */
-    root = json_load_file(mca_pnet_sshot_component.configfile, 0, &error);
+    root = json_load_file(pmix_mca_pnet_sshot_component.configfile, 0, &error);
     if (NULL == root) {
         /* the error object contains info on the error */
         pmix_show_help("help-pnet-sshot.txt", "json-load", true, error.text, error.source,

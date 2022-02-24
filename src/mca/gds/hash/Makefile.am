@@ -14,7 +14,7 @@
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -39,10 +39,10 @@ sources = \
 if MCA_BUILD_pmix_gds_hash_DSO
 lib =
 lib_sources =
-component = mca_gds_hash.la
+component = pmix_mca_gds_hash.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_gds_hash.la
+lib = libpmix_mca_gds_hash.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -50,14 +50,14 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_gds_hash_la_SOURCES = $(component_sources)
-mca_gds_hash_la_LIBADD = $(gds_hash_LIBS)
-mca_gds_hash_la_LDFLAGS = -module -avoid-version $(gds_hash_LDFLAGS)
+pmix_mca_gds_hash_la_SOURCES = $(component_sources)
+pmix_mca_gds_hash_la_LIBADD = $(gds_hash_LIBS)
+pmix_mca_gds_hash_la_LDFLAGS = -module -avoid-version $(gds_hash_LDFLAGS)
 if NEED_LIBPMIX
-mca_gds_hash_la_LIBADD += $(top_builddir)/src/libpmix.la
+pmix_mca_gds_hash_la_LIBADD += $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_gds_hash_la_SOURCES = $(lib_sources)
-libmca_gds_hash_la_LIBADD = $(gds_hash_LIBS)
-libmca_gds_hash_la_LDFLAGS = -module -avoid-version $(gds_hash_LDFLAGS)
+libpmix_mca_gds_hash_la_SOURCES = $(lib_sources)
+libpmix_mca_gds_hash_la_LIBADD = $(gds_hash_LIBS)
+libpmix_mca_gds_hash_la_LDFLAGS = -module -avoid-version $(gds_hash_LDFLAGS)

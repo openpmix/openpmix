@@ -43,7 +43,7 @@ static pmix_status_t component_register(void);
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_pstrg_vfs_component_t mca_pstrg_vfs_component = {
+pmix_pstrg_vfs_component_t pmix_mca_pstrg_vfs_component = {
     .super = {
         PMIX_PSTRG_BASE_VERSION_1_0_0,
 
@@ -64,7 +64,7 @@ pmix_pstrg_vfs_component_t mca_pstrg_vfs_component = {
 
 static pmix_status_t component_register(void)
 {
-    //  pmix_mca_base_component_t *component = &mca_pstrg_vfs_component.super.base;
+    //  pmix_mca_base_component_t *component = &pmix_mca_pstrg_vfs_component.super.base;
 
     return PMIX_SUCCESS;
 }

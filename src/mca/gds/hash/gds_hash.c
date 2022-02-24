@@ -186,7 +186,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
             }
             /* see if we have this session */
             s = NULL;
-            PMIX_LIST_FOREACH (sptr, &mca_gds_hash_component.mysessions, pmix_session_t) {
+            PMIX_LIST_FOREACH (sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
                 if (sptr->session == sid) {
                     s = sptr;
                     break;
@@ -195,7 +195,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
             if (NULL == s) {
                 s = PMIX_NEW(pmix_session_t);
                 s->session = sid;
-                pmix_list_append(&mca_gds_hash_component.mysessions, &s->super);
+                pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &s->super);
             }
             /* point the job at it */
             if (NULL == trk->session) {
@@ -1312,10 +1312,10 @@ static pmix_status_t nspace_del(const char *nspace)
 
 
     /* find the hash table for this nspace */
-    PMIX_LIST_FOREACH (t, &mca_gds_hash_component.myjobs, pmix_job_t) {
+    PMIX_LIST_FOREACH (t, &pmix_mca_gds_hash_component.myjobs, pmix_job_t) {
         if (0 == strcmp(nspace, t->ns)) {
             /* release it */
-            pmix_list_remove_item(&mca_gds_hash_component.myjobs, &t->super);
+            pmix_list_remove_item(&pmix_mca_gds_hash_component.myjobs, &t->super);
             PMIX_RELEASE(t);
             break;
         }

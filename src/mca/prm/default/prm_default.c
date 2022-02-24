@@ -49,7 +49,10 @@ static pmix_status_t default_notify(pmix_status_t status, const pmix_proc_t *sou
                                     pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-pmix_prm_module_t pmix_prm_default_module = {.name = "default", .notify = default_notify};
+pmix_prm_module_t pmix_prm_default_module = {
+    .name = "default",
+    .notify = default_notify
+};
 
 static pmix_status_t default_notify(pmix_status_t status, const pmix_proc_t *source,
                                     pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
