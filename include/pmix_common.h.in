@@ -1824,9 +1824,11 @@ static inline void pmix_argv_free(char **argv)
 #define PMIX_ARGV_FREE(a)  pmix_argv_free(a)
 
 static inline
-char **pmix_argv_split(const char *src_string, int delimiter)
+char **pmix_argv_split_inter(const char *src_string,
+                             int delimiter,
+                             bool include_empty)
 {
-    char arg[256];
+    char arg[512];
     char **argv = NULL;
     const char *p;
     char *argtemp;
@@ -1844,6 +1846,12 @@ char **pmix_argv_split(const char *src_string, int delimiter)
         /* zero length argument, skip */
 
         if (src_string == p) {
+            if (include_empty) {
+                arg[0] = '\0';
+                if (PMIX_SUCCESS != pmix_argv_append_nosize(&argv, arg)) {
+                    return NULL;
+                }
+            }
             src_string = p + 1;
             continue;
         }
@@ -1860,7 +1868,7 @@ char **pmix_argv_split(const char *src_string, int delimiter)
 
         /* long argument, malloc buffer, copy and add */
 
-        else if (arglen > 255) {
+        else if (arglen > 511) {
             argtemp = (char *) malloc(arglen + 1);
             if (NULL == argtemp)
                 return NULL;
@@ -1893,6 +1901,18 @@ char **pmix_argv_split(const char *src_string, int delimiter)
     /* All done */
 
     return argv;
+}
+
+static inline
+char **pmix_argv_split_with_empty(const char *src_string, int delimiter)
+{
+    return pmix_argv_split_inter(src_string, delimiter, true);
+}
+
+static inline
+char **pmix_argv_split(const char *src_string, int delimiter)
+{
+    return pmix_argv_split_inter(src_string, delimiter, false);
 }
 
 #define PMIX_ARGV_SPLIT(a, b, c) \
