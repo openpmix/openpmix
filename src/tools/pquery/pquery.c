@@ -42,8 +42,8 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_cmd_line.h"
-#include "src/util/keyval_parse.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_keyval_parse.h"
+#include "src/util/pmix_show_help.h"
 
 typedef struct {
     pmix_lock_t lock;

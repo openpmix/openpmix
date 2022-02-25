@@ -44,9 +44,9 @@
 #include "src/mca/psec/base/base.h"
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/util/keyval_parse.h"
+#include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 #include <event.h>
 
 #include "src/runtime/pmix_progress_threads.h"

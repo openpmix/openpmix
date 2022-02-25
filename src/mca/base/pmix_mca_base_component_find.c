@@ -58,7 +58,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #if PMIX_HAVE_PDL_SUPPORT
 /*

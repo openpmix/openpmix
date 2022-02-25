@@ -23,7 +23,7 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/util/pmix_error.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 
 #include "pmix_tool_ops.h"
 

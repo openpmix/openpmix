@@ -65,7 +65,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_output.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 /* this function doesn't depend on sockaddr_h */
 bool pmix_net_isaddr(const char *name)

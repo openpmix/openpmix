@@ -31,7 +31,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_error.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "plog_default.h"
 #include "src/mca/plog/base/base.h"

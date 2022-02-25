@@ -33,7 +33,7 @@
 #include "pnet_sshot.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 static pmix_status_t component_open(void);
 static pmix_status_t component_close(void);

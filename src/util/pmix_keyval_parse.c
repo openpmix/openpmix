@@ -25,7 +25,7 @@
 
 #include "pmix_common.h"
 #include "src/util/keyval/keyval_lex.h"
-#include "src/util/keyval_parse.h"
+#include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
 #include <ctype.h>
 #include <string.h>

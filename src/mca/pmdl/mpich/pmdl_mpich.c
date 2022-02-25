@@ -42,7 +42,7 @@
 #include "src/util/alfg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"

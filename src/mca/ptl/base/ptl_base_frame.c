@@ -48,7 +48,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/ptl_types.h"

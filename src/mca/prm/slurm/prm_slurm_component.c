@@ -14,7 +14,7 @@
 
 #include "pmix_config.h"
 
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/prm/prm.h"
 #include "prm_slurm.h"

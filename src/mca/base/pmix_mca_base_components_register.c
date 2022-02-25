@@ -37,7 +37,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 /*
  * Local functions

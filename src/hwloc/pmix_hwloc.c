@@ -51,10 +51,10 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_path.h"
 #include "src/util/pmix_printf.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "pmix_common.h"
 

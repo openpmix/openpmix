@@ -49,9 +49,9 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_error.h"
-#include "src/util/keyval_parse.h"
+#include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "pinfo.h"
 #include "support.h"

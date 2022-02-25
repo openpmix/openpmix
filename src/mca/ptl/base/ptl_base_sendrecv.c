@@ -45,8 +45,8 @@
 #include "src/mca/psensor/psensor.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_error.h"
-#include "src/util/name_fns.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/ptl/base/base.h"
 

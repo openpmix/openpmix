@@ -27,7 +27,7 @@
 #include "src/util/pmix_printf.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/mca/prm/base/base.h"
 
 #include "prm_slurm.h"

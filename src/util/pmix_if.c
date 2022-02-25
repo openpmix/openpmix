@@ -68,7 +68,7 @@
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_if.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/pif/base/base.h"
 

@@ -34,7 +34,7 @@
 #include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 // Local functions
 static int endswith(const char *str, const char *suffix)

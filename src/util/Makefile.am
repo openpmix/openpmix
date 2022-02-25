@@ -47,13 +47,13 @@ headers = \
         pmix_os_dirpath.h \
         pmix_os_path.h \
         pmix_basename.h \
-        keyval_parse.h \
-        show_help.h \
+        pmix_keyval_parse.h \
+        pmix_show_help.h \
         pmix_path.h \
         getid.h \
         strnlen.h \
         hash.h \
-        name_fns.h \
+        pmix_name_fns.h \
         pmix_net.h \
         pmix_if.h \
         pmix_parse_options.h \
@@ -76,12 +76,12 @@ sources = \
         pmix_os_dirpath.c \
         pmix_os_path.c \
         pmix_basename.c \
-        keyval_parse.c \
-        show_help.c \
+        pmix_keyval_parse.c \
+        pmix_show_help.c \
         pmix_path.c \
         getid.c \
         hash.c \
-        name_fns.c \
+        pmix_name_fns.c \
         pmix_net.c \
         pmix_if.c \
         pmix_parse_options.c \
