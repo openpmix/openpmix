@@ -61,10 +61,10 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_cmd_line.h"
-#include "src/util/keyval_parse.h"
+#include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "include/pmix.h"
 #include "include/pmix_tool.h"

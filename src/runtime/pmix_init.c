@@ -49,17 +49,17 @@
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_output.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
 #include "src/event/pmix_event.h"
 #include "src/include/pmix_types.h"
 #include "src/util/pmix_error.h"
-#include "src/util/keyval_parse.h"
+#include "src/util/pmix_keyval_parse.h"
 
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -118,7 +118,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
 
 #if PMIX_NO_LIB_DESTRUCTOR
     if (pmix_init_called) {
-        /* can't use show_help here */
+        /* can't use pmix_show_help.here */
         fprintf(
             stderr,
             "pmix_init: attempted to initialize after finalize without compiler "
@@ -136,9 +136,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* initialize install dirs code */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         fprintf(stderr,
                 "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
                 "returned %d instead of PMIX_SUCCESS)\n",
@@ -365,9 +365,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
      * will be done by the individual init functions and at the
      * time of connection to that peer */
 
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_psquash_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_psquash_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_psquash_base_open";
         goto return_error;
     }
@@ -384,9 +384,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* open the bfrops and select the active plugins */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_bfrops_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_bfrops_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_bfrops_base_open";
         goto return_error;
     }
@@ -396,9 +396,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* open and select the compress framework */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_pcompress_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_pcompress_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_pcompress_base_open";
         goto return_error;
     }
@@ -408,9 +408,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* open the ptl and select the active plugins */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_ptl_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_ptl_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_ptl_base_open";
         goto return_error;
     }
@@ -429,9 +429,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
         /* convert to an MCA param, but don't overwrite something already there */
         pmix_setenv("PMIX_MCA_psec", evar, false, &environ);
     }
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_psec_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_psec_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_psec_base_open";
         goto return_error;
     }
@@ -441,9 +441,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* open the gds and select the active plugins */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_gds_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_gds_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_gds_base_open";
         goto return_error;
     }
@@ -453,17 +453,17 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* initialize pif framework */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_pif_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_pif_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_pif_base_open";
         return ret;
     }
 
     /* open the preg and select the active plugins - must come after pcompress! */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_preg_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_preg_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_preg_base_open";
         goto return_error;
     }
@@ -473,9 +473,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* open the plog and select the active plugins */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_plog_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_plog_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_plog_base_open";
         goto return_error;
     }
@@ -485,9 +485,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
 
     /* open the pstrg framework */
-    if (PMIX_SUCCESS
-        != (ret = pmix_mca_base_framework_open(&pmix_pstrg_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    ret = pmix_mca_base_framework_open(&pmix_pstrg_base_framework,
+                                       PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
         error = "pmix_strg_base_open";
         goto return_error;
     }

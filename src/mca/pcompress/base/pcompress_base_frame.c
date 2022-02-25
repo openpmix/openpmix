@@ -22,7 +22,7 @@
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/pcompress/base/static-components.h"
 #include "src/mca/ptl/ptl_types.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 /*
  * Globals

@@ -45,7 +45,7 @@
 #include "src/mca/pdl/base/base.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_basename.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #if PMIX_HAVE_PDL_SUPPORT
 
@@ -504,12 +504,12 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
         ret = pmix_pdl_lookup(ri->ri_dlhandle, struct_name, (void **) &component_struct, &err_msg);
         if (PMIX_SUCCESS != ret || NULL == component_struct) {
             if (NULL == err_msg) {
-                err_msg = "pmix_dl_loookup() error message was NULL!";
+                err_msg = "pmix_dl_lookup() error message was NULL!";
             }
             pmix_output_verbose(
                 vl, 0,
                 "pmix_mca_base_component_repository_open: \"%s\" does not appear to be a valid "
-                "%s MCA dynamic component (ignored): %s. ret %d",
+                "%s MCA dynamic component (ignored):\n    %s (ret %d)",
                 ri->ri_base, ri->ri_type, err_msg, ret);
 
             ret = PMIX_ERR_BAD_PARAM;
@@ -526,7 +526,7 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
               && PMIX_MCA_BASE_VERSION_MINOR == component_struct->pmix_mca_minor_version)) {
             pmix_output_verbose(
                 vl, 0,
-                "pmix_mca_base_component_repository_open: %s \"%s\" uses an MCA interface that is "
+                "pmix_mca_base_component_repository_open: %s\n    \"%s\" uses an MCA interface that is "
                 "not recognized (component MCA v%d.%d.%d != supported MCA v%d.%d.%d) -- ignored",
                 ri->ri_type, ri->ri_path, component_struct->pmix_mca_major_version,
                 component_struct->pmix_mca_minor_version,
@@ -542,7 +542,7 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
             || 0 != strcmp(component_struct->pmix_mca_component_name, ri->ri_name)) {
             pmix_output_verbose(
                 vl, 0,
-                "Component file data does not match filename: %s (%s / %s) != %s %s -- ignored",
+                "Component file data does not match filename:\n    %s (%s / %s) != %s %s -- ignored",
                 ri->ri_path, ri->ri_type, ri->ri_name, component_struct->pmix_mca_type_name,
                 component_struct->pmix_mca_component_name);
             ret = PMIX_ERR_BAD_PARAM;

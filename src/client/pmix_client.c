@@ -75,7 +75,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/hash.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 

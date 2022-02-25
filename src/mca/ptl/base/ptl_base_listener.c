@@ -59,7 +59,7 @@
 #include "src/util/pmix_if.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_printf.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/ptl/base/base.h"
 

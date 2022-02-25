@@ -30,7 +30,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/threads/pmix_tsd.h"
 #include "src/util/pmix_error.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_printf.h"
 
 #define PMIX_PRINT_NAME_ARGS_MAX_SIZE 300

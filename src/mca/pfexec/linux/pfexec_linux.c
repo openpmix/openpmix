@@ -115,11 +115,11 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/include/pmix_globals.h"
 #include "src/threads/pmix_threads.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 
 #include "src/mca/pfexec/base/base.h"
 #include "src/mca/pfexec/linux/pfexec_linux.h"

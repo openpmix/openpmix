@@ -36,7 +36,7 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/name_fns.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_printf.h"
 
 pmix_status_t pmix_bfrops_base_print(pmix_pointer_array_t *regtypes, char **output, char *prefix,

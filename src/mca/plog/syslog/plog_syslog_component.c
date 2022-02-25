@@ -20,7 +20,7 @@
 #endif
 
 #include "plog_syslog.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 static pmix_status_t syslog_register(void);

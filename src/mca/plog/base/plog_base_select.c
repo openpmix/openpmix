@@ -27,7 +27,7 @@
 
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/plog/base/base.h"
 

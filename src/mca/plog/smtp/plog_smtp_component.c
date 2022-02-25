@@ -31,7 +31,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 
 #include "pmix_common.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "plog_smtp.h"
 

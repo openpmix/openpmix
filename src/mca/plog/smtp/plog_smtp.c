@@ -37,8 +37,8 @@
 
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/name_fns.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_show_help.h"
 
 #include "plog_smtp.h"
 #include "src/mca/plog/base/base.h"

@@ -57,7 +57,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_path.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 
 #include "ptl_client.h"
 #include "src/mca/ptl/base/base.h"
