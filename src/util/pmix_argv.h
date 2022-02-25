@@ -94,24 +94,6 @@ PMIX_EXPORT pmix_status_t pmix_argv_append(int *argc, char ***argv, const char *
  */
 PMIX_EXPORT pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *arg);
 
-/**
- * Split a string into a NULL-terminated argv array. Include empty
- * strings in result array.
- *
- * @param src_string Input string.
- * @param delimiter Delimiter character.
- *
- * @retval argv pointer to new argv array on success
- * @retval NULL on error
- *
- * All strings are inserted into the argv array by value; the
- * newly-allocated array makes no references to the src_string
- * argument (i.e., it can be freed after calling this function
- * without invalidating the output argv).
- */
-PMIX_EXPORT char **pmix_argv_split_with_empty(const char *src_string, int delimiter)
-    __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
-
 PMIX_EXPORT char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
     __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
