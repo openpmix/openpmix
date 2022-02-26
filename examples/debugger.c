@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -155,6 +155,7 @@ static pmix_status_t spawn_debugger(char *appspace)
     PMIX_ARGV_APPEND(rc, debugger[0].argv, "./debuggerd");
     if (NULL == getcwd(cwd, 1024)) { // point us to our current directory
         fprintf(stderr, "Debugger: getcwd() failed\n");
+        PMIX_APP_FREE(debugger, 1);
         return PMIX_ERROR;
     }
     debugger[0].cwd = strdup(cwd);
