@@ -497,6 +497,9 @@ void pmix_info_do_type(void)
     pmix_cli_item_t *opt;
 
     opt = pmix_cmd_line_get_param(pmix_info_cmd_line, "type");
+    if (NULL == opt) {
+        return;
+    }
     count = pmix_argv_count(opt->values);
     len = pmix_mca_base_var_get_count();
 

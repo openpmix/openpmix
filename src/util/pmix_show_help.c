@@ -151,7 +151,11 @@ static int open_file(const char *base, const char *topic)
             filename = pmix_os_path(false, search_dirs[i], base, NULL);
             pmix_showhelp_yyin = fopen(filename, "r");
             if (NULL == pmix_showhelp_yyin) {
+                if (NULL != err_msg) {
+                    free(err_msg);
+                }
                 if (0 > asprintf(&err_msg, "%s: %s", filename, strerror(errno))) {
+                    free(filename);
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
                 base_len = strlen(base);
@@ -159,6 +163,7 @@ static int open_file(const char *base, const char *topic)
                     free(filename);
                     if (0
                         > asprintf(&filename, "%s%s%s.txt", search_dirs[i], PMIX_PATH_SEP, base)) {
+                        free(err_msg);
                         return PMIX_ERR_OUT_OF_RESOURCE;
                     }
                     pmix_showhelp_yyin = fopen(filename, "r");

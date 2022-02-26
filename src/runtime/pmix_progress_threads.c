@@ -296,6 +296,7 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
         } else {
             rc = PMIX_SUCCESS;
         }
+        pmix_argv_free(ranges);
     }
 #endif
     return rc;
