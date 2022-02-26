@@ -94,9 +94,10 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (PMIX_MAX_CRED_SIZE < hdr.nbytes) {
         goto error;
     }
-    if (NULL == (msg = (char *) malloc(hdr.nbytes))) {
+    if (NULL == (msg = (char *) malloc(hdr.nbytes+1))) {
         goto error;
     }
+    memset(msg, 0, hdr.nbytes + 1);  // ensure NULL termination of result
     if (PMIX_SUCCESS != pmix_ptl_base_recv_blocking(pnd->sd, msg, hdr.nbytes)) {
         /* unable to complete the recv */
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,

@@ -290,12 +290,14 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
          * give it to us */
         kp2 = PMIX_NEW(pmix_kval_t);
         if (NULL == kp2) {
+            pmix_argv_free(procs);
             return PMIX_ERR_NOMEM;
         }
         kp2->key = strdup(PMIX_LOCAL_SIZE);
         kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
         if (NULL == kp2->value) {
             PMIX_RELEASE(kp2);
+            pmix_argv_free(procs);
             return PMIX_ERR_NOMEM;
         }
         kp2->value->type = PMIX_UINT32;

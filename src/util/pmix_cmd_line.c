@@ -202,18 +202,16 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     }
                     /* see if the argument is one of our options */
                     found = false;
-                    if (NULL != ptr) {
-                        for (n=0; NULL != myoptions[n].name; n++) {
-                            if (0 == strcmp(ptr, myoptions[n].name)) {
-                                // it is, so they requested help on this option
-                                str = pmix_show_help_string(helpfile, ptr, false);
-                                if (NULL != str) {
-                                    printf("%s", str);
-                                    free(str);
-                                }
-                                pmix_argv_free(argv);
-                                return PMIX_ERR_SILENT;
+                    for (n=0; NULL != myoptions[n].name; n++) {
+                        if (0 == strcmp(ptr, myoptions[n].name)) {
+                            // it is, so they requested help on this option
+                            str = pmix_show_help_string(helpfile, ptr, false);
+                            if (NULL != str) {
+                                printf("%s", str);
+                                free(str);
                             }
+                            pmix_argv_free(argv);
+                            return PMIX_ERR_SILENT;
                         }
                     }
                     if (!found) {
@@ -250,7 +248,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     pmix_argv_free(argv);
                     return PMIX_ERR_SILENT;
                 }
-                break;
             case 'V':
                 str = pmix_show_help_string(helpfile, "version", false,
                                             pmix_tool_basename, "PMIx",

@@ -38,8 +38,9 @@
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
-#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_output.h"
+#include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_printf.h"
 
 /*
@@ -97,7 +98,9 @@ int pmix_mca_base_open(const char *add_path)
     value = (char *) pmix_home_directory(geteuid());
     pmix_asprintf(&pmix_mca_base_user_default_path,
                   "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "components", value);
-    pmix_argv_append_nosize(&paths, pmix_mca_base_user_default_path);
+    if (PMIX_SUCCESS == pmix_os_dirpath_access(pmix_mca_base_user_default_path, 0)) {
+        pmix_argv_append_nosize(&paths, pmix_mca_base_user_default_path);
+    }
 #endif
 
     var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_path",
