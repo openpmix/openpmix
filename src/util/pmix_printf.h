@@ -27,7 +27,6 @@
 #define PMIX_PRINTF_H
 
 #include "src/include/pmix_config.h"
-#include "pmix_common.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -52,10 +51,10 @@ BEGIN_C_DECLS
  * Returns the number of characters that would have been printed if
  * the size were unlimited (again, not including the final `\0').
  *
- * THIS IS A PORTABILITY FEATURE: USE pmix_snprintf() in CODE.
+ * THIS IS A PORTABILITY FEATURE: USE snprintf() in CODE.
  */
 PMIX_EXPORT int pmix_snprintf(char *str, size_t size, const char *fmt, ...)
-    __pmix_attribute_format__(__printf__, 3, 4);
+__pmix_attribute_format__(__printf__, 3, 4);
 
 /**
  * Writes to a string under the control of a format string that
@@ -77,10 +76,10 @@ PMIX_EXPORT int pmix_snprintf(char *str, size_t size, const char *fmt, ...)
  * Returns the number of characters that would have been printed if
  * the size were unlimited (again, not including the final `\0').
  *
- * THIS IS A PORTABILITY FEATURE: USE vpmix_snprintf() in CODE.
+ * THIS IS A PORTABILITY FEATURE: USE vsnprintf() in CODE.
  */
-PMIX_EXPORT int pmix_vpmix_snprintf(char *str, size_t size, const char *fmt, va_list ap)
-    __pmix_attribute_format__(__printf__, 3, 0);
+PMIX_EXPORT int pmix_vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
+__pmix_attribute_format__(__printf__, 3, 0);
 
 /**
  * Allocates and writes to a string under the control of a format
@@ -99,10 +98,15 @@ PMIX_EXPORT int pmix_vpmix_snprintf(char *str, size_t size, const char *fmt, va_
  *
  * Returns the number of characters printed.
  *
- * THIS IS A PORTABILITY FEATURE: USE asprintf() in CODE.
+ * Unlike pmix_snprintf and pmix_vsnprintf, pmix_asprintf() is always
+ * available and guarantees that *ptr is NULL when the underlying
+ * asprintf fails.  The standard does not require *ptr be set to NULL
+ * on error and some implementations (modern Linux) do not guarantee
+ * such behavior.
+ *
  */
 PMIX_EXPORT int pmix_asprintf(char **ptr, const char *fmt, ...)
-    __pmix_attribute_format__(__printf__, 2, 3);
+__pmix_attribute_format__(__printf__, 2, 3);
 
 /**
  * Allocates and writes to a string under the control of a format
@@ -123,10 +127,15 @@ PMIX_EXPORT int pmix_asprintf(char **ptr, const char *fmt, ...)
  *
  * Returns the number of characters printed.
  *
- * THIS IS A PORTABILITY FEATURE: USE vasprintf() in CODE.
+ * Unlike pmix_snprintf and pmix_vsnprintf, pmix_vasprintf() is always
+ * available and guarantees that *ptr is NULL when the underlying
+ * asprintf fails.  The standard does not require *ptr be set to NULL
+ * on error and some implementations (modern Linux) do not guarantee
+ * such behavior.
+ *
  */
 PMIX_EXPORT int pmix_vasprintf(char **ptr, const char *fmt, va_list ap)
-    __pmix_attribute_format__(__printf__, 2, 0);
+__pmix_attribute_format__(__printf__, 2, 0);
 
 END_C_DECLS
 
