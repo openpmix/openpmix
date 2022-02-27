@@ -30,6 +30,7 @@
 
 #include <stdarg.h>
 #include <stdlib.h>
+#include "pmix_common.h"
 
 BEGIN_C_DECLS
 
