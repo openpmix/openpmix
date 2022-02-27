@@ -122,13 +122,12 @@ static int process_repository_item(const char *filename, void *data)
     type = &base[prefixlen];
     name = strchr(type, '_');
     if (NULL == name) {
+        free(base);
+        free(prefix);
         return PMIX_ERR_BAD_PARAM;
     }
     *name = '\0';
     ++name;
-    if (NULL == name) {
-        return PMIX_ERR_BAD_PARAM;
-    }
     free(prefix);
 
     /* lookup the associated framework list and create if it doesn't already exist */

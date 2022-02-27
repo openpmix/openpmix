@@ -222,8 +222,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             printf("%s", str);
                             free(str);
                         }
-                        pmix_argv_free(argv);
-                        return PMIX_ERR_SILENT;
                     }
                 } else if (NULL == optarg) {
                     // high-level help request
@@ -236,8 +234,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         printf("%s", str);
                         free(str);
                     }
-                    pmix_argv_free(argv);
-                    return PMIX_ERR_SILENT;
                 } else {  // unrecognized option
                     str = pmix_show_help_string("help-cli.txt", "unrecognized-option", true,
                                                 pmix_tool_basename, optarg);
@@ -245,9 +241,9 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         printf("%s", str);
                         free(str);
                     }
-                    pmix_argv_free(argv);
-                    return PMIX_ERR_SILENT;
                 }
+                pmix_argv_free(argv);
+                return PMIX_ERR_SILENT;
             case 'V':
                 str = pmix_show_help_string(helpfile, "version", false,
                                             pmix_tool_basename, "PMIx",
