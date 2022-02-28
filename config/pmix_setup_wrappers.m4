@@ -16,7 +16,7 @@ dnl Copyright (c) 2015-2017 Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2016      IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl $COPYRIGHT$
@@ -266,9 +266,7 @@ AC_DEFUN([PMIX_SETUP_WRAPPER_FINAL],[
 
     # We now have all relevant flags.  Substitute them in everywhere.
    AC_MSG_CHECKING([for PMIX CPPFLAGS])
-   if test "$WANT_INSTALL_HEADERS" = "1" ; then
-       PMIX_WRAPPER_EXTRA_CPPFLAGS='-I${includedir}'
-   fi
+   PMIX_WRAPPER_EXTRA_CPPFLAGS='-I${includedir}'
    PMIX_WRAPPER_EXTRA_CPPFLAGS="$PMIX_WRAPPER_EXTRA_CPPFLAGS $pmix_mca_wrapper_extra_cppflags $wrapper_extra_cppflags $with_wrapper_cppflags"
    PMIX_FLAGS_UNIQ(PMIX_WRAPPER_EXTRA_CPPFLAGS)
    AC_SUBST([PMIX_WRAPPER_EXTRA_CPPFLAGS])

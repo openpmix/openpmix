@@ -2,6 +2,7 @@
 # Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
 #
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -20,11 +21,9 @@ headers = pstrg.h
 
 libmca_pstrg_la_SOURCES += $(headers)
 
-# Conditionally install the header files
-if WANT_INSTALL_HEADERS
+# install the header files
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
-endif
 
 include base/Makefile.am
 

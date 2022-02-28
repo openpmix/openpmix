@@ -4,6 +4,7 @@
 #                         Corporation.  All rights reserved.
 # Copyright (c) 2010-2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2019      Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -24,11 +25,9 @@ libmca_pcompress_la_SOURCES += $(headers)
 # therefore the release date or version may have changed)
 $(nodist_man_MANS): $(top_builddir)/pmix/include/pmix_config.h
 
-# Conditionally install the header files
-if WANT_INSTALL_HEADERS
+# install the header files
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
-endif
 
 include base/Makefile.am
 

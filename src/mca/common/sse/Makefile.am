@@ -1,5 +1,6 @@
 #
 # Copyright (c) 2020      Intel, Inc. All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -39,11 +40,8 @@ libmca_common_sse_la_LDFLAGS += -version-info $(libmca_common_sse_so_version)
 endif
 libmca_common_sse_la_LIBADD = $(pmix_check_curl_LIBS)
 
-# Conditionally install the header files
-
-if WANT_INSTALL_HEADERS
+# install the header files
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)
-endif
 
 MAINTAINERCLEANFILES = sse_lex.c

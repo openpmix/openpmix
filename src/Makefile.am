@@ -82,8 +82,6 @@ include tool/Makefile.include
 include tools/Makefile.include
 include common/Makefile.include
 
-if WANT_INSTALL_HEADERS
 nobase_pmix_HEADERS += $(headers)
-endif
 
 CLEANFILES = core.* *~
