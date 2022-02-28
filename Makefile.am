@@ -14,7 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2019      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -44,14 +44,8 @@ if PMIX_TESTS_EXAMPLES
 SUBDIRS += . test/test_v2 test examples
 endif
 
-if WANT_INSTALL_HEADERS
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
-
-else
-
-noinst_HEADERS = $(headers)
-endif
 
 include man/Makefile.include
 

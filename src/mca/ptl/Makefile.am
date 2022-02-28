@@ -13,6 +13,7 @@
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2016 Intel, Inc. All rights reserved
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -30,11 +31,9 @@ libmca_ptl_la_SOURCES =
 headers = ptl.h ptl_types.h
 sources =
 
-# Conditionally install the header files
-if WANT_INSTALL_HEADERS
+# install the header files
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
-endif
 
 include base/Makefile.include
 

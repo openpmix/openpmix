@@ -1096,26 +1096,10 @@ AC_ARG_ENABLE(debug-symbols,
               AS_HELP_STRING([--disable-debug-symbols],
                              [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
 
-#
-# Do we want to install the internal devel headers?
-#
-AC_MSG_CHECKING([if want to install project-internal header files])
-AC_ARG_WITH(devel-headers,
-    AS_HELP_STRING([--with-devel-headers],
-                   [normal PMIx users/applications do not need this (pmix.h and friends are ALWAYS installed).  Developer headers are only necessary for authors doing deeper integration (default: disabled).]))
-if test "$with_devel_headers" = "yes"; then
-    AC_MSG_RESULT([yes])
-    WANT_INSTALL_HEADERS=1
-    pmix_install_primary_headers=yes
-else
-    AC_MSG_RESULT([no])
-    WANT_INSTALL_HEADERS=0
-fi
-
 AC_MSG_CHECKING([if want to install PMIx header files])
 AC_ARG_WITH(pmix-headers,
     AS_HELP_STRING([--with-pmix-headers],
-                   [Install the PMIx header files (default: enabled)]))
+                   [Install the PMIx header files (pmix.h and friends) (default: enabled)]))
 if test "$with_pmix_headers" != "no"; then
     AC_MSG_RESULT([yes])
     WANT_PRIMARY_HEADERS=1
@@ -1219,8 +1203,6 @@ fi
 
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_TIMING], [$WANT_PMIX_TIMING],
                    [Whether we want developer-level timing support or not])
-
-AM_CONDITIONAL([WANT_INSTALL_HEADERS], [test $WANT_INSTALL_HEADERS -eq 1])
 
 #
 # Do we want to install binaries?
@@ -1393,7 +1375,6 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([PMIX_WANT_MUNGE], [test "$pmix_munge_support" = "1"])
         AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
-        AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
         AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
         AM_CONDITIONAL([PMIX_HAVE_JANSSON], [test "x$pmix_check_jansson_happy" = "xyes"])
         AM_CONDITIONAL([PMIX_HAVE_CURL], [test "x$pmix_check_curl_happy" = "xyes"])

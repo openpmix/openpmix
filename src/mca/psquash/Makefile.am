@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2016 Intel, Inc. All rights reserved
 # Copyright (c) 2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2019      IBM Corporation.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -31,11 +32,9 @@ libmca_psquash_la_SOURCES =
 headers = psquash.h
 sources =
 
-# Conditionally install the header files
-if WANT_INSTALL_HEADERS
+# install the header files
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
-endif
 
 include base/Makefile.include
 
