@@ -37,7 +37,9 @@ PMIX_EXPORT extern int pmix_util_keyval_parse_lineno;
  * The buffers must not be free()ed and contents may be overwritten
  * immediately after the callback returns.
  */
-typedef void (*pmix_keyval_parse_fn_t)(const char *key, const char *value);
+typedef void (*pmix_keyval_parse_fn_t)(const char *file, int lineno,
+                                       const char *name,
+                                       const char *value);
 
 /**
  * Parse \c filename, made up of key = value pairs.
@@ -51,7 +53,7 @@ PMIX_EXPORT int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_f
 
 PMIX_EXPORT int pmix_util_keyval_parse_init(void);
 
-PMIX_EXPORT int pmix_util_keyval_parse_finalize(void);
+PMIX_EXPORT void pmix_util_keyval_parse_finalize(void);
 
 PMIX_EXPORT int pmix_util_keyval_save_internal_envars(pmix_keyval_parse_fn_t callback);
 

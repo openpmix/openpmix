@@ -254,8 +254,11 @@ static void expand_flags(char **argv)
     }
 }
 
-static void data_callback(const char *key, const char *value)
+static void data_callback(const char *file, int lineno,
+                          const char *key, const char *value)
 {
+    PMIX_HIDE_UNUSED_PARAMS(file, lineno);
+
     /* handle case where text file does not contain any special
      compiler options field */
     if (parse_options_idx < 0 && 0 != strcmp(key, "compiler_args")) {
