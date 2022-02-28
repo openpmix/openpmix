@@ -136,7 +136,7 @@ typedef struct pmix_hotel_t {
     int *unoccupied_rooms;
     int last_unoccupied_room;
 } pmix_hotel_t;
-PMIX_CLASS_DECLARATION(pmix_hotel_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_hotel_t);
 
 /**
  * Initialize the hotel.
