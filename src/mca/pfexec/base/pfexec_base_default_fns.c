@@ -99,7 +99,7 @@ static pmix_status_t setup_path(pmix_app_t *app)
            exists and is executable The function will
            take care of outputting a pretty error message, if required
         */
-        if (PMIX_SUCCESS != (rc = pmix_util_check_context_cwd(app))) {
+        if (PMIX_SUCCESS != (rc = pmix_util_check_context_cwd(&app->cwd, true, true))) {
             /* do not ERROR_LOG - it will be reported elsewhere */
             return rc;
         }
@@ -122,7 +122,7 @@ static pmix_status_t setup_path(pmix_app_t *app)
     }
 
     /* ensure the app is pointing to a full path */
-    rc = pmix_util_check_context_app(app, app->env);
+    rc = pmix_util_check_context_app(&app->cmd, app->cwd, app->env);
 
     return rc;
 }
