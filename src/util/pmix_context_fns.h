@@ -26,14 +26,18 @@
 #ifndef _PMIX_CONTEXT_FNS_H_
 #define _PMIX_CONTEXT_FNS_H_
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
 BEGIN_C_DECLS
 
-PMIX_EXPORT int pmix_util_check_context_app(pmix_app_t *app, char **env);
+PMIX_EXPORT pmix_status_t pmix_util_check_context_cwd(char **incwd,
+                                                      bool want_chdir,
+                                                      bool user_cwd);
 
-PMIX_EXPORT int pmix_util_check_context_cwd(pmix_app_t *app);
+PMIX_EXPORT pmix_status_t pmix_util_check_context_app(char **incmd,
+                                                      char *cwd,
+                                                      char **env);
 
 END_C_DECLS
 #endif

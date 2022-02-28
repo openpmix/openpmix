@@ -52,22 +52,67 @@
 
 #include "src/util/pmix_context_fns.h"
 
-int pmix_util_check_context_cwd(pmix_app_t *app)
+pmix_status_t pmix_util_check_context_cwd(char **incwd,
+                                          bool want_chdir,
+                                          bool user_cwd)
 {
+    bool good = true;
+    const char *tmp;
+    char *cwd = NULL;
+
+    if (NULL != incwd) {
+        cwd = *incwd;
+    }
+
     /* If we want to chdir and the chdir fails (for any reason -- such
        as if the dir doesn't exist, it isn't a dir, we don't have
        permissions, etc.), then return error. */
-    if (NULL != app->cwd && 0 != chdir(app->cwd)) {
-        return PMIX_ERR_BAD_PARAM;
+    if (want_chdir && 0 != chdir(cwd)) {
+        good = false;
     }
 
+    /* If either of the above failed, go into this block */
+    if (!good) {
+        /* See if the directory was a user-specified directory.  If it
+         was, barf because they specifically asked for something we
+         can't provide. */
+        if (user_cwd) {
+            return PMIX_ERR_NOT_FOUND;
+        }
+
+        /* If the user didn't specifically ask for it, then it
+         was a system-supplied default directory, so it's ok
+         to not go there.  Try to go to the $HOME directory
+         instead. */
+        tmp = pmix_home_directory(-1);
+        if (NULL != tmp) {
+            /* Try $HOME.  Same test as above. */
+            if (want_chdir && 0 != chdir(tmp)) {
+                return PMIX_ERR_NOT_FOUND;
+            }
+
+            /* Reset the pwd in this local copy of the
+             context */
+            if (NULL != cwd) {
+                free(cwd);
+            }
+            *incwd = strdup(tmp);
+        }
+
+        /* If we couldn't find $HOME, then just take whatever
+         the default directory is -- assumedly there *is*
+         one, or we wouldn't be running... */
+    }
     /* All happy */
     return PMIX_SUCCESS;
 }
 
-int pmix_util_check_context_app(pmix_app_t *app, char **env)
+pmix_status_t pmix_util_check_context_app(char **incmd,
+                                          char *cwd,
+                                          char **env)
 {
     char *tmp;
+    char *cmd = *incmd;
 
     /* Here's the possibilities:
 
@@ -82,20 +127,20 @@ int pmix_util_check_context_app(pmix_app_t *app, char **env)
         path, find a match, and verify that we can run it.
     */
 
-    tmp = pmix_basename(app->cmd);
-    if (strlen(tmp) == strlen(app->cmd)) {
+    tmp = pmix_basename(cmd);
+    if (strlen(tmp) == strlen(cmd)) {
         /* If this is a naked executable -- no relative or absolute
         pathname -- then search the PATH for it */
         free(tmp);
-        tmp = pmix_path_findv(app->cmd, X_OK, env, app->cwd);
+        tmp = pmix_path_findv(cmd, X_OK, env, cwd);
         if (NULL == tmp) {
             return PMIX_ERR_NOT_FOUND;
         }
-        free(app->cmd);
-        app->cmd = tmp;
+        free(cmd);
+        *incmd = tmp;
     } else {
         free(tmp);
-        if (0 != access(app->cmd, X_OK)) {
+        if (0 != access(cmd, X_OK)) {
             return PMIX_ERR_NO_PERMISSIONS;
         }
     }
