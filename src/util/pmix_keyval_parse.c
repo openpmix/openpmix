@@ -23,53 +23,56 @@
 
 #include "src/include/pmix_config.h"
 
+#include <ctype.h>
+#include <string.h>
+
 #include "pmix_common.h"
 #include "src/util/keyval/keyval_lex.h"
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
-#include <ctype.h>
-#include <string.h>
+#include "src/util/pmix_string_copy.h"
+#include "src/threads/pmix_threads.h"
 
 int pmix_util_keyval_parse_lineno = 0;
 
-static const char *keyval_filename;
-static pmix_keyval_parse_fn_t keyval_callback;
 static char *key_buffer = NULL;
 static size_t key_buffer_len = 0;
+static pmix_mutex_t keyval_mutex;
 
-static int parse_line(void);
-static int parse_line_new(pmix_keyval_parse_state_t first_val);
-static void parse_error(int num);
+static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback);
+static int parse_line_new(const char *filename, pmix_keyval_parse_state_t first_val,
+                          pmix_keyval_parse_fn_t callback);
+static void parse_error(int num, const char *filename);
 
 static char *env_str = NULL;
 static int envsize = 1024;
 
-int pmix_util_keyval_parse_init(void)
+void pmix_util_keyval_parse_finalize(void)
 {
-    return PMIX_SUCCESS;
-}
-
-int pmix_util_keyval_parse_finalize(void)
-{
-    if (NULL != key_buffer)
-        free(key_buffer);
+    free(key_buffer);
     key_buffer = NULL;
     key_buffer_len = 0;
+
+    PMIX_DESTRUCT(&keyval_mutex);
+}
+
+int pmix_util_keyval_parse_init(void)
+{
+    PMIX_CONSTRUCT(&keyval_mutex, pmix_mutex_t);
 
     return PMIX_SUCCESS;
 }
 
 int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback)
 {
-    pmix_keyval_parse_state_t val;
+    int val;
     int ret = PMIX_SUCCESS;
     ;
 
-    keyval_filename = filename;
-    keyval_callback = callback;
+    pmix_mutex_lock(&keyval_mutex);
 
     /* Open the pmix */
-    pmix_util_keyval_yyin = fopen(keyval_filename, "r");
+    pmix_util_keyval_yyin = fopen(filename, "r");
     if (NULL == pmix_util_keyval_yyin) {
         ret = PMIX_ERR_NOT_FOUND;
         goto cleanup;
@@ -79,43 +82,44 @@ int pmix_util_keyval_parse(const char *filename, pmix_keyval_parse_fn_t callback
     pmix_util_keyval_yynewlines = 1;
     pmix_util_keyval_init_buffer(pmix_util_keyval_yyin);
     while (!pmix_util_keyval_parse_done) {
-        val = (pmix_keyval_parse_state_t) pmix_util_keyval_yylex();
+        val = pmix_util_keyval_yylex();
         switch (val) {
-        case PMIX_UTIL_KEYVAL_PARSE_DONE:
-            /* This will also set pmix_util_keyval_parse_done to true, so just
-               break here */
-            break;
+            case PMIX_UTIL_KEYVAL_PARSE_DONE:
+                /* This will also set pmix_util_keyval_parse_done to true, so just
+                 break here */
+                break;
 
-        case PMIX_UTIL_KEYVAL_PARSE_NEWLINE:
-            /* blank line!  ignore it */
-            break;
+            case PMIX_UTIL_KEYVAL_PARSE_NEWLINE:
+                /* blank line!  ignore it */
+                break;
 
-        case PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD:
-            parse_line();
-            break;
+            case PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD:
+                parse_line(filename, callback);
+                break;
 
-        case PMIX_UTIL_KEYVAL_PARSE_MCAVAR:
-        case PMIX_UTIL_KEYVAL_PARSE_ENVVAR:
-        case PMIX_UTIL_KEYVAL_PARSE_ENVEQL:
-            parse_line_new(val);
-            break;
+            case PMIX_UTIL_KEYVAL_PARSE_MCAVAR:
+            case PMIX_UTIL_KEYVAL_PARSE_ENVVAR:
+            case PMIX_UTIL_KEYVAL_PARSE_ENVEQL:
+                parse_line_new(filename, val, callback);
+                break;
 
-        default:
-            /* anything else is an error */
-            parse_error(1);
-            break;
+            default:
+                /* anything else is an error */
+                parse_error(1, filename);
+                break;
         }
     }
     fclose(pmix_util_keyval_yyin);
     pmix_util_keyval_yylex_destroy();
 
 cleanup:
+    pmix_mutex_unlock(&keyval_mutex);
     return ret;
 }
 
-static int parse_line(void)
+static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback)
 {
-    pmix_keyval_parse_state_t val;
+    int val;
 
     pmix_util_keyval_parse_lineno = pmix_util_keyval_yylineno;
 
@@ -133,13 +137,13 @@ static int parse_line(void)
         key_buffer = tmp;
     }
 
-    pmix_strncpy(key_buffer, pmix_util_keyval_yytext, key_buffer_len - 1);
+    pmix_string_copy(key_buffer, pmix_util_keyval_yytext, key_buffer_len);
 
     /* The first thing we have to see is an "=" */
 
     val = pmix_util_keyval_yylex();
     if (pmix_util_keyval_parse_done || PMIX_UTIL_KEYVAL_PARSE_EQUAL != val) {
-        parse_error(2);
+        parse_error(2, filename);
         return PMIX_ERROR;
     }
 
@@ -147,7 +151,7 @@ static int parse_line(void)
 
     val = pmix_util_keyval_yylex();
     if (PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD == val || PMIX_UTIL_KEYVAL_PARSE_VALUE == val) {
-        keyval_callback(key_buffer, pmix_util_keyval_yytext);
+        callback(filename, 0, key_buffer, pmix_util_keyval_yytext);
 
         /* Now we need to see the newline */
 
@@ -160,30 +164,20 @@ static int parse_line(void)
     /* Did we get an EOL or EOF? */
 
     else if (PMIX_UTIL_KEYVAL_PARSE_DONE == val || PMIX_UTIL_KEYVAL_PARSE_NEWLINE == val) {
-        keyval_callback(key_buffer, NULL);
+        callback(filename, 0, key_buffer, NULL);
         return PMIX_SUCCESS;
     }
 
     /* Nope -- we got something unexpected.  Bonk! */
-    parse_error(3);
+    parse_error(3, filename);
     return PMIX_ERROR;
 }
 
-static void parse_error(int num)
+static void parse_error(int num, const char *filename)
 {
     /* JMS need better error/warning message here */
-    pmix_output(0, "keyval parser: error %d reading file %s at line %d:\n  %s\n", num,
-                keyval_filename, pmix_util_keyval_yynewlines, pmix_util_keyval_yytext);
-}
-
-int pmix_util_keyval_save_internal_envars(pmix_keyval_parse_fn_t callback)
-{
-    if (NULL != env_str && 0 < strlen(env_str)) {
-        callback("mca_base_env_list_internal", env_str);
-        free(env_str);
-        env_str = NULL;
-    }
-    return PMIX_SUCCESS;
+    pmix_output(0, "keyval parser: error %d reading file %s at line %d:\n  %s\n", num, filename,
+                pmix_util_keyval_yynewlines, pmix_util_keyval_yytext);
 }
 
 static void trim_name(char *buffer, const char *prefix, const char *suffix)
@@ -252,7 +246,7 @@ static int save_param_name(void)
         key_buffer = tmp;
     }
 
-    pmix_strncpy(key_buffer, pmix_util_keyval_yytext, key_buffer_len - 1);
+    pmix_string_copy(key_buffer, pmix_util_keyval_yytext, key_buffer_len);
 
     return PMIX_SUCCESS;
 }
@@ -313,7 +307,8 @@ static int add_to_env_str(char *var, char *val)
     return PMIX_SUCCESS;
 }
 
-static int parse_line_new(pmix_keyval_parse_state_t first_val)
+static int parse_line_new(const char *filename, pmix_keyval_parse_state_t first_val,
+                          pmix_keyval_parse_fn_t callback)
 {
     pmix_keyval_parse_state_t val;
     char *tmp;
@@ -338,11 +333,11 @@ static int parse_line_new(pmix_keyval_parse_state_t first_val)
                         trim_name(tmp, "\'", "\'");
                         trim_name(tmp, "\"", "\"");
                     }
-                    keyval_callback(key_buffer, tmp);
+                    callback(filename, 0, key_buffer, tmp);
                     free(tmp);
                 }
             } else {
-                parse_error(4);
+                parse_error(4, filename);
                 return PMIX_ERROR;
             }
         } else if (PMIX_UTIL_KEYVAL_PARSE_ENVEQL == val) {
@@ -353,7 +348,7 @@ static int parse_line_new(pmix_keyval_parse_state_t first_val)
             if (PMIX_UTIL_KEYVAL_PARSE_VALUE == val) {
                 add_to_env_str(key_buffer, pmix_util_keyval_yytext);
             } else {
-                parse_error(5);
+                parse_error(5, filename);
                 return PMIX_ERROR;
             }
         } else if (PMIX_UTIL_KEYVAL_PARSE_ENVVAR == val) {
@@ -362,12 +357,22 @@ static int parse_line_new(pmix_keyval_parse_state_t first_val)
             add_to_env_str(key_buffer, NULL);
         } else {
             /* we got something unexpected.  Bonk! */
-            parse_error(6);
+            parse_error(6, filename);
             return PMIX_ERROR;
         }
 
         val = pmix_util_keyval_yylex();
     }
 
+    return PMIX_SUCCESS;
+}
+
+int pmix_util_keyval_save_internal_envars(pmix_keyval_parse_fn_t callback)
+{
+    if (NULL != env_str && 0 < strlen(env_str)) {
+        callback(NULL, 0, "mca_base_env_list_internal", env_str);
+        free(env_str);
+        env_str = NULL;
+    }
     return PMIX_SUCCESS;
 }
