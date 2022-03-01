@@ -60,9 +60,13 @@ pmix_status_t pmix_util_check_context_cwd(char **incwd,
     const char *tmp;
     char *cwd = NULL;
 
-    if (NULL != incwd) {
-        cwd = *incwd;
+    if (NULL == incwd) {
+        return PMIX_ERR_BAD_PARAM;
     }
+    if (NULL == *incwd) {
+        return PMIX_SUCCESS;
+    }
+    cwd = *incwd;
 
     /* If we want to chdir and the chdir fails (for any reason -- such
        as if the dir doesn't exist, it isn't a dir, we don't have
