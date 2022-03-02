@@ -16,6 +16,7 @@
 # Copyright (c) 2016      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -52,6 +53,7 @@ headers = \
         pmix_path.h \
         getid.h \
         strnlen.h \
+        pmix_shmem.h \
         hash.h \
         pmix_name_fns.h \
         pmix_net.h \
@@ -80,6 +82,7 @@ sources = \
         pmix_show_help.c \
         pmix_path.c \
         getid.c \
+        pmix_shmem.c \
         hash.c \
         pmix_name_fns.c \
         pmix_net.c \
