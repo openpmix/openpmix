@@ -24,16 +24,22 @@
 #ifndef _PMIX_NAME_FNS_H_
 #define _PMIX_NAME_FNS_H_
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #ifdef HAVE_STDINT_h
 #    include <stdint.h>
 #endif
 
 #include "pmix_common.h"
-#include "src/include/pmix_globals.h"
 
 BEGIN_C_DECLS
+
+/* define an internal-only process name that has
+ * a dynamically-sized nspace field to save memory */
+typedef struct {
+    char *nspace;
+    pmix_rank_t rank;
+} pmix_name_t;
 
 /* useful define to print name args in output messages */
 PMIX_EXPORT char *pmix_util_print_name_args(const pmix_proc_t *name);

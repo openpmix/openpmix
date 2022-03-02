@@ -50,6 +50,8 @@
 #include "src/mca/psec/psec.h"
 #include "src/mca/ptl/ptl.h"
 
+#include "src/util/pmix_name_fns.h"
+
 BEGIN_C_DECLS
 
 /* some limits */
@@ -66,13 +68,6 @@ BEGIN_C_DECLS
 #define PMIX_INFO_OP_COMPLETE       0x80000000
 #define PMIX_INFO_OP_COMPLETED(m)   ((pmix_info_t *) (m))->flags |= PMIX_INFO_OP_COMPLETE
 #define PMIX_INFO_OP_IS_COMPLETE(m) ((m)->flags & PMIX_INFO_OP_COMPLETE)
-
-/* define an internal-only process name that has
- * a dynamically-sized nspace field to save memory */
-typedef struct {
-    char *nspace;
-    pmix_rank_t rank;
-} pmix_name_t;
 
 /* define an internal-only object for creating
  * lists of names */
