@@ -273,12 +273,6 @@ AS_IF([test ! -z "$PMIX_CFLAGS_cache"], [CFLAGS="$CFLAGS $PMIX_CFLAGS_cache"])
 # setup "picky" compiler options if enabled
 PMIX_SETUP_PICKY_COMPILERS
 
-# Cleanup duplicate flags
-PMIX_FLAGS_UNIQ(CFLAGS)
-PMIX_FLAGS_UNIQ(CPPFLAGS)
-PMIX_FLAGS_UNIQ(LDFLAGS)
-PMIX_FLAGS_UNIQ(LIBS)
-
 #
 # Delayed the substitution of CFLAGS and CXXFLAGS until now because
 # they may have been modified throughout the course of this script.
