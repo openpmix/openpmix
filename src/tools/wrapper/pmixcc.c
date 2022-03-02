@@ -83,8 +83,6 @@ struct options_data_t {
     char *req_file;
     char *path_includedir;
     char *path_libdir;
-    char *path_pmixincludedir;
-    char *path_pmixlibdir;
 };
 
 static struct options_data_t *options_data = NULL;
@@ -133,8 +131,6 @@ static void options_data_init(struct options_data_t *data)
     data->req_file = NULL;
     data->path_includedir = NULL;
     data->path_libdir = NULL;
-    data->path_pmixincludedir = NULL;
-    data->path_pmixlibdir = NULL;
 }
 
 static void options_data_free(struct options_data_t *data)
@@ -172,10 +168,6 @@ static void options_data_free(struct options_data_t *data)
         free(data->path_includedir);
     if (NULL != data->path_libdir)
         free(data->path_libdir);
-    if (NULL != data->path_pmixincludedir)
-        free(data->path_pmixincludedir);
-    if (NULL != data->path_pmixlibdir)
-        free(data->path_pmixlibdir);
 }
 
 static void options_data_expand(const char *value)
@@ -348,28 +340,6 @@ static void data_callback(const char *key, const char *value)
             char *line;
             pmix_asprintf(&line, PMIX_LIBDIR_FLAG "%s",
                           options_data[parse_options_idx].path_libdir);
-            pmix_argv_append_unique_nosize(&options_data[parse_options_idx].link_flags, line);
-            free(line);
-        }
-    } else if (0 == strcmp(key, "pmixincludedir")) {
-        if (NULL != value) {
-            options_data[parse_options_idx].path_pmixincludedir = pmix_pinstall_dirs_expand(value);
-            if (0 != strcmp(options_data[parse_options_idx].path_pmixincludedir, "/usr/include")) {
-                char *line;
-                pmix_asprintf(&line, PMIX_INCLUDE_FLAG "%s",
-                              options_data[parse_options_idx].path_pmixincludedir);
-                pmix_argv_append_unique_nosize(&options_data[parse_options_idx].preproc_flags,
-                                               line);
-                free(line);
-            }
-        }
-    } else if (0 == strcmp(key, "pmixlibdir")) {
-        if (NULL != value)
-            options_data[parse_options_idx].path_pmixlibdir = pmix_pinstall_dirs_expand(value);
-        if (0 != strcmp(options_data[parse_options_idx].path_pmixlibdir, "/usr/lib")) {
-            char *line;
-            pmix_asprintf(&line, PMIX_LIBDIR_FLAG "%s",
-                          options_data[parse_options_idx].path_pmixlibdir);
             pmix_argv_append_unique_nosize(&options_data[parse_options_idx].link_flags, line);
             free(line);
         }
