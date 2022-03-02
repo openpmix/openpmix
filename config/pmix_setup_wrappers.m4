@@ -266,7 +266,6 @@ AC_DEFUN([PMIX_SETUP_WRAPPER_FINAL],[
 
     # We now have all relevant flags.  Substitute them in everywhere.
    AC_MSG_CHECKING([for PMIX CPPFLAGS])
-   PMIX_WRAPPER_EXTRA_CPPFLAGS='-I${includedir}'
    PMIX_WRAPPER_EXTRA_CPPFLAGS="$PMIX_WRAPPER_EXTRA_CPPFLAGS $pmix_mca_wrapper_extra_cppflags $wrapper_extra_cppflags $with_wrapper_cppflags"
    PMIX_FLAGS_UNIQ(PMIX_WRAPPER_EXTRA_CPPFLAGS)
    AC_SUBST([PMIX_WRAPPER_EXTRA_CPPFLAGS])

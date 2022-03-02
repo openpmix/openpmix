@@ -9,4 +9,4 @@ Version: @PACKAGE_VERSION@
 URL: https://pmix.org/
 Libs: -L${libdir} -lpmix
 Libs.private: @PC_PRIVATE_LIBS@
-Cflags: -I${includedir} -I@pmixincludedir@
+Cflags: -I${includedir} -I@pmixincludedir@ @PMIX_WRAPPER_EXTRA_CPPFLAGS@
