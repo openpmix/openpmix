@@ -15,6 +15,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2022 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -138,6 +139,68 @@ BEGIN_C_DECLS
 /* Any kind of unique ID should do the job */
 #    define PMIX_OBJ_MAGIC_ID ((0xdeafbeedULL << 32) + 0xdeafbeedULL)
 #endif
+
+/*
+ * Macros for variadic object instantiation: w/wout custom memory allocator.
+ *
+ * NOTE(skg) There is probably a nicer way to implement this functionality. In
+ * particular, with further macro magic we can probably unify a lot of the
+ * common code here, but that is for another day.
+ */
+
+/**
+ * Takes in at least three arguments, eats all of them except the third.
+ * This allows us to do things like:
+ * PMIX_NEW_HAS_ARITY_HELPER(sally_t, TMA, NO_TMA, ERROR) --> NO_TMA
+ * PMIX_NEW_HAS_ARITY_HELPER(sally_t, a_tma, TMA, NO_TMA, ERROR) --> TMA
+ */
+#define PMIX_NEW_HAS_ARITY_HELPER(_1, _2, N, ...) N
+
+#define PMIX_NEW_HAS_ARITY_IMPL(...) \
+    PMIX_NEW_HAS_ARITY_HELPER(__VA_ARGS__)
+/*
+ * PMIX_CONSTRUCT() takes a maximum of three arguments:
+ * Two arguments means caller does not want a custom memory allocator.
+ * Three arguments means caller wants a custom (TMA) memory allocator.
+ *
+ * Please see PMIX_NEW_HAS_ARITY_HELPER's description above for more details
+ * about how this macro functions.
+ */
+#define PMIX_CONSTRUCT_HAS_ARITY_HELPER(_1, _2, _3, N, ...) N
+
+#define PMIX_CONSTRUCT_HAS_ARITY_IMPL(...) \
+    PMIX_CONSTRUCT_HAS_ARITY_HELPER(__VA_ARGS__)
+
+/*
+ * Macro suffix naming convention must be _TMA or _NO_TMA.
+ *
+ * These are the displacement mode lists used in the PMIX_NEW_HAS_ARITY_HELPER
+ * example above.
+ */
+#define PMIX_NEW_HAS_ARGS_SOURCE() TMA, NO_TMA, ERROR
+
+#define PMIX_CONSTRUCT_HAS_ARGS_SOURCE() TMA, NO_TMA, ERROR, ERROR
+
+#define PMIX_OBJ_HAS_ARGS(...) \
+    PMIX_NEW_HAS_ARITY_IMPL(__VA_ARGS__, PMIX_NEW_HAS_ARGS_SOURCE())
+
+#define PMIX_CONSTRUCT_HAS_ARGS(...) \
+    PMIX_CONSTRUCT_HAS_ARITY_IMPL(__VA_ARGS__, PMIX_CONSTRUCT_HAS_ARGS_SOURCE())
+/*
+ * These are used to generate the proper macro name and forward the relevant
+ * arguments depending on the number of arguments used.
+ */
+#define PMIX_NEW_DISAMBIGUATE2(has_args, ...) \
+    PMIX_NEW_ ## has_args (__VA_ARGS__)
+
+#define PMIX_NEW_DISAMBIGUATE(has_args, ...) \
+    PMIX_NEW_DISAMBIGUATE2(has_args, __VA_ARGS__)
+
+#define PMIX_CONSTRUCT_DISAMBIGUATE2(has_args, ...) \
+    PMIX_CONSTRUCT_ ## has_args (__VA_ARGS__)
+
+#define PMIX_CONSTRUCT_DISAMBIGUATE(has_args, ...) \
+    PMIX_CONSTRUCT_DISAMBIGUATE2(has_args, __VA_ARGS__)
 
 /* typedefs ***********************************************************/
 
@@ -325,18 +388,29 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
     object->cls_init_lineno = line;
     return object;
 }
-#    define PMIX_NEW_TMA(type, tma) \
-        ((type *) pmix_obj_new_debug_tma(PMIX_CLASS(type), tma, __FILE__, __LINE__))
 
-#    define PMIX_NEW(type) \
-        ((type *) pmix_obj_new_debug_tma(PMIX_CLASS(type), NULL, __FILE__, __LINE__))
+#define PMIX_NEW_NO_TMA(type) \
+    ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), NULL, __FILE__, __LINE__))
+
+#define PMIX_NEW_TMA(type, tma) \
+    ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), tma, __FILE__, __LINE__))
 
 #else
-#    define PMIX_NEW_TMA(type, tma) ((type *) pmix_obj_new_tma(PMIX_CLASS(type), tma))
+// TODO(skg) Implement, test without debug.
+#define PMIX_NEW_NO_TMA(type)   ((type *)pmix_obj_new_tma(PMIX_CLASS(type), NULL))
 
-#    define PMIX_NEW(type) ((type *) pmix_obj_new_tma(PMIX_CLASS(type), NULL))
+#define PMIX_NEW_TMA(type, tma) ((type *)pmix_obj_new_tma(PMIX_CLASS(type), tma))
 
 #endif /* PMIX_ENABLE_DEBUG */
+
+/**
+ * PMIX_NEW() takes a maximum of two arguments:
+ * One argument means caller does not want a custom memory allocator, namely the
+ * common case.
+ * Two arguments means caller wants a custom (TMA) memory allocator.
+ */
+#define PMIX_NEW(...) \
+    PMIX_NEW_DISAMBIGUATE(PMIX_OBJ_HAS_ARGS(__VA_ARGS__), __VA_ARGS__)
 
 /**
  * Retain an object (by incrementing its reference count)
@@ -433,11 +507,6 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
     }
 }
 
-#define PMIX_CONSTRUCT_TMA(object, type, t)                         \
-    do {                                                            \
-        PMIX_CONSTRUCT_INTERNAL_TMA((object), PMIX_CLASS(type), t); \
-    } while (0)
-
 #define PMIX_CONSTRUCT_INTERNAL_TMA(object, type, t)               \
     do {                                                           \
         PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);            \
@@ -451,10 +520,20 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
         PMIX_REMEMBER_FILE_AND_LINENO(object, __FILE__, __LINE__); \
     } while (0)
 
-#define PMIX_CONSTRUCT(object, type)            \
+
+#define PMIX_CONSTRUCT_TMA(object, type, t)                         \
+    do {                                                            \
+        PMIX_CONSTRUCT_INTERNAL_TMA((object), PMIX_CLASS(type), t); \
+    } while (0)
+
+
+#define PMIX_CONSTRUCT_NO_TMA(object, type)     \
     do {                                        \
         PMIX_CONSTRUCT_TMA(object, type, NULL); \
     } while (0)
+
+#define PMIX_CONSTRUCT(...) \
+    PMIX_CONSTRUCT_DISAMBIGUATE(PMIX_CONSTRUCT_HAS_ARGS(__VA_ARGS__), __VA_ARGS__)
 
 /**
  * Destruct (finalize) an object that is not dynamically allocated.
