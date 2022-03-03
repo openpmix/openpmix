@@ -256,7 +256,7 @@ void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *l_params, validati
 
 /* This function is used to validate values returned from calls to PMIx_Get against
    side channel validation data */
-void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value,
+void pmixt_validate_predefined(pmix_proc_t *myproc, const char *key, pmix_value_t *value,
                                const pmix_data_type_t expected_type, validation_params *v_params)
 {
     pmix_status_t rc = PMIX_ERROR;
