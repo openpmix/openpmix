@@ -239,7 +239,7 @@ void pmixt_post_init(pmix_proc_t *this_proc, test_params *params, validation_par
 void pmixt_post_finalize(pmix_proc_t *this_proc, test_params *params, validation_params *v_params);
 void pmixt_pre_init(int argc, char **argv, test_params *params, validation_params *v_params,
                     int (*parse_tst_ptr)(int *, int, char **, test_params *, validation_params *));
-void pmixt_validate_predefined(pmix_proc_t *myproc, const pmix_key_t key, pmix_value_t *value,
+void pmixt_validate_predefined(pmix_proc_t *myproc, const char *key, pmix_value_t *value,
                                const pmix_data_type_t expected_type, validation_params *val_params);
 
 char *pmixt_encode(const void *val, size_t vallen);
