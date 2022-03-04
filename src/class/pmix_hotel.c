@@ -4,7 +4,7 @@
  * Copyright (c) 2012      Los Alamos National Security, LLC. All rights reserved
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,21 +24,20 @@ static void local_eviction_callback(int fd, short flags, void *arg)
 {
     (void) fd;
     (void) flags;
-    pmix_hotel_room_eviction_callback_arg_t *eargs = (pmix_hotel_room_eviction_callback_arg_t *)
-        arg;
-    void *occupant = eargs->hotel->rooms[eargs->room_num].occupant;
+    pmix_hotel_room_eviction_callback_arg_t *eargs;
+    void *occupant;
 
-    /* Remove the occurpant from the room.
+    eargs = (pmix_hotel_room_eviction_callback_arg_t *) arg;
+    occupant = eargs->hotel->rooms[eargs->room_num].occupant;
 
-       Do not change this logic without also changing the same logic
-       in pmix_hotel_checkout() and
-       pmix_hotel_checkout_and_return_occupant(). */
+    /* Remove the occupant from the room.
+
+     Do not change this logic without also changing the same logic
+     in pmix_hotel_checkout() and
+     pmix_hotel_checkout_and_return_occupant(). */
     pmix_hotel_t *hotel = eargs->hotel;
     pmix_hotel_room_t *room = &(hotel->rooms[eargs->room_num]);
     room->occupant = NULL;
-    hotel->last_unoccupied_room++;
-    assert(hotel->last_unoccupied_room < hotel->num_rooms);
-    hotel->unoccupied_rooms[hotel->last_unoccupied_room] = eargs->room_num;
 
     /* Invoke the user callback to tell them that they were evicted */
     hotel->evict_callback_fn(hotel, eargs->room_num, occupant);

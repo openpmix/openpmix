@@ -188,21 +188,43 @@ PMIX_EXPORT pmix_status_t pmix_hotel_init(pmix_hotel_t *hotel, int num_rooms,
 static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel, void *occupant, int *room_num)
 {
     pmix_hotel_room_t *room;
+    int n;
 
     /* Do we have any rooms available? */
     if (PMIX_UNLIKELY(hotel->last_unoccupied_room < 0)) {
-        *room_num = -1;
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* Put this occupant into the first empty room that we have */
-    *room_num = hotel->unoccupied_rooms[hotel->last_unoccupied_room--];
+    /* Put this occupant into the next empty room */
+    *room_num = hotel->last_unoccupied_room;
     room = &(hotel->rooms[*room_num]);
     room->occupant = occupant;
-
     /* Assign the event and make it pending */
     if (NULL != hotel->evbase) {
         pmix_event_add(&(room->eviction_timer_event), &(hotel->eviction_timeout));
+    }
+
+    /* find the next unoccupied room */
+    n = hotel->last_unoccupied_room;
+    room = &(hotel->rooms[n]);
+    while (NULL != room->occupant && 0 != n) {
+        --n;
+        room = &(hotel->rooms[n]);
+    }
+    /* if we didn't find one, start over again at the top */
+    if (NULL != room->occupant) {
+        n = hotel->num_rooms - 1;
+        room = &(hotel->rooms[n]);
+        while (NULL != room->occupant && hotel->last_unoccupied_room != n) {
+            --n;
+            room = &(hotel->rooms[n]);
+        }
+    }
+    /* if we couldn't find one, then mark this hotel as full */
+    if (NULL != room->occupant) {
+        hotel->last_unoccupied_room = -1;
+    } else {
+        hotel->last_unoccupied_room = n;
     }
 
     return PMIX_SUCCESS;
@@ -261,24 +283,17 @@ static inline void pmix_hotel_checkout(pmix_hotel_t *hotel, int room_num)
 
     /* Bozo check */
     assert(room_num < hotel->num_rooms);
-    if (0 > room_num) {
-        /* occupant wasn't checked in */
-        return;
-    }
 
     /* If there's an occupant in the room, check them out */
     room = &(hotel->rooms[room_num]);
     if (PMIX_LIKELY(NULL != room->occupant)) {
         /* Do not change this logic without also changing the same
-           logic in pmix_hotel_checkout_and_return_occupant() and
-           pmix_hotel.c:local_eviction_callback(). */
+         logic in pmix_hotel_checkout_and_return_occupant() and
+         pmix_hotel.c:local_eviction_callback(). */
         room->occupant = NULL;
         if (NULL != hotel->evbase) {
             pmix_event_del(&(room->eviction_timer_event));
         }
-        hotel->last_unoccupied_room++;
-        assert(hotel->last_unoccupied_room < hotel->num_rooms);
-        hotel->unoccupied_rooms[hotel->last_unoccupied_room] = room_num;
     }
 
     /* Don't bother returning whether we actually checked someone out
@@ -304,27 +319,18 @@ static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, 
 
     /* Bozo check */
     assert(room_num < hotel->num_rooms);
-    if (0 > room_num) {
-        /* occupant wasn't checked in */
-        *occupant = NULL;
-        return;
-    }
 
     /* If there's an occupant in the room, check them out */
     room = &(hotel->rooms[room_num]);
     if (PMIX_LIKELY(NULL != room->occupant)) {
-        pmix_output(10, "checking out occupant %p from room num %d", room->occupant, room_num);
         /* Do not change this logic without also changing the same
-           logic in pmix_hotel_checkout() and
-           pmix_hotel.c:local_eviction_callback(). */
+         logic in pmix_hotel_checkout() and
+         pmix_hotel.c:local_eviction_callback(). */
         *occupant = room->occupant;
         room->occupant = NULL;
         if (NULL != hotel->evbase) {
             pmix_event_del(&(room->eviction_timer_event));
         }
-        hotel->last_unoccupied_room++;
-        assert(hotel->last_unoccupied_room < hotel->num_rooms);
-        hotel->unoccupied_rooms[hotel->last_unoccupied_room] = room_num;
     } else {
         *occupant = NULL;
     }
@@ -338,10 +344,16 @@ static inline void pmix_hotel_checkout_and_return_occupant(pmix_hotel_t *hotel, 
  */
 static inline bool pmix_hotel_is_empty(pmix_hotel_t *hotel)
 {
-    if (hotel->last_unoccupied_room == hotel->num_rooms - 1)
-        return true;
-    else
-        return false;
+    pmix_hotel_room_t *room;
+    int n;
+
+    for (n=0; n < hotel->num_rooms; n++) {
+        room = &(hotel->rooms[n]);
+        if (NULL != room->occupant) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /**
