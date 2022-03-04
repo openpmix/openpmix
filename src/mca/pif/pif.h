@@ -71,23 +71,6 @@ BEGIN_C_DECLS
 #define DEFAULT_NUMBER_INTERFACES 10
 #define MAX_PIFCONF_SIZE          10 * 1024 * 1024
 
-typedef struct pmix_pif_t {
-    pmix_list_item_t super;
-    char if_name[PMIX_IF_NAMESIZE + 1];
-    int if_index;
-    uint16_t if_kernel_index;
-    uint16_t af_family;
-    int if_flags;
-    int if_speed;
-    struct sockaddr_storage if_addr;
-    uint32_t if_mask;
-    uint32_t if_bandwidth;
-    uint8_t if_mac[6];
-    int ifmtu; /* Can't use if_mtu because of a
-                  #define collision on some BSDs */
-} pmix_pif_t;
-PMIX_CLASS_DECLARATION(pmix_pif_t);
-
 /* "global" list of available interfaces */
 extern pmix_list_t pmix_if_list;
 
