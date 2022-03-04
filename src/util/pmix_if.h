@@ -40,6 +40,7 @@
 #endif
 
 #include "pmix_common.h"
+#include "src/class/pmix_list.h"
 
 #define PMIX_IF_NAMESIZE 256
 
@@ -52,6 +53,31 @@ BEGIN_C_DECLS
 #define PMIX_PIF_ASSEMBLE_FABRIC(n1, n2, n3, n4)                                           \
     (((n1) << 24) & 0xFF000000) | (((n2) << 16) & 0x00FF0000) | (((n3) << 8) & 0x0000FF00) \
         | ((n4) &0x000000FF)
+
+typedef struct pmix_pif_t {
+    pmix_list_item_t super;
+    char if_name[PMIX_IF_NAMESIZE + 1];
+    int if_index;
+    uint16_t if_kernel_index;
+    uint16_t af_family;
+    int if_flags;
+    int if_speed;
+    struct sockaddr_storage if_addr;
+    uint32_t if_mask;
+    uint32_t if_bandwidth;
+    uint8_t if_mac[6];
+    int ifmtu; /* Can't use if_mtu because of a
+                #define collision on some BSDs */
+} pmix_pif_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pif_t);
+
+
+/* "global" list of available interfaces */
+PMIX_EXPORT extern pmix_list_t pmix_if_list;
+
+/* global flags */
+PMIX_EXPORT extern bool pmix_if_do_not_resolve;
+PMIX_EXPORT extern bool pmix_if_retain_loopback;
 
 /**
  *  Lookup an interface by name and return its primary address.
