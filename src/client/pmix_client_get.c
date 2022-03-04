@@ -455,7 +455,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 
     pmix_output_verbose(2, pmix_client_globals.get_output, "pmix: get_nb callback recvd");
 
-    if (NULL == cb) {
+    if (NULL == cb || NULL == cb->lg) {
         /* nothing we can do */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return;
