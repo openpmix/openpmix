@@ -275,6 +275,31 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
     return false;
 }
 
+bool pmix_net_addr_isipv6linklocal(const struct sockaddr *addr)
+{
+#    if PMIX_ENABLE_IPV6
+    struct sockaddr_in6 if_addr;
+#    endif
+
+    switch (addr->sa_family) {
+#    if PMIX_ENABLE_IPV6
+    case AF_INET6:
+        if_addr.sin6_family = AF_INET6;
+        if (1 != inet_pton(AF_INET6, "fe80::0000", &if_addr.sin6_addr)) {
+            return false;
+        }
+        return pmix_net_samenetwork((const struct sockaddr_storage *) addr, (const struct sockaddr_storage *) &if_addr, 64);
+#    endif
+    case AF_INET:
+        return false;
+    default:
+        pmix_output(0, "unhandled sa_family %d passed to pmix_net_addr_isipv6linklocal\n",
+                    addr->sa_family);
+    }
+
+    return false;
+}
+
 /**
  * Returns true if the given address is a public IPv4 address.
  */
@@ -397,6 +422,11 @@ bool pmix_net_islocalhost(const struct sockaddr *addr)
 
 bool pmix_net_samenetwork(const struct sockaddr *addr1, const struct sockaddr *addr2,
                           uint32_t prefixlen)
+{
+    return false;
+}
+
+bool bool pmix_net_addr_isipv6linklocal(const struct sockaddr *addr)
 {
     return false;
 }

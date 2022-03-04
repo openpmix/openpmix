@@ -103,6 +103,15 @@ PMIX_EXPORT bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
                                       uint32_t prefixlen);
 
 /**
+ * Is the given address a link-local IPv6 address?  Returns false for IPv4
+ * address.
+ *
+ * @param addr      address as struct sockaddr
+ * @return          true, if \c addr is IPv6 link-local, false otherwise
+ */
+PMIX_EXPORT bool pmix_net_addr_isipv6linklocal(const struct sockaddr *addr);
+
+/**
  * Is the given address a public IPv4 address?  Returns false for IPv6
  * address.
  *
