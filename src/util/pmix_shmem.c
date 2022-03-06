@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2021-2022 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -10,6 +11,7 @@
 #include "src/include/pmix_config.h"
 #include "src/util/pmix_shmem.h"
 
+#include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_string_copy.h"
 
@@ -100,3 +102,19 @@ pmix_shmem_segment_unlink(
     }
     return PMIX_SUCCESS;
 }
+
+static void tkcon(pmix_vm_tracker_t *p)
+{
+    p->hole_kind = VM_HOLE_BIGGEST;
+    p->size = 0;
+    p->address = 0;
+    p->fd = -1;
+}
+static void tkdes(pmix_vm_tracker_t *p)
+{
+    PMIX_HIDE_UNUSED_PARAMS(p);
+    // release the hole
+}
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_vm_tracker_t,
+                                pmix_object_t,
+                                tkcon, tkdes);

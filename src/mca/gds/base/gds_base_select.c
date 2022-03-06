@@ -130,7 +130,7 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
         pmix_output(0, "Final gds priorities");
         /* show the prioritized list */
         PMIX_LIST_FOREACH (mod, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
-            pmix_output(0, "\tgds: %s Priority: %d", mod->component->base.pmix_mca_component_name,
+            pmix_output(0, "\tgds: %s Priority: %d", mod->component->pmix_mca_component_name,
                         mod->pri);
         }
     }

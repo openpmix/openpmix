@@ -410,11 +410,7 @@ typedef struct {
  * done directly to/from an assigned module */
 
 /* define the component structure */
-struct pmix_gds_base_component_t {
-    pmix_mca_base_component_t base;
-    int priority;
-};
-typedef struct pmix_gds_base_component_t pmix_gds_base_component_t;
+typedef pmix_mca_base_component_t pmix_gds_base_component_t;
 
 /*
  * Macro for use in components that are of type gds
