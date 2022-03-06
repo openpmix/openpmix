@@ -43,23 +43,20 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  */
 pmix_gds_hash_component_t pmix_mca_gds_hash_component = {
     .super = {
-        .base = {
-            PMIX_GDS_BASE_VERSION_1_0_0,
+        PMIX_GDS_BASE_VERSION_1_0_0,
 
-            /* Component name and version */
-            .pmix_mca_component_name = "hash",
-            PMIX_MCA_BASE_MAKE_VERSION(component,
-                                       PMIX_MAJOR_VERSION,
-                                       PMIX_MINOR_VERSION,
-                                       PMIX_RELEASE_VERSION),
+        /* Component name and version */
+        .pmix_mca_component_name = "hash",
+        PMIX_MCA_BASE_MAKE_VERSION(component,
+                                   PMIX_MAJOR_VERSION,
+                                   PMIX_MINOR_VERSION,
+                                   PMIX_RELEASE_VERSION),
 
-            /* Component open and close functions */
-            .pmix_mca_open_component = component_open,
-            .pmix_mca_close_component = component_close,
-            .pmix_mca_query_component = component_query,
-            .reserved = {0}
-        },
-        .priority = 10
+        /* Component open and close functions */
+        .pmix_mca_open_component = component_open,
+        .pmix_mca_close_component = component_close,
+        .pmix_mca_query_component = component_query,
+        .reserved = {0}
     },
     .mysessions = PMIX_LIST_STATIC_INIT,
     .myjobs = PMIX_LIST_STATIC_INIT
