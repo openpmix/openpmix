@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2019      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2019-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
@@ -142,6 +142,7 @@ int main(int argc, char **argv)
     }
     PMIX_ARGV_FREE(peers);
 
+    snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s",  myproc.nspace);
     /* get the committed data - ask for someone who doesn't exist as well */
     for (n = 0; n < nprocs; n++) {
         if (all_local) {
@@ -150,15 +151,15 @@ int main(int argc, char **argv)
             local = false;
             /* see if this proc is local to us */
             for (k = 0; k < nlocal; k++) {
-                if (proc.rank == locals[k]) {
+                if (n == locals[k]) {
                     local = true;
                     break;
                 }
             }
         }
+        proc.rank = n;
         if (local) {
-            (void)snprintf(tmp, 1024, "%s-%d-local", myproc.nspace, n);
-            proc.rank = n;
+            (void)snprintf(tmp, 1024, "%s-%d-local", proc.nspace, n);
             if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace, n,
                         tmp, rc);
@@ -227,16 +228,16 @@ int main(int argc, char **argv)
         }
     }
 
+done:
+    /* finalize us */
+
     /* call fence so everyone waits before leaving */
-    proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(NULL, 0, NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
                 rc);
         goto done;
     }
 
-done:
-    /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
