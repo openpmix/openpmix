@@ -105,7 +105,7 @@ pmix_shmem_segment_unlink(
 
 static void tkcon(pmix_vm_tracker_t *p)
 {
-    p->hole_kind = VM_HOLE_BIGGEST;
+    p->hole_kind = VMEM_HOLE_BIGGEST;
     p->size = 0;
     p->address = 0;
     p->fd = -1;

@@ -14,6 +14,7 @@
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,54 +31,31 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 
+#include "gds_shmem.h"
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
-#include "src/mca/gds/gds.h"
-#include "gds_shmem.h"
-
-static pmix_status_t component_open(void);
-static pmix_status_t component_close(void);
-static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
-
-/*
- * Instantiate the public struct with all of our public information
- * and pointers to our public functions in it
- */
-pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
-    .base = {
-        PMIX_GDS_BASE_VERSION_1_0_0,
-
-        /* Component name and version */
-        .pmix_mca_component_name = "shmem",
-        PMIX_MCA_BASE_MAKE_VERSION(component,
-                                   PMIX_MAJOR_VERSION,
-                                   PMIX_MINOR_VERSION,
-                                   PMIX_RELEASE_VERSION),
-
-        /* Component open and close functions */
-        .pmix_mca_open_component = component_open,
-        .pmix_mca_close_component = component_close,
-        .pmix_mca_query_component = component_query,
-    },
-    .assignments = PMIX_POINTER_ARRAY_STATIC_INIT
-};
-
-
-static int component_open(void)
+static int
+component_open(void)
 {
     return PMIX_SUCCESS;
 }
 
-static int component_query(pmix_mca_base_module_t **module, int *priority)
-{
-    /* see if the required system file is present */
+static int
+component_query(
+    pmix_mca_base_module_t **module,
+    int *priority
+) {
+    /* See if the required system file is present.
+     * See pmix_vmem_find_hole() for more information. */
     if (access("/proc/self/maps", F_OK) == -1) {
         *priority = 0;
         *module = NULL;
         return PMIX_ERROR;
-    } else {
+    }
+    else {
         *priority = 0;
         *module = NULL;
         return PMIX_ERROR;
@@ -88,8 +66,33 @@ static int component_query(pmix_mca_base_module_t **module, int *priority)
     return PMIX_SUCCESS;
 }
 
-
-static int component_close(void)
+static int
+component_close(void)
 {
     return PMIX_SUCCESS;
 }
+
+/*
+ * Instantiate the public struct with all of our public information
+ * and pointers to our public functions in it
+ */
+pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
+    .base = {
+        PMIX_GDS_BASE_VERSION_1_0_0,
+        /* Component name and version */
+        .pmix_mca_component_name = PMIX_GDS_SHMEM_NAME,
+        PMIX_MCA_BASE_MAKE_VERSION(component,
+                                   PMIX_MAJOR_VERSION,
+                                   PMIX_MINOR_VERSION,
+                                   PMIX_RELEASE_VERSION),
+        /* Component open and close functions */
+        .pmix_mca_open_component = component_open,
+        .pmix_mca_close_component = component_close,
+        .pmix_mca_query_component = component_query,
+    },
+    .assignments = PMIX_POINTER_ARRAY_STATIC_INIT
+};
+
+/*
+ * vim: ft=cpp ts=4 sts=4 sw=4 expandtab
+ */

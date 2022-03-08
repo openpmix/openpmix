@@ -5,8 +5,8 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- *
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,6 +55,7 @@
 #include "src/util/pmix_path.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
+#include "src/util/pmix_vmem.h"
 
 #include "pmix_common.h"
 
@@ -66,7 +67,7 @@
 static bool topo_in_shmem = false;
 static bool passed_thru = false;
 static char *vmhole = "biggest";
-static pmix_hwloc_vm_hole_kind_t hole_kind = VM_HOLE_BIGGEST;
+static pmix_vmem_hole_kind_t hole_kind = VMEM_HOLE_BIGGEST;
 static char *topo_file = NULL;
 static char *testcpuset = NULL;
 static int pmix_hwloc_output = -1;
@@ -81,10 +82,7 @@ static bool space_available = false;
 static uint64_t amount_space_avail = 0;
 
 static int parse_map_line(const char *line, unsigned long *beginp, unsigned long *endp,
-                          pmix_hwloc_vm_map_kind_t *kindp);
-static int use_hole(unsigned long holebegin, unsigned long holesize, unsigned long *addrp,
-                    unsigned long size);
-static int find_hole(pmix_hwloc_vm_hole_kind_t hkind, size_t *addrp, size_t size);
+                          pmix_vmem_map_kind_t *kindp);
 static int enough_space(const char *filename, size_t space_req, uint64_t *space_avail,
                         bool *result);
 #endif
@@ -115,17 +113,17 @@ pmix_status_t pmix_hwloc_register(void)
                                       "Kind of VM hole to identify - none, begin, biggest, libs, heap, stack (default=biggest)",
                                       PMIX_MCA_BASE_VAR_TYPE_STRING, &vmhole);
     if (0 == strcasecmp(vmhole, "none")) {
-        hole_kind = VM_HOLE_NONE;
+        hole_kind = VMEM_HOLE_NONE;
     } else if (0 == strcasecmp(vmhole, "begin")) {
-        hole_kind = VM_HOLE_BEGIN;
+        hole_kind = VMEM_HOLE_BEGIN;
     } else if (0 == strcasecmp(vmhole, "biggest")) {
-        hole_kind = VM_HOLE_BIGGEST;
+        hole_kind = VMEM_HOLE_BIGGEST;
     } else if (0 == strcasecmp(vmhole, "libs")) {
-        hole_kind = VM_HOLE_IN_LIBS;
+        hole_kind = VMEM_HOLE_IN_LIBS;
     } else if (0 == strcasecmp(vmhole, "heap")) {
-        hole_kind = VM_HOLE_AFTER_HEAP;
+        hole_kind = VMEM_HOLE_AFTER_HEAP;
     } else if (0 == strcasecmp(vmhole, "stack")) {
-        hole_kind = VM_HOLE_BEFORE_STACK;
+        hole_kind = VMEM_HOLE_BEFORE_STACK;
     } else {
         pmix_output(0, "INVALID VM HOLE TYPE");
         return PMIX_ERROR;
@@ -521,7 +519,7 @@ sharetopo:
     }
 
     /* if they specified no shared memory, then we are done */
-    if (VM_HOLE_NONE == hole_kind) {
+    if (VMEM_HOLE_NONE == hole_kind) {
         pmix_output_verbose(2, pmix_hwloc_output,
                             "%s:%s no shmem requested", __FILE__, __func__);
         return PMIX_SUCCESS;
@@ -536,7 +534,7 @@ sharetopo:
     }
 
     /* try and find a hole */
-    if (PMIX_SUCCESS != find_hole(hole_kind, &shmemaddr, shmemsize)) {
+    if (PMIX_SUCCESS != pmix_vmem_find_hole(hole_kind, &shmemaddr, shmemsize)) {
         /* we couldn't find a hole, so don't use the shmem support */
         if (4 < pmix_output_get_verbosity(pmix_hwloc_output)) {
             print_maps();
@@ -1538,193 +1536,6 @@ static int get_locality_string_by_depth(int d, hwloc_cpuset_t cpuset, hwloc_cpus
 }
 
 #if HWLOC_API_VERSION >= 0x20000
-
-static int parse_map_line(const char *line, unsigned long *beginp, unsigned long *endp,
-                          pmix_hwloc_vm_map_kind_t *kindp)
-{
-    const char *tmp = line, *next;
-    unsigned long value;
-
-    /* "beginaddr-endaddr " */
-    value = strtoull(tmp, (char **) &next, 16);
-    if (next == tmp) {
-        return PMIX_ERROR;
-    }
-
-    *beginp = (unsigned long) value;
-
-    if (*next != '-') {
-        return PMIX_ERROR;
-    }
-
-    tmp = next + 1;
-
-    value = strtoull(tmp, (char **) &next, 16);
-    if (next == tmp) {
-        return PMIX_ERROR;
-    }
-    *endp = (unsigned long) value;
-    tmp = next;
-
-    if (*next != ' ') {
-        return PMIX_ERROR;
-    }
-    tmp = next + 1;
-
-    /* look for ending absolute path */
-    next = strchr(tmp, '/');
-    if (next) {
-        *kindp = VM_MAP_FILE;
-    } else {
-        /* look for ending special tag [foo] */
-        next = strchr(tmp, '[');
-        if (next) {
-            if (!strncmp(next, "[heap]", 6)) {
-                *kindp = VM_MAP_HEAP;
-            } else if (!strncmp(next, "[stack]", 7)) {
-                *kindp = VM_MAP_STACK;
-            } else {
-                char *end;
-                if ((end = strchr(next, '\n')) != NULL) {
-                    *end = '\0';
-                }
-                *kindp = VM_MAP_OTHER;
-            }
-        } else {
-            *kindp = VM_MAP_ANONYMOUS;
-        }
-    }
-
-    return PMIX_SUCCESS;
-}
-
-#    define ALIGN2MB  (2 * 1024 * 1024UL)
-#    define ALIGN64MB (64 * 1024 * 1024UL)
-
-static int use_hole(unsigned long holebegin, unsigned long holesize, unsigned long *addrp,
-                    unsigned long size)
-{
-    unsigned long aligned;
-    unsigned long middle = holebegin + holesize / 2;
-
-    if (holesize < size) {
-        return PMIX_ERROR;
-    }
-
-    /* try to align the middle of the hole on 64MB for POWER's 64k-page PMD */
-    aligned = (middle + ALIGN64MB) & ~(ALIGN64MB - 1);
-    if (aligned + size <= holebegin + holesize) {
-        *addrp = aligned;
-        return PMIX_SUCCESS;
-    }
-
-    /* try to align the middle of the hole on 2MB for x86 PMD */
-    aligned = (middle + ALIGN2MB) & ~(ALIGN2MB - 1);
-    if (aligned + size <= holebegin + holesize) {
-        *addrp = aligned;
-        return PMIX_SUCCESS;
-    }
-
-    /* just use the end of the hole */
-    *addrp = holebegin + holesize - size;
-    return PMIX_SUCCESS;
-}
-
-static int find_hole(pmix_hwloc_vm_hole_kind_t hkind, size_t *addrp, size_t size)
-{
-    unsigned long biggestbegin = 0;
-    unsigned long biggestsize = 0;
-    unsigned long prevend = 0;
-    pmix_hwloc_vm_map_kind_t prevmkind = VM_MAP_OTHER;
-    int in_libs = 0;
-    FILE *file;
-    char line[96];
-
-    file = fopen("/proc/self/maps", "r");
-    if (!file) {
-        return PMIX_ERROR;
-    }
-
-    while (fgets(line, sizeof(line), file) != NULL) {
-        unsigned long begin = 0, end = 0;
-        pmix_hwloc_vm_map_kind_t mkind = VM_MAP_OTHER;
-
-        if (!parse_map_line(line, &begin, &end, &mkind)) {
-            switch (hkind) {
-                case VM_HOLE_BEGIN:
-                    fclose(file);
-                    return use_hole(0, begin, addrp, size);
-
-                case VM_HOLE_AFTER_HEAP:
-                    if (prevmkind == VM_MAP_HEAP && mkind != VM_MAP_HEAP) {
-                        /* only use HEAP when there's no other HEAP after it
-                         * (there can be several of them consecutively).
-                         */
-                        fclose(file);
-                        return use_hole(prevend, begin - prevend, addrp, size);
-                    }
-                    break;
-
-                case VM_HOLE_BEFORE_STACK:
-                    if (mkind == VM_MAP_STACK) {
-                        fclose(file);
-                        return use_hole(prevend, begin - prevend, addrp, size);
-                    }
-                    break;
-
-                case VM_HOLE_IN_LIBS:
-                    /* see if we are between heap and stack */
-                    if (prevmkind == VM_MAP_HEAP) {
-                        in_libs = 1;
-                    }
-                    if (mkind == VM_MAP_STACK) {
-                        in_libs = 0;
-                    }
-                    if (!in_libs) {
-                        /* we're not in libs, ignore this entry */
-                        break;
-                    }
-                    /* we're in libs, consider this entry for searching the biggest hole below */
-                    /* fallthrough */
-
-                case VM_HOLE_BIGGEST:
-                    if (begin - prevend > biggestsize) {
-                        biggestbegin = prevend;
-                        biggestsize = begin - prevend;
-                    }
-                    break;
-
-                default:
-                    assert(0);
-            }
-        }
-
-        while (!strchr(line, '\n')) {
-            if (!fgets(line, sizeof(line), file)) {
-                goto done;
-            }
-        }
-
-        if (mkind == VM_MAP_STACK) {
-            /* Don't go beyond the stack. Other VMAs are special (vsyscall, vvar, vdso, etc),
-             * There's no spare room there. And vsyscall is even above the userspace limit.
-             */
-            break;
-        }
-
-        prevend = end;
-        prevmkind = mkind;
-    }
-
-done:
-    fclose(file);
-    if (hkind == VM_HOLE_IN_LIBS || hkind == VM_HOLE_BIGGEST) {
-        return use_hole(biggestbegin, biggestsize, addrp, size);
-    }
-
-    return PMIX_ERROR;
-}
-
 static int enough_space(const char *filename, size_t space_req, uint64_t *space_avail, bool *result)
 {
     uint64_t avail = 0;
