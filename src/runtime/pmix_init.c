@@ -102,7 +102,7 @@ static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_n
 
 static bool util_initialized = false;
 
-int pmix_init_util(pmix_info_t info[], size_t ninfo)
+int pmix_init_util(pmix_info_t info[], size_t ninfo, char *helpdir)
 {
     pmix_status_t ret;
 
@@ -135,7 +135,7 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo)
     }
 
     /* initialize the help system */
-    pmix_show_help_init();
+    pmix_show_help_init(helpdir);
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (ret = pmix_util_keyval_parse_init())) {
@@ -208,7 +208,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
 
     pmix_init_called = true;
 
-    if (PMIX_SUCCESS != pmix_init_util(info, ninfo)) {
+    if (PMIX_SUCCESS != pmix_init_util(info, ninfo, NULL)) {
         return PMIX_ERROR;
     }
 

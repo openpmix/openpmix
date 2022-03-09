@@ -103,7 +103,7 @@ BEGIN_C_DECLS
  *
  * Initialization of show_help subsystem
  */
-PMIX_EXPORT int pmix_show_help_init(void);
+PMIX_EXPORT int pmix_show_help_init(char *helpdir);
 
 /**
  * \internal
