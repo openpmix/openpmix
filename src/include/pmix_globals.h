@@ -43,6 +43,7 @@
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
+#include "src/runtime/pmix_init_util.h"
 #include "src/threads/pmix_threads.h"
 
 #include "src/mca/bfrops/bfrops.h"
@@ -621,7 +622,6 @@ PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
 PMIX_EXPORT extern const char* PMIX_PROXY_VERSION;
 PMIX_EXPORT extern const char* PMIX_PROXY_BUGREPORT;
-PMIX_EXPORT extern const char* pmix_tool_basename;
 
 static inline bool pmix_check_node_info(const char *key)
 {

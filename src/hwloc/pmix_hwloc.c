@@ -81,8 +81,6 @@ static int shmemfd = -1;
 static bool space_available = false;
 static uint64_t amount_space_avail = 0;
 
-static int parse_map_line(const char *line, unsigned long *beginp, unsigned long *endp,
-                          pmix_vmem_map_kind_t *kindp);
 static int enough_space(const char *filename, size_t space_req, uint64_t *space_avail,
                         bool *result);
 #endif

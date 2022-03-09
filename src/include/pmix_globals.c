@@ -57,7 +57,6 @@
 
 const char* PMIX_PROXY_VERSION = PMIX_PROXY_VERSION_STRING;
 const char* PMIX_PROXY_BUGREPORT = PMIX_PROXY_BUGREPORT_STRING;
-const char* pmix_tool_basename = NULL;
 
 static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd,
                             pmix_epilog_t *epi);
