@@ -30,6 +30,8 @@
 
 BEGIN_C_DECLS
 
+PMIX_EXPORT extern const char* pmix_tool_basename;
+
 PMIX_EXPORT int pmix_init_util(pmix_info_t info[], size_t ninfo, char *helpdir);
 
 END_C_DECLS
