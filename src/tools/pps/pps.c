@@ -243,7 +243,7 @@ int main(int argc, char *argv[])
     }
 
     /* initialize the help system */
-    pmix_show_help_init();
+    pmix_show_help_init(NULL);
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (rc = pmix_util_keyval_parse_init())) {

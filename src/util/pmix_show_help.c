@@ -49,7 +49,7 @@ static char **search_dirs = NULL;
 /*
  * Local functions
  */
-int pmix_show_help_init(void)
+int pmix_show_help_init(char *helpdir)
 {
     pmix_output_stream_t lds;
 
@@ -58,6 +58,9 @@ int pmix_show_help_init(void)
     output_stream = pmix_output_open(&lds);
 
     pmix_argv_append_nosize(&search_dirs, pmix_pinstall_dirs.pmixdatadir);
+    if(NULL != helpdir) {
+        pmix_argv_append_nosize(&search_dirs, helpdir);
+    }
 
     return PMIX_SUCCESS;
 }
