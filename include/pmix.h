@@ -1135,6 +1135,11 @@ PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring);
 PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state);
 PMIX_EXPORT const char* PMIx_Device_type_string(pmix_device_type_t type);
 
+/* the following print statements return ALLOCATED strings
+ * that the user must release when done */
+PMIX_EXPORT char* PMIx_Info_string(pmix_info_t *info);
+PMIX_EXPORT char* PMIx_Value_string(pmix_value_t *value);
+
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */
 PMIX_EXPORT const char* PMIx_Get_version(void);

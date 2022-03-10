@@ -86,6 +86,11 @@ examples/tool
 examples/group
 examples/asyncgroup
 examples/hello
+examples/bad_exit
+examples/daemon_error_notify
+examples/launcher
+examples/log
+examples/showkeys
 
 include/pmix_version.h
 include/pmix_rename.h
