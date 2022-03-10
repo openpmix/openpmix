@@ -2691,7 +2691,8 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf, pmix_info
     pmix_list_t results;
     pmix_kval_t *kv, *kvnxt;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "recvd query from client");
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "recvd query from client");
 
     cd = PMIX_NEW(pmix_query_caddy_t);
     if (NULL == cd) {
@@ -2757,9 +2758,8 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf, pmix_info
             } else if (PMIX_CHECK_KEY(&cd->queries[n].qualifiers[p], PMIX_RANK)) {
                 proc.rank = cd->queries[n].qualifiers[p].value.data.rank;
             } else if (PMIX_CHECK_KEY(&cd->queries[n].qualifiers[p], PMIX_HOSTNAME)) {
-                if (0
-                    != strcmp(cd->queries[n].qualifiers[p].value.data.string,
-                              pmix_globals.hostname)) {
+                if (0 != strcmp(cd->queries[n].qualifiers[p].value.data.string,
+                                 pmix_globals.hostname)) {
                     /* asking about a different host, so ask for the info */
                     PMIX_LIST_DESTRUCT(&results);
                     goto query;
@@ -2839,8 +2839,8 @@ query:
     PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
 
     /* ask the host for the info */
-    if (PMIX_SUCCESS
-        != (rc = pmix_host_server.query(&proc, cd->queries, cd->nqueries, cbfunc, cd))) {
+    rc = pmix_host_server.query(&proc, cd->queries, cd->nqueries, cbfunc, cd);
+    if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cd);
     }
     return rc;
