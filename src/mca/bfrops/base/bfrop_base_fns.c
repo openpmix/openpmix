@@ -81,7 +81,9 @@ PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
     return PMIx_Value_xfer(&dest->value, &src->value);
 }
 
-void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data, pmix_data_type_t type)
+void pmix_bfrops_base_value_load(pmix_value_t *v,
+                                 const void *data,
+                                 pmix_data_type_t type)
 {
     pmix_byte_object_t *bo;
     pmix_proc_info_t *pi;
