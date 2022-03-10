@@ -102,19 +102,3 @@ pmix_shmem_segment_unlink(
     }
     return PMIX_SUCCESS;
 }
-
-static void tkcon(pmix_vm_tracker_t *p)
-{
-    p->hole_kind = VMEM_HOLE_BIGGEST;
-    p->size = 0;
-    p->address = 0;
-    p->fd = -1;
-}
-static void tkdes(pmix_vm_tracker_t *p)
-{
-    PMIX_HIDE_UNUSED_PARAMS(p);
-    // release the hole
-}
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_vm_tracker_t,
-                                pmix_object_t,
-                                tkcon, tkdes);

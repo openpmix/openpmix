@@ -15,26 +15,21 @@
  */
 
 #include "src/include/pmix_config.h"
-
 #include "include/pmix_common.h"
+
+#include "src/mca/gds/base/base.h"
+#include "gds_shmem.h"
 
 #include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/mca/pcompress/base/base.h"
-#include "src/mca/pmdl/pmdl.h"
-#include "src/mca/preg/preg.h"
-#include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_shmem.h"
-
-#include "src/mca/gds/base/base.h"
-#include "gds_shmem.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -55,41 +50,102 @@
 #include <time.h>
 #endif
 
+#define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
+do {                                                                           \
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
+                        "gds:" PMIX_GDS_SHMEM_NAME                             \
+                        ":%s at line %d", __func__, __LINE__);                 \
+} while (0)
+
+#define PMIX_GDS_SHMEM_VOUT(...)                                               \
+do {                                                                           \
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
+                        "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
+} while (0)
+
+#define PMIX_GDS_SHMEM_MALLOC_ALIGN(p, s)                                      \
+    (uint8_t *)(p) + (((s) + 8UL - 1) & ~(8UL - 1))
+/*
+ * TODO(skg) Think about reallocs. Pointer arrays may change size.
+ * TODO(skg) We don't know how big this will thing will be.
+ * * Can do a two-step process; in memory; get size; copy into sm.
+ * * On the client side need to write locally. Server as well.
+ * * Try to avoid thread locks, too expensive at scale.
+ * * Work on getting data stored. Cache will go into hash. Use register job
+ *   info.
+ */
+
+static void *
+tma_shmem_malloc(
+    pmix_tma_t *tma,
+    size_t length
+) {
+    void *current = tma->data;
+    tma->data = PMIX_GDS_SHMEM_MALLOC_ALIGN(tma->data, length);
+    return current;
+}
+
+static void
+tracker_construct(
+    pmix_shmem_vmem_tracker_t *t
+) {
+    /* Zero-out our structures. */
+    memset(&t->tma, 0, sizeof(t->tma));
+    memset(&t->shmem, 0, sizeof(t->shmem));
+    /* Setup the memory allocator. */
+    t->tma.dontfree = 1;
+    t->tma.malloc = tma_shmem_malloc;
+    /* Setup for shmem will be done during use. */
+}
+
+static void
+tracker_destruct(
+    pmix_shmem_vmem_tracker_t *t
+) {
+    (void)pmix_shmem_segment_detach(&t->shmem);
+    (void)pmix_shmem_segment_unlink(&t->shmem);
+    // TODO(skg) release the hole.
+}
+
+PMIX_EXPORT PMIX_CLASS_INSTANCE(
+    pmix_shmem_vmem_tracker_t,
+    pmix_object_t,
+    tracker_construct,
+    tracker_destruct
+);
+
 static pmix_status_t
 init(
     pmix_info_t info[],
     size_t ninfo
 ) {
     PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
-
-    pmix_output_verbose(
-        2, pmix_gds_base_framework.framework_output,
-        "gds: %s init", PMIX_GDS_SHMEM_NAME
-    );
-
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    /* NOTE(skg) Maybe setup base lookup table here. */
     return PMIX_SUCCESS;
 }
 
 static void
 finalize(void)
 {
-    pmix_output_verbose(
-        2, pmix_gds_base_framework.framework_output,
-        "gds: %s finalize", PMIX_GDS_SHMEM_NAME
-    );
+    PMIX_GDS_SHMEM_VOUT_HERE();
 }
 
+/**
+ * Note: only clients enter here.
+ */
 static pmix_status_t
-assign_module(
+client_assign_module(
     pmix_info_t *info,
     size_t ninfo,
     int *priority
 ) {
-    /* ONLY CLIENTS ENTER HERE */
+    PMIX_GDS_SHMEM_VOUT_HERE();
+
     bool specified = false;
     /* The incoming info always overrides anything in the
      * environment as it is set by the application itself. */
-    *priority = 0;
+    *priority = PMIX_GDS_DEFAULT_PRIORITY;
     if (NULL != info) {
         char **options = NULL;
         for (size_t n = 0; n < ninfo; n++) {
@@ -113,23 +169,29 @@ assign_module(
     if (!specified || 100 == *priority) {
         /* Look for the rendezvous envars: if they are found, then
          * we connect to that hole. Otherwise, we have to reject */
+        /* TODO(skg) */
         *priority = 0;
     }
     return PMIX_SUCCESS;
 }
 
+/**
+ * Note: only servers enter here.
+ */
 static pmix_status_t
-cache_job_info(
+server_cache_job_info(
     struct pmix_namespace_t *ns,
     pmix_info_t info[],
     size_t ninfo
 ) {
-    /* ONLY SERVERS ENTER HERE */
     PMIX_HIDE_UNUSED_PARAMS(ns, info, ninfo);
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    /*
+     * NOTE(skg) It doesn't look like we get called.
+     */
     /* Go and get a hole for this nspace, then record the
      * provided data in the shmem */
-    return PMIX_ERR_NOT_SUPPORTED;
-
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -137,11 +199,14 @@ register_job_info(
     struct pmix_peer_t *pr,
     pmix_buffer_t *reply
 ) {
+    // TODO(skg) GDS_GET pass own peer to get info; cache in sm.
     /* ONLY SERVERS ENTER HERE */
     PMIX_HIDE_UNUSED_PARAMS(pr, reply);
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
     /* Since the data is already in the shmem when we
      * cached it, there is nothing to do here. */
-    return PMIX_ERR_NOT_SUPPORTED;
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -150,7 +215,9 @@ store_job_info(
     pmix_buffer_t *buf
 ) {
     PMIX_HIDE_UNUSED_PARAMS(nspace, buf);
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -160,7 +227,9 @@ store(
     pmix_kval_t *kv
 ) {
     PMIX_HIDE_UNUSED_PARAMS(proc, scope, kv);
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -170,7 +239,9 @@ store_modex(
     void *cbdata
 ) {
     PMIX_HIDE_UNUSED_PARAMS(ns, buff, cbdata);
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -184,7 +255,9 @@ fetch(
     pmix_list_t *kvs
 ) {
     PMIX_HIDE_UNUSED_PARAMS(proc, scope, copy, key, qualifiers, nqual, kvs);
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -193,28 +266,40 @@ setup_fork(
     char ***env
 ) {
     PMIX_HIDE_UNUSED_PARAMS(peer, env);
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
     /* add the hole rendezvous info for this proc's nspace
      * to the proc's environment */
-    return PMIX_ERR_NOT_SUPPORTED;
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
-nspace_add(
+add_nspace(
     const char *nspace,
     uint32_t nlocalprocs,
     pmix_info_t info[],
     size_t ninfo
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(nspace, nlocalprocs, info, ninfo);
-    return PMIX_ERR_NOT_SUPPORTED;
+    // Server code.
+    // TODO(skg) Cache hole info. Tracker.
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
+
+    PMIX_GDS_SHMEM_VOUT(
+        "%s: adding namespace %s with nlocalprocs=%d",
+        __func__, nspace, nlocalprocs
+    );
+
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
-nspace_del(
+del_nspace(
     const char *nspace
 ) {
     PMIX_HIDE_UNUSED_PARAMS(nspace);
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -225,7 +310,9 @@ assemb_kvs_req(
     void *cbdata
 ) {
     PMIX_HIDE_UNUSED_PARAMS(proc, kvs, bo, cbdata);
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -233,7 +320,9 @@ accept_kvs_resp(
     pmix_buffer_t *buf
 ) {
     PMIX_HIDE_UNUSED_PARAMS(buf);
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    PMIX_GDS_SHMEM_VOUT_HERE();
+    return PMIX_SUCCESS;
 }
 
 pmix_gds_base_module_t pmix_shmem_module = {
@@ -241,16 +330,16 @@ pmix_gds_base_module_t pmix_shmem_module = {
     .is_tsafe = false,
     .init = init,
     .finalize = finalize,
-    .assign_module = assign_module,
-    .cache_job_info = cache_job_info,
+    .assign_module = client_assign_module,
+    .cache_job_info = server_cache_job_info,
     .register_job_info = register_job_info,
     .store_job_info = store_job_info,
     .store = store,
     .store_modex = store_modex,
     .fetch = fetch,
     .setup_fork = setup_fork,
-    .add_nspace = nspace_add,
-    .del_nspace = nspace_del,
+    .add_nspace = add_nspace,
+    .del_nspace = del_nspace,
     .assemb_kvs_req = assemb_kvs_req,
     .accept_kvs_resp = accept_kvs_resp
 };

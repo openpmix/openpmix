@@ -14,8 +14,6 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_common.h"
 #include "src/class/pmix_object.h"
-// TODO(skg) We may be able to remove this. See below, if refactored.
-#include "src/util/pmix_vmem.h"
 
 typedef struct pmix_shmem_t {
     /* Size of shared-memory segment. */
@@ -48,15 +46,5 @@ PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_unlink(
     pmix_shmem_t *shmem
 );
-
-// TODO(skg) Think about restructuring this.
-typedef struct {
-    pmix_object_t super;
-    pmix_vmem_hole_kind_t hole_kind;
-    size_t size;
-    uintptr_t address;
-    int fd;
-} pmix_vm_tracker_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_vm_tracker_t);
 
 #endif
