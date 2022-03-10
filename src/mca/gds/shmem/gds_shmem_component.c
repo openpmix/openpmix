@@ -55,7 +55,13 @@ component_query(
         *module = NULL;
         return PMIX_ERROR;
     }
-
+#if 1
+    else {
+        *priority = 0;
+        *module = NULL;
+        return PMIX_ERROR;
+    }
+#endif
     *priority = PMIX_GDS_DEFAULT_PRIORITY;
     *module = (pmix_mca_base_module_t *)&pmix_shmem_module;
     return PMIX_SUCCESS;
