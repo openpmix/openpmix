@@ -55,13 +55,8 @@ component_query(
         *module = NULL;
         return PMIX_ERROR;
     }
-    else {
-        *priority = 0;
-        *module = NULL;
-        return PMIX_ERROR;
-    }
 
-    *priority = 30;
+    *priority = PMIX_GDS_DEFAULT_PRIORITY;
     *module = (pmix_mca_base_module_t *)&pmix_shmem_module;
     return PMIX_SUCCESS;
 }
@@ -77,15 +72,17 @@ component_close(void)
  * and pointers to our public functions in it
  */
 pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
-    .base = {
+    .super = {
         PMIX_GDS_BASE_VERSION_1_0_0,
         /* Component name and version */
         .pmix_mca_component_name = PMIX_GDS_SHMEM_NAME,
-        PMIX_MCA_BASE_MAKE_VERSION(component,
-                                   PMIX_MAJOR_VERSION,
-                                   PMIX_MINOR_VERSION,
-                                   PMIX_RELEASE_VERSION),
-        /* Component open and close functions */
+        PMIX_MCA_BASE_MAKE_VERSION(
+            component,
+            PMIX_MAJOR_VERSION,
+            PMIX_MINOR_VERSION,
+            PMIX_RELEASE_VERSION
+        ),
+        /* Component open, close, and query functions */
         .pmix_mca_open_component = component_open,
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
