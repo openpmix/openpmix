@@ -1597,13 +1597,18 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
     size_t n;
     bool *bptr;
     uint8_t *u8ptr;
+    int8_t *i8ptr;
     uint16_t *u16ptr;
+    int16_t *i16ptr;
     uint32_t *u32ptr;
+    int32_t *i32ptr;
     uint64_t *u64ptr;
+    int64_t *i64ptr;
     char **strings;
     size_t *szptr;
     pid_t *pidptr;
     unsigned int *uintptr;
+    int *intptr;
     float *fltptr;
     double *dblptr;
     struct timeval *tvlptr;
@@ -1671,24 +1676,24 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
                 rc = pmix_bfrops_base_print_pid(&tp, NULL, &pidptr[n], PMIX_PID);
                 break;
             case PMIX_INT:
-                uintptr = (unsigned int*)src->array;
-                rc = pmix_bfrops_base_print_int(&tp, NULL, &uintptr[n], PMIX_INT);
+                intptr = (int*)src->array;
+                rc = pmix_bfrops_base_print_int(&tp, NULL, &intptr[n], PMIX_INT);
                 break;
             case PMIX_INT8:
-                u8ptr = (uint8_t*)src->array;
-                rc = pmix_bfrops_base_print_int8(&tp, NULL, &u8ptr[n], PMIX_INT8);
+                i8ptr = (int8_t*)src->array;
+                rc = pmix_bfrops_base_print_int8(&tp, NULL, &i8ptr[n], PMIX_INT8);
                 break;
             case PMIX_INT16:
-                u16ptr = (uint16_t*)src->array;
-                rc = pmix_bfrops_base_print_int16(&tp, NULL, &u16ptr[n], PMIX_INT16);
+                i16ptr = (int16_t*)src->array;
+                rc = pmix_bfrops_base_print_int16(&tp, NULL, &i16ptr[n], PMIX_INT16);
                 break;
             case PMIX_INT32:
-                u32ptr = (uint32_t*)src->array;
-                rc = pmix_bfrops_base_print_int32(&tp, NULL, &u32ptr[n], PMIX_INT32);
+                i32ptr = (int32_t*)src->array;
+                rc = pmix_bfrops_base_print_int32(&tp, NULL, &i32ptr[n], PMIX_INT32);
                 break;
             case PMIX_INT64:
-                u64ptr = (uint64_t*)src->array;
-                rc = pmix_bfrops_base_print_int64(&tp, NULL, &u64ptr[n], PMIX_INT64);
+                i64ptr = (int64_t*)src->array;
+                rc = pmix_bfrops_base_print_int64(&tp, NULL, &i64ptr[n], PMIX_INT64);
                 break;
             case PMIX_UINT:
                 uintptr = (unsigned int*)src->array;

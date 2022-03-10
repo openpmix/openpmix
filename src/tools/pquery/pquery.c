@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,6 +43,7 @@
 #include "src/threads/threads.h"
 #include "src/util/cmd_line.h"
 #include "src/util/keyval_parse.h"
+#include "src/util/printf.h"
 #include "src/util/show_help.h"
 
 typedef struct {
@@ -209,7 +210,7 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     mylock_t mylock;
     pmix_cmd_line_t cmd_line;
-    size_t n, m, k, nqueries, ninfo, ndarray;
+    size_t n, m, nqueries;
     myquery_data_t mq = {
         .lock = PMIX_LOCK_STATIC_INIT,
         .status = 0,
@@ -225,10 +226,8 @@ int main(int argc, char **argv)
     char **qprs;
     char *strt, *endp, *kptr;
     pmix_infolist_t *iptr;
-    char *str, *result;
+    char *str, *args = NULL, *result;
     pmix_query_t *queries;
-    pmix_info_t *infoptr, *ifptr;
-    uint64_t u64;
 
     /* protect against problems if someone passes us thru a pipe
      * and then abnormally terminates the pipe early */
