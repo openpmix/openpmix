@@ -163,7 +163,7 @@ int main(int argc, char **argv)
     mylock_t mylock;
     pmix_cli_result_t results;
     pmix_cli_item_t *opt;
-    size_t n, m, k, nqueries, ninfo, ndarray;
+    size_t n, m, nqueries;
     myquery_data_t mq = {
         .lock = PMIX_LOCK_STATIC_INIT,
         .status = 0,
@@ -180,8 +180,6 @@ int main(int argc, char **argv)
     pmix_infolist_t *iptr;
     char *str, *result;
     pmix_query_t *queries;
-    pmix_info_t *infoptr, *ifptr;
-    uint64_t u64;
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
     /* protect against problems if someone passes us thru a pipe
