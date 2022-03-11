@@ -35,8 +35,17 @@
 #endif
 #include <sys/mman.h>
 
-#define ALIGN2MB  (2 * 1024 * 1024UL)
-#define ALIGN64MB (64 * 1024 * 1024UL)
+#define PMIX_VMEM_ALIGN2MB  (2  * 1024 * 1024UL)
+#define PMIX_VMEM_ALIGN64MB (64 * 1024 * 1024UL)
+
+typedef enum {
+    VMEM_MAP_FILE = 0,
+    VMEM_MAP_ANONYMOUS = 1,
+    VMEM_MAP_HEAP = 2,
+    VMEM_MAP_STACK = 3,
+    /** vsyscall/vdso/vvar shouldn't occur since we stop after stack. */
+    VMEM_MAP_OTHER = 4
+} pmix_vmem_map_kind_t;
 
 static int
 parse_map_line(
@@ -116,14 +125,14 @@ use_hole(
     }
 
     /* try to align the middle of the hole on 64MB for POWER's 64k-page PMD */
-    aligned = (middle + ALIGN64MB) & ~(ALIGN64MB - 1);
+    aligned = (middle + PMIX_VMEM_ALIGN64MB) & ~(PMIX_VMEM_ALIGN64MB - 1);
     if (aligned + size <= holebegin + holesize) {
         *addrp = aligned;
         return PMIX_SUCCESS;
     }
 
     /* try to align the middle of the hole on 2MB for x86 PMD */
-    aligned = (middle + ALIGN2MB) & ~(ALIGN2MB - 1);
+    aligned = (middle + PMIX_VMEM_ALIGN2MB) & ~(PMIX_VMEM_ALIGN2MB - 1);
     if (aligned + size <= holebegin + holesize) {
         *addrp = aligned;
         return PMIX_SUCCESS;

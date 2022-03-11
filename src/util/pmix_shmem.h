@@ -19,10 +19,11 @@ typedef struct pmix_shmem_t {
     /* Size of shared-memory segment. */
     size_t size;
     /* Base address of shared memory segment. */
-    uintptr_t base_address;
+    void *base_address;
     /* Buffer holding path to backing store. */
     char backing_path[PMIX_PATH_MAX];
 } pmix_shmem_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_shmem_t);
 
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_create(
@@ -31,10 +32,11 @@ pmix_shmem_segment_create(
     const char *backing_path
 );
 
-PMIX_EXPORT void *
+PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_attach(
     pmix_shmem_t *shmem,
-    void *base_address
+    void *requested_base_address,
+    uintptr_t *actual_base_address
 );
 
 PMIX_EXPORT pmix_status_t

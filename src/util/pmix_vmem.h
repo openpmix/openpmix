@@ -30,15 +30,6 @@ typedef enum {
     VMEM_HOLE_CUSTOM = 5,
 } pmix_vmem_hole_kind_t;
 
-typedef enum {
-    VMEM_MAP_FILE = 0,
-    VMEM_MAP_ANONYMOUS = 1,
-    VMEM_MAP_HEAP = 2,
-    VMEM_MAP_STACK = 3,
-    /** vsyscall/vdso/vvar shouldn't occur since we stop after stack. */
-    VMEM_MAP_OTHER = 4
-} pmix_vmem_map_kind_t;
-
 PMIX_EXPORT pmix_status_t
 pmix_vmem_find_hole(
     pmix_vmem_hole_kind_t hkind,

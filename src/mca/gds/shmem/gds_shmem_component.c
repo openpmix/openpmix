@@ -40,6 +40,7 @@
 static int
 component_open(void)
 {
+    PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.myjobs, pmix_list_t);
     return PMIX_SUCCESS;
 }
 
@@ -55,21 +56,21 @@ component_query(
         *module = NULL;
         return PMIX_ERROR;
     }
-#if 1
-    else {
-        *priority = 0;
-        *module = NULL;
-        return PMIX_ERROR;
-    }
-#endif
-    *priority = PMIX_GDS_DEFAULT_PRIORITY;
+#if (PMIX_GDS_SHMEM_DISABLE == 1)
+    *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
+    *module = NULL;
+    return PMIX_ERROR;
+#else
+    *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
     *module = (pmix_mca_base_module_t *)&pmix_shmem_module;
     return PMIX_SUCCESS;
+#endif
 }
 
 static int
 component_close(void)
 {
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.myjobs);
     return PMIX_SUCCESS;
 }
 
@@ -93,7 +94,7 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
     },
-    .assignments = PMIX_POINTER_ARRAY_STATIC_INIT
+    .myjobs = PMIX_LIST_STATIC_INIT
 };
 
 /*
