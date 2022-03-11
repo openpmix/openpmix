@@ -296,7 +296,7 @@ pmix_status_t pmix_base_write_rndz_file(char *filename, char *uri, bool *created
  * If we are a server and are given a rendezvous file, then that is
  * is the name of the file we are to use to store our listener info.
  */
-pmix_status_t pmix_ptl_base_setup_listener(void)
+pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 {
     int flags = 0;
     pmix_listener_t *lt;
@@ -314,8 +314,54 @@ pmix_status_t pmix_ptl_base_setup_listener(void)
     pid_t mypid;
     int outpipe;
     char *leftover;
+    size_t n;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "ptl:tool setup_listener");
+
+    for (n = 0; n < ninfo; n++) {
+        if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
+            pmix_ptl_base.session_tool = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SYSTEM_SUPPORT)) {
+            pmix_ptl_base.system_tool = PMIX_INFO_TRUE(&info[n]);
+        } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
+            pmix_ptl_base.tool_support = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_REMOTE_CONNECTIONS)) {
+            pmix_ptl_base.remote_connections = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_INCLUDE)) {
+            pmix_ptl_base.if_include = strdup(info[n].value.data.string);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_EXCLUDE)) {
+            pmix_ptl_base.if_exclude = strdup(info[n].value.data.string);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV4_PORT)) {
+            pmix_ptl_base.ipv4_port = info[n].value.data.integer;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV6_PORT)) {
+            pmix_ptl_base.ipv6_port = info[n].value.data.integer;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV4)) {
+            pmix_ptl_base.disable_ipv4_family = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV6)) {
+            pmix_ptl_base.disable_ipv6_family = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
+            if (NULL != pmix_ptl_base.report_uri) {
+                free(pmix_ptl_base.report_uri);
+            }
+            pmix_ptl_base.report_uri = strdup(info[n].value.data.string);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
+            if (NULL != pmix_ptl_base.session_tmpdir) {
+                free(pmix_ptl_base.session_tmpdir);
+            }
+            pmix_ptl_base.session_tmpdir = strdup(info[n].value.data.string);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
+            if (NULL != pmix_ptl_base.system_tmpdir) {
+                free(pmix_ptl_base.system_tmpdir);
+            }
+            pmix_ptl_base.system_tmpdir = strdup(info[n].value.data.string);
+        }
+    }
+
+    if (NULL != pmix_ptl_base.if_include && NULL != pmix_ptl_base.if_exclude) {
+        pmix_show_help("help-ptl-base.txt", "include-exclude", true, pmix_ptl_base.if_include,
+                       pmix_ptl_base.if_exclude);
+        return PMIX_ERR_SILENT;
+    }
 
     lt = &pmix_ptl_base.listener;
 
