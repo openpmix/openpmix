@@ -442,18 +442,21 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
             err_msg = strdup("pmix_dl_open() error message was NULL!");
         } else if (file_exists(ri->ri_path, "lo") || file_exists(ri->ri_path, "so")
                    || file_exists(ri->ri_path, "dylib") || file_exists(ri->ri_path, "dll")) {
+            char *tmp;
             /* Because libltdl erroneously says "file not found" for any
              * type of error -- which is especially misleading when the file
              * is actually there but cannot be opened for some other reason
              * (e.g., missing symbol) -- do some simple huersitics and if
              * the file [probably] does exist, print a slightly better error
              * message. */
-            err_msg = strdup(
-                "perhaps a missing symbol, or compiled for a different version of OpenPMIx");
+            pmix_asprintf(&tmp,
+                          "\n    dlopen error: %s\n    Perhaps a missing symbol, or compiled for a different version of %s?",
+                          err_msg, framework->framework_project);
+            err_msg = tmp;
         }
         pmix_output_verbose(
             vl, 0, "pmix_mca_base_component_repository_open: unable to open %s: %s (ignored)",
-            ri->ri_base, err_msg);
+            ri->ri_path, err_msg);
 
         if (pmix_mca_base_component_track_load_errors) {
             pmix_mca_base_failed_component_t *f_comp = PMIX_NEW(pmix_mca_base_failed_component_t);
