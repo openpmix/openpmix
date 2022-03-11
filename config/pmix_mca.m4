@@ -693,26 +693,45 @@ AC_DEFUN([MCA_PROCESS_COMPONENT],[
     AC_MSG_CHECKING([if MCA component $1:$2 can compile])
     AC_MSG_RESULT([yes])
 
-    # If a component is building static, we need to provide LDFLAGS
-    # and LIBS configuration to the wrapper compiler, so that it can
-    # provide them for the final link of the application.  Components
-    # can explicitly set <framework>_<component>_WRAPPER_EXTRA_<flag>
-    # for either LDFLAGS or LIBS, for cases where the component wants
-    # to explicitly manage which flags are passed to the wrapper
-    # compiler.  If the <framework>_<component>_WRAPPER_EXTRA_<flag>
-    # variable is not set, then it is assumed that the component
-    # wishes all LDFLAGS and LIBS to be provided as wrapper flags.
+    # If a component is building static (ie, sucked into the parent
+    # library), we need to provide LDFLAGS and LIBS and pkg-config
+    # module name configuration to the wrapper compiler, so that it
+    # can provide them for the final link of the application.
+    # Components can explicitly set
+    # <framework>_<component>_WRAPPER_EXTRA_<flag> for LDFLAGS, LIBS,
+    # or PC_MODULES, for cases where the component wants to explicitly
+    # manage which flags are passed to the wrapper compiler.  If the
+    # <framework>_<component>_WRAPPER_EXTRA_<flag> variable is not
+    # set, then it is assumed that the component wishes all LDFLAGS,
+    # LIBS, and PC_MODULES to be provided as wrapper flags.
     AS_IF([test "$7" = "static"],
           [AS_VAR_SET_IF([$1_$2_WRAPPER_EXTRA_LDFLAGS],
               [AS_VAR_COPY([tmp_flags], [$1_$2_WRAPPER_EXTRA_LDFLAGS])],
               [AS_VAR_COPY([tmp_flags], [$1_$2_LDFLAGS])])
            PMIX_FLAGS_APPEND_UNIQ([pmix_mca_wrapper_extra_ldflags], [$tmp_flags])
 
+           AS_VAR_SET_IF([$1_$2_WRAPPER_EXTRA_STATIC_LDFLAGS],
+              [AS_VAR_COPY([tmp_flags], [$1_$2_WRAPPER_EXTRA_STATIC_LDFLAGS])],
+              [AS_VAR_COPY([tmp_flags], [$1_$2_STATIC_LDFLAGS])])
+           PMIX_FLAGS_APPEND_UNIQ([pmix_mca_wrapper_extra_static_ldflags], [$tmp_flags])
+
+           AS_VAR_SET_IF([$1_$2_WRAPPER_EXTRA_PC_MODULES],
+              [AS_VAR_COPY([tmp_flags], [$1_$2_WRAPPER_EXTRA_PC_MODULES])],
+              [AS_VAR_COPY([tmp_flags], [$1_$2_PC_MODULES])])
+           PMIX_APPEND_UNIQ([pmix_mca_wrapper_extra_pc_modules], [$tmp_flags])
+
            AS_VAR_SET_IF([$1_$2_WRAPPER_EXTRA_LIBS],
               [AS_VAR_COPY([tmp_flags], [$1_$1_WRAPPER_EXTRA_LIBS])],
               [AS_VAR_COPY([tmp_all_flags], [$1_$2_LIBS])
                PMIX_MCA_STRIP_LAFILES([tmp_flags], [$tmp_all_flags])])
-           PMIX_FLAGS_APPEND_MOVE([pmix_mca_wrapper_extra_libs], [$tmp_flags])])
+           PMIX_FLAGS_APPEND_MOVE([pmix_mca_wrapper_extra_libs], [$tmp_flags])
+
+           AS_VAR_SET_IF([$1_$2_WRAPPER_EXTRA_STATIC_LIBS],
+              [AS_VAR_COPY([tmp_flags], [$1_$1_WRAPPER_EXTRA_STATIC_LIBS])],
+              [AS_VAR_COPY([tmp_all_flags], [$1_$2_STATIC_LIBS])
+               PMIX_MCA_STRIP_LAFILES([tmp_flags], [$tmp_all_flags])])
+           echo "Adding static libs $tmp_flags"
+           PMIX_FLAGS_APPEND_MOVE([pmix_mca_wrapper_extra_static_libs], [$tmp_flags])])
 
     # WRAPPER_EXTRA_CPPFLAGS are only needed for STOP_AT_FIRST
     # components, as all other components are not allowed to leak
