@@ -80,9 +80,13 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
 
            PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_libev_LDFLAGS])
            PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_libev_LDFLAGS])
+           PMIX_WRAPPER_FLAGS_ADD([STATIC_LDFLAGS], [$pmix_libev_STATIC_LDFLAGS])
 
            PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_libev_LIBS])
-           PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libev_LIBS])])
+           PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libev_LIBS])
+           PMIX_WRAPPER_FLAGS_ADD([STATIC_LIBS], [$pmix_libev_STATIC_LIBS])
+
+           PMIX_WRAPPER_FLAGS_ADD([PC_MODULES], [$pmix_hwloc_PC_MODULES])])
 
     AC_MSG_CHECKING([will libev support be built])
     if test $pmix_libev_support -eq 1; then

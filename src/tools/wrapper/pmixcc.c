@@ -63,25 +63,101 @@
 #define PMIX_INCLUDE_FLAG "-I"
 #define PMIX_LIBDIR_FLAG  "-L"
 
+static const char * filtered_args[] = { "-I/usr/include",
+                                        "-L/usr/lb",
+                                        "-L/usr/lib64",
+                                        NULL };
+
+/* This structure is used to represent the config file read in during
+ * initialization.  A single file may have multiple options_data
+ * structures, with the compiler_args keying on which section to
+ * use in returning results. */
 struct options_data_t {
+    /* compiler_args is a key to chose the right block in the case
+     * that there are multiple blocks in a single file.  All
+     * arguments in compiler_args in must appear in the compiler's argv
+     * in order for this block to be selected. */
     char **compiler_args;
+    /* language for this compiler.  This field is only used for
+     * pretty-printing messages.  It does not have any impact on the
+     * behavior of the wrapper compiler. */
     char *language;
+    /* project name.  This field is only used for pretty-printing
+     * messages.  It does not have any impact on the behavior of the
+     * wrapper compiler. */
     char *project;
+    /* project short name.  The environment variables to influence
+     * setting of compiler flags are named <project_short>_{CPPFLAGS,
+     * LDFLAGS, LIBS}. */
     char *project_short;
+    /* project release version.  Used to pretty-print help strings. */
     char *version;
+    /* Second part of the variable name to change the underlying
+     * compiler the wrapper compiler invokes.  For example, for C,
+     * compiler_env should be CC, resulting in <project_short>_CC
+     * being the environment variable used to change the underlying
+     * compiler that is invoked. */
     char *compiler_env;
+    /* Second part of the variable name to change the compiler flags
+     * passed to the underlying compiler.  For example, for C,
+     * compiler_flags_env should be CFLAGS, resulting in
+     * <project_short>_CFLAGS being the environment variable used to
+     * change the CFLAGS passed to the underlying compiler. */
     char *compiler_flags_env;
+    /* Default underlying compiler to invoke */
     char *compiler;
+    /* Default preprocessor (ie, CPPFLAGS) to pass to underlying
+     * compiler.  These are only passed to the underlying compiler
+     * when it looks like we are compiling (ie, not in a link-only
+     * situation). */
     char **preproc_flags;
+    /* Default compiler flags (ie, CFLAGS) to pass to the underlying
+     * compiler. */
     char **comp_flags;
+    /* Compiler flags to pass to the underlying compiler before
+     * comp_flags.  These args are generally passed directly from
+     * configure options provided from the user. */
     char **comp_flags_prefix;
+    /* Linker flags to pass to to the underlying compiler when it
+     * appears that we are linking.  These flags will be passed to the
+     * underlying compiler whether or not we see -static (or friends) in
+     * the arguments. */
     char **link_flags;
+    /* Linker flags to pass to to the underlying compiler when it
+     * appears that we are linking.  These flags ONLY will be passed
+     * to the underlying compiler when we see -static (or friends) in
+     * the arguments. */
+    char **link_flags_static;
+    /* Libs flags to pass to to the underlying compiler when it
+     * appears that we are linking.  These flags will be passed to the
+     * underlying compiler whether or not we see -static (or friends)
+     * in the arguments. */
     char **libs;
+    /* Libs flags to pass to to the underlying compiler when it
+     * appears that we are linking.  These flags ONLY will be passed
+     * to the underlying compiler when we see -static (or friends) in
+     * the arguments. */
     char **libs_static;
+    /* Name of a file that should exist in ${libdir} if shared
+     * libraries were properly installed.  Historically, this was
+     * used to determine what flags should be added to the compiler.
+     * Now it is not used. */
     char *dyn_lib_file;
+    /* Name of a file that should exist in ${libdir} if static
+     * libraries were properly installed.  Historically, this was
+     * used to determine what flags should be added to the compiler.
+     * Now it is not used. */
     char *static_lib_file;
+    /* A (full path) of a file that must exist for the wrapper
+     * compiler to succeed.  A common use case is to specify a
+     * language-binding specific file (for example, a C++ header file)
+     * when invoking an optional language binding. */
     char *req_file;
+    /* Default includedir, before variable expansion.  Almost alwyas
+     * set as ${includedir} outside of multilib situations. */
     char *path_includedir;
+    /* Default libdir, before variable expansion.  Almost always set
+    as ${libdir} outside of multilib situations */
     char *path_libdir;
 };
 
@@ -101,7 +177,6 @@ static int default_data_idx = -1;
 #define COMP_WANT_LINK    0x020
 #define COMP_WANT_PMPI    0x040
 #define COMP_WANT_STATIC  0x080
-#define COMP_WANT_LINKALL 0x100
 
 static void options_data_init(struct options_data_t *data)
 {
@@ -122,6 +197,8 @@ static void options_data_init(struct options_data_t *data)
     data->comp_flags_prefix[0] = NULL;
     data->link_flags = (char **) malloc(sizeof(char *));
     data->link_flags[0] = NULL;
+    data->link_flags_static = (char **) malloc(sizeof(char *));
+    data->link_flags_static[0] = NULL;
     data->libs = (char **) malloc(sizeof(char *));
     data->libs[0] = NULL;
     data->libs_static = (char **) malloc(sizeof(char *));
@@ -156,6 +233,7 @@ static void options_data_free(struct options_data_t *data)
     pmix_argv_free(data->comp_flags);
     pmix_argv_free(data->comp_flags_prefix);
     pmix_argv_free(data->link_flags);
+    pmix_argv_free(data->link_flags_static);
     pmix_argv_free(data->libs);
     pmix_argv_free(data->libs_static);
     if (NULL != data->dyn_lib_file)
@@ -246,6 +324,39 @@ static void expand_flags(char **argv)
     }
 }
 
+static void filter_flags(char*** argvp)
+{
+    int argc;
+    size_t idx;
+
+    argc = pmix_argv_count(*argvp);
+    idx = 0;
+
+    while (idx < argc) {
+        char *arg = (*argvp)[idx];
+        size_t j = 0;
+        bool found = false;
+
+        while (filtered_args[j] != NULL) {
+            if (0 == strcmp(arg, filtered_args[j])) {
+                pmix_argv_delete(&argc, argvp, idx, 1);
+                found = true;
+                break;
+            }
+            j++;
+        }
+
+        if (!found) {
+            /* skip moving the idx pointer if we found an entry (since
+             * the previous idx + 1 entry is the new idx pointer).  Note
+             * that argc might have moved, so the outer while loop make still
+             * give a different answer to its conditional. */
+            idx++;
+        }
+    }
+
+}
+
 static void data_callback(const char *file, int lineno,
                           const char *key, const char *value)
 {
@@ -276,12 +387,14 @@ static void data_callback(const char *file, int lineno,
         pmix_argv_insert(&options_data[parse_options_idx].preproc_flags,
                          pmix_argv_count(options_data[parse_options_idx].preproc_flags), values);
         expand_flags(options_data[parse_options_idx].preproc_flags);
+        filter_flags(&options_data[parse_options_idx].preproc_flags);
         pmix_argv_free(values);
     } else if (0 == strcmp(key, "compiler_flags")) {
         char **values = pmix_argv_split(value, ' ');
         pmix_argv_insert(&options_data[parse_options_idx].comp_flags,
                          pmix_argv_count(options_data[parse_options_idx].comp_flags), values);
         expand_flags(options_data[parse_options_idx].comp_flags);
+        filter_flags(&options_data[parse_options_idx].comp_flags);
         pmix_argv_free(values);
     } else if (0 == strcmp(key, "compiler_flags_prefix")) {
         char **values = pmix_argv_split(value, ' ');
@@ -295,6 +408,14 @@ static void data_callback(const char *file, int lineno,
         pmix_argv_insert(&options_data[parse_options_idx].link_flags,
                          pmix_argv_count(options_data[parse_options_idx].link_flags), values);
         expand_flags(options_data[parse_options_idx].link_flags);
+        filter_flags(&options_data[parse_options_idx].link_flags);
+        pmix_argv_free(values);
+    } else if (0 == strcmp(key, "linker_flags_static")) {
+        char **values = pmix_argv_split(value, ' ');
+        pmix_argv_insert(&options_data[parse_options_idx].link_flags_static,
+                         pmix_argv_count(options_data[parse_options_idx].link_flags_static), values);
+        expand_flags(options_data[parse_options_idx].link_flags_static);
+        filter_flags(&options_data[parse_options_idx].link_flags_static);
         pmix_argv_free(values);
     } else if (0 == strcmp(key, "libs")) {
         char **values = pmix_argv_split(value, ' ');
@@ -327,24 +448,10 @@ static void data_callback(const char *file, int lineno,
     } else if (0 == strcmp(key, "includedir")) {
         if (NULL != value) {
             options_data[parse_options_idx].path_includedir = pmix_pinstall_dirs_expand(value);
-            if (0 != strcmp(options_data[parse_options_idx].path_includedir, "/usr/include")) {
-                char *line;
-                pmix_asprintf(&line, PMIX_INCLUDE_FLAG "%s",
-                              options_data[parse_options_idx].path_includedir);
-                pmix_argv_append_unique_nosize(&options_data[parse_options_idx].preproc_flags,
-                                               line);
-                free(line);
-            }
         }
     } else if (0 == strcmp(key, "libdir")) {
-        if (NULL != value)
+        if (NULL != value) {
             options_data[parse_options_idx].path_libdir = pmix_pinstall_dirs_expand(value);
-        if (0 != strcmp(options_data[parse_options_idx].path_libdir, "/usr/lib")) {
-            char *line;
-            pmix_asprintf(&line, PMIX_LIBDIR_FLAG "%s",
-                          options_data[parse_options_idx].path_libdir);
-            pmix_argv_append_unique_nosize(&options_data[parse_options_idx].link_flags, line);
-            free(line);
         }
     }
 }
@@ -381,6 +488,12 @@ static int data_finalize(void)
     return PMIX_SUCCESS;
 }
 
+
+/*
+ * Print the flags in args, stripping off pattern (which must be a
+ * simple exact match string, no regex) from the front of every
+ * argument in args.
+ */
 static void print_flags(char **args, char *pattern)
 {
     int i;
@@ -626,11 +739,35 @@ int main(int argc, char *argv[])
                                          strlen("--showme:incdirs"))) {
                 print_flags(options_data[user_data_idx].preproc_flags, PMIX_INCLUDE_FLAG);
                 goto cleanup;
+            } else if (0 == strncmp(user_argv[i], "-showme:libdirs_static", strlen("-showme:libdirs_static"))
+                       || 0
+                              == strncmp(user_argv[i], "--showme:libdirs_static",
+                                         strlen("--showme:libdirs_static"))) {
+                char **all_args = NULL;
+                int args_count;
+
+                all_args = pmix_argv_copy(options_data[user_data_idx].link_flags);
+                args_count = pmix_argv_count(all_args);
+                pmix_argv_insert(&all_args, args_count, options_data[user_data_idx].link_flags_static);
+                print_flags(all_args, PMIX_LIBDIR_FLAG);
+                pmix_argv_free(all_args);
+                goto cleanup;
             } else if (0 == strncmp(user_argv[i], "-showme:libdirs", strlen("-showme:libdirs"))
                        || 0
                               == strncmp(user_argv[i], "--showme:libdirs",
                                          strlen("--showme:libdirs"))) {
                 print_flags(options_data[user_data_idx].link_flags, PMIX_LIBDIR_FLAG);
+                goto cleanup;
+            } else if (0 == strncmp(user_argv[i], "-showme:libs_static", strlen("-showme:libs_static"))
+                       || 0 == strncmp(user_argv[i], "--showme:libs_static", strlen("--showme:libs_static"))) {
+                char **all_args = NULL;
+                int args_count;
+
+                all_args = pmix_argv_copy(options_data[user_data_idx].libs);
+                args_count = pmix_argv_count(all_args);
+                pmix_argv_insert(&all_args, args_count, options_data[user_data_idx].libs_static);
+                print_flags(all_args, "-l");
+                pmix_argv_free(all_args);
                 goto cleanup;
             } else if (0 == strncmp(user_argv[i], "-showme:libs", strlen("-showme:libs"))
                        || 0 == strncmp(user_argv[i], "--showme:libs", strlen("--showme:libs"))) {
@@ -780,94 +917,24 @@ int main(int argc, char *argv[])
 
     /* link flags and libs */
     if (flags & COMP_WANT_LINK) {
-        bool have_static_lib;
-        bool have_dyn_lib;
-        bool use_static_libs;
-        char *filename1, *filename2;
-        struct stat buf;
-
+        /* Configure will set the libs, libs_static, link_flags, and
+           link_flags_static based on whether or not shared and static
+           libraries are enabled (see the large comment in
+           pmix_setup_wrappers.m4).  The wrapper will always add libs
+           and link_flags in a link situation, and should add the
+           _static variants if -static was seen. */
         pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].link_flags);
         exec_argc = pmix_argv_count(exec_argv);
-
-        /* Are we linking statically?  If so, decide what libraries to
-           list.  It depends on two factors:
-
-           1. Was --static (etc.) specified?
-           2. Does OMPI have static, dynamic, or both libraries installed?
-
-           Here's a matrix showing what we'll do in all 6 cases:
-
-           What's installed    --static    no --static
-           ----------------    ----------  -----------
-           ompi .so libs       -lmpi       -lmpi
-           ompi .a libs        all         all
-           ompi both libs      all         -lmpi
-
-        */
-
-        filename1 = pmix_os_path(false, options_data[user_data_idx].path_libdir,
-                                 options_data[user_data_idx].static_lib_file, NULL);
-        if (0 == stat(filename1, &buf)) {
-            have_static_lib = true;
-        } else {
-            have_static_lib = false;
+        if (flags & COMP_WANT_STATIC) {
+            pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].link_flags_static);
+            exec_argc = pmix_argv_count(exec_argv);
         }
-
-        filename2 = pmix_os_path(false, options_data[user_data_idx].path_libdir,
-                                 options_data[user_data_idx].dyn_lib_file, NULL);
-        if (0 == stat(filename2, &buf)) {
-            have_dyn_lib = true;
-        } else {
-            have_dyn_lib = false;
-        }
-
-        /* Determine which set of libs to use: dynamic or static.  Be
-           pedantic to make the code easy to read. */
-        if (flags & COMP_WANT_LINKALL) {
-            /* If --openmpi:linkall was specified, list all the libs
-               (i.e., the static libs) if they're available, either in
-               static or dynamic form. */
-            if (have_static_lib || have_dyn_lib) {
-                use_static_libs = true;
-            } else {
-                fprintf(stderr,
-                        "The linkall option has failed as we were unable to find either static or "
-                        "dynamic libs\n"
-                        "Files looked for:\n  Static: %s\n  Dynamic: %s\n",
-                        filename1, filename2);
-                free(filename1);
-                free(filename2);
-                exit(1);
-            }
-        } else if (flags & COMP_WANT_STATIC) {
-            /* If --static (or something like it) was specified, if we
-               have the static libs, then use them.  Otherwise, use
-               the dynamic libs. */
-            if (have_static_lib) {
-                use_static_libs = true;
-            } else {
-                use_static_libs = false;
-            }
-        } else {
-            /* If --static (or something like it) was NOT specified
-               (or if --dyanic, or something like it, was specified),
-               if we have the dynamic libs, then use them.  Otherwise,
-               use the static libs. */
-            if (have_dyn_lib) {
-                use_static_libs = false;
-            } else {
-                use_static_libs = true;
-            }
-        }
-        free(filename1);
-        free(filename2);
-
-        if (use_static_libs) {
-            pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs_static);
-        } else {
-            pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs);
-        }
+        pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs);
         exec_argc = pmix_argv_count(exec_argv);
+        if (flags & COMP_WANT_STATIC) {
+            pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs_static);
+            exec_argc = pmix_argv_count(exec_argv);
+        }
     }
 
     /****************************************************
