@@ -208,22 +208,6 @@ static inline pmix_status_t pmix_hotel_checkin(pmix_hotel_t *hotel, void *occupa
     return PMIX_SUCCESS;
 }
 
-static inline int pmix_hotel_recheck(pmix_hotel_t *hotel, void *occupant, int room_num)
-{
-    pmix_hotel_room_t *room;
-
-    room = &(hotel->rooms[room_num]);
-    if (PMIX_UNLIKELY(NULL != room->occupant)) {
-        return PMIX_ERR_NOT_AVAILABLE;
-    }
-    room->occupant = occupant;
-    /* Assign the event and make it pending */
-    if (NULL != hotel->evbase) {
-        pmix_event_add(&(room->eviction_timer_event), &(hotel->eviction_timeout));
-    }
-    return PMIX_SUCCESS;
-}
-
 /**
  * Same as pmix_hotel_checkin(), but slightly optimized for when the
  * caller *knows* that there is a room available.
