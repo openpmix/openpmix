@@ -7,6 +7,8 @@ Name: pmix
 Description: Process Management Interface for Exascale (PMIx)
 Version: @PACKAGE_VERSION@
 URL: https://pmix.org/
-Libs: -L${libdir} -lpmix
-Libs.private: @PC_PRIVATE_LIBS@
-Cflags: -I${includedir} @PMIX_WRAPPER_EXTRA_CPPFLAGS@
+Libs: @PMIX_PC_LIBS@
+Libs.private: @PMIX_PC_LIBS_PRIVATE@
+Cflags: @PMIX_PC_CFLAGS@
+Requires: @PMIX_PC_MODULES@
+Requires.private: @PMIX_PC_MODULES_PRIVATE@

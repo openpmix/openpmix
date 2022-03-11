@@ -915,8 +915,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Need the libtool executable before the rpathify stuff
     LT_OUTPUT
 
-    PMIX_SETUP_WRAPPER_FINAL
-
     ############################################################################
     # pmixdatadir, pmixlibdir, and pmixinclude are essentially the same as
     # pkg*dir, but will always be */pmix.
@@ -926,6 +924,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_SUBST(pmixdatadir)
     AC_SUBST(pmixlibdir)
     AC_SUBST(pmixincludedir)
+
+    PMIX_SETUP_WRAPPER_FINAL
 
     ############################################################################
     # setup "make check"

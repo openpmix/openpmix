@@ -163,9 +163,13 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 
         PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_libevent_LDFLAGS])
         PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_libevent_LDFLAGS])
+        PMIX_WRAPPER_FLAGS_ADD([STATIC_LDFLAGS], [$pmix_libevent_STATIC_LDFLAGS])
 
         PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_libevent_LIBS])
         PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libevent_LIBS])
+        PMIX_WRAPPER_FLAGS_ADD([STATIC_LIBS], [$pmix_libevent_STATIC_LIBS])
+
+        PMIX_WRAPPER_FLAGS_ADD([PC_MODULES], [$pmix_libevent_PC_MODULES])
 
         # Set output variables
         PMIX_SUMMARY_ADD([Required Packages], [Libevent], [], [$pmix_libevent_SUMMARY])
