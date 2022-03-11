@@ -218,9 +218,9 @@ static void lost_connection(pmix_peer_t *peer)
             }
         }
 
-    } else {
-        /* if I am a client, there is only
-         * one connection we can have */
+    } else if (peer == pmix_client_globals.myserver) {
+        /* if this was the server to which I am connected,
+         * then we need to exit */
         pmix_globals.connected = false;
         /* it is possible that we have sendrecv's in progress where
          * we are waiting for a response to arrive. Since we have
