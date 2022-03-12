@@ -15,6 +15,7 @@
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -24,8 +25,12 @@
 
 AM_CPPFLAGS = $(gds_shmem_CPPFLAGS)
 
-headers = gds_shmem.h
+headers = \
+        gds_shmem.h \
+        gds_shmem_utils.h
+
 sources = \
+        gds_shmem_utils.c \
         gds_shmem_component.c \
         gds_shmem.c
 

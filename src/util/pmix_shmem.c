@@ -35,8 +35,31 @@
 #endif
 #include <sys/mman.h>
 
+static void
+shmem_construct(
+    pmix_shmem_t *s
+) {
+    s->size = 0;
+    s->base_address = 0;
+    memset(s->backing_path, 0, PMIX_PATH_MAX);
+}
+
+static void
+shmem_destruct(
+    pmix_shmem_t *t
+) {
+    (void)pmix_shmem_segment_detach(t);
+    (void)pmix_shmem_segment_unlink(t);
+}
+
+PMIX_EXPORT PMIX_CLASS_INSTANCE(
+    pmix_shmem_t,
+    pmix_object_t,
+    shmem_construct,
+    shmem_destruct
+);
+
 // TODO(skg) Add network FS warning?
-// TODO(skg) Improve error messages, etc.
 pmix_status_t
 pmix_shmem_segment_create(
     pmix_shmem_t *shmem,
@@ -47,47 +70,60 @@ pmix_shmem_segment_create(
 
     int fd = open(backing_path, O_CREAT | O_RDWR, 0600);
     if (fd < 0) {
-        return PMIX_ERROR;
+        rc = PMIX_ERR_FILE_OPEN_FAILURE;
+        goto out;
     }
-    /* Size backing file. */
+    // Size backing file.
     if (0 != ftruncate(fd, size)) {
         rc = PMIX_ERROR;
+        goto out;
     }
-    if (PMIX_SUCCESS == rc) {
-        shmem->size = size;
-        pmix_string_copy(shmem->backing_path, backing_path, PMIX_PATH_MAX);
-    }
+    shmem->size = size;
+    pmix_string_copy(shmem->backing_path, backing_path, PMIX_PATH_MAX);
+out:
     (void)close(fd);
-
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
     return rc;
 }
 
-void *
+pmix_status_t
 pmix_shmem_segment_attach(
     pmix_shmem_t *shmem,
-    void *base_address
+    void *requested_base_address,
+    uintptr_t *actual_base_address
 ) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
     int fd = open(shmem->backing_path, O_RDWR);
     if (fd < 0) {
-        return NULL;
+        rc = PMIX_ERR_FILE_OPEN_FAILURE;
+        goto out;
     }
 
-    void *map_addr = mmap(base_address, shmem->size,
-                          PROT_READ | PROT_WRITE,
-                          MAP_SHARED, fd, 0);
-    if (MAP_FAILED == map_addr) {
-        (void)close(fd);
-        return NULL;
+    shmem->base_address = mmap(
+        requested_base_address, shmem->size,
+        PROT_READ | PROT_WRITE, MAP_SHARED,
+        fd, 0
+    );
+    if (MAP_FAILED == shmem->base_address) {
+        rc = PMIX_ERR_NOMEM;
     }
-    shmem->base_address = (uintptr_t)map_addr;
-    return map_addr;
+    *actual_base_address = (uintptr_t)shmem->base_address;
+out:
+    if (PMIX_SUCCESS != rc) {
+        (void)close(fd);
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 pmix_status_t
 pmix_shmem_segment_detach(
     pmix_shmem_t *shmem
 ) {
-    if (0 != munmap((void *)shmem->base_address, shmem->size)) {
+    if (0 != munmap(shmem->base_address, shmem->size)) {
         return PMIX_ERROR;
     }
     return PMIX_SUCCESS;
