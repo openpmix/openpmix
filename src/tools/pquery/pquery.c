@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,6 +43,7 @@
 #include "src/threads/threads.h"
 #include "src/util/cmd_line.h"
 #include "src/util/keyval_parse.h"
+#include "src/util/printf.h"
 #include "src/util/show_help.h"
 
 typedef struct {
@@ -209,7 +210,7 @@ int main(int argc, char **argv)
     pmix_info_t *info;
     mylock_t mylock;
     pmix_cmd_line_t cmd_line;
-    size_t n, m, k, nqueries, ninfo, ndarray;
+    size_t n, m, nqueries;
     myquery_data_t mq = {
         .lock = PMIX_LOCK_STATIC_INIT,
         .status = 0,
@@ -225,10 +226,8 @@ int main(int argc, char **argv)
     char **qprs;
     char *strt, *endp, *kptr;
     pmix_infolist_t *iptr;
-    char *str, *args = NULL;
+    char *str, *args = NULL, *result;
     pmix_query_t *queries;
-    pmix_info_t *infoptr, *ifptr;
-    uint64_t u64;
 
     /* protect against problems if someone passes us thru a pipe
      * and then abnormally terminates the pipe early */
@@ -470,60 +469,10 @@ int main(int argc, char **argv)
             } else {
                 fprintf(stdout, "%s: ", attr);
             }
-            if (PMIX_STRING == mq.info[n].value.type) {
-                fprintf(stdout, "%s\n", mq.info[n].value.data.string);
-            } else if (PMIX_DATA_ARRAY == mq.info[n].value.type) {
-                fprintf(stdout, "\n");
-                infoptr = (pmix_info_t *) mq.info[n].value.data.darray->array;
-                ninfo = mq.info[n].value.data.darray->size;
-                for (m = 0; m < ninfo; m++) {
-                    if (NULL == (attr = pmix_attributes_reverse_lookup(infoptr[m].key))) {
-                        fprintf(stdout, "\t%s:", infoptr[m].key);
-                    } else {
-                        fprintf(stdout, "\t%s:", attr);
-                    }
-                    if (PMIX_STRING == infoptr[m].value.type) {
-                        fprintf(stdout, "  %s\n", infoptr[m].value.data.string);
-                    } else if (PMIX_DATA_ARRAY == infoptr[m].value.type) {
-                        fprintf(stdout, "\n");
-                        ifptr = (pmix_info_t *) infoptr[m].value.data.darray->array;
-                        ndarray = infoptr[m].value.data.darray->size;
-                        for (k = 0; k < ndarray; k++) {
-                            if (NULL == (attr = pmix_attributes_reverse_lookup(ifptr[k].key))) {
-                                fprintf(stdout, "\t\t%s:", ifptr[k].key);
-                            } else {
-                                fprintf(stdout, "\t\t%s:", attr);
-                            }
-                            if (PMIX_STRING == ifptr[k].value.type) {
-                                fprintf(stdout, "  %s\n", ifptr[k].value.data.string);
-                            } else if (PMIX_PROC_RANK == ifptr[k].value.type) {
-                                fprintf(stdout, "  %u\n", ifptr[k].value.data.rank);
-                            } else {
-                                /* see if it is a number */
-                                PMIX_VALUE_GET_NUMBER(rc, &ifptr[k].value, u64, uint64_t);
-                                if (PMIX_SUCCESS == rc) {
-                                    fprintf(stdout, "  %lu\n", (unsigned long) u64);
-                                } else {
-                                    fprintf(stdout, "  Unimplemented value type: %s\n",
-                                            PMIx_Data_type_string(ifptr[k].value.type));
-                                }
-                            }
-                        }
-                    } else if (PMIX_PROC_RANK == infoptr[m].value.type) {
-                        fprintf(stdout, "  %u\n", infoptr[m].value.data.rank);
-                    } else {
-                        /* see if it is a number */
-                        PMIX_VALUE_GET_NUMBER(rc, &infoptr[m].value, u64, uint64_t);
-                        if (PMIX_SUCCESS == rc) {
-                            fprintf(stdout, "  %lu\n",
-                                    (unsigned long) infoptr[m].value.data.uint64);
-                        } else {
-                            fprintf(stdout, "  Unimplemented value type: %s\n",
-                                    PMIx_Data_type_string(infoptr[m].value.type));
-                        }
-                    }
-                }
-            }
+            fprintf(stdout, "\n");
+            result = PMIx_Value_string(&mq.info[n].value);
+            fprintf(stderr, "  %s\n", (NULL == result) ? "NULL" : result);
+            free(result);
         }
     }
 

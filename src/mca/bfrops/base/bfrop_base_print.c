@@ -39,6 +39,30 @@
 #include "src/util/name_fns.h"
 #include "src/util/printf.h"
 
+char* PMIx_Info_string(pmix_info_t *info)
+{
+    pmix_status_t rc;
+    char *output = NULL;
+
+    PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
+                      &output, NULL,
+                      (void*)info, PMIX_INFO);
+
+    return output;
+}
+
+char* PMIx_Value_string(pmix_value_t *value)
+{
+    pmix_status_t rc;
+    char *output = NULL;
+
+    PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
+                      &output, NULL,
+                      (void*)value, PMIX_VALUE);
+
+    return output;
+}
+
 pmix_status_t pmix_bfrops_base_print(pmix_pointer_array_t *regtypes, char **output, char *prefix,
                                      void *src, pmix_data_type_t type)
 {
@@ -889,6 +913,167 @@ int pmix_bfrops_base_print_status(char **output, char *prefix, pmix_status_t *sr
 
 /* PRINT FUNCTIONS FOR GENERIC PMIX TYPES */
 
+static int print_val(char **output, pmix_value_t *src)
+{
+    int rc;
+    char *tp;
+
+    switch (src->type) {
+        case PMIX_UNDEF:
+            tp = strdup(" Data type: PMIX_UNDEF");
+            rc = PMIX_SUCCESS;
+            break;
+        case PMIX_BOOL:
+            rc = pmix_bfrops_base_print_bool(&tp, NULL, &src->data.flag, PMIX_BOOL);
+            break;
+        case PMIX_BYTE:
+            rc = pmix_bfrops_base_print_byte(&tp, NULL, &src->data.byte, PMIX_STRING);
+            break;
+        case PMIX_STRING:
+            rc = pmix_bfrops_base_print_string(&tp, NULL, src->data.string, PMIX_STRING);
+            break;
+        case PMIX_SIZE:
+            rc = pmix_bfrops_base_print_size(&tp, NULL, &src->data.size, PMIX_SIZE);
+            break;
+        case PMIX_PID:
+            rc = pmix_bfrops_base_print_pid(&tp, NULL, &src->data.pid, PMIX_PID);
+            break;
+        case PMIX_INT:
+            rc = pmix_bfrops_base_print_int(&tp, NULL, &src->data.integer, PMIX_INT);
+            break;
+        case PMIX_INT8:
+            rc = pmix_bfrops_base_print_int8(&tp, NULL, &src->data.int8, PMIX_INT8);
+            break;
+        case PMIX_INT16:
+            rc = pmix_bfrops_base_print_int16(&tp, NULL, &src->data.int16, PMIX_INT16);
+            break;
+        case PMIX_INT32:
+            rc = pmix_bfrops_base_print_int32(&tp, NULL, &src->data.int32, PMIX_INT32);
+            break;
+        case PMIX_INT64:
+            rc = pmix_bfrops_base_print_int64(&tp, NULL, &src->data.int64, PMIX_INT64);
+            break;
+        case PMIX_UINT:
+            rc = pmix_bfrops_base_print_uint(&tp, NULL, &src->data.uint, PMIX_UINT);
+            break;
+        case PMIX_UINT8:
+            rc = pmix_bfrops_base_print_uint8(&tp, NULL, &src->data.uint8, PMIX_UINT8);
+            break;
+        case PMIX_UINT16:
+            rc = pmix_bfrops_base_print_uint16(&tp, NULL, &src->data.uint16, PMIX_UINT16);
+            break;
+        case PMIX_UINT32:
+            rc = pmix_bfrops_base_print_uint32(&tp, NULL, &src->data.uint32, PMIX_UINT32);
+            break;
+        case PMIX_UINT64:
+            rc = pmix_bfrops_base_print_uint64(&tp, NULL, &src->data.uint64, PMIX_UINT64);
+            break;
+        case PMIX_FLOAT:
+            rc = pmix_bfrops_base_print_float(&tp, NULL, &src->data.fval, PMIX_FLOAT);
+            break;
+        case PMIX_DOUBLE:
+            rc = pmix_bfrops_base_print_double(&tp, NULL, &src->data.dval, PMIX_DOUBLE);
+            break;
+        case PMIX_TIMEVAL:
+            rc = pmix_bfrops_base_print_timeval(&tp, NULL, &src->data.tv, PMIX_TIMEVAL);
+            break;
+        case PMIX_TIME:
+            rc = pmix_bfrops_base_print_time(&tp, NULL, &src->data.time, PMIX_TIME);
+            break;
+        case PMIX_STATUS:
+            rc = pmix_bfrops_base_print_status(&tp, NULL, &src->data.status, PMIX_STATUS);
+            break;
+        case PMIX_PROC_RANK:
+            rc = pmix_bfrops_base_print_rank(&tp, NULL, &src->data.rank, PMIX_PROC_RANK);
+            break;
+        case PMIX_PROC_NSPACE:
+            rc = pmix_bfrops_base_print_nspace(&tp, NULL, src->data.nspace, PMIX_PROC_NSPACE);
+            break;
+        case PMIX_PROC:
+            rc = pmix_bfrops_base_print_proc(&tp, NULL, src->data.proc, PMIX_PROC);
+            break;
+        case PMIX_BYTE_OBJECT:
+            rc = pmix_bfrops_base_print_bo(&tp, NULL, &src->data.bo, PMIX_BYTE_OBJECT);
+            break;
+        case PMIX_PERSIST:
+            rc = pmix_bfrops_base_print_persist(&tp, NULL, &src->data.persist, PMIX_PERSIST);
+            break;
+        case PMIX_SCOPE:
+            rc = pmix_bfrops_base_print_scope(&tp, NULL, &src->data.scope, PMIX_SCOPE);
+            break;
+        case PMIX_DATA_RANGE:
+            rc = pmix_bfrops_base_print_range(&tp, NULL, &src->data.range, PMIX_DATA_RANGE);
+            break;
+        case PMIX_PROC_STATE:
+            rc = pmix_bfrops_base_print_pstate(&tp, NULL, &src->data.state, PMIX_PROC_STATE);
+            break;
+        case PMIX_PROC_INFO:
+            rc = pmix_bfrops_base_print_pinfo(&tp, NULL, src->data.pinfo, PMIX_PROC_INFO);
+            break;
+        case PMIX_DATA_ARRAY:
+            rc = pmix_bfrops_base_print_darray(&tp, NULL, src->data.darray, PMIX_DATA_ARRAY);
+            break;
+        case PMIX_REGATTR:
+            rc = pmix_bfrops_base_print_regattr(&tp, NULL, src->data.ptr, PMIX_REGATTR);
+            break;
+        case PMIX_ALLOC_DIRECTIVE:
+            rc = pmix_bfrops_base_print_alloc_directive(&tp, NULL, &src->data.adir, PMIX_ALLOC_DIRECTIVE);
+            break;
+        case PMIX_ENVAR:
+            rc = pmix_bfrops_base_print_envar(&tp, NULL, &src->data.envar, PMIX_ENVAR);
+            break;
+        case PMIX_COORD:
+            rc = pmix_bfrops_base_print_coord(&tp, NULL, src->data.coord, PMIX_COORD);
+            break;
+        case PMIX_LINK_STATE:
+            rc = pmix_bfrops_base_print_linkstate(&tp, NULL, &src->data.linkstate, PMIX_LINK_STATE);
+            break;
+        case PMIX_JOB_STATE:
+            rc = pmix_bfrops_base_print_jobstate(&tp, NULL, &src->data.jstate, PMIX_JOB_STATE);
+            break;
+        case PMIX_TOPO:
+            rc = pmix_bfrops_base_print_topology(&tp, NULL, src->data.topo, PMIX_TOPO);
+            break;
+        case PMIX_PROC_CPUSET:
+            rc = pmix_bfrops_base_print_cpuset(&tp, NULL, src->data.cpuset, PMIX_PROC_CPUSET);
+            break;
+        case PMIX_LOCTYPE:
+            rc = pmix_bfrops_base_print_locality(&tp, NULL, &src->data.locality, PMIX_LOCTYPE);
+            break;
+        case PMIX_GEOMETRY:
+            rc = pmix_bfrops_base_print_geometry(&tp, NULL, src->data.geometry, PMIX_GEOMETRY);
+            break;
+        case PMIX_DEVTYPE:
+            rc = pmix_bfrops_base_print_devtype(&tp, NULL, &src->data.devtype, PMIX_DEVTYPE);
+            break;
+        case PMIX_DEVICE_DIST:
+            rc = pmix_bfrops_base_print_devdist(&tp, NULL, src->data.devdist, PMIX_DEVICE_DIST);
+            break;
+        case PMIX_ENDPOINT:
+            rc = pmix_bfrops_base_print_endpoint(&tp, NULL, src->data.endpoint, PMIX_ENDPOINT);
+            break;
+        case PMIX_STOR_MEDIUM:
+            rc = pmix_bfrops_base_print_smed(&tp, NULL, &src->data.uint64, PMIX_STOR_MEDIUM);
+            break;
+        case PMIX_STOR_ACCESS:
+            rc = pmix_bfrops_base_print_sacc(&tp, NULL, &src->data.uint64, PMIX_STOR_ACCESS);
+            break;
+        case PMIX_STOR_PERSIST:
+            rc = pmix_bfrops_base_print_spers(&tp, NULL, &src->data.uint64, PMIX_STOR_PERSIST);
+            break;
+        case PMIX_STOR_ACCESS_TYPE:
+            rc = pmix_bfrops_base_print_satyp(&tp, NULL, &src->data.uint16, PMIX_STOR_ACCESS_TYPE);
+            break;
+        default:
+            pmix_asprintf(&tp, " Data type: %s(%d)\tValue: UNPRINTABLE",
+                          PMIx_Data_type_string(src->type), (int)(src->type));
+            rc = PMIX_SUCCESS;
+            break;
+    }
+
+    *output = tp;
+    return rc;
+}
 /*
  * PMIX_VALUE
  */
@@ -897,7 +1082,6 @@ int pmix_bfrops_base_print_value(char **output, char *prefix, pmix_value_t *src,
 {
     char *prefx;
     int rc;
-    pmix_regattr_t *r;
     char *tp;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
@@ -913,205 +1097,17 @@ int pmix_bfrops_base_print_value(char **output, char *prefix, pmix_value_t *src,
 
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
-        rc = asprintf(output, "%sData type: PMIX_VALUE\tValue: NULL pointer", prefx);
+        pmix_asprintf(output, "%sData type: PMIX_VALUE\tValue: NULL pointer", prefx);
         if (prefx != prefix) {
             free(prefx);
         }
-        if (0 > rc) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        } else {
-            return PMIX_SUCCESS;
-        }
+        return PMIX_SUCCESS;
     }
 
-    switch (src->type) {
-    case PMIX_UNDEF:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UNDEF", prefx);
-        break;
-    case PMIX_BYTE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_BYTE\tValue: %x", prefx,
-                      src->data.byte);
-        break;
-    case PMIX_STRING:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_STRING\tValue: %s", prefx,
-                      src->data.string);
-        break;
-    case PMIX_SIZE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_SIZE\tValue: %lu", prefx,
-                      (unsigned long) src->data.size);
-        break;
-    case PMIX_PID:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PID\tValue: %lu", prefx,
-                      (unsigned long) src->data.pid);
-        break;
-    case PMIX_INT:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT\tValue: %d", prefx,
-                      src->data.integer);
-        break;
-    case PMIX_INT8:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT8\tValue: %d", prefx,
-                      (int) src->data.int8);
-        break;
-    case PMIX_INT16:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT16\tValue: %d", prefx,
-                      (int) src->data.int16);
-        break;
-    case PMIX_INT32:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT32\tValue: %d", prefx,
-                      src->data.int32);
-        break;
-    case PMIX_INT64:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_INT64\tValue: %ld", prefx,
-                      (long) src->data.int64);
-        break;
-    case PMIX_UINT:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT\tValue: %u", prefx,
-                      src->data.uint);
-        break;
-    case PMIX_UINT8:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT8\tValue: %u", prefx,
-                      (unsigned int) src->data.uint8);
-        break;
-    case PMIX_UINT16:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT16\tValue: %u", prefx,
-                      (unsigned int) src->data.uint16);
-        break;
-    case PMIX_UINT32:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT32\tValue: %u", prefx,
-                      src->data.uint32);
-        break;
-    case PMIX_UINT64:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_UINT64\tValue: %lu", prefx,
-                      (unsigned long) src->data.uint64);
-        break;
-    case PMIX_FLOAT:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_FLOAT\tValue: %f", prefx,
-                      src->data.fval);
-        break;
-    case PMIX_DOUBLE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_DOUBLE\tValue: %f", prefx,
-                      src->data.dval);
-        break;
-    case PMIX_TIMEVAL:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_TIMEVAL\tValue: %ld.%06ld", prefx,
-                      (long) src->data.tv.tv_sec, (long) src->data.tv.tv_usec);
-        break;
-    case PMIX_TIME:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_TIME\tValue: %ld", prefx,
-                      (long) src->data.time);
-        break;
-    case PMIX_STATUS:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_STATUS\tValue: %s", prefx,
-                      PMIx_Error_string(src->data.status));
-        break;
-    case PMIX_PROC:
-        if (NULL == src->data.proc) {
-            rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PROC\tNULL", prefx);
-        } else {
-            rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PROC\t%s:%lu", prefx,
-                          src->data.proc->nspace, (unsigned long) src->data.proc->rank);
-        }
-        break;
-    case PMIX_BYTE_OBJECT:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: BYTE_OBJECT\tSIZE: %ld", prefx,
-                      (long) src->data.bo.size);
-        break;
-    case PMIX_PERSIST:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PERSIST\tValue: %d", prefx,
-                      (int) src->data.persist);
-        break;
-    case PMIX_SCOPE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_SCOPE\tValue: %d", prefx,
-                      (int) src->data.scope);
-        break;
-    case PMIX_DATA_RANGE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_DATA_RANGE\tValue: %d", prefx,
-                      (int) src->data.range);
-        break;
-    case PMIX_PROC_STATE:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_STATE\tValue: %d", prefx,
-                      (int) src->data.state);
-        break;
-    case PMIX_PROC_INFO:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_PROC_INFO\tValue: %s:%lu", prefx,
-                      src->data.proc->nspace, (unsigned long) src->data.proc->rank);
-        break;
-    case PMIX_DATA_ARRAY:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: DATA_ARRAY\tARRAY SIZE: %ld", prefx,
-                      (long) src->data.darray->size);
-        break;
-    case PMIX_REGATTR:
-        r = (pmix_regattr_t *) src->data.ptr;
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_REGATTR\tName: %s\tString: %s", prefx,
-                      (NULL == r->name) ? "NULL" : r->name,
-                      (0 == strlen(r->string)) ? "NULL" : r->string);
-        break;
-    case PMIX_ALLOC_DIRECTIVE:
-        rc = pmix_bfrops_base_print_alloc_directive(output, prefx, &src->data.adir,
-                                                    PMIX_ALLOC_DIRECTIVE);
-        break;
-    case PMIX_ENVAR:
-        rc = asprintf(output,
-                      "%sPMIX_VALUE: Data type: PMIX_ENVAR\tName: %s\tValue: %s\tSeparator: %c",
-                      prefx, (NULL == src->data.envar.envar) ? "NULL" : src->data.envar.envar,
-                      (NULL == src->data.envar.value) ? "NULL" : src->data.envar.value,
-                      src->data.envar.separator);
-        break;
-    case PMIX_COORD:
-        if (PMIX_COORD_VIEW_UNDEF == src->data.coord->view) {
-            tp = "UNDEF";
-        } else if (PMIX_COORD_LOGICAL_VIEW == src->data.coord->view) {
-            tp = "LOGICAL";
-        } else if (PMIX_COORD_PHYSICAL_VIEW == src->data.coord->view) {
-            tp = "PHYSICAL";
-        } else {
-            tp = "UNRECOGNIZED";
-        }
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: PMIX_COORD\tView: %s\tDims: %lu", prefx, tp,
-                      (unsigned long) src->data.coord->dims);
-        break;
-    case PMIX_LINK_STATE:
-        rc = pmix_bfrops_base_print_linkstate(output, prefx, &src->data.linkstate, PMIX_LINK_STATE);
-        break;
-    case PMIX_JOB_STATE:
-        rc = pmix_bfrops_base_print_jobstate(output, prefx, &src->data.jstate, PMIX_JOB_STATE);
-        break;
-    case PMIX_TOPO:
-        rc = pmix_bfrops_base_print_topology(output, prefx, src->data.topo, PMIX_TOPO);
-        break;
-    case PMIX_PROC_CPUSET:
-        rc = pmix_bfrops_base_print_cpuset(output, prefx, src->data.cpuset, PMIX_PROC_CPUSET);
-        break;
-    case PMIX_LOCTYPE:
-        rc = pmix_bfrops_base_print_locality(output, prefx, &src->data.locality, PMIX_LOCTYPE);
-        break;
-    case PMIX_GEOMETRY:
-        rc = pmix_bfrops_base_print_geometry(output, prefx, src->data.geometry, PMIX_GEOMETRY);
-        break;
-    case PMIX_DEVTYPE:
-        rc = pmix_bfrops_base_print_devtype(output, prefx, &src->data.devtype, PMIX_DEVTYPE);
-        break;
-    case PMIX_DEVICE_DIST:
-        rc = pmix_bfrops_base_print_devdist(output, prefx, src->data.devdist, PMIX_DEVICE_DIST);
-        break;
-    case PMIX_ENDPOINT:
-        rc = pmix_bfrops_base_print_endpoint(output, prefx, src->data.endpoint, PMIX_ENDPOINT);
-        break;
-    case PMIX_STOR_MEDIUM:
-        rc = pmix_bfrops_base_print_smed(output, prefx, &src->data.uint64, PMIX_STOR_MEDIUM);
-        break;
-    case PMIX_STOR_ACCESS:
-        rc = pmix_bfrops_base_print_sacc(output, prefx, &src->data.uint64, PMIX_STOR_ACCESS);
-        break;
-    case PMIX_STOR_PERSIST:
-        rc = pmix_bfrops_base_print_spers(output, prefx, &src->data.uint64, PMIX_STOR_PERSIST);
-        break;
-    case PMIX_STOR_ACCESS_TYPE:
-        rc = pmix_bfrops_base_print_satyp(output, prefx, &src->data.uint16, PMIX_STOR_ACCESS_TYPE);
-        break;
-    default:
-        rc = asprintf(output, "%sPMIX_VALUE: Data type: UNKNOWN\tValue: UNPRINTABLE", prefx);
-        break;
+    rc = print_val(&tp, src);
+    if (PMIX_SUCCESS == rc) {
+        rc = asprintf(output, "%sPMIX_VALUE: %s", prefx, tp);
+        free(tp);
     }
     if (prefx != prefix) {
         free(prefx);
@@ -1201,18 +1197,23 @@ int pmix_bfrops_base_print_proc(char **output, char *prefix, pmix_proc_t *src,
         prefx = prefix;
     }
 
-    switch (src->rank) {
-    case PMIX_RANK_UNDEF:
-        rc = asprintf(output, "%sPROC: %s:PMIX_RANK_UNDEF", prefx, src->nspace);
-        break;
-    case PMIX_RANK_WILDCARD:
-        rc = asprintf(output, "%sPROC: %s:PMIX_RANK_WILDCARD", prefx, src->nspace);
-        break;
-    case PMIX_RANK_LOCAL_NODE:
-        rc = asprintf(output, "%sPROC: %s:PMIX_RANK_LOCAL_NODE", prefx, src->nspace);
-        break;
-    default:
-        rc = asprintf(output, "%sPROC: %s:%lu", prefx, src->nspace, (unsigned long) (src->rank));
+    if (NULL == src){
+        *output = strdup("%sPROC: NULL");
+        rc = PMIX_SUCCESS;
+    } else {
+        switch (src->rank) {
+            case PMIX_RANK_UNDEF:
+                rc = asprintf(output, "%sPROC: %s:PMIX_RANK_UNDEF", prefx, src->nspace);
+                break;
+            case PMIX_RANK_WILDCARD:
+                rc = asprintf(output, "%sPROC: %s:PMIX_RANK_WILDCARD", prefx, src->nspace);
+                break;
+            case PMIX_RANK_LOCAL_NODE:
+                rc = asprintf(output, "%sPROC: %s:PMIX_RANK_LOCAL_NODE", prefx, src->nspace);
+                break;
+            default:
+                rc = asprintf(output, "%sPROC: %s:%lu", prefx, src->nspace, (unsigned long) (src->rank));
+        }
     }
     if (prefx != prefix) {
         free(prefx);
@@ -1591,8 +1592,55 @@ done:
 pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_data_array_t *src,
                                             pmix_data_type_t type)
 {
-    char *prefx;
-    int ret;
+    char *prefx, *tp, *tp2=NULL, *tp3;
+    pmix_status_t rc;
+    size_t n;
+    bool *bptr;
+    uint8_t *u8ptr;
+    int8_t *i8ptr;
+    uint16_t *u16ptr;
+    int16_t *i16ptr;
+    uint32_t *u32ptr;
+    int32_t *i32ptr;
+    uint64_t *u64ptr;
+    int64_t *i64ptr;
+    char **strings;
+    size_t *szptr;
+    pid_t *pidptr;
+    unsigned int *uintptr;
+    int *intptr;
+    float *fltptr;
+    double *dblptr;
+    struct timeval *tvlptr;
+    time_t *tmptr;
+    pmix_status_t *stptr;
+    pmix_rank_t *rkptr;
+    pmix_nspace_t *nsptr;
+    pmix_proc_t *procptr;
+    pmix_byte_object_t *boptr;
+    pmix_persistence_t *prstptr;
+    pmix_scope_t *scptr;
+    pmix_data_range_t *drptr;
+    pmix_proc_state_t *psptr;
+    pmix_proc_info_t *piptr;
+    pmix_data_array_t *daptr;
+    pmix_regattr_t *rgptr;
+    pmix_alloc_directive_t *adptr;
+    pmix_envar_t *evptr;
+    pmix_coord_t *coptr;
+    pmix_link_state_t *lkptr;
+    pmix_job_state_t *jsptr;
+    pmix_topology_t *tptr;
+    pmix_cpuset_t *cpsptr;
+    pmix_locality_t *lcptr;
+    pmix_geometry_t *geoptr;
+    pmix_device_type_t *dvptr;
+    pmix_device_distance_t *ddptr;
+    pmix_endpoint_t *endptr;
+    pmix_storage_medium_t *smptr;
+    pmix_storage_accessibility_t *saptr;
+    pmix_storage_persistence_t *spptr;
+    pmix_storage_access_type_t *satptr;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
@@ -1605,17 +1653,220 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
         prefx = prefix;
     }
 
-    ret = asprintf(output, "%sData type: PMIX_DATA_ARRAY\tSize: %lu", prefx,
-                   (unsigned long) src->size);
+    for (n=0; n < src->size; n++) {
+        switch (src->type) {
+            case PMIX_BOOL:
+                bptr = (bool*)src->array;
+                rc = pmix_bfrops_base_print_bool(&tp, NULL, &bptr[n], PMIX_BOOL);
+                break;
+            case PMIX_BYTE:
+                u8ptr = (uint8_t*)src->array;
+                rc = pmix_bfrops_base_print_byte(&tp, NULL, &u8ptr[n], PMIX_STRING);
+                break;
+            case PMIX_STRING:
+                strings = (char**)src->array;
+                rc = pmix_bfrops_base_print_string(&tp, NULL, strings[n], PMIX_STRING);
+                break;
+            case PMIX_SIZE:
+                szptr = (size_t*)src->array;
+                rc = pmix_bfrops_base_print_size(&tp, NULL, &szptr[n], PMIX_SIZE);
+                break;
+            case PMIX_PID:
+                pidptr = (pid_t*)src->array;
+                rc = pmix_bfrops_base_print_pid(&tp, NULL, &pidptr[n], PMIX_PID);
+                break;
+            case PMIX_INT:
+                intptr = (int*)src->array;
+                rc = pmix_bfrops_base_print_int(&tp, NULL, &intptr[n], PMIX_INT);
+                break;
+            case PMIX_INT8:
+                i8ptr = (int8_t*)src->array;
+                rc = pmix_bfrops_base_print_int8(&tp, NULL, &i8ptr[n], PMIX_INT8);
+                break;
+            case PMIX_INT16:
+                i16ptr = (int16_t*)src->array;
+                rc = pmix_bfrops_base_print_int16(&tp, NULL, &i16ptr[n], PMIX_INT16);
+                break;
+            case PMIX_INT32:
+                i32ptr = (int32_t*)src->array;
+                rc = pmix_bfrops_base_print_int32(&tp, NULL, &i32ptr[n], PMIX_INT32);
+                break;
+            case PMIX_INT64:
+                i64ptr = (int64_t*)src->array;
+                rc = pmix_bfrops_base_print_int64(&tp, NULL, &i64ptr[n], PMIX_INT64);
+                break;
+            case PMIX_UINT:
+                uintptr = (unsigned int*)src->array;
+                rc = pmix_bfrops_base_print_uint(&tp, NULL, &uintptr[n], PMIX_UINT);
+                break;
+            case PMIX_UINT8:
+                u8ptr = (uint8_t*)src->array;
+                rc = pmix_bfrops_base_print_uint8(&tp, NULL, &u8ptr[n], PMIX_UINT8);
+                break;
+            case PMIX_UINT16:
+                u16ptr = (uint16_t*)src->array;
+                rc = pmix_bfrops_base_print_uint16(&tp, NULL, &u16ptr[n], PMIX_UINT16);
+                break;
+            case PMIX_UINT32:
+                u32ptr = (uint32_t*)src->array;
+                rc = pmix_bfrops_base_print_uint32(&tp, NULL, &u32ptr[n], PMIX_UINT32);
+                break;
+            case PMIX_UINT64:
+                u64ptr = (uint64_t*)src->array;
+                rc = pmix_bfrops_base_print_uint64(&tp, NULL, &u64ptr[n], PMIX_UINT64);
+                break;
+            case PMIX_FLOAT:
+                fltptr = (float*)src->array;
+                rc = pmix_bfrops_base_print_float(&tp, NULL, &fltptr[n], PMIX_FLOAT);
+                break;
+            case PMIX_DOUBLE:
+                dblptr = (double*)src->array;
+                rc = pmix_bfrops_base_print_double(&tp, NULL, &dblptr[n], PMIX_DOUBLE);
+                break;
+            case PMIX_TIMEVAL:
+                tvlptr = (struct timeval*)src->array;
+                rc = pmix_bfrops_base_print_timeval(&tp, NULL, &tvlptr[n], PMIX_TIMEVAL);
+                break;
+            case PMIX_TIME:
+                tmptr = (time_t*)src->array;
+                rc = pmix_bfrops_base_print_time(&tp, NULL, &tmptr[n], PMIX_TIME);
+                break;
+            case PMIX_STATUS:
+                stptr = (pmix_status_t*)src->array;
+                rc = pmix_bfrops_base_print_status(&tp, NULL, &stptr[n], PMIX_STATUS);
+                break;
+            case PMIX_PROC_RANK:
+                rkptr = (pmix_rank_t*)src->array;
+                rc = pmix_bfrops_base_print_rank(&tp, NULL, &rkptr[n], PMIX_PROC_RANK);
+                break;
+            case PMIX_PROC_NSPACE:
+                nsptr = (pmix_nspace_t*)src->array;
+                rc = pmix_bfrops_base_print_nspace(&tp, NULL, &nsptr[n], PMIX_PROC_NSPACE);
+                break;
+            case PMIX_PROC:
+                procptr = (pmix_proc_t*)src->array;
+                rc = pmix_bfrops_base_print_proc(&tp, NULL, &procptr[n], PMIX_PROC);
+                break;
+            case PMIX_BYTE_OBJECT:
+                boptr = (pmix_byte_object_t*)src->array;
+                rc = pmix_bfrops_base_print_bo(&tp, NULL, &boptr[n], PMIX_BYTE_OBJECT);
+                break;
+            case PMIX_PERSIST:
+                prstptr = (pmix_persistence_t*)src->array;
+                rc = pmix_bfrops_base_print_persist(&tp, NULL, &prstptr[n], PMIX_PERSIST);
+                break;
+            case PMIX_SCOPE:
+                scptr = (pmix_scope_t*)src->array;
+                rc = pmix_bfrops_base_print_scope(&tp, NULL, &scptr[n], PMIX_SCOPE);
+                break;
+            case PMIX_DATA_RANGE:
+                drptr = (pmix_data_range_t*)src->array;
+                rc = pmix_bfrops_base_print_range(&tp, NULL, &drptr[n], PMIX_DATA_RANGE);
+                break;
+            case PMIX_PROC_STATE:
+                psptr = (pmix_proc_state_t*)src->array;
+                rc = pmix_bfrops_base_print_pstate(&tp, NULL, &psptr[n], PMIX_PROC_STATE);
+                break;
+            case PMIX_PROC_INFO:
+                piptr = (pmix_proc_info_t*)src->array;
+                rc = pmix_bfrops_base_print_pinfo(&tp, NULL, &piptr[n], PMIX_PROC_INFO);
+                break;
+            case PMIX_DATA_ARRAY:
+                daptr = (pmix_data_array_t*)src->array;
+                rc = pmix_bfrops_base_print_darray(&tp, NULL, &daptr[n], PMIX_DATA_ARRAY);
+                break;
+            case PMIX_REGATTR:
+                rgptr = (pmix_regattr_t*)src->array;
+                rc = pmix_bfrops_base_print_regattr(&tp, NULL, &rgptr[n], PMIX_REGATTR);
+                break;
+            case PMIX_ALLOC_DIRECTIVE:
+                adptr = (pmix_alloc_directive_t*)src->array;
+                rc = pmix_bfrops_base_print_alloc_directive(&tp, NULL, &adptr[n], PMIX_ALLOC_DIRECTIVE);
+                break;
+            case PMIX_ENVAR:
+                evptr = (pmix_envar_t*)src->array;
+                rc = pmix_bfrops_base_print_envar(&tp, NULL, &evptr[n], PMIX_ENVAR);
+                break;
+            case PMIX_COORD:
+                coptr = (pmix_coord_t*)src->array;
+                rc = pmix_bfrops_base_print_coord(&tp, NULL, &coptr[n], PMIX_COORD);
+                break;
+            case PMIX_LINK_STATE:
+                lkptr = (pmix_link_state_t*)src->array;
+                rc = pmix_bfrops_base_print_linkstate(&tp, NULL, &lkptr[n], PMIX_LINK_STATE);
+                break;
+            case PMIX_JOB_STATE:
+                jsptr = (pmix_job_state_t*)src->array;
+                rc = pmix_bfrops_base_print_jobstate(&tp, NULL, &jsptr[n], PMIX_JOB_STATE);
+                break;
+            case PMIX_TOPO:
+                tptr = (pmix_topology_t*)src->array;
+                rc = pmix_bfrops_base_print_topology(&tp, NULL, &tptr[n], PMIX_TOPO);
+                break;
+            case PMIX_PROC_CPUSET:
+                cpsptr = (pmix_cpuset_t*)src->array;
+                rc = pmix_bfrops_base_print_cpuset(&tp, NULL, &cpsptr[n], PMIX_PROC_CPUSET);
+                break;
+            case PMIX_LOCTYPE:
+                lcptr = (pmix_locality_t*)src->array;
+                rc = pmix_bfrops_base_print_locality(&tp, NULL, &lcptr[n], PMIX_LOCTYPE);
+                break;
+            case PMIX_GEOMETRY:
+                geoptr = (pmix_geometry_t*)src->array;
+                rc = pmix_bfrops_base_print_geometry(&tp, NULL, &geoptr[n], PMIX_GEOMETRY);
+                break;
+            case PMIX_DEVTYPE:
+                dvptr = (pmix_device_type_t*)src->array;
+                rc = pmix_bfrops_base_print_devtype(&tp, NULL, &dvptr[n], PMIX_DEVTYPE);
+                break;
+            case PMIX_DEVICE_DIST:
+                ddptr = (pmix_device_distance_t*)src->array;
+                rc = pmix_bfrops_base_print_devdist(&tp, NULL, &ddptr[n], PMIX_DEVICE_DIST);
+                break;
+            case PMIX_ENDPOINT:
+                endptr = (pmix_endpoint_t*)src->array;
+                rc = pmix_bfrops_base_print_endpoint(&tp, NULL, &endptr[n], PMIX_ENDPOINT);
+                break;
+            case PMIX_STOR_MEDIUM:
+                smptr = (pmix_storage_medium_t*)src->array;
+                rc = pmix_bfrops_base_print_smed(&tp, NULL, &smptr[n], PMIX_STOR_MEDIUM);
+                break;
+            case PMIX_STOR_ACCESS:
+                saptr = (pmix_storage_accessibility_t*)src->array;
+                rc = pmix_bfrops_base_print_sacc(&tp, NULL, &saptr[n], PMIX_STOR_ACCESS);
+                break;
+            case PMIX_STOR_PERSIST:
+                spptr = (pmix_storage_persistence_t*)src->array;
+                rc = pmix_bfrops_base_print_spers(&tp, NULL, &spptr[n], PMIX_STOR_PERSIST);
+                break;
+            case PMIX_STOR_ACCESS_TYPE:
+                satptr = (pmix_storage_access_type_t*)src->array;
+                rc = pmix_bfrops_base_print_satyp(&tp, NULL, &satptr[n], PMIX_STOR_ACCESS_TYPE);
+                break;
+            default:
+                pmix_asprintf(&tp, " Data type: %s(%d)\tValue: UNPRINTABLE",
+                              PMIx_Data_type_string(src->type), (int)(src->type));
+                rc = PMIX_SUCCESS;
+                break;
+        }
+        if (NULL == tp2) {
+            tp2 = strdup(tp);
+        } else {
+            pmix_asprintf(&tp3, "%s\n%s%s", tp2, prefx, tp);
+            free(tp2);
+            tp2 = tp3;
+        }
+        free(tp);
+    }
+    pmix_asprintf(output, "%sData type: PMIX_DATA_ARRAY\tType: %s\tSize: %lu\n%s%s", prefx,
+                  PMIx_Data_type_string(src->type), (unsigned long) src->size,
+                  prefx, (NULL == tp2) ? "NULL" : tp2);
+    free(tp2);
     if (prefx != prefix) {
         free(prefx);
     }
 
-    if (0 > ret) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    } else {
-        return PMIX_SUCCESS;
-    }
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_bfrops_base_print_query(char **output, char *prefix, pmix_query_t *src,
