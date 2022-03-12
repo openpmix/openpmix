@@ -14,7 +14,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -41,6 +41,7 @@
 #include "src/util/output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/printf.h"
+#include "src/util/os_dirpath.h"
 
 /*
  * Public variables
@@ -70,7 +71,6 @@ int pmix_mca_base_open(void)
     pmix_output_stream_t lds;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
     int var_id;
-    int rc;
 
     if (pmix_mca_base_opened++) {
         return PMIX_SUCCESS;
@@ -80,10 +80,11 @@ int pmix_mca_base_open(void)
     pmix_mca_base_system_default_path = strdup(pmix_pinstall_dirs.pmixlibdir);
 #if PMIX_WANT_HOME_CONFIG_FILES
     value = (char *) pmix_home_directory(geteuid());
-    rc = asprintf(&pmix_mca_base_user_default_path,
+    pmix_asprintf(&pmix_mca_base_user_default_path,
                   "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "components", value);
-    if (0 > rc) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
+    if (PMIX_SUCCESS != pmix_os_dirpath_access(pmix_mca_base_user_default_path, 0)) {
+        free(pmix_mca_base_user_default_path);
+        pmix_mca_base_user_default_path = NULL;
     }
 #endif
 
@@ -91,11 +92,8 @@ int pmix_mca_base_open(void)
     if (NULL == pmix_mca_base_user_default_path) {
         value = strdup(pmix_mca_base_system_default_path);
     } else {
-        rc = asprintf(&value, "%s%c%s", pmix_mca_base_system_default_path, PMIX_ENV_SEP,
+        pmix_asprintf(&value, "%s%c%s", pmix_mca_base_system_default_path, PMIX_ENV_SEP,
                       pmix_mca_base_user_default_path);
-        if (0 > rc) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
     }
 
     pmix_mca_base_component_path = value;
@@ -110,7 +108,6 @@ int pmix_mca_base_open(void)
     free(value);
 
     pmix_mca_base_component_show_load_errors = (bool) PMIX_SHOW_LOAD_ERRORS_DEFAULT;
-    ;
     var_id = pmix_mca_base_var_register(
         "pmix", "mca", "base", "component_show_load_errors",
         "Whether to show errors for components that failed to load or not",
@@ -159,10 +156,7 @@ int pmix_mca_base_open(void)
         set_defaults(&lds);
     }
     gethostname(hostname, PMIX_MAXHOSTNAMELEN - 1);
-    rc = asprintf(&lds.lds_prefix, "[%s:%05d] ", hostname, getpid());
-    if (0 > rc) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
+    pmix_asprintf(&lds.lds_prefix, "[%s:%05d] ", hostname, getpid());
     pmix_output_reopen(0, &lds);
     pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, 0, "mca: base: opening components at %s",
                         pmix_mca_base_component_path);
