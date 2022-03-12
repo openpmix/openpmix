@@ -402,10 +402,12 @@ static pmix_status_t generate_ppn(const char *input, char **regexp)
         while (NULL != (rng = (pmix_regex_range_t *) pmix_list_remove_first(&vreg->ranges))) {
             if (1 == rng->cnt) {
                 if (0 > asprintf(&tmp2, "%s%d,", tmp, rng->start)) {
+                    free(tmp);
                     return PMIX_ERR_NOMEM;
                 }
             } else {
                 if (0 > asprintf(&tmp2, "%s%d-%d,", tmp, rng->start, rng->start + rng->cnt - 1)) {
+                    free(tmp);
                     return PMIX_ERR_NOMEM;
                 }
             }

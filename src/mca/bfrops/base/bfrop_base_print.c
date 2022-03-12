@@ -1250,6 +1250,9 @@ int pmix_bfrops_base_print_persist(char **output, char *prefix, pmix_persistence
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
         if (0 > asprintf(output, "%sData type: PMIX_PERSIST\tValue: NULL pointer", prefx)) {
+            if (prefx != prefix) {
+                free(prefx);
+            }
             return PMIX_ERR_NOMEM;
         }
         if (prefx != prefix) {
@@ -1259,6 +1262,9 @@ int pmix_bfrops_base_print_persist(char **output, char *prefix, pmix_persistence
     }
 
     if (0 > asprintf(output, "%sData type: PMIX_PERSIST\tValue: %ld", prefx, (long) *src)) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (prefx != prefix) {
@@ -1286,6 +1292,9 @@ pmix_status_t pmix_bfrops_base_print_scope(char **output, char *prefix, pmix_sco
 
     if (0
         > asprintf(output, "%sData type: PMIX_SCOPE\tValue: %s", prefx, PMIx_Scope_string(*src))) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (prefx != prefix) {
@@ -1313,6 +1322,9 @@ pmix_status_t pmix_bfrops_base_print_range(char **output, char *prefix, pmix_dat
 
     if (0 > asprintf(output, "%sData type: PMIX_DATA_RANGE\tValue: %s", prefx,
                      PMIx_Data_range_string(*src))) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (prefx != prefix) {
@@ -1339,6 +1351,9 @@ pmix_status_t pmix_bfrops_base_print_cmd(char **output, char *prefix, pmix_cmd_t
 
     if (0 > asprintf(output, "%sData type: PMIX_COMMAND\tValue: %s", prefx,
                      pmix_command_string(*src))) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (prefx != prefix) {
@@ -1367,6 +1382,9 @@ pmix_status_t pmix_bfrops_base_print_info_directives(char **output, char *prefix
 
     if (0 > asprintf(output, "%sData type: PMIX_INFO_DIRECTIVES\tValue: %s", prefx,
                      PMIx_Info_directives_string(*src))) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (prefx != prefix) {
@@ -1650,6 +1668,7 @@ pmix_status_t pmix_bfrops_base_print_query(char **output, char *prefix, pmix_que
             if (PMIX_SUCCESS
                 != (rc = pmix_bfrops_base_print_info(&t2, p2, &src->qualifiers[n], PMIX_PROC))) {
                 free(p2);
+                free(tmp);
                 goto done;
             }
             if (0 > asprintf(&t3, "%s\n%s", tmp, t2)) {

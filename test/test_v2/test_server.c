@@ -734,6 +734,7 @@ int server_barrier(void)
     msg_hdr.src_id = my_server_id;
     msg_hdr.size = 0;
     // setting nprocs to 0 indicates that all procs participate
+    memset(msg_hdr.procs, 0, sizeof(msg_hdr.procs));
     msg_hdr.nprocs = 0;
 
     server->lock.active = true;
