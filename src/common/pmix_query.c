@@ -40,7 +40,8 @@ static void relcbfunc(void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query release callback");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                "pmix:query release callback");
 
     if (NULL != cd->info) {
         PMIX_INFO_FREE(cd->info, cd->ninfo);
@@ -58,7 +59,14 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     pmix_kval_t *kv;
     PMIX_HIDE_UNUSED_PARAMS(hdr);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query cback from server");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:query cback from server");
+
+    /* a zero-byte buffer indicates that this recv is being
+     * completed due to a lost connection */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        return;
+    }
 
     results = PMIX_NEW(pmix_shift_caddy_t);
 
@@ -134,40 +142,17 @@ static void qinfocb(pmix_status_t status, pmix_info_t info[], size_t ninfo, void
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
-                                  pmix_info_cbfunc_t cbfunc, void *cbdata)
+static pmix_status_t send_for_help(pmix_query_t queries[], size_t nqueries,
+                                   pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_query_caddy_t *cd;
     pmix_cmd_t cmd = PMIX_QUERY_CMD;
     pmix_buffer_t *msg;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    /* if we are the server, then we just issue the query and
-     * return the response */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        if (NULL == pmix_host_server.query) {
-            /* nothing we can do */
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query handed to RM");
-        rc = pmix_host_server.query(&pmix_globals.myid, queries, nqueries, cbfunc, cbdata);
-        return rc;
-    }
-
-    /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_UNREACH;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
-    /* if we are a client, then relay this request to the server */
     cd = PMIX_NEW(pmix_query_caddy_t);
-    cd->cbfunc = cbfunc;
-    cd->cbdata = cbdata;
+    cd->cbfunc = cbfunc;  // the final callback function
+    cd->cbdata = cbdata;  // the user's cbdata
     msg = PMIX_NEW(pmix_buffer_t);
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
     if (PMIX_SUCCESS != rc) {
@@ -191,11 +176,83 @@ static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
         return rc;
     }
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query sending to server");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:query sending to server");
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, query_cbfunc, (void *) cd);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cd);
     }
+    return rc;
+}
+
+static void finalstep(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata,
+                      pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t*)cbdata;
+    pmix_status_t rc;
+
+    /* if the host satisfied the request, then we are done */
+    if (PMIX_SUCCESS == status) {
+        if (NULL != cd->cbfunc) {
+            cd->cbfunc(status, info, ninfo, cd->cbdata, release_fn, release_cbdata);
+            PMIX_RELEASE(cd);
+        }
+        return;
+    } else {
+        /* if we are connected, let our server have a try */
+        PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+        if (!pmix_globals.connected) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
+            /* nothing more we can do */
+            if (NULL != cd->cbfunc) {
+                cd->cbfunc(status, info, ninfo, cd->cbdata, release_fn, release_cbdata);
+                PMIX_RELEASE(cd);
+            } else {
+                rc = send_for_help(cd->queries, cd->nqueries, cd->cbfunc, cd->cbdata);
+                if (PMIX_SUCCESS != rc) {
+                    if (NULL != cd->cbfunc) {
+                        cd->cbfunc(rc, NULL, 0, cd->cbdata, release_fn, release_cbdata);
+                        PMIX_RELEASE(cd);
+                    }
+                }
+            }
+            return;
+        }
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    }
+}
+
+static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
+                                  pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    pmix_query_caddy_t *cd;
+    pmix_status_t rc;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    /* if our host has support, then we just issue the query and
+     * return the response */
+    if (NULL != pmix_host_server.query) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:query handed to RM");
+        cd = PMIX_NEW(pmix_query_caddy_t);
+        cd->queries = queries;
+        cd->nqueries = nqueries;
+        cd->cbfunc = cbfunc;  // the final callback function
+        cd->cbdata = cbdata;  // the user's cbdata
+        rc = pmix_host_server.query(&pmix_globals.myid, queries, nqueries, finalstep, (void*)cd);
+        return rc;
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_UNREACH;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    rc = send_for_help(queries, nqueries, cbfunc, cbdata);
     return rc;
 }
 
@@ -246,6 +303,8 @@ static void nxtcbfunc(pmix_status_t status, pmix_list_t *results, void *cbdata)
                 cd->cbfunc(rc, NULL, 0, cd->cbdata, NULL, NULL);
             }
         }
+        cd->queries = NULL;
+        cd->nqueries = 0;
         PMIX_RELEASE(cd);
         return;
     }
@@ -366,6 +425,8 @@ nextstep:
                 cd->cbfunc(rc, NULL, 0, cd->cbdata, NULL, NULL);
             }
         }
+        cd->queries = NULL;
+        cd->nqueries = 0;
         PMIX_RELEASE(cd);
         return;
     }
