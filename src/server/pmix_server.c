@@ -3861,7 +3861,8 @@ static void query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
     pmix_buffer_t *reply;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:query callback with status %s",
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:query callback with status %s",
                         PMIx_Error_string(status));
 
     reply = PMIX_NEW(pmix_buffer_t);
@@ -4602,8 +4603,8 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_NOTIFY_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS
-            != (rc = pmix_server_event_recvd_from_client(peer, buf, notifyerror_cbfunc, cd))) {
+        rc = pmix_server_event_recvd_from_client(peer, buf, notifyerror_cbfunc, cd);
+        if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -4611,7 +4612,8 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_QUERY_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_query(peer, buf, query_cbfunc, cd))) {
+        rc = pmix_server_query(peer, buf, query_cbfunc, cd);
+        if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(cd);
         }
         return rc;

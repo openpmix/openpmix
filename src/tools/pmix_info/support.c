@@ -488,11 +488,9 @@ void pmix_info_do_type(void)
     int count;
     char *type;
     int i, j, k, len, ret;
-    char *p;
     const pmix_mca_base_var_t *var;
     char **strings, *message;
     const pmix_mca_base_var_group_t *group;
-    p = "type";
 
     pmix_cli_item_t *opt;
 

@@ -39,10 +39,12 @@
 #include "src/common/pmix_attributes.h"
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/pinstalldirs/base/base.h"
+#include "src/runtime/pmix_init_util.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_keyval_parse.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 typedef struct {
@@ -79,6 +81,7 @@ static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
 
+    fprintf(stderr, "pquery: Query returned status %s\n", PMIx_Error_string(status));
     mq->status = status;
     /* save the returned info - the PMIx library "owns" it
      * and will release it and perform other cleanup actions
@@ -180,6 +183,9 @@ int main(int argc, char **argv)
     pmix_infolist_t *iptr;
     char *str, *result;
     pmix_query_t *queries;
+    pmix_rank_t rank = 0;
+    char hostname[PMIX_PATH_MAX];
+
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
     /* protect against problems if someone passes us thru a pipe
@@ -188,48 +194,9 @@ int main(int argc, char **argv)
 
     /* init globals */
     pmix_tool_basename = "pquery";
+    gethostname(hostname, sizeof(hostname));
 
-    /* initialize the output system */
-    if (!pmix_output_init()) {
-        return PMIX_ERROR;
-    }
-
-    /* initialize install dirs code */
-    rc = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
-                                      PMIX_MCA_BASE_OPEN_DEFAULT);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr,
-                "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
-                "returned %d instead of PMIX_SUCCESS)\n",
-                __FILE__, __LINE__, rc);
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_pinstall_dirs_base_init(NULL, 0))) {
-        fprintf(stderr,
-                "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, "
-                "returned %d instead of PMIX_SUCCESS)\n",
-                __FILE__, __LINE__, rc);
-        return rc;
-    }
-
-    /* initialize the help system */
-    pmix_show_help_init(NULL);
-
-    /* keyval lex-based parser */
-    if (PMIX_SUCCESS != (rc = pmix_util_keyval_parse_init())) {
-        fprintf(stderr, "pmix_util_keyval_parse_init failed with %d\n", rc);
-        return PMIX_ERROR;
-    }
-
-    /* Setup the parameter system */
-    if (PMIX_SUCCESS != (rc = pmix_mca_base_var_init())) {
-        fprintf(stderr, "pmix_mca_base_var_init failed with %d\n", rc);
-        return PMIX_ERROR;
-    }
-
-    /* register params for pmix */
-    if (PMIX_SUCCESS != (rc = pmix_register_params())) {
-        fprintf(stderr, "pmix_register_params failed with %d\n", rc);
+    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
         return PMIX_ERROR;
     }
 
@@ -273,7 +240,7 @@ int main(int argc, char **argv)
 
     /* if we were given the pid of a starter, then direct that
      * we connect to it */
-    n = 1;
+    n = 3;
     PMIX_INFO_CREATE(info, n);
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_PID))) {
         /* see if it is an integer value */
@@ -332,6 +299,12 @@ int main(int argc, char **argv)
         PMIX_INFO_LOAD(&info[0], PMIX_GDS_MODULE, "hash", PMIX_STRING);
         server = true;
     }
+
+    /* assign our own name */
+    pmix_asprintf(&kptr, "%s.%s.%lu", pmix_tool_basename, hostname, (unsigned long)getpid());
+    PMIX_INFO_LOAD(&info[1], PMIX_TOOL_NSPACE, kptr, PMIX_STRING);
+    free(kptr);
+    PMIX_INFO_LOAD(&info[2], PMIX_TOOL_RANK, &rank, PMIX_PROC_RANK);
 
     if (server) {
         /* initialize as a server so we can process the query ourselves */
@@ -399,6 +372,7 @@ int main(int argc, char **argv)
                 kptr++;
                 iptr = PMIX_NEW(pmix_infolist_t);
                 if (NULL == (attr = pmix_attributes_lookup(qprs[m]))) {
+                    fprintf(stderr, "Failed to lookup %s\n", qprs[m]);
                     exit(1);
                 }
                 PMIX_INFO_LOAD(&iptr->info, attr, kptr, PMIX_STRING);
@@ -407,6 +381,7 @@ int main(int argc, char **argv)
         }
         /* convert the key */
         if (NULL == (attr = pmix_attributes_lookup(qkeys[n]))) {
+            fprintf(stderr, "Failed to lookup %s\n", qkeys[n]);
             exit(1);
         }
         pmix_argv_append_nosize(&qry->query.keys, attr);
@@ -448,6 +423,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "PMIx_Query_info returned: %s\n", PMIx_Error_string(mq.status));
         rc = mq.status;
     } else {
+        if (0 == mq.ninfo) {
+            fprintf(stderr, "Query returned zero results\n");
+            goto done;
+        }
         /* print out the returned value(s) */
         for (n = 0; n < mq.ninfo; n++) {
             if (NULL == (attr = pmix_attributes_reverse_lookup(mq.info[n].key))) {

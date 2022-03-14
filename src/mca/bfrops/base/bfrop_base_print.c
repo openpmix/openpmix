@@ -1866,7 +1866,7 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
         free(prefx);
     }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 pmix_status_t pmix_bfrops_base_print_query(char **output, char *prefix, pmix_query_t *src,
