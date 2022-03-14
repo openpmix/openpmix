@@ -37,6 +37,7 @@
  * Environment variables used to find shared-memory segment info.
  */
 #define PMIX_GDS_SHMEM_ENVVAR_SEG_PATH "PMIX_GDS_SHMEM_SEG_PATH"
+#define PMIX_GDS_SHMEM_ENVVAR_SEG_SIZE "PMIX_GDS_SHMEM_SEG_SIZE"
 #define PMIX_GDS_SHMEM_ENVVAR_SEG_ADDR "PMIX_GDS_SHMEM_SEG_ADDR"
 
 /**
