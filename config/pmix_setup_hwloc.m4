@@ -1,4 +1,4 @@
-# -*- shell-script -*-
+# -*- autoconf -*-
 #
 # Copyright (c) 2009-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
@@ -38,7 +38,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     pmix_have_topology_dup=0
 
     if test "$with_hwloc" == "no"; then
-        AC_MSG_WARN([PRRTE requires HWLOC topology library support.])
+        AC_MSG_WARN([PMIx requires HWLOC topology library support.])
         AC_MSG_WARN([Please reconfigure so we can find the library.])
         AC_MSG_ERROR([Cannot continue.])
     fi
@@ -46,38 +46,14 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     AS_IF([test "$with_hwloc_extra_libs" = "yes" -o "$with_hwloc_extra_libs" = "no"],
 	  [AC_MSG_ERROR([--with-hwloc-extra-libs requires an argument other than yes or no])])
 
-    hwloc_prefix=$with_hwloc
-    hwlocdir_prefix=$with_hwloc_libdir
-
-    AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
-                 [pmix_hwloc_dir="$hwloc_prefix"],
-                 [pmix_hwloc_dir=""])
-
-    AS_IF([test ! -z "$hwlocdir_prefix" && test "$hwlocdir_prefix" != "yes"],
-                 [pmix_hwloc_libdir="$hwlocdir_prefix"],
-                 [AS_IF([test ! -z "$hwloc_prefix" && test "$hwloc_prefix" != "yes"],
-                        [if test -d $hwloc_prefix/lib64; then
-                            pmix_hwloc_libdir=$hwloc_prefix/lib64
-                         elif test -d $hwloc_prefix/lib; then
-                            pmix_hwloc_libdir=$hwloc_prefix/lib
-                         else
-                            AC_MSG_WARN([Could not find $hwloc_prefix/lib or $hwloc_prefix/lib64])
-                            AC_MSG_ERROR([Can not continue])
-                         fi
-                        ],
-                        [pmix_hwloc_libdir=""])])
-
     AS_IF([test "$enable_hwloc_lib_checks" != "no"],
-          [PMIX_CHECK_PACKAGE([pmix_hwloc],
-                              [hwloc.h],
-                              [hwloc],
-                              [hwloc_topology_init],
-                              [$with_hwloc_extra_libs],
-                              [$pmix_hwloc_dir],
-                              [$pmix_hwloc_libdir],
-                              [],
-                              [pmix_hwloc_support=0],
-                              [])],
+          [OAC_CHECK_PACKAGE([hwloc],
+                             [pmix_hwloc],
+                             [hwloc.h],
+                             [hwloc $with_hwloc_extra_libs],
+                             [hwloc_topology_init],
+                             [],
+                             [pmix_hwloc_support=0])],
           [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_hwloc_extra_libs])])
 
     if test $pmix_hwloc_support -eq 0; then
@@ -90,8 +66,13 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
 
     # update global flags to test for HWLOC version
     PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+
     PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_hwloc_LDFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_hwloc_LDFLAGS])
+
     PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_hwloc_LIBS])
+    PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_hwloc_LIBS])
 
     AC_MSG_CHECKING([if hwloc version is 1.5 or greater])
     AC_COMPILE_IFELSE(
@@ -135,27 +116,15 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     LIBS=$pmix_check_hwloc_save_LIBS
 
     PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
-    PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
-
     PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_hwloc_LDFLAGS])
-    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_hwloc_LDFLAGS])
-
     PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_hwloc_LIBS])
-    PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_hwloc_LIBS])
 
     AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC_TOPOLOGY_DUP], [$pmix_have_topology_dup],
                        [Whether or not hwloc_topology_dup is available])
 
     AM_CONDITIONAL([PMIX_HWLOC_VERSION_HIGH], [test $pmix_version_high -eq 1])
 
-    pmix_hwloc_support_will_build=yes
-    if test -z "$pmix_hwloc_dir"; then
-        pmix_hwloc_source="Standard locations"
-    else
-        pmix_hwloc_source=$pmix_hwloc_dir
-    fi
-
-    PMIX_SUMMARY_ADD([Required Packages], [HWLOC], [], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
+    PMIX_SUMMARY_ADD([Required Packages], [HWLOC], [], [$pmix_hwloc_SUMMARY])
 
     PMIX_VAR_SCOPE_POP
 ])
