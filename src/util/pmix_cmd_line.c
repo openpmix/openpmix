@@ -231,10 +231,10 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 } else if (NULL == optarg) {
                     // high-level help request
                     str = pmix_show_help_string(helpfile, "usage", false,
-                                                pmix_tool_basename, "PMIx",
-                                                PMIX_PROXY_VERSION,
+                                                pmix_tool_basename, pmix_tool_org,
+                                                pmix_tool_version,
                                                 pmix_tool_basename,
-                                                PMIX_PROXY_BUGREPORT);
+                                                pmix_tool_msg);
                     if (NULL != str) {
                         printf("%s", str);
                         free(str);
@@ -251,9 +251,9 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 return PMIX_ERR_SILENT;
             case 'V':
                 str = pmix_show_help_string(helpfile, "version", false,
-                                            pmix_tool_basename, "PMIx",
-                                            PMIX_PROXY_VERSION,
-                                            PMIX_PROXY_BUGREPORT);
+                                            pmix_tool_basename, pmix_tool_org,
+                                            pmix_tool_version,
+                                            pmix_tool_msg);
                 if (NULL != str) {
                     printf("%s", str);
                     free(str);
