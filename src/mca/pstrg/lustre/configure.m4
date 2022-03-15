@@ -35,17 +35,10 @@ AC_DEFUN([MCA_pmix_pstrg_lustre_CONFIG],[
 
 
     AS_IF([test "$pstrg_lustre_happy" = "yes"],
-          [if test -z "$pmix_check_lustre_dir"; then
-               PMIX_SUMMARY_ADD([Optional Support], [Lustre], [], [yes (Standard locations)])
-           else
-               PMIX_SUMMARY_ADD([Optional Support], [Lustre], [], [yes ($pmix_check_lustre_dir)])
-           fi
-           $1],
-          [PMIX_SUMMARY_ADD([External Packages], [Lustre], [], [no])
-           $2])
+          [$1],
+          [$2])
 
     # substitute in the things needed to build lustre support
-    AC_SUBST([pstrg_lustre_CFLAGS])
     AC_SUBST([pstrg_lustre_CPPFLAGS])
     AC_SUBST([pstrg_lustre_LDFLAGS])
     AC_SUBST([pstrg_lustre_LIBS])
