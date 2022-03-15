@@ -4,6 +4,8 @@
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -100,7 +102,7 @@ AC_DEFUN([MCA_pmix_pcompress_zlib_CONFIG],[
     AS_IF([test "$pmix_zlib_support" = "1"],
           [$1
            pcompress_zlib_LIBS=-lz
-           PMIX_SUMMARY_ADD([[External Packages]],[[ZLIB]], [pmix_zlib], [yes ($pmix_zlib_source)])],
+           PMIX_SUMMARY_ADD([External Packages], [ZLIB], [], [yes ($pmix_zlib_source)])],
           [$2])
 
     # substitute in the things needed to build pcompress/zlib

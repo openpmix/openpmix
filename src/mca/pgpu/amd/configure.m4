@@ -8,6 +8,8 @@
 #                         reserved.
 # Copyright (c) 2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -26,6 +28,6 @@ AC_DEFUN([MCA_pmix_pgpu_amd_CONFIG],[
           [$2
            pmix_pgpu_amd_happy=no])
 
-    PMIX_SUMMARY_ADD([[GPUs]],[[AMD]],[pgpu_amd],[$pmix_pgpu_amd_happy])])])
+    PMIX_SUMMARY_ADD([GPUs], [AMD], [],[$pmix_pgpu_amd_happy])])])
 ])
 

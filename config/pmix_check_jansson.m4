@@ -18,6 +18,8 @@
 # Copyright (c) 2016      Los Alamos National Security, LLC. All rights
 #                         reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -105,9 +107,9 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
     AM_CONDITIONAL([HAVE_JANSSON], [test "$pmix_check_jansson_happy" = "yes"])
 
     if test -z "$pmix_jansson_source"; then
-        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy])
+        PMIX_SUMMARY_ADD([External Packages], [Jansson], [], [$pmix_check_jansson_happy])
     else
-        PMIX_SUMMARY_ADD([[External Packages]],[[Jansson]], [pmix_jansson], [$pmix_check_jansson_happy ($pmix_jansson_source)])
+        PMIX_SUMMARY_ADD([External Packages], [Jansson], [], [$pmix_check_jansson_happy ($pmix_jansson_source)])
     fi
 
     PMIX_VAR_SCOPE_POP

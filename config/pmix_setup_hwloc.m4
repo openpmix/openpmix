@@ -4,7 +4,7 @@
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
-# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+# Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
 #
@@ -155,7 +155,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
         pmix_hwloc_source=$pmix_hwloc_dir
     fi
 
-    PMIX_SUMMARY_ADD([[Required Packages]],[[HWLOC]], [pmix_hwloc], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
+    PMIX_SUMMARY_ADD([Required Packages], [HWLOC], [], [$pmix_hwloc_support_will_build ($pmix_hwloc_source)])
 
     PMIX_VAR_SCOPE_POP
 ])

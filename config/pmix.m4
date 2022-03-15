@@ -24,7 +24,7 @@ dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
 dnl
 dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
-dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
+dnl Copyright (c) 2018-2022 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
 dnl $COPYRIGHT$
@@ -1257,7 +1257,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     pyvers=`python3 --version`
     python_version=${pyvers#"Python "}
 
-    PMIX_SUMMARY_ADD([[Bindings]],[[Python]], [pmix_python], [yes ($python_version)])
+    PMIX_SUMMARY_ADD([Bindings], [Python], [], [yes ($python_version)])
 
     AC_MSG_CHECKING([if Cython package installed as Python package])
     have_cython=`$srcdir/config/pmix_check_cython.py 2> /dev/null`
@@ -1266,7 +1266,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
         AC_MSG_CHECKING([Cython version])
         cython_version=`python -c "from Cython.Compiler.Version import version; print(version)"`
         AC_MSG_RESULT([$cython_version])
-        PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
+        PMIX_SUMMARY_ADD([Bindings], [Cython], [], [yes ($cython_version)])
     else
         AC_MSG_RESULT([no])
         # Cython doesn't have any include or lib files - it is just a binary
@@ -1276,7 +1276,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
             cyvers=`cython --version 2>&1`
             cython_version=${cyvers#"Cython version "}
             AC_MSG_RESULT([$cython_version])
-            PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
+            PMIX_SUMMARY_ADD([Bindings], [Cython], [], [yes ($cython_version)])
         else
             AC_MSG_WARN([Python bindings were enabled, but the Cython])
             AC_MSG_WARN([package was not found. PMIx Python bindings])

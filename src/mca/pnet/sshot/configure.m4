@@ -2,6 +2,8 @@
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -73,6 +75,6 @@ AC_DEFUN([MCA_pmix_pnet_sshot_CONFIG], [
           [$2
            pnet_sshot_happy=no])
 
-    PMIX_SUMMARY_ADD([[Transports]],[[HPE Slingshot]],[[pnet_sshot]],[$pnet_sshot_happy])
+    PMIX_SUMMARY_ADD([Transports], [HPE Slingshot], [], [$pnet_sshot_happy])
 
 ])dnl

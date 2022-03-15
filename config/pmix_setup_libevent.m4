@@ -7,7 +7,7 @@
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
-# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+# Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
 #
@@ -196,7 +196,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
         PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_libevent_LIBS])
         PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libevent_LIBS])
         # Set output variables
-        PMIX_SUMMARY_ADD([[Required Packages]],[[Libevent]], [pmix_libevent], [yes ($pmix_libevent_source)])
+        PMIX_SUMMARY_ADD([Required Packages], [Libevent], [], [yes ($pmix_libevent_source)])
 
         $1
     else

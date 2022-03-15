@@ -6,7 +6,7 @@
 # Copyright (c) 2017-2019 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
-# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+# Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
 #
@@ -110,7 +110,7 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
     if test $pmix_libev_support -eq 1; then
         AC_MSG_RESULT([yes])
         $1
-        PMIX_SUMMARY_ADD([[Required Packages]], [[Libev]], [pmix_libev], [yes ($pmix_libev_dir)])
+        PMIX_SUMMARY_ADD([Required Packages], [Libev], [], [yes ($pmix_libev_dir)])
     else
         AC_MSG_RESULT([no])
         # if they asked us to use it, then this is an error

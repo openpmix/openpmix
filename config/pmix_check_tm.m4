@@ -17,6 +17,8 @@ dnl Copyright (c) 2016      Los Alamos National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+dnl                         All Rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -165,7 +167,7 @@ AC_DEFUN([PMIX_CHECK_TM],[
 	    pmix_check_tm_happy=no
 	fi
 
-	PMIX_SUMMARY_ADD([[Resource Managers]],[[Torque]],[$1],[$pmix_check_tm_happy])
+	PMIX_SUMMARY_ADD([Resource Managers], [Torque], [], [$pmix_check_tm_happy])
 
 	PMIX_VAR_SCOPE_POP
     fi

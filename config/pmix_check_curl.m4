@@ -18,6 +18,8 @@
 # Copyright (c) 2016      Los Alamos National Security, LLC. All rights
 #                         reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -83,9 +85,9 @@ AC_DEFUN([PMIX_CHECK_CURL],[
     AC_MSG_RESULT([$pmix_check_curl_happy])
 
     if test -z "$pmix_curl_source"; then
-        PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy])
+        PMIX_SUMMARY_ADD([External Packages], [Curl], [], [$pmix_check_curl_happy])
     else
-        PMIX_SUMMARY_ADD([[External Packages]],[[Curl]], [pmix_curl], [$pmix_check_curl_happy ($pmix_curl_source)])
+        PMIX_SUMMARY_ADD([External Packages], [Curl], [], [$pmix_check_curl_happy ($pmix_curl_source)])
     fi
 
     AC_SUBST(pmix_check_curl_CPPFLAGS)
