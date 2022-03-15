@@ -1233,6 +1233,14 @@ if test "$enable_python_bindings" != "yes"; then
     WANT_PYTHON_BINDINGS=0
 else
     AC_MSG_RESULT([yes])
+    # cannot build Python bindings if we are doing a purely static build
+    if test "$enable_shared" = "no"; then
+        AC_MSG_WARN([Python bindings cannot be built in purely])
+        AC_MSG_WARN([static configurations. Please either enable])
+        AC_MSG_WARN([shared libraries or remove the request to])
+        AC_MSG_WARN([build the Python bindings])
+        AC_MSG_ERROR([Cannot continue])
+    fi
     WANT_PYTHON_BINDINGS=1
     AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
 fi

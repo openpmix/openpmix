@@ -140,7 +140,7 @@ AC_DEFUN([PMIX_CANONICALIZE_PATH],[
         # of MacOS Cataline / 10.15).  Instead, use Python, because we
         # know MacOS comes with a /usr/bin/python that has
         # os.path.realpath.
-        $2=`/usr/bin/python -c 'import os; print os.path.realpath("'$1'")'`
+        $2=`python -c 'import os, __future__ ; print(os.path.realpath("'$1'"))'`
         ;;
     *)
         $2=`readlink -f $1`
