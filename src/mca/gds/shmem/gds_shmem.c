@@ -279,35 +279,40 @@ set_shmem_connection_info_from_env(
     pmix_shmem_t *shmem
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    size_t base_addr = 0;
+    size_t base_addr = 0, nw = 0;
     // Get the shared-memory segment connection environment variables.
-    char *path = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_PATH);
-    char *size = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_SIZE);
-    char *addr = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_ADDR);
+    char *pathstr = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_PATH);
+    char *sizestr = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_SIZE);
+    char *addrstr = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_ADDR);
+    // These should be set for us, but check for sanity.
+    if (!pathstr || !sizestr || !addrstr) {
+        rc = PMIX_ERROR;
+        goto out;
+    }
     // Set job segment path.
-    int nw = snprintf(
-        shmem->backing_path, PMIX_PATH_MAX, "%s", path
+    nw = snprintf(
+        shmem->backing_path, PMIX_PATH_MAX, "%s", pathstr
     );
     if (nw >= PMIX_PATH_MAX) {
         rc = PMIX_ERROR;
         goto out;
     }
     // Convert string base address to something we can use.
-    rc = hexstr_to_value(addr, &base_addr);
+    rc = hexstr_to_value(addrstr, &base_addr);
     if (PMIX_SUCCESS != rc) {
         goto out;
     }
     // Set job segment base address.
     shmem->base_address = (void *)base_addr;
     // Set job shared-memory segment size.
-    rc = hexstr_to_value(size, &shmem->size);
+    rc = hexstr_to_value(sizestr, &shmem->size);
     if (PMIX_SUCCESS != rc) {
         goto out;
     }
 
     PMIX_GDS_SHMEM_VOUT(
-        "%s: using segment backing file path is %s (%zd B) at 0x%zx",
-        __func__, shmem->backing_path, shmem->size, (size_t)addr
+        "%s: using segment backing file path %s (%zd B) at 0x%zx",
+        __func__, shmem->backing_path, shmem->size, (size_t)base_addr
     );
 out:
     if (PMIX_SUCCESS != rc) {

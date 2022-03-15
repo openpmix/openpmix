@@ -69,7 +69,7 @@ pmix_shmem_segment_create(
     int rc = PMIX_SUCCESS;
 
     int fd = open(backing_path, O_CREAT | O_RDWR, 0600);
-    if (fd < 0) {
+    if (fd == -1) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         goto out;
     }
@@ -81,7 +81,9 @@ pmix_shmem_segment_create(
     shmem->size = size;
     pmix_string_copy(shmem->backing_path, backing_path, PMIX_PATH_MAX);
 out:
-    (void)close(fd);
+    if (-1 != fd) {
+        (void)close(fd);
+    }
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
@@ -97,7 +99,7 @@ pmix_shmem_segment_attach(
     pmix_status_t rc = PMIX_SUCCESS;
 
     int fd = open(shmem->backing_path, O_RDWR);
-    if (fd < 0) {
+    if (fd == -1) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         goto out;
     }
@@ -112,8 +114,10 @@ pmix_shmem_segment_attach(
     }
     *actual_base_address = (uintptr_t)shmem->base_address;
 out:
-    if (PMIX_SUCCESS != rc) {
+    if (-1 != fd) {
         (void)close(fd);
+    }
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
     return rc;
