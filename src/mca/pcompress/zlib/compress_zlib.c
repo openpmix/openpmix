@@ -72,7 +72,9 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
 
     /* setup the stream */
     memset(&strm, 0, sizeof(strm));
-    deflateInit(&strm, 9);
+    if (Z_OK != deflateInit(&strm, 9)) {
+        return false;
+    }
 
     /* get an upper bound on the required output storage */
     len = deflateBound(&strm, inlen);

@@ -1654,6 +1654,7 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
     }
 
     for (n=0; n < src->size; n++) {
+        tp = NULL;
         switch (src->type) {
             case PMIX_BOOL:
                 bptr = (bool*)src->array;
@@ -1849,14 +1850,16 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
                 rc = PMIX_SUCCESS;
                 break;
         }
-        if (NULL == tp2) {
-            tp2 = strdup(tp);
-        } else {
-            pmix_asprintf(&tp3, "%s\n%s%s", tp2, prefx, tp);
-            free(tp2);
-            tp2 = tp3;
+        if (NULL != tp) {
+            if (NULL == tp2) {
+                tp2 = strdup(tp);
+            } else {
+                pmix_asprintf(&tp3, "%s\n%s%s", tp2, prefx, tp);
+                free(tp2);
+                tp2 = tp3;
+            }
+            free(tp);
         }
-        free(tp);
     }
     pmix_asprintf(output, "%sData type: PMIX_DATA_ARRAY\tType: %s\tSize: %lu\n%s%s", prefx,
                   PMIx_Data_type_string(src->type), (unsigned long) src->size,
