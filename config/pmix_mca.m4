@@ -641,10 +641,11 @@ AC_DEFUN([MCA_COMPONENT_COMPILE_MODE],[
 AC_DEFUN([PMIX_MCA_STRIP_LAFILES], [
     PMIX_VAR_SCOPE_PUSH([pmix_tmp])
 
+    $1=
     for arg in $2; do
 	pmix_tmp=`echo $arg | awk '{print substr([$][1], length([$][1])-2) }'`
         AS_IF([test "$pmix_tmp" != ".la"],
-              [AS_IF([test -z "$$1"], [$1=$arg], [$1="$$1 $arg"])])
+              [PMIX_APPEND([$1], [$arg])])
     done
 
     PMIX_VAR_SCOPE_POP
