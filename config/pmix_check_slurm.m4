@@ -15,6 +15,8 @@
 #                         reserved.
 # Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -79,7 +81,7 @@ AC_DEFUN([PMIX_CHECK_SLURM],[
         AC_DEFINE_UNQUOTED([SLURM_CRAY_ENV],[$slurm_cray_env],
                            [defined to 1 if slurm cray env, 0 otherwise])
 
-        PMIX_SUMMARY_ADD([[Resource Managers]],[[Slurm]],[$1],[$pmix_check_slurm_happy])
+        PMIX_SUMMARY_ADD([Resource Managers], [Slurm], [], [$pmix_check_slurm_happy])
     fi
 
     AS_IF([test "$pmix_check_slurm_happy" = "yes"],

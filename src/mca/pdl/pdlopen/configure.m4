@@ -5,6 +5,8 @@
 #                         and Technology (RIST). All rights reserved.
 #
 # Copyright (c) 2017      Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -49,18 +51,13 @@ AC_DEFUN([MCA_pmix_pdl_pdlopen_CONFIG],[
                         [Disable the "dlopen" PDL component (and probably force the use of the "libltdl" PDL component).])
         ])
 
-    pmix_pdl_pdlopen_happy=no
-    AS_IF([test "$enable_dl_dlopen" != "no"],
-          [PMIX_CHECK_PACKAGE([pmix_pdl_pdlopen],
+    OAC_CHECK_PACKAGE([dlopen],
+              [pmix_pdl_pdlopen],
               [dlfcn.h],
               [dl],
               [dlopen],
-              [],
-              [],
-              [],
               [pmix_pdl_pdlopen_happy=yes],
               [pmix_pdl_pdlopen_happy=no])
-          ])
 
     AS_IF([test "$pmix_pdl_pdlopen_happy" = "yes"],
           [pmix_pdl_pdlopen_ADD_LIBS=$pmix_pdl_pdlopen_LIBS
