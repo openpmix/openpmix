@@ -84,28 +84,42 @@ dnl environment variables will be set:
 dnl
 dnl   <prefix>_CPPFLAGS - CPPFLAGS to add when compiling sources depending on the package
 dnl   <prefix>_LDFLAGS - LDFLAGS to add when linking against the package
+dnl   <prefix>_STATIC_LDFLAGS - LDFLAGS to add when linking against the package when
+dnl                          building a statically linked executable.
 dnl   <prefix>_LIBS - Libraries to link to access the package
 dnl   <prefix>_STATIC_LIBS - Libraries to link to access the package when building a
-dnl                          staticly linked executable.
+dnl                          statically linked executable.
+dnl   <prefix>_PC_MODULES - Module name of the pkgconfig module used to generate
+dnl                          the build information.  Will be unset by OAC_CHECK_PACKAGE
+dnl                          if pkg-config was not used to configure the package.  Note
+dnl                          that there is no need for a STATIC_PC_MODULES option,
+dnl                          as that functionality is built into pkgconfig modules
+dnl                          directly.
 dnl   <prefix>_SUMMARY - A summary of the check package output, suitable for inclusion
 dnl                          in a configure summary table.  Will start with yes/no.
 dnl   <prefix>_DETECT_METHOD - The method used to find the right flags.  Will be one of
 dnl                          'pkg-config', 'wrapper compiler', or empty string
 dnl
-dnl Note that STATIC_LIBS should not be added to LIBS unnecessarily.  Even if the library
-dnl being built is being built as a static library, that does not mean adding STATIC_LIBS
-dnl to LIBS is the right call.  Only when the executable is only linked against static
-dnl libraries should STATIC_LIBS be added to LIBS.
+dnl Note that STATIC_LIBS and STATIC_LDFLAGS should not be added to
+dnl LIBS and LDFLAGS unnecessarily.  Even if the library being built
+dnl is being built as a static library, that does not mean adding
+dnl STATIC_LIBS to LIBS is the right call.  Only when the executable
+dnl is only linked against static libraries should STATIC_LIBS be
+dnl added to LIBS.
 AC_DEFUN([OAC_CHECK_PACKAGE],[
 # ****************************** START CHECK PACKAGE FOR $1 ******************************
+    AC_REQUIRE([OAC_CHECK_PACKAGE_STATIC_CHECK])
+
     check_package_$2_save_CPPFLAGS="${CPPFLAGS}"
     check_package_$2_save_LDFLAGS="${LDFLAGS}"
     check_package_$2_save_LIBS="${LIBS}"
 
     $2_CPPFLAGS=
     $2_LDFLAGS=
+    $2_STATIC_LDFLAGS=
     $2_LIBS=
     $2_STATIC_LIBS=
+    AS_UNSET([$2_PC_MODULES])
 
     check_package_happy=1
     check_package_have_flags=0
@@ -146,6 +160,11 @@ AC_DEFUN([OAC_CHECK_PACKAGE],[
 
     AS_IF([test ${check_package_have_flags} -eq 0], [check_package_happy=0])
 
+    AS_IF([test ${check_package_happy} -eq 1 -a "${check_package_cv_static_linker_flag}" = "yes"],
+          [AC_MSG_NOTICE([Copying STATIC_LIBS and STATIC_LDFLAGS to LIBS and LDFLAGS because static linking])
+           OAC_APPEND([$2_LDFLAGS], [${$2_STATIC_LDFLAGS}])
+           OAC_APPEND([$2_LIBS], [${$2_STATIC_LIBS}])])
+
     AS_IF([test ${check_package_happy} -eq 1],
           [_OAC_CHECK_PACKAGE_VERIFY([$1], [$2], [$3], [$5],
                                  [check_package_happy=1], [check_package_happy=0])])
@@ -164,8 +183,9 @@ AC_DEFUN([OAC_CHECK_PACKAGE],[
                  [$2_SUMMARY="no (not found)"])
            AS_UNSET([$2_CPPFLAGS])
            AS_UNSET([$2_LDFLAGS])
-           AS_UNSET([$2_STATIC_LIBS])
+           AS_UNSET([$2_STATIC_LDFLAGS])
            AS_UNSET([$2_LIBS])
+           AS_UNSET([$2_STATIC_LIBS])
            $7])
 
     CPPFLAGS="${check_package_$2_save_CPPFLAGS}"
@@ -183,6 +203,23 @@ AC_DEFUN([OAC_CHECK_PACKAGE],[
     AS_UNSET([check_package_pcfilename])
 
 # ****************************** END CHECK PACKAGE FOR $1 ******************************
+])
+
+
+AC_DEFUN([OAC_CHECK_PACKAGE_STATIC_CHECK], [
+    AC_CACHE_CHECK([for static linker flag],
+        [check_package_cv_static_linker_flag],
+        [check_package_cv_static_linker_flag="no"
+         for arg in ${CFLAGS} ${LDFLAGS} ; do
+             if test "${arg}" = "-static" -o \
+                     "${arg}" = "--static" -o \
+                     "${arg}" = "-Bstatic" -o \
+                     "${arg}" = "-Wl,-static" -o \
+                     "${arg}" = "-Wl,--static" -o \
+                     "${arg}" = "-Wl,-Bstatic" ; then
+                 check_package_cv_static_linker_flag="yes"
+             fi
+         done])
 ])
 
 
@@ -298,7 +335,8 @@ AC_DEFUN([_OAC_CHECK_PACKAGE_PKGCONFIG_INTERNAL], [
     AC_CACHE_CHECK([if $1 pkg-config module exists],
          [check_package_cv_$1_pkg_config_exists],
          [_OAC_CHECK_PACKAGE_PKGCONFIG_RUN([$3], [--exists], [check_package_pkgconfig_internal_result],
-                    [check_package_cv_$1_pkg_config_exists=yes],
+                    [$2_PC_MODULES=$3
+                     check_package_cv_$1_pkg_config_exists=yes],
                     [check_package_cv_$1_pkg_config_exists=no])])
 
     # if pkg-config --exists works, but getting one of the standard flags fails, we consider
@@ -315,11 +353,19 @@ AC_DEFUN([_OAC_CHECK_PACKAGE_PKGCONFIG_INTERNAL], [
 
            AC_CACHE_CHECK([for $1 pkg-config ldflags],
                 [check_package_cv_$1_pkg_config_ldflags],
-                [_OAC_CHECK_PACKAGE_PKGCONFIG_RUN([$3], [--static --libs-only-L --libs-only-other],
+                [_OAC_CHECK_PACKAGE_PKGCONFIG_RUN([$3], [--libs-only-L --libs-only-other],
                       [check_package_cv_$1_pkg_config_ldflags], [],
                       [AC_MSG_RESULT([error])
                        AC_MSG_ERROR([An error occurred retrieving $1 ldflags from pkg-config])])])
            $2_LDFLAGS="${check_package_cv_$1_pkg_config_ldflags}"
+
+           AC_CACHE_CHECK([for $1 pkg-config static ldflags],
+                [check_package_cv_$1_pkg_config_static_ldflags],
+                [_OAC_CHECK_PACKAGE_PKGCONFIG_RUN([$3], [--static --libs-only-L --libs-only-other],
+                      [check_package_cv_$1_pkg_config_static_ldflags], [],
+                      [AC_MSG_RESULT([error])
+                       AC_MSG_ERROR([An error occurred retrieving $1 static ldflags from pkg-config])])])
+           $2_STATIC_LDFLAGS="${check_package_cv_$1_pkg_config_static_ldflags}"
 
            AC_CACHE_CHECK([for $1 pkg-config libs],
                 [check_package_cv_$1_pkg_config_libs],
@@ -421,6 +467,17 @@ AC_DEFUN([_OAC_CHECK_PACKAGE_WRAPPER_INTERNAL], [
                         AC_MSG_ERROR([An error occurred retrieving $1 ldflags from wrapper compiler])])])
            $2_LDFLAGS="${check_package_cv_$1_wrapper_compiler_ldflags}"
 
+           AC_CACHE_CHECK([for $1 wrapper compiler static ldflags],
+                [check_package_cv_$1_wrapper_compiler_static_ldflags],
+                [_OAC_CHECK_PACKAGE_WRAPPER_RUN([$3], [--showme:libdirs_static],
+                      [check_package_wrapper_internal_result],
+                       [for check_package_wrapper_internal_tmp in ${check_package_wrapper_internal_result} ; do
+                            OAC_APPEND([check_package_cv_$1_wrapper_compiler_static_ldflags], ["-L${check_package_wrapper_internal_tmp}"])
+                        done],
+                       [AC_MSG_RESULT([error])
+                        AC_MSG_ERROR([An error occurred retrieving $1 static ldflags from wrapper compiler])])])
+           $2_STATIC_LDFLAGS="${check_package_cv_$1_wrapper_compiler_static_ldflags}"
+
            AC_CACHE_CHECK([for $1 wrapper compiler libs],
                 [check_package_cv_$1_wrapper_compiler_libs],
                 [_OAC_CHECK_PACKAGE_WRAPPER_RUN([$3], [--showme:libs],
@@ -434,7 +491,7 @@ AC_DEFUN([_OAC_CHECK_PACKAGE_WRAPPER_INTERNAL], [
 
            AC_CACHE_CHECK([for $1 wrapper compiler static libs],
                 [check_package_cv_$1_wrapper_compiler_static_libs],
-                [_OAC_CHECK_PACKAGE_WRAPPER_RUN([$3], [-static --showme:libs],
+                [_OAC_CHECK_PACKAGE_WRAPPER_RUN([$3], [--showme:libs_static],
                       [check_package_wrapper_internal_result],
                       [for check_package_wrapper_internal_tmp in ${check_package_wrapper_internal_result} ; do
                            OAC_APPEND([check_package_cv_$1_wrapper_compiler_static_libs], ["-l${check_package_wrapper_internal_tmp}"])
