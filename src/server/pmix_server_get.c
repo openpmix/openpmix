@@ -115,7 +115,8 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, pmix_server_
 
     if (localonly) {
         /* the client asked that we not wait, so return now */
-        pmix_output_verbose(2, pmix_server_globals.get_output, "%s:%d CLIENT REQUESTED IMMEDIATE",
+        pmix_output_verbose(2, pmix_server_globals.get_output,
+                            "%s:%d CLIENT REQUESTED IMMEDIATE",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
         return PMIX_ERR_NOT_AVAILABLE;
     }
@@ -138,6 +139,7 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, pmix_server_
     *locald = lcd;
     return rc;
 }
+
 pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;

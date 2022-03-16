@@ -592,6 +592,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     PMIX_LIST_FOREACH_SAFE(cb, cb2, &pmix_client_globals.pending_requests, pmix_cb_t) {
         if (0 == strncmp(proc.nspace, cb->pname.nspace, PMIX_MAX_NSLEN) &&
             cb->pname.rank == proc.rank) {
+            pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
            /* we have the data for this proc - see if we can find the key */
             cb->proc = &proc;
             cb->scope = PMIX_SCOPE_UNDEF;
@@ -619,7 +620,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
                 }
             }
             cb->cbfunc.valuefn(rc, val, cb->cbdata);
-            pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
             PMIX_RELEASE(cb);
         }
     }
