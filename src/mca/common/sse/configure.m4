@@ -24,4 +24,14 @@ AC_DEFUN([MCA_pmix_common_sse_CONFIG], [
           [$2
            pmix_common_sse_happy=no])
 
+    common_sse_CPPFLAGS="${pmix_check_curl_CPPFLAGS} ${pmix_check_jansson_CPPFLAGS}"
+    common_sse_LDFLAGS="${pmix_check_curl_LDFLAGS} ${pmix_check_jansson_LDFLAGS}"
+    common_sse_STATIC_LDFLAGS="${pmix_check_curl_STATIC_LDFLAGS} ${pmix_check_jansson_STATIC_LDFLAGS}"
+    common_sse_LIBS="${pmix_check_curl_LIBS} ${pmix_check_jansson_LIBS}"
+    common_sse_STATIC_LIBS="${pmix_check_curl_STATIC_LIBS} ${pmix_check_jansson_STATIC_LIBS}"
+    common_sse_PC_MODULES="${pmix_check_curl_PC_MODULES} ${pmix_check_jansson_PC_MODULES}"
+
+    AC_SUBST([common_sse_CPPFLAGS])
+    AC_SUBST([common_sse_LDFLAGS])
+    AC_SUBST([common_sse_LIBS])
 ])dnl
