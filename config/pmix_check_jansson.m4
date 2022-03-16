@@ -71,10 +71,6 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
     AS_IF([test "$pmix_check_jansson_happy" = "no" -a "$with_jansson" != "no"],
           [AC_MSG_ERROR([Jansson support requested but not found.  Aborting])])
 
-    AC_SUBST(pmix_check_jansson_CPPFLAGS)
-    AC_SUBST(pmix_check_jansson_LDFLAGS)
-    AC_SUBST(pmix_check_jansson_LIBS)
-
     AC_MSG_CHECKING([Jansson support available])
     AC_MSG_RESULT([$pmix_check_jansson_happy])
 
