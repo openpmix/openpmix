@@ -1,6 +1,8 @@
 # -*- shell-script -*-
 #
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -20,6 +22,6 @@ AC_DEFUN([MCA_pmix_pnet_opa_CONFIG], [
           [$2
            pmix_pnet_opa=no])
 
-    PMIX_SUMMARY_ADD([[Transports]],[[OmniPath]],[[pnet_opa]],[$pmix_pnet_opa])
+    PMIX_SUMMARY_ADD([Transports], [OmniPath], [], [$pmix_pnet_opa])
 
 ])dnl

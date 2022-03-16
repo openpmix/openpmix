@@ -2,6 +2,8 @@
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -22,5 +24,5 @@ AC_DEFUN([MCA_pmix_pnet_simptest_CONFIG], [
           [$1],
           [$2])
 
-    PMIX_SUMMARY_ADD([[Transports]],[[Simptest]],[[pnet_simptest]],[$pmix_want_simptest])
+    PMIX_SUMMARY_ADD([Transports], [Simptest], [], [$pmix_want_simptest])
 ])dnl

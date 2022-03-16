@@ -2,6 +2,8 @@
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -30,38 +32,28 @@ AC_DEFUN([MCA_pmix_pnet_sshot_CONFIG], [
           [AC_MSG_RESULT([no])
            pmix_check_cxi_happy=no],
           [AC_MSG_RESULT([yes])
-           PMIX_CHECK_WITHDIR([cxi-libdir], [$with_cxi_libdir], [libcxi.*])
            AS_IF([test ! -z "$with_cxi" && test "$with_cxi" != "yes"],
-                 [pmix_check_cxi_dir="$with_cxi"
-                  AS_IF([test ! -d "$pmix_check_cxi_dir" || test ! -f "$pmix_check_cxi_dir/cxi.h"],
-                         [$pmix_check_cxi_dir=$pmix_check_cxi_dir/include
-                          AS_IF([test ! -d "$pmix_check_cxi_dir" || test ! -f "$pmix_check_cxi_dir/cxi.h"],
-                                [$pmix_check_cxi_dir=$pmix_check_cxi_dir/cxi
-                                 AS_IF([test ! -d "$pmix_check_cxi_dir" || test ! -f "$pmix_check_cxi_dir/cxi.h"],
+                 [with_cxi_incdir="$with_cxi"
+                  AS_IF([test ! -d "$with_cxi_incdir" || test ! -f "$with_cxi_incdir/cxi.h"],
+                         [$with_cxi_incdir=$with_cxi_incdir/include
+                          AS_IF([test ! -d "$with_cxi_incdir" || test ! -f "$with_cxi_incdir/cxi.h"],
+                                [$with_cxi_incdir=$with_cxi_incdir/cxi
+                                 AS_IF([test ! -d "$with_cxi_incdir" || test ! -f "$with_cxi_incdir/cxi.h"],
                                        [AC_MSG_WARN([CXI library support requested, but])
                                         AC_MSG_WARN([required header file cxi.h not found. Locations tested:])
                                         AC_MSG_WARN([    $with_cxi])
                                         AC_MSG_WARN([    $with_cxi/include])
                                         AC_MSG_WARN([    $with_cxi/include/cxi])
                                         AC_MSG_ERROR([Cannot continue])])])])],
-                 [pmix_check_cxi_dir="/usr/include/cxi"])
+                 [with_cxi_incdir="/usr/include/cxi"])
 
-           AS_IF([test ! -z "$with_cxi_libdir" && test "$with_cxi_libdir" != "yes"],
-                 [pmix_check_cxi_libdir="$with_cxi_libdir"])
-
-           PMIX_CHECK_PACKAGE([pnet_cxi],
-                              [cxi.h],
-                              [cxi],
-                              [CXI_FUNCTION],
-                              [],
-                              [$pmix_check_cxi_dir],
-                              [$pmix_check_cxi_libdir],
-                              [pmix_check_cxi_happy="yes"
-                               pnet_cxi_CFLAGS="$pnet_cxi_CFLAGS $pnet_cxi_CFLAGS"
-                               pnet_cxi_CPPFLAGS="$pnet_cxi_CPPFLAGS $pnet_cxi_CPPFLAGS"
-                               pnet_cxi_LDFLAGS="$pnet_cxi_LDFLAGS $pnet_cxi_LDFLAGS"
-                               pnet_cxi_LIBS="$pnet_cxi_LIBS $pnet_cxi_LIBS"],
-                              [pmix_check_cxi_happy="no"])
+           OAC_CHECK_PACKAGE([cxi],
+                             [pnet_cxi],
+                             [cxi.h],
+                             [cxi],
+                             [CXI_FUNCTION],
+                             [pmix_check_cxi_happy="yes"],
+                             [pmix_check_cxi_happy="no"])
            ])
 
     # for NOW, hardwire cxi support to be happy
@@ -73,6 +65,6 @@ AC_DEFUN([MCA_pmix_pnet_sshot_CONFIG], [
           [$2
            pnet_sshot_happy=no])
 
-    PMIX_SUMMARY_ADD([[Transports]],[[HPE Slingshot]],[[pnet_sshot]],[$pnet_sshot_happy])
+    PMIX_SUMMARY_ADD([Transports], [HPE Slingshot], [], [$pnet_sshot_happy])
 
 ])dnl
