@@ -524,7 +524,6 @@ done:
                 }
             }
             cb->cbfunc.valuefn(rc, val, cb->cbdata);
-            PMIX_RELEASE(lg);
             PMIX_RELEASE(cb);
         }
     }
