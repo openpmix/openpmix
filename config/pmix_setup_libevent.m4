@@ -1,4 +1,4 @@
-# -*- shell-script -*-
+# -*- autoconf -*-
 #
 # Copyright (c) 2009-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
@@ -7,7 +7,7 @@
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
-# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+# Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
 #
@@ -56,46 +56,22 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 	  [AC_MSG_ERROR([--with-libevent-extra-libs requires an argument other than yes or no])])
 
     AS_IF([test $pmix_libevent_support -eq 1],
-          [PMIX_CHECK_WITHDIR([libevent], [$with_libevent], [include/event.h])
-           PMIX_CHECK_WITHDIR([libevent-libdir], [$with_libevent_libdir], [libevent.*])
-
-           pmix_check_libevent_save_CPPFLAGS="$CPPFLAGS"
+          [pmix_check_libevent_save_CPPFLAGS="$CPPFLAGS"
            pmix_check_libevent_save_LDFLAGS="$LDFLAGS"
            pmix_check_libevent_save_LIBS="$LIBS"
 
-           # get rid of any trailing slash(es)
-           libevent_prefix=$(echo $with_libevent | sed -e 'sX/*$XXg')
-           libeventdir_prefix=$(echo $with_libevent_libdir | sed -e 'sX/*$XXg')
-
-           AS_IF([test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"],
-                 [pmix_event_dir="$libevent_prefix"],
-                 [pmix_event_dir=""])
-
-           AS_IF([test ! -z "$libeventdir_prefix" -a "$libeventdir_prefix" != "yes"],
-                 [pmix_event_libdir="$libeventdir_prefix"],
-                 [AS_IF([test ! -z "$libevent_prefix" && test "$libevent_prefix" != "yes"],
-                        [if test -d $libevent_prefix/lib64; then
-                            pmix_event_libdir=$libevent_prefix/lib64
-                         elif test -d $libevent_prefix/lib; then
-                            pmix_event_libdir=$libevent_prefix/lib
-                         else
-                            AC_MSG_WARN([Could not find $libevent_prefix/lib or $libevent_prefix/lib64])
-                            AC_MSG_ERROR([Can not continue])
-                         fi
-                        ],
-                        [pmix_event_libdir=""])])
-
            AS_IF([test "$enable_libevent_lib_checks" != "no"],
-                 [PMIX_CHECK_PACKAGE([pmix_libevent],
-                                     [event.h],
-                                     [event_core],
-                                     [event_config_new],
-                                     [-levent_pthreads $with_libevent_extra_libs],
-                                     [$pmix_event_dir],
-                                     [$pmix_event_libdir],
-                                     [],
-                                     [pmix_libevent_support=0],
-                                     [])],
+                 [dnl Do not use pkg-config for libevent, because we need the pthreads interface
+                  dnl and the libevent_pthreads module will always pull in libevent instead of
+                  dnl libevent_core.
+                  libevent_USE_PKG_CONFIG=0
+                  OAC_CHECK_PACKAGE([libevent],
+                                    [pmix_libevent],
+                                    [event.h],
+                                    [event_core event_pthreads $with_libevent_extra_libs],
+                                    [event_config_new],
+                                    [],
+                                    [pmix_libevent_support=0])],
                  [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_libevent_extra_libs])])])
 
     # Check to see if the above check failed because it conflicted with LSF's libevent.so
@@ -173,11 +149,6 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                            AC_MSG_WARN([libevent version is too old (2.0.21 or later required)])
                            pmix_libevent_support=0])
     fi
-    if test -z "$pmix_event_dir"; then
-        pmix_libevent_source="Standard locations"
-    else
-        pmix_libevent_source=$pmix_event_dir
-    fi
 
     # restore global flags
     CPPFLAGS="$pmix_check_libevent_save_CPPFLAGS"
@@ -195,8 +166,9 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
 
         PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_libevent_LIBS])
         PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libevent_LIBS])
+
         # Set output variables
-        PMIX_SUMMARY_ADD([[Required Packages]],[[Libevent]], [pmix_libevent], [yes ($pmix_libevent_source)])
+        PMIX_SUMMARY_ADD([Required Packages], [Libevent], [], [$pmix_libevent_SUMMARY])
 
         $1
     else

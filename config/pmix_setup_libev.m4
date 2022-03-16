@@ -1,12 +1,13 @@
 # -*- shell-script -*-
 #
-# Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2009-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017-2019 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
+# Copyright (c) 2020      IBM Corporation.  All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
-# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
+# Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
 #
@@ -30,7 +31,7 @@
 #  * LDLFGAS: add pmix_libev_LDFLAGS
 #  * LIBS: add pmix_libev_LIBS
 AC_DEFUN([PMIX_LIBEV_CONFIG],[
-    PMIX_VAR_SCOPE_PUSH([pmix_libev_dir pmix_libev_libdir pmix_check_libev_save_CPPFLAGS pmix_check_libev_save_LDFLAGS pmix_check_libev_save_LIBS])
+    PMIX_VAR_SCOPE_PUSH([pmix_event_dir pmix_event_libdir pmix_event_defaults pmix_check_libev_save_CPPFLAGS pmix_check_libev_save_LDFLAGS pmix_check_libev_save_LIBS])
 
     AC_ARG_WITH([libev],
                 [AS_HELP_STRING([--with-libev=DIR],
@@ -55,43 +56,20 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
 	  [AC_MSG_ERROR([--with-libev-extra-libs requires an argument other than yes or no])])
 
     AS_IF([test $pmix_libev_support -eq 1],
-          [PMIX_CHECK_WITHDIR([libev], [$with_libev], [include/event.h])
-           PMIX_CHECK_WITHDIR([libev-libdir], [$with_libev_libdir], [libev.*])
-
-           AC_MSG_CHECKING([for libev in])
-           pmix_check_libev_save_CPPFLAGS="$CPPFLAGS"
+          [pmix_check_libev_save_CPPFLAGS="$CPPFLAGS"
            pmix_check_libeve_save_LDFLAGS="$LDFLAGS"
            pmix_check_libev_save_LIBS="$LIBS"
-           if test -n "$with_libev" -a "$with_libev" != "yes"; then
-               pmix_libev_dir=$with_libev/include
-               AS_IF([test -z "$with_libev_libdir" || test "$with_libev_libdir" = "yes"],
-                     [if test -d $with_libev/lib; then
-                          pmix_libev_libdir=$with_libev/lib
-                      elif test -d $with_libev/lib64; then
-                          pmix_libev_libdir=$with_libev/lib64
-                      else
-                          AC_MSG_RESULT([Could not find $with_libev/lib or $with_libev/lib64])
-                          AC_MSG_ERROR([Can not continue])
-                      fi
-                      AC_MSG_RESULT([$pmix_libev_dir and $pmix_libev_libdir])],
-                     [AC_MSG_RESULT([$with_libev_libdir])])
-           else
-               AC_MSG_RESULT([(default search paths)])
-           fi
-           AS_IF([test ! -z "$with_libev_libdir" && test "$with_libev_libdir" != "yes"],
-                 [pmix_libev_libdir="$with_libev_libdir"])
 
            AS_IF([test "$enable_libev_lib_checks" != "no"],
-                 [PMIX_CHECK_PACKAGE([pmix_libev],
-                                     [event.h],
-                                     [ev],
-                                     [ev_async_send],
-                                     [$with_libev_extra_libs],
-                                     [$pmix_libev_dir],
-                                     [$pmix_libev_libdir],
-                                     [],
-                                     [pmix_libev_support=0])],
+                 [OAC_CHECK_PACKAGE([libev],
+                                    [pmix_libev],
+                                    [event.h],
+                                    [ev ${with_libev_extra_libs}],
+                                    [ev_async_send],
+                                    [],
+                                    [pmix_libev_support=0])],
                  [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_libev_extra_libs])])
+
            CPPFLAGS="$pmix_check_libev_save_CPPFLAGS"
            LDFLAGS="$pmix_check_libev_save_LDFLAGS"
            LIBS="$pmix_check_libev_save_LIBS"])
@@ -110,7 +88,7 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
     if test $pmix_libev_support -eq 1; then
         AC_MSG_RESULT([yes])
         $1
-        PMIX_SUMMARY_ADD([[Required Packages]], [[Libev]], [pmix_libev], [yes ($pmix_libev_dir)])
+        PMIX_SUMMARY_ADD([Required Packages], [Libev], [], [$pmix_libev_SUMMARY])
     else
         AC_MSG_RESULT([no])
         # if they asked us to use it, then this is an error
@@ -121,4 +99,4 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
     fi
 
     PMIX_VAR_SCOPE_POP
-])dnl
+])
