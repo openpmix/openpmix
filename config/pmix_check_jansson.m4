@@ -32,7 +32,7 @@
 # check if JANSSON support can be found.  sets jansson_{CPPFLAGS,
 # LDFLAGS, LIBS}
 AC_DEFUN([PMIX_CHECK_JANSSON],[
-    PMIX_VAR_SCOPE_PUSH([pmix_check_jansson_save_CPPFLAGS pmix_check_jansson_happy])
+    PMIX_VAR_SCOPE_PUSH([pmix_check_jansson_save_CPPFLAGS])
 
     dnl Intentionally disable Jansson unless explicitly requested
     AC_ARG_WITH([jansson],
