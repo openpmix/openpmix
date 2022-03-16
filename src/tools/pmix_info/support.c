@@ -555,11 +555,9 @@ void pmix_info_do_type(void)
     int count;
     char *type, *str;
     int i, j, k, len, ret;
-    char *p;
     const pmix_mca_base_var_t *var;
     char **strings, *message;
     const pmix_mca_base_var_group_t *group;
-    p = "type";
 
     if (NULL != (str = pmix_cmd_line_get_param(pmix_info_cmd_line, "level", 0, 0))) {
         char *tmp;
@@ -575,11 +573,11 @@ void pmix_info_do_type(void)
         }
     }
 
-    count = pmix_cmd_line_get_ninsts(pmix_info_cmd_line, p);
+    count = pmix_cmd_line_get_ninsts(pmix_info_cmd_line, "type");
     len = pmix_mca_base_var_get_count();
 
     for (k = 0; k < count; ++k) {
-        type = pmix_cmd_line_get_param(pmix_info_cmd_line, p, k, 0);
+        type = pmix_cmd_line_get_param(pmix_info_cmd_line, "type", k, 0);
         for (i = 0; i < len; ++i) {
             ret = pmix_mca_base_var_get(i, &var);
             if (PMIX_SUCCESS != ret) {

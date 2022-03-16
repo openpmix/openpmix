@@ -14,6 +14,7 @@
 #                         All rights reserved.
 # Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
 # Copyright (c) 2014      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -27,7 +28,8 @@ dist_pmixdata_DATA += runtime/help-pmix-runtime.txt
 
 headers += \
         runtime/pmix_rte.h \
-        runtime/pmix_progress_threads.h
+        runtime/pmix_progress_threads.h \
+        runtime/pmix_init_util.h
 
 sources += \
         runtime/pmix_finalize.c \

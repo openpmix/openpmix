@@ -137,6 +137,7 @@ typedef struct {
     pmix_op_cbfunc_t cbfunc;
     pmix_spawn_cbfunc_t spcbfunc;
     pmix_release_cbfunc_t relcbfunc;
+    pmix_info_cbfunc_t infocbfunc;
     void *cbdata;
 } myxfer_t;
 static void xfcon(myxfer_t *p)
@@ -1094,21 +1095,12 @@ static pmix_status_t notify_event(pmix_status_t code, const pmix_proc_t *source,
     return PMIX_OPERATION_SUCCEEDED;
 }
 
-typedef struct query_data_t {
-    pmix_event_t ev;
-    pmix_info_t *data;
-    size_t ndata;
-    pmix_info_cbfunc_t cbfunc;
-    void *cbdata;
-} query_data_t;
-
 static void qfn(int sd, short args, void *cbdata)
 {
-    query_data_t *qd = (query_data_t *) cbdata;
+    myxfer_t *qd = (myxfer_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    qd->cbfunc(PMIX_SUCCESS, qd->data, qd->ndata, qd->cbdata, NULL, NULL);
-    PMIX_INFO_FREE(qd->data, qd->ndata);
+    qd->infocbfunc(PMIX_SUCCESS, qd->info, qd->ninfo, qd->cbdata, NULL, NULL);
+    PMIX_RELEASE(qd);
 }
 
 static pmix_status_t query_fn(pmix_proc_t *proct, pmix_query_t *queries, size_t nqueries,
@@ -1116,7 +1108,7 @@ static pmix_status_t query_fn(pmix_proc_t *proct, pmix_query_t *queries, size_t 
 {
     size_t n;
     pmix_info_t *info;
-    query_data_t qd;
+    myxfer_t *qd;
     PMIX_HIDE_UNUSED_PARAMS(proct);
 
     if (NULL == cbfunc) {
@@ -1132,11 +1124,13 @@ static pmix_status_t query_fn(pmix_proc_t *proct, pmix_query_t *queries, size_t 
             return PMIX_ERROR;
         }
     }
-    qd.data = info;
-    qd.ndata = nqueries;
-    qd.cbfunc = cbfunc;
-    qd.cbdata = cbdata;
-    SIMPTEST_THREADSHIFT(&qd, qfn);
+
+    qd = PMIX_NEW(myxfer_t);
+    qd->info = info;
+    qd->ninfo = nqueries;
+    qd->infocbfunc = cbfunc;
+    qd->cbdata = cbdata;
+    SIMPTEST_THREADSHIFT(qd, qfn);
     return PMIX_SUCCESS;
 }
 
