@@ -553,7 +553,7 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
     pmix_status_t reply;
     pmix_status_t rc;
     struct timeval save;
-    pmix_socklen_t sz;
+    pmix_socklen_t sz = sizeof(save);
     bool sockopt = true;
     uint32_t u32;
 
