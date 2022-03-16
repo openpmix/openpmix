@@ -32,8 +32,6 @@
 # check if CURL support can be found.  sets curl_{CPPFLAGS,
 # LDFLAGS, LIBS}
 AC_DEFUN([PMIX_CHECK_CURL],[
-    PMIX_VAR_SCOPE_PUSH([pmix_check_curl_happy])
-
     dnl Intentionally disable CURL unless explicitly requested
     AC_ARG_WITH([curl],
                 [AS_HELP_STRING([--with-curl(=DIR)],
@@ -51,7 +49,6 @@ AC_DEFUN([PMIX_CHECK_CURL],[
                       [curl/curl.h],
 		      [curl],
 		      [curl_easy_getinfo],
-		      [],
 		      [pmix_check_curl_happy="yes"],
 		      [pmix_check_curl_happy="no"])
 
@@ -66,6 +63,4 @@ AC_DEFUN([PMIX_CHECK_CURL],[
     AC_SUBST(pmix_check_curl_CPPFLAGS)
     AC_SUBST(pmix_check_curl_LDFLAGS)
     AC_SUBST(pmix_check_curl_LIBS)
-
-    PMIX_VAR_SCOPE_POP
 ])
