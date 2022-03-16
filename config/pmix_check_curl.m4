@@ -59,8 +59,4 @@ AC_DEFUN([PMIX_CHECK_CURL],[
     AC_MSG_RESULT([$pmix_check_curl_happy])
 
     PMIX_SUMMARY_ADD([External Packages], [Curl], [], [$pmix_check_curl_SUMMARY])
-
-    AC_SUBST(pmix_check_curl_CPPFLAGS)
-    AC_SUBST(pmix_check_curl_LDFLAGS)
-    AC_SUBST(pmix_check_curl_LIBS)
 ])
