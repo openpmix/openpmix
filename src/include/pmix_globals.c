@@ -182,9 +182,6 @@ static void ncdcon(pmix_nspace_caddy_t *p)
 static void ncddes(pmix_nspace_caddy_t *p)
 {
     if (NULL != p->ns) {
-        if (NULL != p->ns->jobbkt) {
-            PMIX_RELEASE(p->ns->jobbkt);
-        }
         PMIX_RELEASE(p->ns);
     }
 }
