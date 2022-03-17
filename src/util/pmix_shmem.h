@@ -16,11 +16,13 @@
 #include "src/class/pmix_object.h"
 
 typedef struct pmix_shmem_t {
-    /* Size of shared-memory segment. */
+    /** Parent class. */
+    pmix_object_t super;
+    /** Size of shared-memory segment. */
     size_t size;
-    /* Base address of shared memory segment. */
+    /** Base address of shared memory segment. */
     void *base_address;
-    /* Buffer holding path to backing store. */
+    /** Buffer holding path to backing store. */
     char backing_path[PMIX_PATH_MAX];
 } pmix_shmem_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_shmem_t);
