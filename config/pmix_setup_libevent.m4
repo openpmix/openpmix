@@ -72,7 +72,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
                                     [event_config_new],
                                     [],
                                     [pmix_libevent_support=0])],
-                 [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_libevent_extra_libs])])])
+                 [PMIX_FLAGS_APPEND_UNIQ([PMIX_DELAYED_LIBS], [$with_libevent_extra_libs])])])
 
     # Check to see if the above check failed because it conflicted with LSF's libevent.so
     # This can happen if LSF's library is in the LDFLAGS envar or default search
@@ -158,14 +158,14 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     AC_MSG_CHECKING([will libevent support be built])
     if test $pmix_libevent_support -eq 1; then
         AC_MSG_RESULT([yes])
-        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_CPPFLAGS], [$pmix_libevent_CPPFLAGS])
+        PMIX_FLAGS_APPEND_UNIQ([CPPFLAGS], [$pmix_libevent_CPPFLAGS])
         PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_libevent_CPPFLAGS])
 
-        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_libevent_LDFLAGS])
+        PMIX_FLAGS_APPEND_UNIQ([LDFLAGS], [$pmix_libevent_LDFLAGS])
         PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_libevent_LDFLAGS])
         PMIX_WRAPPER_FLAGS_ADD([STATIC_LDFLAGS], [$pmix_libevent_STATIC_LDFLAGS])
 
-        PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_libevent_LIBS])
+        PMIX_FLAGS_APPEND_UNIQ([PMIX_DELAYED_LIBS], [$pmix_libevent_LIBS])
         PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libevent_LIBS])
         PMIX_WRAPPER_FLAGS_ADD([STATIC_LIBS], [$pmix_libevent_STATIC_LIBS])
 

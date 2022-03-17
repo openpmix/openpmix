@@ -68,21 +68,21 @@ AC_DEFUN([PMIX_LIBEV_CONFIG],[
                                     [ev_async_send],
                                     [],
                                     [pmix_libev_support=0])],
-                 [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_libev_extra_libs])])
+                 [PMIX_FLAGS_APPEND_UNIQ([PMIX_DELAYED_LIBS], [$with_libev_extra_libs])])
 
            CPPFLAGS="$pmix_check_libev_save_CPPFLAGS"
            LDFLAGS="$pmix_check_libev_save_LDFLAGS"
            LIBS="$pmix_check_libev_save_LIBS"])
 
     AS_IF([test $pmix_libev_support -eq 1],
-          [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_CPPFLAGS], [$pmix_libev_CPPFLAGS])
+          [PMIX_FLAGS_APPEND_UNIQ([CPPFLAGS], [$pmix_libev_CPPFLAGS])
            PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_libev_CPPFLAGS])
 
-           PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_libev_LDFLAGS])
+           PMIX_FLAGS_APPEND_UNIQ([LDFLAGS], [$pmix_libev_LDFLAGS])
            PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_libev_LDFLAGS])
            PMIX_WRAPPER_FLAGS_ADD([STATIC_LDFLAGS], [$pmix_libev_STATIC_LDFLAGS])
 
-           PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_libev_LIBS])
+           PMIX_FLAGS_APPEND_UNIQ([PMIX_DELAYED_LIBS], [$pmix_libev_LIBS])
            PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_libev_LIBS])
            PMIX_WRAPPER_FLAGS_ADD([STATIC_LIBS], [$pmix_libev_STATIC_LIBS])
 

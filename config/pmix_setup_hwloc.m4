@@ -16,7 +16,7 @@
 # MCA_hwloc_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_SETUP_HWLOC],[
-    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_check_hwloc_save_CPPFLAGS pmix_check_hwloc_save_LDFLAGS pmix_check_hwloc_save_LIBS])
+    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_check_hwloc_save_CPPFLAGS])
 
     AC_ARG_WITH([hwloc],
                 [AS_HELP_STRING([--with-hwloc=DIR],
@@ -33,8 +33,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
 
     pmix_hwloc_support=1
     pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
-    pmix_check_hwloc_save_LDFLAGS="$LDFLAGS"
-    pmix_check_hwloc_save_LIBS="$LIBS"
     pmix_have_topology_dup=0
 
     if test "$with_hwloc" == "no"; then
@@ -54,7 +52,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                              [hwloc_topology_init],
                              [],
                              [pmix_hwloc_support=0])],
-          [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_hwloc_extra_libs])])
+          [PMIX_FLAGS_APPEND_UNIQ([PMIX_DELAYED_LIBS], [$with_hwloc_extra_libs])])
 
     if test $pmix_hwloc_support -eq 0; then
         AC_MSG_WARN([PMIx requires HWLOC topology library support, but])
@@ -66,17 +64,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
 
     # update global flags to test for HWLOC version
     PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
-    PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
-
-    PMIX_FLAGS_PREPEND_UNIQ([LDFLAGS], [$pmix_hwloc_LDFLAGS])
-    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_hwloc_LDFLAGS])
-    PMIX_WRAPPER_FLAGS_ADD([STATIC_LDFLAGS], [$pmix_hwloc_STATIC_LDFLAGS])
-
-    PMIX_FLAGS_PREPEND_UNIQ([LIBS], [$pmix_hwloc_LIBS])
-    PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_hwloc_LIBS])
-    PMIX_WRAPPER_FLAGS_ADD([STATIC_LIBS], [$pmix_hwloc_STATIC_LIBS])
-
-    PMIX_WRAPPER_FLAGS_ADD([PC_MODULES], [$pmix_hwloc_PC_MODULES])
 
     AC_MSG_CHECKING([if hwloc version is 1.5 or greater])
     AC_COMPILE_IFELSE(
@@ -116,12 +103,19 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
            pmix_version_high=0])
 
     CPPFLAGS=$pmix_check_hwloc_save_CPPFLAGS
-    LDFLAGS=$pmix_check_hwloc_save_LDFLAGS
-    LIBS=$pmix_check_hwloc_save_LIBS
 
-    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
-    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LDFLAGS], [$pmix_hwloc_LDFLAGS])
-    PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$pmix_hwloc_LIBS])
+    PMIX_FLAGS_APPEND_UNIQ([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
+
+    PMIX_FLAGS_APPEND_UNIQ([LDFLAGS], [$pmix_hwloc_LDFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$pmix_hwloc_LDFLAGS])
+    PMIX_WRAPPER_FLAGS_ADD([STATIC_LDFLAGS], [$pmix_hwloc_STATIC_LDFLAGS])
+
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_DELAYED_LIBS], [$pmix_hwloc_LIBS])
+    PMIX_WRAPPER_FLAGS_ADD([LIBS], [$pmix_hwloc_LIBS])
+    PMIX_WRAPPER_FLAGS_ADD([STATIC_LIBS], [$pmix_hwloc_STATIC_LIBS])
+
+    PMIX_WRAPPER_FLAGS_ADD([PC_MODULES], [$pmix_hwloc_PC_MODULES])
 
     AC_DEFINE_UNQUOTED([PMIX_HAVE_HWLOC_TOPOLOGY_DUP], [$pmix_have_topology_dup],
                        [Whether or not hwloc_topology_dup is available])
