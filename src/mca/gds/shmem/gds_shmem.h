@@ -76,16 +76,28 @@ typedef struct {
     pmix_list_t sessioninfo;
     pmix_list_t nodeinfo;
 } pmix_gds_shmem_session_t;
-PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
+
+/*
+ * Ideally we would use the TMA from src/class/pmix_object.h, but we're testing
+ * now. Maybe we can merge at some point.
+ */
+typedef struct pmix_gds_shmem_tma {
+    pmix_object_t super;
+    void *(*malloc)(struct pmix_gds_shmem_tma *, size_t);
+    void *data;
+} pmix_gds_shmem_tma_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_tma_t);
 
 typedef struct {
     pmix_list_item_t super;
     char *ns;
     pmix_shmem_t *shmem;
+    pmix_gds_shmem_tma_t *tma;
     pmix_namespace_t *nptr;
     pmix_gds_shmem_session_t *session;
 } pmix_gds_shmem_job_t;
-PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
 
 END_C_DECLS
 

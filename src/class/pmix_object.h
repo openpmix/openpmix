@@ -396,7 +396,6 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
     ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), tma, __FILE__, __LINE__))
 
 #else
-// TODO(skg) Implement, test without debug.
 #define PMIX_NEW_NO_TMA(type)   ((type *)pmix_obj_new_tma(PMIX_CLASS(type), NULL))
 
 #define PMIX_NEW_TMA(type, tma) ((type *)pmix_obj_new_tma(PMIX_CLASS(type), tma))

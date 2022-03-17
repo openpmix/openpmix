@@ -25,11 +25,11 @@ pmix_gds_shmem_get_job_tracker(
     pmix_gds_shmem_job_t **job
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_list_t *myjobs = &pmix_mca_gds_shmem_component.myjobs;
     pmix_gds_shmem_job_t *target_tracker = NULL, *tracker = NULL;
+    pmix_gds_shmem_component_t *component = &pmix_mca_gds_shmem_component;
     // Try to find the tracker for this job.
     // TODO(skg) Consider using a hash table here for lookup.
-    PMIX_LIST_FOREACH (tracker, myjobs, pmix_gds_shmem_job_t) {
+    PMIX_LIST_FOREACH (tracker, &component->myjobs, pmix_gds_shmem_job_t) {
         if (0 == strcmp(nspace, tracker->ns)) {
             target_tracker = tracker;
             break;
@@ -44,6 +44,10 @@ pmix_gds_shmem_get_job_tracker(
             goto out;
         }
         target_tracker->ns = strdup(nspace);
+        if (!target_tracker->ns) {
+            rc = PMIX_ERR_NOMEM;
+            goto out;
+        }
         // See if we already have this nspace in global namespaces.
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             if (0 == strcmp(ns->nspace, nspace)) {
@@ -59,12 +63,16 @@ pmix_gds_shmem_get_job_tracker(
                 goto out;
             }
             nptr->nspace = strdup(nspace);
+            if (!nptr->nspace) {
+                rc = PMIX_ERR_NOMEM;
+                goto out;
+            }
             pmix_list_append(&pmix_globals.nspaces, &nptr->super);
         }
         PMIX_RETAIN(nptr);
         target_tracker->nptr = nptr;
         // Add it to the list of jobs I'm supporting.
-        pmix_list_append(myjobs, &target_tracker->super);
+        pmix_list_append(&component->myjobs, &target_tracker->super);
     }
 out:
     if (PMIX_SUCCESS != rc) {
