@@ -21,8 +21,6 @@ dnl
 # PMIX_SEARCH_LIBS_COMPONENT.  The reason why is because this macro
 # calls PMIX_WRAPPER_FLAGS_ADD -- see big comment in
 # pmix_setup_wrappers.m4 for an explanation of why this is bad).
-# NOTE: PMIx doesn't have wrapper compilers, so this is not an issue
-# here - we leave the note just for downstream compatibility
 AC_DEFUN([PMIX_SEARCH_LIBS_CORE],[
 
     PMIX_VAR_SCOPE_PUSH([LIBS_save add])
