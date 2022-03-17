@@ -540,9 +540,9 @@ static inline int pmix_obj_update(pmix_object_t *object, int inc)
         perror("pthread_mutex_lock()");
         abort();
     }
-    object->obj_reference_count += inc;
+    ret = (object->obj_reference_count += inc);
     pthread_mutex_unlock(&object->obj_lock);
-    return object->obj_reference_count;
+    return ret;
 }
 
 END_C_DECLS
