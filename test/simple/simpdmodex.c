@@ -108,21 +108,47 @@ done:
 
 int main(int argc, char **argv)
 {
-    int rc;
+    int rc, i;
     pmix_value_t value;
     pmix_value_t *val = &value;
     char *tmp;
     pmix_proc_t proc;
-    uint32_t n, num_gets, k, nlocal;
+    uint32_t n, num_gets, k, nlocal, sleeptime;
     bool active;
     bool dofence = true;
     bool local, all_local;
     char **peers;
     pmix_rank_t *locals = NULL;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
+    pmix_info_t timeout, *iptr;
+    size_t ninfo;
 
-    if (NULL != getenv("PMIX_SIMPDMODEX_ASYNC")) {
-        dofence = false;
+    dofence = false;
+    sleeptime = 2;
+    iptr = NULL;
+    ninfo = 0;
+    for (i=1; i < argc; i++) {
+        if (0 == strcmp(argv[i], "-s") ||
+            0 == strcmp(argv[i], "--sleep")) {
+            if (NULL == argv[i+1]) {
+                fprintf(stderr, "Error: %s requires an integer argument\n", argv[i]);
+                exit(1);
+            }
+            sleeptime = strtoul(argv[i+1], NULL, 10);
+        } else if (0 == strcmp(argv[i], "-f") ||
+                   0 == strcmp(argv[i], "--fence")) {
+            dofence = true;
+        } else if (0 == strcmp(argv[i], "-t") ||
+                   0 == strcmp(argv[i], "--timeout")) {
+            if (NULL == argv[i+1]) {
+                fprintf(stderr, "Error: %s requires an integer argument\n", argv[i]);
+                exit(1);
+            }
+            rc = strtoul(argv[i+1], NULL, 10);
+            PMIX_INFO_LOAD(&timeout, PMIX_TIMEOUT, &rc, PMIX_INT);
+            iptr = &timeout;
+            ninfo = 1;
+        }
     }
 
     /* init us */
@@ -177,7 +203,7 @@ int main(int argc, char **argv)
     /* introduce a delay by one rank so we can check what happens
      * if a "get" is received prior to data being provided */
     if (0 == myproc.rank) {
-        sleep(2);
+        sleep(sleeptime);
         pmix_output(0, "Rank 0[msg=%d]: WOKE UP", msgnum);
         ++msgnum;
     }
@@ -243,7 +269,7 @@ int main(int argc, char **argv)
             pmix_output(0, "Rank %u[msg=%d]: retrieving %s from local proc %u", myproc.rank, msgnum, tmp, n);
             ++msgnum;
             proc.rank = n;
-            if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp, NULL, 0, valcbfunc, tmp))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp, iptr, ninfo, valcbfunc, tmp))) {
                 pmix_output(0, "Rank %d[msg=%d]: PMIx_Get %s failed: %d", myproc.rank, msgnum, tmp, rc);
                 ++msgnum;
                 goto done;
@@ -252,7 +278,7 @@ int main(int argc, char **argv)
         } else {
             (void) asprintf(&tmp, "%s-%d-remote", myproc.nspace, n);
             pmix_output(0, "Rank %u[msg=%d]: retrieving %s from remote proc %u", myproc.rank, msgnum, tmp, n);
-            if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp, NULL, 0, valcbfunc, tmp))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp, iptr, ninfo, valcbfunc, tmp))) {
                 pmix_output(0, "Rank %d[msg=%d]: PMIx_Get %s failed: %d", myproc.rank, msgnum, tmp, rc);
                 ++msgnum;
                 goto done;
