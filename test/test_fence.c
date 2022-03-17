@@ -453,7 +453,7 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
             goto cleanout;
         }
         if (PMIX_ERR_NOT_FOUND != rc && PMIX_ERR_TIMEOUT != rc) {
-            TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %s instead of not_found", my_nspace,
+            TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %s instead of not_found or timeout", my_nspace,
                         my_rank, PMIx_Error_string(rc)));
             exit(PMIX_ERROR);
         }
