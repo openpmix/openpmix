@@ -49,16 +49,16 @@
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/runtime/pmix_rte.h"
-#include "src/util/pmix_argv.h"
-#include "src/util/pmix_basename.h"
-#include "src/util/pmix_error.h"
-#include "src/util/pmix_few.h"
-#include "src/util/pmix_keyval_parse.h"
-#include "src/util/pmix_os_path.h"
-#include "src/util/pmix_path.h"
+#include "src/util/argv.h"
+#include "src/util/basename.h"
+#include "src/util/error.h"
+#include "src/util/few.h"
+#include "src/util/keyval_parse.h"
+#include "src/util/os_path.h"
+#include "src/util/path.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/pmix_printf.h"
-#include "src/util/pmix_show_help.h"
+#include "src/util/printf.h"
+#include "src/util/show_help.h"
 
 #define PMIX_INCLUDE_FLAG "-I"
 #define PMIX_LIBDIR_FLAG  "-L"
@@ -357,11 +357,8 @@ static void filter_flags(char*** argvp)
 
 }
 
-static void data_callback(const char *file, int lineno,
-                          const char *key, const char *value)
+static void data_callback(const char *key, const char *value)
 {
-    PMIX_HIDE_UNUSED_PARAMS(file, lineno);
-
     /* handle case where text file does not contain any special
      compiler options field */
     if (parse_options_idx < 0 && 0 != strcmp(key, "compiler_args")) {
@@ -587,7 +584,7 @@ int main(int argc, char *argv[])
     }
 
     /* initialize the help system */
-    pmix_show_help_init(NULL);
+    pmix_show_help_init();
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (ret = pmix_util_keyval_parse_init())) {
@@ -597,7 +594,7 @@ int main(int argc, char *argv[])
     }
 
     /* initialize the mca */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_open(NULL))) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_open())) {
         pmix_show_help("help-pmix-runtime.txt", "pmix_init:startup:internal-failure", true,
                        "pmix_mca_base_open", ret);
         return ret;
