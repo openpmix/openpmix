@@ -577,7 +577,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
 
     if (PMIX_SUCCESS != ret) {
         pmix_output_verbose(2, pmix_client_globals.get_output,
-                            "pmix: get_nb server returned %s", PMIx_Error_string(ret));
+                            "pmix: get_nb server returned %s",
+                            PMIx_Error_string(ret));
         goto done;
     }
     PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_globals.mypeer, buf);
@@ -593,7 +594,12 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
         if (0 == strncmp(proc.nspace, cb->pname.nspace, PMIX_MAX_NSLEN) &&
             cb->pname.rank == proc.rank) {
             pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
-           /* we have the data for this proc - see if we can find the key */
+            if (PMIX_SUCCESS != ret) {
+                cb->cbfunc.valuefn(ret, NULL, cb->cbdata);
+                PMIX_RELEASE(cb);
+                continue;
+            }
+            /* we have the data for this proc - see if we can find the key */
             cb->proc = &proc;
             cb->scope = PMIX_SCOPE_UNDEF;
             /* fetch the data from server peer module - since it is passing

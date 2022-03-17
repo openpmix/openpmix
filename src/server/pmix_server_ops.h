@@ -248,7 +248,8 @@ PMIX_EXPORT bool pmix_server_trk_update(pmix_server_trkr_t *trk);
 
 PMIX_EXPORT void pmix_pending_nspace_requests(pmix_namespace_t *nptr);
 PMIX_EXPORT pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
-                                               pmix_status_t status, pmix_dmdx_local_t *lcd);
+                                               pmix_status_t status, pmix_scope_t scope,
+                                               pmix_dmdx_local_t *lcd);
 
 PMIX_EXPORT pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata);

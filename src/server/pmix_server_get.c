@@ -845,7 +845,10 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
 }
 
 /* Resolve pending requests to this namespace/rank */
-pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank, pmix_status_t status,
+pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr,
+                                   pmix_rank_t rank,
+                                   pmix_status_t status,
+                                   pmix_scope_t scope,
                                    pmix_dmdx_local_t *lcd)
 {
     pmix_dmdx_local_t *cd, *ptr;
@@ -895,8 +898,8 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank, pmi
         PMIX_LIST_FOREACH (req, &ptr->loc_reqs, pmix_dmdx_request_t) {
             pmix_status_t rc;
             bool diffnspace = !PMIX_CHECK_NSPACE(nptr->nspace, req->lcd->proc.nspace);
-            rc = _satisfy_request(nptr, rank, &scd, diffnspace, PMIX_REMOTE, req->cbfunc,
-                                  req->cbdata);
+            rc = _satisfy_request(nptr, rank, &scd, diffnspace, scope,
+                                  req->cbfunc, req->cbdata);
             if (PMIX_SUCCESS != rc) {
                 /* if we can't satisfy this particular request (missing key?) */
                 req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
@@ -1091,7 +1094,8 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
 
 complete:
     /* always execute the callback to avoid having the client hang */
-    pmix_pending_resolve(nptr, caddy->lcd->proc.rank, caddy->status, caddy->lcd);
+    pmix_pending_resolve(nptr, caddy->lcd->proc.rank,
+                         caddy->status, PMIX_REMOTE, caddy->lcd);
 
     /* now call the release function so the host server
      * knows it can release the data */
