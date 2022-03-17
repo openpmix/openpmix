@@ -133,6 +133,8 @@
 #include <stdio.h>
 #include <errno.h>
 
+#include "src/include/pmix_atomic.h"
+
 BEGIN_C_DECLS
 
 #if PMIX_ENABLE_DEBUG
@@ -702,13 +704,17 @@ static inline pmix_object_t *pmix_obj_new(pmix_class_t *cls)
 static inline int pmix_obj_update(pmix_object_t *object, int inc) __pmix_attribute_always_inline__;
 static inline int pmix_obj_update(pmix_object_t *object, int inc)
 {
-    int ret = pthread_mutex_lock(&object->obj_lock);
+    int ret;
+
+    ret = pthread_mutex_lock(&object->obj_lock);
     if (ret == EDEADLK) {
         errno = ret;
         perror("pthread_mutex_lock()");
         abort();
     }
+    PMIX_ACQUIRE_OBJECT(object);
     ret = (object->obj_reference_count += inc);
+    PMIX_POST_OBJECT(object);
     pthread_mutex_unlock(&object->obj_lock);
     return ret;
 }

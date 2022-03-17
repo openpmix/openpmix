@@ -99,4 +99,17 @@ static inline void pmix_atomic_rmb(void)
 
 #endif
 
+/* provide a macro for forward-proofing the shifting
+ * of objects between threads - at some point, we
+ * may revamp our threading model */
+
+/* post an object to another thread - for now, we
+ * only have a memory barrier */
+#define PMIX_POST_OBJECT(o) pmix_atomic_wmb()
+
+/* acquire an object from another thread - for now,
+ * we only have a memory barrier */
+#define PMIX_ACQUIRE_OBJECT(o) pmix_atomic_rmb()
+
+
 #endif /* PMIX_SYS_ATOMIC_H */
