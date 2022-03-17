@@ -209,7 +209,8 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
     pmix_strncpy(proc.nspace, nptr->nspace, PMIX_MAX_NSLEN);
     proc.rank = info->pname.rank;
 
-    pmix_output_verbose(2, pmix_server_globals.fence_output, "%s:%d EXECUTE COMMIT FOR %s:%d",
+    pmix_output_verbose(2, pmix_server_globals.fence_output,
+                        "%s:%d EXECUTE COMMIT FOR %s:%d",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, nptr->nspace,
                         info->pname.rank);
 

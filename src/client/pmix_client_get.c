@@ -599,7 +599,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
                 PMIX_RELEASE(cb);
                 continue;
             }
-           /* we have the data for this proc - see if we can find the key */
+            /* we have the data for this proc - see if we can find the key */
             cb->proc = &proc;
             cb->scope = PMIX_SCOPE_UNDEF;
             /* fetch the data from server peer module - since it is passing
