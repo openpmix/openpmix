@@ -531,7 +531,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_cb_t *cb2;
-    pmix_status_t rc, ret;
+    pmix_status_t rc, ret = PMIX_ERR_NOT_FOUND;
     pmix_value_t *val = NULL;
     int32_t cnt;
     pmix_proc_t proc;
