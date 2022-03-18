@@ -118,7 +118,7 @@ EOF
         AS_VAR_COPY([pmix_summary_section_value], [pmix_summary_section_${pmix_summary_section}_value])
         echo "${pmix_summary_section_name}" >&2
         echo "-----------------------" >&2
-        echo "${pmix_summary_section_value}" | sort -f
+        echo "${pmix_summary_section_value}" | sort -f >&2
         echo " " >&2
     done
 
