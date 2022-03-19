@@ -326,8 +326,7 @@ static void expand_flags(char **argv)
 
 static void filter_flags(char*** argvp)
 {
-    int argc;
-    size_t idx;
+    int argc, idx;
 
     argc = pmix_argv_count(*argvp);
     idx = 0;
