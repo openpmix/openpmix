@@ -286,6 +286,7 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
             continue;
         }
         if (dcd->cd->proc.rank == info->pname.rank) {
+            pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
             /* we can now fulfill this request - collect the
              * remote/global data from this proc - note that there
              * may not be a contribution */
@@ -313,7 +314,6 @@ pmix_status_t pmix_server_commit(pmix_peer_t *peer, pmix_buffer_t *buf)
                 free(data);
             }
             /* we have finished this request */
-            pmix_list_remove_item(&pmix_server_globals.remote_pnd, &dcd->super);
             PMIX_RELEASE(dcd);
         }
     }
