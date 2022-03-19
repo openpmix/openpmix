@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -739,9 +739,13 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     pmix_byte_object_t bo;
     char *data = NULL;
     size_t sz = 0;
+    pmix_rank_info_t *rinfo;
+    pmix_peer_t *peer;
 
-    pmix_output_verbose(2, pmix_server_globals.get_output, "%s:%d SATISFY REQUEST CALLED FOR %s:%d",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank, nptr->nspace, rank);
+    pmix_output_verbose(2, pmix_server_globals.get_output,
+                        "%s:%d SATISFY REQUEST CALLED FOR %s:%d ON SCOPE %s",
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                        nptr->nspace, rank, PMIx_Scope_string(scope));
 
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
     PMIX_LOAD_NSPACE(proc.nspace, nptr->nspace);
@@ -768,6 +772,21 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     cb.info = cd->info;
     cb.ninfo = cd->ninfo;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    /* if we didn't find it on my peer, it could have
+     * been stored on their peer - so check there */
+    if (PMIX_SUCCESS != rc) {
+        /* all procs in a given nspace must use
+         * the same GDS component */
+        peer = NULL;
+        rinfo = (pmix_rank_info_t*)pmix_list_get_first(&nptr->ranks);
+        while (NULL == peer && NULL != rinfo) {
+            peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, rinfo->peerid);
+            rinfo = (pmix_rank_info_t*)pmix_list_get_next(&rinfo->super);
+        }
+        if (NULL != peer) {
+            PMIX_GDS_FETCH_KV(rc, peer, &cb);
+        }
+    }
     cb.info = NULL;
     cb.ninfo = 0;
     if (PMIX_SUCCESS == rc) {
@@ -843,7 +862,8 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
 }
 
 /* Resolve pending requests to this namespace/rank */
-pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank, pmix_status_t status,
+pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
+                                   pmix_status_t status, pmix_scope_t scope,
                                    pmix_dmdx_local_t *lcd)
 {
     pmix_dmdx_local_t *cd, *ptr;
@@ -893,7 +913,7 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank, pmi
         PMIX_LIST_FOREACH (req, &ptr->loc_reqs, pmix_dmdx_request_t) {
             pmix_status_t rc;
             bool diffnspace = !PMIX_CHECK_NSPACE(nptr->nspace, req->lcd->proc.nspace);
-            rc = _satisfy_request(nptr, rank, &scd, diffnspace, PMIX_REMOTE, req->cbfunc,
+            rc = _satisfy_request(nptr, rank, &scd, diffnspace, scope, req->cbfunc,
                                   req->cbdata);
             if (PMIX_SUCCESS != rc) {
                 /* if we can't satisfy this particular request (missing key?) */
@@ -1089,7 +1109,7 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
 
 complete:
     /* always execute the callback to avoid having the client hang */
-    pmix_pending_resolve(nptr, caddy->lcd->proc.rank, caddy->status, caddy->lcd);
+    pmix_pending_resolve(nptr, caddy->lcd->proc.rank, caddy->status, PMIX_REMOTE, caddy->lcd);
 
     /* now call the release function so the host server
      * knows it can release the data */
