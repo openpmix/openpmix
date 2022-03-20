@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -531,7 +531,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
 {
     pmix_cb_t *cb = (pmix_cb_t*)cbdata;
     pmix_cb_t *cb2;
-    pmix_status_t rc, ret;
+    pmix_status_t rc, ret = PMIX_ERR_NOT_FOUND;
     pmix_value_t *val = NULL;
     int32_t cnt;
     pmix_proc_t proc;
@@ -541,7 +541,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     PMIX_ACQUIRE_OBJECT(cb);
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
-    pmix_output_verbose(2, pmix_client_globals.get_output, "pmix: get_nb callback recvd");
+    pmix_output_verbose(2, pmix_client_globals.get_output,
+                        "pmix: get_nb callback recvd");
 
     if (NULL == cb) {
         /* nothing we can do */
@@ -577,7 +578,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
 
     if (PMIX_SUCCESS != ret) {
         pmix_output_verbose(2, pmix_client_globals.get_output,
-                            "pmix: get_nb server returned %s", PMIx_Error_string(ret));
+                            "pmix: get_nb server returned %s for key %s from proc %s:%d",
+                            PMIx_Error_string(ret), cb->key, cb->pname.nspace, cb->pname.rank);
         goto done;
     }
     PMIX_GDS_ACCEPT_KVS_RESP(rc, pmix_globals.mypeer, buf);
@@ -590,8 +592,13 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb looking for requested key");
     PMIX_LIST_FOREACH_SAFE(cb, cb2, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (0 == strncmp(proc.nspace, cb->pname.nspace, PMIX_MAX_NSLEN) &&
-            cb->pname.rank == proc.rank) {
+        if (PMIX_CHECK_NSPACE(proc.nspace, cb->pname.nspace) && cb->pname.rank == proc.rank) {
+            pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
+            if (PMIX_SUCCESS != ret) {
+                cb->cbfunc.valuefn(ret, NULL, cb->cbdata);
+                PMIX_RELEASE(cb);
+                continue;
+            }
            /* we have the data for this proc - see if we can find the key */
             cb->proc = &proc;
             cb->scope = PMIX_SCOPE_UNDEF;
@@ -605,7 +612,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
                 }
             }
             pmix_output_verbose(2, pmix_client_globals.get_output,
-                                "pmix: get_nb searching for key %s for rank %s", cb->key, PMIX_RANK_PRINT(proc.rank));
+                                "pmix: get_nb searching for key %s for proc %s",
+                                cb->key, PMIX_NAME_PRINT(&proc));
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
             if (PMIX_SUCCESS == rc) {
                 if (1 != pmix_list_get_size(&cb->kvs)) {
@@ -619,7 +627,6 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
                 }
             }
             cb->cbfunc.valuefn(rc, val, cb->cbdata);
-            pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
             PMIX_RELEASE(cb);
         }
     }
