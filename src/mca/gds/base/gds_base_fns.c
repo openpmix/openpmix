@@ -209,7 +209,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace, pmix_bu
                 break;
             }
             found = false;
-            /* calculate proc form the relative rank */
+            /* calculate proc from the relative rank */
             if (pmix_list_get_size(&trk->nslist) == 1) {
                 found = true;
                 nm = (pmix_nspace_caddy_t *) pmix_list_get_first(&trk->nslist);

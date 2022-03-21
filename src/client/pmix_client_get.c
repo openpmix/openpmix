@@ -54,14 +54,13 @@
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/hash.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 
 #include "pmix_client_ops.h"
 
-static pmix_buffer_t *_pack_get(char *nspace, pmix_rank_t rank, char *key,
-                                const pmix_info_t info[], size_t ninfo,
+static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
+                                pmix_rank_t rank,
                                 pmix_cmd_t cmd);
 
 static void get_data(int sd, short args, void *cbdata);
@@ -124,6 +123,8 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
             lg->stval = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_OPTIONAL)) {
             lg->optional = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_IMMEDIATE)) {
+            lg->immediate = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_DATA_SCOPE)) {
             lg->scope = info[n].value.data.scope;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GET_REFRESH_CACHE)) {
@@ -379,11 +380,15 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-static pmix_buffer_t *_pack_get(char *nspace, pmix_rank_t rank, char *key, const pmix_info_t info[],
-                                size_t ninfo, pmix_cmd_t cmd)
+static pmix_buffer_t *_pack_get(pmix_cb_t *cb,
+                                pmix_rank_t rank,
+                                pmix_cmd_t cmd)
 {
     pmix_buffer_t *msg;
     pmix_status_t rc;
+    pmix_info_t *immediate;
+    size_t n, nimm;
+    char *nspace = cb->proc->nspace;
 
     /* nope - see if we can get it */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -409,23 +414,34 @@ static pmix_buffer_t *_pack_get(char *nspace, pmix_rank_t rank, char *key, const
         return NULL;
     }
     /* pack the number of info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
+    if (cb->lg->add_immediate) {
+        nimm = cb->ninfo + 1;
+        PMIX_INFO_CREATE(immediate, nimm);
+        for (n=0; n < cb->ninfo; n++) {
+            PMIX_INFO_XFER(&immediate[n], &cb->info[n]);
+        }
+        PMIX_INFO_LOAD(&immediate[n], PMIX_IMMEDIATE, NULL, PMIX_BOOL);
+        cb->info = immediate;
+        cb->ninfo = nimm;
+        cb->infocopy = true;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cb->ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
     }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
+    if (0 < cb->ninfo) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, cb->info, cb->ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return NULL;
         }
     }
-    if (NULL != key) {
+    if (NULL != cb->key) {
         /* pack the key */
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &key, 1, PMIX_STRING);
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cb->key, 1, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -453,7 +469,8 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_ACQUIRE_OBJECT(cb);
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
-    pmix_output_verbose(2, pmix_client_globals.get_output, "pmix: get_nb callback recvd");
+    pmix_output_verbose(2, pmix_client_globals.get_output,
+                        "pmix: get_nb callback recvd");
 
     if (NULL == cb || NULL == cb->lg) {
         /* nothing we can do */
@@ -660,18 +677,22 @@ static void get_data(int sd, short args, void *cbdata)
         /* if the server is pre-v3.2, or we are asking about the
          * job-level info from another namespace, then we have to
          * request the data */
-        if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)
-            || !PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace)) {
+        if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100) ||
+            !PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace)) {
             /* flag that we want all of the job-level info */
             proc.rank = PMIX_RANK_WILDCARD;
-        } else if (NULL != cb->key && !PMIX_CHECK_KEY(cb, PMIX_GROUP_CONTEXT_ID)) {
-            /* this is a reserved key - we should have had this info, so
-             * respond with the error - if they want us to check with the
-             * server, they should ask us to refresh the cache */
+        } else if (NULL != cb->key) {
+            /* this is a reserved key - we should have had this info, but
+             * it is possible that some system don't provide it, thereby
+             * causing the app to manually distribute it. We will therefore
+             * request it from the server, but do so under the "immediate"
+             * use-case, adding that flag if they didn't already include it
+             */
             pmix_output_verbose(5, pmix_client_globals.get_output,
-                                "pmix:client returning NOT FOUND error");
-            cb->status = PMIX_ERR_NOT_FOUND;
-            goto done;
+                                "pmix:client reserved key not locally found");
+            if (!lg->immediate) {
+                lg->add_immediate = true;
+            }
         }
     }
 
@@ -717,8 +738,7 @@ static void get_data(int sd, short args, void *cbdata)
     }
 
     /* we don't have a pending request, so let's create one */
-    msg = _pack_get(cb->proc->nspace, proc.rank, cb->key,
-                    cb->info, cb->ninfo, PMIX_GETNB_CMD);
+    msg = _pack_get(cb, proc.rank, PMIX_GETNB_CMD);
     if (NULL == msg) {
         cb->status = PMIX_ERROR;
         PMIX_ERROR_LOG(cb->status);

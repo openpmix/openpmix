@@ -55,7 +55,7 @@ headers = \
         strnlen.h \
         pmix_shmem.h \
         pmix_vmem.h \
-        hash.h \
+        pmix_hash.h \
         pmix_name_fns.h \
         pmix_net.h \
         pmix_if.h \
@@ -85,7 +85,7 @@ sources = \
         getid.c \
         pmix_shmem.c \
         pmix_vmem.c \
-        hash.c \
+        pmix_hash.c \
         pmix_name_fns.c \
         pmix_net.c \
         pmix_if.c \

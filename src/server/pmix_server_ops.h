@@ -28,7 +28,7 @@
 #include "src/class/pmix_hotel.h"
 #include "src/include/pmix_globals.h"
 #include "src/threads/pmix_threads.h"
-#include "src/util/hash.h"
+#include "src/util/pmix_hash.h"
 
 #define PMIX_IOF_HOTEL_SIZE 256
 #define PMIX_IOF_MAX_STAY   300000000

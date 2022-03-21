@@ -264,12 +264,6 @@ typedef uint32_t pmix_rank_t;
                                                                     //           "close" (thread located on cpu close to master thread)
                                                                     //           "spread" (threads load-balanced across available cpus)
 
-/* attributes for the USOCK rendezvous socket  */
-#define PMIX_USOCK_DISABLE                  "pmix.usock.disable"    // (bool) disable legacy usock support
-#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode_t (9 bits valid)
-#define PMIX_SINGLE_LISTENER                "pmix.sing.listnr"      // (bool) use only one rendezvous socket, letting priorities and/or
-                                                                    //        MCA param select the active transport
-
 /* attributes for TCP connections */
 #define PMIX_TCP_REPORT_URI                 "pmix.tcp.repuri"       // (char*) output URI - '-' => stdout, '+' => stderr, or filename
 #define PMIX_TCP_URI                        "pmix.tcp.uri"          // (char*) URI of server to connect to, or file:<name of file containing it>
@@ -289,12 +283,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NODE_OVERSUBSCRIBED            "pmix.ndosub"           // (bool) true if number of procs from this job on this node
                                                                     //        exceeds the number of slots allocated to it
 
-
 /* scratch directory locations for use by applications */
 #define PMIX_TMPDIR                         "pmix.tmpdir"           // (char*) top-level tmp dir assigned to session
 #define PMIX_NSDIR                          "pmix.nsdir"            // (char*) sub-tmpdir assigned to namespace
 #define PMIX_PROCDIR                        "pmix.pdir"             // (char*) sub-nsdir assigned to proc
 #define PMIX_TDIR_RMCLEAN                   "pmix.tdir.rmclean"     // (bool)  Resource Manager will clean session directories
+
 
 /* information about relative ranks as assigned by the RM */
 #define PMIX_CLUSTER_ID                     "pmix.clid"             // (char*) a string name for the cluster this proc is executing on
@@ -313,7 +307,6 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_APPLDR                         "pmix.aldr"             // (pmix_rank_t) lowest rank in this app within this job
 #define PMIX_PROC_PID                       "pmix.ppid"             // (pid_t) pid of specified proc
 #define PMIX_SESSION_ID                     "pmix.session.id"       // (uint32_t) session identifier
-
 #define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for the specified nspace
 #define PMIX_ALLOCATED_NODELIST             "pmix.alist"            // (char*) comma-delimited list of all nodes in this allocation regardless of
                                                                     //         whether or not they currently host procs.
@@ -394,6 +387,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ACCESS_GRPIDS                  "pmix.agids"            // (pmix_data_array_t*) Array of effective GIDs that are allowed to
                                                                     //        access the published data
 #define PMIX_WAIT_FOR_CONNECTION            "pmix.wait.conn"        // (bool) wait until the specified connection has been made
+#define PMIX_QUALIFIED_VALUE                "pmix.qual.val"         // (pmix_data_array_t*) Value being provided consists of the primary
+                                                                    //        key-value pair in first position, followed by one or more
+                                                                    //        key-value qualifiers to be used when subsequently retrieving
+                                                                    //        the primary value
 
 
 /* attributes used by host server to pass data to/from the server convenience library - the
@@ -943,7 +940,16 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GROUP_ENDPT_DATA               "pmix.grp.endpt"        // (pmix_byte_object_t) data collected to be shared during construction
 #define PMIX_GROUP_NAMES                    "pmix.pgrp.nm"          // (pmix_data_array_t*) Returns an array of string names of the process groups
                                                                     //        in which the given process is a member.
-
+#define PMIX_GROUP_INFO                     "pmix.grp.info"         // (pmix_data_array_t*) Array of pmix_info_t containing data that is to be
+                                                                    //        shared across all members of a group during group construction
+#define PMIX_GROUP_LOCAL_CID                "pmix.grp.lclid"        // (size_t) local context ID for the specified process member of a group
+#define PMIX_GROUP_ADD_MEMBERS              "pmix.grp.add"          // (pmix_data_array_t*) Array of pmix_proc_t identifying procs that are not
+                                                                    //        included in the membership specified in the procs array passed to
+                                                                    //        the PMIx_Group_construct[_nb] call, but are to be included in the
+                                                                    //        final group. The identified procs will be sent an invitation to
+                                                                    //        join the group during the construction procedure. This is used when
+                                                                    //        some members of the proposed group do not know the full membership
+                                                                    //        and therefore cannot include all members in the call to construct.
 
 /* Storage-Related Attributes */
 #define PMIX_QUERY_STORAGE_LIST             "pmix.strg.list"       // (char*) return comma-delimited list of identifiers for all available storage systems
@@ -1467,6 +1473,7 @@ typedef uint32_t pmix_info_directives_t;
 #define PMIX_INFO_REQD              0x00000001
 #define PMIX_INFO_ARRAY_END         0x00000002      // mark the end of an array created by PMIX_INFO_CREATE
 #define PMIX_INFO_REQD_PROCESSED    0x00000004      // reqd attribute has been processed
+#define PMIX_INFO_QUALIFIER         0x00000008      // info is a qualifier to the primary value
 /* the top 16-bits are reserved for internal use by
  * implementers - these may be changed inside the
  * PMIx library */
@@ -3311,8 +3318,17 @@ typedef struct pmix_info {
     ((m)->flags & PMIX_INFO_REQD_PROCESSED)
 
 /* macro for testing end of the array */
+#define PMIX_INFO_SET_END(m)    \
+    ((m)->flags |= PMIX_INFO_ARRAY_END)
 #define PMIX_INFO_IS_END(m)         \
     ((m)->flags & PMIX_INFO_ARRAY_END)
+
+/* macro for testing if qualifier */
+#define PMIX_INFO_SET_QUALIFIER(i)   \
+    ((i)->flags |= PMIX_INFO_QUALIFIER)
+#define PMIX_INFO_IS_QUALIFIER(i)    \
+    ((i)->flags & PMIX_INFO_QUALIFIER)
+
 
 /* define a special macro for checking if a boolean
  * info is true - when info structs are provided, a

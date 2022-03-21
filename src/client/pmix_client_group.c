@@ -169,9 +169,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     pmix_cmd_t cmd = PMIX_GROUP_CONSTRUCT_CMD;
     pmix_status_t rc;
     pmix_group_tracker_t *cb = NULL;
-    size_t n, num;
-    bool embed = true;
-    pmix_info_t *iptr = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -192,27 +189,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     /* check for bozo input */
     if (NULL == procs || 0 >= nprocs) {
         return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* need to add the fence request to the provided info
-     * structs as this is a blocking operation - only add
-     * it if the user didn't specify this themselves */
-    for (n = 0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_EMBED_BARRIER)) {
-            embed = PMIX_INFO_TRUE(&info[n]);
-            break;
-        }
-    }
-    if (embed) {
-        PMIX_INFO_CREATE(iptr, ninfo + 1);
-        num = ninfo + 1;
-        for (n = 0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n], &info[n]);
-        }
-        PMIX_INFO_LOAD(&iptr[ninfo], PMIX_EMBED_BARRIER, &embed, PMIX_BOOL);
-    } else {
-        iptr = (pmix_info_t *) info;
-        num = ninfo;
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
@@ -243,14 +219,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     }
 
     /* pack the info structs */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &num, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         goto done;
     }
-    if (0 < num) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, iptr, num, PMIX_INFO);
+    if (0 < ninfo) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -272,9 +248,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     }
 
 done:
-    if (embed && NULL != iptr) {
-        PMIX_INFO_FREE(iptr, num);
-    }
     if (PMIX_SUCCESS != rc && NULL != msg) {
         PMIX_RELEASE(msg);
     }

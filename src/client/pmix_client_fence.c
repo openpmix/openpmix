@@ -50,7 +50,6 @@
 #include "src/mca/ptl/ptl.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/hash.h"
 #include "src/util/pmix_output.h"
 
 #include "pmix_client_ops.h"
@@ -183,7 +182,8 @@ static pmix_status_t unpack_return(pmix_buffer_t *data)
     pmix_status_t ret;
     int32_t cnt;
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output, "client:unpack fence called");
+    pmix_output_verbose(2, pmix_client_globals.fence_output,
+                        "client:unpack fence called");
 
     /* unpack the status code */
     cnt = 1;
@@ -244,9 +244,10 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     pmix_status_t rc;
-
-    pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: fence_nb callback recvd");
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
+
+    pmix_output_verbose(2, pmix_client_globals.fence_output,
+                        "pmix: fence_nb callback recvd");
 
     if (NULL == cb) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);

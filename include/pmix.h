@@ -130,7 +130,9 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int status, const char msg[],
  * the information locally until _PMIx_Commit_ is called. The provided scope
  * value is passed to the local PMIx server, which will distribute the data
  * as directed. */
-PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
+PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
+                                   const char key[],
+                                   pmix_value_t *val);
 
 
 /* Push all previously _PMIx_Put_ values to the local PMIx server.
@@ -1125,7 +1127,6 @@ PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state);
 PMIX_EXPORT const char* PMIx_Scope_string(pmix_scope_t scope);
 PMIX_EXPORT const char* PMIx_Persistence_string(pmix_persistence_t persist);
 PMIX_EXPORT const char* PMIx_Data_range_string(pmix_data_range_t range);
-PMIX_EXPORT const char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
@@ -1140,6 +1141,7 @@ PMIX_EXPORT const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp);
  * that the user must release when done */
 PMIX_EXPORT char* PMIx_Info_string(pmix_info_t *info);
 PMIX_EXPORT char* PMIx_Value_string(pmix_value_t *value);
+PMIX_EXPORT char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */

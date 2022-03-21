@@ -52,6 +52,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_hash_table_t);
 
 struct pmix_hash_table_t {
     pmix_object_t super;                    /**< subclass of pmix_object_t */
+    const char *ht_label;                   /**< label for debugging */
     struct pmix_hash_element_t *ht_table;   /**< table of elements (opaque to users) */
     size_t ht_capacity;                     /**< allocated size (capacity) of table */
     size_t ht_size;                         /**< number of extant entries */
@@ -65,6 +66,7 @@ typedef struct pmix_hash_table_t pmix_hash_table_t;
 #define PMIX_HASH_TABLE_STATIC_INIT                 \
 {                                                   \
     .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+    .ht_label = NULL,                               \
     .ht_table = NULL,                               \
     .ht_capacity = 0,                               \
     .ht_size = 0,                                   \

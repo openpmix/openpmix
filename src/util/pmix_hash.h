@@ -25,13 +25,16 @@ BEGIN_C_DECLS
 
 /* store a value in the given hash table for the specified
  * rank index.*/
-PMIX_EXPORT pmix_status_t pmix_hash_store(pmix_hash_table_t *table, pmix_rank_t rank,
-                                          pmix_kval_t *kv);
+PMIX_EXPORT pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
+                                          pmix_rank_t rank, pmix_kval_t *kin,
+                                          pmix_info_t *qualifiers, size_t nquals);
 
 /* Fetch the value for a specified key and rank from within
  * the given hash_table */
 PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank,
-                                          const char *key, pmix_value_t **kvs);
+                                          const char *key,
+                                          pmix_info_t *qualifiers, size_t nquals,
+                                          pmix_list_t *kvals);
 
 /* remove the specified key-value from the given hash_table.
  * A NULL key will result in removal of all data for the
@@ -40,7 +43,8 @@ PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t 
  * ranks in the table. Combining key=NULL with rank=PMIX_RANK_WILDCARD
  * will therefore result in removal of all data from the
  * table */
-PMIX_EXPORT pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table, pmix_rank_t rank,
+PMIX_EXPORT pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
+                                                pmix_rank_t rank,
                                                 const char *key);
 
 PMIX_EXPORT void pmix_hash_register_key(uint32_t inid,
