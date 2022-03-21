@@ -37,6 +37,7 @@ node_info_fetch(
     pmix_data_array_t *darray;
     pmix_info_t *iptr;
 #endif
+    PMIX_HIDE_UNUSED_PARAMS(job, key, tgt, info, ninfo, kvs);
 
     PMIX_GDS_SHMEM_VOUT(
         "%s fetching NODE INFO",

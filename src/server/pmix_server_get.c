@@ -166,7 +166,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     pmix_scope_t scope = PMIX_SCOPE_UNDEF;
     pmix_rank_info_t *iptr;
 
-    pmix_output_verbose(2, pmix_server_globals.get_output, "%s recvd GET",
+    pmix_output_verbose(2, pmix_server_globals.get_output,
+                        "%s recvd GET",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* setup */

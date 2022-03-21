@@ -1296,7 +1296,7 @@ pmix_status_t pmix20_bfrop_print_cmd(char **output, char *prefix, pmix_cmd_t *sr
 pmix_status_t pmix20_bfrop_print_infodirs(char **output, char *prefix, pmix_info_directives_t *src,
                                           pmix_data_type_t type)
 {
-    char *prefx;
+    char *prefx, *tmp;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
@@ -1309,13 +1309,15 @@ pmix_status_t pmix20_bfrop_print_infodirs(char **output, char *prefix, pmix_info
         prefx = prefix;
     }
 
-    if (0 > asprintf(output, "%sData type: PMIX_INFO_DIRECTIVES\tValue: %s", prefx,
-                     PMIx_Info_directives_string(*src))) {
+    tmp = PMIx_Info_directives_string(*src);
+    if (0 > asprintf(output, "%sData type: PMIX_INFO_DIRECTIVES\tValue: %s", prefx, tmp)) {
+        free(tmp);
         if (prefx != prefix) {
             free(prefx);
         }
         return PMIX_ERR_NOMEM;
     }
+    free(tmp);
     if (prefx != prefix) {
         free(prefx);
     }

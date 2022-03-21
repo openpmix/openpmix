@@ -1183,7 +1183,7 @@ store_kv_in_hashtab_by_rank(
     if (PMIX_SUCCESS != rc) {
         goto out;
     }
-    rc = pmix_hash_store(target_ht, rank, kv);
+    rc = pmix_hash_store(target_ht, rank, kv, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
@@ -1267,28 +1267,28 @@ store(
                 return rc;
             }
         }
-        rc = pmix_hash_store(&job->hashtab_internal, proc->rank, kval);
+        rc = pmix_hash_store(&job->hashtab_internal, proc->rank, kval, NULL, 0);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
     }
     else if (PMIX_REMOTE == scope) {
-        rc = pmix_hash_store(&job->hashtab_remote, proc->rank, kval);
+        rc = pmix_hash_store(&job->hashtab_remote, proc->rank, kval, NULL, 0);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
     }
     else if (PMIX_LOCAL == scope) {
-        rc = pmix_hash_store(&job->hashtab_local, proc->rank, kval);
+        rc = pmix_hash_store(&job->hashtab_local, proc->rank, kval, NULL, 0);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
     }
     else if (PMIX_GLOBAL == scope) {
-        rc = pmix_hash_store(&job->hashtab_remote, proc->rank, kval);
+        rc = pmix_hash_store(&job->hashtab_remote, proc->rank, kval, NULL, 0);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -1760,7 +1760,7 @@ add_info_to_job(
         }
     }
     // Store the kval into our internal hash table.
-    rc = pmix_hash_store(&job->hashtab_internal, PMIX_RANK_WILDCARD, kval);
+    rc = pmix_hash_store(&job->hashtab_internal, PMIX_RANK_WILDCARD, kval, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         goto out;
     }

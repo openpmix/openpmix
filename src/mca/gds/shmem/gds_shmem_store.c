@@ -520,7 +520,7 @@ pmix_gds_shmem_store_proc_data_in_hashtab(
             namespace_id, rank, kv->key
         );
         // Store it in the target hash table.
-        rc = pmix_hash_store(target_ht, rank, kv);
+        rc = pmix_hash_store(target_ht, rank, kv, NULL, 0);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(kv);

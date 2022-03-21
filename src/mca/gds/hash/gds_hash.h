@@ -18,7 +18,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/hash.h"
+#include "src/util/pmix_hash.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 
@@ -120,6 +120,10 @@ extern pmix_status_t pmix_gds_hash_fetch_appinfo(const char *key, pmix_job_t *tr
 
 extern pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc, pmix_scope_t scope,
                                          pmix_kval_t *kv);
+
+extern pmix_status_t pmix_gds_hash_store_qualified(pmix_hash_table_t *ht,
+                                                   pmix_rank_t rank,
+                                                   pmix_value_t *value);
 
 END_C_DECLS
 

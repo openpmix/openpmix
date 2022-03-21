@@ -71,7 +71,6 @@ const char* pmix_tool_version = PMIX_VERSION;
 const char* pmix_tool_org = "PMIx";
 const char* pmix_tool_msg = PMIX_PROXY_BUGREPORT_STRING;
 
-
 PMIX_EXPORT int pmix_initialized = 0;
 PMIX_EXPORT bool pmix_init_called = false;
 /* we have to export the pmix_globals object so

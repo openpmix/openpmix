@@ -23,7 +23,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
-#include "src/util/hash.h"
+#include "src/util/pmix_hash.h"
 
 #include "src/common/pmix_attributes.h"
 #include "src/include/dictionary.h"

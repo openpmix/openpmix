@@ -78,6 +78,7 @@ PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
         return PMIX_ERR_BAD_PARAM;
     }
     PMIX_LOAD_KEY(dest->key, src->key);
+    dest->flags = src->flags;
     return PMIx_Value_xfer(&dest->value, &src->value);
 }
 

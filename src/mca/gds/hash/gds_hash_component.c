@@ -30,6 +30,9 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
+#include "src/class/pmix_hash_table.h"
+#include "src/util/pmix_hash.h"
+
 #include "gds_hash.h"
 #include "src/mca/gds/gds.h"
 
@@ -107,10 +110,13 @@ static void htcon(pmix_job_t *p)
     PMIX_CONSTRUCT(&p->jobinfo, pmix_list_t);
     PMIX_CONSTRUCT(&p->internal, pmix_hash_table_t);
     pmix_hash_table_init(&p->internal, 256);
+    p->internal.ht_label = "internal";
     PMIX_CONSTRUCT(&p->remote, pmix_hash_table_t);
     pmix_hash_table_init(&p->remote, 256);
+    p->remote.ht_label = "remote";
     PMIX_CONSTRUCT(&p->local, pmix_hash_table_t);
     pmix_hash_table_init(&p->local, 256);
+    p->local.ht_label = "local";
     p->gdata_added = false;
     PMIX_CONSTRUCT(&p->apps, pmix_list_t);
     PMIX_CONSTRUCT(&p->nodeinfo, pmix_list_t);

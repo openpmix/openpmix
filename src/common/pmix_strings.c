@@ -156,14 +156,33 @@ PMIX_EXPORT const char *PMIx_Data_range_string(pmix_data_range_t range)
     }
 }
 
-PMIX_EXPORT const char *PMIx_Info_directives_string(pmix_info_directives_t directives)
+PMIX_EXPORT char *PMIx_Info_directives_string(pmix_info_directives_t directives)
 {
-    switch (directives) {
-    case PMIX_INFO_REQD:
-        return "REQUIRED";
-    default:
-        return "UNSPECIFIED";
+    char **tmp = NULL;
+    char *ret;
+
+    if (PMIX_INFO_QUALIFIER & directives) {
+        pmix_argv_append_nosize(&tmp, "QUALIFIER");
+    } else {
+        if (PMIX_INFO_REQD & directives) {
+            pmix_argv_append_nosize(&tmp, "REQUIRED");
+        } else {
+            pmix_argv_append_nosize(&tmp, "OPTIONAL");
+        }
+        if (PMIX_INFO_REQD_PROCESSED & directives) {
+            pmix_argv_append_nosize(&tmp, "PROCESSED");
+        }
+        if (PMIX_INFO_ARRAY_END & directives) {
+            pmix_argv_append_nosize(&tmp, "END");
+        }
     }
+    if (NULL != tmp) {
+        ret = pmix_argv_join(tmp, ':');
+        pmix_argv_free(tmp);
+    } else {
+        ret = strdup("UNSPECIFIED");
+    }
+    return ret;
 }
 
 PMIX_EXPORT const char *PMIx_Alloc_directive_string(pmix_alloc_directive_t directive)

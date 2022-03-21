@@ -93,6 +93,7 @@ examples/log
 examples/showkeys
 examples/abi_no_init
 examples/abi_with_init
+examples/group_lcl_cid
 
 include/pmix_version.h
 include/pmix_rename.h
@@ -183,6 +184,7 @@ test/simple/get_put_example
 test/simple/simpvni
 test/simple/hybrid
 test/simple/asyncio
+test/simple/simpqual
 
 test/sshot/daemon
 test/sshot/generate

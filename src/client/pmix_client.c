@@ -74,7 +74,6 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/hash.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
@@ -1200,12 +1199,12 @@ static void _putfn(int sd, short args, void *cbdata)
 
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-
-    /* no need to push info that starts with "pmix" as that is
-     * info we would have been provided at startup */
-    if (0 == strncmp(cb->key, "pmix", 4)) {
-        rc = PMIX_SUCCESS;
-        goto done;
+    if (PMIX_CHECK_KEY(cb, PMIX_QUALIFIED_VALUE)) {
+        /* type must be a data array */
+        if (PMIX_DATA_ARRAY != cb->value->type) {
+            rc = PMIX_ERR_BAD_PARAM;
+            goto done;
+        }
     }
 
     /* setup to xfer the data */
@@ -1256,13 +1255,16 @@ done:
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val)
+PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
+                                   const char key[],
+                                   pmix_value_t *val)
 {
     pmix_cb_t *cb;
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_client_globals.base_output,
-                        "pmix: executing put for key %s type %d", key, val->type);
+                          "pmix: executing put for key %s type %s",
+                          key, PMIx_Data_type_string(val->type));
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -1299,7 +1301,7 @@ static void _commitfn(int sd, short args, void *cbdata)
     pmix_scope_t scope;
     pmix_buffer_t *msgout, bkt;
     pmix_cmd_t cmd = PMIX_COMMIT_CMD;
-    pmix_kval_t *kv, *kvn;
+    pmix_kval_t *kv;
 
     /* need to acquire the cb object from its originating thread */
     PMIX_ACQUIRE_OBJECT(cb);
@@ -1334,7 +1336,7 @@ static void _commitfn(int sd, short args, void *cbdata)
                 goto error;
             }
             PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
-            PMIX_LIST_FOREACH_SAFE (kv, kvn, &cb->kvs, pmix_kval_t) {
+            PMIX_LIST_FOREACH(kv, &cb->kvs, pmix_kval_t) {
                 PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &bkt, kv, 1, PMIX_KVAL);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -1342,8 +1344,6 @@ static void _commitfn(int sd, short args, void *cbdata)
                     PMIX_RELEASE(msgout);
                     goto error;
                 }
-                pmix_list_remove_item(&cb->kvs, &kv->super);
-                PMIX_RELEASE(kv);
             }
             /* now pack the result */
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &bkt, 1, PMIX_BUFFER);
@@ -1363,6 +1363,8 @@ static void _commitfn(int sd, short args, void *cbdata)
         cb->proc = &pmix_globals.myid;
         cb->scope = scope;
         cb->copy = true;
+        PMIX_LIST_DESTRUCT(&cb->kvs);
+        PMIX_CONSTRUCT(&cb->kvs, pmix_list_t);
         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
         if (PMIX_SUCCESS == rc) {
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &scope, 1, PMIX_SCOPE);
@@ -1372,7 +1374,7 @@ static void _commitfn(int sd, short args, void *cbdata)
                 goto error;
             }
             PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
-            PMIX_LIST_FOREACH_SAFE (kv, kvn, &cb->kvs, pmix_kval_t) {
+            PMIX_LIST_FOREACH(kv, &cb->kvs, pmix_kval_t) {
                 PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, &bkt, kv, 1, PMIX_KVAL);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -1380,8 +1382,6 @@ static void _commitfn(int sd, short args, void *cbdata)
                     PMIX_RELEASE(msgout);
                     goto error;
                 }
-                pmix_list_remove_item(&cb->kvs, &kv->super);
-                PMIX_RELEASE(kv);
             }
             /* now pack the result */
             PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msgout, &bkt, 1, PMIX_BUFFER);

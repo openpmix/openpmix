@@ -43,7 +43,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/hash.h"
+#include "src/util/pmix_hash.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
@@ -65,7 +65,8 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
     pmix_nodeinfo_t *nd = NULL, *ndptr;
     bool update;
 
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output, "PROCESSING NODE ARRAY");
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                        "PROCESSING NODE ARRAY");
 
     /* array of node-level info for a specific node */
     if (PMIX_DATA_ARRAY != val->type) {
