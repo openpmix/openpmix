@@ -615,7 +615,18 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
                                 "pmix: get_nb searching for key %s for proc %s",
                                 cb->key, PMIX_NAME_PRINT(&proc));
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
-            if (PMIX_SUCCESS == rc) {
+            if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+               /* if we are both using the "hash" component, then the server's peer
+                * will simply be pointing at the same hash tables as my peer - no
+                * no point in checking there again */
+                if (0 != strcmp(pmix_globals.mypeer->nptr->compat.gds->name, pmix_client_globals.myserver->nptr->compat.gds->name)) {
+                    pmix_output_verbose(2, pmix_client_globals.get_output,
+                                        "pmix: get_nb searching for key %s for proc %s, - %s",
+                                        cb->key, PMIX_NAME_PRINT(&proc), pmix_client_globals.myserver->nptr->compat.gds->name);
+                    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+                }
+            }
+            if(PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 if (1 != pmix_list_get_size(&cb->kvs)) {
                     rc = PMIX_ERR_INVALID_VAL;
                     val = NULL;
@@ -625,6 +636,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
                     kv->value = NULL; // protect the value
                     PMIX_RELEASE(kv);
                 }
+                rc = PMIX_SUCCESS;
             }
             cb->cbfunc.valuefn(rc, val, cb->cbdata);
             PMIX_RELEASE(cb);
