@@ -518,6 +518,20 @@ done:
             if (PMIX_OPERATION_SUCCEEDED == rc) {
                 rc = PMIX_SUCCESS;
             }
+            else {
+               /* if we are both using the "hash" component, then the server's peer
+                * will simply be pointing at the same hash tables as my peer - no
+                * no point in checking there again */
+               if (!PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
+                    pmix_output_verbose(2, pmix_client_globals.get_output,
+                                        "pmix: get_nb searching for key %s for proc %s, - %s",
+                                        cb->key, PMIX_NAME_PRINT(cb->proc), pmix_client_globals.myserver->nptr->compat.gds->name);
+                    PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+                    if (PMIX_OPERATION_SUCCEEDED == rc) {
+                        rc = PMIX_SUCCESS;
+                    }
+               }
+            }
             if (PMIX_SUCCESS == rc) {
                 if (1 != pmix_list_get_size(&cb->kvs)) {
                     rc = PMIX_ERR_INVALID_VAL;
