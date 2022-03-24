@@ -12,7 +12,7 @@
 # This is the US/English general help file for PRTE CLI options.
 #
 [help]
-Help can be requested in three ways:
+Help can be requested in two ways:
 
 - a directive to the cmd. For example, the command
     "%s --help" or "%s -h"
@@ -23,19 +23,6 @@ Help can be requested in three ways:
     "%s --help foo" or "%s -h foo"
   will provide detailed help about the "foo" command line
   directive.
-
-- specifying "help" as an option to the directive of interest.
-  For example, the command
-    "%s --foo --help" or "%s --foo -h"
-  will provide detailed help about the "foo" command line
-  directive. Note that the "help" and "h" options do not
-  require the dash prefixes - i.e., the following commands
-    "%s --foo help" or "%s --foo h"
-  will also output detailed help for "foo". Thus, directives
-  are precluded from defining options of "help" and "h".
-
-Note that the last two methods are functionally equivalent
-and will return the same output.
 #
 [unknown-option]
 Help was requested for an unknown option:
@@ -84,3 +71,12 @@ An unrecognized option was included on the %s command line:
 
 Please use the "%s --help" command to obtain a list of all
 supported options.
+#
+[short-arg-error]
+A short option was provided to %s and recognized by the parser,
+but included an argument while the option does not support one:
+
+  Short option: %s
+  Given argument: %s
+
+Please correct the command line and try again.
