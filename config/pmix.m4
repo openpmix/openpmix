@@ -872,11 +872,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     fi
     CPP_INCLUDES="$(echo $cpp_includes | $SED 's/[[^ \]]* */'"$pmix_cc_iquote"'&/g')"
     CPPFLAGS="$CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS"
-    # PMIX_DELAYED_LIBS is used to allow us to add some libraries to the build, but
-    # not add them to all the tests that are run through configure, since that
-    # can cause some bundled build situations.  This is the last minute, so time
-    # to add them to LIBS.
-    PMIX_FLAGS_APPEND_MOVE([LIBS], [$PMIX_DELAYED_LIBS])
 
     ############################################################################
     # final wrapper compiler config
@@ -929,6 +924,12 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_SUBST(pmixincludedir)
 
     PMIX_SETUP_WRAPPER_FINAL
+
+    # PMIX_DELAYED_LIBS is used to allow us to add some libraries to the build, but
+    # not add them to all the tests that are run through configure, since that
+    # can cause some bundled build situations.  This is the last minute, so time
+    # to add them to LIBS.
+    PMIX_FLAGS_APPEND_MOVE([LIBS], [$PMIX_DELAYED_LIBS])
 
     ############################################################################
     # setup "make check"
