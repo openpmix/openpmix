@@ -98,6 +98,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     char *ptr, *str, **argv;
     pmix_cmd_line_store_fn_t mystore;
 
+    bool is_mpi_tool = (NULL != getenv("OMPI_VERSION"));
+
     /* the getopt_long parser reorders the input argv array, so
      * we have to protect it here - remove all leading/trailing
      * quotes to ensure we are looking at simple options/values */
@@ -134,7 +136,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 /* we allow someone to specify an option followed by
                  * the "help" directive - thus requesting detailed help
                  * on that specific option */
-                if (NULL != optarg) {
+                if (NULL != optarg && !is_mpi_tool) {
                     if (0 == strcmp(optarg, "--help") || 0 == strcmp(optarg, "-help") ||
                         0 == strcmp(optarg, "help") || 0 == strcmp(optarg, "h") ||
                         0 == strcmp(optarg, "-h")) {
@@ -191,7 +193,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         pmix_argv_free(argv);
                         return PMIX_ERR_SILENT;
                     }
-                    if (0 == strcmp(ptr, "help") || 0 == strcmp(ptr, "h")) {
+                    if (!is_mpi_tool && (0 == strcmp(ptr, "help") || 0 == strcmp(ptr, "h"))) {
                         // they requested help on the "help" option itself
                         str = pmix_show_help_string("help-cli.txt", "help", false,
                                                     pmix_tool_basename, pmix_tool_basename,
@@ -304,7 +306,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         }
                         for (n=0; NULL != myoptions[n].name; n++) {
                             if (ascii == myoptions[n].val) {
-                                if (NULL != ptr) {
+                                if (NULL != ptr && !is_mpi_tool) {
                                     /* we allow someone to specify an option followed by
                                      * the "help" directive - thus requesting detailed help
                                      * on that specific option */
