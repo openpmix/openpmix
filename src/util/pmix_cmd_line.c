@@ -131,22 +131,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
         }
         switch (opt) {
             case 0:
-                /* we allow someone to specify an option followed by
-                 * the "help" directive - thus requesting detailed help
-                 * on that specific option */
-                if (NULL != optarg) {
-                    if (0 == strcmp(optarg, "--help") || 0 == strcmp(optarg, "-help") ||
-                        0 == strcmp(optarg, "help") || 0 == strcmp(optarg, "h") ||
-                        0 == strcmp(optarg, "-h")) {
-                        str = pmix_show_help_string(helpfile, myoptions[option_index].name, false);
-                        if (NULL != str) {
-                            printf("%s", str);
-                            free(str);
-                        }
-                        pmix_argv_free(argv);
-                        return PMIX_ERR_SILENT;
-                    }
-                }
                 /* if this is an MCA param of some type, store it */
                 if (0 == endswith(myoptions[option_index].name, "mca")) {
                     /* format mca params as param:value - the optind value
@@ -304,13 +288,13 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         }
                         for (n=0; NULL != myoptions[n].name; n++) {
                             if (ascii == myoptions[n].val) {
-                                if (NULL != ptr) {
-                                    /* we allow someone to specify an option followed by
-                                     * the "help" directive - thus requesting detailed help
-                                     * on that specific option */
-                                    if (0 == strcmp(ptr, "--help") || 0 == strcmp(ptr, "-h") ||
-                                        0 == strcmp(ptr, "help") || 0 == strcmp(ptr, "h")) {
-                                        str = pmix_show_help_string(helpfile, myoptions[n].name, true);
+                                if (PMIX_ARG_NONE == myoptions[n].has_arg) {
+                                    /* if ptr isn't NULL, then that means we were given
+                                     * an argument to an option that doesn't take one.
+                                     * Report the error */
+                                    if (NULL != ptr) {
+                                        str = pmix_show_help_string("help-cli.txt", "short-arg-error", true,
+                                                                    pmix_tool_basename, shorts[n], ptr);
                                         if (NULL != str) {
                                             printf("%s", str);
                                             free(str);
@@ -318,9 +302,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                         pmix_argv_free(argv);
                                         return PMIX_ERR_SILENT;
                                     }
-                                }
-                                /* store actual option */
-                                if (PMIX_ARG_NONE == myoptions[n].has_arg) {
                                     ptr = NULL;
                                 }
                                 mystore(myoptions[n].name, ptr, results);
