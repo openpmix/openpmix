@@ -186,6 +186,7 @@ static inline char* pmix_cmd_line_get_nth_instance(pmix_cli_result_t *results,
 #define PMIX_CLI_DEBUG_LIST(r)  \
 do {                                                                    \
     pmix_cli_item_t *_c;                                                \
+    char *_tail;                                                        \
     pmix_output(0, "\n[%s:%s:%d]", __FILE__, __func__, __LINE__);       \
     PMIX_LIST_FOREACH(_c, &(r)->instances, pmix_cli_item_t) {           \
         pmix_output(0, "KEY: %s", _c->key);                             \
@@ -195,6 +196,9 @@ do {                                                                    \
             }                                                           \
         }                                                               \
     }                                                                   \
+    _tail = pmix_argv_join((r)->tail, ' ');                             \
+    pmix_output(0, "TAIL: %s", _tail);                                  \
+    free(_tail);                                                        \
     pmix_output(0, "\n");                                               \
 } while(0)
 
