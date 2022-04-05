@@ -3,7 +3,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
@@ -35,6 +35,69 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
+
+/*
+ * Support structure for locally resolving some keys
+ * outside of what we send to the server
+ */
+typedef struct {
+    pmix_query_caddy_t super;
+
+    /** Number of locally resolved keys */
+    size_t num_local;
+    /** Original query list */
+    pmix_query_t *orig_queries;
+    size_t orig_nqueries;
+    /** Original cbfunc/data */
+    pmix_info_cbfunc_t orig_cbfunc;
+    void *orig_cbdata;
+    /** Info returned to the user **/
+    pmix_info_t *info;
+    size_t num_info;
+} pmix_local_query_caddy_t;
+PMIX_CLASS_DECLARATION(pmix_local_query_caddy_t);
+
+static void qlcon(pmix_local_query_caddy_t *p) {
+    p->num_local = 0;
+    p->orig_cbfunc = NULL;
+    p->orig_cbdata = NULL;
+    p->orig_queries = NULL;
+    p->orig_nqueries = 0;
+    p->info = NULL;
+    p->num_info = 0;
+}
+static void qldes(pmix_local_query_caddy_t *p) {
+    if (NULL != p->super.queries) {
+        PMIX_QUERY_RELEASE(p->super.queries);
+        p->super.queries = NULL;
+    }
+
+    p->num_local = 0;
+    p->orig_cbfunc = NULL;
+    p->orig_cbdata = NULL;
+    p->orig_queries = NULL;
+    p->orig_nqueries = 0;
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->num_info);
+    }
+    p->info = NULL;
+    p->num_info = 0;
+}
+PMIX_CLASS_INSTANCE(pmix_local_query_caddy_t, pmix_query_caddy_t, qlcon, qldes);
+
+static bool pmix_query_check_is_local_resolve(const char *key);
+static size_t pmix_query_get_num_local_resolve(pmix_query_t queries[], size_t nqueries);
+static int pmix_query_resolve_all_pre_init(pmix_query_t queries[], size_t nqueries,
+                                           pmix_info_t **results, size_t *nresults);
+void pmix_query_local_resolve_cbfunc(pmix_status_t status,
+                                     pmix_info_t *cb_info, size_t ninfo,
+                                     void *cbdata,
+                                     pmix_release_cbfunc_t release_fn,
+                                     void *release_cbdata);
+static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
+                                                  size_t orig_nqueries,
+                                                  size_t nqueries);
+
 
 static void relcbfunc(void *cbdata)
 {
@@ -226,7 +289,9 @@ static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
                                   pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_query_caddy_t *cd;
+    pmix_local_query_caddy_t *local_cd;
     pmix_status_t rc;
+    size_t num_local;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -252,7 +317,40 @@ static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    rc = send_for_help(queries, nqueries, cbfunc, cbdata);
+    num_local = pmix_query_get_num_local_resolve(queries, nqueries);
+    if( 0 == num_local ) {
+        // No locally resolved keys, so send directly to the server
+        rc = send_for_help(queries, nqueries, cbfunc, cbdata);
+    } else {
+        // Some locally resolved keys, so send the subset of non-locally resolved
+        // keys to the server. We will patch up the results with the locally
+        // resolved keys when they come back from the server in our callback.
+        local_cd = PMIX_NEW(pmix_local_query_caddy_t);
+        // Save original values
+        local_cd->orig_cbfunc = cbfunc;
+        local_cd->orig_cbdata = cbdata;
+        local_cd->orig_queries = queries;
+        local_cd->orig_nqueries = nqueries;
+        local_cd->num_local = num_local;
+        // Values we are going to send to the server
+        local_cd->super.nqueries = nqueries - num_local;
+        if (0 < local_cd->super.nqueries) {
+            local_cd->super.queries = pmix_query_strip_local_keys(queries, nqueries, nqueries - num_local);
+        } else {
+            local_cd->super.queries = NULL;
+        }
+        local_cd->super.cbfunc = pmix_query_local_resolve_cbfunc;
+        local_cd->super.cbdata = &local_cd;
+
+        if (0 == local_cd->super.nqueries) {
+            // Skip calling the server and just resolve locally
+            rc = PMIX_SUCCESS;
+            pmix_query_local_resolve_cbfunc(PMIX_SUCCESS, NULL, 0, local_cd, NULL, NULL);
+        } else {
+            rc = send_for_help(local_cd->super.queries, local_cd->super.nqueries, pmix_query_local_resolve_cbfunc, local_cd);
+        }
+    }
+
     return rc;
 }
 
@@ -372,11 +470,20 @@ static void localquery(int sd, short args, void *cbdata)
         /* first see if we already have this info */
         for (p = 0; NULL != queries[n].keys[p]; p++) {
             cb.key = queries[n].keys[p];
-            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-            if (PMIX_SUCCESS != rc) {
-                /* not in our gds */
-                PMIX_DESTRUCT(&cb);
-                goto nextstep;
+            // Locally resolvable keys
+            if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_ABI_VERSION)) {
+                pmix_kval_t *kv = NULL;
+                PMIX_KVAL_NEW(kv, cb.key);
+                PMIx_Value_load(kv->value, PMIX_STD_ABI_VERSION, PMIX_STRING);
+                pmix_list_append(&cb.kvs, &kv->super);
+                rc = PMIX_SUCCESS;
+            } else {
+                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+                if (PMIX_SUCCESS != rc) {
+                    /* not in our gds */
+                    PMIX_DESTRUCT(&cb);
+                    goto nextstep;
+                }
             }
             /* need to retain this result */
             PMIX_LIST_FOREACH_SAFE (kv, kvnxt, &cb.kvs, pmix_kval_t) {
@@ -446,7 +553,13 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
+        rc = pmix_query_resolve_all_pre_init(queries, nqueries, results, nresults);
+        if (PMIX_SUCCESS == rc) {
+            pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query completed - locally, pre-init");
+            return rc;
+        } else {
+            return PMIX_ERR_INIT;
+        }
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
@@ -473,7 +586,7 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
     }
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:job_ctrl completed");
+    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query completed");
 
     return rc;
 }
@@ -739,4 +852,158 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
     }
 
     return rc;
+}
+
+
+/*
+ * Determine if the keys is meant to be locally resolved
+ */
+static bool pmix_query_check_is_local_resolve(const char *key)
+{
+    if (0 == strcmp(key, PMIX_QUERY_ABI_VERSION)) {
+        return true;
+    }
+    return false;
+}
+
+/*
+ * Count the number of keys that are locally resolvable
+ */
+static size_t pmix_query_get_num_local_resolve(pmix_query_t queries[], size_t nqueries)
+{
+    size_t num_local = 0;
+    size_t n, p;
+
+    for (n = 0; n < nqueries; n++) {
+        for (p = 0; NULL != queries[n].keys[p]; p++) {
+            if (pmix_query_check_is_local_resolve(queries[n].keys[p])) {
+                ++num_local;
+            }
+        }
+    }
+
+    return num_local;
+}
+
+/*
+ * Called outside of init/finalize. Check to see if we are allowed to resolve
+ * the query entirely locally.
+ * Query must contain only those keys allowed to be called before init.
+ */
+static int pmix_query_resolve_all_pre_init(pmix_query_t queries[], size_t nqueries,
+                                           pmix_info_t **results, size_t *nresults)
+{
+    int rc = PMIX_SUCCESS;
+    size_t n, p;
+    size_t cur_info = 0, num_info = 0;
+
+    // Check to see if this query qualifies.
+    num_info = pmix_query_get_num_local_resolve(queries, nqueries);
+
+    // If it does not qualify then reject
+    if( num_info != nqueries ) {
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:query Found %d queries of %d queries that cannot be handled before init.",
+                            (nqueries - num_info), nqueries);
+        return PMIX_ERROR;
+    }
+
+    // If it does qualify then fill in the results
+    *nresults = num_info;
+    PMIX_INFO_CREATE(*results, *nresults);
+    cur_info = 0;
+    for (n = 0; n < nqueries; n++) {
+        for (p = 0; NULL != queries[n].keys[p]; p++) {
+            if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_ABI_VERSION)) {
+                PMIx_Info_load(results[cur_info], PMIX_QUERY_ABI_VERSION, PMIX_STD_ABI_VERSION, PMIX_STRING);
+                ++cur_info;
+            }
+        }
+    }
+
+    return PMIX_SUCCESS;
+}
+
+void pmix_query_local_resolve_release_cbfunc(void *cbdata)
+{
+    pmix_local_query_caddy_t *local_cd = (pmix_local_query_caddy_t*)cbdata;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                "pmix:query local release callback");
+
+    if (NULL != local_cd) {
+        PMIX_RELEASE(local_cd);
+    }
+}
+
+void pmix_query_local_resolve_cbfunc(pmix_status_t status,
+                                     pmix_info_t *info, size_t ninfo,
+                                     void *cbdata,
+                                     pmix_release_cbfunc_t release_fn,
+                                     void *release_cbdata)
+{
+    pmix_local_query_caddy_t *local_cd = (pmix_local_query_caddy_t*)cbdata;
+    size_t n, p, n_idx, p_idx;
+
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:query local resolve callback (ninfo %d, local %d)",
+                        ninfo, local_cd->num_local);
+
+    local_cd->num_info = ninfo + local_cd->num_local;
+    PMIX_INFO_CREATE(local_cd->info, local_cd->num_info);
+
+    // Copy values from the server
+    for (n_idx = 0; n_idx < ninfo; ++n_idx) {
+        PMIx_Info_xfer(&local_cd->info[n_idx], &info[n_idx]);
+    }
+
+    // Append the locally resolved values
+    for (n = 0; n < local_cd->orig_nqueries; n++) {
+        p_idx = 0;
+        for (p = 0; NULL != local_cd->orig_queries[n].keys[p]; p++) {
+            if (0 == strcmp(local_cd->orig_queries[n].keys[p], PMIX_QUERY_ABI_VERSION)) {
+                PMIx_Info_load(&local_cd->info[n_idx], local_cd->orig_queries[n].keys[p],
+                               PMIX_STD_ABI_VERSION, PMIX_STRING);
+                ++p_idx;
+            }
+        }
+        if( p_idx > 0 ) {
+            ++n_idx;
+        }
+    }
+
+    // We copied the server contents into a new info list, so
+    // release what was passed to us.
+    if( NULL != release_fn ) {
+        release_fn(release_cbdata);
+    }
+
+    local_cd->orig_cbfunc(status, local_cd->info, local_cd->num_info,
+                          local_cd->orig_cbdata, pmix_query_local_resolve_release_cbfunc, cbdata);
+}
+
+static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
+                                                  size_t orig_nqueries,
+                                                  size_t nqueries)
+{
+    int rc;
+    size_t n, p, n_idx, p_idx;
+    pmix_query_t *queries;
+
+    PMIX_QUERY_CREATE(queries, nqueries);
+    n_idx = 0;
+    for (n = 0; n < orig_nqueries; n++) {
+        p_idx = 0;
+        for (p = 0; NULL != orig_queries[n].keys[p]; p++) {
+            if (!pmix_query_check_is_local_resolve(orig_queries[n].keys[p])) {
+                PMIX_ARGV_APPEND(rc, queries[n_idx].keys, orig_queries[n].keys[p]);
+                ++p_idx;
+            }
+        }
+        if( p_idx > 0 ) {
+            ++n_idx;
+        }
+    }
+
+    return queries;
 }
