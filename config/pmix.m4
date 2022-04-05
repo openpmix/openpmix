@@ -12,7 +12,7 @@ dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2006-2021 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
-dnl Copyright (c) 2009-2021 IBM Corporation.  All rights reserved.
+dnl Copyright (c) 2009-2022 IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
 dnl                         reserved.
 dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
@@ -156,6 +156,16 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_SUBST(PMIX_STD_VERSION)
     AC_DEFINE_UNQUOTED([PMIX_STD_VERSION], ["$PMIX_STD_VERSION"],
                        [The PMIx Standard compliance level])
+
+    AC_MSG_CHECKING([for pmix standard ABI version])
+    PMIX_STD_ABI_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --std-abi-version`"
+    if test "$?" != "0"; then
+        AC_MSG_ERROR([Cannot continue])
+    fi
+    AC_MSG_RESULT([$PMIX_STD_ABI_VERSION])
+    AC_SUBST(PMIX_STD_ABI_VERSION)
+    AC_DEFINE_UNQUOTED([PMIX_STD_ABI_VERSION], ["$PMIX_STD_ABI_VERSION"],
+                       [The PMIx Standard ABI compliance level])
 
     PMIX_REPO_REV="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --repo-rev`"
     if test "$?" != "0"; then

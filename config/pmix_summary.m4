@@ -6,7 +6,7 @@ dnl Copyright (c) 2016-2018 Cisco Systems, Inc.  All rights reserved
 dnl Copyright (c) 2016      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
+dnl Copyright (c) 2021-2022 IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
@@ -97,6 +97,7 @@ PMIx configuration:
 -----------------------
 Version: $PMIX_MAJOR_VERSION.$PMIX_MINOR_VERSION.$PMIX_RELEASE_VERSION$PMIX_GREEK_VERSION
 PMIx Standard Version: $PMIX_STD_VERSION
+PMIx Standard ABI Version: $PMIX_STD_ABI_VERSION
 EOF
 
     if test $WANT_DEBUG = 0 ; then
