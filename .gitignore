@@ -91,6 +91,8 @@ examples/daemon_error_notify
 examples/launcher
 examples/log
 examples/showkeys
+examples/abi_no_init
+examples/abi_with_init
 
 include/pmix_version.h
 include/pmix_rename.h
