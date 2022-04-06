@@ -266,19 +266,25 @@ PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
         return "EVENT-ACTION-COMPLETE";
 
     case PMIX_ERR_NOT_AVAILABLE:
-        return "PMIX_ERR_NOT_AVAILABLE";
+        return "NOT_AVAILABLE";
     case PMIX_ERR_FATAL:
-        return "PMIX_ERR_FATAL";
+        return "FATAL";
     case PMIX_ERR_VALUE_OUT_OF_BOUNDS:
-        return "PMIX_ERR_VALUE_OUT_OF_BOUNDS";
-    case PMIX_ERR_PERM:
-        return "PMIX_ERR_PERM";
+        return "VALUE_OUT_OF_BOUNDS";
     case PMIX_ERR_FABRIC_NOT_PARSEABLE:
-        return "PMIX_ERR_FABRIC_NOT_PARSEABLE";
+        return "FABRIC_NOT_PARSEABLE";
     case PMIX_ERR_FILE_OPEN_FAILURE:
-        return "PMIX_ERR_FILE_OPEN_FAILURE";
+        return "FILE_OPEN_FAILURE";
     case PMIX_ERR_FILE_READ_FAILURE:
-        return "PMIX_ERR_FILE_READ_FAILURE";
+        return "FILE_READ_FAILURE";
+    case PMIX_ERR_FILE_WRITE_FAILURE:
+        return "FILE_WRITE_FAILURE";
+    case PMIX_ERR_SYS_LIMITS_PIPES:
+        return "SYS_LIMITS_PIPES";
+    case PMIX_ERR_SYS_LIMITS_CHILDREN:
+        return "SYS_LIMITS_CHILDREN";
+    case PMIX_ERR_PIPE_SETUP_FAILURE:
+        return "PIPE_SETUP_FAILURE";
     case PMIX_ERR_TAKE_NEXT_OPTION:
         return "TAKE-NEXT-OPTION";
     case PMIX_ERR_TEMP_UNAVAILABLE:
