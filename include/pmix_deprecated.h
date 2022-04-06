@@ -101,6 +101,15 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_ERR_SERVER_NOT_AVAIL                   -45
 #define PMIX_ERR_NOT_IMPLEMENTED                    -48
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
+#define PMIX_ERR_FATAL                              -63
+#define PMIX_ERR_NOT_AVAILABLE                      -64
+#define PMIX_ERR_VALUE_OUT_OF_BOUNDS                -65
+#define PMIX_ERR_FILE_OPEN_FAILURE                  -67
+#define PMIX_ERR_FILE_READ_FAILURE                  -68
+#define PMIX_ERR_FILE_WRITE_FAILURE                 -69
+#define PMIX_ERR_SYS_LIMITS_PIPES                   -70
+#define PMIX_ERR_SYS_LIMITS_CHILDREN                -71
+#define PMIX_ERR_PIPE_SETUP_FAILURE                 -72
 #define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
 #define PMIX_ERR_LOST_PEER_CONNECTION               -102
 #define PMIX_ERR_LOST_CONNECTION_TO_CLIENT          -103

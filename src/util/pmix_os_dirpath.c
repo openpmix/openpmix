@@ -68,7 +68,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
             return (PMIX_SUCCESS);
         }
         pmix_show_help("help-pmix-util.txt", "dir-mode", true, path, mode, strerror(errno));
-        return (PMIX_ERR_PERM); /* can't set correct mode */
+        return (PMIX_ERR_NO_PERMISSIONS); /* can't set correct mode */
     }
 
     /* quick -- try to make directory */
@@ -118,16 +118,19 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         ret = errno; // save the errno for an error msg, if needed
         /* coverity[TOCTOU] */
         if (0 != stat(tmp, &buf)) {
-            pmix_show_help("help-pmix-util.txt", "mkdir-failed", true, tmp, strerror(ret));
+            pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                           tmp, strerror(ret));
             pmix_argv_free(parts);
             free(tmp);
-            return PMIX_ERROR;
-        } else if (i == (len - 1) && (mode != (mode & buf.st_mode))
-                   && (0 > chmod(tmp, (buf.st_mode | mode)))) {
-            pmix_show_help("help-pmix-util.txt", "dir-mode", true, tmp, mode, strerror(errno));
+            return PMIX_ERR_SILENT;
+        } else if (i == (len - 1) &&
+                   (mode != (mode & buf.st_mode)) &&
+                   (0 > chmod(tmp, (buf.st_mode | mode)))) {
+            pmix_show_help("help-pmix-util.txt", "dir-mode", true,
+                           tmp, mode, strerror(errno));
             pmix_argv_free(parts);
             free(tmp);
-            return (PMIX_ERR_PERM); /* can't set correct mode */
+            return (PMIX_ERR_SILENT); /* can't set correct mode */
         }
     }
 
@@ -304,7 +307,7 @@ int pmix_os_dirpath_access(const char *path, const mode_t in_mode)
             return (PMIX_SUCCESS);
         } else {
             /* Don't have access rights to the existing path */
-            return (PMIX_ERROR);
+            return (PMIX_ERR_NO_PERMISSIONS);
         }
     } else {
         /* We could not find the path */
