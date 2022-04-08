@@ -343,6 +343,10 @@ PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
         return "SESSION STARTED";
     case PMIX_EVENT_SESSION_END:
         return "SESSION ENDED";
+    case PMIX_ERR_EXE_NOT_ACCESSIBLE:
+        return "EXE NOT ACCESSIBLE";
+    case PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE:
+        return "WDIR NOT ACCESSIBLE";
 
     default:
         return "ERROR STRING NOT FOUND";

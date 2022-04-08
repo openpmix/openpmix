@@ -93,10 +93,10 @@ pmix_status_t pmix_util_check_context_cwd(char **incwd,
         if (user_cwd) {
             /* if the directory does not exist, then report that */
             if (!check_exist(cwd)) {
-                return PMIX_ERR_NOT_FOUND;
+                return PMIX_ERR_JOB_WDIR_NOT_FOUND;
             }
             /* if it does exist, then we must lack permissions */
-            return PMIX_ERR_NO_PERMISSIONS;
+            return PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE;
         }
 
         /* If the user didn't specifically ask for it, then it
@@ -109,10 +109,10 @@ pmix_status_t pmix_util_check_context_cwd(char **incwd,
             if (want_chdir && 0 != chdir(tmp)) {
                 /* if the directory does not exist, then report that */
                 if (!check_exist(cwd)) {
-                    return PMIX_ERR_NOT_FOUND;
+                    return PMIX_ERR_JOB_WDIR_NOT_FOUND;
                 }
                 /* if it does exist, then we must lack permissions */
-                return PMIX_ERR_NO_PERMISSIONS;
+                return PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE;
             }
 
             /* Reset the pwd in this local copy of the
@@ -158,14 +158,14 @@ pmix_status_t pmix_util_check_context_app(char **incmd,
         free(tmp);
         tmp = pmix_path_findv(cmd, X_OK, env, cwd);
         if (NULL == tmp) {
-            return PMIX_ERR_NOT_FOUND;
+            return PMIX_ERR_JOB_EXE_NOT_FOUND;
         }
         free(cmd);
         *incmd = tmp;
     } else {
         free(tmp);
         if (0 != access(cmd, X_OK)) {
-            return PMIX_ERR_NO_PERMISSIONS;
+            return PMIX_ERR_EXE_NOT_ACCESSIBLE;
         }
     }
 
