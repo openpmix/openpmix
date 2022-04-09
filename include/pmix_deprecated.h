@@ -112,6 +112,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_ERR_PIPE_SETUP_FAILURE                 -72
 #define PMIX_ERR_EXE_NOT_ACCESSIBLE                 -73
 #define PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE            -74
+#define PMIX_ERR_SYS_LIMITS_FILES                   -75
 #define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
 #define PMIX_ERR_LOST_PEER_CONNECTION               -102
 #define PMIX_ERR_LOST_CONNECTION_TO_CLIENT          -103
