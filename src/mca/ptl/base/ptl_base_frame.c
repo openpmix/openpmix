@@ -61,8 +61,6 @@
 
 #include "src/mca/ptl/base/static-components.h"
 
-#define PMIX_MAX_MSG_SIZE 16
-
 /* Instantiate the global vars */
 pmix_ptl_base_t pmix_ptl_base = {
     .initialized = false,
@@ -121,7 +119,7 @@ pmix_ptl_module_t pmix_ptl = {
     .setup_fork = NULL
 };
 
-static size_t max_msg_size = PMIX_MAX_MSG_SIZE;
+static size_t max_msg_size = 0;
 
 static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 {
