@@ -13,6 +13,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -607,12 +608,12 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
         memcpy(p->array, src->array, src->size * sizeof(pmix_proc_t));
         break;
     case PMIX_PROC_RANK:
-        p->array = (char *) malloc(src->size * sizeof(pmix_rank_t));
+        p->array = (pmix_rank_t *) malloc(src->size * sizeof(pmix_rank_t));
         if (NULL == p->array) {
             free(p);
             return PMIX_ERR_NOMEM;
         }
-        memcpy(p->array, src->array, src->size * sizeof(pmix_proc_t));
+        memcpy(p->array, src->array, src->size * sizeof(pmix_rank_t));
         break;
     case PMIX_APP:
         PMIX_APP_CREATE(p->array, src->size);
