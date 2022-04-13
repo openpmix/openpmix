@@ -25,6 +25,7 @@
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_get_job_tracker(
     const pmix_nspace_t nspace,
+    bool create,
     pmix_gds_shmem_job_t **job
 );
 

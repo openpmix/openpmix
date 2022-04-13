@@ -40,7 +40,8 @@
 static int
 component_open(void)
 {
-    PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.myjobs, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.jobs, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.sessions, pmix_list_t);
     return PMIX_SUCCESS;
 }
 
@@ -70,7 +71,8 @@ component_query(
 static int
 component_close(void)
 {
-    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.myjobs);
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.jobs);
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.sessions);
     return PMIX_SUCCESS;
 }
 
@@ -81,7 +83,7 @@ component_close(void)
 pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
     .super = {
         PMIX_GDS_BASE_VERSION_1_0_0,
-        /* Component name and version */
+        /** Component name and version */
         .pmix_mca_component_name = PMIX_GDS_SHMEM_NAME,
         PMIX_MCA_BASE_MAKE_VERSION(
             component,
@@ -89,12 +91,13 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
             PMIX_MINOR_VERSION,
             PMIX_RELEASE_VERSION
         ),
-        /* Component open, close, and query functions */
+        /** Component open, close, and query functions */
         .pmix_mca_open_component = component_open,
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
     },
-    .myjobs = PMIX_LIST_STATIC_INIT
+    .jobs = PMIX_LIST_STATIC_INIT,
+    .sessions = PMIX_LIST_STATIC_INIT
 };
 
 /*

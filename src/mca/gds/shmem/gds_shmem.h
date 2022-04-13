@@ -34,6 +34,17 @@
 #define PMIX_GDS_SHMEM_DISABLE 1
 
 /**
+ * Defines a bitmask to track what information may not
+ * have been provided but is computable from other info.
+ */
+#define PMIX_GDS_SHMEM_PROC_DATA 0x00000001
+#define PMIX_GDS_SHMEM_JOB_SIZE  0x00000002
+#define PMIX_GDS_SHMEM_MAX_PROCS 0x00000004
+#define PMIX_GDS_SHMEM_NUM_NODES 0x00000008
+#define PMIX_GDS_SHMEM_PROC_MAP  0x00000010
+#define PMIX_GDS_SHMEM_NODE_MAP  0x00000020
+
+/**
  * Environment variables used to find shared-memory segment info.
  */
 #define PMIX_GDS_SHMEM_ENVVAR_SEG_PATH "PMIX_GDS_SHMEM_SEG_PATH"
@@ -60,42 +71,40 @@ do {                                                                           \
 
 BEGIN_C_DECLS
 
-typedef struct {
+typedef struct pmix_gds_shmem_component {
     pmix_gds_base_component_t super;
     /** List of jobs that I'm supporting. */
-    pmix_list_t myjobs;
+    pmix_list_t jobs;
+    /** List of sessions that I'm supporting */
+    pmix_list_t sessions;
 } pmix_gds_shmem_component_t;
 /* The component must be visible data for the linker to find it. */
 PMIX_EXPORT extern pmix_gds_shmem_component_t pmix_mca_gds_shmem_component;
 extern pmix_gds_base_module_t pmix_shmem_module;
 
-// TODO(skg) Make sure all members are necessary.
-typedef struct {
+typedef struct pmix_gds_shmem_session {
     pmix_list_item_t super;
-    uint32_t session;
+    /** Session ID. */
+    uint32_t id;
     pmix_list_t sessioninfo;
     pmix_list_t nodeinfo;
 } pmix_gds_shmem_session_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
 
-/*
- * Ideally we would use the TMA from src/class/pmix_object.h, but we're testing
- * now. Maybe we can merge at some point.
- */
-typedef struct pmix_gds_shmem_tma {
-    pmix_object_t super;
-    void *(*malloc)(struct pmix_gds_shmem_tma *, size_t);
-    void *data;
-} pmix_gds_shmem_tma_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_tma_t);
-
-typedef struct {
+typedef struct pmix_gds_shmem_job {
     pmix_list_item_t super;
-    char *ns;
+    /** Namespace identifier. */
+    char *nspace_id;
+    /** Pointer to the namespace. */
+    pmix_namespace_t *nspace;
+    /** Shared-memory object. */
     pmix_shmem_t *shmem;
-    pmix_gds_shmem_tma_t *tma;
-    pmix_namespace_t *nptr;
+    /** Shared-memory allocator. */
+    pmix_tma_t tma;
+    /** Session information. */
     pmix_gds_shmem_session_t *session;
+    /** */
+    pmix_hash_table_t hashtab_internal;
 } pmix_gds_shmem_job_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
 

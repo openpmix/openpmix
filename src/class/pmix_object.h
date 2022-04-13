@@ -211,12 +211,29 @@ typedef void (*pmix_destruct_t)(pmix_object_t *);
 
 /* types **************************************************************/
 
-/* memory allocator for objects */
+/** Memory allocator for objects */
 typedef struct pmix_tma {
+    /** Pointer to the TMA's malloc() function. */
     void *(*malloc)(struct pmix_tma *, size_t);
+    /** Pointer to the TMA's calloc() function. */
+    void *(*calloc)(struct pmix_tma *, size_t, size_t);
+    /** Pointer to the TMA's realloc() function. */
     void *(*realloc)(struct pmix_tma *, void *, size_t);
-    void *data;
-    int dontfree; /* when set, free() or realloc() cannot be used, and tma->malloc() cannot fail */
+    /** Pointer to the TMA's strdup() function. */
+    char *(*strdup)(struct pmix_tma *, const char *s);
+    /**
+     * A memmove()-like function that copies the provided contents to an
+     * appropriate location in the memory area maintained by the allocator.
+     * Like memmove(), it returns a pointer to the content's destination.
+     */
+    void *(*memmove)(struct pmix_tma *tma, const void *src, size_t n);
+    /** Pointer inside the memory allocation arena. */
+    void *arena;
+    /**
+     * When true free() and realloc() cannot be used,
+     * and memory allocation functions cannot fail.
+     */
+    bool dontfree;
 } pmix_tma_t;
 
 static inline void *pmix_tma_malloc(pmix_tma_t *tma, size_t size)
@@ -237,23 +254,13 @@ static inline void *pmix_tma_realloc(pmix_tma_t *tma, void *ptr, size_t size)
     }
 }
 
-static inline void *pmix_tma_calloc(pmix_tma_t *tma, size_t size)
-{
-    char *ptr = pmix_tma_malloc(tma, size);
-    if (NULL != ptr) {
-        memset(ptr, 0, size);
-    }
-    return ptr;
-}
-
 static inline char *pmix_tma_strdup(pmix_tma_t *tma, const char *src)
 {
-    size_t len = strlen(src);
-    char *ptr = pmix_tma_malloc(tma, len + 1);
-    if (NULL != ptr) {
-        memcpy(ptr, src, len + 1);
+    if (NULL != tma) {
+        return tma->strdup(tma, src);
+    } else {
+        return strdup(src);
     }
-    return ptr;
 }
 
 /**
@@ -291,10 +298,14 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
             .obj_reference_count = 1,               \
             .obj_tma.malloc = NULL,                 \
-            .obj_tma.data = NULL,                   \
+            .obj_tma.calloc = NULL,                 \
+            .obj_tma.realloc = NULL,                \
+            .obj_tma.strdup = NULL,                 \
+            .obj_tma.memmove = NULL,                \
+            .obj_tma.arena = NULL,                  \
             .obj_tma.dontfree = false,              \
             .cls_init_file_name = __FILE__,         \
-            .cls_init_lineno = __LINE__,            \
+            .cls_init_lineno = __LINE__             \
         }
 #else
 #    define PMIX_OBJ_STATIC_INIT(BASE_CLASS)        \
@@ -303,8 +314,12 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
             .obj_reference_count = 1,               \
             .obj_tma.malloc = NULL,                 \
-            .obj_tma.data = NULL,                   \
-            .obj_tma.dontfree = false,              \
+            .obj_tma.calloc = NULL,                 \
+            .obj_tma.realloc = NULL,                \
+            .obj_tma.strdup = NULL,                 \
+            .obj_tma.memmove = NULL,                \
+            .obj_tma.arena = NULL,                  \
+            .obj_tma.dontfree = false               \
         }
 #endif
 
@@ -324,8 +339,8 @@ struct pmix_object_t {
     int32_t obj_reference_count;             /**< reference count */
     pmix_tma_t obj_tma;                      /**< allocator for this object */
 #if PMIX_ENABLE_DEBUG
-    const char *cls_init_file_name; /**< In debug mode store the file where the object get contructed */
-    int cls_init_lineno; /**< In debug mode store the line number where the object get contructed */
+    const char *cls_init_file_name; /**< In debug mode store the file where the object get constructed */
+    int cls_init_lineno; /**< In debug mode store the line number where the object get constructed */
 #endif                   /* PMIX_ENABLE_DEBUG */
 };
 
@@ -497,11 +512,19 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
 {
     if (NULL == t) {
         obj->obj_tma.malloc = NULL;
-        obj->obj_tma.data = NULL;
+        obj->obj_tma.calloc = NULL;
+        obj->obj_tma.realloc = NULL;
+        obj->obj_tma.strdup = NULL;
+        obj->obj_tma.memmove = NULL;
+        obj->obj_tma.arena = NULL;
         obj->obj_tma.dontfree = false;
     } else {
         obj->obj_tma.malloc = t->malloc;
-        obj->obj_tma.data = t->data;
+        obj->obj_tma.calloc = t->calloc;
+        obj->obj_tma.realloc = t->realloc;
+        obj->obj_tma.strdup = t->strdup;
+        obj->obj_tma.memmove = t->memmove;
+        obj->obj_tma.arena = t->arena;
         obj->obj_tma.dontfree = t->dontfree;
     }
 }
@@ -674,7 +697,10 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
         object->obj_reference_count = 1;
         if (NULL == tma) {
             object->obj_tma.malloc = NULL;
-            object->obj_tma.data = NULL;
+            object->obj_tma.calloc = NULL;
+            object->obj_tma.realloc = NULL;
+            object->obj_tma.strdup = NULL;
+            object->obj_tma.arena = NULL;
             object->obj_tma.dontfree = false;
         } else {
             object->obj_tma = *tma;
