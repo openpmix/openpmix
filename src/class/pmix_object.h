@@ -214,19 +214,23 @@ typedef void (*pmix_destruct_t)(pmix_object_t *);
 /** Memory allocator for objects */
 typedef struct pmix_tma {
     /** Pointer to the TMA's malloc() function. */
-    void *(*malloc)(struct pmix_tma *, size_t);
+    void *(*tma_malloc)(struct pmix_tma *, size_t);
     /** Pointer to the TMA's calloc() function. */
-    void *(*calloc)(struct pmix_tma *, size_t, size_t);
+    void *(*tma_calloc)(struct pmix_tma *, size_t, size_t);
     /** Pointer to the TMA's realloc() function. */
-    void *(*realloc)(struct pmix_tma *, void *, size_t);
+    void *(*tma_realloc)(struct pmix_tma *, void *, size_t);
+    /*
+     * NOTE: The seemingly unnecessary name mangling here is in response to
+     * certain compilers not liking the use of a function pointer named strdup.
+     */
     /** Pointer to the TMA's strdup() function. */
-    char *(*strdup)(struct pmix_tma *, const char *s);
+    char *(*tma_strdup)(struct pmix_tma *, const char *s);
     /**
      * A memmove()-like function that copies the provided contents to an
      * appropriate location in the memory area maintained by the allocator.
      * Like memmove(), it returns a pointer to the content's destination.
      */
-    void *(*memmove)(struct pmix_tma *tma, const void *src, size_t n);
+    void *(*tma_memmove)(struct pmix_tma *tma, const void *src, size_t n);
     /** Pointer inside the memory allocation arena. */
     void *arena;
     /**
@@ -239,7 +243,7 @@ typedef struct pmix_tma {
 static inline void *pmix_tma_malloc(pmix_tma_t *tma, size_t size)
 {
     if (NULL != tma) {
-        return tma->malloc(tma, size);
+        return tma->tma_malloc(tma, size);
     } else {
         return malloc(size);
     }
@@ -248,7 +252,7 @@ static inline void *pmix_tma_malloc(pmix_tma_t *tma, size_t size)
 static inline void *pmix_tma_realloc(pmix_tma_t *tma, void *ptr, size_t size)
 {
     if (NULL != tma) {
-        return tma->realloc(tma, ptr, size);
+        return tma->tma_realloc(tma, ptr, size);
     } else {
         return realloc(ptr, size);
     }
@@ -257,7 +261,7 @@ static inline void *pmix_tma_realloc(pmix_tma_t *tma, void *ptr, size_t size)
 static inline char *pmix_tma_strdup(pmix_tma_t *tma, const char *src)
 {
     if (NULL != tma) {
-        return tma->strdup(tma, src);
+        return tma->tma_strdup(tma, src);
     } else {
         return strdup(src);
     }
@@ -297,11 +301,11 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_class = PMIX_CLASS(BASE_CLASS),    \
             .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
             .obj_reference_count = 1,               \
-            .obj_tma.malloc = NULL,                 \
-            .obj_tma.calloc = NULL,                 \
-            .obj_tma.realloc = NULL,                \
-            .obj_tma.strdup = NULL,                 \
-            .obj_tma.memmove = NULL,                \
+            .obj_tma.tma_malloc = NULL,             \
+            .obj_tma.tma_calloc = NULL,             \
+            .obj_tma.tma_realloc = NULL,            \
+            .obj_tma.tma_strdup = NULL,             \
+            .obj_tma.tma_memmove = NULL,            \
             .obj_tma.arena = NULL,                  \
             .obj_tma.dontfree = false,              \
             .cls_init_file_name = __FILE__,         \
@@ -313,11 +317,11 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_class = PMIX_CLASS(BASE_CLASS),    \
             .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
             .obj_reference_count = 1,               \
-            .obj_tma.malloc = NULL,                 \
-            .obj_tma.calloc = NULL,                 \
-            .obj_tma.realloc = NULL,                \
-            .obj_tma.strdup = NULL,                 \
-            .obj_tma.memmove = NULL,                \
+            .obj_tma.tma_malloc = NULL,             \
+            .obj_tma.tma_calloc = NULL,             \
+            .obj_tma.tma_realloc = NULL,            \
+            .obj_tma.tma_strdup = NULL,             \
+            .obj_tma.tma_memmove = NULL,            \
             .obj_tma.arena = NULL,                  \
             .obj_tma.dontfree = false               \
         }
@@ -511,19 +515,19 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
 static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
 {
     if (NULL == t) {
-        obj->obj_tma.malloc = NULL;
-        obj->obj_tma.calloc = NULL;
-        obj->obj_tma.realloc = NULL;
-        obj->obj_tma.strdup = NULL;
-        obj->obj_tma.memmove = NULL;
+        obj->obj_tma.tma_malloc = NULL;
+        obj->obj_tma.tma_calloc = NULL;
+        obj->obj_tma.tma_realloc = NULL;
+        obj->obj_tma.tma_strdup = NULL;
+        obj->obj_tma.tma_memmove = NULL;
         obj->obj_tma.arena = NULL;
         obj->obj_tma.dontfree = false;
     } else {
-        obj->obj_tma.malloc = t->malloc;
-        obj->obj_tma.calloc = t->calloc;
-        obj->obj_tma.realloc = t->realloc;
-        obj->obj_tma.strdup = t->strdup;
-        obj->obj_tma.memmove = t->memmove;
+        obj->obj_tma.tma_malloc = t->tma_malloc;
+        obj->obj_tma.tma_calloc = t->tma_calloc;
+        obj->obj_tma.tma_realloc = t->tma_realloc;
+        obj->obj_tma.tma_strdup = t->tma_strdup;
+        obj->obj_tma.tma_memmove = t->tma_memmove;
         obj->obj_tma.arena = t->arena;
         obj->obj_tma.dontfree = t->dontfree;
     }
@@ -696,10 +700,10 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
         object->obj_class = cls;
         object->obj_reference_count = 1;
         if (NULL == tma) {
-            object->obj_tma.malloc = NULL;
-            object->obj_tma.calloc = NULL;
-            object->obj_tma.realloc = NULL;
-            object->obj_tma.strdup = NULL;
+            object->obj_tma.tma_malloc = NULL;
+            object->obj_tma.tma_calloc = NULL;
+            object->obj_tma.tma_realloc = NULL;
+            object->obj_tma.tma_strdup = NULL;
             object->obj_tma.arena = NULL;
             object->obj_tma.dontfree = false;
         } else {
