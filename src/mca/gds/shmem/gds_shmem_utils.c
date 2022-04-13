@@ -22,6 +22,7 @@
 pmix_status_t
 pmix_gds_shmem_get_job_tracker(
     const pmix_nspace_t nspace,
+    bool create,
     pmix_gds_shmem_job_t **job
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
@@ -29,50 +30,56 @@ pmix_gds_shmem_get_job_tracker(
     pmix_gds_shmem_component_t *component = &pmix_mca_gds_shmem_component;
     // Try to find the tracker for this job.
     // TODO(skg) Consider using a hash table here for lookup.
-    PMIX_LIST_FOREACH (tracker, &component->myjobs, pmix_gds_shmem_job_t) {
-        if (0 == strcmp(nspace, tracker->ns)) {
+    PMIX_LIST_FOREACH (tracker, &component->jobs, pmix_gds_shmem_job_t) {
+        if (0 == strcmp(nspace, tracker->nspace_id)) {
             target_tracker = tracker;
             break;
         }
     }
-    // Create one if not found.
-    if (!target_tracker) {
-        pmix_namespace_t *ns = NULL, *nptr = NULL;
+    // If we didn't find the requested target and we aren't asked to create a
+    // new one, then the request cannot be fulfilled.
+    if (!target_tracker && !create) {
+        rc = PMIX_ERR_NOT_FOUND;
+        goto out;
+    }
+    // Create one if not found and asked to create one.
+    if (!target_tracker && create) {
+        pmix_namespace_t *ns = NULL, *inspace = NULL;
         target_tracker = PMIX_NEW(pmix_gds_shmem_job_t);
         if (!target_tracker) {
             rc = PMIX_ERR_NOMEM;
             goto out;
         }
-        target_tracker->ns = strdup(nspace);
-        if (!target_tracker->ns) {
+        target_tracker->nspace_id = strdup(nspace);
+        if (!target_tracker->nspace_id) {
             rc = PMIX_ERR_NOMEM;
             goto out;
         }
         // See if we already have this nspace in global namespaces.
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             if (0 == strcmp(ns->nspace, nspace)) {
-                nptr = ns;
+                inspace = ns;
                 break;
             }
         }
         // If not, create one and update global namespace list.
-        if (!nptr) {
-            nptr = PMIX_NEW(pmix_namespace_t);
-            if (!nptr) {
+        if (!inspace) {
+            inspace = PMIX_NEW(pmix_namespace_t);
+            if (!inspace) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
             }
-            nptr->nspace = strdup(nspace);
-            if (!nptr->nspace) {
+            inspace->nspace = strdup(nspace);
+            if (!inspace->nspace) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
             }
-            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+            pmix_list_append(&pmix_globals.nspaces, &inspace->super);
         }
-        PMIX_RETAIN(nptr);
-        target_tracker->nptr = nptr;
+        PMIX_RETAIN(inspace);
+        target_tracker->nspace = inspace;
         // Add it to the list of jobs I'm supporting.
-        pmix_list_append(&component->myjobs, &target_tracker->super);
+        pmix_list_append(&component->jobs, &target_tracker->super);
     }
 out:
     if (PMIX_SUCCESS != rc) {
