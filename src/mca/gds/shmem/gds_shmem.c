@@ -92,7 +92,7 @@ do {                                                                           \
 // appropriate place. This modifies PMIX_PROC_CREATE() for our needs.
 #define PMIX_GDS_SHMEM_PROC_CREATE(m, n, tma)                                  \
 do {                                                                           \
-    (m) = (pmix_proc_t *)(tma)->calloc((tma), (n), sizeof(pmix_proc_t));       \
+    (m) = (pmix_proc_t *)(tma)->tma_calloc((tma), (n), sizeof(pmix_proc_t));   \
 } while (0)
 
 // TODO(skg) This shouldn't live here. Figure out a way to get this in an
@@ -100,7 +100,7 @@ do {                                                                           \
 #define PMIX_GDS_SHMEM_VALUE_XFER(r, v, s, tma)                                \
 do {                                                                           \
     if (NULL == (v)) {                                                         \
-        (v) = (pmix_value_t *)(tma)->malloc((tma), sizeof(pmix_value_t));      \
+        (v) = (pmix_value_t *)(tma)->tma_malloc((tma), sizeof(pmix_value_t));  \
         if (NULL == (v)) {                                                     \
             (r) = PMIX_ERR_NOMEM;                                              \
         } else {                                                               \
@@ -116,7 +116,7 @@ do {                                                                           \
 #define PMIX_GDS_SHMEM_INFO_CREATE(m, n, tma)                                  \
 do {                                                                           \
     pmix_info_t *i;                                                            \
-    (m) = (pmix_info_t *)(tma)->calloc((tma), (n), sizeof(pmix_info_t));       \
+    (m) = (pmix_info_t *)(tma)->tma_calloc((tma), (n), sizeof(pmix_info_t));   \
     if (NULL != (m)) {                                                         \
         i = (pmix_info_t *)(m);                                                \
         i[(n) - 1].flags = PMIX_INFO_ARRAY_END;                                \
@@ -158,7 +158,7 @@ pmix_gds_shmem_value_xfer(
             break;
         case PMIX_STRING:
             if (NULL != src->data.string) {
-                p->data.string = tma->strdup(tma, src->data.string);
+                p->data.string = tma->tma_strdup(tma, src->data.string);
             } else {
                 p->data.string = NULL;
             }
@@ -242,7 +242,7 @@ pmix_gds_shmem_value_xfer(
         case PMIX_COMPRESSED_BYTE_OBJECT:
             memset(&p->data.bo, 0, sizeof(pmix_byte_object_t));
             if (NULL != src->data.bo.bytes && 0 < src->data.bo.size) {
-                p->data.bo.bytes = tma->malloc(tma, src->data.bo.size);
+                p->data.bo.bytes = tma->tma_malloc(tma, src->data.bo.size);
                 memcpy(p->data.bo.bytes, src->data.bo.bytes, src->data.bo.size);
                 p->data.bo.size = src->data.bo.size;
             } else {
@@ -287,10 +287,10 @@ pmix_gds_shmem_value_xfer(
             // NOTE(skg) This one is okay because all it does is set members.
             PMIX_ENVAR_CONSTRUCT(&p->data.envar);
             if (NULL != src->data.envar.envar) {
-                p->data.envar.envar = tma->strdup(tma, src->data.envar.envar);
+                p->data.envar.envar = tma->tma_strdup(tma, src->data.envar.envar);
             }
             if (NULL != src->data.envar.value) {
-                p->data.envar.value = tma->strdup(tma, src->data.envar.value);
+                p->data.envar.value = tma->tma_strdup(tma, src->data.envar.value);
             }
             p->data.envar.separator = src->data.envar.separator;
             break;
@@ -376,7 +376,7 @@ pmix_gds_shmem_copy_darray(
 
     PMIX_GDS_SHMEM_UNUSED(type);
 
-    p = (pmix_data_array_t *)tma->calloc(tma, 1, sizeof(pmix_data_array_t));
+    p = (pmix_data_array_t *)tma->tma_calloc(tma, 1, sizeof(pmix_data_array_t));
     if (NULL == p) {
         rc = PMIX_ERR_NOMEM;
         goto out;
@@ -395,7 +395,7 @@ pmix_gds_shmem_copy_darray(
         case PMIX_UINT8:
         case PMIX_INT8:
         case PMIX_BYTE:
-            p->array = (char *)tma->malloc(tma, src->size);
+            p->array = (char *)tma->tma_malloc(tma, src->size);
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -404,7 +404,7 @@ pmix_gds_shmem_copy_darray(
             break;
         case PMIX_UINT16:
         case PMIX_INT16:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(uint16_t));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(uint16_t));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -413,7 +413,7 @@ pmix_gds_shmem_copy_darray(
             break;
         case PMIX_UINT32:
         case PMIX_INT32:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(uint32_t));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(uint32_t));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -422,7 +422,7 @@ pmix_gds_shmem_copy_darray(
             break;
         case PMIX_UINT64:
         case PMIX_INT64:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(uint64_t));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(uint64_t));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -430,7 +430,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(uint64_t));
             break;
         case PMIX_BOOL:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(bool));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(bool));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -438,7 +438,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(bool));
             break;
         case PMIX_SIZE:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(size_t));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(size_t));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -446,7 +446,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(size_t));
             break;
         case PMIX_PID:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(pid_t));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(pid_t));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -455,7 +455,7 @@ pmix_gds_shmem_copy_darray(
             break;
         case PMIX_STRING: {
             char **prarray, **strarray;
-            p->array = (char **)tma->malloc(tma, src->size * sizeof(char *));
+            p->array = (char **)tma->tma_malloc(tma, src->size * sizeof(char *));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -464,7 +464,7 @@ pmix_gds_shmem_copy_darray(
             strarray = (char **)src->array;
             for (size_t n = 0; n < src->size; n++) {
                 if (NULL != strarray[n]) {
-                    prarray[n] = tma->strdup(tma, strarray[n]);
+                    prarray[n] = tma->tma_strdup(tma, strarray[n]);
                     if (NULL == prarray[n]) {
                         rc = PMIX_ERR_NOMEM;
                         goto out;
@@ -475,7 +475,7 @@ pmix_gds_shmem_copy_darray(
         }
         case PMIX_INT:
         case PMIX_UINT:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(int));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(int));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -483,7 +483,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(int));
             break;
         case PMIX_FLOAT:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(float));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(float));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -491,7 +491,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(float));
             break;
         case PMIX_DOUBLE:
-            p->array = (char *)tma->malloc(tma, src->size * sizeof(double));
+            p->array = (char *)tma->tma_malloc(tma, src->size * sizeof(double));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -499,7 +499,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(double));
             break;
         case PMIX_TIMEVAL:
-            p->array = (struct timeval *)tma->malloc(
+            p->array = (struct timeval *)tma->tma_malloc(
                 tma, src->size * sizeof(struct timeval)
             );
             if (NULL == p->array) {
@@ -509,7 +509,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(struct timeval));
             break;
         case PMIX_TIME:
-            p->array = (time_t *)tma->malloc(tma, src->size * sizeof(time_t));
+            p->array = (time_t *)tma->tma_malloc(tma, src->size * sizeof(time_t));
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -517,7 +517,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(time_t));
             break;
         case PMIX_STATUS:
-            p->array = (pmix_status_t *)tma->malloc(
+            p->array = (pmix_status_t *)tma->tma_malloc(
                 tma, src->size * sizeof(pmix_status_t)
             );
             if (NULL == p->array) {
@@ -535,7 +535,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(pmix_proc_t));
             break;
         case PMIX_PROC_RANK:
-            p->array = (pmix_rank_t *)tma->malloc(
+            p->array = (pmix_rank_t *)tma->tma_malloc(
                 tma, src->size * sizeof(pmix_rank_t)
             );
             if (NULL == p->array) {
@@ -561,7 +561,7 @@ pmix_gds_shmem_copy_darray(
         case PMIX_BYTE_OBJECT:
         case PMIX_COMPRESSED_STRING: {
             pmix_byte_object_t *pbo, *sbo;
-            p->array = (pmix_byte_object_t *)tma->malloc(
+            p->array = (pmix_byte_object_t *)tma->tma_malloc(
                 tma, src->size * sizeof(pmix_byte_object_t)
             );
             if (NULL == p->array) {
@@ -573,7 +573,7 @@ pmix_gds_shmem_copy_darray(
             for (size_t n = 0; n < src->size; n++) {
                 if (NULL != sbo[n].bytes && 0 < sbo[n].size) {
                     pbo[n].size = sbo[n].size;
-                    pbo[n].bytes = (char *)tma->malloc(tma, pbo[n].size);
+                    pbo[n].bytes = (char *)tma->tma_malloc(tma, pbo[n].size);
                     memcpy(pbo[n].bytes, sbo[n].bytes, pbo[n].size);
                 } else {
                     pbo[n].bytes = NULL;
@@ -583,7 +583,7 @@ pmix_gds_shmem_copy_darray(
             break;
         }
         case PMIX_PERSIST:
-            p->array = (pmix_persistence_t *)tma->malloc(
+            p->array = (pmix_persistence_t *)tma->tma_malloc(
                 tma, src->size * sizeof(pmix_persistence_t)
             );
             if (NULL == p->array) {
@@ -593,7 +593,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(pmix_persistence_t));
             break;
         case PMIX_SCOPE:
-            p->array = (pmix_scope_t *)tma->malloc(
+            p->array = (pmix_scope_t *)tma->tma_malloc(
                 tma, src->size * sizeof(pmix_scope_t)
             );
             if (NULL == p->array) {
@@ -603,7 +603,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(pmix_scope_t));
             break;
         case PMIX_DATA_RANGE:
-            p->array = (pmix_data_range_t *)tma->malloc(
+            p->array = (pmix_data_range_t *)tma->tma_malloc(
                 tma, src->size * sizeof(pmix_data_range_t)
             );
             if (NULL == p->array) {
@@ -613,7 +613,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(pmix_data_range_t));
             break;
         case PMIX_COMMAND:
-            p->array = (pmix_cmd_t *)tma->malloc(
+            p->array = (pmix_cmd_t *)tma->tma_malloc(
                 tma, src->size * sizeof(pmix_cmd_t)
             );
             if (NULL == p->array) {
@@ -623,7 +623,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(pmix_cmd_t));
             break;
         case PMIX_INFO_DIRECTIVES:
-            p->array = (pmix_info_directives_t *)tma->malloc(
+            p->array = (pmix_info_directives_t *)tma->tma_malloc(
                 tma, src->size * sizeof(pmix_info_directives_t)
             );
             if (NULL == p->array) {
@@ -669,7 +669,7 @@ pmix_gds_shmem_copy_darray(
 out:
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        // TODO(skg) We could add a tma->free() for this situation. Then it will
+        // TODO(skg) We could add a tma->tma_free() for this situation. Then it will
         // be up to the tma backend what happens during its free().
         //free(p);
         p = NULL;
@@ -773,12 +773,12 @@ static void
 tma_construct(
     pmix_tma_t *tma
 ) {
-    tma->malloc = tma_malloc;
-    tma->calloc = tma_calloc;
+    tma->tma_malloc = tma_malloc;
+    tma->tma_calloc = tma_calloc;
     // We don't currently support realloc.
-    tma->realloc = NULL;
-    tma->strdup = tma_strdup;
-    tma->memmove = tma_memmove;
+    tma->tma_realloc = NULL;
+    tma->tma_strdup = tma_strdup;
+    tma->tma_memmove = tma_memmove;
     tma->arena = NULL;
     tma->dontfree = 1;
 }
@@ -787,11 +787,11 @@ static void
 tma_destruct(
     pmix_tma_t *tma
 ) {
-    tma->malloc = NULL;
-    tma->calloc = NULL;
-    tma->realloc = NULL;
-    tma->strdup = NULL;
-    tma->memmove = NULL;
+    tma->tma_malloc = NULL;
+    tma->tma_calloc = NULL;
+    tma->tma_realloc = NULL;
+    tma->tma_strdup = NULL;
+    tma->tma_memmove = NULL;
     tma->arena = NULL;
 }
 
@@ -1527,7 +1527,7 @@ add_info_to_job(
         goto out;
     }
     // Similarly, cache the provided key in shared-memory.
-    kval->key = job->tma.strdup(&job->tma, info->key);
+    kval->key = job->tma.tma_strdup(&job->tma, info->key);
     if (!kval->key) {
         rc = PMIX_ERR_NOMEM;
         goto out;
@@ -1550,7 +1550,7 @@ add_info_to_job(
             }
             kval->value->type = PMIX_COMPRESSED_STRING;
             // We need to copy into our shared-memory segment.
-            sm_cdata = job->tma.memmove(&job->tma, cdata, cdata_size);
+            sm_cdata = job->tma.tma_memmove(&job->tma, cdata, cdata_size);
             kval->value->data.bo.bytes = sm_cdata;
             kval->value->data.bo.size = cdata_size;
             // Now we can free the compressed data we copied.
@@ -1577,8 +1577,8 @@ add_info_to_job(
         goto out;
     }
     // Notice that we don't do a PMIX_RELEASE(kval) here, because we don't
-    // currently support free(). TODO(skg) We should probably add tma->free() so
-    // that the usage conventions are preserved.
+    // currently support free(). TODO(skg) We should probably add
+    // tma->tma_free() so that the usage conventions are preserved.
 out:
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
