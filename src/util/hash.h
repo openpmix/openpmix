@@ -4,7 +4,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,6 +18,7 @@
 #include "src/include/pmix_config.h"
 
 #include "src/class/pmix_hash_table.h"
+#include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops_types.h"
 
 BEGIN_C_DECLS
@@ -51,6 +52,14 @@ PMIX_EXPORT pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const
  * table */
 PMIX_EXPORT pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table, pmix_rank_t rank,
                                                 const char *key);
+
+PMIX_EXPORT void pmix_hash_register_key(pmix_hash_table_t *jtable,
+                                        uint32_t inid,
+                                        pmix_regattr_input_t *ptr);
+
+PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key(pmix_hash_table_t *jtable,
+                                                       uint32_t inid,
+                                                       const char *key);
 
 END_C_DECLS
 

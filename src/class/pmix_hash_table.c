@@ -303,7 +303,7 @@ pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **val
             *value = elt->value;
             return PMIX_SUCCESS;
         } else {
-            /* keey looking */
+            /* keep looking */
         }
     }
 }
