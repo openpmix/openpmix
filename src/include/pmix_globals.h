@@ -88,6 +88,12 @@ typedef struct {
     char **description;
 } pmix_regattr_input_t;
 
+/* define a struct for storing data in memory */
+typedef struct {
+    uint32_t index;
+    pmix_value_t *value;
+} pmix_dstor_t;
+
 /* define a struct for passing topology objects */
 typedef struct {
     pmix_object_t super;
