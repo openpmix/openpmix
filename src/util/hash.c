@@ -361,3 +361,48 @@ static pmix_proc_data_t *lookup_proc(pmix_hash_table_t *jtable, uint64_t id, boo
 
     return proc_data;
 }
+
+void pmix_hash_register_key(pmix_hash_table_t *jtable,
+                            uint32_t inid,
+                            pmix_regattr_input_t *ptr)
+{
+    uint32_t id;
+    pmix_regattr_input_t *p = NULL;
+
+    if (UINT32_MAX == inid) {
+        /* compute a hash of the string representation */
+        PMIX_HASH_STR(ptr->string, id);
+    } else {
+        id = inid;
+    }
+    /* check to see if this key was already registered */
+    pmix_hash_table_get_value_uint32(jtable, id, (void**)&p);
+    if (NULL != p) {
+        /* already have this one */
+        return;
+    }
+    /* store the pointer in the hash */
+    pmix_hash_table_set_value_uint32(jtable, id, ptr);
+}
+
+pmix_regattr_input_t* pmix_hash_lookup_key(pmix_hash_table_t *jtable,
+                                           uint32_t inid,
+                                           const char *key)
+{
+    uint32_t id;
+    pmix_regattr_input_t *ptr = NULL;
+
+    if (UINT32_MAX == inid) {
+        if (NULL == key) {
+            /* they have to give us something! */
+            return NULL;
+        }
+        /* compute a hash of the string representation */
+        PMIX_HASH_STR(ptr->string, id);
+    } else {
+        id = inid;
+    }
+    /* get the pointer from the hash */
+    pmix_hash_table_get_value_uint32(jtable, id, (void**)&ptr);
+    return ptr;  // will be NULL if nothing found
+}

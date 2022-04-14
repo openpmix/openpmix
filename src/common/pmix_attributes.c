@@ -23,6 +23,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/hash.h"
 
 #include "src/common/pmix_attributes.h"
 #include "src/include/dictionary.h"
@@ -60,11 +61,20 @@ static PMIX_CLASS_INSTANCE(pmix_attribute_trk_t, pmix_list_item_t, atrkcon, atrk
 
 PMIX_EXPORT void pmix_init_registered_attrs(void)
 {
+    size_t n;
+
     if (!initialized) {
         PMIX_CONSTRUCT(&client_attrs, pmix_list_t);
         PMIX_CONSTRUCT(&server_attrs, pmix_list_t);
         PMIX_CONSTRUCT(&host_attrs, pmix_list_t);
         PMIX_CONSTRUCT(&tool_attrs, pmix_list_t);
+        /* cycle across the dictionary and load a hash
+         * table with translations of key -> index */
+        for (n=0; UINT32_MAX != dictionary[n].index; n++) {
+            pmix_hash_register_key(&pmix_globals.keyindex,
+                                   dictionary[n].index,
+                                   &dictionary[n]);
+        }
         initialized = true;
     }
 }

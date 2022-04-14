@@ -290,16 +290,11 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     PMIX_CONSTRUCT(&pmix_globals.cached_events, pmix_list_t);
     /* construct the global notification ring buffer */
     PMIX_CONSTRUCT(&pmix_globals.notifications, pmix_hotel_t);
-    ret = pmix_hotel_init(&pmix_globals.notifications, pmix_globals.max_events, pmix_globals.evbase,
-                          pmix_globals.event_eviction_time, _notification_eviction_cbfunc);
+    pmix_hotel_init(&pmix_globals.notifications, pmix_globals.max_events, pmix_globals.evbase,
+                    pmix_globals.event_eviction_time, _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
-    /* need to hold off checking the hotel init return code
-     * until after we construct all the globals so they can
-     * correct finalize */
-    if (PMIX_SUCCESS != ret) {
-        error = "notification hotel init";
-        goto return_error;
-    }
+    PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_hash_table_t);
+    pmix_hash_table_init(&pmix_globals.keyindex, 1024);
 
     /* and setup the iof request tracking list */
     PMIX_CONSTRUCT(&pmix_globals.iof_requests, pmix_pointer_array_t);

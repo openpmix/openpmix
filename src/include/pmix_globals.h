@@ -612,6 +612,7 @@ typedef struct {
     bool external_topology;
     bool external_progress;
     pmix_iof_flags_t iof_flags;
+    pmix_hash_table_t keyindex;  // translation table of key <-> index
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */

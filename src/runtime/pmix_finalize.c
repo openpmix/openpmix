@@ -131,9 +131,8 @@ void pmix_rte_finalize(void)
     }
     PMIX_DESTRUCT(&pmix_globals.notifications);
     for (i = 0; i < pmix_globals.iof_requests.size; i++) {
-        if (NULL
-            != (req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests,
-                                                                     i))) {
+        req = (pmix_iof_req_t *) pmix_pointer_array_get_item(&pmix_globals.iof_requests, i);
+        if (NULL != req) {
             PMIX_RELEASE(req);
         }
     }
@@ -144,6 +143,7 @@ void pmix_rte_finalize(void)
         pmix_globals.hostname = NULL;
     }
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
+    PMIX_DESTRUCT(&pmix_globals.keyindex);
 
     /* now safe to release the event base */
     (void) pmix_progress_thread_stop(NULL);
