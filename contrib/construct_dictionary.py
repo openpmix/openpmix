@@ -1,7 +1,7 @@
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
-# Copyright (c) 2021      Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Construct a dictionary for translating attributes to/from
@@ -13,14 +13,17 @@ from __future__ import print_function
 import os, os.path, sys, shutil
 from optparse import OptionParser, OptionGroup
 
+index = 0
+
 def harvest_constants(options, path, constants):
+    global index
     # open the file
     try:
         inputfile = open(path, "r")
     except Exception as e:
         print("File {path} could not be opened: {e}"
               .format(path=path, e=e))
-        return 1
+        return 1, 0
 
     # read the file - these files aren't too large
     # so ingest the whole thing at one gulp
@@ -30,7 +33,7 @@ def harvest_constants(options, path, constants):
         print("Error reading file {path}: {e}"
               .format(path=path, e=e))
         inputfile.close()
-        return 1
+        return 1, 0
 
     inputfile.close()  # we read everything, so done with the file
 
@@ -65,7 +68,8 @@ def harvest_constants(options, path, constants):
                     if not firstline:
                         constants.write(",\n\n")
                     firstline = False
-                    constants.write("    {.name = \"" + tokens[0] + "\", .string = " + tokens[1])
+                    constants.write("    {.index = " + str(index) + ", .name = \"" + tokens[0] + "\", .string = " + tokens[1])
+                    index = index + 1
                     # only one attribute violates the one-word rule for type
                     if tokens[0] == "PMIX_EVENT_BASE":
                         dstart = 3
@@ -315,8 +319,8 @@ pmix_regattr_input_t dictionary[] = {
         return 1
 
     # mark the end of the array
-    constants.write(""",
-    {.name = ""}
+    constants.write(""",\n
+    {.index = -1, .name = "", .string = "", .type = PMIX_POINTER, .description = (char *[]){"NONE"}}
 };
 """)
     constants.close()
