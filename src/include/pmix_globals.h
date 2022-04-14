@@ -81,6 +81,7 @@ PMIX_CLASS_DECLARATION(pmix_namelist_t);
 /* define a struct for holding entries in the
  * dictionary of attributes */
 typedef struct {
+    uint32_t index;
     char *name;
     char *string;
     pmix_data_type_t type;
