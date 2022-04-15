@@ -19,7 +19,7 @@ dnl Copyright (c) 2017-2021 Amazon.com, Inc. or its affiliates.  All Rights
 dnl                         reserved.
 dnl Copyright (c) 2020      Google, LLC. All rights reserved.
 dnl Copyright (c) 2020      Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -102,6 +102,13 @@ AC_DEFUN([PMIX_CONFIG_ASM],[
         pmix_atomic_gcc_builtin=1
     elif test "$enable_builtin_atomics" = "yes" ; then
         AC_MSG_WARN([GCC built-in atomics requested but not found.])
+        AC_MSG_ERROR([Cannot continue])
+    else
+        AC_MSG_WARN([Neither C11 nor the built-in atomics are available,])
+        AC_MSG_WARN([either because they were disabled on the configure])
+        AC_MSG_WARN([command line or they were not found. PMIx requires])
+        AC_MSG_WARN([atomic support, so either a compiler with C11 atomics])
+        AC_MSG_WARN([must be used OR the built-in atomics must not be disabled.])
         AC_MSG_ERROR([Cannot continue])
     fi
 
