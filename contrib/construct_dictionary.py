@@ -289,7 +289,7 @@ def main():
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
-pmix_regattr_input_t dictionary[] = {
+static pmix_regattr_input_t dictionary[] = {
 """)
 
     # scan across the header files in the src directory
@@ -323,6 +323,7 @@ pmix_regattr_input_t dictionary[] = {
     {.index = UINT32_MAX, .name = "", .string = "", .type = PMIX_POINTER, .description = (char *[]){"NONE"}}
 };
 """)
+    constants.write("\n#define PMIX_INDEX_BOUNDARY  " + str(index) + "\n")
     constants.close()
     return 0
 

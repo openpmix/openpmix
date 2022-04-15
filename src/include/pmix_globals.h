@@ -93,6 +93,13 @@ typedef struct {
     uint32_t index;
     pmix_value_t *value;
 } pmix_dstor_t;
+#define PMIX_DSTOR_NEW(d, k)                                \
+do {                                                        \
+    (d) = (pmix_dstor_t*)pmix_malloc(sizeof(pmix_dstor_t)); \
+    if (NULL != (d)) {                                      \
+        (d)->index = k;                                     \
+    }                                                       \
+} while(0)
 
 /* define a struct for passing topology objects */
 typedef struct {
