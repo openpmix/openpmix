@@ -33,16 +33,6 @@ PMIX_EXPORT pmix_status_t pmix_hash_store(pmix_hash_table_t *table, pmix_rank_t 
 PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank,
                                           const char *key, pmix_value_t **kvs);
 
-/* Fetch the value for a specified key from within
- * the given hash_table
- * It gets the next portion of data from table, where matching key.
- * To get the first data from table, function is called with key parameter as string.
- * Remaining data from table are obtained by calling function with a null pointer for the key
- * parameter.*/
-PMIX_EXPORT pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key,
-                                                 pmix_rank_t *rank, pmix_value_t **kvs,
-                                                 void **last);
-
 /* remove the specified key-value from the given hash_table.
  * A NULL key will result in removal of all data for the
  * given rank. A rank of PMIX_RANK_WILDCARD indicates that
@@ -53,12 +43,10 @@ PMIX_EXPORT pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const
 PMIX_EXPORT pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table, pmix_rank_t rank,
                                                 const char *key);
 
-PMIX_EXPORT void pmix_hash_register_key(pmix_hash_table_t *jtable,
-                                        uint32_t inid,
+PMIX_EXPORT void pmix_hash_register_key(uint32_t inid,
                                         pmix_regattr_input_t *ptr);
 
-PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key(pmix_hash_table_t *jtable,
-                                                       uint32_t inid,
+PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
                                                        const char *key);
 
 END_C_DECLS
