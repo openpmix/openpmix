@@ -1555,39 +1555,83 @@ PMIX_EXPORT bool PMIx_Data_decompress(const uint8_t *inbytes,
                                       uint8_t **outbytes,
                                       size_t *nbytes);
 
-/* Utility functions */
+
+/* We had to put some function definitions into pmix_deprecated.h for
+ * now-deprecated macros that utilize them as there are people who only
+ * included pmix_common.h if they were using macros but not APIs.
+ * However, we really want those APIs here so people will
+ * see them and know they exist. So include them here as well. */
+
+#ifndef PMIx_DEPRECATED_H
+/* Load data into a pmix_value_t structure. The data can be of any
+ * PMIx data type - which means the load can be somewhat complex
+ * to implement (e.g., in the case of a pmix_data_array_t). The
+ * data is COPIED into the value struct
+ */
 PMIX_EXPORT pmix_status_t PMIx_Value_load(pmix_value_t *val,
                                           const void *data,
                                           pmix_data_type_t type);
 
+/* Unload data from a pmix_value_t structure. */
 PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
                                             void **data,
                                             size_t *sz);
 
+/* Transfer data from one pmix_value_t to another - this is actually
+ * executed as a COPY operation, so the original data is not altered.
+ */
 PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
 
+/* Load key/value data into a pmix_info_t struct. Note that this
+ * effectively is a PMIX_LOAD_KEY operation to copy the key,
+ * followed by a PMIx_Value_load to COPY the data into the
+ * pmix_value_t in the provided info struct */
 PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
                                          const char *key,
                                          const void *data,
                                          pmix_data_type_t type);
 
+/* Transfer data from one pmix_info_t to another - this is actually
+ * executed as a COPY operation, so the original data is not altered */
 PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
                                          const pmix_info_t *src);
 
+/* Constructing arrays of pmix_info_t for passing to an API can
+ * be tedious since the pmix_info_t itself is not a "list object".
+ * Since this is a very frequent operation, a set of APIs has been
+ * provided that opaquely manipulates internal PMIx list structures
+ * for this purpose. The user only need provide a void* pointer to
+ * act as the caddy for the internal list object.
+ */
+
+/* Initialize a list of pmix_info_t structures */
 PMIX_EXPORT void* PMIx_Info_list_start(void);
 
+/* Add data to a list of pmix_info_t structs. The "ptr" passed
+ * here is the pointer returned by PMIx_Info_list_start.
+ */
 PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
                                              const char *key,
                                              const void *value,
                                              pmix_data_type_t type);
 
+/* Transfer the data in an existing pmix_info_t struct to a list. This
+ * is executed as a COPY operation, so the original data is not altered.
+ * The "ptr" passed here is the pointer returned by PMIx_Info_list_start
+ */
 PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
                                               const pmix_info_t *info);
 
+/* Convert the constructed list of pmix_info_t structs to a pmix_data_array_t
+ * of pmix_info_t. Data on the list is COPIED to the array elements.
+ */
 PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
 
+/* Release all data on the list and destruct all internal tracking */
 PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
+
+#endif
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

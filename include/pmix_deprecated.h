@@ -195,6 +195,43 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) ***** DEPRECATED ***** Stop forwarding the specified channel(s)
 #define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) ***** DEPRECATED ***** notify the requestor upon launch of the child job and return
                                                                     //        its namespace in the event
+
+
+/* Bring some function definitions across from pmix.h for now-deprecated
+ * macros that utilize them. We have to do this as there are people who
+ * only included pmix_common.h if they were using macros but not APIs */
+
+PMIX_EXPORT pmix_status_t PMIx_Value_load(pmix_value_t *val,
+                                          const void *data,
+                                          pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
+                                            void **data,
+                                            size_t *sz);
+PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
+                                          const pmix_value_t *src);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
+                                         const char *key,
+                                         const void *data,
+                                         pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
+                                         const pmix_info_t *src);
+
+PMIX_EXPORT void* PMIx_Info_list_start(void);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
+                                             const char *key,
+                                             const void *value,
+                                             pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
+                                              const pmix_info_t *info);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
+
+PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
+
 #define PMIX_VALUE_LOAD(v, d, t) \
     PMIx_Value_load((v), (d), (t))
 
