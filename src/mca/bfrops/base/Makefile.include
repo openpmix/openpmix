@@ -13,6 +13,7 @@
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -30,6 +31,7 @@ sources += \
         base/bfrop_base_frame.c \
         base/bfrop_base_fns.c \
         base/bfrop_base_select.c \
+        base/bfrop_base_cmp.c \
         base/bfrop_base_copy.c \
         base/bfrop_base_pack.c \
         base/bfrop_base_print.c \

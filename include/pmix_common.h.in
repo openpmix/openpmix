@@ -1326,6 +1326,16 @@ typedef int pmix_status_t;
  * specific value as the value of the constant may change */
 #define PMIX_EXTERNAL_ERR_BASE                      -3000
 
+/* define the results values for comparisons */
+typedef enum {
+    PMIX_EQUAL = 0,
+    PMIX_VALUE1_GREATER,
+    PMIX_VALUE2_GREATER,
+    PMIX_VALUE_TYPE_DIFFERENT,
+    PMIX_VALUE_INCOMPATIBLE_OBJECTS,
+    PMIX_VALUE_COMPARISON_NOT_AVAIL
+} pmix_value_cmp_t;
+
 /****    PMIX DATA TYPES    ****/
 typedef uint16_t pmix_data_type_t;
 #define PMIX_UNDEF                       0
