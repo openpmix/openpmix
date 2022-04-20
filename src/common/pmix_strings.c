@@ -355,3 +355,23 @@ const char *PMIx_Device_type_string(pmix_device_type_t type)
         return "UNKNOWN";
     }
 }
+
+const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp)
+{
+    switch (cmp) {
+    case PMIX_EQUAL:
+        return "EQUAL";
+    case PMIX_VALUE1_GREATER:
+        return "VALUE1 GREATER";
+    case PMIX_VALUE2_GREATER:
+        return "VALUE2 GREATER";
+    case PMIX_VALUE_TYPE_DIFFERENT:
+        return "DIFFERENT TYPES";
+    case PMIX_VALUE_COMPARISON_NOT_AVAIL:
+        return "COMPARISON NOT AVAILABLE";
+    case PMIX_VALUE_INCOMPATIBLE_OBJECTS:
+        return "INCOMPATIBLE OBJECTS";
+    default:
+        return "UNKNOWN VALUE";
+    }
+}

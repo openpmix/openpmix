@@ -115,11 +115,14 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     /* see if we already have this key-value */
     hv = lookup_keyval(proc_data, kid);
     if (NULL != hv) {
+        pmix_output(0, "PREEXISTING ENTRY FOR %s", kin->key);
         /* yes we do - so just replace the current value if it changed */
         if (NULL != hv->value) {
             if (PMIX_EQUAL == pmix_bfrops_base_value_cmp(hv->value, kin->value)) {
+                pmix_output(0, "EQUAL VALUE - IGNORING");
                 return PMIX_SUCCESS;
             }
+            pmix_output(0, "VALUE UPDATING");
             PMIX_VALUE_RELEASE(hv->value);
         }
         /* eventually, we want to eliminate this copy */

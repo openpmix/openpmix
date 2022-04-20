@@ -1134,6 +1134,7 @@ PMIX_EXPORT const char* PMIx_Get_attribute_string(char *attribute);
 PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring);
 PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state);
 PMIX_EXPORT const char* PMIx_Device_type_string(pmix_device_type_t type);
+PMIX_EXPORT const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp);
 
 /* the following print statements return ALLOCATED strings
  * that the user must release when done */
@@ -1582,6 +1583,10 @@ PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
  */
 PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
+
+/* Compre the contents of two pmix_value_t structures */
+PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
+                                                pmix_value_t *v2);
 
 /* Load key/value data into a pmix_info_t struct. Note that this
  * effectively is a PMIX_LOAD_KEY operation to copy the key,

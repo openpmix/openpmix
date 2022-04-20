@@ -38,9 +38,6 @@
 
 BEGIN_C_DECLS
 
-/* define the results values for comparisons so we can change them in only one place */
-typedef enum { PMIX_EQUAL = 0, PMIX_VALUE1_GREATER, PMIX_VALUE2_GREATER } pmix_value_cmp_t;
-
 /* set the bfrops module */
 #define PMIX_BFROPS_SET_MODULE(r, mp, p, v)                              \
     do {                                                                 \
