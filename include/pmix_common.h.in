@@ -1328,7 +1328,7 @@ typedef int pmix_status_t;
 
 /* define the results values for comparisons */
 typedef enum {
-    PMIX_EQUAL = 0,
+    PMIX_EQUAL,
     PMIX_VALUE1_GREATER,
     PMIX_VALUE2_GREATER,
     PMIX_VALUE_TYPE_DIFFERENT,
