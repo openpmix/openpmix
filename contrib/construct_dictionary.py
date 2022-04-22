@@ -75,7 +75,7 @@ def harvest_constants(options, path, constants):
                         dstart = 3
                         datatype = "PMIX_POINTER"
                     elif tokens[0] == "PMIX_ATTR_UNDEF":
-                        constants.write(", .type = PMIX_POINTER,\n     .description = (char *[]){\"NONE\"}}")
+                        constants.write(", .type = PMIX_POINTER,\n     .description = (char *[]){\"NONE\", NULL}}")
                         continue
                     else:
                         dstart = 4
