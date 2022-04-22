@@ -69,13 +69,9 @@ PMIX_EXPORT pmix_status_t PMIx_Log(const pmix_info_t data[], size_t ndata,
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_plog_base_framework.framework_output, "%s pmix:log",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
@@ -115,37 +111,77 @@ static void localcbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
+void pmix_log_local_op(int sd, short args, void *cbdata_)
+{
+    pmix_shift_caddy_t *qd = (pmix_shift_caddy_t *) cbdata_;
+    pmix_info_t *data = qd->info;
+    size_t ndata = qd->ninfo;
+    pmix_info_t *directives = qd->directives;
+    size_t ndirs = qd->ndirs;
+    pmix_op_cbfunc_t cbfunc = qd->cbfunc.opcbfn;
+    void *cbdata = qd->cbdata;
+    pmix_proc_t *source = qd->proc;
+    pmix_status_t rc;
+    pmix_shift_caddy_t *cd;
+    size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* if no recorded source was found, then we must be it */
+    if (NULL == source) {
+        source = &pmix_globals.myid;
+        cd = PMIX_NEW(pmix_shift_caddy_t);
+        cd->cbfunc.opcbfn = cbfunc;
+        cd->cbdata = cbdata;
+        cd->ndirs = ndirs + 1;
+        PMIX_INFO_CREATE(cd->directives, cd->ndirs);
+        for (n = 0; n < ndirs; n++) {
+            PMIX_INFO_XFER(&cd->directives[n], (pmix_info_t *) &directives[n]);
+        }
+        PMIX_INFO_LOAD(&cd->directives[ndirs], PMIX_LOG_SOURCE, source, PMIX_PROC);
+        rc = pmix_plog.log(source, data, ndata, cd->directives, cd->ndirs, localcbfunc, cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_INFO_FREE(cd->directives, cd->ndirs);
+            PMIX_RELEASE(cd);
+        }
+    } else if (PMIX_CHECK_PROCID(source, &pmix_globals.myid)) {
+        /* if I am the recorded source, then this is a re-submission of
+         * something that got "upcalled" by a prior call. In this case,
+         * we return a "not supported" error as clearly we couldn't
+         * handle it, and neither could our host */
+        rc = PMIX_ERR_NOT_SUPPORTED;
+    } else {
+        /* call down to process the request - the various components
+         * will thread shift as required */
+        rc = pmix_plog.log(source, data, ndata, directives, ndirs, cbfunc, cbdata);
+    }
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
                                       const pmix_info_t directives[], size_t ndirs,
                                       pmix_op_cbfunc_t cbfunc, void *cbdata)
 
 {
-    pmix_shift_caddy_t *cd;
     pmix_cmd_t cmd = PMIX_LOG_CMD;
     pmix_buffer_t *msg;
-    pmix_status_t rc;
-    size_t n;
+    pmix_status_t rc = PMIX_SUCCESS;
     time_t timestamp = 0;
     pmix_proc_t *source = NULL;
-
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    pmix_shift_caddy_t *cd;
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:log non-blocking");
 
     if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
 
     if (0 == ndata || NULL == data) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_BAD_PARAM;
     }
 
     /* check the directives - if they requested a timestamp, then
      * get the time, also look for a source */
     if (NULL != directives) {
-        for (n = 0; n < ndirs; n++) {
+        for (size_t n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_LOG_GENERATE_TIMESTAMP, PMIX_MAX_KEYLEN)) {
                 if (PMIX_INFO_TRUE(&directives[n])) {
                     /* pickup the timestamp */
@@ -162,10 +198,8 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
     if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* if we aren't connected, don't attempt to send */
         if (!pmix_globals.connected) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_UNREACH;
         }
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
 
         /* if we are not a server, then relay this request to the server */
         cd = PMIX_NEW(pmix_shift_caddy_t);
@@ -234,38 +268,16 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         }
         return rc;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    /* if no recorded source was found, then we must be it */
-    if (NULL == source) {
-        source = &pmix_globals.myid;
-        cd = PMIX_NEW(pmix_shift_caddy_t);
-        cd->cbfunc.opcbfn = cbfunc;
-        cd->cbdata = cbdata;
-        cd->ndirs = ndirs + 1;
-        PMIX_INFO_CREATE(cd->directives, cd->ndirs);
-        for (n = 0; n < ndirs; n++) {
-            PMIX_INFO_XFER(&cd->directives[n], (pmix_info_t *) &directives[n]);
-        }
-        PMIX_INFO_LOAD(&cd->directives[ndirs], PMIX_LOG_SOURCE, source, PMIX_PROC);
-        /* call down to process the request - the various components
-         * will thread shift as required */
-        rc = pmix_plog.log(source, data, ndata, cd->directives, cd->ndirs, localcbfunc, cd);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_INFO_FREE(cd->directives, cd->ndirs);
-            PMIX_RELEASE(cd);
-        }
-    } else if (PMIX_CHECK_PROCID(source, &pmix_globals.myid)) {
-        /* if I am the recorded source, then this is a re-submission of
-         * something that got "upcalled" by a prior call. In this case,
-         * we return a "not supported" error as clearly we couldn't
-         * handle it, and neither could our host */
-        rc = PMIX_ERR_NOT_SUPPORTED;
-    } else {
-        /* call down to process the request - the various components
-         * will thread shift as required */
-        rc = pmix_plog.log(source, data, ndata, directives, ndirs, cbfunc, cbdata);
-    }
+    cd = PMIX_NEW(pmix_shift_caddy_t);
+    cd->info = (pmix_info_t *) data;
+    cd->ninfo = ndata;
+    cd->directives = (pmix_info_t *) directives;
+    cd->ndirs = ndirs;
+    cd->cbfunc.opcbfn = cbfunc;
+    cd->cbdata = cbdata;
+    cd->proc = source;
+    PMIX_THREADSHIFT(cd, pmix_log_local_op);
 
     return rc;
 }
