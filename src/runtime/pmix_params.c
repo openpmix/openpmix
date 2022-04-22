@@ -114,6 +114,7 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &pmix_suppress_missing_data_warning);
 
+
     /****   CLIENT: VERBOSE OUTPUT PARAMS   ****/
     (void) pmix_mca_base_var_register("pmix", "pmix", "client", "get_verbose",
                                       "Verbosity for client get operations",

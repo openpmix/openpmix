@@ -1166,8 +1166,14 @@ static void log_fn(const pmix_proc_t *client, const pmix_info_t data[], size_t n
                    void *cbdata)
 {
     mylog_t *lg = (mylog_t *) malloc(sizeof(mylog_t));
+    size_t n;
     PMIX_HIDE_UNUSED_PARAMS(client, data, ndata, directives, ndirs);
 
+    for (n=0; n < ndata; n++) {
+        if (PMIX_STRING == data[n].value.type) {
+            fprintf(stderr, "%sLOG: %s\n", PMIX_NAME_PRINT(client), data[n].value.data.string);
+        }
+    }
     lg->cbfunc = cbfunc;
     lg->cbdata = cbdata;
     SIMPTEST_THREADSHIFT(lg, foobar);

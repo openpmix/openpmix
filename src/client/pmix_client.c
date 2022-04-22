@@ -78,6 +78,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
+#include "src/util/pmix_show_help.h"
 
 #include "pmix_client_ops.h"
 
@@ -860,6 +861,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
+    // enable show_help subsystem
+    pmix_show_help_enabled = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* look for a debugger attach key */

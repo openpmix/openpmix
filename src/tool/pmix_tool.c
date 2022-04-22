@@ -943,6 +943,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         }
         PMIX_DESTRUCT(&cb);
     }
+    // enable show_help subsystem
+    pmix_show_help_enabled = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are acting as a server, then start listening */

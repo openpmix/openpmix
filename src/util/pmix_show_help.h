@@ -172,6 +172,10 @@ PMIX_EXPORT char *pmix_show_help_vstring(const char *filename, const char *topic
  */
 PMIX_EXPORT int pmix_show_help_add_dir(const char *directory);
 
+PMIX_EXPORT int pmix_help_check_dups(const char *filename, const char *topic);
+
+PMIX_EXPORT extern bool pmix_show_help_enabled;
+
 END_C_DECLS
 
 #endif

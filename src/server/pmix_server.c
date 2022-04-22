@@ -837,6 +837,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     }
 
     ++pmix_globals.init_cntr;
+    // enable show_help subsystem
+    pmix_show_help_enabled = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* register a handler to catch/aggregate PMIX_EVENT_WAITING_FOR_NOTIFY
