@@ -296,6 +296,7 @@ static void scon(pmix_shift_caddy_t *p)
     p->codes = NULL;
     p->ncodes = 0;
     p->peer = NULL;
+    p->proc = NULL;
     p->pname.nspace = NULL;
     p->pname.rank = PMIX_RANK_UNDEF;
     p->data = NULL;
