@@ -1617,6 +1617,7 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
     pmix_rank_t *rkptr;
     pmix_nspace_t *nsptr;
     pmix_proc_t *procptr;
+    pmix_info_t *iptr;
     pmix_byte_object_t *boptr;
     pmix_persistence_t *prstptr;
     pmix_scope_t *scptr;
@@ -1747,6 +1748,10 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
             case PMIX_PROC:
                 procptr = (pmix_proc_t*)src->array;
                 rc = pmix_bfrops_base_print_proc(&tp, NULL, &procptr[n], PMIX_PROC);
+                break;
+            case PMIX_INFO:
+                iptr = (pmix_info_t*)src->array;
+                rc = pmix_bfrops_base_print_info(&tp, NULL, &iptr[n], PMIX_INFO);
                 break;
             case PMIX_BYTE_OBJECT:
                 boptr = (pmix_byte_object_t*)src->array;

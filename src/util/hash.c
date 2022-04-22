@@ -27,6 +27,7 @@
 #include "src/include/pmix_stdint.h"
 
 #include <string.h>
+#include "pmix.h"
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_pointer_array.h"
@@ -34,6 +35,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 
 #include "src/util/hash.h"
@@ -87,7 +89,8 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     pmix_status_t rc;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
-                        "HASH:STORE rank %d key %s", rank,
+                        "HASH:STORE rank %s key %s",
+                        PMIX_RANK_PRINT(rank),
                         (NULL == kin) ? "NULL KVAL" : kin->key);
 
     if (NULL == kin) {
@@ -101,7 +104,8 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     p = pmix_hash_lookup_key(UINT32_MAX, kin->key);
     if (NULL == p) {
         /* we don't know this key */
-        pmix_output(0, "UNKNOWN KEY: %s", kin->key);
+        pmix_output_verbose(10, pmix_globals.debug_output,
+                            "UNKNOWN KEY: %s", kin->key);
         return PMIX_ERR_BAD_PARAM;
     }
     kid = p->index;
@@ -115,14 +119,26 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     /* see if we already have this key-value */
     hv = lookup_keyval(proc_data, kid);
     if (NULL != hv) {
-        pmix_output(0, "PREEXISTING ENTRY FOR %s", kin->key);
+        if (9 < pmix_output_get_verbosity(pmix_globals.debug_output)) {
+            char *tmp;
+            tmp = PMIx_Value_string(hv->value);
+            pmix_output(0, "PREEXISTING ENTRY FOR PROC %s KEY %s: %s",
+                        PMIX_RANK_PRINT(rank), kin->key, tmp);
+            free(tmp);
+        }
         /* yes we do - so just replace the current value if it changed */
         if (NULL != hv->value) {
             if (PMIX_EQUAL == pmix_bfrops_base_value_cmp(hv->value, kin->value)) {
-                pmix_output(0, "EQUAL VALUE - IGNORING");
+                pmix_output_verbose(10, pmix_globals.debug_output,
+                                    "EQUAL VALUE - IGNORING");
                 return PMIX_SUCCESS;
             }
-            pmix_output(0, "VALUE UPDATING");
+            if (9 < pmix_output_get_verbosity(pmix_globals.debug_output)) {
+                char *tmp;
+                tmp = PMIx_Value_string(kin->value);
+                pmix_output(0, "VALUE UPDATING TO: %s", tmp);
+                free(tmp);
+            }
             PMIX_VALUE_RELEASE(hv->value);
         }
         /* eventually, we want to eliminate this copy */
@@ -167,7 +183,8 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     pmix_value_t *val;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
-                        "HASH:FETCH rank %d key %s", rank,
+                        "HASH:FETCH rank %s key %s",
+                        PMIX_RANK_PRINT(rank),
                         (NULL == key) ? "NULL" : key);
 
     id = rank;
@@ -182,8 +199,9 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                                                   (void **) &node);
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(10, pmix_globals.debug_output,
-                                "HASH:FETCH[%s:%d] proc data for rank %d not found", __func__,
-                                __LINE__, rank);
+                                "HASH:FETCH[%s:%d] proc data for rank %s not found",
+                                __func__, __LINE__,
+                                PMIX_RANK_PRINT(rank));
             return PMIX_ERR_NOT_FOUND;
         }
     }
@@ -205,8 +223,9 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
         proc_data = lookup_proc(table, id, false);
         if (NULL == proc_data) {
             pmix_output_verbose(10, pmix_globals.debug_output,
-                                "HASH:FETCH[%s:%d] proc data for rank %d not found", __func__,
-                                __LINE__, rank);
+                                "HASH:FETCH[%s:%d] proc data for rank %s not found",
+                                __func__, __LINE__,
+                                PMIX_RANK_PRINT(rank));
             return PMIX_ERR_NOT_FOUND;
         }
 

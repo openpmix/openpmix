@@ -200,6 +200,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        a local system-level PMIx server
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first
 #define PMIX_SERVER_URI                     "pmix.srvr.uri"         // (char*) URI of server to be contacted
+#define PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
 #define PMIX_SERVER_HOSTNAME                "pmix.srvr.host"        // (char*) node where target server is located
 #define PMIX_CONNECT_MAX_RETRIES            "pmix.tool.mretries"    // (uint32_t) maximum number of times to try to connect to server
 #define PMIX_CONNECT_RETRY_DELAY            "pmix.tool.retry"       // (uint32_t) time in seconds between connection attempts
