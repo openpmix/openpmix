@@ -29,13 +29,117 @@
 #include <string.h>
 
 #include "include/pmix_common.h"
+#include "pmix.h"
+#include "src/include/pmix_globals.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/util/argv.h"
+#include "src/util/error.h"
 #include "src/util/os_path.h"
 #include "src/util/output.h"
 #include "src/util/printf.h"
 #include "src/util/show_help.h"
 #include "src/util/showhelp/showhelp_lex.h"
+
+bool pmix_show_help_enabled = false;
+static time_t show_help_time_last_displayed = 0;
+static bool show_help_timer_set = false;
+static pmix_event_t show_help_timer_event;
+static int output_stream = -1;
+
+/* How long to wait between displaying duplicate show_help notices */
+static struct timeval show_help_interval = {5, 0};
+
+typedef struct pmix_log_info_t {
+
+    pmix_info_t *info;
+    pmix_info_t *dirs;
+    char *msg;
+
+} pmix_log_info_t;
+
+static void show_help_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
+    PMIX_INFO_FREE(cd->dirs, cd->ndirs);
+    PMIX_INFO_FREE(cd->info, cd->ninfo);
+    PMIX_RELEASE(cd);
+}
+
+static void local_delivery(const char *file, const char *topic, char *msg)
+{
+    pmix_shift_caddy_t *cd;
+
+    if (!pmix_show_help_enabled) {
+        /* the show help subsystem has not yet been enabled,
+         * likely because we haven't gotten far enough thru
+         * client/server/tool "init". In this case, we can
+         * only output the help locally as we don't have
+         * access to anything else */
+        fprintf(stderr, "%s", msg);
+        return;
+    }
+
+    cd = PMIX_NEW(pmix_shift_caddy_t);
+    cd->ninfo = 1;
+    PMIX_INFO_CREATE(cd->info, cd->ninfo);
+    PMIX_INFO_LOAD(&cd->info[0], PMIX_LOG_STDERR, msg, PMIX_STRING);
+    cd->ndirs = 2;
+    PMIX_INFO_CREATE(cd->directives, cd->ndirs);
+    PMIX_INFO_LOAD(&cd->directives[0], PMIX_LOG_KEY, file, PMIX_STRING);
+    PMIX_INFO_LOAD(&cd->directives[1], PMIX_LOG_VAL, topic, PMIX_STRING);
+    cd->cbfunc.opcbfn = show_help_cbfunc;
+    cd->cbdata = cd;
+    cd->proc = NULL;
+    PMIX_THREADSHIFT(cd, pmix_log_local_op);
+}
+
+
+/* List items for holding (filename, topic) tuples */
+typedef struct {
+    pmix_list_item_t super;
+    /* The filename */
+    char *tli_filename;
+    /* The topic */
+    char *tli_topic;
+    /* List of process names that have displayed this (filename, topic) */
+    pmix_list_t tli_processes;
+    /* Time this message was displayed */
+    time_t tli_time_displayed;
+    /* Count of processes since last display (i.e., "new" processes
+       that have showed this message that have not yet been output) */
+    int tli_count_since_last_display;
+    /* Do we want to display these? */
+    bool tli_display;
+} tuple_list_item_t;
+
+static void tuple_list_item_constructor(tuple_list_item_t *obj)
+{
+    obj->tli_filename = NULL;
+    obj->tli_topic = NULL;
+    PMIX_CONSTRUCT(&(obj->tli_processes), pmix_list_t);
+    obj->tli_time_displayed = time(NULL);
+    obj->tli_count_since_last_display = 0;
+    obj->tli_display = true;
+}
+
+static void tuple_list_item_destructor(tuple_list_item_t *obj)
+{
+    if (NULL != obj->tli_filename) {
+        free(obj->tli_filename);
+    }
+    if (NULL != obj->tli_topic) {
+        free(obj->tli_topic);
+    }
+    PMIX_LIST_DESTRUCT(&(obj->tli_processes));
+}
+static PMIX_CLASS_INSTANCE(tuple_list_item_t, pmix_list_item_t, tuple_list_item_constructor,
+                           tuple_list_item_destructor);
+
+/* List of (filename, topic) tuples that have already been displayed */
+static pmix_list_t abd_tuples;
+
 
 /*
  * Private variables
@@ -43,8 +147,180 @@
 static const char *default_filename = "help-messages";
 static const char *dash_line
     = "--------------------------------------------------------------------------\n";
-static int output_stream = -1;
 static char **search_dirs = NULL;
+
+static int match(const char *a, const char *b)
+{
+    int rc = PMIX_ERROR; 
+    char *p1, *p2, *tmp1 = NULL, *tmp2 = NULL;
+    size_t min;
+
+    /* Check straight string match first */
+    if (0 == strcmp(a, b))
+        return PMIX_SUCCESS;
+
+    if (NULL != strchr(a, '*') || NULL != strchr(b, '*')) {
+        tmp1 = strdup(a); 
+        if (NULL == tmp1) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        tmp2 = strdup(b); 
+        if (NULL == tmp2) {
+            free(tmp1);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        p1 = strchr(tmp1, '*');
+        p2 = strchr(tmp2, '*');
+
+        if (NULL != p1) {
+            *p1 = '\0';
+        }
+        if (NULL != p2) {
+            *p2 = '\0';
+        }
+        min = strlen(tmp1);
+        if (strlen(tmp2) < min) {
+            min = strlen(tmp2);
+        }
+        if (0 == min || 0 == strncmp(tmp1, tmp2, min)) {
+            rc = PMIX_SUCCESS;
+        }
+        free(tmp1);
+        free(tmp2);
+        return rc;
+    }
+
+    /* No match */
+    return PMIX_ERROR;
+}
+
+
+static int pmix_get_tli(const char *filename, const char *topic, tuple_list_item_t **tli_)
+{
+    tuple_list_item_t *tli = *tli_;
+
+    /* Search the list for a duplicate. */
+    PMIX_LIST_FOREACH(tli, &abd_tuples, tuple_list_item_t)
+    {
+        if (PMIX_SUCCESS == match(tli->tli_filename, filename) &&
+            PMIX_SUCCESS == match(tli->tli_topic, topic)) {
+            *tli_ = tli;
+            return PMIX_SUCCESS;
+        }
+    }
+
+    /* Nope, we didn't find it -- make a new one */
+    tli = PMIX_NEW(tuple_list_item_t);
+    if (NULL == tli) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    tli->tli_filename = strdup(filename);
+    tli->tli_topic = strdup(topic);
+    pmix_list_append(&abd_tuples, &(tli->super));
+    *tli_ = tli;
+
+    return PMIX_ERR_NOT_FOUND;
+}
+
+static void pmix_show_accumulated_duplicates(int fd, short event, void *context)
+{
+    time_t now = time(NULL);
+    tuple_list_item_t *tli;
+    char *tmp;
+    PMIX_HIDE_UNUSED_PARAMS(fd, event, context);
+
+    /* Loop through all the messages we've displayed and see if any
+       processes have sent duplicates that have not yet been displayed
+       yet */
+    PMIX_LIST_FOREACH(tli, &abd_tuples, tuple_list_item_t)
+    {
+        if (tli->tli_display && tli->tli_count_since_last_display > 0) {
+            static bool first = true;
+            pmix_asprintf(&tmp, "%d more process%s sent help message %s / %s\n",
+                          tli->tli_count_since_last_display,
+                          (tli->tli_count_since_last_display > 1) ? "es have" : " has",
+                          tli->tli_filename, tli->tli_topic);
+            tli->tli_time_displayed = time(NULL);
+            char stamp[50] = {0};
+            strftime(stamp, 50, "%Y-%m-%d %H:%M:%S", localtime(&tli->tli_time_displayed));
+            char *buf;
+            pmix_asprintf(&buf, "%s-%s", tli->tli_filename, stamp);
+            local_delivery(buf, tli->tli_topic, tmp);
+            free(buf);
+            tli->tli_count_since_last_display = 0;
+
+            if (first) {
+                pmix_asprintf(&tmp, "%s", "Set MCA parameter \"base_help_aggregate\" to 0 to see all help / error messages\n");
+                local_delivery(tli->tli_filename, tli->tli_topic, tmp);
+                first = false;
+            }
+        }
+    }
+
+    show_help_time_last_displayed = now;
+    show_help_timer_set = false;
+}
+
+
+int pmix_help_check_dups(const char *filename, const char *topic)
+{
+
+    tuple_list_item_t *tli;
+    time_t now = time(NULL);
+    int rc;
+
+    rc = pmix_get_tli(filename, topic, &tli);
+    if (PMIX_SUCCESS == rc) {
+        /* Already  displayed!
+           But do we want to print anything?  That's complicated.
+           We always show the first message of a given (filename,
+           topic) tuple as soon as it arrives.  But we don't want to
+           show duplicate notices often, because we could get overrun
+           with them.  So we want to gather them up and say "We got N
+           duplicates" every once in a while.
+
+           And keep in mind that at termination, we'll unconditionally
+           show all accumulated duplicate notices.
+
+           A simple scheme is as follows:
+              - when the first of a (filename, topic) tuple arrives
+              - print the message
+              - if a timer is not set, set T=now
+              - when a duplicate (filename, topic) tuple arrives
+              - if now>(T+5) and timer is not set (due to
+                non-pre-emptiveness of our libevent, a timer *could* be
+                set!)
+              - print all accumulated duplicates
+              - reset T=now
+              - else if a timer was not set, set the timer for T+5
+              - else if a timer was set, do nothing (just wait)
+              - set T=now when the timer expires
+        */
+        ++tli->tli_count_since_last_display;
+        if (now > show_help_time_last_displayed + 5 && !show_help_timer_set) {
+            pmix_show_accumulated_duplicates(0, 0, NULL);
+        }
+        if (!show_help_timer_set) {
+            pmix_event_evtimer_set(pmix_globals.evbase, &show_help_timer_event,
+                                   pmix_show_accumulated_duplicates, NULL);
+            pmix_event_evtimer_add(&show_help_timer_event, &show_help_interval);
+            show_help_timer_set = true;
+        }
+    }
+    /* Not already displayed */
+    else if (PMIX_ERR_NOT_FOUND == rc) {
+        if (!show_help_timer_set) {
+            show_help_time_last_displayed = now;
+        }
+    }
+    else {
+        /* Some other error occurred */
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    return rc;
+}
+
 
 /*
  * Local functions
@@ -56,6 +332,7 @@ int pmix_show_help_init(void)
     PMIX_CONSTRUCT(&lds, pmix_output_stream_t);
     lds.lds_want_stderr = true;
     output_stream = pmix_output_open(&lds);
+    PMIX_CONSTRUCT(&abd_tuples, pmix_list_t);
 
     pmix_argv_append_nosize(&search_dirs, pmix_pinstall_dirs.pmixdatadir);
 
@@ -73,6 +350,7 @@ int pmix_show_help_finalize(void)
         search_dirs = NULL;
     };
 
+    PMIX_LIST_DESTRUCT(&abd_tuples);
     return PMIX_SUCCESS;
 }
 
@@ -178,10 +456,10 @@ static int open_file(const char *base, const char *topic)
 
     /* If we still couldn't open it, then something is wrong */
     if (NULL == pmix_showhelp_yyin) {
-        pmix_output(output_stream,
-                    "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
-                    "the help file:\n    %s.  Sorry!\n%s",
-                    dash_line, topic, err_msg, dash_line);
+        char *msg;
+        pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
+                    "the help file:\n    %s.  Sorry!\n%s", dash_line, topic, err_msg, dash_line);
+        local_delivery(err_msg, topic, msg);
         free(err_msg);
         return PMIX_ERR_NOT_FOUND;
     }
@@ -229,13 +507,13 @@ static int find_topic(const char *base, const char *topic)
         case PMIX_SHOW_HELP_PARSE_MESSAGE:
             break;
 
-        case PMIX_SHOW_HELP_PARSE_DONE:
-            pmix_output(output_stream,
-                        "%sSorry!  You were supposed to get help about:\n    %s\nfrom the file:\n  "
-                        "  %s\nBut I couldn't find that topic in the file.  Sorry!\n%s",
-                        dash_line, topic, base, dash_line);
+        case PMIX_SHOW_HELP_PARSE_DONE: {
+            char *msg;
+            pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
+                    "the help file:\n    %s.  Sorry!\n%s", dash_line, topic, base, dash_line);
+            local_delivery(base, topic, msg);
             return PMIX_ERR_NOT_FOUND;
-
+        }
         default:
             break;
         }
@@ -341,8 +619,7 @@ int pmix_show_vhelp(const char *filename, const char *topic, int want_error_head
 
     /* If we got a single string, output it with formatting */
     if (NULL != output) {
-        pmix_output(output_stream, "%s", output);
-        free(output);
+        local_delivery(filename, topic, output);
     }
 
     return (NULL == output) ? PMIX_ERROR : PMIX_SUCCESS;
@@ -362,8 +639,7 @@ int pmix_show_help(const char *filename, const char *topic, int want_error_heade
         return PMIX_SUCCESS;
     }
 
-    fprintf(stderr, "%s\n", output);
-    free(output);
+    local_delivery(filename, topic, output);
     return PMIX_SUCCESS;
 }
 

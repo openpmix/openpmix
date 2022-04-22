@@ -18,6 +18,7 @@
 #include "src/class/pmix_list.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/error.h"
+#include "src/util/show_help.h"
 
 #include "src/mca/plog/base/base.h"
 
@@ -77,6 +78,8 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
     pmix_mycount_t *mycount;
     pmix_list_t channels;
     bool all_complete = true;
+    char *key = NULL, *val = NULL;
+    bool agg = true;  // default to aggregating show_help messages
 
     if (!pmix_plog_globals.initialized) {
         return PMIX_ERR_INIT;
@@ -108,7 +111,24 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
         for (n = 0; n < ndirs; n++) {
             if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_ONCE)) {
                 logonce = PMIX_INFO_TRUE(&directives[n]);
-                break;
+            }
+            else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_AGG)) {
+                    agg = PMIX_INFO_TRUE(&directives[n]);
+            }
+            else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_KEY)) {
+                key = directives[n].value.data.string;
+            }
+            else if (PMIX_CHECK_KEY(&directives[n], PMIX_LOG_VAL)) {
+                val = directives[n].value.data.string;
+            }
+        }
+        if (agg && NULL != key && NULL != val) {
+            if (PMIX_SUCCESS == pmix_help_check_dups(key, val)) {
+                for (k = 0; k < ndata; k++) {
+                    // This is a dup and has been tracked as such,
+                    // mark this as complete so we don't log it again.
+                    PMIX_INFO_OP_COMPLETED(&data[k]);
+                }
             }
         }
     }
@@ -162,7 +182,10 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
         PMIX_DESTRUCT(&channels);
         PMIX_RELEASE(mycount);
         PMIX_RELEASE_THREAD(&pmix_plog_globals.lock);
-        return PMIX_SUCCESS;
+
+        // Don't return PMIX_SUCCESS here, or else the called
+        // will expect the cbfunc to be executed (which it won't be.).
+        return PMIX_OPERATION_SUCCEEDED;
     }
     PMIX_ACQUIRE_THREAD(&mycount->lock);
     PMIX_LIST_FOREACH (active, &channels, pmix_plog_base_active_module_t) {
