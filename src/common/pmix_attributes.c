@@ -62,12 +62,12 @@ static PMIX_CLASS_INSTANCE(pmix_attribute_trk_t, pmix_list_item_t, atrkcon, atrk
 /* define a couple of internal attributes */
 static pmix_regattr_input_t internals[] = {
     {.index = PMIX_INDEX_BOUNDARY, .name = "PMIX_BFROPS_MODULE", .string = "pmix.bfrops.mod", .type = PMIX_STRING,
-        .description = (char *[]){"name of bfrops plugin in-use by a given nspace"}},
+        .description = (char *[]){"name of bfrops plugin in-use by a given nspace", NULL}},
 
     {.index = PMIX_INDEX_BOUNDARY+1, .name = "PMIX_PNET_SETUP_APP", .string = "pmix.pnet.setapp", .type = PMIX_BYTE_OBJECT,
             .description = (char *[]){"blob containing info to be given to pnet framework on remote nodes", NULL}},
 
-    {.index = UINT32_MAX, .name = "", .string = "", .type = PMIX_POINTER, .description = (char *[]){"NONE"}}
+    {.index = UINT32_MAX, .name = "", .string = "", .type = PMIX_POINTER, .description = (char *[]){"NONE", NULL}}
 };
 
 PMIX_EXPORT void pmix_init_registered_attrs(void)
