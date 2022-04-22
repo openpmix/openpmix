@@ -358,7 +358,9 @@ typedef struct {
     pmix_proc_t *targets;
     size_t ntargets;
     pmix_info_t *info;
+    pmix_info_t *dirs;
     size_t ninfo;
+    size_t ndirs;
     pmix_list_t results;
     size_t nreplies;
     size_t nrequests;
@@ -431,6 +433,7 @@ typedef struct {
     pmix_status_t *codes;
     size_t ncodes;
     pmix_name_t pname;
+    pmix_proc_t *proc;
     pmix_peer_t *peer;
     const char *data;
     size_t ndata;
@@ -623,6 +626,8 @@ PMIX_EXPORT pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
+
+PMIX_EXPORT void pmix_log_local_op(int sd, short args, void *cbdata_);
 
 static inline bool pmix_check_node_info(const char *key)
 {
