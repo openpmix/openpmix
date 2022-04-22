@@ -320,7 +320,7 @@ static pmix_regattr_input_t dictionary[] = {
 
     # mark the end of the array
     constants.write(""",\n
-    {.index = UINT32_MAX, .name = "", .string = "", .type = PMIX_POINTER, .description = (char *[]){"NONE"}}
+    {.index = UINT32_MAX, .name = "", .string = "", .type = PMIX_POINTER, .description = (char *[]){"NONE", NULL}}
 };
 """)
     constants.write("\n#define PMIX_INDEX_BOUNDARY  " + str(index) + "\n")

@@ -57,7 +57,9 @@ nobase_pmix_HEADERS = $(headers)
 # targets.
 BUILT_SOURCES = dictionary.h
 
-dictionary.h: $(top_srcdir)/include/pmix_common.h.in $(top_srcdir)/include/pmix_deprecated.h
+dictionary.h: $(top_srcdir)/include/pmix_common.h.in \
+              $(top_srcdir)/include/pmix_deprecated.h \
+              $(top_srcdir)/src/common/pmix_attributes.c
 	$(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
 
 MAINTAINERCLEANFILES = dictionary.h
