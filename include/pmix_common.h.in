@@ -672,6 +672,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_LOG_XML_OUTPUT                 "pmix.log.xml"          // (bool) print the output stream in xml format
 #define PMIX_LOG_ONCE                       "pmix.log.once"         // (bool) only log this once with whichever channel can first support it
 #define PMIX_LOG_MSG                        "pmix.log.msg"          // (pmix_byte_object_t) message blob to be sent somewhere
+#define PMIX_LOG_KEY                        "pmix.log.key"          // (char*) key to a logging message
+#define PMIX_LOG_VAL                        "pmix.log.val"          // (char*) value to a logging message
+#define PMIX_LOG_AGG                        "pmix.log.agg"          // (bool) Whether to aggregate and prevent duplicate logging messages
+                                                                    //        based on key value pairs.
 
 #define PMIX_LOG_EMAIL                      "pmix.log.email"        // (pmix_data_array_t*) log via email based on array of pmix_info_t
                                                                     //         containing directives
