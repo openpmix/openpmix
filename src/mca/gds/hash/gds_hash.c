@@ -210,8 +210,8 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
                 goto release;
             }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_INFO_ARRAY)) {
-            if (PMIX_SUCCESS
-                != (rc = pmix_gds_hash_process_job_array(&info[n], trk, &flags, &procs, &nodes))) {
+            rc = pmix_gds_hash_process_job_array(&info[n], trk, &flags, &procs, &nodes);
+            if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
@@ -221,8 +221,8 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
                 goto release;
             }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO_ARRAY)) {
-            if (PMIX_SUCCESS
-                != (rc = pmix_gds_hash_process_node_array(&info[n].value, &trk->nodeinfo))) {
+            rc = pmix_gds_hash_process_node_array(&info[n].value, &trk->nodeinfo);
+            if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
@@ -234,14 +234,14 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
             }
             /* parse the regex to get the argv array of node names */
             if (PMIX_REGEX == info[n].value.type) {
-                if (PMIX_SUCCESS
-                    != (rc = pmix_preg.parse_nodes(info[n].value.data.bo.bytes, &nodes))) {
+                rc = pmix_preg.parse_nodes(info[n].value.data.bo.bytes, &nodes);
+                if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
                 }
             } else if (PMIX_STRING == info[n].value.type) {
-                if (PMIX_SUCCESS
-                    != (rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes))) {
+                rc = pmix_preg.parse_nodes(info[n].value.data.string, &nodes);
+                if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
                 }
@@ -365,10 +365,10 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
                 pmix_pmdl.setup_client(trk->nptr, rank, kp2->value->data.uint32);
                 PMIX_RELEASE(kp2); // maintain acctg
             }
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_NAME)
-                   || PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL)
-                   || PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_VERSION)
-                   || PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_NAME) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_MODEL_LIBRARY_VERSION) ||
+                   PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace(trk->nptr, &info[n]);
         } else if (pmix_check_node_info(info[n].key)) {
@@ -464,9 +464,9 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
                 flags |= PMIX_HASH_NUM_NODES;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_MAX_PROCS)) {
                 flags |= PMIX_HASH_MAX_PROCS;
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_ON_EXEC)
-                       || PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_IN_INIT)
-                       || PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_IN_APP)) {
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_ON_EXEC) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_IN_INIT) ||
+                       PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_IN_APP)) {
                 if (PMIX_RANK_WILDCARD == info[n].value.data.rank) {
                     nptr->num_waiting = nptr->nlocalprocs;
                 } else {
@@ -559,8 +559,10 @@ static pmix_status_t register_info(pmix_peer_t *peer, pmix_namespace_t *ns, pmix
         return rc;
     }
 
-    if (NULL == val || NULL == val->data.darray || PMIX_INFO != val->data.darray->type
-        || 0 == val->data.darray->size) {
+    if (NULL == val ||
+        NULL == val->data.darray ||
+        PMIX_INFO != val->data.darray->type ||
+        0 == val->data.darray->size) {
         return PMIX_ERR_NOT_FOUND;
     }
     info = (pmix_info_t *) val->data.darray->array;
@@ -757,18 +759,19 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_kval_t *kptr, *kp2, *kp3, kv;
     int32_t cnt;
-    size_t nnodes, len;
+    size_t nnodes, len, n, sz;
     uint32_t i, j;
     char **procs = NULL;
     uint8_t *tmp;
     pmix_byte_object_t *bo;
     pmix_buffer_t buf2;
-    int rank;
+    pmix_rank_t rank;
     pmix_job_t *trk;
     pmix_hash_table_t *ht;
     char **nodelist = NULL;
     pmix_nodeinfo_t *nd;
     pmix_namespace_t *ns, *nptr;
+    pmix_info_t *iptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%u] pmix:gds:hash store job info for nspace %s",
@@ -813,8 +816,8 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
             PMIX_LOAD_BUFFER(pmix_client_globals.myserver, &buf2, bo->bytes, bo->size);
             /* start by unpacking the rank */
             cnt = 1;
-            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &buf2, &rank, &cnt,
-                               PMIX_PROC_RANK);
+            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &buf2,
+                               &rank, &cnt, PMIX_PROC_RANK);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kptr);
@@ -980,11 +983,41 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(kptr, PMIX_NODE_INFO_ARRAY)) {
-            if (PMIX_SUCCESS
-                != (rc = pmix_gds_hash_process_node_array(kptr->value, &trk->nodeinfo))) {
+            rc = pmix_gds_hash_process_node_array(kptr->value, &trk->nodeinfo);
+            if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kptr);
                 return rc;
+            }
+        } else if (PMIX_CHECK_KEY(kptr, PMIX_PROC_DATA)) {
+            iptr = (pmix_info_t*)kptr->value->data.darray->array;
+            sz = kptr->value->data.darray->size;
+            /* the first position is the rank */
+            if (PMIX_CHECK_KEY(&iptr[0], PMIX_RANK)) {
+                rank = iptr[0].value.data.rank;
+            } else {
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                PMIX_RELEASE(kptr);
+                return rc;
+            }
+            for (n=1; n < sz; n++) {
+                PMIX_CONSTRUCT(&kv, pmix_kval_t);
+                kv.key = strdup(iptr[n].key);
+                kv.value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+                PMIX_VALUE_XFER(rc, kv.value, &iptr[n].value);
+                rc = pmix_hash_store(ht, rank, &kv);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kptr);
+                    PMIX_DESTRUCT(&kv);
+                    return rc;
+                }
+                PMIX_DESTRUCT(&kv);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kptr);
+                    return rc;
+                }
             }
         } else {
             /* if the value contains a string that is longer than the

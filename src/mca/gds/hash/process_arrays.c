@@ -333,10 +333,10 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
                 }
             }
         }
-        if (PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_NAME)
-            || PMIX_CHECK_KEY(kp2, PMIX_PROGRAMMING_MODEL)
-            || PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION)
-            || PMIX_CHECK_KEY(kp2, PMIX_PERSONALITY)) {
+        if (PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_NAME) ||
+            PMIX_CHECK_KEY(kp2, PMIX_PROGRAMMING_MODEL) ||
+            PMIX_CHECK_KEY(kp2, PMIX_MODEL_LIBRARY_VERSION) ||
+            PMIX_CHECK_KEY(kp2, PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace_kv(trk->nptr, kp2);
         }
@@ -367,7 +367,8 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
     pmix_kval_t *kp2;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output, "PROCESSING JOB ARRAY");
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                        "PROCESSING JOB ARRAY");
 
     /* array of job-level info */
     if (PMIX_DATA_ARRAY != info->value.type) {
@@ -414,10 +415,10 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
             }
             /* mark that we got the map */
             *flags |= PMIX_HASH_NODE_MAP;
-        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_NAME)
-                   || PMIX_CHECK_KEY(&iptr[j], PMIX_PROGRAMMING_MODEL)
-                   || PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION)
-                   || PMIX_CHECK_KEY(&iptr[j], PMIX_PERSONALITY)) {
+        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_NAME) ||
+                   PMIX_CHECK_KEY(&iptr[j], PMIX_PROGRAMMING_MODEL) ||
+                   PMIX_CHECK_KEY(&iptr[j], PMIX_MODEL_LIBRARY_VERSION) ||
+                   PMIX_CHECK_KEY(&iptr[j], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace(trk->nptr, &iptr[j]);
         } else {
@@ -437,9 +438,9 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
                     trk->nptr->nprocs = iptr[j].value.data.uint32;
                     *flags |= PMIX_HASH_JOB_SIZE;
                 }
-            } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_ON_EXEC)
-                || PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_IN_INIT)
-                || PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_IN_APP)) {
+            } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_ON_EXEC) ||
+                       PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_IN_INIT) ||
+                       PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_IN_APP)) {
                 if (PMIX_RANK_WILDCARD == iptr[j].value.data.rank) {
                     trk->nptr->num_waiting = trk->nptr->nlocalprocs;
                 } else {
