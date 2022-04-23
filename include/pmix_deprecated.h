@@ -209,6 +209,8 @@ PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
                                             size_t *sz);
 PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
+PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
+                                                pmix_value_t *v2);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
                                          const char *key,
