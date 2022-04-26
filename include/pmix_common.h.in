@@ -462,10 +462,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEBUGGER_DAEMONS               "pmix.debugger"         // (bool) spawned app consists of debugger daemons
 #define PMIX_COSPAWN_APP                    "pmix.cospawn"          // (bool) designated app is to be spawned as a disconnected
                                                                     //        job - i.e., not part of the "comm_world" of the job
-#define PMIX_COLOCATE_PROC                  "pmix.colproc"          // (pmix_data_array_t*) Array of pmix_proc_t identifying the procs
+#define PMIX_COLOCATE_PROCS                 "pmix.colproc"          // (pmix_data_array_t*) Array of pmix_proc_t identifying the procs
                                                                     //        with which the new job's procs are to be colocated
-#define PMIX_COLOCATE_NUM_PROC              "pmix.colnum.proc"      // (uint16_t) Number of procs to colocate with each identified proc
-#define PMIX_COLOCATE_NUM_NODE              "pmix.colnum.node"      // (uint16_t) Number of procs to colocate on the node of each identified proc
+#define PMIX_COLOCATE_NPERPROC              "pmix.colnum.proc"      // (uint16_t) Number of procs to colocate with each identified proc
+#define PMIX_COLOCATE_NPERNODE              "pmix.colnum.node"      // (uint16_t) Number of procs to colocate on the node of each identified proc
 #define PMIX_SET_SESSION_CWD                "pmix.ssncwd"           // (bool) set the application's current working directory to
                                                                     //        the session working directory assigned by the RM
 #define PMIX_INDEX_ARGV                     "pmix.indxargv"         // (bool) mark the argv with the rank of the proc
