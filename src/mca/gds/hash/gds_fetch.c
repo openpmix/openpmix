@@ -5,8 +5,8 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- *
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -638,12 +638,6 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
         } else if (pmix_check_app_info(key)) {
             appinfo = true;
         }
-    }
-
-    /* find the hash table for this nspace */
-    trk = pmix_gds_hash_get_tracker(proc->nspace, false);
-    if (NULL == trk) {
-        return PMIX_ERR_INVALID_NAMESPACE;
     }
 
     if (!PMIX_RANK_IS_VALID(proc->rank)) {
