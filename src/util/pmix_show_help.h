@@ -103,14 +103,14 @@ BEGIN_C_DECLS
  *
  * Initialization of show_help subsystem
  */
-PMIX_EXPORT int pmix_show_help_init(char *helpdir);
+PMIX_EXPORT pmix_status_t pmix_show_help_init(char *helpdir);
 
 /**
  * \internal
  *
  * Finalization of show_help subsystem
  */
-PMIX_EXPORT int pmix_show_help_finalize(void);
+PMIX_EXPORT pmix_status_t pmix_show_help_finalize(void);
 
 /**
  * Look up a text message in a text file and display it to the
@@ -134,14 +134,18 @@ PMIX_EXPORT int pmix_show_help_finalize(void);
  * promotion to va_start() has undefined behavior (according to clang
  * warnings on MacOS High Sierra).
  */
-PMIX_EXPORT int pmix_show_help(const char *filename, const char *topic, int want_error_header, ...);
+PMIX_EXPORT pmix_status_t pmix_show_help(const char *filename,
+                                         const char *topic,
+                                         int want_error_header, ...);
 
 /**
  * This function does the same thing as pmix_show_help(), but accepts
  * a va_list form of varargs.
  */
-PMIX_EXPORT int pmix_show_vhelp(const char *filename, const char *topic, int want_error_header,
-                                va_list ap);
+PMIX_EXPORT pmix_status_t pmix_show_vhelp(const char *filename,
+                                          const char *topic,
+                                          int want_error_header,
+                                          va_list ap);
 
 /**
  * This function does the same thing as pmix_show_help(), but returns
@@ -154,8 +158,10 @@ PMIX_EXPORT char *pmix_show_help_string(const char *filename, const char *topic,
  * This function does the same thing as pmix_show_help_string(), but
  * accepts a va_list form of varargs.
  */
-PMIX_EXPORT char *pmix_show_help_vstring(const char *filename, const char *topic,
-                                         int want_error_header, va_list ap);
+PMIX_EXPORT char *pmix_show_help_vstring(const char *filename,
+                                         const char *topic,
+                                         int want_error_header,
+                                         va_list ap);
 
 /**
  * This function adds another search location for the files that
@@ -170,9 +176,14 @@ PMIX_EXPORT char *pmix_show_help_vstring(const char *filename, const char *topic
  * nees to tell pmix_show_help.how to find its own show_help files - without
  * interfering with the linked ORTE libs when they need to do show_help.
  */
-PMIX_EXPORT int pmix_show_help_add_dir(const char *directory);
+PMIX_EXPORT pmix_status_t pmix_show_help_add_dir(const char *directory);
 
-PMIX_EXPORT int pmix_help_check_dups(const char *filename, const char *topic);
+PMIX_EXPORT pmix_status_t pmix_help_check_dups(const char *filename,
+                                               const char *topic);
+
+PMIX_EXPORT pmix_status_t pmix_show_help_norender(const char *filename,
+                                                  const char *topic,
+                                                  const char *output);
 
 PMIX_EXPORT extern bool pmix_show_help_enabled;
 
