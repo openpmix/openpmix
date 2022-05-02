@@ -49,14 +49,6 @@ static int output_stream = -1;
 /* How long to wait between displaying duplicate show_help notices */
 static struct timeval show_help_interval = {5, 0};
 
-typedef struct pmix_log_info_t {
-
-    pmix_info_t *info;
-    pmix_info_t *dirs;
-    char *msg;
-
-} pmix_log_info_t;
-
 static void show_help_cbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
@@ -67,7 +59,9 @@ static void show_help_cbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-static void local_delivery(const char *file, const char *topic, char *msg)
+static void local_delivery(const char *file,
+                           const char *topic,
+                           const char *msg)
 {
     pmix_shift_caddy_t *cd;
 
@@ -149,7 +143,7 @@ static const char *dash_line
     = "--------------------------------------------------------------------------\n";
 static char **search_dirs = NULL;
 
-static int match(const char *a, const char *b)
+static pmix_status_t match(const char *a, const char *b)
 {
     int rc = PMIX_ERROR; 
     char *p1, *p2, *tmp1 = NULL, *tmp2 = NULL;
@@ -195,7 +189,7 @@ static int match(const char *a, const char *b)
 }
 
 
-static int pmix_get_tli(const char *filename, const char *topic, tuple_list_item_t **tli_)
+static pmix_status_t pmix_get_tli(const char *filename, const char *topic, tuple_list_item_t **tli_)
 {
     tuple_list_item_t *tli = *tli_;
 
@@ -262,7 +256,7 @@ static void pmix_show_accumulated_duplicates(int fd, short event, void *context)
 }
 
 
-int pmix_help_check_dups(const char *filename, const char *topic)
+pmix_status_t pmix_help_check_dups(const char *filename, const char *topic)
 {
 
     tuple_list_item_t *tli;
@@ -325,7 +319,7 @@ int pmix_help_check_dups(const char *filename, const char *topic)
 /*
  * Local functions
  */
-int pmix_show_help_init(void)
+pmix_status_t pmix_show_help_init(void)
 {
     pmix_output_stream_t lds;
 
@@ -339,7 +333,7 @@ int pmix_show_help_init(void)
     return PMIX_SUCCESS;
 }
 
-int pmix_show_help_finalize(void)
+pmix_status_t pmix_show_help_finalize(void)
 {
     pmix_output_close(output_stream);
     output_stream = -1;
@@ -359,7 +353,7 @@ int pmix_show_help_finalize(void)
  * efficient method in the world, but we're going for clarity here --
  * not optimization.  :-)
  */
-static int array2string(char **outstring, int want_error_header, char **lines)
+static pmix_status_t array2string(char **outstring, int want_error_header, char **lines)
 {
     int i, count;
     size_t len;
@@ -405,7 +399,7 @@ static int array2string(char **outstring, int want_error_header, char **lines)
 /*
  * Find the right file to open
  */
-static int open_file(const char *base, const char *topic)
+static pmix_status_t open_file(const char *base, const char *topic)
 {
     char *filename;
     char *err_msg = NULL;
@@ -476,7 +470,7 @@ static int open_file(const char *base, const char *topic)
  * In the file that has already been opened, find the topic that we're
  * supposed to output
  */
-static int find_topic(const char *base, const char *topic)
+static pmix_status_t find_topic(const char *base, const char *topic)
 {
     int token, ret;
     char *tmp;
@@ -521,7 +515,7 @@ static int find_topic(const char *base, const char *topic)
  * We have an open file, and we're pointed at the right topic.  So
  * read in all the lines in the topic and make a list of them.
  */
-static int read_topic(char ***array)
+static pmix_status_t read_topic(char ***array)
 {
     int token, rc;
 
@@ -544,7 +538,7 @@ static int read_topic(char ***array)
     /* Never get here */
 }
 
-static int load_array(char ***array, const char *filename, const char *topic)
+static pmix_status_t load_array(char ***array, const char *filename, const char *topic)
 {
     int ret;
 
@@ -605,7 +599,8 @@ char *pmix_show_help_string(const char *filename, const char *topic, int want_er
     return output;
 }
 
-int pmix_show_vhelp(const char *filename, const char *topic, int want_error_header, va_list arglist)
+pmix_status_t pmix_show_vhelp(const char *filename, const char *topic,
+                              int want_error_header, va_list arglist)
 {
     char *output;
 
@@ -620,7 +615,8 @@ int pmix_show_vhelp(const char *filename, const char *topic, int want_error_head
     return (NULL == output) ? PMIX_ERROR : PMIX_SUCCESS;
 }
 
-int pmix_show_help(const char *filename, const char *topic, int want_error_header, ...)
+pmix_status_t pmix_show_help(const char *filename, const char *topic,
+                             int want_error_header, ...)
 {
     va_list arglist;
     char *output;
@@ -638,8 +634,16 @@ int pmix_show_help(const char *filename, const char *topic, int want_error_heade
     return PMIX_SUCCESS;
 }
 
-int pmix_show_help_add_dir(const char *directory)
+pmix_status_t pmix_show_help_add_dir(const char *directory)
 {
     pmix_argv_append_nosize(&search_dirs, directory);
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_show_help_norender(const char *filename,
+                                      const char *topic,
+                                      const char *output)
+{
+    local_delivery(filename, topic, output);
     return PMIX_SUCCESS;
 }
