@@ -14,18 +14,17 @@
  * $HEADER$
  */
 
-#include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
+#include "gds_shmem.h"
+#include "gds_shmem_utils.h"
+#include "gds_shmem_store.h"
+#include "gds_shmem_fetch.h"
 
 #include "src/mca/gds/base/base.h"
-#include "gds_shmem_utils.h"
-#include "gds_shmem.h"
+#include "src/mca/pcompress/base/base.h"
 
-#include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/mca/pcompress/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
@@ -51,19 +50,6 @@
 #ifdef HAVE_TIME_H
 #include <time.h>
 #endif
-
-#define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
-do {                                                                           \
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
-                        "gds:" PMIX_GDS_SHMEM_NAME                             \
-                        ":%s at line %d", __func__, __LINE__);                 \
-} while (0)
-
-#define PMIX_GDS_SHMEM_VOUT(...)                                               \
-do {                                                                           \
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
-                        "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
-} while (0)
 
 /**
  * 8-byte address alignment.
@@ -679,22 +665,6 @@ out:
 }
 
 /**
- * Checks if an info's string value exceeds the length limit and therefore
- * requires compression.
- *
- * Note that we cannot use PMIX_STRING_SIZE_CHECK because we need to inspect
- * pmix_info_t structures, not pmix_kval_ts.
- */
-static inline bool
-string_value_requires_compression(
-    const pmix_value_t *value
-) {
-    return PMIX_STRING == value->type &&
-           NULL != value->data.string &&
-           strlen(value->data.string) > pmix_compress_base.compress_limit;
-}
-
-/**
  * Returns page size.
  */
 static inline size_t
@@ -820,15 +790,59 @@ PMIX_CLASS_INSTANCE(
 );
 
 static void
+nodeinfo_construct(
+    pmix_gds_shmem_nodeinfo_t *n
+) {
+    n->nodeid = UINT32_MAX;
+    n->hostname = NULL;
+    n->aliases = NULL;
+    PMIX_CONSTRUCT(&n->info, pmix_list_t);
+}
+
+static void
+nodeinfo_destruct(
+    pmix_gds_shmem_nodeinfo_t *n
+) {
+    free(n->hostname);
+    pmix_argv_free(n->aliases);
+    PMIX_LIST_DESTRUCT(&n->info);
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem_nodeinfo_t,
+    pmix_list_item_t,
+    nodeinfo_construct,
+    nodeinfo_destruct
+);
+
+static void
 job_construct(
     pmix_gds_shmem_job_t *j
 ) {
+    // Initial hash table size.
+    static const size_t ihts = 256;
     j->nspace_id = NULL;
+    //
     j->nspace = NULL;
-    j->shmem = PMIX_NEW(pmix_shmem_t);
-    tma_construct(&j->tma);
+    //
+    PMIX_CONSTRUCT(&j->nodeinfo, pmix_list_t);
+    //
     j->session = NULL;
-    pmix_hash_table_init(&j->hashtab_internal, 256);
+    //
+    PMIX_CONSTRUCT(&j->apps, pmix_list_t);
+    //
+    PMIX_CONSTRUCT(&j->hashtab_internal, pmix_hash_table_t);
+    pmix_hash_table_init(&j->hashtab_internal, ihts);
+    //
+    PMIX_CONSTRUCT(&j->hashtab_local, pmix_hash_table_t);
+    pmix_hash_table_init(&j->hashtab_local, ihts);
+    //
+    PMIX_CONSTRUCT(&j->hashtab_remote, pmix_hash_table_t);
+    pmix_hash_table_init(&j->hashtab_remote, ihts);
+    //
+    j->shmem = PMIX_NEW(pmix_shmem_t);
+    //
+    tma_construct(&j->tma);
 }
 
 static void
@@ -836,14 +850,33 @@ job_destruct(
     pmix_gds_shmem_job_t *j
 ) {
     free(j->nspace_id);
+    //
     PMIX_RELEASE(j->nspace);
-    PMIX_RELEASE(j->shmem);
-    tma_destruct(&j->tma);
+    //
+    PMIX_LIST_DESTRUCT(&j->nodeinfo);
+    //
     PMIX_RELEASE(j->session);
+    //
+    PMIX_LIST_DESTRUCT(&j->apps);
+    //
     pmix_hash_remove_data(
         &j->hashtab_internal, PMIX_RANK_WILDCARD, NULL
     );
     PMIX_DESTRUCT(&j->hashtab_internal);
+    //
+    pmix_hash_remove_data(
+        &j->hashtab_local, PMIX_RANK_WILDCARD, NULL
+    );
+    PMIX_DESTRUCT(&j->hashtab_local);
+    //
+    pmix_hash_remove_data(
+        &j->hashtab_remote, PMIX_RANK_WILDCARD, NULL
+    );
+    PMIX_DESTRUCT(&j->hashtab_remote);
+    //
+    PMIX_RELEASE(j->shmem);
+    //
+    tma_destruct(&j->tma);
 }
 
 PMIX_CLASS_INSTANCE(
@@ -853,8 +886,34 @@ PMIX_CLASS_INSTANCE(
     job_destruct
 );
 
+static void
+app_construct(
+    pmix_gds_shmem_app_t *a
+) {
+    a->appnum = 0;
+    PMIX_CONSTRUCT(&a->appinfo, pmix_list_t);
+    PMIX_CONSTRUCT(&a->nodeinfo, pmix_list_t);
+    a->job = NULL;
+}
+
+static void
+app_destruct(
+    pmix_gds_shmem_app_t *a
+) {
+    PMIX_LIST_DESTRUCT(&a->appinfo);
+    PMIX_LIST_DESTRUCT(&a->nodeinfo);
+    PMIX_RELEASE(a->job);
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem_app_t,
+    pmix_list_item_t,
+    app_construct,
+    app_destruct
+);
+
 static pmix_status_t
-init(
+module_init(
     pmix_info_t info[],
     size_t ninfo
 ) {
@@ -867,7 +926,7 @@ init(
 }
 
 static void
-finalize(void)
+module_finalize(void)
 {
     PMIX_GDS_SHMEM_VOUT_HERE();
 }
@@ -881,6 +940,8 @@ client_assign_module(
     size_t ninfo,
     int *priority
 ) {
+    PMIX_GDS_SHMEM_VOUT_HERE();
+
     static const int max_priority = 100;
     *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
     // The incoming info always overrides anything in the
@@ -914,8 +975,17 @@ client_assign_module(
         return PMIX_SUCCESS;
     }
     // Else we are a candidate for use.
-    // Look for the shared-memory segment connection environment variables: If
-    // found, then we can connect to the segment. Otherwise, we have to reject.
+    // If we are here, then we haven't been disqualified by other means.
+    // Servers will not have special environmental variables set because they
+    // are responsible for setting them, so just accept if we are a server.
+    // TODO(skg) Make sure this is the right proc type.
+    if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
+        PMIX_GDS_SHMEM_VOUT("%s: server selecting this module", __func__);
+        return PMIX_SUCCESS;
+    }
+    // Not a server, so look for the shared-memory segment connection
+    // environment variables. If found, then we can connect to the segment.
+    // Otherwise, we have to reject.
     const char *path = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_PATH);
     const char *size = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_SIZE);
     const char *addr = getenv(PMIX_GDS_SHMEM_ENVVAR_SEG_ADDR);
@@ -1057,7 +1127,7 @@ store_job_info(
     pmix_status_t rc = PMIX_SUCCESS;
     uintptr_t mmap_addr = 0;
     // Create a job tracker for the given namespace.
-    pmix_gds_shmem_job_t *job = NULL;
+    pmix_gds_shmem_job_t *job;
     rc = pmix_gds_shmem_get_job_tracker(nspace, true, &job);
     if (PMIX_SUCCESS != rc) {
         goto out;
@@ -1091,17 +1161,156 @@ out:
 }
 
 static pmix_status_t
+store_kv_in_hashtab_by_rank(
+    const pmix_kval_t *kval,
+    pmix_hash_table_t *target_ht,
+    pmix_rank_t rank
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
+    if (NULL == kv) {
+        return PMIX_ERR_NOMEM;
+    }
+    kv->key = strdup(kval->key);
+    kv->value = (pmix_value_t *)malloc(sizeof(pmix_value_t));
+    if (NULL == kv->value) {
+        rc = PMIX_ERR_NOMEM;
+        goto out;
+    }
+    // TODO(skg) Why use this instead of PMIX_VALUE_XFER? Ask Ralph. Looks like
+    // they basically resolve to the same underlying call.
+    PMIX_BFROPS_VALUE_XFER(rc, pmix_globals.mypeer, kv->value, kval->value);
+    if (PMIX_SUCCESS != rc) {
+        goto out;
+    }
+    rc = pmix_hash_store(target_ht, rank, kv);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+out:
+    PMIX_RELEASE(kv);
+    return rc;
+}
+
+static pmix_status_t
 store(
     const pmix_proc_t *proc,
     pmix_scope_t scope,
-    pmix_kval_t *kv
+    pmix_kval_t *kval
 ) {
-    PMIX_GDS_SHMEM_UNUSED(proc);
-    PMIX_GDS_SHMEM_UNUSED(scope);
-    PMIX_GDS_SHMEM_UNUSED(kv);
+    pmix_status_t rc = PMIX_SUCCESS;
 
-    PMIX_GDS_SHMEM_VOUT_HERE();
-    return PMIX_SUCCESS;
+    PMIX_GDS_SHMEM_VOUT(
+        "%s: STORE for proc=%s, key=%s, type=%s, scope=%s",
+        PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(proc), kval->key,
+        PMIx_Data_type_string(kval->value->type), PMIx_Scope_string(scope)
+    );
+    // We must have a key. If not, something unexpected happened.
+    if (NULL == kval->key) {
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Find or create the job tracker.
+    pmix_gds_shmem_job_t *job;
+    rc = pmix_gds_shmem_get_job_tracker(proc->nspace, true, &job);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // If this is node, app, or session data, then
+    // process it accordingly and we are done.
+    if (PMIX_CHECK_KEY(kval, PMIX_NODE_INFO_ARRAY)) {
+        return pmix_gds_shmem_store_node_array(kval->value, &job->nodeinfo);
+    }
+    else if (PMIX_CHECK_KEY(kval, PMIX_APP_INFO_ARRAY)) {
+        return pmix_gds_shmem_store_app_array(kval->value, job);
+    }
+    else if (PMIX_CHECK_KEY(kval, PMIX_SESSION_INFO_ARRAY)) {
+        return pmix_gds_shmem_store_session_array(kval->value, job);
+    }
+    else if (PMIX_CHECK_KEY(kval, PMIX_JOB_INFO_ARRAY)) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    // See if the proc is me. We cannot use CHECK_PROCID
+    // as we don't want rank=wildcard to match.
+    if (proc->rank == pmix_globals.myid.rank &&
+        PMIX_CHECK_NSPACE(proc->nspace, pmix_globals.myid.nspace)) {
+        if (PMIX_INTERNAL != scope) {
+            // Always maintain a copy of my own
+            // info here to simplify later retrieval.
+            // TODO(skg) Consider moving to store if it has broader utility.
+            rc = store_kv_in_hashtab_by_rank(
+                kval, &job->hashtab_internal, proc->rank
+            );
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        }
+    }
+    // If the number of procs for the nspace object is new, then update it.
+    if (0 == job->nspace->nprocs && PMIX_CHECK_KEY(kval, PMIX_JOB_SIZE)) {
+        job->nspace->nprocs = kval->value->data.uint32;
+    }
+    // NOTE: Below we don't simply return from the associated
+    // functions so we can log precisely where an error occurred.
+    // Store it in the corresponding hash table.
+    if (PMIX_INTERNAL == scope) {
+        // If this is proc data, then store it accordingly.
+        if (PMIX_CHECK_KEY(kval, PMIX_PROC_DATA)) {
+            rc = pmix_gds_shmem_store_proc_data_in_hashtab(
+                kval, job->nspace_id, &job->hashtab_internal
+            );
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        }
+        rc = pmix_hash_store(&job->hashtab_internal, proc->rank, kval);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    else if (PMIX_REMOTE == scope) {
+        rc = pmix_hash_store(&job->hashtab_remote, proc->rank, kval);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    else if (PMIX_LOCAL == scope) {
+        rc = pmix_hash_store(&job->hashtab_local, proc->rank, kval);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    else if (PMIX_GLOBAL == scope) {
+        rc = pmix_hash_store(&job->hashtab_remote, proc->rank, kval);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        // TODO(skg) Why do we also store it locally? Above we also store it
+        // internally. Ask Ralph.
+        // A pmix_kval_t can only be on one list
+        // at a time, so we to duplicate it here.
+        rc = store_kv_in_hashtab_by_rank(
+            kval, &job->hashtab_local, proc->rank
+        );
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    else {
+        // If we are here, then we got an unexpected scope.
+        rc = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 static pmix_status_t
@@ -1113,28 +1322,6 @@ store_modex(
     PMIX_GDS_SHMEM_UNUSED(ns);
     PMIX_GDS_SHMEM_UNUSED(buff);
     PMIX_GDS_SHMEM_UNUSED(cbdata);
-
-    PMIX_GDS_SHMEM_VOUT_HERE();
-    return PMIX_SUCCESS;
-}
-
-static pmix_status_t
-fetch(
-    const pmix_proc_t *proc,
-    pmix_scope_t scope,
-    bool copy,
-    const char *key,
-    pmix_info_t qualifiers[],
-    size_t nqual,
-    pmix_list_t *kvs
-) {
-    PMIX_GDS_SHMEM_UNUSED(proc);
-    PMIX_GDS_SHMEM_UNUSED(scope);
-    PMIX_GDS_SHMEM_UNUSED(copy);
-    PMIX_GDS_SHMEM_UNUSED(key);
-    PMIX_GDS_SHMEM_UNUSED(qualifiers);
-    PMIX_GDS_SHMEM_UNUSED(nqual);
-    PMIX_GDS_SHMEM_UNUSED(kvs);
 
     PMIX_GDS_SHMEM_VOUT_HERE();
     return PMIX_SUCCESS;
@@ -1154,8 +1341,8 @@ server_setup_fork(
         "%s: peer (rank=%d) namespace=%s",
         __func__, peer->rank, peer->nspace
     );
-    // Get the tracker for this job. We should have already created one, so
-    // that's why we pass false in pmix_gds_shmem_get_job_tracker().
+    // Get the tracker for this job. We should have already created one,
+    // so that's why we pass false in pmix_gds_shmem_get_job_tracker().
     pmix_gds_shmem_job_t *job = NULL;
     rc = pmix_gds_shmem_get_job_tracker(peer->nspace, false, &job);
     if (PMIX_SUCCESS != rc) {
@@ -1178,6 +1365,7 @@ server_setup_fork(
         rc = PMIX_ERROR;
         goto out;
     }
+
     rc = pmix_setenv(
         PMIX_GDS_SHMEM_ENVVAR_SEG_SIZE,
         sizebuff, true, env
@@ -1415,8 +1603,8 @@ get_shmem_backing_path(
     pmix_info_t info[],
     size_t ninfo
 ) {
-    static char path[PMIX_PATH_MAX] = {0};
-    static const char *basedir = NULL;
+    static char path[PMIX_PATH_MAX] = {'\0'};
+    const char *basedir = NULL;
 
     for (size_t i = 0; i < ninfo; ++i) {
         if (PMIX_CHECK_KEY(&info[i], PMIX_NSDIR)) {
@@ -1538,7 +1726,7 @@ add_info_to_job(
     //
     // TODO(skg) Best I can tell, this should probably happen automatically in
     // pmix_bfrops_base_value_xfer().
-    if (string_value_requires_compression(&info->value)) {
+    if (PMIX_STRING_SIZE_CHECK(&info->value)) {
         char *str = info->value.data.string;
         uint8_t *cdata = NULL;
         size_t cdata_size = 0;
@@ -1679,15 +1867,15 @@ accept_kvs_resp(
 pmix_gds_base_module_t pmix_shmem_module = {
     .name = PMIX_GDS_SHMEM_NAME,
     .is_tsafe = false,
-    .init = init,
-    .finalize = finalize,
+    .init = module_init,
+    .finalize = module_finalize,
     .assign_module = client_assign_module,
     .cache_job_info = server_cache_job_info,
     .register_job_info = server_register_job_info,
     .store_job_info = store_job_info,
     .store = store,
     .store_modex = store_modex,
-    .fetch = fetch,
+    .fetch = pmix_gds_shmem_fetch,
     .setup_fork = server_setup_fork,
     .add_nspace = server_add_nspace,
     .del_nspace = del_nspace,

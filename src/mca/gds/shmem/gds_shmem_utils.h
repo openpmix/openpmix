@@ -17,10 +17,22 @@
 #ifndef PMIX_GDS_SHMEM_UTILS_H
 #define PMIX_GDS_SHMEM_UTILS_H
 
-#include "src/include/pmix_config.h"
-#include "src/include/pmix_globals.h"
-
 #include "gds_shmem.h"
+
+#define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
+do {                                                                           \
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
+                        "gds:" PMIX_GDS_SHMEM_NAME                             \
+                        ":%s at line %d", __func__, __LINE__);                 \
+} while (0)
+
+#define PMIX_GDS_SHMEM_VOUT(...)                                               \
+do {                                                                           \
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
+                        "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
+} while (0)
+
+BEGIN_C_DECLS
 
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_get_job_tracker(
@@ -29,4 +41,10 @@ pmix_gds_shmem_get_job_tracker(
     pmix_gds_shmem_job_t **job
 );
 
+END_C_DECLS
+
 #endif
+
+/*
+ * vim: ft=cpp ts=4 sts=4 sw=4 expandtab
+ */
