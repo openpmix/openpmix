@@ -478,10 +478,6 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         /* anything else should just be cleared */
         pmix_unsetenv("PMIX_MCA_ptl", &environ);
     }
-    /* temporarily disable GDS MCA directive */
-    if (NULL != getenv("PMIX_MCA_gds")) {
-        pmix_unsetenv("PMIX_MCA_gds", &environ);
-    }
 
     /* parse the input directives */
     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_TOOL);
