@@ -14,10 +14,9 @@
  * $HEADER$
  */
 
-#include "src/include/pmix_config.h"
-
 #include "gds_shmem_utils.h"
-#include "gds_shmem.h"
+
+#include "src/mca/pcompress/base/base.h"
 
 pmix_status_t
 pmix_gds_shmem_get_job_tracker(
@@ -36,8 +35,8 @@ pmix_gds_shmem_get_job_tracker(
             break;
         }
     }
-    // If we didn't find the requested target and we aren't asked to create a
-    // new one, then the request cannot be fulfilled.
+    // If we didn't find the requested target and we aren't asked
+    // to create a new one, then the request cannot be fulfilled.
     if (!target_tracker && !create) {
         rc = PMIX_ERR_NOT_FOUND;
         goto out;

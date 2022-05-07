@@ -21,7 +21,10 @@
 #include "src/util/pmix_shmem.h"
 #include "src/util/pmix_vmem.h"
 
+#include "src/mca/gds/base/base.h"
 #include "src/mca/gds/gds.h"
+
+#include "include/pmix_common.h"
 
 /**
  * The name of this module.
@@ -71,18 +74,28 @@ do {                                                                           \
 
 BEGIN_C_DECLS
 
-typedef struct pmix_gds_shmem_component {
+extern pmix_gds_base_module_t pmix_shmem_module;
+
+typedef struct {
     pmix_gds_base_component_t super;
     /** List of jobs that I'm supporting. */
     pmix_list_t jobs;
     /** List of sessions that I'm supporting */
     pmix_list_t sessions;
 } pmix_gds_shmem_component_t;
-/* The component must be visible data for the linker to find it. */
+// The component must be visible data for the linker to find it.
 PMIX_EXPORT extern pmix_gds_shmem_component_t pmix_mca_gds_shmem_component;
-extern pmix_gds_base_module_t pmix_shmem_module;
 
-typedef struct pmix_gds_shmem_session {
+typedef struct {
+    pmix_list_item_t super;
+    uint32_t nodeid;
+    char *hostname;
+    char **aliases;
+    pmix_list_t info;
+} pmix_gds_shmem_nodeinfo_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem_nodeinfo_t);
+
+typedef struct {
     pmix_list_item_t super;
     /** Session ID. */
     uint32_t id;
@@ -91,23 +104,45 @@ typedef struct pmix_gds_shmem_session {
 } pmix_gds_shmem_session_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
 
-typedef struct pmix_gds_shmem_job {
+typedef struct {
     pmix_list_item_t super;
     /** Namespace identifier. */
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
+    // TODO(skg) Is the session nodeinfo the same info?
+    /** Node information. */
+    pmix_list_t nodeinfo;
+    /** Session information. */
+    pmix_gds_shmem_session_t *session;
+    /** List of applications in this job. */
+    pmix_list_t apps;
+    /** Stores internal data. */
+    pmix_hash_table_t hashtab_internal;
+    /** Stores local data. */
+    pmix_hash_table_t hashtab_local;
+    /** Stores remote data. */
+    pmix_hash_table_t hashtab_remote;
     /** Shared-memory object. */
     pmix_shmem_t *shmem;
     /** Shared-memory allocator. */
     pmix_tma_t tma;
-    /** Session information. */
-    pmix_gds_shmem_session_t *session;
-    /** */
-    pmix_hash_table_t hashtab_internal;
 } pmix_gds_shmem_job_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    uint32_t appnum;
+    pmix_list_t appinfo;
+    pmix_list_t nodeinfo;
+    pmix_gds_shmem_job_t *job;
+} pmix_gds_shmem_app_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem_app_t);
 
 END_C_DECLS
 
 #endif
+
+/*
+ * vim: ft=cpp ts=4 sts=4 sw=4 expandtab
+ */

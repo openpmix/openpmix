@@ -28,9 +28,6 @@
  * entire components just to query their version and parameters.
  */
 
-#include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
-
 #include "gds_shmem.h"
 
 #ifdef HAVE_UNISTD_H
@@ -50,8 +47,8 @@ component_query(
     pmix_mca_base_module_t **module,
     int *priority
 ) {
-    /* See if the required system file is present.
-     * See pmix_vmem_find_hole() for more information. */
+    // See if the required system file is present.
+    // See pmix_vmem_find_hole() for more information.
     if (access("/proc/self/maps", F_OK) == -1) {
         *priority = 0;
         *module = NULL;
@@ -76,9 +73,9 @@ component_close(void)
     return PMIX_SUCCESS;
 }
 
-/*
- * Instantiate the public struct with all of our public information
- * and pointers to our public functions in it
+/**
+ * Instantiate the public struct with all of our public
+ * information and pointers to our public functions in it.
  */
 pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
     .super = {
@@ -95,6 +92,7 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
         .pmix_mca_open_component = component_open,
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
+        .reserved = {0}
     },
     .jobs = PMIX_LIST_STATIC_INIT,
     .sessions = PMIX_LIST_STATIC_INIT

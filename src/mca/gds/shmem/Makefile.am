@@ -27,12 +27,16 @@ AM_CPPFLAGS = $(gds_shmem_CPPFLAGS)
 
 headers = \
         gds_shmem.h \
-        gds_shmem_utils.h
+        gds_shmem_utils.h \
+        gds_shmem_store.h \
+        gds_shmem_fetch.h
 
 sources = \
-        gds_shmem_utils.c \
         gds_shmem_component.c \
-        gds_shmem.c
+        gds_shmem.c \
+        gds_shmem_utils.c \
+        gds_shmem_store.c \
+        gds_shmem_fetch.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
