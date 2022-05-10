@@ -138,6 +138,20 @@ typedef struct pmix_hotel_t {
 } pmix_hotel_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_hotel_t);
 
+#define PMIX_HOTEL_STATIC_INIT                      \
+{                                                   \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+    .num_rooms = 0,                                 \
+    .evbase = NULL,                                 \
+    .eviction_timeout = {0, 0},                     \
+    .evict_callback_fn = NULL,                      \
+    .rooms = NULL,                                  \
+    .eviction_args = NULL,                          \
+    .unoccupied_rooms = NULL,                       \
+    .last_unoccupied_room = 0                       \
+}
+
+
 /**
  * Initialize the hotel.
  *

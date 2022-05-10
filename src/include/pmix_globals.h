@@ -247,6 +247,23 @@ typedef struct {
     bool raw;
 } pmix_iof_flags_t;
 
+#define PMIX_IOF_FLAGS_STATIC_INIT  \
+{                                   \
+    .set = false,                   \
+    .xml = false,                   \
+    .timestamp = false,             \
+    .tag = false,                   \
+    .rank = false,                  \
+    .file = NULL,                   \
+    .directory = NULL,              \
+    .nocopy = false,                \
+    .merge = false,                 \
+    .local_output = false,          \
+    .local_output_given = false,    \
+    .pattern = false,               \
+    .raw = false                    \
+}
+
 /* objects used by servers for tracking active nspaces */
 typedef struct {
     pmix_list_item_t super;
@@ -665,7 +682,8 @@ typedef struct {
     bool external_topology;
     bool external_progress;
     pmix_iof_flags_t iof_flags;
-    pmix_hash_table_t keyindex;  // translation table of key <-> index
+    pmix_pointer_array_t keyindex;  // translation table of key <-> index
+    uint32_t next_keyid;
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */

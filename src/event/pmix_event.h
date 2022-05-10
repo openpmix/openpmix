@@ -56,6 +56,14 @@ typedef struct {
     size_t nprocs;
 } pmix_range_trkr_t;
 
+#define PMIX_RANGE_TRKR_STATIC_INIT     \
+{                                       \
+    .range = PMIX_RANGE_UNDEF,          \
+    .procs = NULL,                      \
+    .nprocs = 0                         \
+}
+
+
 /* define a common struct for tracking event handlers */
 typedef struct {
     pmix_list_item_t super;
@@ -86,6 +94,23 @@ typedef struct {
 } pmix_event_hdlr_t;
 PMIX_CLASS_DECLARATION(pmix_event_hdlr_t);
 
+#define PMIX_EVENT_HDLR_STATIC_INIT         \
+{                                           \
+    .super = PMIX_LIST_ITEM_STATIC_INIT,    \
+    .name = NULL,                           \
+    .index = SIZE_MAX,                      \
+    .precedence = UINT8_MAX,                \
+    .locator = NULL,                        \
+    .source = PMIX_PROC_STATIC_INIT,        \
+    .rng = PMIX_RANGE_TRKR_STATIC_INIT,     \
+    .affected - NULL,                       \
+    .naffected = 0,                         \
+    .evhdlr = NULL,                         \
+    .cbobject = NULL,                       \
+    .codes = NULL,                          \
+    .ncodes = 0                             \
+}
+
 /* define an object for tracking status codes we are actively
  * registered to receive */
 typedef struct {
@@ -109,6 +134,18 @@ typedef struct {
     pmix_list_t default_events;
 } pmix_events_t;
 PMIX_CLASS_DECLARATION(pmix_events_t);
+
+#define PMIX_EVENTS_STATIC_INIT                     \
+{                                                   \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+    .nhdlrs = 0,                                    \
+    .first = NULL,                                  \
+    .last = NULL,                                   \
+    .actives = PMIX_LIST_STATIC_INIT,               \
+    .single_events = PMIX_LIST_STATIC_INIT,         \
+    .multi_events = PMIX_LIST_STATIC_INIT,          \
+    .default_events = PMIX_LIST_STATIC_INIT         \
+}
 
 /* define an object for chaining event notifications thru
  * the local state machine. Each registered event handler

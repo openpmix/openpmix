@@ -659,7 +659,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk, pmix_buffer_t *buf)
             pmix_value_array_init(key_count_array, sizeof(uint32_t));
 
             PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
-               pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+                pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
                 pcs.rank = scd->peer->info->pname.rank;
                 PMIX_CONSTRUCT(&cb, pmix_cb_t);
                 cb.proc = &pcs;
@@ -4067,9 +4067,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             goto error;
         }
     }
-    /* see if we are to enforce a timeout or if they want
-     * a context ID created - we don't internally care
-     * about any other directives */
+    /* check directives */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
             tv.tv_sec = info[n].value.data.uint32;
