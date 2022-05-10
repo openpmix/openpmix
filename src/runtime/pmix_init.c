@@ -57,6 +57,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
 #include "src/event/pmix_event.h"
+#include "src/include/dictionary.h"
 #include "src/include/pmix_types.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_keyval_parse.h"
@@ -74,26 +75,45 @@ const char* pmix_tool_msg = PMIX_PROXY_BUGREPORT_STRING;
 PMIX_EXPORT int pmix_initialized = 0;
 PMIX_EXPORT bool pmix_init_called = false;
 /* we have to export the pmix_globals object so
- * all plugins can access it. However, it is included
- * in the pmix_rename.h file for external protection.
- * Initialize only those entries that are not covered
- * by MCA params or are complex structures initialized
- * below */
+ * all plugins can access it. */
 PMIX_EXPORT pmix_globals_t pmix_globals = {
     .init_cntr = 0,
+    .myid = PMIX_PROC_STATIC_INIT,
+    .myidval = PMIX_VALUE_STATIC_INIT,
+    .myrankval = PMIX_VALUE_STATIC_INIT,
     .mypeer = NULL,
+    .uid = 0,
+    .gid = 0,
     .hostname = NULL,
+    .appnum = 0,
+    .pid = 0,
     .nodeid = UINT32_MAX,
     .pindex = 0,
     .evbase = NULL,
     .debug_output = -1,
+    .events = PMIX_EVENTS_STATIC_INIT,
     .connected = false,
     .commits_pending = false,
+    .event_window = {0, 0},
+    .cached_events = PMIX_LIST_STATIC_INIT,
+    .iof_requests = PMIX_POINTER_ARRAY_STATIC_INIT,
+    .max_events = INT_MAX,
+    .event_eviction_time = 0,
+    .notifications = PMIX_HOTEL_STATIC_INIT,
     .pushstdin = false,
+    .stdin_targets = PMIX_LIST_STATIC_INIT,
+    .tag_output = false,
+    .xml_output = false,
+    .timestamp_output = false,
+    .output_limit = SIZE_MAX,
+    .nspaces = PMIX_LIST_STATIC_INIT,
     .topology = {NULL, NULL},
     .cpuset = {NULL, NULL},
     .external_topology = false,
-    .external_progress = false
+    .external_progress = false,
+    .iof_flags = PMIX_IOF_FLAGS_STATIC_INIT,
+    .keyindex = PMIX_POINTER_ARRAY_STATIC_INIT,
+    .next_keyid = PMIX_INDEX_BOUNDARY
 };
 
 static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_num, void *occupant)
@@ -292,8 +312,8 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_hotel_init(&pmix_globals.notifications, pmix_globals.max_events, pmix_globals.evbase,
                     pmix_globals.event_eviction_time, _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_hash_table_t);
-    pmix_hash_table_init(&pmix_globals.keyindex, 1024);
+    PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_pointer_array_t);
+    pmix_pointer_array_init(&pmix_globals.keyindex, 1024, INT_MAX, 128);
 
     /* and setup the iof request tracking list */
     PMIX_CONSTRUCT(&pmix_globals.iof_requests, pmix_pointer_array_t);

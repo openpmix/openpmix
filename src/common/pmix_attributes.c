@@ -59,17 +59,6 @@ static void atrkdes(pmix_attribute_trk_t *p)
 }
 static PMIX_CLASS_INSTANCE(pmix_attribute_trk_t, pmix_list_item_t, atrkcon, atrkdes);
 
-/* define a couple of internal attributes */
-static pmix_regattr_input_t internals[] = {
-    {.index = PMIX_INDEX_BOUNDARY, .name = "PMIX_BFROPS_MODULE", .string = "pmix.bfrops.mod", .type = PMIX_STRING,
-        .description = (char *[]){"name of bfrops plugin in-use by a given nspace", NULL}},
-
-    {.index = PMIX_INDEX_BOUNDARY+1, .name = "PMIX_PNET_SETUP_APP", .string = "pmix.pnet.setapp", .type = PMIX_BYTE_OBJECT,
-            .description = (char *[]){"blob containing info to be given to pnet framework on remote nodes", NULL}},
-
-    {.index = UINT32_MAX, .name = "", .string = "", .type = PMIX_POINTER, .description = (char *[]){"NONE", NULL}}
-};
-
 PMIX_EXPORT void pmix_init_registered_attrs(void)
 {
     size_t n;
@@ -90,16 +79,6 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
             p->string = strdup(dictionary[n].string);
             p->type = dictionary[n].type;
             p->description = pmix_argv_copy(dictionary[n].description);
-            pmix_hash_register_key(p->index, p);
-        }
-        /* include the internals */
-        for (n=0; UINT32_MAX != internals[n].index; n++) {
-            p = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t));
-            p->index = internals[n].index;
-            p->name = strdup(internals[n].name);
-            p->string = strdup(internals[n].string);
-            p->type = internals[n].type;
-            p->description = pmix_argv_copy(internals[n].description);
             pmix_hash_register_key(p->index, p);
         }
         initialized = true;
@@ -159,37 +138,12 @@ PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[]
 
 PMIX_EXPORT void pmix_release_registered_attrs(void)
 {
-    pmix_status_t rc;
-    uint32_t id;
-    pmix_regattr_input_t *ptr;
-    char *node;
-
     if (initialized) {
         PMIX_LIST_DESTRUCT(&client_attrs);
         PMIX_LIST_DESTRUCT(&server_attrs);
         PMIX_LIST_DESTRUCT(&host_attrs);
         PMIX_LIST_DESTRUCT(&tool_attrs);
-        rc = pmix_hash_table_get_first_key_uint32(&pmix_globals.keyindex,
-                                                  &id, (void **) &ptr,
-                                                  (void **) &node);
-        while (PMIX_SUCCESS == rc) {
-            if (NULL != ptr->name) {
-                free(ptr->name);
-                ptr->name = NULL;
-            }
-            if (NULL != ptr->string) {
-                free(ptr->string);
-                ptr->string = NULL;
-            }
-            if (NULL != ptr->description) {
-                pmix_argv_free(ptr->description);
-                ptr->description = NULL;
-            }
-            rc = pmix_hash_table_get_next_key_uint32(&pmix_globals.keyindex, &id,
-                                                     (void **) &ptr, node,
-                                                     (void **) &node);
-        }
-    }
+   }
     initialized = false;
 }
 

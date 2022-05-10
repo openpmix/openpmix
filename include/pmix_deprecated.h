@@ -196,7 +196,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 
 /* attributes for GDS */
 #define PMIX_GDS_MODULE                     "pmix.gds.mod"          // (char*) ***** DEPRECATED ***** comma-delimited string of desired modules
-
+#define PMIX_BFROPS_MODULE                  "pmix.bfrops.mod"       // (char*) ***** INTERNAL ***** name of bfrops plugin in-use by a given nspace
+#define PMIX_PNET_SETUP_APP                 "pmix.pnet.setapp"      // (pmix_byte_object_t) ***** INTERNAL ***** blob containing info to be given to pnet framework on remote nodes
 
 #define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) ***** DEPRECATED ***** Stop forwarding the specified channel(s)
 #define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) ***** DEPRECATED ***** notify the requestor upon launch of the child job and return

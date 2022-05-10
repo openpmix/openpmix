@@ -60,6 +60,7 @@ void pmix_rte_finalize(void)
     int i;
     pmix_notify_caddy_t *cd;
     pmix_iof_req_t *req;
+    pmix_regattr_input_t *p;
 
     if (--pmix_initialized != 0) {
         if (pmix_initialized < 0) {
@@ -143,6 +144,21 @@ void pmix_rte_finalize(void)
         pmix_globals.hostname = NULL;
     }
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
+    for (i=0; i < pmix_globals.keyindex.size; i++) {
+        p = (pmix_regattr_input_t*)pmix_pointer_array_get_item(&pmix_globals.keyindex, i);
+        if (NULL != p) {
+            if (NULL != p->name) {
+                free(p->name);
+            }
+            if (NULL != p->string) {
+                free(p->string);
+            }
+            if (NULL != p->description) {
+                pmix_argv_free(p->description);
+            }
+            free(p);
+        }
+    }
     PMIX_DESTRUCT(&pmix_globals.keyindex);
 
     /* now safe to release the event base */

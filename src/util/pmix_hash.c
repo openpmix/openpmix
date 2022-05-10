@@ -30,6 +30,7 @@
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_pointer_array.h"
+#include "src/include/dictionary.h"
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_hash_string.h"
 #include "src/mca/bfrops/bfrops.h"
@@ -604,84 +605,78 @@ static pmix_proc_data_t *lookup_proc(pmix_hash_table_t *jtable, uint32_t id, boo
 void pmix_hash_register_key(uint32_t inid,
                             pmix_regattr_input_t *ptr)
 {
-    uint32_t id;
     pmix_regattr_input_t *p = NULL;
 
     if (UINT32_MAX == inid) {
-        /* compute a hash of the string representation */
-        PMIX_HASH_STR(ptr->string, id);
-    } else {
-        id = inid;
+        /* store the pointer in the array */
+        pmix_pointer_array_set_item(&pmix_globals.keyindex, pmix_globals.next_keyid, ptr);
+        ptr->index = pmix_globals.next_keyid;
+        pmix_globals.next_keyid += 1;
+        return;
     }
+
     /* check to see if this key was already registered */
-    pmix_hash_table_get_value_uint32(&pmix_globals.keyindex,
-                                     id, (void**)&p);
+    p = pmix_pointer_array_get_item(&pmix_globals.keyindex, inid);
     if (NULL != p) {
         /* already have this one */
         return;
     }
-    /* store the pointer in the hash */
-    pmix_hash_table_set_value_uint32(&pmix_globals.keyindex,
-                                     id, ptr);
+    /* store the pointer in the table */
+    pmix_pointer_array_set_item(&pmix_globals.keyindex, inid, ptr);
 }
 
 pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
                                            const char *key)
 {
-    uint32_t id;
+    int id;
     pmix_regattr_input_t *ptr = NULL;
-    char *node;
-    pmix_status_t rc;
 
     if (UINT32_MAX == inid) {
         if (NULL == key) {
             /* they have to give us something! */
             return NULL;
         }
-        /* if it is a PMIx standard key, then we look up the
-         * index - this needs to be optimized and provided
-         * as a separate function as we will need it at
-         * all APIs to convert incoming keys! */
         if (PMIX_CHECK_RESERVED_KEY(key)) {
-            id = UINT32_MAX;
-            rc = pmix_hash_table_get_first_key_uint32(&pmix_globals.keyindex,
-                                                      &id, (void **) &ptr,
-                                                      (void **) &node);
-            while (PMIX_SUCCESS == rc) {
-                if (0 == strcmp(key, ptr->string)) {
-                    break;
+            /* reserved keys are in the front of the table */
+            for (id = 0; id < PMIX_INDEX_BOUNDARY; id++) {
+                ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, id);
+                if (NULL != ptr) {
+                    if (0 == strcmp(key, ptr->string)) {
+                        return ptr;
+                    }
                 }
-                rc = pmix_hash_table_get_next_key_uint32(&pmix_globals.keyindex, &id,
-                                                         (void **) &ptr, node,
-                                                         (void **) &node);
             }
-            if (UINT32_MAX == id) {
-                return NULL;
-            }
-        } else {
-            /* compute a hash of the string representation */
-            PMIX_HASH_STR(key, id);
+            /* reserved keys must already have been registered */
+            return NULL;
         }
-    } else {
-        id = inid;
-    }
-    /* get the pointer from the hash */
-    pmix_hash_table_get_value_uint32(&pmix_globals.keyindex,
-                                     id, (void**)&ptr);
-
-    if (NULL == ptr && !PMIX_CHECK_RESERVED_KEY(key)) {
-        /* register this one */
+        /* unreserved keys are at the back of the table */
+        for (id = PMIX_INDEX_BOUNDARY; id < pmix_globals.keyindex.size; id++) {
+            ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, id);
+            if (NULL != ptr) {
+                if (0 == strcmp(key, ptr->string)) {
+                    return ptr;
+                }
+            }
+        }
+        /* we didn't find it - register it */
         ptr = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t));
-        ptr->index = id;
         ptr->name = strdup(key);
         ptr->string = strdup(key);
-        ptr->type = PMIX_UNDEF;
+        ptr->type = PMIX_UNDEF; // we don't know what type the user will set
         ptr->description = (char**)pmix_malloc(2 * sizeof(char*));
         ptr->description[0] = strdup("USER DEFINED");
         ptr->description[1] = NULL;
-        pmix_hash_register_key(ptr->index, ptr);
+        pmix_hash_register_key(UINT32_MAX, ptr);
+        return ptr;
     }
-    return ptr;  // will be NULL if nothing found
+
+    /* get the pointer from the table - if it is a reserved key, then
+     * it had to be registered at the beginning of time. If it is a
+     * non-reserved key, then it had to be registered or else the caller
+     * would not have an index to pass us. Thus, the pointer is either
+     * found or not - we don't register it if not found. */
+    ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, inid);
+    return ptr;
 }
 
 static void erase_qualifiers(pmix_proc_data_t *proc,
