@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -3983,7 +3984,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     bool barrier_directive_included = false;
     pmix_buffer_t bucket;
     pmix_byte_object_t bo;
-    pmix_grpinfo_t *g;
+    pmix_grpinfo_t *g = NULL;
     pmix_kval_t *kv;
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,

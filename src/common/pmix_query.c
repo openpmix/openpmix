@@ -7,6 +7,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -984,7 +985,7 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
                                                   size_t orig_nqueries,
                                                   size_t nqueries)
 {
-    int rc;
+    int rc = PMIX_SUCCESS;
     size_t n, p, n_idx, p_idx;
     pmix_query_t *queries;
 
@@ -995,6 +996,9 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
         for (p = 0; NULL != orig_queries[n].keys[p]; p++) {
             if (!pmix_query_check_is_local_resolve(orig_queries[n].keys[p])) {
                 PMIX_ARGV_APPEND(rc, queries[n_idx].keys, orig_queries[n].keys[p]);
+                if (PMIX_SUCCESS != rc) {
+                    goto out;
+                }
                 ++p_idx;
             }
         }
@@ -1002,6 +1006,10 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
             ++n_idx;
         }
     }
-
+out:
+    if (PMIX_SUCCESS != rc) {
+        PMIX_QUERY_RELEASE(queries);
+        // Note that queries is set to NULL by PMIX_QUERY_RELEASE.
+    }
     return queries;
 }

@@ -13,7 +13,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- *
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
@@ -47,7 +47,9 @@ char* PMIx_Info_string(pmix_info_t *info)
     PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
                       &output, NULL,
                       (void*)info, PMIX_INFO);
-
+    if (PMIX_SUCCESS != rc) {
+        return NULL;
+    }
     return output;
 }
 
@@ -59,7 +61,9 @@ char* PMIx_Value_string(pmix_value_t *value)
     PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
                       &output, NULL,
                       (void*)value, PMIX_VALUE);
-
+    if (PMIX_SUCCESS != rc) {
+        return NULL;
+    }
     return output;
 }
 
@@ -1604,7 +1608,7 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix, pmix_da
                                             pmix_data_type_t type)
 {
     char *prefx, *tp, *tp2=NULL, *tp3;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_ERR_BAD_PARAM;
     size_t n;
     bool *bptr;
     uint8_t *u8ptr;

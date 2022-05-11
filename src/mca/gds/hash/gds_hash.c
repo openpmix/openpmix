@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- *
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -146,7 +146,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
     pmix_job_t *trk;
     pmix_session_t *s = NULL, *sptr;
     pmix_hash_table_t *ht;
-    pmix_kval_t *kp2, *kvptr, kv;
+    pmix_kval_t *kp2 = NULL, *kvptr, kv;
     pmix_value_t val;
     pmix_info_t *iptr;
     char **nodes = NULL, **procs = NULL;
