@@ -984,7 +984,7 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
                                                   size_t orig_nqueries,
                                                   size_t nqueries)
 {
-    int rc;
+    int rc = PMIX_SUCCESS;
     size_t n, p, n_idx, p_idx;
     pmix_query_t *queries;
 
@@ -1002,6 +1002,6 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
             ++n_idx;
         }
     }
-
+    PMIX_HIDE_UNUSED_PARAMS(rc);
     return queries;
 }

@@ -13,6 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -110,7 +111,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     pmix_status_t rc;
     pmix_data_array_t *darray;
     pmix_qual_t *qarray;
-    size_t n, m;
+    size_t n, m = 0;
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:STORE:QUAL rank %s key %s",
