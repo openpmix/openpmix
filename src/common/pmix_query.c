@@ -996,6 +996,9 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
         for (p = 0; NULL != orig_queries[n].keys[p]; p++) {
             if (!pmix_query_check_is_local_resolve(orig_queries[n].keys[p])) {
                 PMIX_ARGV_APPEND(rc, queries[n_idx].keys, orig_queries[n].keys[p]);
+                if (PMIX_SUCCESS != rc) {
+                    goto out;
+                }
                 ++p_idx;
             }
         }
@@ -1003,6 +1006,10 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
             ++n_idx;
         }
     }
-    PMIX_HIDE_UNUSED_PARAMS(rc);
+out:
+    if (PMIX_SUCCESS != rc) {
+        PMIX_QUERY_RELEASE(queries);
+        // Note that queries is set to NULL by PMIX_QUERY_RELEASE.
+    }
     return queries;
 }
