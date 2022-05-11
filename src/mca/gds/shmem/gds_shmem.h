@@ -26,6 +26,10 @@
 
 #include "include/pmix_common.h"
 
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+
 /**
  * The name of this module.
  */
@@ -110,9 +114,11 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
-    // TODO(skg) Is the session nodeinfo the same info?
+    /** Job information. */
+    pmix_list_t jobinfo;
     /** Node information. */
     pmix_list_t nodeinfo;
+    // TODO(skg) Is the session nodeinfo the same info?
     /** Session information. */
     pmix_gds_shmem_session_t *session;
     /** List of applications in this job. */

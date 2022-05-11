@@ -30,10 +30,6 @@
 
 #include "gds_shmem.h"
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 static int
 component_open(void)
 {

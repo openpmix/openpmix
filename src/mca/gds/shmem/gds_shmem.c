@@ -19,9 +19,6 @@
 #include "gds_shmem_store.h"
 #include "gds_shmem_fetch.h"
 
-#include "src/mca/gds/base/base.h"
-#include "src/mca/pcompress/base/base.h"
-
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
@@ -31,6 +28,8 @@
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_shmem.h"
+
+#include "src/mca/pcompress/base/base.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -825,6 +824,8 @@ job_construct(
     //
     j->nspace = NULL;
     //
+    PMIX_CONSTRUCT(&j->jobinfo, pmix_list_t);
+    //
     PMIX_CONSTRUCT(&j->nodeinfo, pmix_list_t);
     //
     j->session = NULL;
@@ -852,6 +853,8 @@ job_destruct(
     free(j->nspace_id);
     //
     PMIX_RELEASE(j->nspace);
+    //
+    PMIX_LIST_DESTRUCT(&j->jobinfo);
     //
     PMIX_LIST_DESTRUCT(&j->nodeinfo);
     //
@@ -900,9 +903,11 @@ static void
 app_destruct(
     pmix_gds_shmem_app_t *a
 ) {
+    a->appnum = 0;
     PMIX_LIST_DESTRUCT(&a->appinfo);
     PMIX_LIST_DESTRUCT(&a->nodeinfo);
     PMIX_RELEASE(a->job);
+    a->job = NULL;
 }
 
 PMIX_CLASS_INSTANCE(
@@ -1232,6 +1237,7 @@ store(
     else if (PMIX_CHECK_KEY(kval, PMIX_JOB_INFO_ARRAY)) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
+    // Else we aren't dealing with an array type.
     // See if the proc is me. We cannot use CHECK_PROCID
     // as we don't want rank=wildcard to match.
     if (proc->rank == pmix_globals.myid.rank &&

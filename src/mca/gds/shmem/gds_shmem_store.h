@@ -19,6 +19,8 @@
 
 #include "gds_shmem.h"
 
+BEGIN_C_DECLS
+
 /**
  * Process a node array: an array of node-level info for a single node. Either
  * the node ID, hostname, or both must be included in the array to identify the
@@ -41,18 +43,26 @@ pmix_gds_shmem_store_app_array(
     pmix_gds_shmem_job_t *job
 );
 
+/**
+ *
+ */
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_store_session_array(
     pmix_value_t *val,
     pmix_gds_shmem_job_t *job
 );
 
+/**
+ *
+ */
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_store_proc_data_in_hashtab(
     const pmix_kval_t *kval,
     const char *namespace_id,
     pmix_hash_table_t *target_ht
 );
+
+END_C_DECLS
 
 #endif
 
