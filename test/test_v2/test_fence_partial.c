@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021      Triad National Security, LLC.
+ * Copyright (c) 2021-2022 Triad National Security, LLC.
  *                         All rights reserved.
  *
  * Copyright (c) 2021      Nanook Consulting  All rights reserved.
@@ -67,7 +67,7 @@ int main(int argc, char *argv[]) {
     int rc;
     long int my_node_num;
     size_t i, j, k, node_num_participants;
-    uint32_t num_procs, num_nodes;
+    uint32_t num_procs = 0, num_nodes = 0;
     size_t ninfo = 0;
     test_params params;
     validation_params v_params;
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
     pmixt_post_init(&this_proc, &params, &v_params);
 
     PMIX_PROC_CONSTRUCT(&job_proc);
-    strncpy(job_proc.nspace, this_proc.nspace, PMIX_MAX_NSLEN);
+    PMIX_LOAD_NSPACE(job_proc.nspace, this_proc.nspace);
     job_proc.rank = PMIX_RANK_WILDCARD;
 
     PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_JOB_SIZE, NULL, 0, &val), params, v_params);
@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
             for (i = 1, j = 0; i < num_nodes; i = i + 2){
                 for (k = 0; k < nodes[i].pmix_local_size; k++) {
                     PMIX_PROC_CONSTRUCT(&node_procs[j]);
-                    strncpy(node_procs[j].nspace, this_proc.nspace, PMIX_MAX_NSLEN);
+                    PMIX_LOAD_NSPACE(node_procs[j].nspace, this_proc.nspace);
                     node_procs[j].rank = nodes[i].pmix_rank[k];
                     TEST_VERBOSE(("participating node_procs[%d].rank = %u", j, node_procs[j].rank));
                     j++;
