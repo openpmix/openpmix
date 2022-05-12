@@ -19,6 +19,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -57,7 +58,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
 #include "src/event/pmix_event.h"
-#include "src/include/dictionary.h"
+#include "src/include/pmix_dictionary.h"
 #include "src/include/pmix_types.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_keyval_parse.h"

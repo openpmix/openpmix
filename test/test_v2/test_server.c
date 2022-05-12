@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2020-2021 Triad National Security, LLC
+ * Copyright (c) 2020-2022 Triad National Security, LLC
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
@@ -761,7 +761,7 @@ static void server_read_cb(int fd, short event, void *arg)
     msg_hdr_t msg_hdr;
     char *msg_buf = NULL;
     static char *fence_buf = NULL;
-    int i, n, p, temp_nodeid, fence_idx=0, rc;
+    int i, n, p, temp_nodeid = -1, fence_idx=0, rc;
     static int fences_in_flight = 0;
     bool fence_found = false, node_found = false;
     // hard limits to fences in flight, procs, and nodes below
