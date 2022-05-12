@@ -90,3 +90,41 @@ out:
     *job = target_tracker;
     return rc;
 }
+
+pmix_gds_shmem_nodeinfo_t *
+pmix_gds_shmem_get_nodeinfo_by_nodename(
+    pmix_list_t *nodes,
+    const char *hostname
+) {
+    pmix_gds_shmem_nodeinfo_t *ni;
+    bool aliases_exist = false;
+
+    if (NULL == hostname) {
+        return NULL;
+    }
+    // First, just check all the node names as this is the most likely match.
+    PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem_nodeinfo_t) {
+        if (0 == strcmp(ni->hostname, hostname)) {
+            return ni;
+        }
+        if (NULL != ni->aliases) {
+            aliases_exist = true;
+        }
+    }
+    // We didn't find it by name and name aliases do not exists.
+    if (!aliases_exist) {
+        return NULL;
+    }
+    // If a match wasn't found, then we have to try the aliases.
+    PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem_nodeinfo_t) {
+        if (NULL != ni->aliases) {
+            for (int i = 0; NULL != ni->aliases[i]; i++) {
+                if (0 == strcmp(ni->aliases[i], hostname)) {
+                    return ni;
+                }
+            }
+        }
+    }
+    // No match found.
+    return NULL;
+}

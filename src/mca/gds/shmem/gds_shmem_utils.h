@@ -34,11 +34,18 @@ do {                                                                           \
 
 BEGIN_C_DECLS
 
+// TODO(skg) Consider moving to fetch.
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_get_job_tracker(
     const pmix_nspace_t nspace,
     bool create,
     pmix_gds_shmem_job_t **job
+);
+
+PMIX_EXPORT pmix_gds_shmem_nodeinfo_t *
+pmix_gds_shmem_get_nodeinfo_by_nodename(
+    pmix_list_t *nodes,
+    const char *hostname
 );
 
 END_C_DECLS
