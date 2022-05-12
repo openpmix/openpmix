@@ -31,7 +31,7 @@
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/include/dictionary.h"
+#include "src/include/pmix_dictionary.h"
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_hash_string.h"
 #include "src/mca/bfrops/bfrops.h"

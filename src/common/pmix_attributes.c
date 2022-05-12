@@ -5,6 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,7 +27,7 @@
 #include "src/util/pmix_hash.h"
 
 #include "src/common/pmix_attributes.h"
-#include "src/include/dictionary.h"
+#include "src/include/pmix_dictionary.h"
 
 static bool initialized = false;
 static pmix_list_t client_attrs;
@@ -72,13 +73,13 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
 
         /* cycle across the dictionary and load a hash
          * table with translations of key -> index */
-        for (n=0; UINT32_MAX != dictionary[n].index; n++) {
+        for (n=0; UINT32_MAX != pmix_dictionary[n].index; n++) {
             p = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t));
-            p->index = dictionary[n].index;
-            p->name = strdup(dictionary[n].name);
-            p->string = strdup(dictionary[n].string);
-            p->type = dictionary[n].type;
-            p->description = pmix_argv_copy(dictionary[n].description);
+            p->index = pmix_dictionary[n].index;
+            p->name = strdup(pmix_dictionary[n].name);
+            p->string = strdup(pmix_dictionary[n].string);
+            p->type = pmix_dictionary[n].type;
+            p->description = pmix_argv_copy(pmix_dictionary[n].description);
             pmix_hash_register_key(p->index, p);
         }
         initialized = true;
@@ -850,9 +851,9 @@ PMIX_EXPORT const char *pmix_attributes_lookup(char *attr)
 {
     size_t n;
 
-    for (n = 0; 0 != strlen(dictionary[n].name); n++) {
-        if (0 == strcasecmp(dictionary[n].name, attr)) {
-            return dictionary[n].string;
+    for (n = 0; 0 != strlen(pmix_dictionary[n].name); n++) {
+        if (0 == strcasecmp(pmix_dictionary[n].name, attr)) {
+            return pmix_dictionary[n].string;
         }
     }
     return NULL;
@@ -862,9 +863,9 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(char *attrstring)
 {
     size_t n;
 
-    for (n = 0; 0 != strlen(dictionary[n].name); n++) {
-        if (0 == strcasecmp(dictionary[n].string, attrstring)) {
-            return dictionary[n].name;
+    for (n = 0; 0 != strlen(pmix_dictionary[n].name); n++) {
+        if (0 == strcasecmp(pmix_dictionary[n].string, attrstring)) {
+            return pmix_dictionary[n].name;
         }
     }
     return NULL;
@@ -874,9 +875,9 @@ PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)
 {
     size_t n;
 
-    for (n = 0; 0 != strlen(dictionary[n].name); n++) {
-        if (0 == strcmp(dictionary[n].name, attr)) {
-            return &dictionary[n];
+    for (n = 0; 0 != strlen(pmix_dictionary[n].name); n++) {
+        if (0 == strcmp(pmix_dictionary[n].name, attr)) {
+            return &pmix_dictionary[n];
         }
     }
     return NULL;

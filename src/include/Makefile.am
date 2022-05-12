@@ -15,6 +15,7 @@
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+# Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -32,7 +33,8 @@ noinst_LTLIBRARIES = libpmixglobal.la
 
 libpmixglobal_la_SOURCES = \
 	pmix_globals.h \
-        pmix_globals.c
+    pmix_globals.c \
+    pmix_dictionary.c
 
 headers = pmix_globals.h
 
@@ -49,17 +51,22 @@ headers += \
         pmix_portable_platform.h \
         pmix_portable_platform_real.h \
         pmix_frameworks.h \
-        dictionary.h
+        pmix_dictionary.h
 
 nobase_pmix_HEADERS = $(headers)
 
-# Need to ensure that dictionary.h is built first -- before any other
-# targets.
-BUILT_SOURCES = dictionary.h
+# Files that are generated here.
+libpmixglobal_gen = \
+	pmix_dictionary.h \
+    pmix_dictionary.c
 
-dictionary.h: $(top_srcdir)/include/pmix_common.h.in \
-              $(top_srcdir)/include/pmix_deprecated.h \
-              $(top_srcdir)/src/common/pmix_attributes.c
-	$(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
+# Need to ensure that pmix_dictionary.h and pmix_dictionary.c are built first --
+# before any other targets.
+BUILT_SOURCES = $(libpmixglobal_gen)
 
-MAINTAINERCLEANFILES = dictionary.h
+$(libpmixglobal_gen): $(top_srcdir)/include/pmix_common.h.in \
+                      $(top_srcdir)/include/pmix_deprecated.h \
+                      $(top_srcdir)/src/common/pmix_attributes.c
+	        $(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
+
+MAINTAINERCLEANFILES = $(libpmixglobal_gen)
