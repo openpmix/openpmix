@@ -236,9 +236,10 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
         return rc;
     }
     pmix_output_verbose(10, pmix_globals.debug_output,
-                        "%s ADDING KEY %s VALUE %u FOR RANK %s WITH %u QUALS TO TABLE %s",
+                        "%s ADDING KEY %s VALUE %s FOR RANK %s WITH %u QUALS TO TABLE %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
-                        kin->key, (unsigned)kin->value->data.size, PMIX_RANK_PRINT(rank), (unsigned)m,
+                        kin->key, PMIx_Value_string(kin->value),
+                        PMIX_RANK_PRINT(rank), (unsigned)m,
                         table->ht_label);
     pmix_pointer_array_add(&proc_data->data, hv);
     return PMIX_SUCCESS;

@@ -148,8 +148,8 @@ int main(int argc, char **argv)
         if (NULL != results) {
             cid = 0;
             PMIX_VALUE_GET_NUMBER(rc, &results[0].value, cid, size_t);
-            fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %d\n",
-                    myproc.rank, PMIx_Error_string(rc), results[0].key, (int) cid);
+            fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %lu\n",
+                    myproc.rank, PMIx_Error_string(rc), results[0].key, (unsigned long) cid);
         } else {
             fprintf(stderr, "%d Group construct complete, but no CID returned\n", myproc.rank);
         }

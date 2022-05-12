@@ -434,7 +434,7 @@ PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
 typedef struct {
     pmix_list_item_t super;
     pmix_proc_t proc;
-    pmix_list_t ilist;  // list of pmix_kval_t provided by this proc
+    pmix_byte_object_t blob;  // packed blob of info provided by this proc
 } pmix_grpinfo_t;
 PMIX_CLASS_DECLARATION(pmix_grpinfo_t);
 
