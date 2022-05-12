@@ -99,27 +99,34 @@ static pmix_status_t jctrl_fn(const pmix_proc_t *requestor, const pmix_proc_t ta
 static pmix_status_t mon_fn(const pmix_proc_t *requestor, const pmix_info_t *monitor,
                             pmix_status_t error, const pmix_info_t directives[], size_t ndirs,
                             pmix_info_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t grp_fn(pmix_group_operation_t op, char *gpid,
+                            const pmix_proc_t procs[], size_t nprocs,
+                            const pmix_info_t directives[], size_t ndirs,
+                            pmix_info_cbfunc_t cbfunc, void *cbdata);
 
-static pmix_server_module_t mymodule = {.client_connected = connected,
-                                        .client_finalized = finalized,
-                                        .abort = abort_fn,
-                                        .fence_nb = fencenb_fn,
-                                        .direct_modex = dmodex_fn,
-                                        .publish = publish_fn,
-                                        .lookup = lookup_fn,
-                                        .unpublish = unpublish_fn,
-                                        .spawn = spawn_fn,
-                                        .connect = connect_fn,
-                                        .disconnect = disconnect_fn,
-                                        .register_events = register_event_fn,
-                                        .deregister_events = deregister_events,
-                                        .notify_event = notify_event,
-                                        .query = query_fn,
-                                        .tool_connected = tool_connect_fn,
-                                        .log = log_fn,
-                                        .allocate = alloc_fn,
-                                        .job_control = jctrl_fn,
-                                        .monitor = mon_fn};
+static pmix_server_module_t mymodule = {
+    .client_connected = connected,
+    .client_finalized = finalized,
+    .abort = abort_fn,
+    .fence_nb = fencenb_fn,
+    .direct_modex = dmodex_fn,
+    .publish = publish_fn,
+    .lookup = lookup_fn,
+    .unpublish = unpublish_fn,
+    .spawn = spawn_fn,
+    .connect = connect_fn,
+    .disconnect = disconnect_fn,
+    .register_events = register_event_fn,
+    .deregister_events = deregister_events,
+    .notify_event = notify_event,
+    .query = query_fn,
+    .tool_connected = tool_connect_fn,
+    .log = log_fn,
+    .allocate = alloc_fn,
+    .job_control = jctrl_fn,
+    .monitor = mon_fn,
+    .group = grp_fn
+};
 
 typedef struct {
     pmix_list_item_t super;
@@ -1152,6 +1159,9 @@ static void tool_connect_fn(pmix_info_t *info, size_t ninfo, pmix_tool_connectio
 typedef struct {
     pmix_event_t ev;
     pmix_op_cbfunc_t cbfunc;
+    pmix_info_cbfunc_t infocbfunc;
+    pmix_info_t *info;
+    size_t ninfo;
     void *cbdata;
 } mylog_t;
 
@@ -1255,4 +1265,47 @@ static void wait_signal_callback(int sd, short args, void *arg)
         }
     }
     fprintf(stderr, "ENDLOOP\n");
+}
+
+static void relcbfunc(void *cbdata)
+{
+    mylog_t *lg = (mylog_t *) cbdata;
+    free(lg);
+}
+
+static void grpbar(int sd, short args, void *cbdata)
+{
+    mylog_t *lg = (mylog_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+    lg->infocbfunc(PMIX_SUCCESS, (pmix_info_t*)lg->info, lg->ninfo, lg->cbdata, relcbfunc, lg);
+}
+
+static pmix_status_t grp_fn(pmix_group_operation_t op, char *gpid,
+                            const pmix_proc_t procs[], size_t nprocs,
+                            const pmix_info_t directives[], size_t ndirs,
+                            pmix_info_cbfunc_t cbfunc, void *cbdata)
+{
+    mylog_t *lg = (mylog_t *) malloc(sizeof(mylog_t));
+    pmix_info_t *info;
+    size_t n;
+    size_t ctxid = 1;
+    PMIX_HIDE_UNUSED_PARAMS(op, gpid, procs, nprocs);
+
+    memset(lg, 0, sizeof(mylog_t));
+    if (PMIX_GROUP_CONSTRUCT == op) {
+        PMIX_INFO_CREATE(info, 2);
+        PMIX_INFO_LOAD(&info[0], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
+        for (n=0; n < ndirs; n++) {
+            if (PMIX_CHECK_KEY(&directives[n], PMIX_GROUP_ENDPT_DATA)) {
+                PMIX_INFO_XFER(&info[1], &directives[n]);
+                break;
+            }
+        }
+        lg->info = info;
+        lg->ninfo = 2;
+    }
+    lg->infocbfunc = cbfunc;
+    lg->cbdata = cbdata;
+    SIMPTEST_THREADSHIFT(lg, grpbar);
+    return PMIX_SUCCESS;
 }

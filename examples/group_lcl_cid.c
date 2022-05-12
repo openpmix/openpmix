@@ -64,8 +64,6 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
 
-    fprintf(stderr, "Client %s:%d OP CALLBACK CALLED WITH STATUS %d\n", myproc.nspace, myproc.rank,
-            status);
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -73,10 +71,8 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
-
-    fprintf(stderr,
-            "Client %s:%d ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu\n",
-            myproc.nspace, myproc.rank, status, (unsigned long) errhandler_ref);
+    EXAMPLES_HIDE_UNUSED_PARAMS(errhandler_ref);
+    
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -114,15 +110,6 @@ int main(int argc, char **argv)
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
-    /* and our context ID */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_GROUP_CONTEXT_ID, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job context ID failed: %s\n", myproc.nspace,
-                myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
-    cid = 0;
-    PMIX_VALUE_GET_NUMBER(rc, val, cid, size_t);
-    fprintf(stderr, "Client %s:%d job size %d CID %u\n", myproc.nspace, myproc.rank, nprocs, (unsigned)cid);
 
     /* register our default errhandler */
     DEBUG_CONSTRUCT_LOCK(&lock);
@@ -201,11 +188,10 @@ int main(int argc, char **argv)
     if (NULL != results) {
         cid = 0;
         PMIX_VALUE_GET_NUMBER(rc, &results[0].value, cid, size_t);
-        fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %ld\n",
-                myproc.rank, PMIx_Error_string(rc), results[0].key, cid);
+        fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %lu\n",
+                myproc.rank, PMIx_Error_string(rc), results[0].key, (unsigned long) cid);
     } else {
         fprintf(stderr, "%d Group construct complete, but no CID returned\n", myproc.rank);
-        goto done;
     }
     PMIX_PROC_FREE(procs, nprocs);
 
@@ -221,6 +207,7 @@ int main(int argc, char **argv)
 
     PMIX_INFO_CONSTRUCT(&tinfo[0]);
     PMIX_INFO_LOAD(&tinfo[0], PMIX_GROUP_CONTEXT_ID, &cid, PMIX_SIZE);
+    PMIX_INFO_SET_QUALIFIER(&tinfo[0]);
     PMIX_INFO_CONSTRUCT(&tinfo[1]);
     PMIX_INFO_LOAD(&tinfo[1], PMIX_TIMEOUT, &get_timeout, PMIX_UINT32);
 
@@ -231,18 +218,20 @@ int main(int argc, char **argv)
                         myproc.nspace, myproc.rank, n, PMIx_Error_string(rc));
             continue;
         }
-        if (PMIX_UINT64 != val->type) {
+        if (PMIX_SIZE != val->type) {
            fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong type: %s\n", myproc.nspace,
                     myproc.rank, n, PMIx_Data_type_string(val->type));
             PMIX_VALUE_RELEASE(val);
             continue;
         }
-        if ((1234UL + (unsigned long)n) != val->data.uint64) {
-            fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong value: %lu\n",
-                    myproc.nspace, myproc.rank, n, (unsigned long)val->data.uint64);
+        if ((1234UL + (unsigned long)n) != val->data.size) {
+            fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong value: %s\n",
+                    myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
             PMIX_VALUE_RELEASE(val);
             continue;
         }
+        fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %u SUCCESS value: %s\n",
+                myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
         PMIX_VALUE_RELEASE(val);
     }
 
