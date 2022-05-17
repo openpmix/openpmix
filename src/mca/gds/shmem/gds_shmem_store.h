@@ -62,6 +62,30 @@ pmix_gds_shmem_store_proc_data_in_hashtab(
     pmix_hash_table_t *target_ht
 );
 
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem_store_qualified(
+    pmix_hash_table_t *ht,
+    pmix_rank_t rank,
+    pmix_value_t *value
+);
+
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem_store_job_array(
+    pmix_info_t *info,
+    pmix_gds_shmem_job_t *job,
+    uint32_t *flags,
+    char ***procs,
+    char ***nodes
+);
+
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem_store_map(
+    pmix_gds_shmem_job_t *job,
+    char **nodes,
+    char **ppn,
+    uint32_t flags
+);
+
 END_C_DECLS
 
 #endif

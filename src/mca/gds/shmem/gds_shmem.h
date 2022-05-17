@@ -15,13 +15,15 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
+#include "src/mca/gds/base/base.h"
+
 #include "src/class/pmix_object.h"
 #include "src/class/pmix_list.h"
 
 #include "src/util/pmix_shmem.h"
 #include "src/util/pmix_vmem.h"
 
-#include "src/mca/gds/base/base.h"
+#include "src/mca/preg/preg.h"
 #include "src/mca/gds/gds.h"
 
 #include "include/pmix_common.h"
@@ -67,15 +69,6 @@
 #define PMIX_GDS_SHMEM_DEFAULT_PRIORITY 30
 #endif
 
-/**
- * With picky compiler flags PMIX_HIDE_UNUSED_PARAMS doesn't appear to work, so
- * create our own for now. TODO(skg) Report or resolve issue.
- */
-#define PMIX_GDS_SHMEM_UNUSED(x)                                               \
-do {                                                                           \
-    (void)(x);                                                                 \
-} while (0)
-
 BEGIN_C_DECLS
 
 extern pmix_gds_base_module_t pmix_shmem_module;
@@ -112,6 +105,8 @@ typedef struct {
     pmix_list_item_t super;
     /** Namespace identifier. */
     char *nspace_id;
+    /** Flag indicating if global data were added. */
+    bool gdata_added;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
     /** Job information. */

@@ -26,6 +26,7 @@ do {                                                                           \
                         ":%s at line %d", __func__, __LINE__);                 \
 } while (0)
 
+// TODO(skg) Support different verbosity settings. Like VV or something.
 #define PMIX_GDS_SHMEM_VOUT(...)                                               \
 do {                                                                           \
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
@@ -46,6 +47,12 @@ PMIX_EXPORT pmix_gds_shmem_nodeinfo_t *
 pmix_gds_shmem_get_nodeinfo_by_nodename(
     pmix_list_t *nodes,
     const char *hostname
+);
+
+PMIX_EXPORT bool
+pmix_gds_shmem_check_hostname(
+    const char *h1,
+    const char *h2
 );
 
 END_C_DECLS
