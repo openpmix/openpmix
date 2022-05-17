@@ -128,3 +128,14 @@ pmix_gds_shmem_get_nodeinfo_by_nodename(
     // No match found.
     return NULL;
 }
+
+bool
+pmix_gds_shmem_check_hostname(
+    const char *h1,
+    const char *h2
+) {
+    if (0 == strcmp(h1, h2)) {
+        return true;
+    }
+    return false;
+}

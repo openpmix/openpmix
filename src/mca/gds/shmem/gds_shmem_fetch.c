@@ -71,9 +71,8 @@ fetch_all_node_info(
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, &nodeinfo->info, pmix_kval_t) {
         PMIX_GDS_SHMEM_VOUT(
-            "%s:%s: adding key=%s",
-            PMIX_NAME_PRINT(&pmix_globals.myid),
-            __func__, kvi->key
+            "%s:%s adding key=%s", __func__,
+            PMIX_NAME_PRINT(&pmix_globals.myid), kvi->key
         );
         PMIX_LOAD_KEY(dainfo[i].key, kvi->key);
         pmix_status_t rc = PMIx_Value_xfer(&dainfo[i].value, kvi->value);
@@ -147,7 +146,7 @@ pmix_gds_shmem_fetch_nodeinfo(
     bool found = false;
 
     PMIX_GDS_SHMEM_VOUT(
-        "%s fetching NODE INFO key=%s",
+        "%s FETCHING NODE INFO key=%s",
         PMIX_NAME_PRINT(&pmix_globals.myid),
         (NULL == key) ? "NULL" : key
     );
@@ -322,7 +321,7 @@ pmix_gds_shmem_fetch_appinfo(
     bool found = false;
 
     PMIX_GDS_SHMEM_VOUT(
-        "%s fetching APP INFO WITH NAPPS=%zd",
+        "%s FETCHING APP INFO WITH NAPPS=%zd",
         PMIX_NAME_PRINT(&pmix_globals.myid),
         pmix_list_get_size(target)
     );
@@ -406,7 +405,7 @@ fetch_session_info(
     pmix_list_t *kvs
 ) {
     PMIX_GDS_SHMEM_VOUT(
-        "%s fetching PMIX_SESSION_INFO key=%s",
+        "%s FETCHING PMIX_SESSION_INFO key=%s",
         PMIX_NAME_PRINT(&pmix_globals.myid),
         (NULL == key) ? "NULL" : key
     );
@@ -471,20 +470,19 @@ fetch_job_level_info_for_namespace(
     size_t nqual,
     pmix_list_t *kvs
 ) {
-    pmix_status_t rc = PMIX_SUCCESS;
     // Fetch all values from the hash table tied to rank=wildcard.
-    rc = pmix_hash_fetch(
+    pmix_status_t rc = pmix_hash_fetch(
         &job->hashtab_internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
     );
     if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
         return rc;
     }
-    // We also need to add any job-level info.
+    // Also need to add any job-level info.
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, &job->jobinfo, pmix_kval_t) {
         pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
         kv->key = strdup(kvi->key);
-        kv->value = NULL;
+        kv->value = (pmix_value_t *)malloc(sizeof(pmix_value_t));
         PMIX_VALUE_XFER(rc, kv->value, kvi->value);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(kv);
@@ -497,7 +495,6 @@ fetch_job_level_info_for_namespace(
         NULL, job, &job->nodeinfo, qualifiers, nqual, kvs
     );
     if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
         return rc;
     }
     // Collect the relevant app-level info.
@@ -505,7 +502,6 @@ fetch_job_level_info_for_namespace(
         NULL, job, &job->apps, qualifiers, nqual, kvs
     );
     if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
         return rc;
     }
     // Finally, we need the job-level info for each rank in the job.
@@ -513,35 +509,33 @@ fetch_job_level_info_for_namespace(
         pmix_list_t rkvs;
         PMIX_CONSTRUCT(&rkvs, pmix_list_t);
         rc = pmix_hash_fetch(
-            &job->hashtab_internal,
-            rank, NULL, NULL, 0, &rkvs
+            &job->hashtab_internal, rank, NULL, NULL, 0, &rkvs
         );
         if (PMIX_ERR_NOMEM == rc) {
+            PMIX_LIST_DESTRUCT(&rkvs);
             return rc;
         }
         if (0 == pmix_list_get_size(&rkvs)) {
             PMIX_DESTRUCT(&rkvs);
             continue;
         }
-        // Should only have one entry on list.
-        pmix_kval_t *rkv = (pmix_kval_t *)pmix_list_get_first(&rkvs);
-        // We have to assemble the results into a proc blob
-        // so the remote end will know what to do with it */
-        pmix_info_t *info = (pmix_info_t *)rkv->value->data.darray->array;
-        const size_t ninfo = rkv->value->data.darray->size;
+        const size_t ninfo = pmix_list_get_size(&rkvs);
         // Setup to return the result.
-        pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(PMIX_PROC_DATA);
-        kv->value = (pmix_value_t *)malloc(sizeof(pmix_value_t));
+        pmix_kval_t *kv;
+        PMIX_KVAL_NEW(kv, PMIX_PROC_DATA);
         kv->value->type = PMIX_DATA_ARRAY;
         const size_t niptr = ninfo + 1; // Need space for the rank.
         PMIX_DATA_ARRAY_CREATE(kv->value->data.darray, niptr, PMIX_INFO);
         pmix_info_t *iptr = (pmix_info_t *)kv->value->data.darray->array;
-        // Start with the rank.
+        /* start with the rank */
         PMIX_INFO_LOAD(&iptr[0], PMIX_RANK, &rank, PMIX_PROC_RANK);
         // Now transfer rest of data across.
-        for (size_t n = 0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n + 1], &info[n]);
+        size_t n = 1;
+        pmix_kval_t *kvptr;
+        PMIX_LIST_FOREACH(kvptr, &rkvs, pmix_kval_t) {
+            PMIX_LOAD_KEY(&iptr[n].key, kvptr->key);
+            PMIx_Value_xfer(&iptr[n].value, kvptr->value);
+            ++n;
         }
         // Add to the results.
         pmix_list_append(kvs, &kv->super);
@@ -561,19 +555,20 @@ pmix_gds_shmem_fetch(
     size_t nqual,
     pmix_list_t *kvs
 ) {
-    PMIX_GDS_SHMEM_UNUSED(copy);
+    PMIX_HIDE_UNUSED_PARAMS(copy);
 
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_hash_table_t *ht;
+    pmix_hash_table_t *ht = NULL;
     bool nodeinfo = false;
     bool appinfo = false;
     bool nigiven = false;
     bool apigiven = false;
 
     PMIX_GDS_SHMEM_VOUT(
-        "%s fetching key=%s for proc=%s on scope=%s",
-        PMIX_NAME_PRINT(&pmix_globals.myid), (NULL == key) ? "NULL" : key,
-        PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope)
+        "%s:%s key=%s for proc=%s on scope=%s",
+        "fetch", PMIX_NAME_PRINT(&pmix_globals.myid),
+        (NULL == key) ? "NULL" : key, PMIX_NAME_PRINT(proc),
+        PMIx_Scope_string(scope)
     );
     // Get the tracker for this job. We should have already created one, so
     // that's why we pass false in pmix_gds_shmem_get_job_tracker().
@@ -761,14 +756,14 @@ doover:
                 }
             }
             else if (PMIX_REMOTE == scope) {
-                /* check the local scope */
+                // Check the local scope.
                 rc = pmix_hash_fetch(
                     &job->hashtab_local, proc->rank,
                     key, qualifiers, nqual, kvs
                 );
                 if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
                     pmix_kval_t *kv;
-                    while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
+                    while (NULL != (kv = (pmix_kval_t *)pmix_list_remove_first(kvs))) {
                         PMIX_RELEASE(kv);
                     }
                     rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
