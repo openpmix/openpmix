@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2022 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sandia National Laboratories. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -52,6 +52,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_fd.h"
 #include "src/util/pmix_string_copy.h"
+#include "src/runtime/pmix_rte.h"
 
 /*
  * Simple loop over reading from a fd
@@ -235,6 +236,22 @@ slow:
     // close *all* file descriptors -- slow
     if (0 > fdmax) {
         fdmax = sysconf(_SC_OPEN_MAX);
+    }
+    // On some OS's (e.g., macOS), the value returned by
+    // sysconf(_SC_OPEN_MAX) can be set by the user via "ulimit -n X",
+    // where X can be -1 (unlimited) or a positive integer. On macOS
+    // in particular, if the user does not set this value, it's
+    // unclear how the default value is chosen.  Some users have
+    // reported seeing arbitrarily large default values (in the
+    // billions), resulting in a very large loop over close() that can
+    // take minutes/hours to complete, leading the user to think that
+    // the app has hung.  To avoid this, ensure that we cap the max FD
+    // that we'll try to close.  This is not a perfect scheme, and
+    // there's uncertainty on how the macOS default value works, so we
+    // provide the pmix_maxfd MCA var to allow the user to set the max
+    // FD value if needed.
+    if (-1 == fdmax || pmix_maxfd < fdmax) {
+        fdmax = pmix_maxfd;
     }
     for (int fd = 3; fd < fdmax; fd++) {
         if (fd != protected_fd) {
