@@ -12,7 +12,7 @@
  * Copyright (c) 2014-2015 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,10 +27,9 @@
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
-#include "src/util/crc.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 /*
  * pmix_hash_table_t
@@ -304,7 +303,7 @@ pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **val
             *value = elt->value;
             return PMIX_SUCCESS;
         } else {
-            /* keey looking */
+            /* keep looking */
         }
     }
 }

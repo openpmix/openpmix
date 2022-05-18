@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,7 +27,7 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_globals.h"
 
-#include "src/util/show_help.h"
+#include "src/util/pmix_show_help.h"
 #include "ptl_server.h"
 #include "src/mca/ptl/base/base.h"
 

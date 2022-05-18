@@ -31,14 +31,14 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/timings.h"
+#include "src/util/pmix_timings.h"
 
 #if PMIX_ENABLE_TIMING
 char *pmix_timing_output = NULL;

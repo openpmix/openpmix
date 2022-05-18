@@ -12,7 +12,8 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,9 +26,9 @@
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/preg/preg.h"
-#include "src/util/argv.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 #include "src/mca/bfrops/base/base.h"
 
@@ -293,7 +294,7 @@ pmix_status_t pmix_bfrops_base_copy_app(pmix_app_t **dest, pmix_app_t *src, pmix
     (*dest)->info = (pmix_info_t *) malloc(src->ninfo * sizeof(pmix_info_t));
     for (j = 0; j < src->ninfo; j++) {
         pmix_strncpy((*dest)->info[j].key, src->info[j].key, PMIX_MAX_KEYLEN);
-        pmix_value_xfer(&(*dest)->info[j].value, &src->info[j].value);
+        PMIx_Value_xfer(&(*dest)->info[j].value, &src->info[j].value);
     }
     return PMIX_SUCCESS;
 }
@@ -607,12 +608,12 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
         memcpy(p->array, src->array, src->size * sizeof(pmix_proc_t));
         break;
     case PMIX_PROC_RANK:
-        p->array = (char *) malloc(src->size * sizeof(pmix_rank_t));
+        p->array = (pmix_rank_t *) malloc(src->size * sizeof(pmix_rank_t));
         if (NULL == p->array) {
             free(p);
             return PMIX_ERR_NOMEM;
         }
-        memcpy(p->array, src->array, src->size * sizeof(pmix_proc_t));
+        memcpy(p->array, src->array, src->size * sizeof(pmix_rank_t));
         break;
     case PMIX_APP:
         PMIX_APP_CREATE(p->array, src->size);

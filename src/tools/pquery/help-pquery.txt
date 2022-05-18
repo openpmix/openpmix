@@ -12,6 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -21,12 +22,70 @@
 # This is the US/English help file for pquery
 #
 [usage]
-pquery [OPTIONS] KEY1[qualifiers] KEY2[qualifiers]...
-  PMIx Query tool
+%s (%s) %s
 
-%s
+Usage: %s [OPTION]...
+PMIx Query tool
 
+
+/*****      General Options      *****/
+
+-h|--help                            This help message
+-h|--help <arg0>                     Help for the specified option
+-v|--verbose                         Enable typical debug options
+-V|--version                         Print version and exit
+
+   --uri <arg0>                      Specify the URI of the server to which we are to connect, or
+                                     the name of the file (specified as file:filename) that contains that info
+   --namespace <arg0>                Namespace of the daemon to which we should connect
+   --pid <arg0>                      PID of the daemon to which we should connect (int => PID or file:<file>
+                                     for file containing the PID
+   --system-server-first             First look for a system server and connect to it if found
+   --system-server                   Connect to a system-level server
+   --tmpdir <arg0>                   Set the root for the session directory tree
+   --wait-to-connect <arg0>          Delay specified number of seconds before trying to connect
+   --num-connect-retries <arg0>      Max number of times to try to connect
+
+   --client <arg0>                   Comma-delimited list of client functions whose attributes are to be
+                                     printed (function or "all")
+   --server <arg0>                   Comma-delimited list of server functions whose attributes are to be
+                                     printed (function or "all")
+   --tool <arg0>                     Comma-delimited list of tool functions whose attributes are to be
+                                     printed (function or "all")
+   --host <arg0>                     Comma-delimited list of host functions whose attributes are to be
+                                     printed (function or "all")
+   --client                          List the functions supported in this client library
+   --server                          List the functions supported in this server library
+   --tool                            List the functions supported in this tool library
+   --host                            List the functions supported by this host environment
 Keys passed to pquery may optionally include one or more qualifiers, with the
 individual qualifiers delimited by semi-colons. For example:
 
 PMIX_STORAGE_XFER_SIZE[PMIX_STORAGE_ID=lustre1,lustre2;PMIX_STORAGE_PATH=foo]
+#
+[bad-option-input]
+%s was given an option that expected a string argument:
+
+  option: %s
+  argument: %s
+  expected: %s
+
+Please correct the option and try again.
+#
+[file-open-error]
+%s was unable to open the specified file provided as an option:
+
+  option: %s
+  argument: %s
+  file: %s
+
+Please correct the option and try again.
+#
+[bad-file]
+%s was unable to read the necessary info from the provided file:
+
+  option: %s
+  argument: %s
+  file: %s
+
+Please correct the option or the file and try again.

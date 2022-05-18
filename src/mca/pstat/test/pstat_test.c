@@ -13,7 +13,7 @@
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  *
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,8 +21,8 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "src/include/pmix_config.h"
+#include "pmix_common.h"
 
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>

@@ -44,14 +44,8 @@ if PMIX_TESTS_EXAMPLES
 SUBDIRS += . test/test_v2 test examples
 endif
 
-if WANT_INSTALL_HEADERS
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
-
-else
-
-noinst_HEADERS = $(headers)
-endif
 
 include man/Makefile.include
 

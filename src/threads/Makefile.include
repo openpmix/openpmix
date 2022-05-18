@@ -14,6 +14,7 @@
 # Copyright (c) 2015      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -25,14 +26,11 @@
 
 # Source code files
 headers += \
-        threads/mutex.h \
-        threads/mutex_unix.h \
-        threads/threads.h \
-        threads/tsd.h \
-        threads/wait_sync.h \
-	    threads/thread_usage.h
+        threads/pmix_mutex.h \
+        threads/pmix_mutex_unix.h \
+        threads/pmix_threads.h \
+        threads/pmix_tsd.h
 
 sources += \
         threads/mutex.c \
-        threads/thread.c \
-        threads/wait_sync.c
+        threads/thread.c

@@ -6,7 +6,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,13 +23,13 @@
 #    include <sys/types.h>
 #endif
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/class/pmix_list.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 int pmix_mca_base_select(const char *type_name, int output_id, pmix_list_t *components_available,
                          pmix_mca_base_module_t **best_module,
@@ -123,7 +123,7 @@ int pmix_mca_base_select(const char *type_name, int output_id, pmix_list_t *comp
         /*
          * Still close the non-selected components
          */
-        pmix_mca_base_components_close(0, /* Pass 0 to keep this from closing the output handle */
+        pmix_mca_base_components_close(0, /* Pass 0 to keep this from closing the pmix_output.handle */
                                        components_available, NULL);
         return PMIX_ERR_NOT_FOUND;
     }

@@ -16,7 +16,7 @@
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021      Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,7 +31,7 @@
 #include "src/class/pmix_object.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
@@ -44,9 +44,9 @@
 #include "src/mca/psec/base/base.h"
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/util/keyval_parse.h"
-#include "src/util/output.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_keyval_parse.h"
+#include "src/util/pmix_output.h"
+#include "src/util/pmix_show_help.h"
 #include <event.h>
 
 #include "src/runtime/pmix_progress_threads.h"

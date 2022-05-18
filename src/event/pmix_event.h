@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,12 +24,12 @@
 #define PMIX_EVENT_H
 
 #include "src/include/pmix_config.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 #include <event.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/class/pmix_list.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
 
@@ -159,7 +159,7 @@ PMIX_CLASS_DECLARATION(pmix_event_chain_t);
 PMIX_EXPORT pmix_status_t pmix_prep_event_chain(pmix_event_chain_t *chain, const pmix_info_t *info,
                                                 size_t ninfo, bool xfer);
 
-/* invoke the error handler that is registered against the given
+/* invoke the pmix_error.handler that is registered against the given
  * status, passing it the provided info on the procs that were
  * affected, plus any additional info provided by the server */
 PMIX_EXPORT void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain);

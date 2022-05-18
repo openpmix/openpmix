@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,7 +31,7 @@
 
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/psquash/psquash.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 static pmix_status_t init(void);
 static void finalize(void);

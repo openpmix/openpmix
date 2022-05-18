@@ -14,7 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,7 +35,7 @@
 #include "internal.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 pmix_status_t pmix20_bfrop_print(char **output, char *prefix, void *src, pmix_data_type_t type)
 {

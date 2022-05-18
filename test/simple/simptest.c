@@ -29,7 +29,7 @@
 #include "src/include/pmix_config.h"
 #include "include/pmix_server.h"
 #include "src/include/pmix_globals.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include <errno.h>
 #include <signal.h>
@@ -42,10 +42,10 @@
 
 #include "src/class/pmix_list.h"
 #include "src/runtime/pmix_progress_threads.h"
-#include "src/util/argv.h"
-#include "src/util/output.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 #include "simptest.h"
 
@@ -137,6 +137,7 @@ typedef struct {
     pmix_op_cbfunc_t cbfunc;
     pmix_spawn_cbfunc_t spcbfunc;
     pmix_release_cbfunc_t relcbfunc;
+    pmix_info_cbfunc_t infocbfunc;
     void *cbdata;
 } myxfer_t;
 static void xfcon(myxfer_t *p)
@@ -906,7 +907,7 @@ static pmix_status_t publish_fn(const pmix_proc_t *proc, const pmix_info_t info[
         pmix_strncpy(p->pdata.proc.nspace, proc->nspace, PMIX_MAX_NSLEN);
         p->pdata.proc.rank = proc->rank;
         pmix_strncpy(p->pdata.key, info[n].key, PMIX_MAX_KEYLEN);
-        pmix_value_xfer(&p->pdata.value, (pmix_value_t *) &info[n].value);
+        PMIx_Value_xfer(&p->pdata.value, (pmix_value_t *) &info[n].value);
         pmix_list_append(&pubdata, &p->super);
     }
 
@@ -951,7 +952,7 @@ static pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys, const pmix_
                 pmix_strncpy(p2->pdata.proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
                 p2->pdata.proc.rank = p->pdata.proc.rank;
                 pmix_strncpy(p2->pdata.key, p->pdata.key, PMIX_MAX_KEYLEN);
-                pmix_value_xfer(&p2->pdata.value, &p->pdata.value);
+                PMIx_Value_xfer(&p2->pdata.value, &p->pdata.value);
                 pmix_list_append(&results, &p2->super);
                 break;
             }
@@ -966,7 +967,7 @@ static pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys, const pmix_
                 pmix_strncpy(pd[i].proc.nspace, p->pdata.proc.nspace, PMIX_MAX_NSLEN);
                 pd[i].proc.rank = p->pdata.proc.rank;
                 pmix_strncpy(pd[i].key, p->pdata.key, PMIX_MAX_KEYLEN);
-                pmix_value_xfer(&pd[i].value, &p->pdata.value);
+                PMIx_Value_xfer(&pd[i].value, &p->pdata.value);
             }
         }
     }
@@ -1094,21 +1095,12 @@ static pmix_status_t notify_event(pmix_status_t code, const pmix_proc_t *source,
     return PMIX_OPERATION_SUCCEEDED;
 }
 
-typedef struct query_data_t {
-    pmix_event_t ev;
-    pmix_info_t *data;
-    size_t ndata;
-    pmix_info_cbfunc_t cbfunc;
-    void *cbdata;
-} query_data_t;
-
 static void qfn(int sd, short args, void *cbdata)
 {
-    query_data_t *qd = (query_data_t *) cbdata;
+    myxfer_t *qd = (myxfer_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    qd->cbfunc(PMIX_SUCCESS, qd->data, qd->ndata, qd->cbdata, NULL, NULL);
-    PMIX_INFO_FREE(qd->data, qd->ndata);
+    qd->infocbfunc(PMIX_SUCCESS, qd->info, qd->ninfo, qd->cbdata, NULL, NULL);
+    PMIX_RELEASE(qd);
 }
 
 static pmix_status_t query_fn(pmix_proc_t *proct, pmix_query_t *queries, size_t nqueries,
@@ -1116,7 +1108,7 @@ static pmix_status_t query_fn(pmix_proc_t *proct, pmix_query_t *queries, size_t 
 {
     size_t n;
     pmix_info_t *info;
-    query_data_t qd;
+    myxfer_t *qd;
     PMIX_HIDE_UNUSED_PARAMS(proct);
 
     if (NULL == cbfunc) {
@@ -1132,11 +1124,13 @@ static pmix_status_t query_fn(pmix_proc_t *proct, pmix_query_t *queries, size_t 
             return PMIX_ERROR;
         }
     }
-    qd.data = info;
-    qd.ndata = nqueries;
-    qd.cbfunc = cbfunc;
-    qd.cbdata = cbdata;
-    SIMPTEST_THREADSHIFT(&qd, qfn);
+
+    qd = PMIX_NEW(myxfer_t);
+    qd->info = info;
+    qd->ninfo = nqueries;
+    qd->infocbfunc = cbfunc;
+    qd->cbdata = cbdata;
+    SIMPTEST_THREADSHIFT(qd, qfn);
     return PMIX_SUCCESS;
 }
 

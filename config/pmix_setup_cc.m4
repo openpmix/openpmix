@@ -21,7 +21,7 @@ dnl Copyright (c) 2020      Triad National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
 dnl
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -115,7 +115,7 @@ AC_DEFUN([PMIX_PROG_CC_C11],[
             for flag in $(echo $pmix_prog_cc_c11_flags | tr ' ' '\n') ; do
                 PMIX_PROG_CC_C11_HELPER([$flag],[pmix_cv_c11_flag=$flag],[])
                 if test "x$pmix_cv_c11_flag" != "x" ; then
-                    CFLAGS="$CFLAGS $pmix_cv_c11_flag"
+                    PMIX_APPEND_UNIQ([CFLAGS], ["$pmix_cv_c11_flag"])
                     AC_MSG_NOTICE([using $flag to enable C11 support])
                     pmix_cv_c11_supported=yes
                     break
@@ -249,7 +249,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
         # compiling and linking to circumvent trouble with
         # libgcov.
         LDFLAGS_orig="$LDFLAGS"
-        LDFLAGS="$LDFLAGS_orig --coverage"
+        PMIX_APPEND_UNIQ([LDFLAGS], ["$--coverage"])
         PMIX_COVERAGE_FLAGS=
 
         _PMIX_CHECK_SPECIFIC_CFLAGS(--coverage, coverage)
@@ -268,16 +268,13 @@ AC_DEFUN([PMIX_SETUP_CC],[
             CLEANFILES="*.bb *.bbg ${CLEANFILES}"
             PMIX_COVERAGE_FLAGS="-ftest-coverage -fprofile-arcs"
         fi
-        PMIX_FLAGS_UNIQ(CFLAGS)
-        PMIX_FLAGS_UNIQ(LDFLAGS)
         WANT_DEBUG=1
    fi
 
     # Do we want debugging?
     if test "$WANT_DEBUG" = "1" && test "$enable_debug_symbols" != "no" ; then
-        CFLAGS="$CFLAGS -g"
+        PMIX_APPEND_UNIQ([CFLAGS], ["-g"])
 
-        PMIX_FLAGS_UNIQ(CFLAGS)
         AC_MSG_WARN([-g has been added to CFLAGS (--enable-debug)])
     fi
 
@@ -310,7 +307,6 @@ AC_DEFUN([PMIX_SETUP_CC],[
         _PMIX_CHECK_SPECIFIC_CFLAGS($RESTRICT_CFLAGS, restrict)
     fi
 
-    PMIX_FLAGS_UNIQ([CFLAGS])
     AC_MSG_RESULT(CFLAGS result: $CFLAGS)
 
     # see if the C compiler supports __builtin_expect
