@@ -52,6 +52,8 @@ AC_CONFIG_AUX_DIR(./config)
 # -I in ACLOCAL_AMFLAGS in the top-level Makefile.am.
 AC_CONFIG_MACRO_DIR(./config)
 
+AC_PROG_SED
+
 # autotools expects to perform tests without interference
 # from user-provided CFLAGS, particularly -Werror flags.
 # Search for them here and cache any we find

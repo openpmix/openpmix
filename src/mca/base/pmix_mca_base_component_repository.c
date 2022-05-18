@@ -35,17 +35,17 @@
 #    include <unistd.h>
 #endif
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
 #include "src/mca/pdl/base/base.h"
-#include "src/util/basename.h"
-#include "src/util/printf.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_basename.h"
+#include "src/util/pmix_printf.h"
+#include "src/util/pmix_show_help.h"
 
 #if PMIX_HAVE_PDL_SUPPORT
 

@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2016 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,7 +15,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/mca/mca.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_framework.h"

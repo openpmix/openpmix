@@ -6,7 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,14 +27,14 @@
 #include <sys/stat.h>
 #endif
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/mca/common/dstore/dstore_common.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pshmem/pshmem.h"
 
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 #include "gds_ds12_lock.h"
 #include "src/mca/common/dstore/dstore_segment.h"

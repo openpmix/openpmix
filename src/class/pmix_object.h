@@ -15,6 +15,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2022 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -122,7 +123,7 @@
 #define PMIX_OBJECT_H
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <assert.h>
 #ifdef HAVE_STDLIB_H
@@ -136,18 +137,135 @@ BEGIN_C_DECLS
 
 #if PMIX_ENABLE_DEBUG
 /* Any kind of unique ID should do the job */
-#define PMIX_OBJ_MAGIC_ID ((0xdeafbeedULL << 32) + 0xdeafbeedULL)
+#    define PMIX_OBJ_MAGIC_ID ((0xdeafbeedULL << 32) + 0xdeafbeedULL)
 #endif
+
+/*
+ * Macros for variadic object instantiation: w/wout custom memory allocator.
+ *
+ * NOTE(skg) There is probably a nicer way to implement this functionality. In
+ * particular, with further macro magic we can probably unify a lot of the
+ * common code here, but that is for another day.
+ */
+
+/**
+ * Takes in at least three arguments, eats all of them except the third.
+ * This allows us to do things like:
+ * PMIX_NEW_HAS_ARITY_HELPER(sally_t, TMA, NO_TMA, ERROR) --> NO_TMA
+ * PMIX_NEW_HAS_ARITY_HELPER(sally_t, a_tma, TMA, NO_TMA, ERROR) --> TMA
+ */
+#define PMIX_NEW_HAS_ARITY_HELPER(_1, _2, N, ...) N
+
+#define PMIX_NEW_HAS_ARITY_IMPL(...) \
+    PMIX_NEW_HAS_ARITY_HELPER(__VA_ARGS__)
+/*
+ * PMIX_CONSTRUCT() takes a maximum of three arguments:
+ * Two arguments means caller does not want a custom memory allocator.
+ * Three arguments means caller wants a custom (TMA) memory allocator.
+ *
+ * Please see PMIX_NEW_HAS_ARITY_HELPER's description above for more details
+ * about how this macro functions.
+ */
+#define PMIX_CONSTRUCT_HAS_ARITY_HELPER(_1, _2, _3, N, ...) N
+
+#define PMIX_CONSTRUCT_HAS_ARITY_IMPL(...) \
+    PMIX_CONSTRUCT_HAS_ARITY_HELPER(__VA_ARGS__)
+
+/*
+ * Macro suffix naming convention must be _TMA or _NO_TMA.
+ *
+ * These are the displacement mode lists used in the PMIX_NEW_HAS_ARITY_HELPER
+ * example above.
+ */
+#define PMIX_NEW_HAS_ARGS_SOURCE() TMA, NO_TMA, ERROR
+
+#define PMIX_CONSTRUCT_HAS_ARGS_SOURCE() TMA, NO_TMA, ERROR, ERROR
+
+#define PMIX_OBJ_HAS_ARGS(...) \
+    PMIX_NEW_HAS_ARITY_IMPL(__VA_ARGS__, PMIX_NEW_HAS_ARGS_SOURCE())
+
+#define PMIX_CONSTRUCT_HAS_ARGS(...) \
+    PMIX_CONSTRUCT_HAS_ARITY_IMPL(__VA_ARGS__, PMIX_CONSTRUCT_HAS_ARGS_SOURCE())
+/*
+ * These are used to generate the proper macro name and forward the relevant
+ * arguments depending on the number of arguments used.
+ */
+#define PMIX_NEW_DISAMBIGUATE2(has_args, ...) \
+    PMIX_NEW_ ## has_args (__VA_ARGS__)
+
+#define PMIX_NEW_DISAMBIGUATE(has_args, ...) \
+    PMIX_NEW_DISAMBIGUATE2(has_args, __VA_ARGS__)
+
+#define PMIX_CONSTRUCT_DISAMBIGUATE2(has_args, ...) \
+    PMIX_CONSTRUCT_ ## has_args (__VA_ARGS__)
+
+#define PMIX_CONSTRUCT_DISAMBIGUATE(has_args, ...) \
+    PMIX_CONSTRUCT_DISAMBIGUATE2(has_args, __VA_ARGS__)
 
 /* typedefs ***********************************************************/
 
 typedef struct pmix_object_t pmix_object_t;
 typedef struct pmix_class_t pmix_class_t;
-typedef void (*pmix_construct_t) (pmix_object_t *);
-typedef void (*pmix_destruct_t) (pmix_object_t *);
-
+typedef void (*pmix_construct_t)(pmix_object_t *);
+typedef void (*pmix_destruct_t)(pmix_object_t *);
 
 /* types **************************************************************/
+
+/** Memory allocator for objects */
+typedef struct pmix_tma {
+    /** Pointer to the TMA's malloc() function. */
+    void *(*tma_malloc)(struct pmix_tma *, size_t);
+    /** Pointer to the TMA's calloc() function. */
+    void *(*tma_calloc)(struct pmix_tma *, size_t, size_t);
+    /** Pointer to the TMA's realloc() function. */
+    void *(*tma_realloc)(struct pmix_tma *, void *, size_t);
+    /*
+     * NOTE: The seemingly unnecessary name mangling here is in response to
+     * certain compilers not liking the use of a function pointer named strdup.
+     */
+    /** Pointer to the TMA's strdup() function. */
+    char *(*tma_strdup)(struct pmix_tma *, const char *s);
+    /**
+     * A memmove()-like function that copies the provided contents to an
+     * appropriate location in the memory area maintained by the allocator.
+     * Like memmove(), it returns a pointer to the content's destination.
+     */
+    void *(*tma_memmove)(struct pmix_tma *tma, const void *src, size_t n);
+    /** Pointer inside the memory allocation arena. */
+    void *arena;
+    /**
+     * When true free() and realloc() cannot be used,
+     * and memory allocation functions cannot fail.
+     */
+    bool dontfree;
+} pmix_tma_t;
+
+static inline void *pmix_tma_malloc(pmix_tma_t *tma, size_t size)
+{
+    if (NULL != tma) {
+        return tma->tma_malloc(tma, size);
+    } else {
+        return malloc(size);
+    }
+}
+
+static inline void *pmix_tma_realloc(pmix_tma_t *tma, void *ptr, size_t size)
+{
+    if (NULL != tma) {
+        return tma->tma_realloc(tma, ptr, size);
+    } else {
+        return realloc(ptr, size);
+    }
+}
+
+static inline char *pmix_tma_strdup(pmix_tma_t *tma, const char *src)
+{
+    if (NULL != tma) {
+        return tma->tma_strdup(tma, src);
+    } else {
+        return strdup(src);
+    }
+}
 
 /**
  * Class descriptor.
@@ -163,10 +281,10 @@ struct pmix_class_t {
     int cls_initialized;            /**< is class initialized */
     int cls_depth;                  /**< depth of class hierarchy tree */
     pmix_construct_t *cls_construct_array;
-                                    /**< array of parent class constructors */
+    /**< array of parent class constructors */
     pmix_destruct_t *cls_destruct_array;
-                                    /**< array of parent class destructors */
-    size_t cls_sizeof;              /**< size of an object instance */
+    /**< array of parent class destructors */
+    size_t cls_sizeof; /**< size of an object instance */
 };
 
 PMIX_EXPORT extern int pmix_class_init_epoch;
@@ -177,22 +295,36 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
  * @param NAME   Name of the class to initialize
  */
 #if PMIX_ENABLE_DEBUG
-#define PMIX_OBJ_STATIC_INIT(BASE_CLASS)        \
-    {                                           \
-        .obj_magic_id = PMIX_OBJ_MAGIC_ID,      \
-        .obj_class = PMIX_CLASS(BASE_CLASS),    \
-        .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
-        .obj_reference_count = 1,               \
-        .cls_init_file_name = __FILE__,         \
-        .cls_init_lineno = __LINE__,            \
-    }
+#    define PMIX_OBJ_STATIC_INIT(BASE_CLASS)        \
+        {                                           \
+            .obj_magic_id = PMIX_OBJ_MAGIC_ID,      \
+            .obj_class = PMIX_CLASS(BASE_CLASS),    \
+            .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
+            .obj_reference_count = 1,               \
+            .obj_tma.tma_malloc = NULL,             \
+            .obj_tma.tma_calloc = NULL,             \
+            .obj_tma.tma_realloc = NULL,            \
+            .obj_tma.tma_strdup = NULL,             \
+            .obj_tma.tma_memmove = NULL,            \
+            .obj_tma.arena = NULL,                  \
+            .obj_tma.dontfree = false,              \
+            .cls_init_file_name = __FILE__,         \
+            .cls_init_lineno = __LINE__             \
+        }
 #else
-#define PMIX_OBJ_STATIC_INIT(BASE_CLASS)        \
-    {                                           \
-        .obj_class = PMIX_CLASS(BASE_CLASS),    \
-        .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
-        .obj_reference_count = 1,               \
-    }
+#    define PMIX_OBJ_STATIC_INIT(BASE_CLASS)        \
+        {                                           \
+            .obj_class = PMIX_CLASS(BASE_CLASS),    \
+            .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
+            .obj_reference_count = 1,               \
+            .obj_tma.tma_malloc = NULL,             \
+            .obj_tma.tma_calloc = NULL,             \
+            .obj_tma.tma_realloc = NULL,            \
+            .obj_tma.tma_strdup = NULL,             \
+            .obj_tma.tma_memmove = NULL,            \
+            .obj_tma.arena = NULL,                  \
+            .obj_tma.dontfree = false               \
+        }
 #endif
 
 /**
@@ -207,12 +339,13 @@ struct pmix_object_t {
     uint64_t obj_magic_id;
 #endif
     pthread_mutex_t obj_lock;
-    pmix_class_t *obj_class;            /**< class descriptor */
-    int32_t obj_reference_count;   /**< reference count */
+    pmix_class_t *obj_class;                 /**< class descriptor */
+    int32_t obj_reference_count;             /**< reference count */
+    pmix_tma_t obj_tma;                      /**< allocator for this object */
 #if PMIX_ENABLE_DEBUG
-   const char* cls_init_file_name;        /**< In debug mode store the file where the object get contructed */
-   int   cls_init_lineno;           /**< In debug mode store the line number where the object get contructed */
-#endif  /* PMIX_ENABLE_DEBUG */
+    const char *cls_init_file_name; /**< In debug mode store the file where the object get constructed */
+    int cls_init_lineno; /**< In debug mode store the line number where the object get constructed */
+#endif                   /* PMIX_ENABLE_DEBUG */
 };
 
 /* macros ************************************************************/
@@ -224,8 +357,7 @@ struct pmix_object_t {
  * @param NAME          Name of class
  * @return              Pointer to class descriptor
  */
-#define PMIX_CLASS(NAME)     (&(NAME ## _class))
-
+#define PMIX_CLASS(NAME) (&(NAME##_class))
 
 /**
  * Static initializer for a class descriptor
@@ -237,16 +369,16 @@ struct pmix_object_t {
  *
  * Put this in NAME.c
  */
-#define PMIX_CLASS_INSTANCE(NAME, PARENT, CONSTRUCTOR, DESTRUCTOR)       \
-    pmix_class_t NAME ## _class = {                                     \
-        # NAME,                                                         \
-        PMIX_CLASS(PARENT),                                              \
-        (pmix_construct_t) CONSTRUCTOR,                                 \
-        (pmix_destruct_t) DESTRUCTOR,                                   \
-        0, 0, NULL, NULL,                                               \
-        sizeof(NAME)                                                    \
-    }
-
+#define PMIX_CLASS_INSTANCE(NAME, PARENT, CONSTRUCTOR, DESTRUCTOR) \
+    pmix_class_t NAME##_class = {#NAME,                            \
+                                 PMIX_CLASS(PARENT),               \
+                                 (pmix_construct_t) CONSTRUCTOR,   \
+                                 (pmix_destruct_t) DESTRUCTOR,     \
+                                 0,                                \
+                                 0,                                \
+                                 NULL,                             \
+                                 NULL,                             \
+                                 sizeof(NAME)}
 
 /**
  * Declaration for class descriptor
@@ -255,9 +387,7 @@ struct pmix_object_t {
  *
  * Put this in NAME.h
  */
-#define PMIX_CLASS_DECLARATION(NAME)             \
-    extern pmix_class_t NAME ## _class
-
+#define PMIX_CLASS_DECLARATION(NAME) extern pmix_class_t NAME##_class
 
 /**
  * Create an object: dynamically allocate storage and run the class
@@ -266,22 +396,39 @@ struct pmix_object_t {
  * @param type          Type (class) of the object
  * @return              Pointer to the object
  */
-static inline pmix_object_t *pmix_obj_new(pmix_class_t * cls);
+static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma);
 #if PMIX_ENABLE_DEBUG
-static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* file, int line)
+static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma_t *tma,
+                                                    const char *file, int line)
 {
-    pmix_object_t* object = pmix_obj_new(type);
+    pmix_object_t *object = pmix_obj_new_tma(type, tma);
     object->obj_magic_id = PMIX_OBJ_MAGIC_ID;
     object->cls_init_file_name = file;
     object->cls_init_lineno = line;
     return object;
 }
-#define PMIX_NEW(type)                                   \
-    ((type *)pmix_obj_new_debug(PMIX_CLASS(type), __FILE__, __LINE__))
+
+#define PMIX_NEW_NO_TMA(type) \
+    ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), NULL, __FILE__, __LINE__))
+
+#define PMIX_NEW_TMA(type, tma) \
+    ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), tma, __FILE__, __LINE__))
+
 #else
-#define PMIX_NEW(type)                                   \
-    ((type *) pmix_obj_new(PMIX_CLASS(type)))
-#endif  /* PMIX_ENABLE_DEBUG */
+#define PMIX_NEW_NO_TMA(type)   ((type *)pmix_obj_new_tma(PMIX_CLASS(type), NULL))
+
+#define PMIX_NEW_TMA(type, tma) ((type *)pmix_obj_new_tma(PMIX_CLASS(type), tma))
+
+#endif /* PMIX_ENABLE_DEBUG */
+
+/**
+ * PMIX_NEW() takes a maximum of two arguments:
+ * One argument means caller does not want a custom memory allocator, namely the
+ * common case.
+ * Two arguments means caller wants a custom (TMA) memory allocator.
+ */
+#define PMIX_NEW(...) \
+    PMIX_NEW_DISAMBIGUATE(PMIX_OBJ_HAS_ARGS(__VA_ARGS__), __VA_ARGS__)
 
 /**
  * Retain an object (by incrementing its reference count)
@@ -289,15 +436,15 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * @param object        Pointer to the object
  */
 #if PMIX_ENABLE_DEBUG
-#define PMIX_RETAIN(object)                                              \
-    do {                                                                \
-        assert(NULL != ((pmix_object_t *) (object))->obj_class);        \
-        assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
-        pmix_obj_update((pmix_object_t *) (object), 1);                 \
-        assert(((pmix_object_t *) (object))->obj_reference_count >= 0); \
-    } while (0)
+#    define PMIX_RETAIN(object)                                                      \
+        do {                                                                         \
+            assert(NULL != ((pmix_object_t *) (object))->obj_class);                 \
+            assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
+            pmix_obj_update((pmix_object_t *) (object), 1);                          \
+            assert(((pmix_object_t *) (object))->obj_reference_count >= 0);          \
+        } while (0)
 #else
-#define PMIX_RETAIN(object)  pmix_obj_update((pmix_object_t *) (object), 1);
+#    define PMIX_RETAIN(object) pmix_obj_update((pmix_object_t *) (object), 1)
 #endif
 
 /**
@@ -305,19 +452,19 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * an object change.
  */
 #if PMIX_ENABLE_DEBUG
-#define PMIX_REMEMBER_FILE_AND_LINENO( OBJECT, FILE, LINENO )    \
-    do {                                                        \
-        ((pmix_object_t*)(OBJECT))->cls_init_file_name = FILE;  \
-        ((pmix_object_t*)(OBJECT))->cls_init_lineno = LINENO;   \
-    } while (0)
-#define PMIX_SET_MAGIC_ID( OBJECT, VALUE )                       \
-    do {                                                        \
-        ((pmix_object_t*)(OBJECT))->obj_magic_id = (VALUE);     \
-    } while (0)
+#    define PMIX_REMEMBER_FILE_AND_LINENO(OBJECT, FILE, LINENO)      \
+        do {                                                         \
+            ((pmix_object_t *) (OBJECT))->cls_init_file_name = FILE; \
+            ((pmix_object_t *) (OBJECT))->cls_init_lineno = LINENO;  \
+        } while (0)
+#    define PMIX_SET_MAGIC_ID(OBJECT, VALUE)                      \
+        do {                                                      \
+            ((pmix_object_t *) (OBJECT))->obj_magic_id = (VALUE); \
+        } while (0)
 #else
-#define PMIX_REMEMBER_FILE_AND_LINENO( OBJECT, FILE, LINENO )
-#define PMIX_SET_MAGIC_ID( OBJECT, VALUE )
-#endif  /* PMIX_ENABLE_DEBUG */
+#    define PMIX_REMEMBER_FILE_AND_LINENO(OBJECT, FILE, LINENO)
+#    define PMIX_SET_MAGIC_ID(OBJECT, VALUE)
+#endif /* PMIX_ENABLE_DEBUG */
 
 /**
  * Release an object (by decrementing its reference count).  If the
@@ -330,29 +477,34 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * @param object        Pointer to the object
  */
 #if PMIX_ENABLE_DEBUG
-#define PMIX_RELEASE(object)                                             \
-    do {                                                                \
-        assert(NULL != ((pmix_object_t *) (object))->obj_class);        \
-        assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
-        if (0 == pmix_obj_update((pmix_object_t *) (object), -1)) {     \
-            PMIX_SET_MAGIC_ID((object), 0);                              \
-            pmix_obj_run_destructors((pmix_object_t *) (object));       \
-            PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
-            free(object);                                               \
-            object = NULL;                                              \
-        }                                                               \
-    } while (0)
+#    define PMIX_RELEASE(object)                                           \
+        do {                                                               \
+            pmix_object_t *_obj = (pmix_object_t *) object;                \
+            assert(NULL != _obj->obj_class);                               \
+            assert(PMIX_OBJ_MAGIC_ID == _obj->obj_magic_id);               \
+            if (0 == pmix_obj_update(_obj, -1)) {                          \
+                PMIX_SET_MAGIC_ID((object), 0);                            \
+                pmix_obj_run_destructors(_obj);                            \
+                PMIX_REMEMBER_FILE_AND_LINENO(object, __FILE__, __LINE__); \
+                if (!(_obj->obj_tma.dontfree)) {                           \
+                    free(object);                                          \
+                }                                                          \
+                object = NULL;                                             \
+            }                                                              \
+        } while (0)
 #else
-#define PMIX_RELEASE(object)                                             \
-    do {                                                                \
-        if (0 == pmix_obj_update((pmix_object_t *) (object), -1)) {     \
-            pmix_obj_run_destructors((pmix_object_t *) (object));       \
-            free(object);                                               \
-            object = NULL;                                              \
-        }                                                               \
-    } while (0)
+#    define PMIX_RELEASE(object)                            \
+        do {                                                \
+            pmix_object_t *_obj = (pmix_object_t *) object; \
+            if (0 == pmix_obj_update(_obj, -1)) {           \
+                pmix_obj_run_destructors(_obj);             \
+                if (!(_obj->obj_tma.dontfree)) {            \
+                    free(object);                           \
+                }                                           \
+                object = NULL;                              \
+            }                                               \
+        } while (0)
 #endif
-
 
 /**
  * Construct (initialize) objects that are not dynamically allocated.
@@ -360,24 +512,54 @@ static inline pmix_object_t *pmix_obj_new_debug(pmix_class_t* type, const char* 
  * @param object        Pointer to the object
  * @param type          The object type
  */
+static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
+{
+    if (NULL == t) {
+        obj->obj_tma.tma_malloc = NULL;
+        obj->obj_tma.tma_calloc = NULL;
+        obj->obj_tma.tma_realloc = NULL;
+        obj->obj_tma.tma_strdup = NULL;
+        obj->obj_tma.tma_memmove = NULL;
+        obj->obj_tma.arena = NULL;
+        obj->obj_tma.dontfree = false;
+    } else {
+        obj->obj_tma.tma_malloc = t->tma_malloc;
+        obj->obj_tma.tma_calloc = t->tma_calloc;
+        obj->obj_tma.tma_realloc = t->tma_realloc;
+        obj->obj_tma.tma_strdup = t->tma_strdup;
+        obj->obj_tma.tma_memmove = t->tma_memmove;
+        obj->obj_tma.arena = t->arena;
+        obj->obj_tma.dontfree = t->dontfree;
+    }
+}
 
-#define PMIX_CONSTRUCT(object, type)                             \
-do {                                                            \
-    PMIX_CONSTRUCT_INTERNAL((object), PMIX_CLASS(type));          \
-} while (0)
+#define PMIX_CONSTRUCT_INTERNAL_TMA(object, type, t)               \
+    do {                                                           \
+        PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);            \
+        if (pmix_class_init_epoch != (type)->cls_initialized) {    \
+            pmix_class_initialize((type));                         \
+        }                                                          \
+        ((pmix_object_t *) (object))->obj_class = (type);          \
+        ((pmix_object_t *) (object))->obj_reference_count = 1;     \
+        pmix_obj_construct_tma(((pmix_object_t *) (object)), (t)); \
+        pmix_obj_run_constructors((pmix_object_t *) (object));     \
+        PMIX_REMEMBER_FILE_AND_LINENO(object, __FILE__, __LINE__); \
+    } while (0)
 
-#define PMIX_CONSTRUCT_INTERNAL(object, type)                        \
-do {                                                                \
-    PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);              \
-    if (pmix_class_init_epoch != (type)->cls_initialized) {                             \
-        pmix_class_initialize((type));                              \
-    }                                                               \
-    ((pmix_object_t *) (object))->obj_class = (type);               \
-    ((pmix_object_t *) (object))->obj_reference_count = 1;          \
-    pmix_obj_run_constructors((pmix_object_t *) (object));          \
-    PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
-} while (0)
 
+#define PMIX_CONSTRUCT_TMA(object, type, t)                         \
+    do {                                                            \
+        PMIX_CONSTRUCT_INTERNAL_TMA((object), PMIX_CLASS(type), t); \
+    } while (0)
+
+
+#define PMIX_CONSTRUCT_NO_TMA(object, type)     \
+    do {                                        \
+        PMIX_CONSTRUCT_TMA(object, type, NULL); \
+    } while (0)
+
+#define PMIX_CONSTRUCT(...) \
+    PMIX_CONSTRUCT_DISAMBIGUATE(PMIX_CONSTRUCT_HAS_ARGS(__VA_ARGS__), __VA_ARGS__)
 
 /**
  * Destruct (finalize) an object that is not dynamically allocated.
@@ -385,19 +567,19 @@ do {                                                                \
  * @param object        Pointer to the object
  */
 #if PMIX_ENABLE_DEBUG
-#define PMIX_DESTRUCT(object)                                    \
-do {                                                            \
-    assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
-    PMIX_SET_MAGIC_ID((object), 0);                              \
-    pmix_obj_run_destructors((pmix_object_t *) (object));       \
-    PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
-} while (0)
+#    define PMIX_DESTRUCT(object)                                                    \
+        do {                                                                         \
+            assert(PMIX_OBJ_MAGIC_ID == ((pmix_object_t *) (object))->obj_magic_id); \
+            PMIX_SET_MAGIC_ID((object), 0);                                          \
+            pmix_obj_run_destructors((pmix_object_t *) (object));                    \
+            PMIX_REMEMBER_FILE_AND_LINENO(object, __FILE__, __LINE__);               \
+        } while (0)
 #else
-#define PMIX_DESTRUCT(object)                                    \
-do {                                                            \
-    pmix_obj_run_destructors((pmix_object_t *) (object));       \
-    PMIX_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
-} while (0)
+#    define PMIX_DESTRUCT(object)                                      \
+        do {                                                           \
+            pmix_obj_run_destructors((pmix_object_t *) (object));      \
+            PMIX_REMEMBER_FILE_AND_LINENO(object, __FILE__, __LINE__); \
+        } while (0)
 #endif
 
 PMIX_CLASS_DECLARATION(pmix_object_t);
@@ -437,19 +619,18 @@ PMIX_EXPORT int pmix_class_finalize(void);
  * Hardwired for fairly shallow inheritance trees
  * @param size          Pointer to the object.
  */
-static inline void pmix_obj_run_constructors(pmix_object_t * object)
+static inline void pmix_obj_run_constructors(pmix_object_t *object)
 {
-    pmix_construct_t* cls_construct;
+    pmix_construct_t *cls_construct;
 
     assert(NULL != object->obj_class);
 
     cls_construct = object->obj_class->cls_construct_array;
-    while( NULL != *cls_construct ) {
+    while (NULL != *cls_construct) {
         (*cls_construct)(object);
         cls_construct++;
     }
 }
-
 
 /**
  * Run the hierarchy of class destructors for this object, in a
@@ -459,19 +640,18 @@ static inline void pmix_obj_run_constructors(pmix_object_t * object)
  *
  * @param size          Pointer to the object.
  */
-static inline void pmix_obj_run_destructors(pmix_object_t * object)
+static inline void pmix_obj_run_destructors(pmix_object_t *object)
 {
-    pmix_destruct_t* cls_destruct;
+    pmix_destruct_t *cls_destruct;
 
     assert(NULL != object->obj_class);
 
     cls_destruct = object->obj_class->cls_destruct_array;
-    while( NULL != *cls_destruct ) {
+    while (NULL != *cls_destruct) {
         (*cls_destruct)(object);
         cls_destruct++;
     }
 }
-
 
 /**
  * Create new object: dynamically allocate storage and run the class
@@ -483,12 +663,16 @@ static inline void pmix_obj_run_destructors(pmix_object_t * object)
  * @param cls           Pointer to the class descriptor of this object
  * @return              Pointer to the object
  */
-static inline pmix_object_t *pmix_obj_new(pmix_class_t * cls)
+static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma)
 {
     pmix_object_t *object;
     assert(cls->cls_sizeof >= sizeof(pmix_object_t));
 
-    object = (pmix_object_t *) malloc(cls->cls_sizeof);
+    if (NULL == tma) {
+        object = (pmix_object_t *) malloc(cls->cls_sizeof);
+    } else {
+        object = (pmix_object_t *) pmix_tma_malloc(tma, cls->cls_sizeof);
+    }
     if (pmix_class_init_epoch != cls->cls_initialized) {
         pmix_class_initialize(cls);
     }
@@ -515,11 +699,25 @@ static inline pmix_object_t *pmix_obj_new(pmix_class_t * cls)
 #endif /* PMIX_ENABLE_DEBUG */
         object->obj_class = cls;
         object->obj_reference_count = 1;
+        if (NULL == tma) {
+            object->obj_tma.tma_malloc = NULL;
+            object->obj_tma.tma_calloc = NULL;
+            object->obj_tma.tma_realloc = NULL;
+            object->obj_tma.tma_strdup = NULL;
+            object->obj_tma.arena = NULL;
+            object->obj_tma.dontfree = false;
+        } else {
+            object->obj_tma = *tma;
+        }
         pmix_obj_run_constructors(object);
     }
     return object;
 }
 
+static inline pmix_object_t *pmix_obj_new(pmix_class_t *cls)
+{
+    return pmix_obj_new_tma(cls, NULL);
+}
 
 /**
  * Atomically update the object's reference count by some increment.

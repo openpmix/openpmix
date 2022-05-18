@@ -7,7 +7,7 @@
  *                         reserved.
  *
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,9 +31,9 @@
 #ifndef PMIX_MCA_COMPRESS_H
 #define PMIX_MCA_COMPRESS_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 #include "src/class/pmix_object.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 
 #if defined(c_plusplus) || defined(__cplusplus)

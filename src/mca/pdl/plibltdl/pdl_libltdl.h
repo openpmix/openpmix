@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2015 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2017      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,7 +12,7 @@
 #ifndef PMIX_DL_LIBLTDL
 #define PMIX_DL_LIBLTDL
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "pmix/mca/dl/dl.h"
 

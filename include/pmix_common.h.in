@@ -3,7 +3,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021      Triad National Security, LLC. All rights
@@ -200,6 +200,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        a local system-level PMIx server
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first
 #define PMIX_SERVER_URI                     "pmix.srvr.uri"         // (char*) URI of server to be contacted
+#define PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
 #define PMIX_SERVER_HOSTNAME                "pmix.srvr.host"        // (char*) node where target server is located
 #define PMIX_CONNECT_MAX_RETRIES            "pmix.tool.mretries"    // (uint32_t) maximum number of times to try to connect to server
 #define PMIX_CONNECT_RETRY_DELAY            "pmix.tool.retry"       // (uint32_t) time in seconds between connection attempts
@@ -263,12 +264,6 @@ typedef uint32_t pmix_rank_t;
                                                                     //           "close" (thread located on cpu close to master thread)
                                                                     //           "spread" (threads load-balanced across available cpus)
 
-/* attributes for the USOCK rendezvous socket  */
-#define PMIX_USOCK_DISABLE                  "pmix.usock.disable"    // (bool) disable legacy usock support
-#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode_t (9 bits valid)
-#define PMIX_SINGLE_LISTENER                "pmix.sing.listnr"      // (bool) use only one rendezvous socket, letting priorities and/or
-                                                                    //        MCA param select the active transport
-
 /* attributes for TCP connections */
 #define PMIX_TCP_REPORT_URI                 "pmix.tcp.repuri"       // (char*) output URI - '-' => stdout, '+' => stderr, or filename
 #define PMIX_TCP_URI                        "pmix.tcp.uri"          // (char*) URI of server to connect to, or file:<name of file containing it>
@@ -288,12 +283,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NODE_OVERSUBSCRIBED            "pmix.ndosub"           // (bool) true if number of procs from this job on this node
                                                                     //        exceeds the number of slots allocated to it
 
-
 /* scratch directory locations for use by applications */
 #define PMIX_TMPDIR                         "pmix.tmpdir"           // (char*) top-level tmp dir assigned to session
 #define PMIX_NSDIR                          "pmix.nsdir"            // (char*) sub-tmpdir assigned to namespace
 #define PMIX_PROCDIR                        "pmix.pdir"             // (char*) sub-nsdir assigned to proc
 #define PMIX_TDIR_RMCLEAN                   "pmix.tdir.rmclean"     // (bool)  Resource Manager will clean session directories
+
 
 /* information about relative ranks as assigned by the RM */
 #define PMIX_CLUSTER_ID                     "pmix.clid"             // (char*) a string name for the cluster this proc is executing on
@@ -312,7 +307,6 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_APPLDR                         "pmix.aldr"             // (pmix_rank_t) lowest rank in this app within this job
 #define PMIX_PROC_PID                       "pmix.ppid"             // (pid_t) pid of specified proc
 #define PMIX_SESSION_ID                     "pmix.session.id"       // (uint32_t) session identifier
-
 #define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for the specified nspace
 #define PMIX_ALLOCATED_NODELIST             "pmix.alist"            // (char*) comma-delimited list of all nodes in this allocation regardless of
                                                                     //         whether or not they currently host procs.
@@ -393,6 +387,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ACCESS_GRPIDS                  "pmix.agids"            // (pmix_data_array_t*) Array of effective GIDs that are allowed to
                                                                     //        access the published data
 #define PMIX_WAIT_FOR_CONNECTION            "pmix.wait.conn"        // (bool) wait until the specified connection has been made
+#define PMIX_QUALIFIED_VALUE                "pmix.qual.val"         // (pmix_data_array_t*) Value being provided consists of the primary
+                                                                    //        key-value pair in first position, followed by one or more
+                                                                    //        key-value qualifiers to be used when subsequently retrieving
+                                                                    //        the primary value
 
 
 /* attributes used by host server to pass data to/from the server convenience library - the
@@ -451,6 +449,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ADD_HOSTFILE                   "pmix.addhostfile"      // (char*) hostfile to add to existing allocation
 #define PMIX_PREFIX                         "pmix.prefix"           // (char*) prefix to use for starting spawned procs
 #define PMIX_WDIR                           "pmix.wdir"             // (char*) working directory for spawned procs
+#define PMIX_WDIR_USER_SPECIFIED            "pmix.wdir.user"        // (bool) User specified the working directory
 #define PMIX_DISPLAY_MAP                    "pmix.dispmap"          // (bool) display process map upon spawn
 #define PMIX_PPR                            "pmix.ppr"              // (char*) #procs to spawn on each identified resource
 #define PMIX_MAPBY                          "pmix.mapby"            // (char*) mapping policy
@@ -463,6 +462,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEBUGGER_DAEMONS               "pmix.debugger"         // (bool) spawned app consists of debugger daemons
 #define PMIX_COSPAWN_APP                    "pmix.cospawn"          // (bool) designated app is to be spawned as a disconnected
                                                                     //        job - i.e., not part of the "comm_world" of the job
+#define PMIX_COLOCATE_PROC                  "pmix.colproc"          // (pmix_data_array_t*) Array of pmix_proc_t identifying the procs
+                                                                    //        with which the new job's procs are to be colocated
+#define PMIX_COLOCATE_NUM_PROC              "pmix.colnum.proc"      // (uint16_t) Number of procs to colocate with each identified proc
+#define PMIX_COLOCATE_NUM_NODE              "pmix.colnum.node"      // (uint16_t) Number of procs to colocate on the node of each identified proc
 #define PMIX_SET_SESSION_CWD                "pmix.ssncwd"           // (bool) set the application's current working directory to
                                                                     //        the session working directory assigned by the RM
 #define PMIX_INDEX_ARGV                     "pmix.indxargv"         // (bool) mark the argv with the rank of the proc
@@ -941,7 +944,16 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GROUP_ENDPT_DATA               "pmix.grp.endpt"        // (pmix_byte_object_t) data collected to be shared during construction
 #define PMIX_GROUP_NAMES                    "pmix.pgrp.nm"          // (pmix_data_array_t*) Returns an array of string names of the process groups
                                                                     //        in which the given process is a member.
-
+#define PMIX_GROUP_INFO                     "pmix.grp.info"         // (pmix_data_array_t*) Array of pmix_info_t containing data that is to be
+                                                                    //        shared across all members of a group during group construction
+#define PMIX_GROUP_LOCAL_CID                "pmix.grp.lclid"        // (size_t) local context ID for the specified process member of a group
+#define PMIX_GROUP_ADD_MEMBERS              "pmix.grp.add"          // (pmix_data_array_t*) Array of pmix_proc_t identifying procs that are not
+                                                                    //        included in the membership specified in the procs array passed to
+                                                                    //        the PMIx_Group_construct[_nb] call, but are to be included in the
+                                                                    //        final group. The identified procs will be sent an invitation to
+                                                                    //        join the group during the construction procedure. This is used when
+                                                                    //        some members of the proposed group do not know the full membership
+                                                                    //        and therefore cannot include all members in the call to construct.
 
 /* Storage-Related Attributes */
 #define PMIX_QUERY_STORAGE_LIST             "pmix.strg.list"       // (char*) return comma-delimited list of identifiers for all available storage systems
@@ -1112,6 +1124,8 @@ typedef uint32_t pmix_rank_t;
                                                                    //         Named values (i.e., values defined by constant names via a
                                                                    //         typical C-language enum declaration) must be provided as
                                                                    //         their numerical equivalent.
+#define PMIX_QUERY_ABI_VERSION              "pmix.qry.abiversion"  // (char*) The PMIx Standard ABI version supported returned in the form "MAJOR.MINOR"
+                                                                   //         This attribute can be used with PMIx_Query_info outside of the init/finalize region.
 
 /****    PROCESS STATE DEFINITIONS    ****/
 typedef uint8_t pmix_proc_state_t;
@@ -1327,6 +1341,16 @@ typedef int pmix_status_t;
  * specific value as the value of the constant may change */
 #define PMIX_EXTERNAL_ERR_BASE                      -3000
 
+/* define the results values for comparisons */
+typedef enum {
+    PMIX_EQUAL,
+    PMIX_VALUE1_GREATER,
+    PMIX_VALUE2_GREATER,
+    PMIX_VALUE_TYPE_DIFFERENT,
+    PMIX_VALUE_INCOMPATIBLE_OBJECTS,
+    PMIX_VALUE_COMPARISON_NOT_AVAIL
+} pmix_value_cmp_t;
+
 /****    PMIX DATA TYPES    ****/
 typedef uint16_t pmix_data_type_t;
 #define PMIX_UNDEF                       0
@@ -1453,6 +1477,7 @@ typedef uint32_t pmix_info_directives_t;
 #define PMIX_INFO_REQD              0x00000001
 #define PMIX_INFO_ARRAY_END         0x00000002      // mark the end of an array created by PMIX_INFO_CREATE
 #define PMIX_INFO_REQD_PROCESSED    0x00000004      // reqd attribute has been processed
+#define PMIX_INFO_QUALIFIER         0x00000008      // info is a qualifier to the primary value
 /* the top 16-bits are reserved for internal use by
  * implementers - these may be changed inside the
  * PMIx library */
@@ -3297,8 +3322,17 @@ typedef struct pmix_info {
     ((m)->flags & PMIX_INFO_REQD_PROCESSED)
 
 /* macro for testing end of the array */
+#define PMIX_INFO_SET_END(m)    \
+    ((m)->flags |= PMIX_INFO_ARRAY_END)
 #define PMIX_INFO_IS_END(m)         \
     ((m)->flags & PMIX_INFO_ARRAY_END)
+
+/* macro for testing if qualifier */
+#define PMIX_INFO_SET_QUALIFIER(i)   \
+    ((i)->flags |= PMIX_INFO_QUALIFIER)
+#define PMIX_INFO_IS_QUALIFIER(i)    \
+    ((i)->flags & PMIX_INFO_QUALIFIER)
+
 
 /* define a special macro for checking if a boolean
  * info is true - when info structs are provided, a

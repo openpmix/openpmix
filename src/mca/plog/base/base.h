@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,7 +38,7 @@
 #include "src/class/pmix_pointer_array.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/mca.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 
 #include "src/mca/plog/plog.h"
 

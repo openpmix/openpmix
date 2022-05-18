@@ -11,7 +11,7 @@
  *
  */
 
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "test_common.h"
 #include <stdint.h>
 #include <stdio.h>

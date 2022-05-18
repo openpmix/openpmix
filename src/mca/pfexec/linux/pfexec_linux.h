@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,7 +24,7 @@
 #ifndef PMIX_PFEXEC_LINUX_H
 #define PMIX_PFEXEC_LINUX_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/mca/mca.h"
 

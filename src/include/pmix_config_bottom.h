@@ -15,7 +15,7 @@
  *                         All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -414,7 +414,7 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 
 #    if !defined(HAVE_ASPRINTF) || !defined(HAVE_SNPRINTF) || !defined(HAVE_VASPRINTF) \
         || !defined(HAVE_VSNPRINTF)
-#        include "util/printf.h"
+#        include "util/pmix_printf.h"
 #    endif
 
 #    ifndef HAVE_ASPRINTF
@@ -542,8 +542,8 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 
 /* For a similar reason to what is listed in pmix_config_top.h, we
    want to protect others from the autoconf/automake-generated
-   PACKAGE_<foo> macros in pmix_config.h.  We can't put these undef's
-   directly in pmix_config.h because they'll be turned into #defines'
+   PACKAGE_<foo> macros in src/include/pmix_config.h.  We can't put these undef's
+   directly in src/include/pmix_config.h because they'll be turned into #defines'
    via autoconf.
 
    So put them here in case any one else includes PMIX's

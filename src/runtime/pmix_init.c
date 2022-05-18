@@ -35,7 +35,7 @@
 #endif
 
 #include "src/include/pmix_globals.h"
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
@@ -49,17 +49,17 @@
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/util/name_fns.h"
-#include "src/util/net.h"
-#include "src/util/output.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_net.h"
+#include "src/util/pmix_output.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
 #include "src/event/pmix_event.h"
-#include "src/include/types.h"
-#include "src/util/error.h"
-#include "src/util/keyval_parse.h"
+#include "src/include/pmix_types.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_keyval_parse.h"
 
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -67,6 +67,9 @@
 
 const char pmix_version_string[] = PMIX_IDENT_STRING;
 const char* pmix_tool_basename = NULL;
+const char* pmix_tool_version = PMIX_VERSION;
+const char* pmix_tool_org = "PMIx";
+const char* pmix_tool_msg = PMIX_PROXY_BUGREPORT_STRING;
 
 PMIX_EXPORT int pmix_initialized = 0;
 PMIX_EXPORT bool pmix_init_called = false;
@@ -137,7 +140,7 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *helpdir)
     }
 
     /* initialize the help system */
-    pmix_show_help_init();
+    pmix_show_help_init(helpdir);
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (ret = pmix_util_keyval_parse_init())) {
@@ -198,7 +201,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
 
 #if PMIX_NO_LIB_DESTRUCTOR
     if (pmix_init_called) {
-        /* can't use pmix_show_help.here */
+        /* can't use pmix_pmix_show_help.here */
         fprintf(
             stderr,
             "pmix_init: attempted to initialize after finalize without compiler "

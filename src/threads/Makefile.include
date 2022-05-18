@@ -26,10 +26,10 @@
 
 # Source code files
 headers += \
-        threads/mutex.h \
-        threads/mutex_unix.h \
-        threads/threads.h \
-        threads/tsd.h
+        threads/pmix_mutex.h \
+        threads/pmix_mutex_unix.h \
+        threads/pmix_threads.h \
+        threads/pmix_tsd.h
 
 sources += \
         threads/mutex.c \

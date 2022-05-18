@@ -13,7 +13,7 @@
  * Copyright (c) 2013      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,12 +27,14 @@
 #include <string.h>
 
 #include "src/class/pmix_list.h"
-#include "src/mca/base/base.h"
+#include "src/include/pmix_globals.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
 #include "src/mca/mca.h"
-#include "src/util/keyval_parse.h"
+#include "src/util/pmix_keyval_parse.h"
 
-static void save_value(const char *name, const char *value);
+static void save_value(const char *file, int lineno,
+                       const char *name, const char *value);
 
 static char *file_being_read;
 static pmix_list_t *_param_list;
@@ -50,10 +52,12 @@ int pmix_mca_base_internal_env_store(void)
     return pmix_util_keyval_save_internal_envars(save_value);
 }
 
-static void save_value(const char *name, const char *value)
+static void save_value(const char *file, int lineno,
+                       const char *name, const char *value)
 {
     pmix_mca_base_var_file_value_t *fv;
     bool found = false;
+    PMIX_HIDE_UNUSED_PARAMS(file, lineno);
 
     /* First traverse through the list and ensure that we don't
        already have a param of this name.  If we do, just replace the

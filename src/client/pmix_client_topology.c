@@ -17,12 +17,12 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "include/pmix.h"
+#include "pmix.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/error.h"
+#include "src/util/pmix_error.h"
 
 static void _loadtp(int sd, short args, void *cbdata)
 {

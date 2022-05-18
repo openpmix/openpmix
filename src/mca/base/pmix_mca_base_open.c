@@ -33,15 +33,15 @@
 #    include <unistd.h>
 #endif
 
-#include "include/pmix_common.h"
-#include "src/mca/base/base.h"
+#include "pmix_common.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
-#include "src/util/os_dirpath.h"
+#include "src/util/pmix_printf.h"
+#include "src/util/pmix_os_dirpath.h"
 
 /*
  * Public variables
