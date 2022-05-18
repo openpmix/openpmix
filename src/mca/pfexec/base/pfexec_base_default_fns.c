@@ -29,7 +29,7 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
@@ -60,7 +60,7 @@
 #    include <libutil.h>
 #endif
 
-#include "include/pmix.h"
+#include "pmix.h"
 #include "pmix_common.h"
 #include "include/pmix_server.h"
 
@@ -68,18 +68,18 @@
 #include "src/include/pmix_stdint.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/threads/threads.h"
-#include "src/util/argv.h"
-#include "src/util/context_fns.h"
-#include "src/util/error.h"
-#include "src/util/name_fns.h"
-#include "src/util/os_dirpath.h"
-#include "src/util/os_path.h"
-#include "src/util/path.h"
+#include "src/threads/pmix_threads.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_context_fns.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_os_dirpath.h"
+#include "src/util/pmix_os_path.h"
+#include "src/util/pmix_path.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_pty.h"
-#include "src/util/printf.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_printf.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/mca/pfexec/base/base.h"
@@ -99,7 +99,7 @@ static pmix_status_t setup_path(pmix_app_t *app)
            exists and is executable The function will
            take care of outputting a pretty error message, if required
         */
-        if (PMIX_SUCCESS != (rc = pmix_util_check_context_cwd(app))) {
+        if (PMIX_SUCCESS != (rc = pmix_util_check_context_cwd(&app->cwd, true, true))) {
             /* do not ERROR_LOG - it will be reported elsewhere */
             return rc;
         }
@@ -122,7 +122,7 @@ static pmix_status_t setup_path(pmix_app_t *app)
     }
 
     /* ensure the app is pointing to a full path */
-    rc = pmix_util_check_context_app(app, app->env);
+    rc = pmix_util_check_context_app(&app->cmd, app->cwd, app->env);
 
     return rc;
 }

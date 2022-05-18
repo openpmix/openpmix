@@ -15,7 +15,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,7 +30,7 @@
 #ifndef PMIX_STDINT_H
 #define PMIX_STDINT_H 1
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 /*
  * Include what we can and define what is missing.

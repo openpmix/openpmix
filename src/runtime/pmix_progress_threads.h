@@ -12,12 +12,12 @@
 #ifndef PMIX_PROGRESS_THREADS_H
 #define PMIX_PROGRESS_THREADS_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <pthread.h>
 #include <event.h>
 
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 /**
  * Initialize a progress thread name; if a progress thread is not

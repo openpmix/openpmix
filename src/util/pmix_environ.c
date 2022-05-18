@@ -28,7 +28,7 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include <pwd.h>
 #include <stdio.h>
@@ -37,10 +37,10 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/argv.h"
-#include "src/util/error.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_error.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
+#include "src/util/pmix_printf.h"
 
 #define PMIX_DEFAULT_TMPDIR   "/tmp"
 #define PMIX_MAX_ENVAR_LENGTH 100000
@@ -237,7 +237,7 @@ const char *pmix_home_directory(uid_t uid)
 {
     const char *home = NULL;
 
-    if (uid == geteuid()) {
+    if (UINT_MAX == uid || uid == geteuid()) {
         home = getenv("HOME");
     }
     if (NULL == home) {

@@ -40,7 +40,7 @@
 #    include <crt_externs.h>
 #endif
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/class/pmix_list.h"
 
 BEGIN_C_DECLS

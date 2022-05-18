@@ -14,7 +14,7 @@
 #include "test_resolve_peers.h"
 #include "test_cd.h"
 
-#include "src/util/output.h"
+#include "src/util/pmix_output.h"
 
 static int resolve_nspace(char *nspace, test_params params, char *my_nspace, int my_rank)
 {

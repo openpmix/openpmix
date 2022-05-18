@@ -36,19 +36,19 @@
 #endif
 #include <time.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/include/pmix_globals.h"
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "src/mca/pcompress/pcompress.h"
-#include "src/util/error.h"
-#include "src/util/name_fns.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/hash.h"
+#include "src/util/pmix_hash.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/gds/base/base.h"
@@ -212,7 +212,7 @@ static inline int _esh_dir_del(const char *path)
         snprintf(name, PMIX_PATH_MAX, "%s/%s", path, d_ptr->d_name);
         /* coverity[toctou] */
         if ( 0 > lstat(name, &st) ){
-            /* No fatal error here - just log this event
+            /* No fatal pmix_error.here - just log this event
              * we will hit the error later at rmdir. Keep trying ...
              */
             PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
@@ -223,7 +223,7 @@ static inline int _esh_dir_del(const char *path)
             if(strcmp(d_ptr->d_name, ".") && strcmp(d_ptr->d_name, "..")) {
                 rc = _esh_dir_del(name);
                 if( PMIX_SUCCESS != rc ){
-                    /* No fatal error here - just log this event
+                    /* No fatal pmix_error.here - just log this event
                      * we will hit the error later at rmdir. Keep trying ...
                      */
                     PMIX_ERROR_LOG(rc);
@@ -232,7 +232,7 @@ static inline int _esh_dir_del(const char *path)
         }
         else {
             if( 0 > unlink(name) ){
-                /* No fatal error here - just log this event
+                /* No fatal pmix_error.here - just log this event
                  * we will hit the error later at rmdir. Keep trying ...
                  */
                 PMIX_ERROR_LOG(PMIX_ERR_NO_PERMISSIONS);

@@ -98,6 +98,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED([PMIX_VERSION], ["$PMIX_VERSION"],
                        [The library version is always available, contrary to VERSION])
 
+    PMIX_PROXY_BUGREPORT_STRING="https://github.com/openpmix/openpmix"
+    AC_SUBST(PMIX_PROXY_BUGREPORT_STRING)
+    AC_DEFINE_UNQUOTED([PMIX_PROXY_BUGREPORT_STRING], ["$PMIX_PROXY_BUGREPORT_STRING"],
+                       [Where to report bugs])
+
     PMIX_RELEASE_DATE="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --release-date`"
     AC_SUBST(PMIX_RELEASE_DATE)
 
@@ -978,7 +983,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[etc/Makefile]
         pmix_config_prefix[include/Makefile]
         pmix_config_prefix[src/Makefile]
+        pmix_config_prefix[src/class/Makefile]
         pmix_config_prefix[src/include/Makefile]
+        pmix_config_prefix[src/util/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
         pmix_config_prefix[src/util/showhelp/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
@@ -1099,22 +1106,6 @@ AC_DEFINE_UNQUOTED(PMIX_ENABLE_DEBUG, $WANT_DEBUG,
 AC_ARG_ENABLE(debug-symbols,
               AS_HELP_STRING([--disable-debug-symbols],
                              [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
-
-#
-# Do we want to install the internal devel headers?
-#
-AC_MSG_CHECKING([if want to install project-internal header files])
-AC_ARG_WITH(devel-headers,
-    AS_HELP_STRING([--with-devel-headers],
-                   [normal PMIx users/applications do not need this (pmix.h and friends are ALWAYS installed).  Developer headers are only necessary for authors doing deeper integration (default: disabled).]))
-if test "$with_devel_headers" = "yes"; then
-    AC_MSG_RESULT([yes])
-    WANT_INSTALL_HEADERS=1
-    pmix_install_primary_headers=yes
-else
-    AC_MSG_RESULT([no])
-    WANT_INSTALL_HEADERS=0
-fi
 
 AC_MSG_CHECKING([if want to install PMIx header files])
 AC_ARG_WITH(pmix-headers,
@@ -1239,8 +1230,6 @@ fi
 
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_TIMING], [$WANT_PMIX_TIMING],
                    [Whether we want developer-level timing support or not])
-
-AM_CONDITIONAL([WANT_INSTALL_HEADERS], [test $WANT_INSTALL_HEADERS -eq 1])
 
 #
 # Do we want to install binaries?
@@ -1391,6 +1380,25 @@ else
     eval "DISABLE_psec_dummy_handshake=0"
 fi
 AM_CONDITIONAL(MCA_BUILD_PSEC_DUMMY_HANDSHAKE, test "$DISABLE_psec_dummy_handshake" = "0")
+
+#
+# Do we want to enable IPv6 support?
+#
+AC_MSG_CHECKING([if want IPv6 support])
+AC_ARG_ENABLE([ipv6],
+    [AS_HELP_STRING([--enable-ipv6],
+        [Enable IPv6 support, but only if the underlying system supports it (default: disabled)])])
+if test "$enable_ipv6" = "yes"; then
+    AC_MSG_RESULT([yes])
+    pmix_want_ipv6=1
+else
+    AC_MSG_RESULT([no])
+    pmix_want_ipv6=0
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_IPV6], [$pmix_want_ipv6],
+                   [Enable IPv6 support, but only if the underlying system supports it])
+
+
 ])dnl
 
 # This must be a standalone routine so that it can be called both by
@@ -1403,7 +1411,6 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
         AM_CONDITIONAL([WANT_DSTORE], [test "x$enable_dstore" != "xno"])
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
-        AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
         AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
         AM_CONDITIONAL([PMIX_HAVE_JANSSON], [test "x$pmix_check_jansson_happy" = "xyes"])
         AM_CONDITIONAL([PMIX_HAVE_CURL], [test "x$pmix_check_curl_happy" = "xyes"])

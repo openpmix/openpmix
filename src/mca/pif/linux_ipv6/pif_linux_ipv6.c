@@ -2,7 +2,7 @@
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -10,8 +10,8 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "src/include/pmix_config.h"
+#include "pmix_common.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -48,8 +48,8 @@
 
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pif/pif.h"
-#include "src/util/output.h"
-#include "src/util/pif.h"
+#include "src/util/pmix_output.h"
+#include "src/util/pmix_if.h"
 
 static int if_linux_ipv6_open(void);
 

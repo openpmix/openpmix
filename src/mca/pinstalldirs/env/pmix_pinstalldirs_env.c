@@ -3,7 +3,7 @@
  *                         reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 
 static void pinstalldirs_env_init(pmix_info_t info[], size_t ninfo);

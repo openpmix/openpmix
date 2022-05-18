@@ -24,8 +24,10 @@
 
 SUBDIRS = \
     include \
+    class \
     util/keyval \
     util/showhelp \
+    util \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
     $(MCA_pmix_FRAMEWORK_COMPONENT_STATIC_SUBDIRS) \
@@ -34,8 +36,10 @@ SUBDIRS = \
 
 DIST_SUBDIRS = \
     include \
+    class \
     util/keyval \
     util/showhelp \
+    util \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
     $(MCA_pmix_FRAMEWORK_COMPONENT_ALL_SUBDIRS)
@@ -50,9 +54,13 @@ pmixdir = $(pmixincludedir)/$(subdir)
 
 libpmix_la_LIBADD = \
 	mca/base/libpmix_mca_base.la \
+    class/libpmix_class.la \
+    util/libpmix_util.la \
 	$(MCA_pmix_FRAMEWORK_LIBS)
 libpmix_la_DEPENDENCIES = \
 	mca/base/libpmix_mca_base.la \
+    class/libpmix_class.la \
+    util/libpmix_util.la \
 	$(MCA_pmix_FRAMEWORK_LIBS)
 
 lib_LTLIBRARIES = libpmix.la
@@ -64,11 +72,9 @@ libpmix_la_DEPENDENCIES += \
         include/libpmixglobal.la
 
 include threads/Makefile.include
-include class/Makefile.include
 include event/Makefile.include
 include hwloc/Makefile.include
 include mca/Makefile.include
-include util/Makefile.include
 include client/Makefile.include
 include server/Makefile.include
 include runtime/Makefile.include
@@ -76,8 +82,6 @@ include tool/Makefile.include
 include tools/Makefile.include
 include common/Makefile.include
 
-if WANT_INSTALL_HEADERS
 nobase_pmix_HEADERS += $(headers)
-endif
 
 CLEANFILES = core.* *~

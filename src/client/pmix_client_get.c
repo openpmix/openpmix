@@ -20,7 +20,7 @@
 
 #include "src/include/pmix_stdint.h"
 
-#include "include/pmix.h"
+#include "pmix.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -50,12 +50,12 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/pcompress/base/base.h"
 #include "src/mca/ptl/base/base.h"
-#include "src/threads/threads.h"
-#include "src/util/argv.h"
-#include "src/util/error.h"
-#include "src/util/hash.h"
-#include "src/util/name_fns.h"
-#include "src/util/output.h"
+#include "src/threads/pmix_threads.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_hash.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_output.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/ptl/base/base.h"
 

@@ -49,17 +49,17 @@
 #include <pthread.h>
 
 #include "src/class/pmix_list.h"
-#include "src/util/argv.h"
-#include "src/util/basename.h"
-#include "src/util/error.h"
-#include "src/util/fd.h"
-#include "src/util/net.h"
-#include "src/util/os_dirpath.h"
-#include "src/util/output.h"
-#include "src/util/pif.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_basename.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_fd.h"
+#include "src/util/pmix_net.h"
+#include "src/util/pmix_os_dirpath.h"
+#include "src/util/pmix_output.h"
+#include "src/util/pmix_if.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/printf.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_printf.h"
+#include "src/util/pmix_show_help.h"
 
 #include "src/mca/ptl/base/base.h"
 
@@ -597,6 +597,15 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "ptl:base URI %s", lt->uri);
 
     /* save the URI internally so we can report it */
+    urikv = PMIX_NEW(pmix_kval_t);
+    urikv->key = strdup(PMIX_MYSERVER_URI);
+    PMIX_VALUE_CREATE(urikv->value, 1);
+    PMIX_VALUE_LOAD(urikv->value, lt->uri, PMIX_STRING);
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
+    PMIX_RELEASE(urikv); // maintain accounting
+
+    /* save a legacy URI internally so we can report it
+     * to older tools */
     urikv = PMIX_NEW(pmix_kval_t);
     urikv->key = strdup(PMIX_SERVER_URI);
     PMIX_VALUE_CREATE(urikv->value, 1);

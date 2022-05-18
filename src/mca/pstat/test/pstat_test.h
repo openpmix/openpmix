@@ -13,7 +13,7 @@
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,7 +24,7 @@
 #ifndef pmix_pstat_TEST_EXPORT_H
 #define pmix_pstat_TEST_EXPORT_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/mca/mca.h"
 #include "src/mca/pstat/pstat.h"

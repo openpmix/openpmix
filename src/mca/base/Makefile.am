@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2010-2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -32,7 +32,7 @@ dist_pmixdata_DATA = help-pmix-mca-base.txt help-pmix-mca-var.txt
 # Source code files
 
 headers = \
-        base.h \
+        pmix_base.h \
         pmix_mca_base_component_repository.h \
         pmix_mca_base_var.h \
         pmix_mca_base_var_enum.h \
@@ -46,7 +46,6 @@ headers = \
 libpmix_mca_base_la_SOURCES = \
         $(headers) \
         pmix_mca_base_close.c \
-        pmix_mca_base_cmd_line.c \
         pmix_mca_base_component_compare.c \
         pmix_mca_base_component_find.c \
         pmix_mca_base_component_repository.c \
@@ -63,9 +62,5 @@ libpmix_mca_base_la_SOURCES = \
         pmix_mca_base_framework.c \
         pmix_mca_base_alias.c
 
-# Conditionally install the header files
-
-if WANT_INSTALL_HEADERS
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)
-endif

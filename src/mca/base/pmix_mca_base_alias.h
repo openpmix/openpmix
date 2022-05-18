@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2020      Google, LLC. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,7 +12,7 @@
 #ifndef PMIX_MCA_BASE_ALIAS_H
 #define PMIX_MCA_BASE_ALIAS_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 #include "src/class/pmix_list.h"
 
 BEGIN_C_DECLS

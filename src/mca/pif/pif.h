@@ -4,7 +4,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,7 +15,7 @@
 #ifndef PMIX_MCA_PIF_PIF_H
 #define PMIX_MCA_PIF_PIF_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include <string.h>
 #ifdef HAVE_UNISTD_H
@@ -50,9 +50,9 @@
 #    include <ifaddrs.h>
 #endif
 
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
-#include "src/util/pif.h"
+#include "src/util/pmix_if.h"
 
 BEGIN_C_DECLS
 
@@ -70,23 +70,6 @@ BEGIN_C_DECLS
 
 #define DEFAULT_NUMBER_INTERFACES 10
 #define MAX_PIFCONF_SIZE          10 * 1024 * 1024
-
-typedef struct pmix_pif_t {
-    pmix_list_item_t super;
-    char if_name[PMIX_IF_NAMESIZE + 1];
-    int if_index;
-    uint16_t if_kernel_index;
-    uint16_t af_family;
-    int if_flags;
-    int if_speed;
-    struct sockaddr_storage if_addr;
-    uint32_t if_mask;
-    uint32_t if_bandwidth;
-    uint8_t if_mac[6];
-    int ifmtu; /* Can't use if_mtu because of a
-                  #define collision on some BSDs */
-} pmix_pif_t;
-PMIX_CLASS_DECLARATION(pmix_pif_t);
 
 /* "global" list of available interfaces */
 extern pmix_list_t pmix_if_list;

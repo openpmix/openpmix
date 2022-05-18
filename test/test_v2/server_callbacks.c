@@ -17,7 +17,7 @@
  */
 
 #include "server_callbacks.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 #include "test_server.h"
 #include <pthread.h>
 #include <stdio.h>

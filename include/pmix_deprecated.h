@@ -101,6 +101,18 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_ERR_SERVER_NOT_AVAIL                   -45
 #define PMIX_ERR_NOT_IMPLEMENTED                    -48
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
+#define PMIX_ERR_FATAL                              -63
+#define PMIX_ERR_NOT_AVAILABLE                      -64
+#define PMIX_ERR_VALUE_OUT_OF_BOUNDS                -65
+#define PMIX_ERR_FILE_OPEN_FAILURE                  -67
+#define PMIX_ERR_FILE_READ_FAILURE                  -68
+#define PMIX_ERR_FILE_WRITE_FAILURE                 -69
+#define PMIX_ERR_SYS_LIMITS_PIPES                   -70
+#define PMIX_ERR_SYS_LIMITS_CHILDREN                -71
+#define PMIX_ERR_PIPE_SETUP_FAILURE                 -72
+#define PMIX_ERR_EXE_NOT_ACCESSIBLE                 -73
+#define PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE            -74
+#define PMIX_ERR_SYS_LIMITS_FILES                   -75
 #define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
 #define PMIX_ERR_LOST_PEER_CONNECTION               -102
 #define PMIX_ERR_LOST_CONNECTION_TO_CLIENT          -103
@@ -128,6 +140,12 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
                                                                     //         that id's, pids, and other info on the procs is available
                                                                     //         via a query for the nspace's local or global proctable
 #define PMIX_RECONNECT_SERVER               "pmix.cnct.recon"       // (bool) tool is requesting to change server connections
+
+/* attributes for the USOCK rendezvous socket  */
+#define PMIX_USOCK_DISABLE                  "pmix.usock.disable"    // (bool) disable legacy usock support
+#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode_t (9 bits valid)
+#define PMIX_SINGLE_LISTENER                "pmix.sing.listnr"      // (bool) use only one rendezvous socket, letting priorities and/or
+                                                                    //        MCA param select the active transport
 #define PMIX_ALLOC_NETWORK                  "pmix.alloc.net"        // (pmix_data_array_t*) ***** DEPRECATED *****
 #define PMIX_ALLOC_NETWORK_ID               "pmix.alloc.netid"      // (char*) ***** DEPRECATED *****
 #define PMIX_ALLOC_NETWORK_QOS              "pmix.alloc.netqos"     // (char*) ***** DEPRECATED *****
@@ -178,7 +196,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 
 /* attributes for GDS */
 #define PMIX_GDS_MODULE                     "pmix.gds.mod"          // (char*) ***** DEPRECATED ***** comma-delimited string of desired modules
-
+#define PMIX_BFROPS_MODULE                  "pmix.bfrops.mod"       // (char*) ***** INTERNAL ***** name of bfrops plugin in-use by a given nspace
+#define PMIX_PNET_SETUP_APP                 "pmix.pnet.setapp"      // (pmix_byte_object_t) ***** INTERNAL ***** blob containing info to be given to pnet framework on remote nodes
 
 #define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) ***** DEPRECATED ***** Stop forwarding the specified channel(s)
 #define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) ***** DEPRECATED ***** notify the requestor upon launch of the child job and return
@@ -197,6 +216,8 @@ PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
                                             size_t *sz);
 PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
+PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
+                                                pmix_value_t *v2);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
                                          const char *key,

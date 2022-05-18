@@ -3,7 +3,7 @@
  *
  * NOTE: THE MUNGE CLIENT LIBRARY (libmunge) IS LICENSED AS LGPL
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,12 +13,12 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/util/argv.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -28,7 +28,7 @@
 
 #include "psec_munge.h"
 #include "src/mca/psec/psec.h"
-#include "src/threads/threads.h"
+#include "src/threads/pmix_threads.h"
 
 static pmix_status_t munge_init(void);
 static void munge_finalize(void);

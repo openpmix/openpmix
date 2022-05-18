@@ -9,7 +9,7 @@
  *
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,10 +31,10 @@
 #ifndef PMIX_MCA_PSTAT_H
 #define PMIX_MCA_PSTAT_H
 
-#include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "src/include/pmix_config.h"
+#include "pmix_common.h"
 
-#include "src/mca/base/base.h"
+#include "src/mca/base/pmix_base.h"
 #include "src/mca/mca.h"
 
 BEGIN_C_DECLS
