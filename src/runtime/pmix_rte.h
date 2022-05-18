@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2010-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2022 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
@@ -51,6 +51,7 @@ PMIX_EXPORT extern int pmix_event_caching_window;
 PMIX_EXPORT extern bool pmix_suppress_missing_data_warning;
 PMIX_EXPORT extern char *pmix_progress_thread_cpus;
 PMIX_EXPORT extern bool pmix_bind_progress_thread_reqd;
+PMIX_EXPORT extern int pmix_maxfd;
 
 /** version string of pmix */
 extern const char pmix_version_string[];
