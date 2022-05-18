@@ -4,6 +4,7 @@
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
 #
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -41,9 +42,5 @@ libmca_common_dstore_la_LDFLAGS += -version-info $(libmca_common_dstore_so_versi
 endif
 libmca_common_dstore_la_LIBADD =
 
-# Conditionally install the header files
-
-if WANT_INSTALL_HEADERS
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)
-endif

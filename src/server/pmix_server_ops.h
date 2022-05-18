@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  */
 
@@ -21,14 +21,14 @@
 #endif
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
-#include "src/include/types.h"
+#include "pmix_common.h"
+#include "src/include/pmix_types.h"
 
 #include "include/pmix_server.h"
 #include "src/class/pmix_hotel.h"
 #include "src/include/pmix_globals.h"
-#include "src/threads/threads.h"
-#include "src/util/hash.h"
+#include "src/threads/pmix_threads.h"
+#include "src/util/pmix_hash.h"
 
 #define PMIX_IOF_HOTEL_SIZE 256
 #define PMIX_IOF_MAX_STAY   300000000
@@ -248,7 +248,8 @@ PMIX_EXPORT bool pmix_server_trk_update(pmix_server_trkr_t *trk);
 
 PMIX_EXPORT void pmix_pending_nspace_requests(pmix_namespace_t *nptr);
 PMIX_EXPORT pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr, pmix_rank_t rank,
-                                               pmix_status_t status, pmix_dmdx_local_t *lcd);
+                                               pmix_status_t status, pmix_scope_t scope,
+                                               pmix_dmdx_local_t *lcd);
 
 PMIX_EXPORT pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_op_cbfunc_t cbfunc, void *cbdata);
@@ -357,6 +358,14 @@ PMIX_EXPORT pmix_status_t pmix_server_fabric_get_device_index(pmix_server_caddy_
 PMIX_EXPORT pmix_status_t pmix_server_device_dists(pmix_server_caddy_t *cd,
                                                    pmix_buffer_t *buf,
                                                    pmix_device_dist_cbfunc_t cbfunc);
+
+PMIX_EXPORT pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
+                                                    pmix_buffer_t *buf,
+                                                    pmix_op_cbfunc_t cbfunc);
+
+PMIX_EXPORT void pmix_server_query_cbfunc(pmix_status_t status,
+                                          pmix_info_t *info, size_t ninfo, void *cbdata,
+                                          pmix_release_cbfunc_t release_fn, void *release_cbdata);
 
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;

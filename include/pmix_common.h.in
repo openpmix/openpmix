@@ -3,7 +3,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2016      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021      Triad National Security, LLC. All rights
@@ -60,11 +60,14 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <time.h>
 #include <sys/time.h> /* for struct timeval */
 #include <unistd.h> /* for uid_t and gid_t */
 #include <sys/types.h> /* for uid_t and gid_t */
+
+extern char **environ;
 
 /* Whether C compiler supports -fvisibility */
 #undef PMIX_HAVE_VISIBILITY
@@ -197,6 +200,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        a local system-level PMIx server
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first
 #define PMIX_SERVER_URI                     "pmix.srvr.uri"         // (char*) URI of server to be contacted
+#define PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
 #define PMIX_SERVER_HOSTNAME                "pmix.srvr.host"        // (char*) node where target server is located
 #define PMIX_CONNECT_MAX_RETRIES            "pmix.tool.mretries"    // (uint32_t) maximum number of times to try to connect to server
 #define PMIX_CONNECT_RETRY_DELAY            "pmix.tool.retry"       // (uint32_t) time in seconds between connection attempts
@@ -260,12 +264,6 @@ typedef uint32_t pmix_rank_t;
                                                                     //           "close" (thread located on cpu close to master thread)
                                                                     //           "spread" (threads load-balanced across available cpus)
 
-/* attributes for the USOCK rendezvous socket  */
-#define PMIX_USOCK_DISABLE                  "pmix.usock.disable"    // (bool) disable legacy usock support
-#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode_t (9 bits valid)
-#define PMIX_SINGLE_LISTENER                "pmix.sing.listnr"      // (bool) use only one rendezvous socket, letting priorities and/or
-                                                                    //        MCA param select the active transport
-
 /* attributes for TCP connections */
 #define PMIX_TCP_REPORT_URI                 "pmix.tcp.repuri"       // (char*) output URI - '-' => stdout, '+' => stderr, or filename
 #define PMIX_TCP_URI                        "pmix.tcp.uri"          // (char*) URI of server to connect to, or file:<name of file containing it>
@@ -285,12 +283,12 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NODE_OVERSUBSCRIBED            "pmix.ndosub"           // (bool) true if number of procs from this job on this node
                                                                     //        exceeds the number of slots allocated to it
 
-
 /* scratch directory locations for use by applications */
 #define PMIX_TMPDIR                         "pmix.tmpdir"           // (char*) top-level tmp dir assigned to session
 #define PMIX_NSDIR                          "pmix.nsdir"            // (char*) sub-tmpdir assigned to namespace
 #define PMIX_PROCDIR                        "pmix.pdir"             // (char*) sub-nsdir assigned to proc
 #define PMIX_TDIR_RMCLEAN                   "pmix.tdir.rmclean"     // (bool)  Resource Manager will clean session directories
+
 
 /* information about relative ranks as assigned by the RM */
 #define PMIX_CLUSTER_ID                     "pmix.clid"             // (char*) a string name for the cluster this proc is executing on
@@ -309,7 +307,6 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_APPLDR                         "pmix.aldr"             // (pmix_rank_t) lowest rank in this app within this job
 #define PMIX_PROC_PID                       "pmix.ppid"             // (pid_t) pid of specified proc
 #define PMIX_SESSION_ID                     "pmix.session.id"       // (uint32_t) session identifier
-
 #define PMIX_NODE_LIST                      "pmix.nlist"            // (char*) comma-delimited list of nodes running procs for the specified nspace
 #define PMIX_ALLOCATED_NODELIST             "pmix.alist"            // (char*) comma-delimited list of all nodes in this allocation regardless of
                                                                     //         whether or not they currently host procs.
@@ -390,6 +387,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ACCESS_GRPIDS                  "pmix.agids"            // (pmix_data_array_t*) Array of effective GIDs that are allowed to
                                                                     //        access the published data
 #define PMIX_WAIT_FOR_CONNECTION            "pmix.wait.conn"        // (bool) wait until the specified connection has been made
+#define PMIX_QUALIFIED_VALUE                "pmix.qual.val"         // (pmix_data_array_t*) Value being provided consists of the primary
+                                                                    //        key-value pair in first position, followed by one or more
+                                                                    //        key-value qualifiers to be used when subsequently retrieving
+                                                                    //        the primary value
 
 
 /* attributes used by host server to pass data to/from the server convenience library - the
@@ -448,6 +449,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ADD_HOSTFILE                   "pmix.addhostfile"      // (char*) hostfile to add to existing allocation
 #define PMIX_PREFIX                         "pmix.prefix"           // (char*) prefix to use for starting spawned procs
 #define PMIX_WDIR                           "pmix.wdir"             // (char*) working directory for spawned procs
+#define PMIX_WDIR_USER_SPECIFIED            "pmix.wdir.user"        // (bool) User specified the working directory
 #define PMIX_DISPLAY_MAP                    "pmix.dispmap"          // (bool) display process map upon spawn
 #define PMIX_PPR                            "pmix.ppr"              // (char*) #procs to spawn on each identified resource
 #define PMIX_MAPBY                          "pmix.mapby"            // (char*) mapping policy
@@ -460,6 +462,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DEBUGGER_DAEMONS               "pmix.debugger"         // (bool) spawned app consists of debugger daemons
 #define PMIX_COSPAWN_APP                    "pmix.cospawn"          // (bool) designated app is to be spawned as a disconnected
                                                                     //        job - i.e., not part of the "comm_world" of the job
+#define PMIX_COLOCATE_PROC                  "pmix.colproc"          // (pmix_data_array_t*) Array of pmix_proc_t identifying the procs
+                                                                    //        with which the new job's procs are to be colocated
+#define PMIX_COLOCATE_NUM_PROC              "pmix.colnum.proc"      // (uint16_t) Number of procs to colocate with each identified proc
+#define PMIX_COLOCATE_NUM_NODE              "pmix.colnum.node"      // (uint16_t) Number of procs to colocate on the node of each identified proc
 #define PMIX_SET_SESSION_CWD                "pmix.ssncwd"           // (bool) set the application's current working directory to
                                                                     //        the session working directory assigned by the RM
 #define PMIX_INDEX_ARGV                     "pmix.indxargv"         // (bool) mark the argv with the rank of the proc
@@ -938,7 +944,16 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GROUP_ENDPT_DATA               "pmix.grp.endpt"        // (pmix_byte_object_t) data collected to be shared during construction
 #define PMIX_GROUP_NAMES                    "pmix.pgrp.nm"          // (pmix_data_array_t*) Returns an array of string names of the process groups
                                                                     //        in which the given process is a member.
-
+#define PMIX_GROUP_INFO                     "pmix.grp.info"         // (pmix_data_array_t*) Array of pmix_info_t containing data that is to be
+                                                                    //        shared across all members of a group during group construction
+#define PMIX_GROUP_LOCAL_CID                "pmix.grp.lclid"        // (size_t) local context ID for the specified process member of a group
+#define PMIX_GROUP_ADD_MEMBERS              "pmix.grp.add"          // (pmix_data_array_t*) Array of pmix_proc_t identifying procs that are not
+                                                                    //        included in the membership specified in the procs array passed to
+                                                                    //        the PMIx_Group_construct[_nb] call, but are to be included in the
+                                                                    //        final group. The identified procs will be sent an invitation to
+                                                                    //        join the group during the construction procedure. This is used when
+                                                                    //        some members of the proposed group do not know the full membership
+                                                                    //        and therefore cannot include all members in the call to construct.
 
 /* Storage-Related Attributes */
 #define PMIX_QUERY_STORAGE_LIST             "pmix.strg.list"       // (char*) return comma-delimited list of identifiers for all available storage systems
@@ -1109,6 +1124,8 @@ typedef uint32_t pmix_rank_t;
                                                                    //         Named values (i.e., values defined by constant names via a
                                                                    //         typical C-language enum declaration) must be provided as
                                                                    //         their numerical equivalent.
+#define PMIX_QUERY_ABI_VERSION              "pmix.qry.abiversion"  // (char*) The PMIx Standard ABI version supported returned in the form "MAJOR.MINOR"
+                                                                   //         This attribute can be used with PMIx_Query_info outside of the init/finalize region.
 
 /****    PROCESS STATE DEFINITIONS    ****/
 typedef uint8_t pmix_proc_state_t;
@@ -1324,6 +1341,16 @@ typedef int pmix_status_t;
  * specific value as the value of the constant may change */
 #define PMIX_EXTERNAL_ERR_BASE                      -3000
 
+/* define the results values for comparisons */
+typedef enum {
+    PMIX_EQUAL,
+    PMIX_VALUE1_GREATER,
+    PMIX_VALUE2_GREATER,
+    PMIX_VALUE_TYPE_DIFFERENT,
+    PMIX_VALUE_INCOMPATIBLE_OBJECTS,
+    PMIX_VALUE_COMPARISON_NOT_AVAIL
+} pmix_value_cmp_t;
+
 /****    PMIX DATA TYPES    ****/
 typedef uint16_t pmix_data_type_t;
 #define PMIX_UNDEF                       0
@@ -1450,6 +1477,7 @@ typedef uint32_t pmix_info_directives_t;
 #define PMIX_INFO_REQD              0x00000001
 #define PMIX_INFO_ARRAY_END         0x00000002      // mark the end of an array created by PMIX_INFO_CREATE
 #define PMIX_INFO_REQD_PROCESSED    0x00000004      // reqd attribute has been processed
+#define PMIX_INFO_QUALIFIER         0x00000008      // info is a qualifier to the primary value
 /* the top 16-bits are reserved for internal use by
  * implementers - these may be changed inside the
  * PMIx library */
@@ -1617,6 +1645,524 @@ static inline void* pmix_calloc(size_t n, size_t m)
 #define PMIX_PROCID_INVALID(a)  \
     (PMIX_NSPACE_INVALID((a)->nspace) || PMIX_RANK_INVALID == (a)->rank)
 
+/**
+ * Provide a safe version of strncpy that doesn't generate
+ * a ton of spurious warnings. Note that not every environment
+ * provides nice string functions, and we aren't concerned about
+ * max performance here
+ *
+ * @param dest Destination string.
+ * @param src Source string.
+ * @param len Size of the dest array - 1
+ *
+ */
+static inline void pmix_strncpy(char *dest,
+                                const char *src,
+                                size_t len)
+{
+    size_t i;
+
+    /* use an algorithm that also protects against
+     * non-NULL-terminated src strings */
+    for (i=0; i < len; ++i, ++src, ++dest) {
+        *dest = *src;
+        if ('\0' == *src) {
+            break;
+        }
+    }
+    *dest = '\0';
+}
+
+static inline size_t pmix_keylen(const char *src)
+{
+    size_t i, maxlen;
+
+    if (NULL == src) {
+        return 0;
+    }
+    maxlen = PMIX_MAX_KEYLEN + 1;
+    /* use an algorithm that also protects against
+     * non-NULL-terminated src strings */
+    for (i=0; i < maxlen; ++i, ++src) {
+        if ('\0' == *src) {
+            break;
+        }
+    }
+    return i;
+}
+
+static inline size_t pmix_nslen(const char *src)
+{
+    size_t i, maxlen;
+
+    if (NULL == src) {
+        return 0;
+    }
+    maxlen = PMIX_MAX_NSLEN + 1;
+    /* use an algorithm that also protects against
+     * non-NULL-terminated src strings */
+    for (i=0; i < maxlen; ++i, ++src) {
+        if ('\0' == *src) {
+            break;
+        }
+    }
+    return i;
+}
+
+static inline
+int pmix_argv_count(char **argv)
+{
+    char **p;
+    int i;
+
+    if (NULL == argv)
+        return 0;
+
+    for (i = 0, p = argv; *p; i++, p++)
+        continue;
+
+    return i;
+}
+
+#define PMIX_ARGV_COUNT(r, a) \
+    (r) = pmix_argv_count(a)
+
+static inline
+pmix_status_t pmix_argv_append_nosize(char ***argv, const char *arg)
+{
+    int argc;
+
+    /* Create new argv. */
+
+    if (NULL == *argv) {
+        *argv = (char **) malloc(2 * sizeof(char *));
+        if (NULL == *argv) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        argc = 0;
+        (*argv)[0] = NULL;
+        (*argv)[1] = NULL;
+    }
+
+    /* Extend existing argv. */
+    else {
+        /* count how many entries currently exist */
+        argc = pmix_argv_count(*argv);
+
+        *argv = (char **) realloc(*argv, (argc + 2) * sizeof(char *));
+        if (NULL == *argv) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+    }
+
+    /* Set the newest element to point to a copy of the arg string */
+
+    (*argv)[argc] = strdup(arg);
+    if (NULL == (*argv)[argc]) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
+    argc = argc + 1;
+    (*argv)[argc] = NULL;
+
+    return PMIX_SUCCESS;
+}
+
+#define PMIX_ARGV_APPEND(r, a, b) \
+    (r) = pmix_argv_append_nosize(&(a), (b))
+
+static inline
+pmix_status_t pmix_argv_prepend_nosize(char ***argv, const char *arg)
+{
+    int argc;
+    int i;
+
+    /* Create new argv. */
+
+    if (NULL == *argv) {
+        *argv = (char **) malloc(2 * sizeof(char *));
+        if (NULL == *argv) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        (*argv)[0] = strdup(arg);
+        (*argv)[1] = NULL;
+    } else {
+        /* count how many entries currently exist */
+        argc = pmix_argv_count(*argv);
+
+        *argv = (char **) realloc(*argv, (argc + 2) * sizeof(char *));
+        if (NULL == *argv) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        (*argv)[argc + 1] = NULL;
+
+        /* shift all existing elements down 1 */
+        for (i = argc; 0 < i; i--) {
+            (*argv)[i] = (*argv)[i - 1];
+        }
+        (*argv)[0] = strdup(arg);
+    }
+
+    return PMIX_SUCCESS;
+}
+
+#define PMIX_ARGV_PREPEND(r, a, b) \
+    (r) = pmix_argv_prepend_nosize(&(a), b)
+
+static inline
+pmix_status_t pmix_argv_append_unique_nosize(char ***argv, const char *arg)
+{
+    int i;
+
+    /* if the provided array is NULL, then the arg cannot be present,
+     * so just go ahead and append
+     */
+    if (NULL == *argv) {
+        return pmix_argv_append_nosize(argv, arg);
+    }
+
+    /* see if this arg is already present in the array */
+    for (i = 0; NULL != (*argv)[i]; i++) {
+        if (0 == strcmp(arg, (*argv)[i])) {
+            /* already exists */
+            return PMIX_SUCCESS;
+        }
+    }
+
+    /* we get here if the arg is not in the array - so add it */
+    return pmix_argv_append_nosize(argv, arg);
+}
+
+#define PMIX_ARGV_APPEND_UNIQUE(r, a, b) \
+    (r) = pmix_argv_append_unique_nosize(a, b)
+
+static inline void pmix_argv_free(char **argv)
+{
+    char **p;
+
+    if (NULL == argv)
+        return;
+
+    for (p = argv; NULL != *p; ++p) {
+        free(*p);
+    }
+
+    free(argv);
+}
+
+#define PMIX_ARGV_FREE(a)  pmix_argv_free(a)
+
+static inline
+char **pmix_argv_split_inter(const char *src_string,
+                             int delimiter,
+                             bool include_empty)
+{
+    char arg[512];
+    char **argv = NULL;
+    const char *p;
+    char *argtemp;
+    size_t arglen;
+
+    while (src_string && *src_string) {
+        p = src_string;
+        arglen = 0;
+
+        while (('\0' != *p) && (*p != delimiter)) {
+            ++p;
+            ++arglen;
+        }
+
+        /* zero length argument, skip */
+
+        if (src_string == p) {
+            if (include_empty) {
+                arg[0] = '\0';
+                if (PMIX_SUCCESS != pmix_argv_append_nosize(&argv, arg)) {
+                    return NULL;
+                }
+            }
+            src_string = p + 1;
+            continue;
+        }
+
+        /* tail argument, add straight from the original string */
+
+        else if ('\0' == *p) {
+            if (PMIX_SUCCESS != pmix_argv_append_nosize(&argv, src_string)) {
+                return NULL;
+            }
+            src_string = p;
+            continue;
+        }
+
+        /* long argument, malloc buffer, copy and add */
+
+        else if (arglen > 511) {
+            argtemp = (char *) malloc(arglen + 1);
+            if (NULL == argtemp)
+                return NULL;
+
+            pmix_strncpy(argtemp, src_string, arglen);
+            argtemp[arglen] = '\0';
+
+            if (PMIX_SUCCESS != pmix_argv_append_nosize(&argv, argtemp)) {
+                free(argtemp);
+                return NULL;
+            }
+
+            free(argtemp);
+        }
+
+        /* short argument, copy to buffer and add */
+
+        else {
+            pmix_strncpy(arg, src_string, arglen);
+            arg[arglen] = '\0';
+
+            if (PMIX_SUCCESS != pmix_argv_append_nosize(&argv, arg)) {
+                return NULL;
+            }
+        }
+
+        src_string = p + 1;
+    }
+
+    /* All done */
+
+    return argv;
+}
+
+static inline
+char **pmix_argv_split_with_empty(const char *src_string, int delimiter)
+{
+    return pmix_argv_split_inter(src_string, delimiter, true);
+}
+
+static inline
+char **pmix_argv_split(const char *src_string, int delimiter)
+{
+    return pmix_argv_split_inter(src_string, delimiter, false);
+}
+
+#define PMIX_ARGV_SPLIT(a, b, c) \
+    (a) = pmix_argv_split(b, c)
+
+static inline
+char *pmix_argv_join(char **argv, int delimiter)
+{
+    char **p;
+    char *pp;
+    char *str;
+    size_t str_len = 0;
+    size_t i;
+
+    /* Bozo case */
+
+    if (NULL == argv || NULL == argv[0]) {
+        return strdup("");
+    }
+
+    /* Find the total string length in argv including delimiters.  The
+     last delimiter is replaced by the NULL character. */
+
+    for (p = argv; *p; ++p) {
+        str_len += strlen(*p) + 1;
+    }
+
+    /* Allocate the string. */
+
+    if (NULL == (str = (char *) malloc(str_len)))
+        return NULL;
+
+    /* Loop filling in the string. */
+
+    str[--str_len] = '\0';
+    p = argv;
+    pp = *p;
+
+    for (i = 0; i < str_len; ++i) {
+        if ('\0' == *pp) {
+
+            /* End of a string, fill in a delimiter and go to the next
+             string. */
+
+            str[i] = (char) delimiter;
+            ++p;
+            pp = *p;
+        } else {
+            str[i] = *pp++;
+        }
+    }
+
+    /* All done */
+
+    return str;
+}
+
+#define PMIX_ARGV_JOIN(a, b, c) \
+    (a) = pmix_argv_join(b, c)
+
+static inline
+char **pmix_argv_copy(char **argv)
+{
+    char **dupv = NULL;
+
+    if (NULL == argv)
+        return NULL;
+
+    /* create an "empty" list, so that we return something valid if we
+     were passed a valid list with no contained elements */
+    dupv = (char **) malloc(sizeof(char *));
+    dupv[0] = NULL;
+
+    while (NULL != *argv) {
+        if (PMIX_SUCCESS != pmix_argv_append_nosize(&dupv, *argv)) {
+            PMIX_ARGV_FREE(dupv);
+            return NULL;
+        }
+
+        ++argv;
+    }
+
+    /* All done */
+
+    return dupv;
+}
+
+#define PMIX_ARGV_COPY(a, b) \
+    (a) = pmix_argv_copy(b)
+
+/**
+ * Portable version of setenv(3), allowing editing of any
+ * environ-like array.
+ *
+ * @param name String name of the environment variable to look for
+ * @param value String value to set (may be NULL)
+ * @param overwrite Whether to overwrite any existing value with
+ * the same name
+ * @param env The environment to use
+ *
+ * @retval PMIX_ERR_OUT_OF_RESOURCE If internal malloc() fails.
+ * @retval PMIX_ERR_EXISTS If the name already exists in \em env and
+ * \em overwrite is false (and therefore the \em value was not
+ * saved in \em env)
+ * @retval PMIX_SUCESS If the value replaced another value or is
+ * appended to \em env.
+ *
+ * \em env is expected to be a NULL-terminated array of pointers
+ * (argv-style).  Note that unlike some implementations of
+ * putenv(3), if \em value is inserted in \em env, it is copied.
+ * So the caller can modify/free both \em name and \em value after
+ * pmix_setenv() returns.
+ *
+ * The \em env array will be grown if necessary.
+ *
+ * It is permissable to invoke this function with the
+ * system-defined \em environ variable.  For example:
+ *
+ * \code
+ *   #include "pmix_common.h"
+ *   pmix_setenv("foo", "bar", true, &environ);
+ * \endcode
+ *
+ * NOTE: If you use the real environ, pmix_setenv() will turn
+ * around and perform setenv() to put the value in the
+ * environment.  This may very well lead to a memory leak, so its
+ * use is strongly discouraged.
+ *
+ * It is also permissable to call this function with an empty \em
+ * env, as long as it is pre-initialized with NULL:
+ *
+ * \code
+ *   char **my_env = NULL;
+ *   pmix_setenv("foo", "bar", true, &my_env);
+ * \endcode
+ */
+static inline
+pmix_status_t pmix_setenv(const char *name,
+                          const char *value,
+                          bool overwrite,
+                          char ***env)
+{
+    int i;
+    char newvalue[100000], compare[100000];
+    size_t len;
+    bool valid;
+
+    /* Check the bozo case */
+    if (NULL == env) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (NULL != value) {
+        /* check the string for unacceptable length - i.e., ensure
+         * it is NULL-terminated */
+        valid = false;
+        for (i = 0; i < 100000; i++) {
+            if ('\0' == value[i]) {
+                valid = true;
+                break;
+            }
+        }
+        if (!valid) {
+            return PMIX_ERR_BAD_PARAM;
+        }
+    }
+
+    /* If this is the "environ" array, use setenv */
+    if (*env == environ) {
+        if (NULL == value) {
+            /* this is actually an unsetenv request */
+            unsetenv(name);
+        } else {
+            setenv(name, value, overwrite);
+        }
+        return PMIX_SUCCESS;
+    }
+
+    /* Make the new value */
+    if (NULL == value) {
+        snprintf(newvalue, 100000, "%s=", name);
+    } else {
+        snprintf(newvalue, 100000, "%s=%s", name, value);
+    }
+
+    if (NULL == *env) {
+        pmix_argv_append_nosize(env, newvalue);
+        return PMIX_SUCCESS;
+    }
+
+    /* Make something easy to compare to */
+
+    snprintf(compare, 100000, "%s=", name);
+    len = strlen(compare);
+
+    /* Look for a duplicate that's already set in the env */
+
+    for (i = 0; (*env)[i] != NULL; ++i) {
+        if (0 == strncmp((*env)[i], compare, len)) {
+            if (overwrite) {
+                free((*env)[i]);
+                (*env)[i] = strdup(newvalue);
+                return PMIX_SUCCESS;
+            } else {
+                return PMIX_ERR_EXISTS;
+            }
+        }
+    }
+
+    /* If we found no match, append this value */
+
+    pmix_argv_append_nosize(env, newvalue);
+
+    /* All done */
+    return PMIX_SUCCESS;
+}
+
+#define PMIX_SETENV(r, a, b, c) \
+    (r) = pmix_setenv((a), (b), true, (c))
+
+
 /****    PMIX COORD    ****/
 /* define coordinate system views */
 typedef uint8_t pmix_coord_view_t;
@@ -1702,14 +2248,8 @@ typedef struct{
 #define PMIX_CPUSET_CONSTRUCT(m) \
     memset((m), 0, sizeof(pmix_cpuset_t))
 
-#define PMIX_CPUSET_DESTRUCT(m) \
-    pmix_hwloc_destruct_cpuset((m))
-
 #define PMIX_CPUSET_CREATE(m, n)    \
     (m) = (pmix_cpuset_t*)calloc((n), sizeof(pmix_cpuset_t));
-
-#define PMIX_CPUSET_FREE(m, n) \
-    pmix_hwloc_release_cpuset((m), (n))
 
 
 /****    PMIX BIND ENVELOPE    ****/
@@ -1733,14 +2273,8 @@ typedef struct {
 #define PMIX_TOPOLOGY_CONSTRUCT(m) \
     memset((m), 0, sizeof(pmix_topology_t))
 
-#define PMIX_TOPOLOGY_DESTRUCT(m) \
-    pmix_hwloc_destruct_topology((m))
-
 #define PMIX_TOPOLOGY_CREATE(m, n) \
     (m) = (pmix_topology_t*)calloc(n, sizeof(pmix_topology_t))
-
-#define PMIX_TOPOLOGY_FREE(m, n) \
-    pmix_hwloc_release_topology((m), (n))
 
 /**** PMIX RELATIVE LOCALITY    ****/
 typedef uint16_t pmix_locality_t;
@@ -2277,6 +2811,15 @@ typedef struct pmix_data_buffer {
     size_t bytes_used;
 } pmix_data_buffer_t;
 
+#define PMIX_DATA_BUFFER_STATIC_INIT    \
+{                                       \
+    .base_ptr = NULL,                   \
+    .pack_ptr = NULL,                   \
+    .unpack_ptr = NULL,                 \
+    .bytes_allocated = 0,               \
+    .bytes_used = 0                     \
+}
+
 /****   STATISTICS STRUCTURES  ****/
 typedef struct pmix_proc_stats {
     /* process ident info */
@@ -2673,29 +3216,6 @@ typedef struct pmix_value {
         }                                               \
     } while (0)
 
-#define PMIX_VALUE_LOAD(v, d, t) \
-    pmix_value_load((v), (d), (t))
-
-#define PMIX_VALUE_UNLOAD(r, k, d, s)      \
-    (r) = pmix_value_unload((k), (d), (s))
-
-#define PMIX_VALUE_XFER(r, v, s)                                \
-    do {                                                        \
-        if (NULL == (v)) {                                      \
-            (v) = (pmix_value_t*)pmix_malloc(sizeof(pmix_value_t));  \
-            if (NULL == (v)) {                                  \
-                (r) = PMIX_ERR_NOMEM;                           \
-            } else {                                            \
-                (r) = pmix_value_xfer((v), (s));                \
-            }                                                   \
-        } else {                                                \
-            (r) = pmix_value_xfer((v), (s));                    \
-        }                                                       \
-    } while(0)
-
-#define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
-    (r) = pmix_value_xfer((v), (s))
-
 #define PMIX_VALUE_GET_NUMBER(s, m, n, t)               \
     do {                                                \
         (s) = PMIX_SUCCESS;                             \
@@ -2782,71 +3302,6 @@ typedef struct pmix_info {
         }                                           \
     } while (0)
 
-#define PMIX_INFO_LOAD(m, k, v, t)                          \
-    do {                                                    \
-        if (NULL != (k)) {                                  \
-            pmix_strncpy((char*)(m)->key, (k), PMIX_MAX_KEYLEN);   \
-        }                                                   \
-        (m)->flags = 0;                                     \
-        pmix_value_load(&((m)->value), (v), (t));           \
-    } while (0)
-#define PMIX_INFO_XFER(d, s)                                        \
-    do {                                                            \
-        if (NULL != (s)->key) {                                     \
-            pmix_strncpy((char*)(d)->key, (s)->key, PMIX_MAX_KEYLEN);      \
-        }                                                           \
-        (d)->flags = (s)->flags;                                    \
-        pmix_value_xfer(&(d)->value, (pmix_value_t*)&(s)->value);   \
-    } while(0)
-
-/* macros for constructing an array of pmix_info_t
- * on-the-fly, without knowing in advance the final
- * number of elements it will hold */
-
-/* Start a list of pmix_info_t
- * p - a void* pointer */
-#define PMIX_INFO_LIST_START(p)    \
-    (p) = pmix_info_list_start()
-
-/* Add a pmix_info_t to the list
- * r - a returned pmix_status_t
- * p - the void* pointer provided from PMIX_INFO_LIST_START
- * a - an attribute key
- * v - pointer to the value to be stored
- * t - the PMIx data type of the value */
-#define PMIX_INFO_LIST_ADD(r, p, a, v, t)     \
-    (r) = pmix_info_list_add((p), (a), (v), (t))
-
-/* Transfer a pmix_info_t to the list
- * r - a returned pmix_status_t
- * p - the void* pointer provided from PMIX_INFO_LIST_START
- * a - pointer to the pmix_info_t whose values are to be transferred
- */
-#define PMIX_INFO_LIST_XFER(r, p, a)     \
-    (r) = pmix_info_list_xfer((p), (a))
-
-/* Convert a list of pmix_info_t into an array of pmix_info_t
- * r - a returned pmix_status_t. PMIX_ERR_EMPTY if list was empty,
- *     otherwise either success or error constant
- * p - the void* pointer provided from PMIX_INFO_LIST_START
- * m - address of a pmix_data_array_t into which
- *     the array of info is to be placed */
-#define PMIX_INFO_LIST_CONVERT(r, p, m)                 \
-    do {                                                \
-        (m)->type = PMIX_INFO;                          \
-        (r) = pmix_info_list_convert((p), (m));         \
-        if (PMIX_SUCCESS != (r)) {                      \
-            (m)->array = NULL;                          \
-            (m)->size = 0;                              \
-        }                                               \
-    } while(0)
-
-/* Release any memory associated with the list
- * p - the void* pointer provided from PMIX_INFO_LIST_START */
-#define PMIX_INFO_LIST_RELEASE(p) \
-    pmix_info_list_release((p))
-
-
 /* macros for setting and unsetting the "reqd" flag
  * in a pmix_info_t */
 #define PMIX_INFO_REQUIRED(m)       \
@@ -2867,8 +3322,17 @@ typedef struct pmix_info {
     ((m)->flags & PMIX_INFO_REQD_PROCESSED)
 
 /* macro for testing end of the array */
+#define PMIX_INFO_SET_END(m)    \
+    ((m)->flags |= PMIX_INFO_ARRAY_END)
 #define PMIX_INFO_IS_END(m)         \
     ((m)->flags & PMIX_INFO_ARRAY_END)
+
+/* macro for testing if qualifier */
+#define PMIX_INFO_SET_QUALIFIER(i)   \
+    ((i)->flags |= PMIX_INFO_QUALIFIER)
+#define PMIX_INFO_IS_QUALIFIER(i)    \
+    ((i)->flags & PMIX_INFO_QUALIFIER)
+
 
 /* define a special macro for checking if a boolean
  * info is true - when info structs are provided, a
@@ -2928,28 +3392,6 @@ typedef struct pmix_pdata {
             pmix_free((m));                                  \
             (m) = NULL;                                 \
         }                                               \
-    } while (0)
-
-#define PMIX_PDATA_LOAD(m, p, k, v, t)                                      \
-    do {                                                                    \
-        if (NULL != (m)) {                                                  \
-            memset((m), 0, sizeof(pmix_pdata_t));                           \
-            pmix_strncpy((char*)(m)->proc.nspace, (p)->nspace, PMIX_MAX_NSLEN);    \
-            (m)->proc.rank = (p)->rank;                                     \
-            pmix_strncpy((char*)(m)->key, (k), PMIX_MAX_KEYLEN);                   \
-            pmix_value_load(&((m)->value), (v), (t));                       \
-        }                                                                   \
-    } while (0)
-
-#define PMIX_PDATA_XFER(d, s)                                                   \
-    do {                                                                        \
-        if (NULL != (d)) {                                                      \
-            memset((d), 0, sizeof(pmix_pdata_t));                               \
-            pmix_strncpy((char*)(d)->proc.nspace, (s)->proc.nspace, PMIX_MAX_NSLEN);   \
-            (d)->proc.rank = (s)->proc.rank;                                    \
-            pmix_strncpy((char*)(d)->key, (s)->key, PMIX_MAX_KEYLEN);                  \
-            pmix_value_xfer(&((d)->value), &((s)->value));                      \
-        }                                                                       \
     } while (0)
 
 
@@ -3229,153 +3671,6 @@ typedef enum {
     PMIX_FABRIC_REQUEST_INFO,
     PMIX_FABRIC_UPDATE_INFO
 } pmix_fabric_operation_t;
-
-/****    GENERIC HELPER MACROS    ****/
-
-/* Append a string (by value) to an new or existing NULL-terminated
- * argv array.
- *
- * @param argv Pointer to an argv array.
- * @param str Pointer to the string to append.
- *
- * @retval PMIX_SUCCESS On success
- * @retval PMIX_ERROR On failure
- *
- * This function adds a string to an argv array of strings by value;
- * it is permissable to pass a string on the stack as the str
- * argument to this function.
- *
- * To add the first entry to an argv array, call this function with
- * (*argv == NULL).  This function will allocate an array of length
- * 2; the first entry will point to a copy of the string passed in
- * arg, the second entry will be set to NULL.
- *
- * If (*argv != NULL), it will be realloc'ed to be 1 (char*) larger,
- * and the next-to-last entry will point to a copy of the string
- * passed in arg.  The last entry will be set to NULL.
- *
- * Just to reinforce what was stated above: the string is copied by
- * value into the argv array; there is no need to keep the original
- * string (i.e., the arg parameter) after invoking this function.
- */
-#define PMIX_ARGV_APPEND(r, a, b) \
-    (r) = pmix_argv_append_nosize(&(a), (b))
-
-/* Prepend a string to a new or existing NULL-terminated
- * argv array - same as above only prepend
- */
-#define PMIX_ARGV_PREPEND(r, a, b) \
-    (r) = pmix_argv_prepend_nosize(&(a), b)
-
-/* Append to an argv-style array, but only if the provided argument
- * doesn't already exist somewhere in the array. Ignore the size of the array.
- *
- * @param argv Pointer to an argv array.
- * @param str Pointer to the string to append.
- *
- * @retval PMIX_SUCCESS On success
- * @retval PMIX_ERROR On failure
- *
- * This function is identical to the pmix_argv_append_nosize() function
- * except that it only appends the provided argument if it does not already
- * exist in the provided array.
- */
-#define PMIX_ARGV_APPEND_UNIQUE(r, a, b) \
-    (r) = pmix_argv_append_unique_nosize(a, b)
-
-/* Free a NULL-terminated argv array.
- *
- * @param argv Argv array to free.
- *
- * This function frees an argv array and all of the strings that it
- * contains.  Since the argv parameter is passed by value, it is not
- * set to NULL in the caller's scope upon return.
- *
- * It is safe to invoke this function with a NULL pointer.  It is
- * not safe to invoke this function with a non-NULL-terminated argv
- * array.
- */
-#define PMIX_ARGV_FREE(a)  pmix_argv_free(a)
-
-/*
- * Split a string into a NULL-terminated argv array. Do not include empty
- * strings in result array.
- *
- * @param src_string Input string.
- * @param delimiter Delimiter character.
- *
- * @retval argv pointer to new argv array on success
- * @retval NULL on error
- *
- * All strings are inserted into the argv array by value; the
- * newly-allocated array makes no references to the src_string
- * argument (i.e., it can be freed after calling this function
- * without invalidating the output argv).
- */
-#define PMIX_ARGV_SPLIT(a, b, c) \
-    (a) = pmix_argv_split(b, c)
-
-/*
- * Return the length of a NULL-terminated argv array.
- *
- * @param argv The input argv array.
- *
- * @retval 0 If NULL is passed as argv.
- * @retval count Number of entries in the argv array.
- *
- * The argv array must be NULL-terminated.
- */
-#define PMIX_ARGV_COUNT(r, a) \
-    (r) = pmix_argv_count(a)
-
-/*
- * Join all the elements of an argv array into a single
- * newly-allocated string.
- *
- * @param argv The input argv array.
- * @param delimiter Delimiter character placed between each argv string.
- *
- * @retval new_string Output string on success.
- * @retval NULL On failure.
- *
- * Similar to the Perl join function, this function takes an input
- * argv and joins them into into a single string separated by the
- * delimiter character.
- *
- * It is the callers responsibility to free the returned string.
- */
-#define PMIX_ARGV_JOIN(a, b, c) \
-    (a) = pmix_argv_join(b, c)
-
-/*
- * Copy a NULL-terminated argv array.
- *
- * @param argv The input argv array.
- *
- * @retval argv Copied argv array on success.
- * @retval NULL On failure.
- *
- * Copy an argv array, including copying all off its strings.
- * Specifically, the output argv will be an array of the same length
- * as the input argv, and strcmp(argv_in[i], argv_out[i]) will be 0.
- */
-#define PMIX_ARGV_COPY(a, b) \
-    (a) = pmix_argv_copy(b)
-
-/*
- * Set an environmenal paramter in an env array
- *
- * @retval r Return pmix_status_t status
- *
- * @param a Name of the environmental param
- *
- * @param b String value of the environmental param
- *
- * @param c Address of the NULL-terminated env array
- */
-#define PMIX_SETENV(r, a, b, c) \
-    (r) = pmix_setenv((a), (b), true, (c))
-
 
 /****    CALLBACK FUNCTIONS FOR NON-BLOCKING OPERATIONS    ****/
 
@@ -3847,71 +4142,6 @@ static inline void pmix_darray_destruct(pmix_data_array_t *m)
         }                                   \
     } while(0)
 
-/**
- * Provide a safe version of strncpy that doesn't generate
- * a ton of spurious warnings. Note that not every environment
- * provides nice string functions, and we aren't concerned about
- * max performance here
- *
- * @param dest Destination string.
- * @param src Source string.
- * @param len Size of the dest array - 1
- *
- */
-static inline void pmix_strncpy(char *dest,
-                                const char *src,
-                                size_t len)
-{
-    size_t i;
-
-    /* use an algorithm that also protects against
-     * non-NULL-terminated src strings */
-    for (i=0; i < len; ++i, ++src, ++dest) {
-        *dest = *src;
-        if ('\0' == *src) {
-            break;
-        }
-    }
-    *dest = '\0';
-}
-
-static inline size_t pmix_keylen(const char *src)
-{
-    size_t i, maxlen;
-
-    if (NULL == src) {
-        return 0;
-    }
-    maxlen = PMIX_MAX_KEYLEN + 1;
-    /* use an algorithm that also protects against
-     * non-NULL-terminated src strings */
-    for (i=0; i < maxlen; ++i, ++src) {
-        if ('\0' == *src) {
-            break;
-        }
-    }
-    return i;
-}
-
-static inline size_t pmix_nslen(const char *src)
-{
-    size_t i, maxlen;
-
-    if (NULL == src) {
-        return 0;
-    }
-    maxlen = PMIX_MAX_NSLEN + 1;
-    /* use an algorithm that also protects against
-     * non-NULL-terminated src strings */
-    for (i=0; i < maxlen; ++i, ++src) {
-        if ('\0' == *src) {
-            break;
-        }
-    }
-    return i;
-}
-
-#include <pmix_extend.h>
 #include <pmix_deprecated.h>
 
 #if defined(c_plusplus) || defined(__cplusplus)

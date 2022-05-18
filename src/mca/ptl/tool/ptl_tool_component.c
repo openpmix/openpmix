@@ -17,7 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,13 +32,13 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/include/pmix_globals.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/tool/ptl_tool.h"
-#include "src/util/error.h"
-#include "src/util/output.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_output.h"
 
 static int component_query(pmix_mca_base_module_t **module, int *priority);
 /*

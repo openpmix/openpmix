@@ -16,7 +16,7 @@ dnl Copyright (c) 2015-2017 Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl Copyright (c) 2016      IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl $COPYRIGHT$
@@ -41,7 +41,10 @@ AC_DEFUN([PMIX_WRAPPER_FLAGS_ADD], [
     m4_if([$1], [CPPFLAGS], [PMIX_FLAGS_APPEND_UNIQ([wrapper_extra_cppflags], [$2])],
           [$1], [CFLAGS], [PMIX_FLAGS_APPEND_UNIQ([wrapper_extra_cflags], [$2])],
           [$1], [LDFLAGS], [PMIX_FLAGS_APPEND_UNIQ([wrapper_extra_ldflags], [$2])],
+          [$1], [STATIC_LDFLAGS], [PMIX_FLAGS_APPEND_UNIQ([wrapper_extra_static_ldflags], [$2])],
           [$1], [LIBS], [PMIX_FLAGS_APPEND_UNIQ([wrapper_extra_libs], [$2])],
+          [$1], [STATIC_LIBS], [PMIX_FLAGS_APPEND_UNIQ([wrapper_extra_static_libs], [$2])],
+          [$1], [PC_MODULES], [PMIX_APPEND_UNIQ([wrapper_extra_pkgconfig_modules], [$2])],
           [m4_fatal([Unknown wrapper flag type $1])])
 ])
 
@@ -221,33 +224,92 @@ AC_DEFUN([RPATHIFY_LDFLAGS_INTERNAL],[
                -L*)
                    rpath_dir=`echo $val | cut -c3-`
                    rpath_tmp=`echo ${$2} | sed -e s@LIBDIR@$rpath_dir@`
-                   rpath_out="$rpath_out $rpath_tmp"
+                   PMIX_APPEND([rpath_out], ["$rpath_tmp"])
                    ;;
                esac
            done
 
-           # Now add in the RPATH args for @{libdir}, and the RUNPATH args
-           rpath_tmp=`echo ${$2} | sed -e s/LIBDIR/@{libdir}/`
-           $1="${$1} $rpath_out $rpath_tmp ${$3}"
-          ])
+           $1="${$1} ${rpath_out}"
+         ])
     PMIX_VAR_SCOPE_POP
 ])
 
-AC_DEFUN([RPATHIFY_LDFLAGS],[RPATHIFY_LDFLAGS_INTERNAL([$1], [rpath_args], [runpath_args])])
-
-dnl
-dnl Avoid some repetitive code below
-dnl
-AC_DEFUN([_PMIX_SETUP_WRAPPER_FINAL_PKGCONFIG],[
-    AC_MSG_CHECKING([for $1 pkg-config LDFLAGS])
-    $1_PKG_CONFIG_LDFLAGS=`echo "$$1_WRAPPER_EXTRA_LDFLAGS" | sed -e 's/@{libdir}/\${libdir}/g'`
-    AC_SUBST([$1_PKG_CONFIG_LDFLAGS])
-    AC_MSG_RESULT([$$1_PKG_CONFIG_LDFLAGS])
-])
+AC_DEFUN([RPATHIFY_LDFLAGS],[RPATHIFY_LDFLAGS_INTERNAL([$1], [rpath_args])])
 
 
 # PMIX_SETUP_WRAPPER_FINAL()
 # ---------------------------
+#
+# Here are the situations that we need to cover with wrapper compilers
+# and pkg-config files:
+#
+# 1) --enable-shared --disable-static (today's default): Any
+#    application linking against libpmix will be a dynamicly linked
+#    application
+# 2) --enable-shared --enable-static: An application linking against
+#    libpmix will dynamically link against libpmix unless -static (or
+#    similar) is passed, in which case it will static link against
+#    libpmix (and the static versions of all of libpmix's dependencies).
+# 3) --disable-shared --enable-static: Any application linking against
+#    libpmix will link against libpmix.a.  That application will link
+#    against the dynamic versions of libpmix's dependencies, unless
+#    -static is passed.
+#
+# There is one situation we should explicitly handle in terms of
+# wrapper compilers (someone could parse out all the right pkg-config
+# or wrapper compiler options to get the right dependent libraries, of
+# course):
+#
+# 1) --enable-shared --enable-static: An application links via
+#    /usr/lib/libpmix.a instead of -lpmix.  We'll make no attempts to
+#    recognize this case with the wrapper compiler
+#
+# So, we essentially have 5 cases above to cover with the wrapper
+# compiler and pkg-config.  For the wrapper compiler, this means:
+#
+# 1) --enable-shared --disable-static: Regardless of the -static flag,
+#    we only add the -L${libdir} -lpmix
+# 2) --enable-shared --enable-static / no -static flag: we add
+#    -L${libdir} -lpmix
+# 3) --enable-shared --enable-static / -static flag: we add
+#    -L${libdir} -lpmix plus the LDFLAGS and LIBS for our dependencies
+#    AND their reported dependencies (ie the results of pkg-config --libs
+#    --static for all our dependencies).
+# 4) --disable-shared --enable-static / no -static flag: We add
+#    -L${libdir} -lpmix plus the LDFLAGS and LIBS for our dependencies,
+#    but not their dependencies (ie, the results of pkg-config --libs for
+#    all our dependencies)
+# 5) --disable-shared --enable-static / -static flag: We add
+#    -L${libdir} -lpmix plus the LDFLAGS and LIBs for our dependencies
+#    AND their reported dependencies (ie, the results of pkg-config
+#    --libs --static for all our dependencies)
+#
+# For the pkg-config modules, this means:
+#
+# 1) --enable-shared --disable-static: We add -L${libdir} -lpmix to
+#    Libs and Libs.private, Modules, and Modules.private are empty
+# 2/3) --enable-shared --enable-static: We add -L${libdir} -lpmix to
+#    Libs, Libs.private contains all the -L/-ls from our dependencies
+#    that don't have pkg-config modules, Modules is empty, and
+#    Modules.private contains all the modules for our dependencies.
+# 4/5) --disable-shared --enable-static: We add -L${libdir} -lpmix to
+#    Libs, Libs.private contains all the -L/-ls from our dependencies that
+#    don't have pkg-config modules, Modules contains all the modules for
+#    our dependencies, and Modules.private is empty.
+#
+# 2/3 means that `pkg-config --libs pmix` would return -L${libdir}
+#  -lpmix and `pkg-config --libs --static pmix` would return
+# -L${libdir} -lpmix -Lnon-pkg-config-dependency
+# -lnon-pkg-config-dependency ...., plus all the `pkg-config --libs
+# --static` results for all our pkg-config dependencies.
+#
+# 4/5 means that `pkg-config --libs pmix` would return -L${libdir}
+# -lpmix -Lnon-pkg-config-dependency -lnon-pkg-config-dependency ....,
+# plus all the `pkg-config --libs` results for all our pkg-config
+# dependencies AND that `pkg-config --libs --static pmix` would return
+# -L${libdir} -lpmix -Lnon-pkg-config-dependency
+# -lnon-pkg-config-dependency ...., plus all the `pkg-config --libs
+# --static` results for all our pkg-config dependencies.
 AC_DEFUN([PMIX_SETUP_WRAPPER_FINAL],[
 
     # Setup RPATH support, if desired
@@ -258,60 +320,143 @@ AC_DEFUN([PMIX_SETUP_WRAPPER_FINAL],[
           [AC_MSG_WARN([RPATH support requested but not available])
            AC_MSG_ERROR([Cannot continue])])
 
-    # Note that we have to setup <package>_PKG_CONFIG_LDFLAGS for the
-    # pkg-config files to parallel the
-    # <package>_WRAPPER_EXTRA_LDFLAGS.  This is because pkg-config
-    # will not understand the @{libdir} notation in
-    # *_WRAPPER_EXTRA_LDFLAGS; we have to translate it to ${libdir}.
+    dnl We now have all relevant flags.  Substitute them in everywhere.
 
-    # We now have all relevant flags.  Substitute them in everywhere.
-   AC_MSG_CHECKING([for PMIX CPPFLAGS])
-   if test "$WANT_INSTALL_HEADERS" = "1" ; then
-       PMIX_WRAPPER_EXTRA_CPPFLAGS='-I${includedir}'
-   fi
-   PMIX_WRAPPER_EXTRA_CPPFLAGS="$PMIX_WRAPPER_EXTRA_CPPFLAGS $pmix_mca_wrapper_extra_cppflags $wrapper_extra_cppflags $with_wrapper_cppflags"
-   PMIX_FLAGS_UNIQ(PMIX_WRAPPER_EXTRA_CPPFLAGS)
-   AC_SUBST([PMIX_WRAPPER_EXTRA_CPPFLAGS])
-   AC_MSG_RESULT([$PMIX_WRAPPER_EXTRA_CPPFLAGS])
+    dnl We do not want ${includedir} to be expanded, as we want that
+    dnl expansion to happen in the wrapper or pkg-config.  We do want
+    dnl ${pmixincludedir} to be expanded now (likely to
+    dnl ${includedir}/pmix), as pkg-config and the wrappers otherwise
+    dnl won't know what to do with the variable.
+    AC_MSG_CHECKING([for PMIX wrapper CPPFLAGS])
+    PMIX_WRAPPER_CPPFLAGS='-I${includedir}'" -I${pmixincludedir} ${pmix_mca_wrapper_extra_cppflags} ${wrapper_extra_cppflags} ${with_wrapper_cppflags}"
+    AC_SUBST([PMIX_WRAPPER_CPPFLAGS])
+    AC_MSG_RESULT([$PMIX_WRAPPER_CPPFLAGS])
 
-   AC_MSG_CHECKING([for PMIX CFLAGS])
-   PMIX_WRAPPER_EXTRA_CFLAGS="$wrapper_extra_cflags $with_wrapper_cflags"
-   PMIX_FLAGS_UNIQ(PMIX_WRAPPER_EXTRA_CFLAGS)
-   AC_SUBST([PMIX_WRAPPER_EXTRA_CFLAGS])
-   AC_MSG_RESULT([$PMIX_WRAPPER_EXTRA_CFLAGS])
+    AC_MSG_CHECKING([for PMIX wrapper CFLAGS])
+    PMIX_WRAPPER_CFLAGS="$wrapper_extra_cflags $with_wrapper_cflags"
+    AC_SUBST([PMIX_WRAPPER_CFLAGS])
+    AC_MSG_RESULT([$PMIX_WRAPPER_CFLAGS])
 
-   AC_MSG_CHECKING([for PMIX CFLAGS_PREFIX])
-   PMIX_WRAPPER_EXTRA_CFLAGS_PREFIX="$with_wrapper_cflags_prefix"
-   PMIX_FLAGS_UNIQ(PMIX_WRAPPER_EXTRA_CFLAGS_PREFIX)
-   AC_SUBST([PMIX_WRAPPER_EXTRA_CFLAGS_PREFIX])
-   AC_MSG_RESULT([$PMIX_WRAPPER_EXTRA_CFLAGS_PREFIX])
+    AC_MSG_CHECKING([for PMIX wrapper CFLAGS_PREFIX])
+    PMIX_WRAPPER_CFLAGS_PREFIX="$with_wrapper_cflags_prefix"
+    AC_SUBST([PMIX_WRAPPER_CFLAGS_PREFIX])
+    AC_MSG_RESULT([$PMIX_WRAPPER_CFLAGS_PREFIX])
 
-   AC_MSG_CHECKING([for PMIX LDFLAGS])
-   PMIX_WRAPPER_EXTRA_LDFLAGS="$pmix_mca_wrapper_extra_ldflags $wrapper_extra_ldflags $with_wrapper_ldflags"
-   PMIX_FLAGS_UNIQ(PMIX_WRAPPER_EXTRA_LDFLAGS)
-   RPATHIFY_LDFLAGS([PMIX_WRAPPER_EXTRA_LDFLAGS])
-   AC_SUBST([PMIX_WRAPPER_EXTRA_LDFLAGS])
-   AC_MSG_RESULT([$PMIX_WRAPPER_EXTRA_LDFLAGS])
+    dnl Add LIBS into the extra wrapper libs, since this is as last
+    dnl minute as we can get.  We do the temp variable bit because of
+    dnl libevent and hwloc dependencies.  LIBS is going to contain
+    dnl libevent/libev/hwloc libraries, but their dependencies are
+    dnl already in wrapper_extra_libs.  We do not want to move -lhwloc
+    dnl (for example) to the far right, right of its dependencies.  So
+    dnl we start with our base libs, and add all the wrapper extra
+    dnl bits to that.
+    tmp_flags="${LIBS}"
+    PMIX_FLAGS_APPEND_MOVE([tmp_flags], [${wrapper_extra_libs}])
+    wrapper_extra_libs="${tmp_flags}"
+    AS_UNSET([tmp_flags])
 
-   # Convert @{libdir} to ${libdir} for pkg-config
-   _PMIX_SETUP_WRAPPER_FINAL_PKGCONFIG([PMIX])
+    dnl No matter the configuration (see the 5 cases above), the base
+    dnl flags should contain a -L${libdir} and -lpmix, so that those
+    dnl are found.
+    PMIX_WRAPPER_LDFLAGS='-L${libdir}'
+    PMIX_WRAPPER_LIBS=-lpmix
+    PMIX_WRAPPER_LIBS_STATIC=
+    PMIX_WRAPPER_LDFLAGS_STATIC=
 
-   # wrapper_extra_libs doesn't really get populated until after the mca system runs
-   # since most of the libs come from libtool.  So this is the first time we can
-   # uniq them.  ROMIO in particular adds lots of things already in wrapper_extra_libs,
-   # and this cleans the duplication up a bunch.  Always add everything the user
-   # asked for, as they know better than us.
-   AC_MSG_CHECKING([for PMIX LIBS])
-   PMIX_WRAPPER_EXTRA_LIBS="$pmix_mca_wrapper_extra_libs"
-   PMIX_FLAGS_APPEND_UNIQ([PMIX_WRAPPER_EXTRA_LIBS], [$wrapper_extra_libs])
-   PMIX_WRAPPER_EXTRA_LIBS="$PMIX_WRAPPER_EXTRA_LIBS $with_wrapper_libs"
-   PMIX_FLAGS_UNIQ(PMIX_WRAPPER_EXTRA_LIBS)
-   AC_SUBST([PMIX_WRAPPER_EXTRA_LIBS])
-   AC_MSG_RESULT([$PMIX_WRAPPER_EXTRA_LIBS])
+    AS_IF(dnl shared only case.  We add no flags beyond the base -L/-l
+          [test "${enable_shared}" != "no" -a "${enable_static}" != "yes"],
+          [],
+          dnl building both shared and static libraries.  The base
+          dnl case remains the same as the shared-only case (because
+          dnl the app will link against the shared library, but the
+          dnl static case is the full dependency tree.  Our full
+          dnl dependency tree is both the wrapper_extra_libs and
+          dnl wrapper_extra_static_libs, because wrapper_extra_libs
+          dnl was not added to the normal case.
+          [test "${enable_shared}" != "no" -a "${enable_static}" = "yes"],
+          [PMIX_FLAGS_APPEND_UNIQ([PMIX_WRAPPER_LDFLAGS_STATIC], [${pmix_mca_wrapper_extra_ldflags} ${wrapper_extra_ldflags}])
+           PMIX_FLAGS_APPEND_MOVE([PMIX_WRAPPER_LIBS_STATIC], [${pmix_mca_wrapper_extra_libs} ${wrapper_extra_libs}])
+           PMIX_FLAGS_APPEND_UNIQ([PMIX_WRAPPER_LDFLAGS_STATIC], [${pmix_mca_wrapper_extra_static_ldflags} ${wrapper_extra_static_ldflags}])
+           PMIX_FLAGS_APPEND_MOVE([PMIX_WRAPPER_LIBS_STATIC], [${pmix_mca_wrapper_extra_static_libs} ${wrapper_extra_static_libs}])],
+          dnl building static only.  The base case is that we need to
+          dnl list our dependencies, but not the full treee, because
+          dnl we assume that our dependencies will be shared libraries
+          dnl (unless they too were built static only, in which case
+          dnl their dependencies will be our direct dependencies if
+          dnl their modules are setup correctly).  The static case is
+          dnl our full dependency tree, but we only need to list the
+          dnl second leve explicitly, because the wrapper compiler
+          dnl and/or pkg-config merge use the normal case data in the
+          dnl static case.
+          [PMIX_FLAGS_APPEND_UNIQ([PMIX_WRAPPER_LDFLAGS], [${pmix_mca_wrapper_extra_ldflags} ${wrapper_extra_ldflags}])
+           PMIX_FLAGS_APPEND_MOVE([PMIX_WRAPPER_LIBS], [${pmix_mca_wrapper_extra_libs} ${wrapper_extra_libs}])
+           PMIX_FLAGS_APPEND_UNIQ([PMIX_WRAPPER_LDFLAGS_STATIC], [${pmix_mca_wrapper_extra_static_ldflags} ${wrapper_extra_static_ldflags}])
+           PMIX_FLAGS_APPEND_MOVE([PMIX_WRAPPER_LIBS_STATIC], [${pmix_mca_wrapper_extra_static_libs} ${wrapper_extra_static_libs}])])
 
-   ####################################################################
-   # Setup variables for pkg-config file (maint/pmix.pc.in)
-   ####################################################################
-   PC_PRIVATE_LIBS="$PMIX_PKG_CONFIG_LDFLAGS $PMIX_WRAPPER_EXTRA_LIBS"
-   AC_SUBST([PC_PRIVATE_LIBS], ["$PC_PRIVATE_LIBS"])
+    dnl Add the user-provided flags
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_WRAPPER_LDFLAGS], [${with_wrapper_ldflags}])
+    PMIX_FLAGS_APPEND_MOVE([PMIX_WRAPPER_LIBS], [${with_wrapper_libs}])
+
+    RPATHIFY_LDFLAGS([PMIX_WRAPPER_LDFLAGS])
+    RPATHIFY_LDFLAGS([PMIX_WRAPPER_LDFLAGS_STATIC])
+
+    PMIX_FLAGS_APPEND_UNIQ([PMIX_WRAPPER_LDFLAGS], [${runpath_args}])
+
+    AC_MSG_CHECKING([for PMIX LDFLAGS])
+    AC_SUBST([PMIX_WRAPPER_LDFLAGS])
+    AC_MSG_RESULT([$PMIX_WRAPPER_LDFLAGS])
+
+    AC_MSG_CHECKING([for PMIX static LDFLAGS])
+    AC_SUBST([PMIX_WRAPPER_LDFLAGS_STATIC])
+    AC_MSG_RESULT([$PMIX_WRAPPER_LDFLAGS_STATIC])
+
+    AC_MSG_CHECKING([for PMIX LIBS])
+    AC_SUBST([PMIX_WRAPPER_LIBS])
+    AC_MSG_RESULT([$PMIX_WRAPPER_LIBS])
+
+    AC_MSG_CHECKING([for PMIX static LIBS])
+    AC_SUBST([PMIX_WRAPPER_LIBS_STATIC])
+    AC_MSG_RESULT([$PMIX_WRAPPER_LIBS_STATIC])
+
+    dnl ####################################################################
+    dnl  Setup variables for pkg-config file (maint/pmix.pc.in)
+    dnl
+    dnl Add all our dependent libraries to libs.Private for users that want
+    dnl to static build, unless we're only building static libraries, in
+    dnl which case, add the dependent libraries to libs itself, since any
+    dnl linking will require the full set of libraries.
+    dnl ####################################################################
+    AC_MSG_CHECKING([for PMIX pkg-config Cflags])
+    PMIX_PC_CFLAGS="${PMIX_WRAPPER_CPPFLAGS} ${PMIX_WRAPPER_CFLAGS} ${PMIX_WRAPPER_CFLAGS_PREFIX}"
+    PMIX_PC_CFLAGS=`echo ${PMIX_PC_CFLAGS} | sed -e 's/@{/\${/g'`
+    AC_SUBST([PMIX_PC_CFLAGS])
+    AC_MSG_RESULT([${PMIX_PC_CFLAGS}])
+
+    AC_MSG_CHECKING([for PMIX pkg-config Libs])
+    PMIX_PC_LIBS="${PMIX_WRAPPER_LDFLAGS} ${PMIX_WRAPPER_LIBS}"
+    PMIX_PC_LIBS=`echo ${PMIX_PC_LIBS} | sed -e 's/@{/\${/g'`
+    AC_SUBST([PMIX_PC_LIBS])
+    AC_MSG_RESULT([${PMIX_PC_LIBS}])
+
+    AC_MSG_CHECKING([for PMIX pkg-config Libs.private])
+    PMIX_PC_LIBS_PRIVATE="${PMIX_WRAPPER_LDFLAGS_STATIC} ${PMIX_WRAPPER_LIBS_STATIC}"
+    PMIX_PC_LIBS_PRIVATE=`echo ${PMIX_PC_LIBS_PRIVATE} | sed -e 's/@{/\${/g'`
+    AC_SUBST([PMIX_PC_LIBS_PRIVATE])
+    AC_MSG_RESULT([${PMIX_PC_LIBS_PRIVATE}])
+
+    PMIX_PC_MODULES=
+    PMIX_PC_MODULES_PRIVATE=
+    AS_IF([test "${enable_shared}" != "no" -a "${enable_static}" != "yes"],
+          [],
+          [test "${enable_shared}" != "no" -a "${enable_static}" = "yes"],
+          [PMIX_PC_MODULES_PRIVATE="${wrapper_extra_pkgconfig_modules} ${pmix_mca_wrapper_extra_pc_modules}"],
+          [PMIX_PC_MODULES="${wrapper_extra_pkgconfig_modules} ${pmix_mca_wrapper_extra_pc_modules}"])
+
+    AC_MSG_CHECKING([for PMIX pkg-config Modules])
+    AC_SUBST([PMIX_PC_MODULES])
+    AC_MSG_RESULT([${PMIX_PC_MODULES}])
+
+    AC_MSG_CHECKING([for PMIX pkg-config Modules.private])
+    AC_SUBST([PMIX_PC_MODULES_PRIVATE])
+    AC_MSG_RESULT([${PMIX_PC_MODULES_PRIVATE}])
 ])

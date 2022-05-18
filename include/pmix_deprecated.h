@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -101,6 +101,18 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_ERR_SERVER_NOT_AVAIL                   -45
 #define PMIX_ERR_NOT_IMPLEMENTED                    -48
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
+#define PMIX_ERR_FATAL                              -63
+#define PMIX_ERR_NOT_AVAILABLE                      -64
+#define PMIX_ERR_VALUE_OUT_OF_BOUNDS                -65
+#define PMIX_ERR_FILE_OPEN_FAILURE                  -67
+#define PMIX_ERR_FILE_READ_FAILURE                  -68
+#define PMIX_ERR_FILE_WRITE_FAILURE                 -69
+#define PMIX_ERR_SYS_LIMITS_PIPES                   -70
+#define PMIX_ERR_SYS_LIMITS_CHILDREN                -71
+#define PMIX_ERR_PIPE_SETUP_FAILURE                 -72
+#define PMIX_ERR_EXE_NOT_ACCESSIBLE                 -73
+#define PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE            -74
+#define PMIX_ERR_SYS_LIMITS_FILES                   -75
 #define PMIX_ERR_LOST_CONNECTION_TO_SERVER          -101
 #define PMIX_ERR_LOST_PEER_CONNECTION               -102
 #define PMIX_ERR_LOST_CONNECTION_TO_CLIENT          -103
@@ -128,6 +140,12 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
                                                                     //         that id's, pids, and other info on the procs is available
                                                                     //         via a query for the nspace's local or global proctable
 #define PMIX_RECONNECT_SERVER               "pmix.cnct.recon"       // (bool) tool is requesting to change server connections
+
+/* attributes for the USOCK rendezvous socket  */
+#define PMIX_USOCK_DISABLE                  "pmix.usock.disable"    // (bool) disable legacy usock support
+#define PMIX_SOCKET_MODE                    "pmix.sockmode"         // (uint32_t) POSIX mode_t (9 bits valid)
+#define PMIX_SINGLE_LISTENER                "pmix.sing.listnr"      // (bool) use only one rendezvous socket, letting priorities and/or
+                                                                    //        MCA param select the active transport
 #define PMIX_ALLOC_NETWORK                  "pmix.alloc.net"        // (pmix_data_array_t*) ***** DEPRECATED *****
 #define PMIX_ALLOC_NETWORK_ID               "pmix.alloc.netid"      // (char*) ***** DEPRECATED *****
 #define PMIX_ALLOC_NETWORK_QOS              "pmix.alloc.netqos"     // (char*) ***** DEPRECATED *****
@@ -178,11 +196,119 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 
 /* attributes for GDS */
 #define PMIX_GDS_MODULE                     "pmix.gds.mod"          // (char*) ***** DEPRECATED ***** comma-delimited string of desired modules
-
+#define PMIX_BFROPS_MODULE                  "pmix.bfrops.mod"       // (char*) ***** INTERNAL ***** name of bfrops plugin in-use by a given nspace
+#define PMIX_PNET_SETUP_APP                 "pmix.pnet.setapp"      // (pmix_byte_object_t) ***** INTERNAL ***** blob containing info to be given to pnet framework on remote nodes
 
 #define PMIX_IOF_STOP                       "pmix.iof.stop"         // (bool) ***** DEPRECATED ***** Stop forwarding the specified channel(s)
 #define PMIX_NOTIFY_LAUNCH                  "pmix.note.lnch"        // (bool) ***** DEPRECATED ***** notify the requestor upon launch of the child job and return
                                                                     //        its namespace in the event
+
+
+/* Bring some function definitions across from pmix.h for now-deprecated
+ * macros that utilize them. We have to do this as there are people who
+ * only included pmix_common.h if they were using macros but not APIs */
+
+PMIX_EXPORT pmix_status_t PMIx_Value_load(pmix_value_t *val,
+                                          const void *data,
+                                          pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
+                                            void **data,
+                                            size_t *sz);
+PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
+                                          const pmix_value_t *src);
+PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
+                                                pmix_value_t *v2);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
+                                         const char *key,
+                                         const void *data,
+                                         pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
+                                         const pmix_info_t *src);
+
+PMIX_EXPORT void* PMIx_Info_list_start(void);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
+                                             const char *key,
+                                             const void *value,
+                                             pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
+                                              const pmix_info_t *info);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
+
+PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
+
+#define PMIX_VALUE_LOAD(v, d, t) \
+    PMIx_Value_load((v), (d), (t))
+
+#define PMIX_VALUE_UNLOAD(r, k, d, s)      \
+    (r) = PMIx_Value_unload((k), (d), (s))
+
+#define PMIX_VALUE_XFER(r, v, s)                                \
+    do {                                                        \
+        if (NULL == (v)) {                                      \
+            (v) = (pmix_value_t*)pmix_malloc(sizeof(pmix_value_t));  \
+            if (NULL == (v)) {                                  \
+                (r) = PMIX_ERR_NOMEM;                           \
+            } else {                                            \
+                (r) = PMIx_Value_xfer((v), (s));                \
+            }                                                   \
+        } else {                                                \
+            (r) = PMIx_Value_xfer((v), (s));                    \
+        }                                                       \
+    } while(0)
+
+#define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
+    (r) = PMIx_Value_xfer((v), (s))
+
+#define PMIX_INFO_LOAD(i, k, d, t)  \
+    (void) PMIx_Info_load(i, k, d, t)
+
+#define PMIX_INFO_XFER(d, s)    \
+    (void) PMIx_Info_xfer(d, s)
+
+#define PMIX_PDATA_LOAD(m, p, k, v, t)                                      \
+    do {                                                                    \
+        if (NULL != (m)) {                                                  \
+            memset((m), 0, sizeof(pmix_pdata_t));                           \
+            PMIX_LOAD_NSPACE((m)->proc.nspace, (p)->nspace);                \
+            (m)->proc.rank = (p)->rank;                                     \
+            PMIX_LOAD_KEY((m)->key, k);                                     \
+            PMIx_Value_load(&((m)->value), (v), (t));                       \
+        }                                                                   \
+    } while (0)
+
+#define PMIX_PDATA_XFER(d, s)                                                   \
+    do {                                                                        \
+        if (NULL != (d)) {                                                      \
+            memset((d), 0, sizeof(pmix_pdata_t));                               \
+            PMIX_LOAD_NSPACE((d)->proc.nspace, (s)->proc.nspace);               \
+            (d)->proc.rank = (s)->proc.rank;                                    \
+            PMIX_LOAD_KEY((d)->key, (s)->key);                                  \
+            PMIx_Value_xfer(&((d)->value), &((s)->value));                      \
+        }                                                                       \
+    } while (0)
+
+#define PMIX_INFO_LIST_START(p)    \
+    (p) = PMIx_Info_list_start()
+
+#define PMIX_INFO_LIST_ADD(r, p, a, v, t)     \
+    (r) = PMIx_Info_list_add((p), (a), (v), (t))
+
+#define PMIX_INFO_LIST_XFER(r, p, a)     \
+    (r) = PMIx_Info_list_xfer((p), (a))
+
+#define PMIX_INFO_LIST_CONVERT(r, p, m)     \
+    (r) = PMIx_Info_list_convert((p), (m))
+
+#define PMIX_INFO_LIST_RELEASE(p) \
+    PMIx_Info_list_release((p))
+
+#define PMIX_TOPOLOGY_DESTRUCT(x) \
+    PMIx_Topology_destruct(x)
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }

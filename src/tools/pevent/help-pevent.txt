@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017      Intel, Inc. All rights reserved.
-# Copyright (c) 2021      Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -22,7 +22,36 @@
 # This is the US/English help file for OpenPMIx event tool
 #
 [usage]
-pevent [OPTIONS]
-  OpenPMIx event generation tool
+%s (%s) %s
 
-%s
+Usage: %s [OPTION]...
+Inject PMIx events
+
+
+/*****      General Options      *****/
+
+-h|--help                            This help message
+-h|--help <arg0>                     Help for the specified option
+-v|--verbose                         Enable typical debug options
+-V|--version                         Print version and exit
+
+   --pid <arg0>                      PID of the daemon to which we should connect (int => PID or file:<file>
+                                     for file containing the PID
+   --tmpdir <arg0>                   Set the root for the session directory tree
+   --event <arg0>                    Status code (integer value) of event to be sent
+   --range <arg0>                    Range of event to be sent
+
+Report bugs to %s
+#
+[pid]
+PID of the daemon to which we should connect (int => PID or file:<file>
+for file containing the PID
+#
+[event]
+Status code (integer value) of event to be sent
+#
+[range]
+Range (pmix_range_t) of event to be sent
+#
+[tmpdir]
+Set the root for the session directory tree

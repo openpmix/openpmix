@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -12,7 +13,7 @@
 #ifndef PMIX_PIF_BASE_H
 #define PMIX_PIF_BASE_H
 
-#include "pmix_config.h"
+#include "src/include/pmix_config.h"
 
 #include "src/mca/base/pmix_mca_base_framework.h"
 

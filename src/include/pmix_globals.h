@@ -15,7 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,7 +27,7 @@
 #define PMIX_GLOBALS_H
 
 #include "src/include/pmix_config.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include <unistd.h>
 #ifdef HAVE_SYS_TYPES_H
@@ -35,20 +35,23 @@
 #endif
 #include <event.h>
 
-#include "include/pmix.h"
-#include "include/pmix_common.h"
-#include "include/pmix_tool.h"
+#include "pmix.h"
+#include "pmix_common.h"
+#include "pmix_tool.h"
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/event/pmix_event.h"
-#include "src/threads/threads.h"
+#include "src/runtime/pmix_init_util.h"
+#include "src/threads/pmix_threads.h"
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
 #include "src/mca/psec/psec.h"
 #include "src/mca/ptl/ptl.h"
+
+#include "src/util/pmix_name_fns.h"
 
 BEGIN_C_DECLS
 
@@ -67,13 +70,6 @@ BEGIN_C_DECLS
 #define PMIX_INFO_OP_COMPLETED(m)   ((pmix_info_t *) (m))->flags |= PMIX_INFO_OP_COMPLETE
 #define PMIX_INFO_OP_IS_COMPLETE(m) ((m)->flags & PMIX_INFO_OP_COMPLETE)
 
-/* define an internal-only process name that has
- * a dynamically-sized nspace field to save memory */
-typedef struct {
-    char *nspace;
-    pmix_rank_t rank;
-} pmix_name_t;
-
 /* define an internal-only object for creating
  * lists of names */
 typedef struct {
@@ -85,6 +81,7 @@ PMIX_CLASS_DECLARATION(pmix_namelist_t);
 /* define a struct for holding entries in the
  * dictionary of attributes */
 typedef struct {
+    uint32_t index;
     char *name;
     char *string;
     pmix_data_type_t type;
@@ -626,6 +623,8 @@ PMIX_EXPORT pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
 PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
+PMIX_EXPORT extern const char* PMIX_PROXY_VERSION;
+PMIX_EXPORT extern const char* PMIX_PROXY_BUGREPORT;
 
 PMIX_EXPORT void pmix_log_local_op(int sd, short args, void *cbdata_);
 

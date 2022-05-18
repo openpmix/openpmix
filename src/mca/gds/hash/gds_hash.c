@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,7 +31,7 @@
 #endif
 #include <time.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
@@ -41,11 +41,11 @@
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/argv.h"
-#include "src/util/error.h"
-#include "src/util/hash.h"
-#include "src/util/name_fns.h"
-#include "src/util/output.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_hash.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
 #include "gds_hash.h"
@@ -1042,7 +1042,7 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc, pmix_scope_t scope, p
     uint8_t *tmp;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "%s gds:hash:hash_store for proc %s key %s type %s scope %s",
+                        "%s gds:pmix_hash.hash_store for proc %s key %s type %s scope %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(proc), kv->key,
                         PMIx_Data_type_string(kv->value->type), PMIx_Scope_string(scope));
 

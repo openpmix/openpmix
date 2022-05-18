@@ -6,7 +6,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,7 +30,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 
 #define TEST_NAMESPACE  "smoky_nspace"
 #define TEST_CREDENTIAL "dummy"
@@ -339,7 +339,7 @@ typedef struct {
                 bool _value = 1;                                                               \
                 PMIX_INFO_CREATE(_info, 1);                                                    \
                 pmix_strncpy(_info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);                \
-                pmix_value_load(&_info->value, &_value, PMIX_BOOL);                            \
+                PMIx_Value_load(&_info->value, &_value, PMIX_BOOL);                            \
                 _ninfo = 1;                                                                    \
             }                                                                                  \
             rc = PMIx_Fence(pcs, nprocs, _info, _ninfo);                                       \

@@ -85,6 +85,15 @@ examples/server
 examples/tool
 examples/group
 examples/asyncgroup
+examples/hello
+examples/bad_exit
+examples/daemon_error_notify
+examples/launcher
+examples/log
+examples/showkeys
+examples/abi_no_init
+examples/abi_with_init
+examples/group_lcl_cid
 
 include/pmix_version.h
 include/pmix_rename.h
@@ -93,8 +102,9 @@ include/pmix_common.h
 src/include/pmix_config.h
 src/include/pmix_config.h.in
 src/include/pmix_config.h.in~
-src/include/frameworks.h
-src/include/dictionary.h
+src/include/pmix_frameworks.h
+src/include/pmix_dictionary.c
+src/include/pmix_dictionary.h
 
 src/mca/pinstalldirs/config/pinstall_dirs.h
 src/mca/pdl/base/static-components.h
@@ -175,12 +185,16 @@ test/simple/get_put_example
 test/simple/simpvni
 test/simple/hybrid
 test/simple/asyncio
+test/simple/simpqual
 
 test/sshot/daemon
 test/sshot/generate
 test/sshot/server
 test/sshot/mytopo.json
 test/sshot/testcoord
+
+test/util/numa
+test/util/convert
 
 test/test_v2/pmix_test
 test/test_v2/test_fence_basic

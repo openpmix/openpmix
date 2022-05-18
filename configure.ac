@@ -52,6 +52,8 @@ AC_CONFIG_AUX_DIR(./config)
 # -I in ACLOCAL_AMFLAGS in the top-level Makefile.am.
 AC_CONFIG_MACRO_DIR(./config)
 
+AC_PROG_SED
+
 # autotools expects to perform tests without interference
 # from user-provided CFLAGS, particularly -Werror flags.
 # Search for them here and cache any we find
@@ -222,6 +224,11 @@ PMIX_DEFINE_ARGS
 # Define some basic useful values
 PMIX_BASIC_SETUP
 
+# compatability for oac_check_package
+m4_copy([PMIX_LOG_COMMAND], [OAC_LOG_COMMAND])
+m4_copy([PMIX_LOG_MSG], [OAC_LOG_MSG])
+m4_copy([PMIX_APPEND], [OAC_APPEND])
+
 # If debug mode, add -g
 AS_IF([test "$pmix_debug" = "1"],
       [CFLAGS="$CFLAGS -g"])
@@ -253,12 +260,6 @@ AS_IF([test ! -z "$PMIX_CFLAGS_cache"], [CFLAGS="$CFLAGS $PMIX_CFLAGS_cache"])
 
 # setup "picky" compiler options if enabled
 PMIX_SETUP_PICKY_COMPILERS
-
-# Cleanup duplicate flags
-PMIX_FLAGS_UNIQ(CFLAGS)
-PMIX_FLAGS_UNIQ(CPPFLAGS)
-PMIX_FLAGS_UNIQ(LDFLAGS)
-PMIX_FLAGS_UNIQ(LIBS)
 
 #
 # Delayed the substitution of CFLAGS and CXXFLAGS until now because

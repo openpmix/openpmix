@@ -8,7 +8,7 @@
  *                         All rights reserved.
  * Copyright (c) 2020-2021 Triad National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,7 +33,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/util/argv.h"
+#include "src/util/pmix_argv.h"
 
 #define TEST_NAMESPACE "smoky_nspace"
 
@@ -382,7 +382,7 @@ typedef struct {
                 bool value = 1;                                                               \
                 PMIX_INFO_CREATE(info, 1);                                                    \
                 pmix_strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);                \
-                pmix_value_load(&info->value, &value, PMIX_BOOL);                             \
+                PMIx_Value_load(&info->value, &value, PMIX_BOOL);                             \
                 ninfo = 1;                                                                    \
             }                                                                                 \
             rc = PMIx_Fence(pcs, nprocs, info, ninfo);                                        \

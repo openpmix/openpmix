@@ -24,7 +24,7 @@ dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
 dnl
 dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
-dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
+dnl Copyright (c) 2018-2022 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
 dnl $COPYRIGHT$
@@ -97,6 +97,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_SUBST(PMIX_VERSION)
     AC_DEFINE_UNQUOTED([PMIX_VERSION], ["$PMIX_VERSION"],
                        [The library version is always available, contrary to VERSION])
+
+    PMIX_PROXY_BUGREPORT_STRING="https://github.com/openpmix/openpmix"
+    AC_SUBST(PMIX_PROXY_BUGREPORT_STRING)
+    AC_DEFINE_UNQUOTED([PMIX_PROXY_BUGREPORT_STRING], ["$PMIX_PROXY_BUGREPORT_STRING"],
+                       [Where to report bugs])
 
     PMIX_RELEASE_DATE="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --release-date`"
     AC_SUBST(PMIX_RELEASE_DATE)
@@ -250,26 +255,11 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     #
 
     AC_CHECK_SIZEOF(_Bool)
-    AC_CHECK_SIZEOF(char)
     AC_CHECK_SIZEOF(short)
     AC_CHECK_SIZEOF(int)
     AC_CHECK_SIZEOF(long)
-    if test "$ac_cv_type_long_long" = yes; then
-        AC_CHECK_SIZEOF(long long)
-    fi
-    AC_CHECK_SIZEOF(float)
-    AC_CHECK_SIZEOF(double)
-
     AC_CHECK_SIZEOF(void *)
     AC_CHECK_SIZEOF(size_t)
-    if test "$ac_cv_type_ssize_t" = yes ; then
-        AC_CHECK_SIZEOF(ssize_t)
-    fi
-    if test "$ac_cv_type_ptrdiff_t" = yes; then
-        AC_CHECK_SIZEOF(ptrdiff_t)
-    fi
-    AC_CHECK_SIZEOF(wchar_t)
-
     AC_CHECK_SIZEOF(pid_t)
 
     #
@@ -278,26 +268,13 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     AC_CHECK_ALIGNOF(bool, [AC_INCLUDES_DEFAULT
                             #include <stdbool.h>])
-    AC_CHECK_ALIGNOF(int8_t)
-    AC_CHECK_ALIGNOF(int16_t)
-    AC_CHECK_ALIGNOF(int32_t)
-    AC_CHECK_ALIGNOF(int64_t)
-    AC_CHECK_ALIGNOF(char)
-    AC_CHECK_ALIGNOF(short)
-    AC_CHECK_ALIGNOF(wchar_t)
     AC_CHECK_ALIGNOF(int)
     AC_CHECK_ALIGNOF(long)
+    AC_CHECK_ALIGNOF(size_t)
     if test "$ac_cv_type_long_long" = yes; then
         AC_CHECK_ALIGNOF(long long)
     fi
-    AC_CHECK_ALIGNOF(float)
     AC_CHECK_ALIGNOF(double)
-    if test "$ac_cv_type_long_double" = yes; then
-        AC_CHECK_ALIGNOF(long double)
-    fi
-    AC_CHECK_ALIGNOF(void *)
-    AC_CHECK_ALIGNOF(size_t)
-
 
     #
     # Does the C compiler native support "bool"? (i.e., without
@@ -899,9 +876,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         cpp_includes="$PMIX_top_srcdir $PMIX_top_srcdir/src"
     fi
     CPP_INCLUDES="$(echo $cpp_includes | $SED 's/[[^ \]]* */'"$pmix_cc_iquote"'&/g')"
-    CPPFLAGS="$PMIX_FINAL_CPPFLAGS $CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS"
-    LDFLAGS="$PMIX_FINAL_LDFLAGS $LDFLAGS"
-    LIBS="$PMIX_FINAL_LIBS $LIBS"
+    CPPFLAGS="$CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS"
 
     ############################################################################
     # final wrapper compiler config
@@ -943,8 +918,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Need the libtool executable before the rpathify stuff
     LT_OUTPUT
 
-    PMIX_SETUP_WRAPPER_FINAL
-
     ############################################################################
     # pmixdatadir, pmixlibdir, and pmixinclude are essentially the same as
     # pkg*dir, but will always be */pmix.
@@ -954,6 +927,14 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_SUBST(pmixdatadir)
     AC_SUBST(pmixlibdir)
     AC_SUBST(pmixincludedir)
+
+    PMIX_SETUP_WRAPPER_FINAL
+
+    # PMIX_DELAYED_LIBS is used to allow us to add some libraries to the build, but
+    # not add them to all the tests that are run through configure, since that
+    # can cause some bundled build situations.  This is the last minute, so time
+    # to add them to LIBS.
+    PMIX_FLAGS_APPEND_MOVE([LIBS], [$PMIX_DELAYED_LIBS])
 
     ############################################################################
     # setup "make check"
@@ -1002,7 +983,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[etc/Makefile]
         pmix_config_prefix[include/Makefile]
         pmix_config_prefix[src/Makefile]
+        pmix_config_prefix[src/class/Makefile]
         pmix_config_prefix[src/include/Makefile]
+        pmix_config_prefix[src/util/Makefile]
         pmix_config_prefix[src/util/keyval/Makefile]
         pmix_config_prefix[src/util/showhelp/Makefile]
         pmix_config_prefix[src/mca/base/Makefile]
@@ -1123,22 +1106,6 @@ AC_DEFINE_UNQUOTED(PMIX_ENABLE_DEBUG, $WANT_DEBUG,
 AC_ARG_ENABLE(debug-symbols,
               AS_HELP_STRING([--disable-debug-symbols],
                              [Disable adding compiler flags to enable debugging symbols if --enable-debug is specified.  For non-debugging builds, this flag has no effect.]))
-
-#
-# Do we want to install the internal devel headers?
-#
-AC_MSG_CHECKING([if want to install project-internal header files])
-AC_ARG_WITH(devel-headers,
-    AS_HELP_STRING([--with-devel-headers],
-                   [normal PMIx users/applications do not need this (pmix.h and friends are ALWAYS installed).  Developer headers are only necessary for authors doing deeper integration (default: disabled).]))
-if test "$with_devel_headers" = "yes"; then
-    AC_MSG_RESULT([yes])
-    WANT_INSTALL_HEADERS=1
-    pmix_install_primary_headers=yes
-else
-    AC_MSG_RESULT([no])
-    WANT_INSTALL_HEADERS=0
-fi
 
 AC_MSG_CHECKING([if want to install PMIx header files])
 AC_ARG_WITH(pmix-headers,
@@ -1264,8 +1231,6 @@ fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_TIMING], [$WANT_PMIX_TIMING],
                    [Whether we want developer-level timing support or not])
 
-AM_CONDITIONAL([WANT_INSTALL_HEADERS], [test $WANT_INSTALL_HEADERS -eq 1])
-
 #
 # Do we want to install binaries?
 #
@@ -1295,6 +1260,14 @@ if test "$enable_python_bindings" != "yes"; then
     WANT_PYTHON_BINDINGS=0
 else
     AC_MSG_RESULT([yes])
+    # cannot build Python bindings if we are doing a purely static build
+    if test "$enable_shared" = "no"; then
+        AC_MSG_WARN([Python bindings cannot be built in purely])
+        AC_MSG_WARN([static configurations. Please either enable])
+        AC_MSG_WARN([shared libraries or remove the request to])
+        AC_MSG_WARN([build the Python bindings])
+        AC_MSG_ERROR([Cannot continue])
+    fi
     WANT_PYTHON_BINDINGS=1
     AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
 fi
@@ -1311,7 +1284,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     pyvers=`python3 --version`
     python_version=${pyvers#"Python "}
 
-    PMIX_SUMMARY_ADD([[Bindings]],[[Python]], [pmix_python], [yes ($python_version)])
+    PMIX_SUMMARY_ADD([Bindings], [Python], [], [yes ($python_version)])
 
     AC_MSG_CHECKING([if Cython package installed as Python package])
     have_cython=`$srcdir/config/pmix_check_cython.py 2> /dev/null`
@@ -1320,7 +1293,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
         AC_MSG_CHECKING([Cython version])
         cython_version=`python -c "from Cython.Compiler.Version import version; print(version)"`
         AC_MSG_RESULT([$cython_version])
-        PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
+        PMIX_SUMMARY_ADD([Bindings], [Cython], [], [yes ($cython_version)])
     else
         AC_MSG_RESULT([no])
         # Cython doesn't have any include or lib files - it is just a binary
@@ -1330,7 +1303,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
             cyvers=`cython --version 2>&1`
             cython_version=${cyvers#"Cython version "}
             AC_MSG_RESULT([$cython_version])
-            PMIX_SUMMARY_ADD([[Bindings]],[[Cython]], [pmix_cython], [yes ($cython_version)])
+            PMIX_SUMMARY_ADD([Bindings], [Cython], [], [yes ($cython_version)])
         else
             AC_MSG_WARN([Python bindings were enabled, but the Cython])
             AC_MSG_WARN([package was not found. PMIx Python bindings])
@@ -1407,6 +1380,25 @@ else
     eval "DISABLE_psec_dummy_handshake=0"
 fi
 AM_CONDITIONAL(MCA_BUILD_PSEC_DUMMY_HANDSHAKE, test "$DISABLE_psec_dummy_handshake" = "0")
+
+#
+# Do we want to enable IPv6 support?
+#
+AC_MSG_CHECKING([if want IPv6 support])
+AC_ARG_ENABLE([ipv6],
+    [AS_HELP_STRING([--enable-ipv6],
+        [Enable IPv6 support, but only if the underlying system supports it (default: disabled)])])
+if test "$enable_ipv6" = "yes"; then
+    AC_MSG_RESULT([yes])
+    pmix_want_ipv6=1
+else
+    AC_MSG_RESULT([no])
+    pmix_want_ipv6=0
+fi
+AC_DEFINE_UNQUOTED([PMIX_ENABLE_IPV6], [$pmix_want_ipv6],
+                   [Enable IPv6 support, but only if the underlying system supports it])
+
+
 ])dnl
 
 # This must be a standalone routine so that it can be called both by
@@ -1419,7 +1411,6 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
         AM_CONDITIONAL([WANT_DSTORE], [test "x$enable_dstore" != "xno"])
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
-        AM_CONDITIONAL(WANT_INSTALL_HEADERS, test "$WANT_INSTALL_HEADERS" = 1)
         AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
         AM_CONDITIONAL([PMIX_HAVE_JANSSON], [test "x$pmix_check_jansson_happy" = "xyes"])
         AM_CONDITIONAL([PMIX_HAVE_CURL], [test "x$pmix_check_curl_happy" = "xyes"])

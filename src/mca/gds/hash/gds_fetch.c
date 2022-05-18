@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,7 +31,7 @@
 #endif
 #include <time.h>
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
 #include "src/client/pmix_client_ops.h"
@@ -41,11 +41,11 @@
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/server/pmix_server_ops.h"
-#include "src/util/argv.h"
-#include "src/util/error.h"
-#include "src/util/hash.h"
-#include "src/util/name_fns.h"
-#include "src/util/output.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_hash.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
 #include "gds_hash.h"
@@ -223,7 +223,7 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
                                         "%s gds:hash:fetch_nodearray adding key %s",
                                         PMIX_NAME_PRINT(&pmix_globals.myid), kp2->key);
                     PMIX_LOAD_KEY(iptr[n].key, kp2->key);
-                    rc = pmix_value_xfer(&iptr[n].value, kp2->value);
+                    rc = PMIx_Value_xfer(&iptr[n].value, kp2->value);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DATA_ARRAY_FREE(darray);
@@ -313,7 +313,7 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
                                 "%s gds:hash:fetch_nodearray adding key %s",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), kp2->key);
             PMIX_LOAD_KEY(iptr[n].key, kp2->key);
-            rc = pmix_value_xfer(&iptr[n].value, kp2->value);
+            rc = PMIx_Value_xfer(&iptr[n].value, kp2->value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DATA_ARRAY_FREE(darray);
@@ -343,7 +343,7 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
                 PMIX_RELEASE(kv);
                 return PMIX_ERR_NOMEM;
             }
-            rc = pmix_value_xfer(kv->value, kp2->value);
+            rc = PMIx_Value_xfer(kv->value, kp2->value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
@@ -407,7 +407,7 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(const char *key, pmix_job_t *trk, pmix
                 ++n;
                 PMIX_LIST_FOREACH (kp2, &apptr->appinfo, pmix_kval_t) {
                     PMIX_LOAD_KEY(info[n].key, kp2->key);
-                    rc = pmix_value_xfer(&info[n].value, kp2->value);
+                    rc = PMIx_Value_xfer(&info[n].value, kp2->value);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DATA_ARRAY_FREE(darray);
@@ -452,7 +452,7 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(const char *key, pmix_job_t *trk, pmix
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(kv->key);
             kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-            rc = pmix_value_xfer(kp2->value, kv->value);
+            rc = PMIx_Value_xfer(kp2->value, kv->value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kp2);

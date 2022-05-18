@@ -8,7 +8,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,10 +20,10 @@
 
 #include "src/include/pmix_config.h"
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
-#include "src/include/types.h"
+#include "src/include/pmix_types.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -46,23 +46,28 @@
 #    include <dirent.h>
 #endif /* HAVE_DIRENT_H */
 
-#include "include/pmix_common.h"
+#include "pmix_common.h"
 
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops_types.h"
-#include "src/threads/threads.h"
-#include "src/util/argv.h"
-#include "src/util/os_path.h"
+#include "src/threads/pmix_threads.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_os_path.h"
 
+
+const char* PMIX_PROXY_VERSION = PMIX_PROXY_VERSION_STRING;
+const char* PMIX_PROXY_BUGREPORT = PMIX_PROXY_BUGREPORT_STRING;
 
 static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd,
                             pmix_epilog_t *epi);
 static bool dirpath_is_empty(const char *path);
 
-PMIX_EXPORT pmix_lock_t pmix_global_lock = {.mutex = PMIX_MUTEX_STATIC_INIT,
-                                            .cond = PMIX_CONDITION_STATIC_INIT,
-                                            .active = false};
+PMIX_EXPORT pmix_lock_t pmix_global_lock = {
+    .mutex = PMIX_MUTEX_STATIC_INIT,
+    .cond = PMIX_CONDITION_STATIC_INIT,
+    .active = false
+};
 
 static void nsenvcon(pmix_nspace_env_cache_t *p)
 {

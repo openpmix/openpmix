@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -19,8 +19,8 @@
  * $HEADER$
  */
 
-#include "pmix_config.h"
-#include "include/pmix_common.h"
+#include "src/include/pmix_config.h"
+#include "pmix_common.h"
 
 #include <string.h>
 #ifdef HAVE_SYS_TIME_H
@@ -29,10 +29,10 @@
 #include <stdarg.h>
 
 #include "src/common/pmix_iof.h"
-#include "src/util/argv.h"
-#include "src/util/error.h"
-#include "src/util/name_fns.h"
-#include "src/util/show_help.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_show_help.h"
 
 #include "plog_stdfd.h"
 #include "src/mca/plog/base/base.h"

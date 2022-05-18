@@ -14,7 +14,8 @@
 # Copyright (c) 2007-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+# Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -22,44 +23,51 @@
 # $HEADER$
 #
 
+AM_CFLAGS = \
+            -DPMIX_PROXY_VERSION_STRING="\"@PMIX_VERSION@\"" \
+            -DPMIX_PROXY_BUGREPORT_STRING="\"@PMIX_PROXY_BUGREPORT_STRING@\""
+
 pmixdir = $(pmixincludedir)/$(subdir)
 
 noinst_LTLIBRARIES = libpmixglobal.la
 
 libpmixglobal_la_SOURCES = \
 	pmix_globals.h \
-        pmix_globals.c
+    pmix_globals.c \
+    pmix_dictionary.c
 
 headers = pmix_globals.h
 
-nodist_headers = \
-    pmix_config.h
-
 headers += \
-        align.h \
-        hash_string.h \
+        pmix_atomic.h \
+        pmix_hash_string.h \
         pmix_socket_errno.h \
         pmix_stdint.h \
-        prefetch.h \
-        types.h \
+        pmix_prefetch.h \
+        pmix_types.h \
+        pmix_config.h \
         pmix_config_top.h \
         pmix_config_bottom.h \
         pmix_portable_platform.h \
         pmix_portable_platform_real.h \
-        frameworks.h \
         pmix_stdatomic.h \
-        dictionary.h
+        pmix_frameworks.h \
+        pmix_dictionary.h
 
-if WANT_INSTALL_HEADERS
 nobase_pmix_HEADERS = $(headers)
-nobase_nodist_pmix_HEADERS = $(nodist_headers)
-endif
 
-# Need to ensure that dictionary.h is built first -- before any other
-# targets.
-BUILT_SOURCES = dictionary.h
+# Files that are generated here.
+libpmixglobal_gen = \
+	pmix_dictionary.h \
+    pmix_dictionary.c
 
-dictionary.h: $(top_srcdir)/include/pmix_common.h.in
-	$(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
+# Need to ensure that pmix_dictionary.h and pmix_dictionary.c are built first --
+# before any other targets.
+BUILT_SOURCES = $(libpmixglobal_gen)
 
-MAINTAINERCLEANFILES = dictionary.h
+$(libpmixglobal_gen): $(top_srcdir)/include/pmix_common.h.in \
+                      $(top_srcdir)/include/pmix_deprecated.h \
+                      $(top_srcdir)/src/common/pmix_attributes.c
+	        $(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
+
+MAINTAINERCLEANFILES = $(libpmixglobal_gen)
