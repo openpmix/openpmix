@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Los Alamos National Security, LLC.  All rights
  *                         reserved.
- * Copyright (c) 2008-2015 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2022 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2010-2014 Los Alamos National Security, LLC.
  *                         All rights reserved.
@@ -51,6 +51,7 @@ int pmix_event_caching_window = 1;
 bool pmix_suppress_missing_data_warning = false;
 char *pmix_progress_thread_cpus = NULL;
 bool pmix_bind_progress_thread_reqd = false;
+int pmix_maxfd = 1024;
 
 pmix_status_t pmix_register_params(void)
 {
@@ -312,6 +313,12 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0,
                                       PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
                                       PMIX_MCA_BASE_VAR_SCOPE_ALL, &pmix_bind_progress_thread_reqd);
+
+    (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "maxfd",
+                                      "In non-Linux environments, use this value as a maximum number of file descriptors to close when forking a new child process",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+                                      PMIX_MCA_BASE_VAR_SCOPE_ALL, &pmix_maxfd);
 
     pmix_hwloc_register();
     return PMIX_SUCCESS;
