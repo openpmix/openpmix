@@ -16,7 +16,7 @@
 
 #include <string.h>
 
-#include "alfg.h"
+#include "pmix_alfg.h"
 
 /* Mask corresponding to the primitive polynomial
  *---------------------------------------------------

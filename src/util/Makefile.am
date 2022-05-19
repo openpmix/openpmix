@@ -36,7 +36,7 @@ dist_pmixdata_DATA = \
     help-cli.txt
 
 headers = \
-        alfg.h \
+        pmix_alfg.h \
         pmix_argv.h \
         pmix_cmd_line.h \
         pmix_error.h \
@@ -44,15 +44,15 @@ headers = \
         pmix_output.h \
         pmix_environ.h \
         pmix_fd.h \
-        timings.h \
+        pmix_timings.h \
         pmix_os_dirpath.h \
         pmix_os_path.h \
         pmix_basename.h \
         pmix_keyval_parse.h \
         pmix_show_help.h \
         pmix_path.h \
-        getid.h \
-        strnlen.h \
+        pmix_getid.h \
+        pmix_strnlen.h \
         pmix_shmem.h \
         pmix_vmem.h \
         pmix_hash.h \
@@ -67,7 +67,7 @@ headers = \
         pmix_getcwd.h
 
 sources = \
-        alfg.c \
+        pmix_alfg.c \
         pmix_argv.c \
         pmix_cmd_line.c \
         pmix_error.c \
@@ -75,14 +75,14 @@ sources = \
         pmix_output.c \
         pmix_environ.c \
         pmix_fd.c \
-        timings.c \
+        pmix_timings.c \
         pmix_os_dirpath.c \
         pmix_os_path.c \
         pmix_basename.c \
         pmix_keyval_parse.c \
         pmix_show_help.c \
         pmix_path.c \
-        getid.c \
+        pmix_getid.c \
         pmix_shmem.c \
         pmix_vmem.c \
         pmix_hash.c \
