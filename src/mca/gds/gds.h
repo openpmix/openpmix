@@ -21,7 +21,7 @@
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/bfrops_types.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 
 /* The client dictates the GDS module that will be used to interact
  * with the server - this module is stored in pmix_globals.mypeer->compat.gds

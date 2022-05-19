@@ -29,7 +29,7 @@
 
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 
 BEGIN_C_DECLS
 

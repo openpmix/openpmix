@@ -15,7 +15,7 @@
 #include "pmix_config.h"
 
 #include "pmix_common.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/mca/pif/base/base.h"
 #include "src/mca/pif/base/static-components.h"
 #include "src/mca/pif/pif.h"

@@ -27,7 +27,7 @@
 #include <string.h>
 
 #include "src/mca/base/pmix_base.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_show_help.h"
 

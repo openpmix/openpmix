@@ -26,7 +26,7 @@
 #include "pmix_common.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/base/pmix_base.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/mca/pstat/base/base.h"
 #include "src/mca/pstat/pstat.h"
 #include "src/util/pmix_output.h"

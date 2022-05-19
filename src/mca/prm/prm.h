@@ -33,7 +33,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/server/pmix_server_ops.h"
 
 BEGIN_C_DECLS

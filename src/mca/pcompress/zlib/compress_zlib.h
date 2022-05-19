@@ -25,7 +25,7 @@
 
 #include "src/util/pmix_output.h"
 
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/mca/pcompress/pcompress.h"
 
 #if defined(c_plusplus) || defined(__cplusplus)

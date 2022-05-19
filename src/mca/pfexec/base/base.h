@@ -12,7 +12,7 @@
  * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,7 +32,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_iof.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/mca/pfexec/pfexec.h"
 
 BEGIN_C_DECLS
