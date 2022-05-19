@@ -35,14 +35,15 @@
 
 #if PMIX_ENABLE_TIMING
 
-#    include "src/class/pmix_list.h"
-#    include "src/class/pmix_pointer_array.h"
-#    include "src/util/pmix_basename.h"
-#    include "src/util/pmix_output.h"
+#include "src/class/pmix_list.h"
+#include "src/class/pmix_pointer_array.h"
+#include "src/include/pmix_globals.h"
+#include "src/util/pmix_basename.h"
+#include "src/util/pmix_output.h"
 
-#    include "src/util/timings.h"
+#include "src/util/pmix_timings.h"
 
-#    define DELTAS_SANE_LIMIT (10 * 1024 * 1024)
+#define DELTAS_SANE_LIMIT (10 * 1024 * 1024)
 
 struct interval_descr {
     pmix_timing_event_t *descr_ev, *begin_ev;
@@ -144,12 +145,13 @@ pmix_timing_prep_t pmix_timing_prep_ev(pmix_timing_t *t, const char *fmt, ...)
 pmix_timing_prep_t pmix_timing_prep_ev_end(pmix_timing_t *t, const char *fmt, ...)
 {
     pmix_timing_prep_t p = {t, NULL, 0};
+    PMIX_HIDE_UNUSED_PARAMS(fmt);
 
     if (t->current_id >= 0) {
         pmix_timing_event_t *ev = pmix_timing_event_alloc(t);
         if (ev == NULL) {
-            pmix_timing_prep_t p = {t, NULL, PMIX_ERR_OUT_OF_RESOURCE};
-            return p;
+            pmix_timing_prep_t p2 = {t, NULL, PMIX_ERR_OUT_OF_RESOURCE};
+            return p2;
         }
         PMIX_CONSTRUCT(ev, pmix_timing_event_t);
         ev->ts = t->get_ts();
@@ -461,7 +463,6 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
             /* this event caused buffered memory allocation
              * for events. Account the overhead for all active
              * intervals. */
-            int i;
             for (i = 0; i < t->next_id_cntr; i++) {
                 if ((NULL != descr[i].descr_ev) && (NULL != descr[i].begin_ev)) {
                     if (pmix_timing_overhead) {

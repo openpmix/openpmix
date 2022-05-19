@@ -34,7 +34,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_socket_errno.h"
 #include "src/mca/preg/preg.h"
-#include "src/util/alfg.h"
+#include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"

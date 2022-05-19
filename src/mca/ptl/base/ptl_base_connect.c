@@ -54,11 +54,11 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-#include "src/util/getid.h"
+#include "src/util/pmix_getid.h"
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
-#include "src/util/strnlen.h"
+#include "src/util/pmix_strnlen.h"
 
 #include "src/mca/ptl/base/base.h"
 

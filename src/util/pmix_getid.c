@@ -38,7 +38,7 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
-#include "src/util/getid.h"
+#include "src/util/pmix_getid.h"
 
 pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid)
 {

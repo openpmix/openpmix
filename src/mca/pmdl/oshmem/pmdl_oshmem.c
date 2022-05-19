@@ -36,7 +36,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
 #include "src/mca/preg/preg.h"
-#include "src/util/alfg.h"
+#include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
