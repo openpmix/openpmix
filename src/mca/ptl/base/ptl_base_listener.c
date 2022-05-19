@@ -604,6 +604,15 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
     PMIX_RELEASE(urikv); // maintain accounting
 
+    /* save a legacy URI internally so we can report it
+     * to older tools */
+    urikv = PMIX_NEW(pmix_kval_t);
+    urikv->key = strdup(PMIX_SERVER_URI);
+    PMIX_VALUE_CREATE(urikv->value, 1);
+    PMIX_VALUE_LOAD(urikv->value, lt->uri, PMIX_STRING);
+    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
+    PMIX_RELEASE(urikv); // maintain accounting
+
     if (NULL != pmix_ptl_base.report_uri) {
         /* if the string is a "-", then output to stdout */
         if (0 == strcmp(pmix_ptl_base.report_uri, "-")) {
