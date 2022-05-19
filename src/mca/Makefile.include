@@ -12,6 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2016      Intel, Inc. All rights reserved.
 # Copyright (c) 2016 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,4 +24,4 @@
 
 # Source code files
 headers += \
-	mca/mca.h
+	mca/pmix_mca.h

@@ -26,7 +26,7 @@
 
 #include "pmix_config.h"
 
-#include "src/mca/mca.h"
+#include "src/mca/pmix_mca.h"
 #include "src/mca/pstat/pstat.h"
 
 BEGIN_C_DECLS

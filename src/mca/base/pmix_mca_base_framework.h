@@ -16,7 +16,7 @@
 #    include "src/include/pmix_config.h"
 
 #    include "src/class/pmix_list.h"
-#    include "src/mca/mca.h"
+#    include "src/mca/pmix_mca.h"
 
 /*
  * Register and open flags

@@ -68,7 +68,7 @@
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var_enum.h"
 #include "src/mca/base/pmix_mca_base_var_group.h"
-#include "src/mca/mca.h"
+#include "src/mca/pmix_mca.h"
 
 /**
  * The types of MCA variables.
