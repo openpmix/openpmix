@@ -36,7 +36,7 @@
 #include "pmix_common.h"
 #include "src/include/pmix_types.h"
 
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 
 #include "bfrops_types.h"
 

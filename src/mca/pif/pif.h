@@ -51,7 +51,7 @@
 #endif
 
 #include "src/mca/base/pmix_base.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/util/pmix_if.h"
 
 BEGIN_C_DECLS

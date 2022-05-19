@@ -41,7 +41,7 @@
 #include "pmix_common.h"
 #include "src/include/pmix_stdint.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"

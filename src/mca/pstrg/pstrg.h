@@ -21,7 +21,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 
 BEGIN_C_DECLS
 

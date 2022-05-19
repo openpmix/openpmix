@@ -16,7 +16,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -40,7 +40,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 
 BEGIN_C_DECLS
 

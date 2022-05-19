@@ -27,7 +27,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/util/pmix_cmd_line.h"
 
 BEGIN_C_DECLS

@@ -25,7 +25,7 @@
 #include "pmix_common.h"
 
 #include "src/mca/base/pmix_base.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 
 #include "src/mca/pfexec/base/base.h"
 

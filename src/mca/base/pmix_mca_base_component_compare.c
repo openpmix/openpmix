@@ -23,7 +23,7 @@
 #include <string.h>
 
 #include "src/mca/base/pmix_base.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 
 /*
  * Function for comparing two pmix_mca_base_component_priority_t structs so

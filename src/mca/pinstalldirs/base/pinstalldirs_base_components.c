@@ -18,7 +18,7 @@
 #include "src/include/pmix_config.h"
 
 #include "pmix_common.h"
-#include "src/mca/pmix_mca.h"
+#include "src/mca/mca.h"
 #include "src/mca/pinstalldirs/base/base.h"
 #include "src/mca/pinstalldirs/base/static-components.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
