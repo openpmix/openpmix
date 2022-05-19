@@ -301,6 +301,10 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
                 /* if the key is PMIX_QUALIFIED_VALUE, then the value
                  * consists of a data array that starts with the key-value
                  * itself followed by the qualifiers */
+                pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                                    "[%s:%d] gds:hash:cache_job_info proc data for [%s:%u]: key %s",
+                                    pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, rank,
+                                    iptr[j].key);
                 if (PMIX_CHECK_KEY(&iptr[j], PMIX_QUALIFIED_VALUE)) {
                     rc = pmix_gds_hash_store_qualified(ht, rank, &iptr[j].value);
                     if (PMIX_SUCCESS != rc) {
@@ -308,18 +312,16 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_
                         goto release;
                     }
                 }
-                kv.key = iptr[j].key;
-                kv.value = &iptr[j].value;
-                pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                                    "[%s:%d] gds:hash:cache_job_info proc data for [%s:%u]: key %s",
-                                    pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, rank,
-                                    kv.key);
-                /* store it in the hash_table */
-                rc = pmix_hash_store(ht, rank, &kv, NULL, 0);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(kp2);
-                    goto release;
+                else {
+                    kv.key = iptr[j].key;
+                    kv.value = &iptr[j].value;
+                    /* store it in the hash_table */
+                    rc = pmix_hash_store(ht, rank, &kv, NULL, 0);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_RELEASE(kp2);
+                        goto release;
+                    }
                 }
                 /* if this is the appnum, pass it to the pmdl framework */
                 if (PMIX_CHECK_KEY(&iptr[j], PMIX_APPNUM)) {
