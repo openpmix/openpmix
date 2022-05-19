@@ -37,7 +37,7 @@
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
-#include "src/mca/mca.h"
+#include "src/mca/pmix_mca.h"
 #include "src/threads/pmix_threads.h"
 
 #include "src/mca/plog/plog.h"

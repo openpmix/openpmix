@@ -39,7 +39,7 @@
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/bfrops_types.h"
-#include "src/mca/mca.h"
+#include "src/mca/pmix_mca.h"
 
 #include "ptl_types.h"
 

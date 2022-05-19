@@ -27,7 +27,7 @@
 #include "src/class/pmix_list.h"
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
-#include "src/mca/mca.h"
+#include "src/mca/pmix_mca.h"
 #include "src/util/pmix_output.h"
 
 void pmix_mca_base_component_unload(const pmix_mca_base_component_t *component, int output_id)

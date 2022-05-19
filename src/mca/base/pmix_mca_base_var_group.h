@@ -25,7 +25,7 @@
 #ifndef PMIX_MCA_BASE_VAR_GROUP_H
 #define PMIX_MCA_BASE_VAR_GROUP_H
 
-#include "src/mca/mca.h"
+#include "src/mca/pmix_mca.h"
 
 struct pmix_mca_base_var_group_t {
     pmix_list_item_t super;

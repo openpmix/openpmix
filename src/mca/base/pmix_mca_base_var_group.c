@@ -38,7 +38,7 @@
 #include "pmix_common.h"
 #include "src/include/pmix_stdint.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
-#include "src/mca/mca.h"
+#include "src/mca/pmix_mca.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_show_help.h"
