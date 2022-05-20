@@ -13,6 +13,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -68,6 +69,7 @@ PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
         return PMIX_ERR_BAD_PARAM;
     }
     PMIX_LOAD_KEY(info->key, key);
+    info->flags = 0;
     return PMIx_Value_load(&info->value, data, type);
 }
 
