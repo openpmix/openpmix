@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
- * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
