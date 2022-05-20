@@ -2,7 +2,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -452,8 +452,8 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
         if (PMIX_ERR_NOT_SUPPORTED == rc) {
             goto cleanout;
         }
-        if (PMIX_ERR_NOT_FOUND != rc && PMIX_ERR_NOT_FOUND != rc) {
-            TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %s instead of not_found", my_nspace,
+        if (PMIX_ERR_NOT_FOUND != rc && PMIX_ERR_TIMEOUT != rc) {
+            TEST_ERROR(("%s:%d [ERROR]: PMIx_Get returned %s instead of not_found or timeout", my_nspace,
                         my_rank, PMIx_Error_string(rc)));
             exit(PMIX_ERROR);
         }
