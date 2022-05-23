@@ -5,6 +5,9 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -200,7 +203,11 @@ static int fdmax = -1;
  and the pipe up to the parent. */
 void pmix_close_open_file_descriptors(int protected_fd)
 {
+#if defined(__OSX__)
+    DIR *dir = opendir("/dev/fd");
+#else  /* Linux */
     DIR *dir = opendir("/proc/self/fd");
+#endif  /* defined(__OSX__) */
     struct dirent *files;
     int dir_scan_fd = -1;
 
