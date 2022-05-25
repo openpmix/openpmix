@@ -209,7 +209,25 @@ PMIX_SETUP_WRAPPER_INIT
 # This did not exist pre AM 1.11.x (where x is somewhere >0 and <3),
 # but it is necessary in AM 1.12.x.
 m4_ifdef([AM_PROG_AR], [AM_PROG_AR])
-AC_PROG_LEX(yywrap)
+
+#
+# Is this a developer copy?
+#
+
+if test -e $PMIX_TOP_SRCDIR/.git; then
+    PMIX_DEVEL=1
+else
+    PMIX_DEVEL=0
+fi
+# check for Flex
+AC_PROG_LEX(noyywrap)
+if test "x$LEX" != xflex && test ! -e $PMIX_TOP_SRCDIR/util/keyval/keyval_lex.c; then
+    AC_MSG_WARN([PMIx requires Flex to build from sources that were not])
+    AC_MSG_WARN([fully pre-processed (e.g., an official release tarball),])
+    AC_MSG_WARN([but Flex was not found. Please install Flex into])
+    AC_MSG_WARN([your path and try again])
+    AC_MSG_ERROR([Cannot continue])
+fi
 
 ############################################################################
 # Configuration options

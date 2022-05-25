@@ -1024,25 +1024,6 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
                       [Whether we want to enable dlopen support])
 
 #
-# Is this a developer copy?
-#
-
-if test -e $PMIX_TOP_SRCDIR/.git; then
-    PMIX_DEVEL=1
-    # check for Flex
-    AC_PROG_LEX(yywrap)
-    if test "x$LEX" != xflex; then
-        AC_MSG_WARN([PMIx requires Flex to build from non-tarball sources,])
-        AC_MSG_WARN([but Flex was not found. Please install Flex into])
-        AC_MSG_WARN([your path and try again])
-        AC_MSG_ERROR([Cannot continue])
-    fi
-else
-    PMIX_DEVEL=0
-fi
-
-
-#
 # Developer picky compiler options
 #
 
