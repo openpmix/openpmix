@@ -81,7 +81,8 @@ static inline int pmix_tsd_getspecific(pmix_tsd_key_t key, void **valuep)
  *                       create another thread specific data key
  * @retval ENOMEM        Insufficient memory exists to create the key
  */
-PMIX_EXPORT int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor);
+PMIX_EXPORT int pmix_tsd_key_create(pmix_tsd_key_t *key,
+                                    pmix_tsd_destructor_t destructor);
 
 /**
  * Destruct all thread-specific data keys

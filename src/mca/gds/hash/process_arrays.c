@@ -316,7 +316,10 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
     }
     /* point the app at its job */
     if (NULL == app->job) {
-        PMIX_RETAIN(trk);
+        /* do NOT retain the tracker - we will not release
+         * it in the app destructor. If we retain the tracker,
+         * then we won't release it later because the refcount
+         * is wrong */
         app->job = trk;
     }
 

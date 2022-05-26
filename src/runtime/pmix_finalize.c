@@ -44,6 +44,7 @@
 #include "src/mca/psec/base/base.h"
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/threads/pmix_tsd.h"
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
@@ -62,11 +63,7 @@ void pmix_rte_finalize(void)
     pmix_iof_req_t *req;
     pmix_regattr_input_t *p;
 
-    if (--pmix_initialized != 0) {
-        if (pmix_initialized < 0) {
-            fprintf(stderr, "PMIx Finalize called too many times\n");
-            return;
-        }
+    if (!pmix_init_called) {
         return;
     }
 
@@ -163,4 +160,5 @@ void pmix_rte_finalize(void)
 
     /* now safe to release the event base */
     (void) pmix_progress_thread_stop(NULL);
+    pmix_tsd_keys_destruct();
 }
