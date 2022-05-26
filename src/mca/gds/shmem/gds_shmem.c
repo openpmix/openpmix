@@ -750,8 +750,9 @@ tma_construct(
     tma->tma_realloc = NULL;
     tma->tma_strdup = tma_strdup;
     tma->tma_memmove = tma_memmove;
+    // TODO(skg) Add free()
+    tma->tma_free = NULL;
     tma->arena = NULL;
-    tma->dontfree = 1;
 }
 
 static void

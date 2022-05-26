@@ -13,6 +13,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -65,13 +66,13 @@ static const int increment = 10;
 /*
  * Local functions
  */
-static void save_class(pmix_class_t *cls);
-static void expand_array(void);
+static void save_class(pmix_class_t *cls, pmix_tma_t *tma);
+static void expand_array(pmix_tma_t *tma);
 
 /*
  * Lazy initialization of class descriptor.
  */
-void pmix_class_initialize(pmix_class_t *cls)
+void pmix_class_initialize(pmix_class_t *cls, pmix_tma_t *tma)
 {
     pmix_class_t *c;
     pmix_construct_t *cls_construct_array;
@@ -122,7 +123,7 @@ void pmix_class_initialize(pmix_class_t *cls)
      * plus for each a NULL-sentinel
      */
 
-    cls->cls_construct_array = (void (**)(pmix_object_t *)) malloc(
+    cls->cls_construct_array = (void (**)(pmix_object_t *)) pmix_tma_malloc(tma,
         (cls_construct_array_count + cls_destruct_array_count + 2) * sizeof(pmix_construct_t));
     if (NULL == cls->cls_construct_array) {
         perror("Out of memory");
@@ -153,7 +154,7 @@ void pmix_class_initialize(pmix_class_t *cls)
     *cls_destruct_array = NULL; /* end marker for the destructors */
 
     cls->cls_initialized = pmix_class_init_epoch;
-    save_class(cls);
+    save_class(cls, tma);
 
     /* All done */
 
@@ -188,25 +189,25 @@ int pmix_class_finalize(void)
     return 0;
 }
 
-static void save_class(pmix_class_t *cls)
+static void save_class(pmix_class_t *cls, pmix_tma_t *tma)
 {
     if (num_classes >= max_classes) {
-        expand_array();
+        expand_array(tma);
     }
 
     classes[num_classes] = cls->cls_construct_array;
     ++num_classes;
 }
 
-static void expand_array(void)
+static void expand_array(pmix_tma_t *tma)
 {
     int i;
 
     max_classes += increment;
     if (NULL == classes) {
-        classes = (void **) calloc(max_classes, sizeof(void *));
+        classes = (void **) pmix_tma_calloc(tma, max_classes, sizeof(void *));
     } else {
-        classes = (void **) realloc(classes, sizeof(void *) * max_classes);
+        classes = (void **) pmix_tma_realloc(tma, classes, sizeof(void *) * max_classes);
     }
     if (NULL == classes) {
         perror("class malloc failed");
