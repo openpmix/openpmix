@@ -231,13 +231,10 @@ typedef struct pmix_tma {
      * Like memmove(), it returns a pointer to the content's destination.
      */
     void *(*tma_memmove)(struct pmix_tma *tma, const void *src, size_t n);
+    /** Pointer to the TMA's free() function. */
+    void (*tma_free)(struct pmix_tma *, void *);
     /** Pointer inside the memory allocation arena. */
     void *arena;
-    /**
-     * When true free() and realloc() cannot be used,
-     * and memory allocation functions cannot fail.
-     */
-    bool dontfree;
 } pmix_tma_t;
 
 static inline void *pmix_tma_malloc(pmix_tma_t *tma, size_t size)
@@ -246,6 +243,15 @@ static inline void *pmix_tma_malloc(pmix_tma_t *tma, size_t size)
         return tma->tma_malloc(tma, size);
     } else {
         return malloc(size);
+    }
+}
+
+static inline void *pmix_tma_calloc(pmix_tma_t *tma, size_t nmemb, size_t size)
+{
+    if (NULL != tma) {
+        return tma->tma_calloc(tma, nmemb, size);
+    } else {
+        return calloc(nmemb, size);
     }
 }
 
@@ -264,6 +270,15 @@ static inline char *pmix_tma_strdup(pmix_tma_t *tma, const char *src)
         return tma->tma_strdup(tma, src);
     } else {
         return strdup(src);
+    }
+}
+
+static inline void pmix_tma_free(pmix_tma_t *tma, void *ptr)
+{
+    if (NULL != tma) {
+        tma->tma_free(tma, ptr);
+    } else {
+        free(ptr);
     }
 }
 
@@ -306,8 +321,8 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_tma.tma_realloc = NULL,            \
             .obj_tma.tma_strdup = NULL,             \
             .obj_tma.tma_memmove = NULL,            \
+            .obj_tma.tma_free = NULL,               \
             .obj_tma.arena = NULL,                  \
-            .obj_tma.dontfree = false,              \
             .cls_init_file_name = __FILE__,         \
             .cls_init_lineno = __LINE__             \
         }
@@ -322,8 +337,8 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_tma.tma_realloc = NULL,            \
             .obj_tma.tma_strdup = NULL,             \
             .obj_tma.tma_memmove = NULL,            \
-            .obj_tma.arena = NULL,                  \
-            .obj_tma.dontfree = false               \
+            .obj_tma.tma_free = NULL,               \
+            .obj_tma.arena = NULL                   \
         }
 #endif
 
@@ -412,12 +427,12 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
     ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), NULL, __FILE__, __LINE__))
 
 #define PMIX_NEW_TMA(type, tma) \
-    ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), tma, __FILE__, __LINE__))
+    ((type *)pmix_obj_new_debug_tma(PMIX_CLASS(type), (tma), __FILE__, __LINE__))
 
 #else
 #define PMIX_NEW_NO_TMA(type)   ((type *)pmix_obj_new_tma(PMIX_CLASS(type), NULL))
 
-#define PMIX_NEW_TMA(type, tma) ((type *)pmix_obj_new_tma(PMIX_CLASS(type), tma))
+#define PMIX_NEW_TMA(type, tma) ((type *)pmix_obj_new_tma(PMIX_CLASS(type), (tma)))
 
 #endif /* PMIX_ENABLE_DEBUG */
 
@@ -486,7 +501,10 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
                 PMIX_SET_MAGIC_ID((object), 0);                            \
                 pmix_obj_run_destructors(_obj);                            \
                 PMIX_REMEMBER_FILE_AND_LINENO(object, __FILE__, __LINE__); \
-                if (!(_obj->obj_tma.dontfree)) {                           \
+                if (NULL != _obj->obj_tma.tma_free) {                      \
+                    pmix_tma_free(&_obj->obj_tma, object);                 \
+                }                                                          \
+                else {                                                     \
                     free(object);                                          \
                 }                                                          \
                 object = NULL;                                             \
@@ -498,7 +516,10 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
             pmix_object_t *_obj = (pmix_object_t *) object; \
             if (0 == pmix_obj_update(_obj, -1)) {           \
                 pmix_obj_run_destructors(_obj);             \
-                if (!(_obj->obj_tma.dontfree)) {            \
+                if (NULL != _obj->obj_tma.tma_free) {       \
+                    pmix_tma_free(&_obj->obj_tma, object);  \
+                }                                           \
+                else {                                      \
                     free(object);                           \
                 }                                           \
                 object = NULL;                              \
@@ -512,24 +533,18 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
  * @param object        Pointer to the object
  * @param type          The object type
  */
-static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
+static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *tma)
 {
-    if (NULL == t) {
+    if (NULL == tma) {
         obj->obj_tma.tma_malloc = NULL;
         obj->obj_tma.tma_calloc = NULL;
         obj->obj_tma.tma_realloc = NULL;
         obj->obj_tma.tma_strdup = NULL;
         obj->obj_tma.tma_memmove = NULL;
+        obj->obj_tma.tma_free = NULL;
         obj->obj_tma.arena = NULL;
-        obj->obj_tma.dontfree = false;
     } else {
-        obj->obj_tma.tma_malloc = t->tma_malloc;
-        obj->obj_tma.tma_calloc = t->tma_calloc;
-        obj->obj_tma.tma_realloc = t->tma_realloc;
-        obj->obj_tma.tma_strdup = t->tma_strdup;
-        obj->obj_tma.tma_memmove = t->tma_memmove;
-        obj->obj_tma.arena = t->arena;
-        obj->obj_tma.dontfree = t->dontfree;
+        obj->obj_tma = *tma;
     }
 }
 
@@ -537,7 +552,7 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
     do {                                                           \
         PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);            \
         if (pmix_class_init_epoch != (type)->cls_initialized) {    \
-            pmix_class_initialize((type));                         \
+            pmix_class_initialize((type), (t));                    \
         }                                                          \
         ((pmix_object_t *) (object))->obj_class = (type);          \
         ((pmix_object_t *) (object))->obj_reference_count = 1;     \
@@ -547,9 +562,9 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *t)
     } while (0)
 
 
-#define PMIX_CONSTRUCT_TMA(object, type, t)                         \
-    do {                                                            \
-        PMIX_CONSTRUCT_INTERNAL_TMA((object), PMIX_CLASS(type), t); \
+#define PMIX_CONSTRUCT_TMA(object, type, t)                           \
+    do {                                                              \
+        PMIX_CONSTRUCT_INTERNAL_TMA((object), PMIX_CLASS(type), (t)); \
     } while (0)
 
 
@@ -594,7 +609,7 @@ PMIX_CLASS_DECLARATION(pmix_object_t);
  *
  * @param class    Pointer to class descriptor
  */
-PMIX_EXPORT void pmix_class_initialize(pmix_class_t *);
+PMIX_EXPORT void pmix_class_initialize(pmix_class_t *cls, pmix_tma_t *tma);
 
 /**
  * Shut down the class system and release all memory
@@ -668,13 +683,10 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
     pmix_object_t *object;
     assert(cls->cls_sizeof >= sizeof(pmix_object_t));
 
-    if (NULL == tma) {
-        object = (pmix_object_t *) malloc(cls->cls_sizeof);
-    } else {
-        object = (pmix_object_t *) pmix_tma_malloc(tma, cls->cls_sizeof);
-    }
+    object = (pmix_object_t *) pmix_tma_malloc(tma, cls->cls_sizeof);
+
     if (pmix_class_init_epoch != cls->cls_initialized) {
-        pmix_class_initialize(cls);
+        pmix_class_initialize(cls, tma);
     }
     if (NULL != object) {
 #if PMIX_ENABLE_DEBUG
@@ -704,19 +716,14 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
             object->obj_tma.tma_calloc = NULL;
             object->obj_tma.tma_realloc = NULL;
             object->obj_tma.tma_strdup = NULL;
+            object->obj_tma.tma_free = NULL;
             object->obj_tma.arena = NULL;
-            object->obj_tma.dontfree = false;
         } else {
             object->obj_tma = *tma;
         }
         pmix_obj_run_constructors(object);
     }
     return object;
-}
-
-static inline pmix_object_t *pmix_obj_new(pmix_class_t *cls)
-{
-    return pmix_obj_new_tma(cls, NULL);
 }
 
 /**
