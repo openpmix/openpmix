@@ -36,8 +36,6 @@
 #include "gds_hash.h"
 #include "src/mca/gds/gds.h"
 
-static pmix_status_t component_open(void);
-static pmix_status_t component_close(void);
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority);
 
 /*
@@ -56,8 +54,6 @@ pmix_gds_hash_component_t pmix_mca_gds_hash_component = {
                                    PMIX_RELEASE_VERSION),
 
         /* Component open and close functions */
-        .pmix_mca_open_component = component_open,
-        .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
         .reserved = {0}
     },
@@ -65,26 +61,10 @@ pmix_gds_hash_component_t pmix_mca_gds_hash_component = {
     .myjobs = PMIX_LIST_STATIC_INIT
 };
 
-static int component_open(void)
-{
-    PMIX_CONSTRUCT(&pmix_mca_gds_hash_component.mysessions, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_mca_gds_hash_component.myjobs, pmix_list_t);
-
-    return PMIX_SUCCESS;
-}
-
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 10;
     *module = (pmix_mca_base_module_t *) &pmix_hash_module;
-    return PMIX_SUCCESS;
-}
-
-static int component_close(void)
-{
-    PMIX_LIST_DESTRUCT(&pmix_mca_gds_hash_component.mysessions);
-    PMIX_LIST_DESTRUCT(&pmix_mca_gds_hash_component.myjobs);
-
     return PMIX_SUCCESS;
 }
 
@@ -156,9 +136,6 @@ static void apdes(pmix_apptrkr_t *p)
 {
     PMIX_LIST_DESTRUCT(&p->appinfo);
     PMIX_LIST_DESTRUCT(&p->nodeinfo);
-    if (NULL != p->job) {
-        PMIX_RELEASE(p->job);
-    }
 }
 PMIX_CLASS_INSTANCE(pmix_apptrkr_t, pmix_list_item_t, apcon, apdes);
 

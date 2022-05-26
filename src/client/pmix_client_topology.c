@@ -71,6 +71,19 @@ void PMIx_Topology_destruct(pmix_topology_t *topo)
     pmix_hwloc_destruct_topology(topo);
 }
 
+void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset)
+{
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    pmix_hwloc_destruct_cpuset(cpuset);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string, pmix_cpuset_t *cpuset)
 {
     pmix_status_t rc;

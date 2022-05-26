@@ -1087,6 +1087,8 @@ PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string,
 
 PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t ref);
 
+PMIX_EXPORT void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset);
+
 /* Get the relative locality of two local processes given their locality strings.
  *
  * locality1 - String returned by the PMIx_server_generate_locality_string API
@@ -1580,6 +1582,8 @@ PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
                                             void **data,
                                             size_t *sz);
 
+PMIX_EXPORT void PMIx_Value_destruct(pmix_value_t *val);
+
 /* Transfer data from one pmix_value_t to another - this is actually
  * executed as a COPY operation, so the original data is not altered.
  */
@@ -1589,6 +1593,8 @@ PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
 /* Compre the contents of two pmix_value_t structures */
 PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
                                                 pmix_value_t *v2);
+
+PMIX_EXPORT void PMIx_Data_array_destruct(pmix_data_array_t *d);
 
 /* Load key/value data into a pmix_info_t struct. Note that this
  * effectively is a PMIX_LOAD_KEY operation to copy the key,
@@ -1622,6 +1628,8 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
                                              const char *key,
                                              const void *value,
                                              pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
 
 /* Transfer the data in an existing pmix_info_t struct to a list. This
  * is executed as a COPY operation, so the original data is not altered.

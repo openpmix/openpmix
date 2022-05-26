@@ -106,11 +106,16 @@ static pmix_status_t hash_init(pmix_info_t info[], size_t ninfo)
 
     PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
 
+    PMIX_CONSTRUCT(&pmix_mca_gds_hash_component.mysessions, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_gds_hash_component.myjobs, pmix_list_t);
+
     return PMIX_SUCCESS;
 }
 
 static void hash_finalize(void)
 {
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_hash_component.mysessions);
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_hash_component.myjobs);
     return;
 }
 
@@ -139,7 +144,8 @@ static pmix_status_t hash_assign_module(pmix_info_t *info, size_t ninfo, int *pr
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns, pmix_info_t info[],
+static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
+                                         pmix_info_t info[],
                                          size_t ninfo)
 {
     pmix_namespace_t *nptr = (pmix_namespace_t *) ns;
@@ -1253,7 +1259,6 @@ static pmix_status_t nspace_add(const char *nspace, uint32_t nlocalprocs, pmix_i
 static pmix_status_t nspace_del(const char *nspace)
 {
     pmix_job_t *t;
-
 
     /* find the hash table for this nspace */
     PMIX_LIST_FOREACH (t, &pmix_mca_gds_hash_component.myjobs, pmix_job_t) {

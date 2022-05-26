@@ -249,7 +249,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     cb->info = (pmix_info_t*)info;
     cb->ninfo = ninfo;
     cb->cbfunc.valuefn = _value_cbfunc;
-    PMIX_RETAIN(cb);
     cb->cbdata = cb;
 
     /* MUST threadshift here to avoid touching global
@@ -268,7 +267,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     } else {
         *val = NULL;
     }
-    /* lg was released in the callback function */
+    PMIX_RELEASE(lg);
     PMIX_RELEASE(cb);
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
@@ -283,6 +282,7 @@ static void gcbfn(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     cb->cbfunc.valuefn(cb->status, cb->value, cb->cbdata);
+    PMIX_RELEASE(cb->lg);
     PMIX_RELEASE(cb);
 }
 
@@ -321,7 +321,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         cb->value = val;
         cb->cbfunc.valuefn = cbfunc;
         cb->cbdata = cbdata;
-        PMIX_RELEASE(lg);
         PMIX_THREADSHIFT(cb, gcbfn);
         return PMIX_SUCCESS;
     } else if (PMIX_SUCCESS != rc) {
@@ -521,8 +520,12 @@ done:
         if (PMIX_CHECK_NSPACE(lg->p.nspace, cb->pname.nspace) && cb->pname.rank == lg->p.rank) {
             pmix_list_remove_item(&pmix_client_globals.pending_requests, &cb->super);
             if (PMIX_SUCCESS != ret) {
-                cb->cbfunc.valuefn(ret, NULL, cb->cbdata);
-                PMIX_RELEASE(cb);
+                if (cb->checked) {
+                    cb->status = ret;
+                    gcbfn(0, 0, cb);
+                } else {
+                    cb->cbfunc.valuefn(ret, NULL, cb->cbdata);
+                }
                 continue;
             }
             /* we have the data for this proc - see if we can find the key */
@@ -560,8 +563,13 @@ done:
                     PMIX_RELEASE(kv);
                 }
             }
-            cb->cbfunc.valuefn(rc, val, cb->cbdata);
-            PMIX_RELEASE(cb);
+            if (cb->checked) {
+                cb->status = rc;
+                cb->value = val;
+                gcbfn(0, 0, cb);
+            } else {
+                cb->cbfunc.valuefn(rc, val, cb->cbdata);
+            }
         }
     }
 }
