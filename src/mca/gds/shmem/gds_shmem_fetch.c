@@ -16,8 +16,11 @@
 
 #include "gds_shmem_fetch.h"
 #include "gds_shmem_utils.h"
-
+// TODO(skg) This will eventually go away.
+#include "pmix_hash2.h"
+#if 0 // TODO(skg) See ^^^.
 #include "src/util/pmix_hash.h"
+#endif
 
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/pcompress/base/base.h"
@@ -42,8 +45,6 @@ fetch_all_node_info(
         return PMIX_ERR_NOMEM;
     }
     size_t nds = pmix_list_get_size(&nodeinfo->info);
-    // TODO(skg) Why increment? And why increment twice if a node has both
-    // IDs? Ask Ralph.
     if (NULL != nodeinfo->hostname) {
         ++nds;
     }
@@ -275,7 +276,6 @@ fetch_all_app_info(
             PMIX_RELEASE(kv);
             return PMIX_ERR_NOMEM;
         }
-        // TODO(skg) Why +1?
         const size_t nds = pmix_list_get_size(&appi->appinfo) + 1;
         PMIX_DATA_ARRAY_CREATE(darray, nds, PMIX_INFO);
         if (NULL == darray) {
@@ -471,7 +471,7 @@ fetch_job_level_info_for_namespace(
     pmix_list_t *kvs
 ) {
     // Fetch all values from the hash table tied to rank=wildcard.
-    pmix_status_t rc = pmix_hash_fetch(
+    pmix_status_t rc = pmix_hash2_fetch(
         &job->hashtab_internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
     );
     if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
@@ -508,7 +508,7 @@ fetch_job_level_info_for_namespace(
     for (pmix_rank_t rank = 0; rank < job->nspace->nprocs; rank++) {
         pmix_list_t rkvs;
         PMIX_CONSTRUCT(&rkvs, pmix_list_t);
-        rc = pmix_hash_fetch(
+        rc = pmix_hash2_fetch(
             &job->hashtab_internal, rank, NULL, NULL, 0, &rkvs
         );
         if (PMIX_ERR_NOMEM == rc) {
@@ -664,7 +664,7 @@ doover:
     // nspace as any one of them could be the source.
     if (PMIX_RANK_UNDEF == proc->rank) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
-            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs);
+            rc = pmix_hash2_fetch(ht, rnk, key, qualifiers, nqual, kvs);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
@@ -693,7 +693,7 @@ doover:
         if (NULL == key) {
             // And need to add all job info just in case
             // that was passed via a different GDS component.
-            rc = pmix_hash_fetch(
+            rc = pmix_hash2_fetch(
                 &job->hashtab_internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
             );
         }
@@ -702,7 +702,7 @@ doover:
         }
     }
     else {
-        rc = pmix_hash_fetch(ht, proc->rank, key, qualifiers, nqual, kvs);
+        rc = pmix_hash2_fetch(ht, proc->rank, key, qualifiers, nqual, kvs);
     }
     if (PMIX_SUCCESS == rc) {
         if (PMIX_GLOBAL == scope) {
@@ -740,7 +740,7 @@ doover:
         if (PMIX_RANK_IS_VALID(proc->rank)) {
             if (PMIX_LOCAL == scope) {
                 // Check the remote scope.
-                rc = pmix_hash_fetch(
+                rc = pmix_hash2_fetch(
                     &job->hashtab_remote, proc->rank,
                     key, qualifiers, nqual, kvs
                 );
@@ -757,7 +757,7 @@ doover:
             }
             else if (PMIX_REMOTE == scope) {
                 // Check the local scope.
-                rc = pmix_hash_fetch(
+                rc = pmix_hash2_fetch(
                     &job->hashtab_local, proc->rank,
                     key, qualifiers, nqual, kvs
                 );

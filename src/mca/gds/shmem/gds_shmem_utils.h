@@ -23,7 +23,7 @@
 do {                                                                           \
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
                         "gds:" PMIX_GDS_SHMEM_NAME                             \
-                        ":%s at line %d", __func__, __LINE__);                 \
+                        ":%s called at line %d", __func__, __LINE__);          \
 } while (0)
 
 // TODO(skg) Support different verbosity settings. Like VV or something.
@@ -35,7 +35,6 @@ do {                                                                           \
 
 BEGIN_C_DECLS
 
-// TODO(skg) Consider moving to fetch.
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_get_job_tracker(
     const pmix_nspace_t nspace,

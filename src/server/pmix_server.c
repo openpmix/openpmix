@@ -661,7 +661,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     }
 
     /* assign our internal gds module */
-    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, "hash,shmem", PMIX_STRING);
+    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, "hash", PMIX_STRING);
     pmix_globals.mypeer->nptr->compat.gds = pmix_gds_base_assign_module(&ginfo, 1);
     if (NULL == pmix_globals.mypeer->nptr->compat.gds) {
         PMIX_ERROR_LOG(rc);
