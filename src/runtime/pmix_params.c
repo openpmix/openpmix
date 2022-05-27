@@ -316,8 +316,9 @@ pmix_status_t pmix_register_params(void)
 
     (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "maxfd",
                                       "In non-Linux environments, use this value as a maximum number of file descriptors to close when forking a new child process",
-                                      PMIX_MCA_BASE_VAR_TYPE_INT,
-                                      &pmix_maxfd);
+                                      PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0,
+                                      PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
+                                      PMIX_MCA_BASE_VAR_SCOPE_ALL, &pmix_maxfd);
 
     pmix_hwloc_register();
     return PMIX_SUCCESS;
