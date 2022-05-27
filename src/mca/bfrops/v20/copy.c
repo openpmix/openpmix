@@ -696,7 +696,7 @@ pmix_status_t pmix20_bfrop_value_xfer(pmix_value_t *p, const pmix_value_t *src)
                 PMIX_LOAD_KEY(pd[n].key, sd[n].key);
                 rc = PMIx_Value_xfer(&pd[n].value, &sd[n].value);
                 if (PMIX_SUCCESS != rc) {
-                    PMIX_INFO_FREE(pd, src->data.darray->size);
+                    PMIX_PDATA_FREE(pd, src->data.darray->size);
                     return rc;
                 }
             }

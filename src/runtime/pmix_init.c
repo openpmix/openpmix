@@ -71,7 +71,6 @@ const char* pmix_tool_version = PMIX_VERSION;
 const char* pmix_tool_org = "PMIx";
 const char* pmix_tool_msg = PMIX_PROXY_BUGREPORT_STRING;
 
-PMIX_EXPORT int pmix_initialized = 0;
 PMIX_EXPORT bool pmix_init_called = false;
 /* we have to export the pmix_globals object so
  * all plugins can access it. However, it is included
@@ -191,13 +190,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_info_t *iptr;
     size_t minfo;
     bool keepfqdn = false;
-
-    if (++pmix_initialized != 1) {
-        if (pmix_initialized < 1) {
-            return PMIX_ERROR;
-        }
-        return PMIX_SUCCESS;
-    }
 
 #if PMIX_NO_LIB_DESTRUCTOR
     if (pmix_init_called) {

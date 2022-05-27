@@ -55,7 +55,16 @@ static void pdcon(pmix_proc_data_t *p)
 }
 static void pddes(pmix_proc_data_t *p)
 {
-    PMIX_LIST_DESTRUCT(&p->data);
+    pmix_kval_t *kv;
+
+    while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(&p->data))){
+        if (!PMIX_CHECK_KEY(kv, PMIX_TOPOLOGY2)) {
+            PMIX_RELEASE(kv);
+        } else {
+            free(kv->key);
+            free(kv);
+        }
+    }
 }
 static PMIX_CLASS_INSTANCE(pmix_proc_data_t, pmix_list_item_t, pdcon, pddes);
 
@@ -260,7 +269,8 @@ pmix_status_t pmix_hash_fetch_by_key(pmix_hash_table_t *table, const char *key, 
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table, pmix_rank_t rank, const char *key)
+pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
+                                    pmix_rank_t rank, const char *key)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_proc_data_t *proc_data;

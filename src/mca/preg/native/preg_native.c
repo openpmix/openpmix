@@ -26,7 +26,7 @@
 #endif
 #include <ctype.h>
 
-#include "pmix.h"
+#include "include/pmix.h"
 #include "pmix_common.h"
 
 #include "src/class/pmix_list.h"
@@ -50,15 +50,19 @@ static pmix_status_t parse_procs(const char *regexp, char ***procs);
 static pmix_status_t copy(char **dest, size_t *len, const char *input);
 static pmix_status_t pack(pmix_buffer_t *buffer, const char *input);
 static pmix_status_t unpack(pmix_buffer_t *buffer, char **regex);
+static pmix_status_t release(char *regexp);
 
-pmix_preg_module_t pmix_preg_native_module = {.name = "pmix",
-                                              .generate_node_regex = generate_node_regex,
-                                              .generate_ppn = generate_ppn,
-                                              .parse_nodes = parse_nodes,
-                                              .parse_procs = parse_procs,
-                                              .copy = copy,
-                                              .pack = pack,
-                                              .unpack = unpack};
+pmix_preg_module_t pmix_preg_native_module = {
+    .name = "pmix",
+    .generate_node_regex = generate_node_regex,
+    .generate_ppn = generate_ppn,
+    .parse_nodes = parse_nodes,
+    .parse_procs = parse_procs,
+    .copy = copy,
+    .pack = pack,
+    .unpack = unpack,
+    .release = release
+};
 
 static pmix_status_t regex_parse_value_ranges(char *base, char *ranges, int num_digits,
                                               char *suffix, char ***names);
@@ -913,5 +917,18 @@ static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs)
     }
 
     pmix_argv_free(nds);
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t release(char *regexp)
+{
+    if (NULL == regexp) {
+        return PMIX_SUCCESS;
+    }
+
+    if (0 != strncmp(regexp, "pmix", 4)) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+    free(regexp);
     return PMIX_SUCCESS;
 }
