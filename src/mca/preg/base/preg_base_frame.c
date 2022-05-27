@@ -59,7 +59,8 @@ pmix_preg_module_t pmix_preg = {
     .parse_procs = pmix_preg_base_parse_procs,
     .copy = pmix_preg_base_copy,
     .pack = pmix_preg_base_pack,
-    .unpack = pmix_preg_base_unpack
+    .unpack = pmix_preg_base_unpack,
+    .release = pmix_preg_base_release
 };
 
 static pmix_status_t pmix_preg_close(void)

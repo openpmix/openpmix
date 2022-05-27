@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -85,6 +85,8 @@ PMIX_EXPORT pmix_status_t pmix_preg_base_copy(char **dest, size_t *len, const ch
 PMIX_EXPORT pmix_status_t pmix_preg_base_pack(pmix_buffer_t *buffer, const char *input);
 
 PMIX_EXPORT pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex);
+
+PMIX_EXPORT pmix_status_t pmix_preg_base_release(char *regexp);
 
 END_C_DECLS
 

@@ -214,10 +214,12 @@ PMIX_EXPORT pmix_status_t PMIx_Value_load(pmix_value_t *val,
 PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
                                             void **data,
                                             size_t *sz);
+PMIX_EXPORT void PMIx_Value_destruct(pmix_value_t *val);
 PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
 PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
                                                 pmix_value_t *v2);
+PMIX_EXPORT void PMIx_Data_array_destruct(pmix_data_array_t *d);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
                                          const char *key,
@@ -233,6 +235,8 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
                                              const char *key,
                                              const void *value,
                                              pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
                                               const pmix_info_t *info);
@@ -297,6 +301,9 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 
 #define PMIX_INFO_LIST_ADD(r, p, a, v, t)     \
     (r) = PMIx_Info_list_add((p), (a), (v), (t))
+
+#define PMIX_INFO_LIST_INSERT(r, p, i)     \
+    (r) = PMIx_Info_list_insert((p), (i))
 
 #define PMIX_INFO_LIST_XFER(r, p, a)     \
     (r) = PMIx_Info_list_xfer((p), (a))

@@ -154,3 +154,17 @@ pmix_status_t pmix_preg_base_unpack(pmix_buffer_t *buffer, char **regex)
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buffer, regex, &cnt, PMIX_STRING);
     return rc;
 }
+
+pmix_status_t pmix_preg_base_release(char *regexp)
+{
+    pmix_preg_base_active_module_t *active;
+
+    PMIX_LIST_FOREACH (active, &pmix_preg_globals.actives, pmix_preg_base_active_module_t) {
+        if (NULL != active->module->release) {
+            if (PMIX_SUCCESS == active->module->release(regexp)) {
+                return PMIX_SUCCESS;
+            }
+        }
+    }
+    return PMIX_ERR_BAD_PARAM;
+}
