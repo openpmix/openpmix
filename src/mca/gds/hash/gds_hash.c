@@ -107,11 +107,16 @@ static pmix_status_t hash_init(pmix_info_t info[], size_t ninfo)
 
     PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
 
+    PMIX_CONSTRUCT(&mca_gds_hash_component.mysessions, pmix_list_t);
+    PMIX_CONSTRUCT(&mca_gds_hash_component.myjobs, pmix_list_t);
+
     return PMIX_SUCCESS;
 }
 
 static void hash_finalize(void)
 {
+    PMIX_LIST_DESTRUCT(&mca_gds_hash_component.mysessions);
+    PMIX_LIST_DESTRUCT(&mca_gds_hash_component.myjobs);
     return;
 }
 

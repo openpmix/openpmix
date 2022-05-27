@@ -45,7 +45,6 @@ PMIX_EXPORT extern char *pmix_timing_output;
 PMIX_EXPORT extern bool pmix_timing_overhead;
 #endif
 
-PMIX_EXPORT extern int pmix_initialized;
 PMIX_EXPORT extern char *pmix_net_private_ipv4;
 PMIX_EXPORT extern int pmix_event_caching_window;
 PMIX_EXPORT extern bool pmix_suppress_missing_data_warning;
