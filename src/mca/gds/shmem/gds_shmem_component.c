@@ -31,20 +31,14 @@
 #include "gds_shmem.h"
 
 static int
-component_open(void)
-{
-    PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.jobs, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.sessions, pmix_list_t);
-    return PMIX_SUCCESS;
-}
-
-static int
 component_query(
     pmix_mca_base_module_t **module,
     int *priority
 ) {
     // See if the required system file is present.
     // See pmix_vmem_find_hole() for more information.
+    // TODO(skg) Add some parameters to disable shared-memory support. If sm
+    // support is disabled, then we do not have to look for this file.
     if (access("/proc/self/maps", F_OK) == -1) {
         *priority = 0;
         *module = NULL;
@@ -59,14 +53,6 @@ component_query(
     *module = (pmix_mca_base_module_t *)&pmix_shmem_module;
     return PMIX_SUCCESS;
 #endif
-}
-
-static int
-component_close(void)
-{
-    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.jobs);
-    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.sessions);
-    return PMIX_SUCCESS;
 }
 
 /**
@@ -84,14 +70,12 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
             PMIX_MINOR_VERSION,
             PMIX_RELEASE_VERSION
         ),
-        /** Component open, close, and query functions */
-        .pmix_mca_open_component = component_open,
-        .pmix_mca_close_component = component_close,
+        /** Component query function */
         .pmix_mca_query_component = component_query,
         .reserved = {0}
     },
-    .jobs = PMIX_LIST_STATIC_INIT,
-    .sessions = PMIX_LIST_STATIC_INIT
+    .sessions = PMIX_LIST_STATIC_INIT,
+    .jobs = PMIX_LIST_STATIC_INIT
 };
 
 /*

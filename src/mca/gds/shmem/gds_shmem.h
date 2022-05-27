@@ -120,7 +120,7 @@ typedef struct {
     pmix_list_t apps;
     /** Stores internal data. */
     pmix_hash_table_t hashtab_internal;
-    /** Stores local data. */
+    /** Stores local (node) data. */
     pmix_hash_table_t hashtab_local;
     /** Stores remote data. */
     pmix_hash_table_t hashtab_remote;

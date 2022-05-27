@@ -25,13 +25,17 @@
 
 AM_CPPFLAGS = $(gds_shmem_CPPFLAGS)
 
+# TODO(skg) Eventually incorporate pmix_hash2.
+
 headers = \
+        pmix_hash2.h \
         gds_shmem.h \
         gds_shmem_utils.h \
         gds_shmem_store.h \
         gds_shmem_fetch.h
 
 sources = \
+        pmix_hash2.c \
         gds_shmem_component.c \
         gds_shmem.c \
         gds_shmem_utils.c \
