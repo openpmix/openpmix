@@ -102,8 +102,8 @@ pmix_status_t pmix_hwloc_register(void)
                                       &pmix_hwloc_verbose);
     if (0 < pmix_hwloc_verbose) {
         /* set default output */
-        pmix_hwloc_verbose = pmix_output_open(NULL);
-        pmix_output_set_verbosity(pmix_hwloc_verbose, pmix_hwloc_verbose);
+        pmix_hwloc_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_hwloc_output, pmix_hwloc_verbose);
     }
 
     vmhole = "biggest";
