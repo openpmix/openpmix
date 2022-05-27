@@ -17,7 +17,7 @@
  */
 
 #include "src/include/pmix_config.h"
-#include "pmix.h"
+#include "include/pmix.h"
 
 #include "src/client/pmix_client_ops.h"
 #include "src/hwloc/pmix_hwloc.h"
@@ -69,6 +69,19 @@ void PMIx_Topology_destruct(pmix_topology_t *topo)
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_hwloc_destruct_topology(topo);
+}
+
+void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset)
+{
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    pmix_hwloc_destruct_cpuset(cpuset);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string, pmix_cpuset_t *cpuset)
