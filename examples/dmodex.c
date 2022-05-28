@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -142,7 +143,7 @@ int main(int argc, char **argv)
     }
     PMIX_ARGV_FREE(peers);
 
-    snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s",  myproc.nspace);
+    PMIX_LOAD_NSPACE(proc.nspace, myproc.nspace);
     /* get the committed data - ask for someone who doesn't exist as well */
     for (n = 0; n < nprocs; n++) {
         if (all_local) {

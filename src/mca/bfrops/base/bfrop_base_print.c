@@ -47,7 +47,12 @@ char* PMIx_Info_string(pmix_info_t *info)
     PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
                       &output, NULL,
                       (void*)info, PMIX_INFO);
-
+    if (PMIX_SUCCESS != rc) {
+        if (NULL != output) {
+            free(output);
+            output = NULL;
+        }
+    }
     return output;
 }
 
@@ -59,6 +64,12 @@ char* PMIx_Value_string(pmix_value_t *value)
     PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
                       &output, NULL,
                       (void*)value, PMIX_VALUE);
+    if (PMIX_SUCCESS != rc) {
+        if (NULL != output) {
+            free(output);
+            output = NULL;
+        }
+    }
 
     return output;
 }
