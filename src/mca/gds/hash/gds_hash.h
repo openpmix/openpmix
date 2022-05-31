@@ -121,6 +121,8 @@ extern pmix_status_t pmix_gds_hash_fetch_appinfo(const char *key, pmix_job_t *tr
 extern pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc, pmix_scope_t scope,
                                          pmix_kval_t *kv);
 
+extern pmix_status_t pmix_gds_hash_fetch_arrays(struct pmix_peer_t *pr, pmix_buffer_t *reply);
+
 END_C_DECLS
 
 #endif

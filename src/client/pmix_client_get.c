@@ -133,22 +133,50 @@ static void gcbfn(int sd, short args, void *cbdata)
     PMIX_RELEASE(cb);
 }
 
+static void quicklook(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* do the lookup */
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+    cb->status = rc;
+    if(PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+        kv = (pmix_kval_t*)pmix_list_remove_first(&cb->kvs);
+        cb->value = kv->value;
+        kv->value = NULL;
+        PMIX_RELEASE(kv);
+    }
+    PMIX_POST_OBJECT(cb);
+    PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
                                       const pmix_info_t info[], size_t ninfo,
                                       pmix_value_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_cb_t *cb;
+    pmix_cb_t *cb, cb2;
     pmix_status_t rc;
     size_t n, nfo;
-    bool wantinfo = false;
     char *hostname = NULL;
+    uint32_t sessionid = UINT32_MAX;
     uint32_t nodeid = UINT32_MAX;
     uint32_t appnum = UINT32_MAX;
-    uint32_t app;
+    uint32_t app, sid;
     pmix_proc_t p;
     pmix_info_t *iptr;
     bool copy = false;
+    bool nodedirective = false;
+    bool nodeinfo = false;
+    bool appdirective = false;
+    bool appinfo = false;
+    bool sessiondirective = false;
+    bool sessioninfo = false;
+    bool refreshcache = false;
     pmix_value_t *ival = NULL;
+    pmix_info_t optional;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -252,156 +280,353 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         if (NULL == key) {
             goto doget;
         }
-        /* see if they are asking about a node-level piece of info */
+        /* see if they are asking about a specific type of info */
         if (pmix_check_node_info(key)) {
+            nodeinfo = true;
+        } else if (pmix_check_app_info(key)) {
+            appinfo = true;
+        } else if (pmix_check_session_info(key)) {
+            sessioninfo = true;
+        }
+        for (n=0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_INFO)) {
+                /* regardless of the default setting, they want us
+                 * to get it from the job realm */
+                nodeinfo = false;
+                appinfo = false;
+                sessioninfo = false;
+                /* have to let the loop continue in case there are
+                 * other relevant directives - e.g., refresh_cache */
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO)) {
+                /* regardless of the default setting, they want us
+                 * to get it from the node realm */
+                nodedirective = true;
+                nodeinfo = true;
+                appinfo = false;
+                sessioninfo = false;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_APP_INFO)) {
+                /* regardless of the default setting, they want us
+                 * to get it from the app realm */
+                appdirective = true;
+                appinfo = true;
+                nodeinfo = false;
+                sessioninfo = false;
+            } else if (PMIX_CHECK_KEY(info, PMIX_SESSION_INFO)) {
+                /* regardless of the default setting, they want us
+                 * to get it from the session realm */
+                sessiondirective = true;
+                sessioninfo = true;
+                nodeinfo = false;
+                appinfo = false;
+            } else if (PMIX_CHECK_KEY(info, PMIX_GET_REFRESH_CACHE)) {
+                refreshcache = true;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
+                hostname = info[n].value.data.string;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
+                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, nodeid, uint32_t);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    return rc;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_APPNUM)) {
+                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, appnum, uint32_t);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    return rc;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
+                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, sessionid, uint32_t);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    return rc;
+                }
+            }
+        }
+        /* if they want us to refresh our cache, then we have
+         * to go ask the server for it */
+        if (refreshcache) {
+            goto doget;
+        }
+        PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
+        if (nodeinfo) {
             pmix_output_verbose(2, pmix_client_globals.get_output,
                                 "pmix: get_nb value requesting node-level info for proc %s key %s",
                                 PMIX_NAME_PRINT(&p), (NULL == key) ? "NULL" : key);
-
-            /* the key is node-related - see if the target node is in the
-             * info array and if they tagged the request accordingly */
-            if (NULL != info) {
-                for (n=0; n < ninfo; n++) {
-                    if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO)) {
-                        wantinfo = true;
-                    } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
-                        hostname = info[n].value.data.string;
-                    } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
-                        PMIX_VALUE_GET_NUMBER(rc, &info[n].value, nodeid, uint32_t);
-                        if (PMIX_SUCCESS != rc) {
-                            PMIX_ERROR_LOG(rc);
-                            return rc;
+            if (NULL == hostname && UINT32_MAX == nodeid) {
+                /* if they didn't specify the target node, then see if they
+                 * specified a proc */
+                if (PMIX_RANK_IS_VALID(p.rank)) {
+                    /* lookup the node where that proc is running - if all we
+                     * have is the hash component, then we have to threadshift
+                     * to make that request */
+                    rc = _getfn_fastpath(&p, PMIX_HOSTNAME, &optional, 1, &ival);
+                    if (PMIX_ERR_NOT_SUPPORTED == rc) {
+                        /* all we have is hash */
+                        PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+                        cb2.proc = &p;
+                        cb2.key = PMIX_HOSTNAME;
+                        cb2.info = &optional;
+                        cb2.ninfo = 1;
+                        PMIX_THREADSHIFT(&cb2, quicklook);
+                        PMIX_WAIT_THREAD(&cb2.lock);
+                        rc = cb2.status;
+                        if (NULL != cb2.value) {
+                            ival = cb2.value;
+                            cb2.value = NULL;
                         }
+                        PMIX_DESTRUCT(&cb2);
                     }
+                    if (PMIX_SUCCESS == rc) {
+                        hostname = ival->data.string;
+                        /* if they were asking for the hostname, then we are done */
+                        if (0 == strcmp(key, PMIX_HOSTNAME)) {
+                            cb = PMIX_NEW(pmix_cb_t);
+                            cb->status = PMIX_SUCCESS;
+                            cb->value = ival;
+                            cb->cbfunc.valuefn = cbfunc;
+                            cb->cbdata = cbdata;
+                            PMIX_THREADSHIFT(cb, gcbfn);
+                            return PMIX_SUCCESS;
+                        }
+                        if (0 == strcmp(hostname, pmix_globals.hostname)) {
+                            /* it is us - let dstore handle it */
+                            PMIX_VALUE_RELEASE(ival);
+                            goto fastpath;
+                        }
+                        /* mark this as a node info request */
+                        if (nodedirective) {
+                            /* just need to add the hostname */
+                            nfo = ninfo + 2;
+                            PMIX_INFO_CREATE(iptr, nfo);
+                            for (n=0; n < ninfo; n++) {
+                                PMIX_INFO_XFER(&iptr[n], &info[n]);
+                            }
+                            PMIX_INFO_LOAD(&iptr[ninfo], PMIX_HOSTNAME, hostname, PMIX_STRING);
+                            PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+                            copy = true;
+                        } else {
+                            /* need to add directive and hostname */
+                            nfo = ninfo + 3;
+                            PMIX_INFO_CREATE(iptr, nfo);
+                            for (n=0; n < ninfo; n++) {
+                                PMIX_INFO_XFER(&iptr[n], &info[n]);
+                            }
+                            PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+                            PMIX_INFO_LOAD(&iptr[ninfo + 1], PMIX_HOSTNAME, hostname, PMIX_STRING);
+                            PMIX_INFO_LOAD(&iptr[ninfo+2], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+                            copy = true;
+                        }
+                        PMIX_VALUE_RELEASE(ival);
+                        /* proc is on identified host - let hash handle it */
+                        p.rank = PMIX_RANK_UNDEF;
+                        goto doget;
+                    }
+                    /* could not find hostname, so we cannot do anything */
+                    return PMIX_ERR_NOT_FOUND;
                 }
+                /* nothing was specified, so assume our node and let dstore handle it */
+                if (PMIX_RANK_UNDEF == p.rank) {
+                    p.rank = PMIX_RANK_WILDCARD;
+                }
+                goto fastpath;
             }
-           /* see if they told us to get node info */
-            if (!wantinfo) {
-                pmix_output_verbose(2, pmix_client_globals.get_output,
-                                    "pmix: get_nb value did not specify node info for proc %s key %s",
-                                    PMIX_NAME_PRINT(&p), (NULL == key) ? "NULL" : key);
-                /* guess not - better do it */
-                nfo = ninfo + 1;
+            if (NULL != hostname && 0 == strcmp(hostname, pmix_globals.hostname)) {
+                /* the node is us - let dstore handle it */
+                if (PMIX_RANK_UNDEF == p.rank) {
+                    p.rank = PMIX_RANK_WILDCARD;
+                }
+                goto fastpath;
+            }
+            if (UINT32_MAX != nodeid && nodeid == pmix_globals.nodeid) {
+                /* the node is us - let dstore handle it */
+                if (PMIX_RANK_UNDEF == p.rank) {
+                    p.rank = PMIX_RANK_WILDCARD;
+                }
+                goto fastpath;
+            }
+            /* the node is not us - did they tell us the node? */
+            if (NULL == hostname && UINT32_MAX == nodeid) {
+                /* we have nothing and cannot find the host for
+                 * an invalid rank */
+                return PMIX_ERR_NOT_FOUND;
+            }
+            if (!nodedirective) {
+                /* need to add directive - hostname and/or nodeid are already present */
+                nfo = ninfo + 2;
                 PMIX_INFO_CREATE(iptr, nfo);
                 for (n=0; n < ninfo; n++) {
                     PMIX_INFO_XFER(&iptr[n], &info[n]);
                 }
                 PMIX_INFO_LOAD(&iptr[ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+                PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
                 copy = true;
             }
-            if (NULL != hostname || UINT32_MAX != nodeid) {
-                /* if they specified the target node and it is us, then dstore can
-                 * resolve it and we need the rank to be wildcard */
-                if ((NULL != hostname && 0 == strcmp(hostname, pmix_globals.hostname)) ||
-                    nodeid == pmix_globals.nodeid) {
-                    if (PMIX_RANK_UNDEF == p.rank) {
-                        p.rank = PMIX_RANK_WILDCARD;
-                    }
-                    goto fastpath;
-                }
-                /* ask the hash to resolve it */
-                if (PMIX_RANK_UNDEF == p.rank) {
-                    p.rank = PMIX_RANK_WILDCARD;
-                }
-                goto doget;
-            }
-            /* if they didn't specify a node, then assume it is us and let the dstore handle it */
-            goto fastpath;
+            p.rank = PMIX_RANK_UNDEF;  // ensure invalid rank
+            goto doget;
         }
 
-        /* see if they are asking about an app-level piece of info */
-        wantinfo = false;
-        if (pmix_check_app_info(key)) {
-            /* the key is app-related - see if the target appnum is in the
-             * info array and if they tagged the request accordingly */
-            if (NULL != info) {
-                for (n=0; n < ninfo; n++) {
-                    if (PMIX_CHECK_KEY(&info[n], PMIX_APP_INFO)) {
-                        wantinfo = true;
-                    } else if (PMIX_CHECK_KEY(&info[n], PMIX_APPNUM) &&
-                               0 != info[n].value.data.uint32) {
-                        PMIX_VALUE_GET_NUMBER(rc, &info[n].value, appnum, uint32_t);
-                        if (PMIX_SUCCESS != rc) {
-                            PMIX_ERROR_LOG(rc);
-                            return rc;
-                        }
-                    }
-                }
-            }
+        if (appinfo) {
             if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 2, 100)) {
-               /* see if they told us to get app info */
-                if (!wantinfo) {
-                    /* guess not - better do it */
-                    nfo = ninfo + 1;
+               /* have to get this from the hash */
+                if (!appdirective) {
+                    /* didn't provide a directive - add it */
+                    nfo = ninfo + 2;
                     PMIX_INFO_CREATE(iptr, nfo);
                     for (n=0; n < ninfo; n++) {
                         PMIX_INFO_XFER(&iptr[n], &info[n]);
                     }
                     PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
+                    PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
                     copy = true;
                     goto doget;
                 }
                 goto doget;
             }
-            if (wantinfo && UINT32_MAX != appnum) {
-                /* asked for app-level info and provided an appnum - if it
-                 * isn't our appnum, then we need to redirect */
-                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, NULL, 0, &ival);
-                if (PMIX_SUCCESS == rc) {
-                    PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        return rc;
+            if (appdirective) {
+                if (UINT32_MAX != appnum) {
+                    /* they provided an appnum - if it
+                     * isn't our appnum, then we need to redirect */
+                    rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, &optional, 1, &ival);
+                    if (PMIX_SUCCESS == rc) {
+                        PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_ERROR_LOG(rc);
+                            PMIX_VALUE_RELEASE(ival);
+                            return rc;
+                        }
+                        PMIX_VALUE_RELEASE(ival);
+                        if (app == appnum) {
+                            /* it is our appnum - info should be in dstore */
+                            if (PMIX_RANK_UNDEF == p.rank) {
+                                p.rank = PMIX_RANK_WILDCARD;
+                            }
+                            goto fastpath;
+                        }
                     }
-                    PMIX_VALUE_RELEASE(ival);
-                    if (app == appnum) {
-                        goto fastpath;
-                    }
+                    /* go get it from the hash */
+                    goto doget;
                 }
-                goto doget;
-            } else if (wantinfo) {
                 /* missing the appnum - assume it is ours */
+                if (PMIX_RANK_UNDEF == p.rank) {
+                    p.rank = PMIX_RANK_WILDCARD;
+                }
                 goto fastpath;
-            } else if (UINT32_MAX != appnum) {
+            }
+
+            if (UINT32_MAX != appnum) {
                 /* they did not provide the "app-info" attribute but did specify
                  * the appnum - if the ID is other than us, then we just need to
                  * flag it as "app-info" and mark it for the undefined rank so
                  * the GDS will know where to look */
-                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, NULL, 0, &ival);
+                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, &optional, 1, &ival);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
+                        PMIX_VALUE_RELEASE(ival);
                         return rc;
                     }
                     PMIX_VALUE_RELEASE(ival);
                     if (app == appnum) {
+                        /* it is our appnum - info is in dstore */
+                        if (PMIX_RANK_UNDEF == p.rank) {
+                            p.rank = PMIX_RANK_WILDCARD;
+                        }
                         goto fastpath;
                     }
                 }
-                nfo = ninfo + 1;
+                nfo = ninfo + 2;
                 PMIX_INFO_CREATE(iptr, nfo);
                 for (n=0; n < ninfo; n++) {
                     PMIX_INFO_XFER(&iptr[n], &info[n]);
                 }
                 PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
+                PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
                 copy = true;
                 goto doget;
             } else {
                 /* missing both - all we can do is assume they want our info */
+                if (PMIX_RANK_UNDEF == p.rank) {
+                    p.rank = PMIX_RANK_WILDCARD;
+                }
                 goto fastpath;
             }
         }
 
-        /* see if they are requesting session info or requesting cache refresh */
-        for (n=0; n < ninfo; n++) {
-            if (PMIX_CHECK_KEY(info, PMIX_SESSION_INFO) ||
-                PMIX_CHECK_KEY(info, PMIX_GET_REFRESH_CACHE)) {
+        if (sessioninfo) {
+            if (sessiondirective) {
+                if (UINT32_MAX != sessionid) {
+                    /* they provided a session ID - if it
+                     * isn't our session ID, then we need to redirect */
+                    rc = _getfn_fastpath(&pmix_globals.myid, PMIX_SESSION_ID, &optional, 1, &ival);
+                    if (PMIX_SUCCESS == rc) {
+                        PMIX_VALUE_GET_NUMBER(rc, ival, sid, uint32_t);
+                        if (PMIX_SUCCESS != rc) {
+                            PMIX_VALUE_RELEASE(ival);
+                            PMIX_ERROR_LOG(rc);
+                            return rc;
+                        }
+                        PMIX_VALUE_RELEASE(ival);
+                        if (sid == sessionid) {
+                            /* it is our ID - info should be in dstore */
+                            if (PMIX_RANK_UNDEF == p.rank) {
+                                p.rank = PMIX_RANK_WILDCARD;
+                            }
+                            goto fastpath;
+                        }
+                    }
+                    /* go get it from the hash */
+                    goto doget;
+                }
+                /* missing the session ID - assume it is ours */
+                if (PMIX_RANK_UNDEF == p.rank) {
+                    p.rank = PMIX_RANK_WILDCARD;
+                }
+                goto fastpath;
+            }
+
+            if (UINT32_MAX != sessionid) {
+                /* they did not provide the "session-info" attribute but did specify
+                 * the session ID - if the ID is other than us, then we just need to
+                 * flag it as "session-info" and mark it for the undefined rank so
+                 * the GDS will know where to look */
+                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_SESSION_ID, &optional, 1, &ival);
+                if (PMIX_SUCCESS == rc) {
+                    PMIX_VALUE_GET_NUMBER(rc, ival, sid, uint32_t);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_VALUE_RELEASE(ival);
+                        return rc;
+                    }
+                    PMIX_VALUE_RELEASE(ival);
+                    if (sid == sessionid) {
+                        /* it is our session - info is in dstore */
+                        if (PMIX_RANK_UNDEF == p.rank) {
+                            p.rank = PMIX_RANK_WILDCARD;
+                        }
+                        goto fastpath;
+                    }
+                }
+                nfo = ninfo + 2;
+                PMIX_INFO_CREATE(iptr, nfo);
+                for (n=0; n < ninfo; n++) {
+                    PMIX_INFO_XFER(&iptr[n], &info[n]);
+                }
+                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_SESSION_INFO, NULL, PMIX_BOOL);
+                PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+                copy = true;
                 goto doget;
+            } else {
+                /* missing both - all we can do is assume they want our info */
+                if (PMIX_RANK_UNDEF == p.rank) {
+                    p.rank = PMIX_RANK_WILDCARD;
+                }
+                goto fastpath;
             }
         }
     }
+
     /* don't consider the fastpath option
      * for undefined rank or NULL keys */
     if (PMIX_RANK_UNDEF == p.rank || NULL == key) {
@@ -626,7 +851,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
                     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
                 }
             }
-            if(PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 if (1 != pmix_list_get_size(&cb->kvs)) {
                     rc = PMIX_ERR_INVALID_VAL;
                     val = NULL;

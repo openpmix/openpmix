@@ -51,8 +51,11 @@
 #include "gds_hash.h"
 #include "src/mca/gds/base/base.h"
 
-static pmix_status_t dohash(pmix_hash_table_t *ht, const char *key, pmix_rank_t rank,
-                            int skip_genvals, pmix_list_t *kvs)
+static pmix_status_t dohash(pmix_hash_table_t *ht,
+                            const char *key,
+                            pmix_rank_t rank,
+                            int skip_genvals,
+                            pmix_list_t *kvs)
 {
     pmix_status_t rc;
     pmix_value_t *val;
@@ -152,7 +155,8 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
     pmix_data_array_t *darray;
     pmix_info_t *iptr;
 
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output, "FETCHING NODE INFO");
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                        "FETCHING NODE INFO");
 
     /* scan for the nodeID or hostname to identify
      * which node they are asking about */
@@ -669,10 +673,13 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
     /* fetch from the corresponding hash table - note that
      * we always provide a copy as we don't support
      * shared memory */
-    if (PMIX_INTERNAL == scope || PMIX_SCOPE_UNDEF == scope || PMIX_GLOBAL == scope
-        || PMIX_RANK_WILDCARD == proc->rank) {
+    if (PMIX_INTERNAL == scope ||
+        PMIX_SCOPE_UNDEF == scope ||
+        PMIX_GLOBAL == scope ||
+        PMIX_RANK_WILDCARD == proc->rank) {
         ht = &trk->internal;
-    } else if (PMIX_LOCAL == scope || PMIX_GLOBAL == scope) {
+    } else if (PMIX_LOCAL == scope ||
+               PMIX_GLOBAL == scope) {
         ht = &trk->local;
     } else if (PMIX_REMOTE == scope) {
         ht = &trk->remote;
@@ -782,5 +789,63 @@ doover:
         }
     }
 
+    return rc;
+}
+
+pmix_status_t pmix_gds_hash_fetch_arrays(struct pmix_peer_t *pr, pmix_buffer_t *reply)
+{
+    pmix_peer_t *peer = (pmix_peer_t *) pr;
+    pmix_namespace_t *ns = peer->nptr;
+    pmix_job_t *trk;
+    pmix_list_t kvs;
+    pmix_kval_t *kv;
+    pmix_status_t rc;
+
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        /* this function is only available on servers */
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                "%s pmix:gds:hash fetch arrays for proc [%s:%u]",
+                PMIX_NAME_PRINT(&pmix_globals.myid),
+                peer->info->pname.nspace, peer->info->pname.rank);
+
+    /* see if we have a tracker for this nspace - we will
+     * if we already cached the job info for it. If we
+     * didn't then we'll have no idea how to answer any
+     * questions */
+    trk = pmix_gds_hash_get_tracker(ns->nspace, false);
+    if (NULL == trk) {
+        /* let the caller know */
+        return PMIX_ERR_INVALID_NAMESPACE;
+    }
+    PMIX_CONSTRUCT(&kvs, pmix_list_t);
+
+    rc = pmix_gds_hash_fetch_nodeinfo(NULL, trk, &trk->nodeinfo, NULL, 0, &kvs);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_LIST_DESTRUCT(&kvs);
+        return rc;
+    }
+
+    rc = pmix_gds_hash_fetch_appinfo(NULL, trk, &trk->apps, NULL, 0, &kvs);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_LIST_DESTRUCT(&kvs);
+        return rc;
+    }
+
+    /* pack the results */
+    while (NULL != (kv = (pmix_kval_t*)pmix_list_remove_first(&kvs))) {
+        PMIX_BFROPS_PACK(rc, peer, reply, kv, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+    }
+    PMIX_LIST_DESTRUCT(&kvs);
     return rc;
 }
