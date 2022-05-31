@@ -534,6 +534,16 @@ typedef struct {
     bool add_immediate;
     bool refresh_cache;
     pmix_scope_t scope;
+    bool sessioninfo;
+    bool sessiondirective;
+    uint32_t sessionid;
+    bool nodeinfo;
+    bool nodedirective;
+    char *hostname;
+    uint32_t nodeid;
+    bool appinfo;
+    bool appdirective;
+    uint32_t appnum;
 } pmix_get_logic_t;
 PMIX_CLASS_DECLARATION(pmix_get_logic_t);
 
@@ -657,6 +667,7 @@ typedef struct {
     uint32_t appnum;     // my appnum
     pid_t pid;           // my local pid
     uint32_t nodeid;     // my nodeid, if given
+    uint32_t sessionid;  // my sessionid, if given
     int pindex;
     pmix_event_base_t *evbase;
     int debug_output;
@@ -700,18 +711,23 @@ PMIX_EXPORT void pmix_log_local_op(int sd, short args, void *cbdata_);
 
 static inline bool pmix_check_node_info(const char *key)
 {
-    char *keys[] = {PMIX_HOSTNAME,
-                    PMIX_HOSTNAME_ALIASES,
-                    PMIX_NODEID,
-                    PMIX_AVAIL_PHYS_MEMORY,
-                    PMIX_LOCAL_PEERS,
-                    PMIX_LOCAL_PROCS,
-                    PMIX_LOCAL_CPUSETS,
-                    PMIX_LOCAL_SIZE,
-                    PMIX_NODE_SIZE,
-                    PMIX_LOCALLDR,
-                    PMIX_NODE_OVERSUBSCRIBED,
-                    NULL};
+    char *keys[] = {
+        PMIX_HOSTNAME,                  PMIX_HOSTNAME_ALIASES,
+        PMIX_NODEID,                    PMIX_AVAIL_PHYS_MEMORY,
+        PMIX_LOCAL_PEERS,               PMIX_LOCAL_PROCS,
+        PMIX_LOCAL_CPUSETS,             PMIX_LOCAL_SIZE,
+        PMIX_NODE_SIZE,                 PMIX_LOCALLDR,
+        PMIX_NODE_OVERSUBSCRIBED,       PMIX_FABRIC_DEVICES,
+        PMIX_FABRIC_COORDINATES,        PMIX_FABRIC_DEVICE,
+        PMIX_FABRIC_DEVICE_INDEX,       PMIX_FABRIC_DEVICE_NAME,
+        PMIX_FABRIC_DEVICE_VENDOR,      PMIX_FABRIC_DEVICE_BUS_TYPE,
+        PMIX_FABRIC_DEVICE_VENDORID,    PMIX_FABRIC_DEVICE_DRIVER,
+        PMIX_FABRIC_DEVICE_FIRMWARE,    PMIX_FABRIC_DEVICE_ADDRESS,
+        PMIX_FABRIC_DEVICE_MTU,         PMIX_FABRIC_DEVICE_COORDINATES,
+        PMIX_FABRIC_DEVICE_SPEED,       PMIX_FABRIC_DEVICE_STATE,
+        PMIX_FABRIC_DEVICE_TYPE,        PMIX_FABRIC_DEVICE_PCI_DEVID,
+        NULL
+    };
     size_t n;
 
     for (n = 0; NULL != keys[n]; n++) {
@@ -724,8 +740,11 @@ static inline bool pmix_check_node_info(const char *key)
 
 static inline bool pmix_check_app_info(const char *key)
 {
-    char *keys[] = {PMIX_APP_SIZE,  PMIX_APPLDR,       PMIX_APP_ARGV,      PMIX_WDIR,
-                    PMIX_PSET_NAME, PMIX_APP_MAP_TYPE, PMIX_APP_MAP_REGEX, NULL};
+    char *keys[] = {
+        PMIX_APP_SIZE,  PMIX_APPLDR,       PMIX_APP_ARGV,      PMIX_WDIR,
+        PMIX_PSET_NAME, PMIX_APP_MAP_TYPE, PMIX_APP_MAP_REGEX,
+        NULL
+    };
     size_t n;
 
     for (n = 0; NULL != keys[n]; n++) {
@@ -738,9 +757,12 @@ static inline bool pmix_check_app_info(const char *key)
 
 static inline bool pmix_check_session_info(const char *key)
 {
-    char *keys[] = {PMIX_SESSION_ID, PMIX_CLUSTER_ID,   PMIX_UNIV_SIZE,
-                    PMIX_TMPDIR,     PMIX_TDIR_RMCLEAN, PMIX_HOSTNAME_KEEP_FQDN,
-                    PMIX_RM_NAME,    PMIX_RM_VERSION,   NULL};
+    char *keys[] = {
+        PMIX_SESSION_ID, PMIX_CLUSTER_ID,   PMIX_UNIV_SIZE,
+        PMIX_TMPDIR,     PMIX_TDIR_RMCLEAN, PMIX_HOSTNAME_KEEP_FQDN,
+        PMIX_RM_NAME,    PMIX_RM_VERSION,
+        NULL
+    };
     size_t n;
 
     for (n = 0; NULL != keys[n]; n++) {

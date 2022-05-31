@@ -98,7 +98,8 @@ pmix_gds_base_module_t pmix_hash_module = {
     .add_nspace = nspace_add,
     .del_nspace = nspace_del,
     .assemb_kvs_req = assemb_kvs_req,
-    .accept_kvs_resp = accept_kvs_resp
+    .accept_kvs_resp = accept_kvs_resp,
+    .fetch_arrays = pmix_gds_hash_fetch_arrays
 };
 
 static pmix_status_t hash_init(pmix_info_t info[], size_t ninfo)
@@ -150,7 +151,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
 {
     pmix_namespace_t *nptr = (pmix_namespace_t *) ns;
     pmix_job_t *trk;
-    pmix_session_t *s = NULL, *sptr;
+    pmix_session_t *s = NULL;
     pmix_hash_table_t *ht;
     pmix_kval_t *kp2 = NULL, *kvptr, kv;
     pmix_value_t val;
@@ -192,24 +193,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 PMIX_ERROR_LOG(rc);
                 goto release;
             }
-            /* see if we have this session */
-            s = NULL;
-            PMIX_LIST_FOREACH (sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
-                if (sptr->session == sid) {
-                    s = sptr;
-                    break;
-                }
-            }
-            if (NULL == s) {
-                s = PMIX_NEW(pmix_session_t);
-                s->session = sid;
-                pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &s->super);
-            }
-            /* point the job at it */
-            if (NULL == trk->session) {
-                PMIX_RETAIN(s);
-                trk->session = s;
-            }
+            s = pmix_gds_hash_check_session(trk, sid);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_session_array(&info[n].value, trk))) {
                 PMIX_ERROR_LOG(rc);
@@ -358,6 +342,29 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                    PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
             // pass this info to the pmdl framework
             pmix_pmdl.setup_nspace(trk->nptr, &info[n]);
+        } else if (pmix_check_session_info(info[n].key)) {
+            /* a lone key must belong to this job's session */
+            s = pmix_gds_hash_check_session(trk, sid);
+            /* ensure the value isn't already on the session info */
+            found = false;
+            PMIX_LIST_FOREACH (kp2, &s->sessioninfo, pmix_kval_t) {
+                if (PMIX_CHECK_KEY(kp2, info[n].key)) {
+                    if (PMIX_EQUAL == PMIx_Value_compare(kp2->value, &info[n].value)) {
+                        found = true;
+                    } else {
+                        pmix_list_remove_item(&s->sessioninfo, &kp2->super);
+                        PMIX_RELEASE(kp2);
+                    }
+                    break;
+                }
+            }
+            if (!found) {
+                /* add the provided value */
+                kp2 = PMIX_NEW(pmix_kval_t);
+                kp2->key = strdup(info[n].key);
+                PMIX_VALUE_XFER(rc, kp2->value, &info[n].value);
+                pmix_list_append(&s->sessioninfo, &kp2->super);
+            }
         } else if (pmix_check_node_info(info[n].key)) {
             /* they are passing us the node-level info for just this
              * node - start by seeing if our node is on the list */
@@ -541,6 +548,16 @@ static pmix_status_t register_info(pmix_peer_t *peer,
         PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
     }
 
+    /* get any session-level info for this job */
+    PMIX_CONSTRUCT(&results, pmix_list_t);
+    rc = pmix_gds_hash_fetch_sessioninfo(NULL, trk, NULL, 0, &results);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
+            PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
+        }
+    }
+    PMIX_LIST_DESTRUCT(&results);
+
     /* get any node-level info for this job */
     PMIX_CONSTRUCT(&results, pmix_list_t);
     rc = pmix_gds_hash_fetch_nodeinfo(NULL, trk, &trk->nodeinfo, NULL, 0, &results);
@@ -715,7 +732,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
     pmix_value_t val;
     int32_t cnt;
     size_t nnodes, n, sz;
-    uint32_t i, j;
+    uint32_t i, j, sid = UINT32_MAX;
     char **procs = NULL;
     pmix_byte_object_t *bo;
     pmix_buffer_t buf2;
@@ -726,6 +743,9 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
     pmix_nodeinfo_t *nd;
     pmix_namespace_t *ns, *nptr;
     pmix_info_t *iptr;
+    pmix_session_t *s = NULL;
+    pmix_apptrkr_t *apptr;
+    bool found;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%u] pmix:gds:hash store job info for nspace %s",
@@ -763,7 +783,8 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
     while (PMIX_SUCCESS == rc) {
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                             "[%s:%u] pmix:gds:hash store job info working key %s",
-                            pmix_globals.myid.nspace, pmix_globals.myid.rank, kptr.key);
+                            pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                            PMIx_Get_attribute_name(kptr.key));
         if (PMIX_CHECK_KEY(&kptr, PMIX_PROC_BLOB)) {
             bo = &(kptr.value->data.bo);
             PMIX_CONSTRUCT(&buf2, pmix_buffer_t);
@@ -917,11 +938,79 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
             }
             /* cleanup */
             PMIX_DESTRUCT(&buf2);
+        } else if (PMIX_CHECK_KEY(&kptr, PMIX_SESSION_ID)) {
+            PMIX_VALUE_GET_NUMBER(rc, kptr.value, sid, uint32_t);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+            s = pmix_gds_hash_check_session(trk, sid);
+        } else if (PMIX_CHECK_KEY(&kptr, PMIX_SESSION_INFO_ARRAY)) {
+            if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_session_array(kptr.value, trk))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&kptr);
+                return rc;
+            }
+        } else if (pmix_check_session_info(kptr.key)) {
+            /* a lone key must belong to this job's session */
+            s = pmix_gds_hash_check_session(trk, sid);
+            /* ensure the value isn't already on the session info */
+            found = false;
+            PMIX_LIST_FOREACH (kp3, &s->sessioninfo, pmix_kval_t) {
+                if (PMIX_CHECK_KEY(kp3, kptr.key)) {
+                    if (PMIX_EQUAL == PMIx_Value_compare(kp3->value, kptr.value)) {
+                        found = true;
+                    } else {
+                        pmix_list_remove_item(&s->sessioninfo, &kp3->super);
+                        PMIX_RELEASE(kp3);
+                    }
+                    break;
+                }
+            }
+            if (!found) {
+                /* add the provided value */
+                kp3 = PMIX_NEW(pmix_kval_t);
+                kp3->key = strdup(kptr.key);
+                PMIX_VALUE_XFER(rc, kp3->value, kptr.value);
+                pmix_list_append(&s->sessioninfo, &kp3->super);
+            }
         } else if (PMIX_CHECK_KEY(&kptr, PMIX_APP_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_app_array(kptr.value, trk))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&kptr);
                 return rc;
+            }
+        } else if (pmix_check_app_info(kptr.key)) {
+            /* they are passing us app-level info for a default
+             * app number - have to assume it is app=0 */
+            if (0 == pmix_list_get_size(&trk->apps)) {
+                apptr = PMIX_NEW(pmix_apptrkr_t);
+                pmix_list_append(&trk->apps, &apptr->super);
+            } else if (1 < pmix_list_get_size(&trk->apps)) {
+                rc = PMIX_ERR_BAD_PARAM;
+                return rc;
+            } else {
+                apptr = (pmix_apptrkr_t *) pmix_list_get_first(&trk->apps);
+            }
+            /* ensure the value isn't already on the app info */
+            found = false;
+            PMIX_LIST_FOREACH (kp3, &apptr->appinfo, pmix_kval_t) {
+                if (PMIX_CHECK_KEY(kp3, kptr.key)) {
+                    if (PMIX_EQUAL == PMIx_Value_compare(kp3->value, kptr.value)) {
+                        found = true;
+                    } else {
+                        pmix_list_remove_item(&apptr->appinfo, &kp3->super);
+                        PMIX_RELEASE(kp3);
+                    }
+                    break;
+                }
+            }
+            if (!found) {
+                /* add the provided value */
+                kp3 = PMIX_NEW(pmix_kval_t);
+                kp3->key = strdup(kptr.key);
+                PMIX_VALUE_XFER(rc, kp3->value, kptr.value);
+                pmix_list_append(&apptr->appinfo, &kp3->super);
             }
         } else if (PMIX_CHECK_KEY(&kptr, PMIX_NODE_INFO_ARRAY)) {
             rc = pmix_gds_hash_process_node_array(kptr.value, &trk->nodeinfo);
@@ -929,6 +1018,36 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&kptr);
                 return rc;
+            }
+        } else if (pmix_check_node_info(kptr.key)) {
+            /* they are passing us the node-level info for just this
+             * node - start by seeing if our node is on the list */
+            nd = pmix_gds_hash_check_nodename(&trk->nodeinfo, pmix_globals.hostname);
+            /* if not, then add it */
+            if (NULL == nd) {
+                nd = PMIX_NEW(pmix_nodeinfo_t);
+                nd->hostname = strdup(pmix_globals.hostname);
+                pmix_list_append(&trk->nodeinfo, &nd->super);
+            }
+            /* ensure the value isn't already on the node info */
+            found = false;
+            PMIX_LIST_FOREACH (kp3, &nd->info, pmix_kval_t) {
+                if (PMIX_CHECK_KEY(kp3, kptr.key)) {
+                    if (PMIX_EQUAL == PMIx_Value_compare(kp3->value, kptr.value)) {
+                        found = true;
+                    } else {
+                        pmix_list_remove_item(&nd->info, &kp3->super);
+                        PMIX_RELEASE(kp3);
+                    }
+                    break;
+                }
+            }
+            if (!found) {
+                /* add the provided value */
+                kp3 = PMIX_NEW(pmix_kval_t);
+                kp3->key = strdup(kptr.key);
+                PMIX_VALUE_XFER(rc, kp3->value, kptr.value);
+                pmix_list_append(&nd->info, &kp3->super);
             }
         } else if (PMIX_CHECK_KEY(&kptr, PMIX_PROC_DATA)) {
             iptr = (pmix_info_t*)kptr.value->data.darray->array;
