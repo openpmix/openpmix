@@ -408,11 +408,23 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char* nspace
         } else {                                            \
             (s) = PMIX_ERR_NOT_SUPPORTED;                   \
         }                                                   \
-} while(0)
+    } while(0)
 
-/**
-* structure for gds modules
-*/
+typedef pmix_status_t (*pmix_gds_base_module_fetch_array_fn_t)(struct pmix_peer_t *pr,
+                                                               pmix_buffer_t *reply);
+/* define a convenience macro for fetching array info for
+ * a given peer */
+#define PMIX_GDS_FETCH_INFO_ARRAYS(s, p, b)                                 \
+    do {                                                                    \
+        pmix_gds_base_module_t *_g = pmix_globals.mypeer->nptr->compat.gds; \
+        pmix_output_verbose(1, pmix_gds_base_output,                        \
+                            "[%s:%d] GDS FETCH ARRAYS WITH %s",             \
+                            __FILE__, __LINE__, _g->name);                  \
+        (s) = _g->fetch_arrays((struct pmix_peer_t*)(p), b);                \
+    } while(0)
+
+
+/* structure for gds modules */
 typedef struct {
     const char *name;
     const bool is_tsafe;
@@ -430,6 +442,7 @@ typedef struct {
     pmix_gds_base_module_del_nspace_fn_t            del_nspace;
     pmix_gds_base_module_assemb_kvs_req_fn_t        assemb_kvs_req;
     pmix_gds_base_module_accept_kvs_resp_fn_t       accept_kvs_resp;
+    pmix_gds_base_module_fetch_array_fn_t           fetch_arrays;
 
 } pmix_gds_base_module_t;
 

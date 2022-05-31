@@ -23,7 +23,7 @@ headers = examples.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 
-noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi tool debugger debuggerd alloc jctrl group asyncgroup hello
+noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi tool debugger debuggerd alloc jctrl group asyncgroup hello nodeinfo
 if !WANT_HIDDEN
 # these examples use internal symbols
 # use --disable-visibility
@@ -95,6 +95,10 @@ endif
 hello_SOURCES = hello.c examples.h
 hello_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 hello_LDADD =  $(top_builddir)/src/libpmix.la
+
+nodeinfo_SOURCES = nodeinfo.c examples.h
+nodeinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+nodeinfo_LDADD =  $(top_builddir)/src/libpmix.la
 
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
