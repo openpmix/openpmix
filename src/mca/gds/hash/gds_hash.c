@@ -82,22 +82,25 @@ static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, p
 
 static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf);
 
-pmix_gds_base_module_t pmix_hash_module = {.name = "hash",
-                                           .is_tsafe = false,
-                                           .init = hash_init,
-                                           .finalize = hash_finalize,
-                                           .assign_module = hash_assign_module,
-                                           .cache_job_info = hash_cache_job_info,
-                                           .register_job_info = hash_register_job_info,
-                                           .store_job_info = hash_store_job_info,
-                                           .store = pmix_gds_hash_store,
-                                           .store_modex = hash_store_modex,
-                                           .fetch = pmix_gds_hash_fetch,
-                                           .setup_fork = setup_fork,
-                                           .add_nspace = nspace_add,
-                                           .del_nspace = nspace_del,
-                                           .assemb_kvs_req = assemb_kvs_req,
-                                           .accept_kvs_resp = accept_kvs_resp};
+pmix_gds_base_module_t pmix_hash_module = {
+    .name = "hash",
+    .is_tsafe = false,
+    .init = hash_init,
+    .finalize = hash_finalize,
+    .assign_module = hash_assign_module,
+    .cache_job_info = hash_cache_job_info,
+    .register_job_info = hash_register_job_info,
+    .store_job_info = hash_store_job_info,
+    .store = pmix_gds_hash_store,
+    .store_modex = hash_store_modex,
+    .fetch = pmix_gds_hash_fetch,
+    .setup_fork = setup_fork,
+    .add_nspace = nspace_add,
+    .del_nspace = nspace_del,
+    .assemb_kvs_req = assemb_kvs_req,
+    .accept_kvs_resp = accept_kvs_resp,
+    .fetch_arrays = pmix_gds_hash_fetch_arrays
+};
 
 static pmix_status_t hash_init(pmix_info_t info[], size_t ninfo)
 {

@@ -293,7 +293,9 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
     char *nspace;
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
-
+    pmix_kval_t *kv;
+    pmix_proc_t undef;
+    char *marker;
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -318,9 +320,37 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
         PMIX_WAKEUP_THREAD(&cb->lock);
         return;
     }
+    marker = buf->unpack_ptr;
 
     /* decode it */
     PMIX_GDS_STORE_JOB_INFO(cb->status, pmix_client_globals.myserver, nspace, buf);
+
+    /* check if we are using the dstore */
+    if (0 != strcmp("hash",pmix_client_globals.myserver->nptr->compat.gds->name)) {
+        /* search the incoming job data for anything the dstore cannot handle */
+        buf->unpack_ptr = marker;
+        cnt = 1;
+        PMIX_LOAD_PROCID(&undef, pmix_globals.myid.nspace, PMIX_RANK_UNDEF);
+        kv = PMIX_NEW(pmix_kval_t);
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, kv, &cnt, PMIX_KVAL);
+        while (PMIX_SUCCESS == rc) {
+            if (PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY) ||
+                PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY) ||
+                PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
+                PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &undef, PMIX_INTERNAL, kv);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(kv);
+                    return;
+                }
+            }
+            PMIX_RELEASE(kv); // maintain accounting
+            cnt = 1;
+            kv = PMIX_NEW(pmix_kval_t);
+            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, kv, &cnt, PMIX_KVAL);
+        }
+        PMIX_RELEASE(kv);
+    }
 
     free(nspace);
     cb->status = PMIX_SUCCESS;
