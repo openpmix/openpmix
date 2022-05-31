@@ -88,6 +88,7 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .appnum = 0,
     .pid = 0,
     .nodeid = UINT32_MAX,
+    .sessionid = UINT32_MAX,
     .pindex = 0,
     .evbase = NULL,
     .debug_output = -1,

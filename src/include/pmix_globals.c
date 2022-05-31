@@ -341,6 +341,16 @@ static void lgcon(pmix_get_logic_t *p)
     p->add_immediate = false;
     p->refresh_cache = false;
     p->scope = PMIX_SCOPE_UNDEF;
+    p->sessioninfo = false;
+    p->sessiondirective = false;
+    p->sessionid = UINT32_MAX;
+    p->nodeinfo = false;
+    p->nodedirective = false;
+    p->hostname = NULL;
+    p->nodeid = UINT32_MAX;
+    p->appinfo = false;
+    p->appdirective = false;
+    p->appnum = UINT32_MAX;
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_get_logic_t, pmix_object_t, lgcon, NULL);
 

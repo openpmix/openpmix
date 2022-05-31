@@ -4441,7 +4441,19 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         PMIX_GDS_REGISTER_JOB_INFO(rc, peer, reply);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(reply);
             return rc;
+        }
+        /* if the peer is using the "dstore" component, then
+         * we also have to send back any session/node/app-level
+         * info so it can be stored locally in their hash */
+        if (0 != strcmp("hash", peer->nptr->compat.gds->name)) {
+            PMIX_GDS_FETCH_INFO_ARRAYS(rc, peer, reply);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(reply);
+                return rc;
+            }
         }
         PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
         if (PMIX_SUCCESS != rc) {
