@@ -130,7 +130,9 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int status, const char msg[],
  * the information locally until _PMIx_Commit_ is called. The provided scope
  * value is passed to the local PMIx server, which will distribute the data
  * as directed. */
-PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope, const char key[], pmix_value_t *val);
+PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
+                                   const char key[],
+                                   pmix_value_t *val);
 
 
 /* Push all previously _PMIx_Put_ values to the local PMIx server.
@@ -1085,6 +1087,8 @@ PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string,
 
 PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t ref);
 
+PMIX_EXPORT void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset);
+
 /* Get the relative locality of two local processes given their locality strings.
  *
  * locality1 - String returned by the PMIx_server_generate_locality_string API
@@ -1125,7 +1129,6 @@ PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state);
 PMIX_EXPORT const char* PMIx_Scope_string(pmix_scope_t scope);
 PMIX_EXPORT const char* PMIx_Persistence_string(pmix_persistence_t persist);
 PMIX_EXPORT const char* PMIx_Data_range_string(pmix_data_range_t range);
-PMIX_EXPORT const char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
@@ -1134,11 +1137,13 @@ PMIX_EXPORT const char* PMIx_Get_attribute_string(char *attribute);
 PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring);
 PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state);
 PMIX_EXPORT const char* PMIx_Device_type_string(pmix_device_type_t type);
+PMIX_EXPORT const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp);
 
 /* the following print statements return ALLOCATED strings
  * that the user must release when done */
 PMIX_EXPORT char* PMIx_Info_string(pmix_info_t *info);
 PMIX_EXPORT char* PMIx_Value_string(pmix_value_t *value);
+PMIX_EXPORT char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */
@@ -1577,11 +1582,19 @@ PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
                                             void **data,
                                             size_t *sz);
 
+PMIX_EXPORT void PMIx_Value_destruct(pmix_value_t *val);
+
 /* Transfer data from one pmix_value_t to another - this is actually
  * executed as a COPY operation, so the original data is not altered.
  */
 PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
+
+/* Compre the contents of two pmix_value_t structures */
+PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
+                                                pmix_value_t *v2);
+
+PMIX_EXPORT void PMIx_Data_array_destruct(pmix_data_array_t *d);
 
 /* Load key/value data into a pmix_info_t struct. Note that this
  * effectively is a PMIX_LOAD_KEY operation to copy the key,
@@ -1615,6 +1628,8 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
                                              const char *key,
                                              const void *value,
                                              pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
 
 /* Transfer the data in an existing pmix_info_t struct to a list. This
  * is executed as a COPY operation, so the original data is not altered.
