@@ -156,14 +156,33 @@ PMIX_EXPORT const char *PMIx_Data_range_string(pmix_data_range_t range)
     }
 }
 
-PMIX_EXPORT const char *PMIx_Info_directives_string(pmix_info_directives_t directives)
+PMIX_EXPORT char *PMIx_Info_directives_string(pmix_info_directives_t directives)
 {
-    switch (directives) {
-    case PMIX_INFO_REQD:
-        return "REQUIRED";
-    default:
-        return "UNSPECIFIED";
+    char **tmp = NULL;
+    char *ret;
+
+    if (PMIX_INFO_QUALIFIER & directives) {
+        pmix_argv_append_nosize(&tmp, "QUALIFIER");
+    } else {
+        if (PMIX_INFO_REQD & directives) {
+            pmix_argv_append_nosize(&tmp, "REQUIRED");
+        } else {
+            pmix_argv_append_nosize(&tmp, "OPTIONAL");
+        }
+        if (PMIX_INFO_REQD_PROCESSED & directives) {
+            pmix_argv_append_nosize(&tmp, "PROCESSED");
+        }
+        if (PMIX_INFO_ARRAY_END & directives) {
+            pmix_argv_append_nosize(&tmp, "END");
+        }
     }
+    if (NULL != tmp) {
+        ret = pmix_argv_join(tmp, ':');
+        pmix_argv_free(tmp);
+    } else {
+        ret = strdup("UNSPECIFIED");
+    }
+    return ret;
 }
 
 PMIX_EXPORT const char *PMIx_Alloc_directive_string(pmix_alloc_directive_t directive)
@@ -239,6 +258,14 @@ PMIX_EXPORT const char *pmix_command_string(pmix_cmd_t cmd)
         return "GROUP LEAVE";
     case PMIX_GROUP_DESTRUCT_CMD:
         return "GROUP DESTRUCT";
+    case PMIX_IOF_DEREG_CMD:
+        return "IOF DEREG";
+    case PMIX_FABRIC_REGISTER_CMD:
+        return "FABRIC REGISTER";
+    case PMIX_FABRIC_UPDATE_CMD:
+        return "FABRIC UPDATE";
+    case PMIX_COMPUTE_DEVICE_DISTANCES_CMD:
+        return "COMPUTE DEVICE DIST";
     default:
         return "UNKNOWN";
     }
@@ -343,5 +370,25 @@ const char *PMIx_Device_type_string(pmix_device_type_t type)
         return "COPROCESSOR";
     default:
         return "UNKNOWN";
+    }
+}
+
+const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp)
+{
+    switch (cmp) {
+    case PMIX_EQUAL:
+        return "EQUAL";
+    case PMIX_VALUE1_GREATER:
+        return "VALUE1 GREATER";
+    case PMIX_VALUE2_GREATER:
+        return "VALUE2 GREATER";
+    case PMIX_VALUE_TYPE_DIFFERENT:
+        return "DIFFERENT TYPES";
+    case PMIX_VALUE_COMPARISON_NOT_AVAIL:
+        return "COMPARISON NOT AVAILABLE";
+    case PMIX_VALUE_INCOMPATIBLE_OBJECTS:
+        return "INCOMPATIBLE OBJECTS";
+    default:
+        return "UNKNOWN VALUE";
     }
 }

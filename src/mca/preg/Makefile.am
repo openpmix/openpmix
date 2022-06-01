@@ -31,6 +31,7 @@ libmca_preg_la_SOURCES =
 headers = preg.h preg_types.h
 sources =
 
+# install the header files
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
 

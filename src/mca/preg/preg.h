@@ -4,7 +4,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -83,6 +83,8 @@ typedef pmix_status_t (*pmix_preg_base_module_pack_fn_t)(pmix_buffer_t *buffer, 
 
 typedef pmix_status_t (*pmix_preg_base_module_unpack_fn_t)(pmix_buffer_t *buffer, char **regex);
 
+typedef pmix_status_t (*pmix_preg_base_module_release_fn_t)(char *regexp);
+
 /**
  * Base structure for a PREG module
  */
@@ -95,6 +97,7 @@ typedef struct {
     pmix_preg_base_module_copy_fn_t copy;
     pmix_preg_base_module_pack_fn_t pack;
     pmix_preg_base_module_unpack_fn_t unpack;
+    pmix_preg_base_module_release_fn_t release;
 } pmix_preg_module_t;
 
 /* we just use the standard component definition */
