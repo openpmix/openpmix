@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -94,7 +94,6 @@ int main(int argc, char **argv)
     char hostname[1024];
     pmix_value_t *val;
     uint16_t localrank;
-    size_t n;
     pmix_query_t query;
     mylock_t mylock;
     bool refresh = false;
@@ -131,7 +130,6 @@ int main(int argc, char **argv)
             myproc.nspace, myproc.rank, (unsigned long) pid, hostname, (int) localrank);
 
 #if PMIX_VERSION_MAJOR >= 4
-    n = 1;
     PMIX_QUERY_CONSTRUCT(&query);
     PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_NUM_PSETS);
     PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_PSET_NAMES);

@@ -12,7 +12,7 @@
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -96,7 +96,7 @@ hello_SOURCES = hello.c examples.h
 hello_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 hello_LDADD =  $(top_builddir)/src/libpmix.la
 
-nodeinfo_SOURCES = nodeinfo.c examples.h
+nodeinfo_SOURCES = nodeinfo.c examples.h examples.c
 nodeinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 nodeinfo_LDADD =  $(top_builddir)/src/libpmix.la
 
