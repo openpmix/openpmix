@@ -52,10 +52,14 @@
 
 #ifdef PMIX_GIT_REPO_BUILD
 static const char pmix_version_string[] = "OpenPMIx " PMIX_VERSION ", repo rev: " PMIX_REPO_REV
-                                          " (PMIx Standard: " PMIX_STD_VERSION ", ABI: " PMIX_STD_ABI_VERSION ")";
+                                          " (PMIx Standard: " PMIX_STD_VERSION ","
+                                          " Stable ABI: " PMIX_STD_ABI_STABLE_VERSION ","
+                                          " Provisional ABI: " PMIX_STD_ABI_PROVISIONAL_VERSION ")";
 #else
 static const char pmix_version_string[] = "OpenPMIx " PMIX_VERSION
-                                          " (PMIx Standard: " PMIX_STD_VERSION ", ABI: " PMIX_STD_ABI_VERSION ")";
+                                          " (PMIx Standard: " PMIX_STD_VERSION ","
+                                          " Stable ABI: " PMIX_STD_ABI_STABLE_VERSION ","
+                                          " Provisional ABI: " PMIX_STD_ABI_PROVISIONAL_VERSION ")";
 #endif
 static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 

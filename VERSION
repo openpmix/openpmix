@@ -45,16 +45,16 @@ std_major=4
 std_minor=1
 std_extension=2
 
-# PMIx Standard ABI Compliance Level
-# The major and minor numbers indicate the version
+# PMIx Standard ABI Compliance Level(s)
+# The major and minor numbers (MAJOR.MINOR) indicate the version
 # of the official PMIx Standard ABI that is supported
-# by this release. Generally, the PMIx Standard ABI
-# should match the PMIx Standard Compliance Level
-# major/minor levels. However, they are listed separately
-# for maximal flexibility.
+# by this release. This may be a comma separated list (no spaces)
+# if more than one PMIx Standard ABI level is supported.
+# The PMIx Standard defines a 'stable' and a 'provisional' ABI.
+# Therefore, there are two sets of major/minor values.
 # Since no PMIx Standard ABI exists at the moment, set to "0.0"
-std_abi_major=0
-std_abi_minor=0
+std_abi_stable=0.0
+std_abi_provisional=0.0
 
 # If repo_rev is empty, then the repository version number will be
 # obtained during "make dist" via the "git describe --tags --always"

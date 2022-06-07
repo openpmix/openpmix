@@ -30,11 +30,12 @@ int main(int argc, char **argv) {
         exit(rc);
     }
 
-    nqueries = 2;
+    nqueries = 3;
 
     PMIX_QUERY_CREATE(query, nqueries);
-    PMIX_ARGV_APPEND(rc, query[0].keys, PMIX_QUERY_ABI_VERSION);
-    PMIX_ARGV_APPEND(rc, query[1].keys, PMIX_QUERY_NAMESPACES);
+    PMIX_ARGV_APPEND(rc, query[0].keys, PMIX_QUERY_STABLE_ABI_VERSION);
+    PMIX_ARGV_APPEND(rc, query[1].keys, PMIX_QUERY_PROVISIONAL_ABI_VERSION);
+    PMIX_ARGV_APPEND(rc, query[2].keys, PMIX_QUERY_NAMESPACES);
 
     rc = PMIx_Query_info(query, nqueries, &info, &ninfo);
     if (PMIX_SUCCESS != rc ) {
@@ -45,8 +46,12 @@ int main(int argc, char **argv) {
     printf("--> Query returned (ninfo %d)\n", (int)ninfo);
     for(i = 0; i < ninfo; ++i) {
         printf("--> KEY: %s\n", info[i].key);
-        if (PMIX_CHECK_KEY(&info[i], PMIX_QUERY_ABI_VERSION)) {
-            printf("----> ABI: String: %s\n",
+        if (PMIX_CHECK_KEY(&info[i], PMIX_QUERY_STABLE_ABI_VERSION)) {
+            printf("----> ABI (Stable): String: %s\n",
+                   info[i].value.data.string);
+        }
+        else if (PMIX_CHECK_KEY(&info[i], PMIX_QUERY_PROVISIONAL_ABI_VERSION)) {
+            printf("----> ABI (Provisional): String: %s\n",
                    info[i].value.data.string);
         }
         else if (PMIX_CHECK_KEY(&info[i], PMIX_QUERY_NAMESPACES)) {
