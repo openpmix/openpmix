@@ -97,7 +97,8 @@ PMIx configuration:
 -----------------------
 Version: $PMIX_MAJOR_VERSION.$PMIX_MINOR_VERSION.$PMIX_RELEASE_VERSION$PMIX_GREEK_VERSION
 PMIx Standard Version: $PMIX_STD_VERSION
-PMIx Standard ABI Version: $PMIX_STD_ABI_VERSION
+PMIx Standard Stable ABI Version(s): $PMIX_STD_ABI_STABLE_VERSION
+PMIx Standard Provisional ABI Version(s): $PMIX_STD_ABI_PROVISIONAL_VERSION
 EOF
 
     if test $WANT_DEBUG = 0 ; then

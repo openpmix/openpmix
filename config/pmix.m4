@@ -157,15 +157,25 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED([PMIX_STD_VERSION], ["$PMIX_STD_VERSION"],
                        [The PMIx Standard compliance level])
 
-    AC_MSG_CHECKING([for pmix standard ABI version])
-    PMIX_STD_ABI_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --std-abi-version`"
+    AC_MSG_CHECKING([for pmix standard stable ABI version(s)])
+    PMIX_STD_ABI_STABLE_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --std-abi-stable-version`"
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
     fi
-    AC_MSG_RESULT([$PMIX_STD_ABI_VERSION])
-    AC_SUBST(PMIX_STD_ABI_VERSION)
-    AC_DEFINE_UNQUOTED([PMIX_STD_ABI_VERSION], ["$PMIX_STD_ABI_VERSION"],
-                       [The PMIx Standard ABI compliance level])
+    AC_MSG_RESULT([$PMIX_STD_ABI_STABLE_VERSION])
+    AC_SUBST(PMIX_STD_ABI_STABLE_VERSION)
+    AC_DEFINE_UNQUOTED([PMIX_STD_ABI_STABLE_VERSION], ["$PMIX_STD_ABI_STABLE_VERSION"],
+                       [The PMIx Standard Stable ABI compliance level(s)])
+
+    AC_MSG_CHECKING([for pmix standard provisional ABI version(s)])
+    PMIX_STD_ABI_PROVISIONAL_VERSION="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --std-abi-provisional-version`"
+    if test "$?" != "0"; then
+        AC_MSG_ERROR([Cannot continue])
+    fi
+    AC_MSG_RESULT([$PMIX_STD_ABI_PROVISIONAL_VERSION])
+    AC_SUBST(PMIX_STD_ABI_PROVISIONAL_VERSION)
+    AC_DEFINE_UNQUOTED([PMIX_STD_ABI_PROVISIONAL_VERSION], ["$PMIX_STD_ABI_PROVISIONAL_VERSION"],
+                       [The PMIx Standard Provisional ABI compliance level(s)])
 
     PMIX_REPO_REV="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --repo-rev`"
     if test "$?" != "0"; then
