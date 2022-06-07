@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2011-2012 University of Houston. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2017      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2017-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
@@ -1217,6 +1217,14 @@ void pmix_info_show_pmix_version(const char *scope)
         return;
     }
     pmix_info_out("PMIX release date", tmp, PMIX_RELEASE_DATE);
+    free(tmp);
+
+    // PMIx Standard Compliance levels
+    pmix_info_out("PMIX Standard", "pmix:std:version", PMIX_STD_VERSION);
+    if (0 > asprintf(&tmp, "Stable (%s), Provisional (%s)", PMIX_STD_ABI_STABLE_VERSION, PMIX_STD_ABI_PROVISIONAL_VERSION)) {
+        return;
+    }
+    pmix_info_out("PMIX Standard ABI", "pmix:std:abi:version", tmp);
     free(tmp);
 }
 
