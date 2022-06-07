@@ -472,9 +472,14 @@ static void localquery(int sd, short args, void *cbdata)
         for (p = 0; NULL != queries[n].keys[p]; p++) {
             cb.key = queries[n].keys[p];
             // Locally resolvable keys
-            if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_ABI_VERSION)) {
+            if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_STABLE_ABI_VERSION)) {
                 PMIX_KVAL_NEW(kv, cb.key);
-                PMIx_Value_load(kv->value, PMIX_STD_ABI_VERSION, PMIX_STRING);
+                PMIx_Value_load(kv->value, PMIX_STD_ABI_STABLE_VERSION, PMIX_STRING);
+                pmix_list_append(&cb.kvs, &kv->super);
+                rc = PMIX_SUCCESS;
+            } else if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_PROVISIONAL_ABI_VERSION)) {
+                PMIX_KVAL_NEW(kv, cb.key);
+                PMIx_Value_load(kv->value, PMIX_STD_ABI_PROVISIONAL_VERSION, PMIX_STRING);
                 pmix_list_append(&cb.kvs, &kv->super);
                 rc = PMIX_SUCCESS;
             } else {
@@ -860,7 +865,10 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
  */
 static bool pmix_query_check_is_local_resolve(const char *key)
 {
-    if (0 == strcmp(key, PMIX_QUERY_ABI_VERSION)) {
+    if (0 == strcmp(key, PMIX_QUERY_STABLE_ABI_VERSION)) {
+        return true;
+    }
+    else if (0 == strcmp(key, PMIX_QUERY_PROVISIONAL_ABI_VERSION)) {
         return true;
     }
     return false;
@@ -909,12 +917,16 @@ static int pmix_query_resolve_all_pre_init(pmix_query_t queries[], size_t nqueri
 
     // If it does qualify then fill in the results
     *nresults = num_info;
-    PMIX_INFO_CREATE(*results, *nresults);
+    PMIX_INFO_CREATE((*results), (*nresults));
     cur_info = 0;
     for (n = 0; n < nqueries; n++) {
         for (p = 0; NULL != queries[n].keys[p]; p++) {
-            if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_ABI_VERSION)) {
-                PMIx_Info_load(results[cur_info], PMIX_QUERY_ABI_VERSION, PMIX_STD_ABI_VERSION, PMIX_STRING);
+            if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_STABLE_ABI_VERSION)) {
+                PMIx_Info_load(&((*results)[cur_info]), PMIX_QUERY_STABLE_ABI_VERSION, PMIX_STD_ABI_STABLE_VERSION, PMIX_STRING);
+                ++cur_info;
+            }
+            else if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_PROVISIONAL_ABI_VERSION)) {
+                PMIx_Info_load(&((*results)[cur_info]), PMIX_QUERY_PROVISIONAL_ABI_VERSION, PMIX_STD_ABI_PROVISIONAL_VERSION, PMIX_STRING);
                 ++cur_info;
             }
         }
@@ -960,9 +972,14 @@ void pmix_query_local_resolve_cbfunc(pmix_status_t status,
     for (n = 0; n < local_cd->orig_nqueries; n++) {
         p_idx = 0;
         for (p = 0; NULL != local_cd->orig_queries[n].keys[p]; p++) {
-            if (0 == strcmp(local_cd->orig_queries[n].keys[p], PMIX_QUERY_ABI_VERSION)) {
+            if (0 == strcmp(local_cd->orig_queries[n].keys[p], PMIX_QUERY_STABLE_ABI_VERSION)) {
                 PMIx_Info_load(&local_cd->info[n_idx], local_cd->orig_queries[n].keys[p],
-                               PMIX_STD_ABI_VERSION, PMIX_STRING);
+                               PMIX_STD_ABI_STABLE_VERSION, PMIX_STRING);
+                ++p_idx;
+            }
+            else if (0 == strcmp(local_cd->orig_queries[n].keys[p], PMIX_QUERY_PROVISIONAL_ABI_VERSION)) {
+                PMIx_Info_load(&local_cd->info[n_idx], local_cd->orig_queries[n].keys[p],
+                               PMIX_STD_ABI_PROVISIONAL_VERSION, PMIX_STRING);
                 ++p_idx;
             }
         }

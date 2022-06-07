@@ -1124,7 +1124,9 @@ typedef uint32_t pmix_rank_t;
                                                                    //         Named values (i.e., values defined by constant names via a
                                                                    //         typical C-language enum declaration) must be provided as
                                                                    //         their numerical equivalent.
-#define PMIX_QUERY_ABI_VERSION              "pmix.qry.abiversion"  // (char*) The PMIx Standard ABI version supported returned in the form "MAJOR.MINOR"
+#define PMIX_QUERY_STABLE_ABI_VERSION       "pmix.qry.stabiver"    // (char*) The PMIx Standard Stable ABI version supported returned in the form of a comma separated list of "MAJOR.MINOR"
+                                                                   //         This attribute can be used with PMIx_Query_info outside of the init/finalize region.
+#define PMIX_QUERY_PROVISIONAL_ABI_VERSION  "pmix.qry.prabiver"    // (char*) The PMIx Standard Provisional ABI version supported returned in the form of a comma separated "MAJOR.MINOR"
                                                                    //         This attribute can be used with PMIx_Query_info outside of the init/finalize region.
 
 /****    PROCESS STATE DEFINITIONS    ****/
