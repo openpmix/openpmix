@@ -19,7 +19,11 @@
 #include "src/include/pmix_config.h"
 
 #include "src/include/pmix_globals.h"
+#if 0 // TODO(skg)
 #include "src/class/pmix_hash_table.h"
+#else
+#include "pmix_hash_table2.h"
+#endif
 #include "src/mca/bfrops/bfrops_types.h"
 
 BEGIN_C_DECLS
@@ -29,7 +33,7 @@ BEGIN_C_DECLS
  */
 PMIX_EXPORT pmix_status_t
 pmix_hash2_store(
-    pmix_hash_table_t *table,
+    pmix_hash_table2_t *table,
     pmix_rank_t rank, pmix_kval_t *kin,
     pmix_info_t *qualifiers,
     size_t nquals
@@ -41,7 +45,7 @@ pmix_hash2_store(
  */
 PMIX_EXPORT pmix_status_t
 pmix_hash2_fetch(
-    pmix_hash_table_t *table,
+    pmix_hash_table2_t *table,
     pmix_rank_t rank,
     const char *key,
     pmix_info_t *qualifiers,
@@ -59,7 +63,7 @@ pmix_hash2_fetch(
  */
 PMIX_EXPORT pmix_status_t
 pmix_hash2_remove_data(
-    pmix_hash_table_t *table,
+    pmix_hash_table2_t *table,
     pmix_rank_t rank,
     const char *key
 );

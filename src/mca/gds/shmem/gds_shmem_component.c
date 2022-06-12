@@ -37,8 +37,6 @@ component_query(
 ) {
     // See if the required system file is present.
     // See pmix_vmem_find_hole() for more information.
-    // TODO(skg) Add some parameters to disable shared-memory support. If sm
-    // support is disabled, then we do not have to look for this file.
     if (access("/proc/self/maps", F_OK) == -1) {
         *priority = 0;
         *module = NULL;
@@ -62,7 +60,7 @@ component_query(
 pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
     .super = {
         PMIX_GDS_BASE_VERSION_1_0_0,
-        /** Component name and version */
+        /** Component name and version. */
         .pmix_mca_component_name = PMIX_GDS_SHMEM_NAME,
         PMIX_MCA_BASE_MAKE_VERSION(
             component,
@@ -70,11 +68,10 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
             PMIX_MINOR_VERSION,
             PMIX_RELEASE_VERSION
         ),
-        /** Component query function */
+        /** Component query function. */
         .pmix_mca_query_component = component_query,
         .reserved = {0}
     },
-    .sessions = PMIX_LIST_STATIC_INIT,
     .jobs = PMIX_LIST_STATIC_INIT
 };
 

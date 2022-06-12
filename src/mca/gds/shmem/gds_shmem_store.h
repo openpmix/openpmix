@@ -28,6 +28,7 @@ BEGIN_C_DECLS
  */
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_store_node_array(
+    pmix_gds_shmem_job_t *job,
     pmix_value_t *val,
     pmix_list_t *target
 );
@@ -39,34 +40,17 @@ pmix_gds_shmem_store_node_array(
  */
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_store_app_array(
-    pmix_value_t *val,
-    pmix_gds_shmem_job_t *job
+    pmix_gds_shmem_job_t *job,
+    pmix_value_t *val
 );
 
 /**
  *
  */
 PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_session_array(
-    pmix_value_t *val,
-    pmix_gds_shmem_job_t *job
-);
-
-/**
- *
- */
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_proc_data_in_hashtab(
-    const pmix_kval_t *kval,
-    const char *namespace_id,
-    pmix_hash_table_t *target_ht
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_qualified(
-    pmix_hash_table_t *ht,
-    pmix_rank_t rank,
-    pmix_value_t *value
+pmix_gds_shmem_store_proc_data(
+    pmix_gds_shmem_job_t *job,
+    const pmix_kval_t *kval
 );
 
 PMIX_EXPORT pmix_status_t
@@ -76,14 +60,6 @@ pmix_gds_shmem_store_job_array(
     uint32_t *flags,
     char ***procs,
     char ***nodes
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_map(
-    pmix_gds_shmem_job_t *job,
-    char **nodes,
-    char **ppn,
-    uint32_t flags
 );
 
 END_C_DECLS

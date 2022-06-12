@@ -22,6 +22,15 @@
  *
  */
 
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+// Please note that structures here potentially use a custom memory allocator.
+// This means that memory management calls should go through calls like
+// pmix_tma_calloc(), not calloc().
+// See src/class/pmix_object.h for more information about TMA.
+////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
+
 #include "src/include/pmix_config.h"
 
 #include "pmix_hash2.h"
@@ -29,8 +38,16 @@
 #include "src/include/pmix_hash_string.h"
 #include "src/include/pmix_stdint.h"
 
+#if 0 // TODO(skg)
 #include "src/class/pmix_hash_table.h"
+#else
+#include "pmix_hash_table2.h"
+#endif
+#if 0 // TODO(skg)
 #include "src/class/pmix_pointer_array.h"
+#else
+#include "pmix_pointer_array2.h"
+#endif
 #include "src/include/pmix_dictionary.h"
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_hash_string.h"
@@ -38,86 +55,59 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
+// TODO(skg) This shouldn't be here. For XFER now.
+#include "gds_shmem_utils.h"
+
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif
 
-// TODO(skg) We will probably need this in a more general area at some point.
-// Consider moving to pmix_object.h and rename to pmix_object_get_tma().
-static inline pmix_tma_t *
-get_tma(
-    pmix_object_t *obj
-) {
-    if (obj->obj_tma.tma_malloc) return &obj->obj_tma;
-    return NULL;
-}
-
-// TODO(skg) Reincorporate into src/class/pmix_pointer_array.c.
-#define TYPE_ELEM_COUNT2(TYPE, CAP) (((CAP) + 8 * sizeof(TYPE) - 1) / (8 * sizeof(TYPE)))
-
-// TODO(skg) Reincorporate into src/class/pmix_pointer_array.c. A
-// reimplementation of pmix_pointer_array_init().
-static int
-pmix_pointer_array_init2(
-    pmix_pointer_array_t *array,
-    int initial_allocation,
-    int max_size,
-    int block_size
-) {
-    /* check for errors */
-    if (NULL == array || max_size < block_size) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    pmix_tma_t *tma = get_tma(&array->super);
-
-    array->max_size = max_size;
-    array->block_size = (0 == block_size ? 8 : block_size);
-    array->lowest_free = 0;
-
-    const size_t num_bytes = (0 < initial_allocation ? initial_allocation : block_size);
-
-    /* Allocate and set the array to NULL */
-    array->addr = (void **)pmix_tma_calloc(tma, num_bytes, sizeof(void *));
-    if (NULL == array->addr) { /* out of memory */
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    array->free_bits = (uint64_t *)pmix_tma_calloc(tma, TYPE_ELEM_COUNT2(uint64_t, num_bytes), sizeof(uint64_t));
-    if (NULL == array->free_bits) { /* out of memory */
-        pmix_tma_free(tma, array->addr);
-        array->addr = NULL;
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    array->number_free = num_bytes;
-    array->size = num_bytes;
-
-    return PMIX_SUCCESS;
-}
+// TODO(skg) This doesn't belong here.
+#define PMIX_DSTOR_NEW_TMA(d, k, tma)                                  \
+do {                                                                   \
+    (d) = (pmix_dstor_t*)pmix_tma_malloc((tma), sizeof(pmix_dstor_t)); \
+    if (NULL != (d)) {                                                 \
+        (d)->index = k;                                                \
+        (d)->qualindex = UINT32_MAX;                                   \
+        (d)->value = NULL;                                             \
+    }                                                                  \
+} while(0)
 
 /**
  * Data for a particular pmix process The name association is maintained in the
  * proc_data hash table.
  */
-// TODO(skg) Move back to pmix_proc_data_t.
 typedef struct {
     pmix_object_t super;
     /*
      * Array of pmix_dstor_t structures containing all data
      * received from this process.
      */
-    pmix_pointer_array_t data;
-    pmix_pointer_array_t quals;
+#if 0 
+    pmix_pointer_array2_t data;
+    pmix_pointer_array2_t quals;
+#else
+    pmix_pointer_array2_t *data;
+    pmix_pointer_array2_t *quals;
+#endif
 } pmix_proc_data2_t;
 
 static void pdcon(pmix_proc_data2_t *p)
 {
-    pmix_tma_t *tma = get_tma(&p->super);
-    PMIX_CONSTRUCT(&p->data, pmix_pointer_array_t, tma);
-    // TODO(skg) Eventually integratee into pmix_pointer_array_init().
-    pmix_pointer_array_init2(&p->data, 128, INT_MAX, 128);
-    PMIX_CONSTRUCT(&p->quals, pmix_pointer_array_t, tma);
-    // TODO(skg) Eventually integratee into pmix_pointer_array_init().
-    pmix_pointer_array_init2(&p->quals, 1, INT_MAX, 1);
+    pmix_tma_t *tma = pmix_obj_get_tma(&p->super);
+    // TODO(skg) Note that we moved to PMIX_NEW. Cannot use PMIX_CONSTRUCT with
+    // the TMA we care about.
+#if 0
+    PMIX_CONSTRUCT(&p->data, pmix_pointer_array2_t, tma);
+    pmix_pointer_array2_init(&p->data, 128, INT_MAX, 128);
+    PMIX_CONSTRUCT(&p->quals, pmix_pointer_array2_t, tma);
+    pmix_pointer_array2_init(&p->quals, 1, INT_MAX, 1);
+#else
+    p->data = PMIX_NEW(pmix_pointer_array2_t, tma);
+    pmix_pointer_array2_init(p->data, 128, INT_MAX, 128);
+    p->quals = PMIX_NEW(pmix_pointer_array2_t, tma);
+    pmix_pointer_array2_init(p->quals, 1, INT_MAX, 1);
+#endif
 }
 
 static void pddes(pmix_proc_data2_t *p)
@@ -127,18 +117,18 @@ static void pddes(pmix_proc_data2_t *p)
     pmix_dstor_t *d;
     pmix_qual_t *q;
     pmix_data_array_t *darray;
-    pmix_tma_t *tma = get_tma(&p->super);
+    pmix_tma_t *tma = pmix_obj_get_tma(&p->super);
 
-    for (n=0; n < p->data.size; n++) {
-        d = (pmix_dstor_t*)pmix_pointer_array_get_item(&p->data, n);
+    for (n=0; n < p->data->size; n++) {
+        d = (pmix_dstor_t*)pmix_pointer_array2_get_item(p->data, n);
         if (NULL != d) {
             PMIX_DSTOR_RELEASE(d);
-            pmix_pointer_array_set_item(&p->data, n, NULL);
+            pmix_pointer_array2_set_item(p->data, n, NULL);
         }
     }
     PMIX_DESTRUCT(&p->data);
-    for (n=0; n < p->quals.size; n++) {
-        darray = (pmix_data_array_t*)pmix_pointer_array_get_item(&p->quals, n);
+    for (n=0; n < p->quals->size; n++) {
+        darray = (pmix_data_array_t*)pmix_pointer_array2_get_item(p->quals, n);
         if (NULL != darray) {
             q = (pmix_qual_t*)darray->array;
             for (nq=0; nq < darray->size; nq++) {
@@ -149,7 +139,7 @@ static void pddes(pmix_proc_data2_t *p)
             pmix_tma_free(tma, darray->array);
             pmix_tma_free(tma, darray);
         }
-        pmix_pointer_array_set_item(&p->quals, n, NULL);
+        pmix_pointer_array2_set_item(p->quals, n, NULL);
     }
     PMIX_DESTRUCT(&p->quals);
 }
@@ -157,12 +147,12 @@ static PMIX_CLASS_INSTANCE(pmix_proc_data2_t, pmix_object_t, pdcon, pddes);
 
 static pmix_dstor_t *lookup_keyval(pmix_proc_data2_t *proc, uint32_t kid,
                                    pmix_info_t *qualifiers, size_t nquals);
-static pmix_proc_data2_t *lookup_proc(pmix_hash_table_t *jtable, uint32_t id, bool create);
+static pmix_proc_data2_t *lookup_proc(pmix_hash_table2_t *jtable, uint32_t id, bool create);
 static void erase_qualifiers(pmix_proc_data2_t *proc,
                              uint32_t index);
 
 
-pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
+pmix_status_t pmix_hash2_store(pmix_hash_table2_t *table,
                               pmix_rank_t rank, pmix_kval_t *kin,
                               pmix_info_t *qualifiers, size_t nquals)
 {
@@ -174,7 +164,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
     pmix_data_array_t *darray;
     pmix_qual_t *qarray;
     size_t n, m = 0;
-    pmix_tma_t *tma = get_tma(&table->super);
+    pmix_tma_t *tma = pmix_obj_get_tma(&table->super);
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:STORE:QUAL rank %s key %s",
@@ -210,6 +200,8 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
     hv = lookup_keyval(proc_data, kid, qualifiers, nquals);
     if (NULL != hv) {
         if (9 < pmix_output_get_verbosity(pmix_globals.debug_output)) {
+            // Note that this doesn't have to use a TMA because it is just a
+            // temporary value.
             char *tmp;
             tmp = PMIx_Value_string(hv->value);
             pmix_output(0, "%s PREEXISTING ENTRY FOR PROC %s KEY %s: %s",
@@ -225,6 +217,8 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
                 return PMIX_SUCCESS;
             }
             if (9 < pmix_output_get_verbosity(pmix_globals.debug_output)) {
+                // Note that this doesn't have to use a TMA because it is just a
+                // temporary value.
                 char *tmp;
                 tmp = PMIx_Value_string(kin->value);
                 pmix_output(0, "%s VALUE UPDATING TO: %s",
@@ -236,6 +230,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
         /* eventually, we want to eliminate this copy */
         // TODO(skg) We need to modify this.
         PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, (void **)&hv->value, kin->value, PMIX_VALUE);
+        assert(false);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -244,8 +239,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
     }
 
     /* we don't already have it, so create it */
-    // TODO(skg) We need to modify this.
-    PMIX_DSTOR_NEW(hv, kid);
+    PMIX_DSTOR_NEW_TMA(hv, kid, tma);
     if (NULL == hv) {
         return PMIX_ERR_NOMEM;
     }
@@ -260,8 +254,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
             darray = (pmix_data_array_t*)pmix_tma_malloc(tma, sizeof(pmix_data_array_t));
             darray->array = (pmix_qual_t*)pmix_tma_malloc(tma, m * sizeof(pmix_qual_t));
             darray->size = m;
-            // TODO(skg) We need to modify this.
-            hv->qualindex = pmix_pointer_array_add(&proc_data->quals, darray);
+            hv->qualindex = pmix_pointer_array2_add(proc_data->quals, darray);
             qarray = (pmix_qual_t*)darray->array;
             for (n=0, m=0; n < nquals; n++) {
                 if (PMIX_INFO_IS_QUALIFIER(&qualifiers[n])) {
@@ -278,6 +271,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
                     }
                     qarray[n].index = p->index;
                     // TODO(skg) We need to modify this.
+                    assert(false);
                     PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, (void **)&qarray[m].value, &qualifiers[n].value, PMIX_VALUE);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
@@ -291,9 +285,13 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
         }
     }
 
-    /* eventually, we want to eliminate this copy */
+    /* XXX(skg) eventually, we want to eliminate this copy */
     // TODO(skg) We need to modify this.
+#if 0
     PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, (void **)&hv->value, kin->value, PMIX_VALUE);
+#else
+    PMIX_GDS_SHMEM_BFROPS_COPY_TMA(rc, &hv->value, kin->value, PMIX_VALUE, tma);
+#endif
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         if (UINT32_MAX != hv->qualindex) {
@@ -309,12 +307,11 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
                         kin->key, PMIx_Value_string(kin->value),
                         PMIX_RANK_PRINT(rank), (unsigned)m,
                         table->ht_label);
-    // TODO(skg) We need to modify this.
-    pmix_pointer_array_add(&proc_data->data, hv);
+    pmix_pointer_array2_add(proc_data->data, hv);
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
+pmix_status_t pmix_hash2_fetch(pmix_hash_table2_t *table,
                               pmix_rank_t rank,
                               const char *key,
                               pmix_info_t *qualifiers, size_t nquals,
@@ -333,7 +330,16 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
     bool fullsearch = false;
     pmix_data_array_t *darray;
     pmix_qual_t *quals;
-    //pmix_tma_t *tma = get_tma(&table->super);
+#if 0 // TODO(skg)
+    pmix_tma_t *table_tma = pmix_obj_get_tma(&table->super);
+    pmix_tma_t *kvals_tma = pmix_obj_get_tma(&kvals->super);
+    pmix_tma_t *tma = NULL;
+
+    if (table_tma && kvals_tma) {
+        // Just pick one. Hopefully they are compatible.
+        tma = table_tma;
+    }
+#endif
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "%s HASH:FETCH id %s key %s",
@@ -347,7 +353,7 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
      *     PMIX_ERR_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
      * special logic is basing on these statuses on a client and a server */
     if (PMIX_RANK_UNDEF == rank) {
-        rc = pmix_hash_table_get_first_key_uint32(table, &id, (void **) &proc_data,
+        rc = pmix_hash_table2_get_first_key_uint32(table, &id, (void **) &proc_data,
                                                   (void **) &node);
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(10, pmix_globals.debug_output,
@@ -387,8 +393,8 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
          * put by the specified rank */
         if (NULL == key) {
             /* copy the data */
-            for (n=0; n < proc_data->data.size; n++) {
-                hv = (pmix_dstor_t*)pmix_pointer_array_get_item(&proc_data->data, n);
+            for (n=0; n < proc_data->data->size; n++) {
+                hv = (pmix_dstor_t*)pmix_pointer_array2_get_item(proc_data->data, n);
                 if (NULL != hv) {
                     p = pmix_hash2_lookup_key(hv->index, NULL);
                     if (NULL == p) {
@@ -409,15 +415,18 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
                                             (unsigned)hv->value->data.size, table->ht_label, PMIX_RANK_PRINT(rank));
                         /* this is a qualified value - need to return it as such */
                         // TODO(skg) We need to modify this.
+                        assert(false);
                         PMIX_KVAL_NEW(kv, PMIX_QUALIFIED_VALUE);
-                        darray = (pmix_data_array_t*)pmix_pointer_array_get_item(&proc_data->quals, hv->qualindex);
+                        darray = (pmix_data_array_t*)pmix_pointer_array2_get_item(proc_data->quals, hv->qualindex);
                         quals = (pmix_qual_t*)darray->array;
                         nq = darray->size;
                         // TODO(skg) We need to modify this.
+                        assert(false);
                         PMIX_DATA_ARRAY_CREATE(darray, nq+1, PMIX_INFO);
                         iptr = (pmix_info_t*)darray->array;
                         /* the first location is the actual value */
                         // TODO(skg) We need to modify this.
+                        assert(false);
                         PMIX_LOAD_KEY(&iptr[0].key, p->string);
                         PMIx_Value_xfer(&iptr[0].value, hv->value);
                         /* now add the qualifiers */
@@ -438,9 +447,20 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
                         pmix_list_append(kvals, &kv->super);
                     } else {
                         // TODO(skg) We need to modify this.
-                        PMIX_KVAL_NEW(kv, p->string);
-                        PMIx_Value_xfer(kv->value, hv->value);
+                        // Ultimately we want to get rid of this copy.
+#if 1
+                        pmix_output_verbose(10, pmix_globals.debug_output,
+                                            "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxKEY=%s", p->string);
+                        kv = PMIX_NEW(pmix_kval_t);
+                        kv->key = pmix_tma_strdup(NULL, p->string);
+                        PMIX_VALUE_XFER(rc, kv->value, hv->value);
                         pmix_list_append(kvals, &kv->super);
+#else
+                        kv = PMIX_NEW(pmix_kval_t, tma);
+                        kv->key = pmix_tma_strdup(tma, p->string);
+                        PMIX_GDS_SHMEM_VALUE_XFER(rc, kv->value, hv->value, tma);
+                        pmix_list_append(kvals, &kv->super);
+#endif
                     }
                 }
             }
@@ -459,7 +479,6 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
                     PMIX_RELEASE(kv);
                     return rc;
                 }
-                // TODO(skg) We need to modify this.
                 pmix_list_append(kvals, &kv->super);
                 break;
             } else if (!fullsearch) {
@@ -469,7 +488,7 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
             }
         }
 
-        rc = pmix_hash_table_get_next_key_uint32(table, &id, (void **) &proc_data, node,
+        rc = pmix_hash_table2_get_next_key_uint32(table, &id, (void **) &proc_data, node,
                                                  (void **) &node);
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(10, pmix_globals.debug_output,
@@ -482,7 +501,7 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
     return rc;
 }
 
-pmix_status_t pmix_hash2_remove_data(pmix_hash_table_t *table,
+pmix_status_t pmix_hash2_remove_data(pmix_hash_table2_t *table,
                                     pmix_rank_t rank, const char *key)
 {
     pmix_status_t rc = PMIX_SUCCESS;
@@ -492,7 +511,7 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table_t *table,
     int n;
     char *node;
     pmix_regattr_input_t *p;
-    pmix_tma_t *tma = get_tma(&table->super);
+    pmix_tma_t *tma = pmix_obj_get_tma(&table->super);
 
     if (NULL != key) {
         p = pmix_hash2_lookup_key(UINT32_MAX, key);
@@ -506,15 +525,15 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table_t *table,
     /* if the rank is wildcard, we want to apply this to
      * all rank entries */
     if (PMIX_RANK_WILDCARD == rank) {
-        rc = pmix_hash_table_get_first_key_uint32(table, &id, (void **) &proc_data,
+        rc = pmix_hash_table2_get_first_key_uint32(table, &id, (void **) &proc_data,
                                                   (void **) &node);
         while (PMIX_SUCCESS == rc) {
             if (NULL != proc_data) {
                 if (NULL == key) {
                     PMIX_RELEASE(proc_data);
                 } else {
-                    for (n=0; n < proc_data->data.size; n++) {
-                        d = (pmix_dstor_t*)pmix_pointer_array_get_item(&proc_data->data, n);
+                    for (n=0; n < proc_data->data->size; n++) {
+                        d = (pmix_dstor_t*)pmix_pointer_array2_get_item(proc_data->data, n);
                         if (NULL != d && kid == d->index) {
                             if (NULL != d->value) {
                                 PMIX_VALUE_RELEASE(d->value);
@@ -523,13 +542,13 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table_t *table,
                                 erase_qualifiers(proc_data, d->qualindex);
                             }
                             pmix_tma_free(tma, d);
-                            pmix_pointer_array_set_item(&proc_data->data, n, NULL);
+                            pmix_pointer_array2_set_item(proc_data->data, n, NULL);
                             break;
                         }
                     }
                 }
             }
-            rc = pmix_hash_table_get_next_key_uint32(table, &id, (void **) &proc_data, node,
+            rc = pmix_hash_table2_get_next_key_uint32(table, &id, (void **) &proc_data, node,
                                                      (void **) &node);
         }
         return PMIX_SUCCESS;
@@ -543,8 +562,8 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table_t *table,
 
     /* if key is NULL, remove all data for this proc */
     if (NULL == key) {
-        for (n=0; n < proc_data->data.size; n++) {
-            d = (pmix_dstor_t*)pmix_pointer_array_get_item(&proc_data->data, n);
+        for (n=0; n < proc_data->data->size; n++) {
+            d = (pmix_dstor_t*)pmix_pointer_array2_get_item(proc_data->data, n);
             if (NULL != d) {
                 if (NULL != d->value) {
                     PMIX_VALUE_RELEASE(d->value);
@@ -553,19 +572,19 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table_t *table,
                     erase_qualifiers(proc_data, d->qualindex);
                 }
                 pmix_tma_free(tma, d);
-                pmix_pointer_array_set_item(&proc_data->data, n, NULL);
+                pmix_pointer_array2_set_item(proc_data->data, n, NULL);
             }
         }
         /* remove the proc_data object itself from the jtable */
-        pmix_hash_table_remove_value_uint32(table, rank);
+        pmix_hash_table2_remove_value_uint32(table, rank);
         /* cleanup */
         PMIX_RELEASE(proc_data);
         return PMIX_SUCCESS;
     }
 
     /* remove this item */
-    for (n=0; n < proc_data->data.size; n++) {
-        d = (pmix_dstor_t*)pmix_pointer_array_get_item(&proc_data->data, n);
+    for (n=0; n < proc_data->data->size; n++) {
+        d = (pmix_dstor_t*)pmix_pointer_array2_get_item(proc_data->data, n);
         if (NULL != d && kid == d->index) {
             if (NULL != d->value) {
                 PMIX_VALUE_RELEASE(d->value);
@@ -574,7 +593,7 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table_t *table,
                 erase_qualifiers(proc_data, d->qualindex);
             }
             pmix_tma_free(tma, d);
-            pmix_pointer_array_set_item(&proc_data->data, n, NULL);
+            pmix_pointer_array2_set_item(proc_data->data, n, NULL);
             break;
         }
     }
@@ -607,8 +626,8 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data2_t *proc_data, uint32_t kid,
         }
     }
 
-    for (n=0; n < proc_data->data.size; n++) {
-        d = (pmix_dstor_t*)pmix_pointer_array_get_item(&proc_data->data, n);
+    for (n=0; n < proc_data->data->size; n++) {
+        d = (pmix_dstor_t*)pmix_pointer_array2_get_item(proc_data->data, n);
         if (NULL == d) {
             continue;
         }
@@ -617,7 +636,7 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data2_t *proc_data, uint32_t kid,
                 if (UINT32_MAX == d->qualindex) {
                     continue;
                 }
-                darray = (pmix_data_array_t*)pmix_pointer_array_get_item(&proc_data->quals, d->qualindex);
+                darray = (pmix_data_array_t*)pmix_pointer_array2_get_item(proc_data->quals, d->qualindex);
                 qarray = (pmix_qual_t*)darray->array;
                 nfound = 0;
                 /* check the qualifiers */
@@ -665,19 +684,19 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data2_t *proc_data, uint32_t kid,
  * Find proc_data_t container associated with given
  * pmix_identifier_t.
  */
-static pmix_proc_data2_t *lookup_proc(pmix_hash_table_t *jtable, uint32_t id, bool create)
+static pmix_proc_data2_t *lookup_proc(pmix_hash_table2_t *jtable, uint32_t id, bool create)
 {
     pmix_proc_data2_t *proc_data = NULL;
-    pmix_tma_t *tma = get_tma(&jtable->super);
+    pmix_tma_t *tma = pmix_obj_get_tma(&jtable->super);
 
-    pmix_hash_table_get_value_uint32(jtable, id, (void **) &proc_data);
+    pmix_hash_table2_get_value_uint32(jtable, id, (void **) &proc_data);
     if (NULL == proc_data && create) {
         /* The proc clearly exists, so create a data structure for it */
         proc_data = PMIX_NEW(pmix_proc_data2_t, tma);
         if (NULL == proc_data) {
             return NULL;
         }
-        pmix_hash_table_set_value_uint32(jtable, id, proc_data);
+        pmix_hash_table2_set_value_uint32(jtable, id, proc_data);
     }
 
     return proc_data;
@@ -690,20 +709,32 @@ void pmix_hash2_register_key(uint32_t inid,
 
     if (UINT32_MAX == inid) {
         /* store the pointer in the array */
-        pmix_pointer_array_set_item(&pmix_globals.keyindex, pmix_globals.next_keyid, ptr);
+#if 0 // TODO(skg) Remove
+        pmix_pointer_array2_set_item(&pmix_globals.keyindex, pmix_globals.next_keyid, ptr);
+#else
+        pmix_pointer_array2_set_item((pmix_pointer_array2_t *)&pmix_globals.keyindex, pmix_globals.next_keyid, ptr);
+#endif
         ptr->index = pmix_globals.next_keyid;
         pmix_globals.next_keyid += 1;
         return;
     }
 
     /* check to see if this key was already registered */
-    p = pmix_pointer_array_get_item(&pmix_globals.keyindex, inid);
+#if 0 // TODO(skg) Remove
+    p = pmix_pointer_array2_get_item(&pmix_globals.keyindex, inid);
+#else
+    p = pmix_pointer_array2_get_item((pmix_pointer_array2_t *)&pmix_globals.keyindex, inid);
+#endif
     if (NULL != p) {
         /* already have this one */
         return;
     }
     /* store the pointer in the table */
-    pmix_pointer_array_set_item(&pmix_globals.keyindex, inid, ptr);
+#if 0 // TODO(skg) Remove
+    pmix_pointer_array2_set_item(&pmix_globals.keyindex, inid, ptr);
+#else
+    pmix_pointer_array2_set_item((pmix_pointer_array2_t *)&pmix_globals.keyindex, inid, ptr);
+#endif
 }
 
 // TODO(skg) We may have to modify the signature of thie function. How will we
@@ -722,7 +753,11 @@ pmix_regattr_input_t* pmix_hash2_lookup_key(uint32_t inid,
         if (PMIX_CHECK_RESERVED_KEY(key)) {
             /* reserved keys are in the front of the table */
             for (id = 0; id < PMIX_INDEX_BOUNDARY; id++) {
-                ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, id);
+#if 0 // TODO(skg) Remove
+                ptr = pmix_pointer_array2_get_item(&pmix_globals.keyindex, id);
+#else
+                ptr = pmix_pointer_array2_get_item((pmix_pointer_array2_t *)&pmix_globals.keyindex, id);
+#endif
                 if (NULL != ptr) {
                     if (0 == strcmp(key, ptr->string)) {
                         return ptr;
@@ -734,7 +769,11 @@ pmix_regattr_input_t* pmix_hash2_lookup_key(uint32_t inid,
         }
         /* unreserved keys are at the back of the table */
         for (id = PMIX_INDEX_BOUNDARY; id < pmix_globals.keyindex.size; id++) {
-            ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, id);
+#if 0 // TODO(skg) Remove
+            ptr = pmix_pointer_array2_get_item(&pmix_globals.keyindex, id);
+#else
+            ptr = pmix_pointer_array2_get_item((pmix_pointer_array2_t *)&pmix_globals.keyindex, id);
+#endif
             if (NULL != ptr) {
                 if (0 == strcmp(key, ptr->string)) {
                     return ptr;
@@ -758,7 +797,11 @@ pmix_regattr_input_t* pmix_hash2_lookup_key(uint32_t inid,
      * non-reserved key, then it had to be registered or else the caller
      * would not have an index to pass us. Thus, the pointer is either
      * found or not - we don't register it if not found. */
-    ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, inid);
+#if 0 // TODO(skg) Remove
+    ptr = pmix_pointer_array2_get_item(&pmix_globals.keyindex, inid);
+#else
+    ptr = pmix_pointer_array2_get_item((pmix_pointer_array2_t *)&pmix_globals.keyindex, inid);
+#endif
     return ptr;
 }
 
@@ -768,9 +811,9 @@ static void erase_qualifiers(pmix_proc_data2_t *proc,
     pmix_data_array_t *darray;
     pmix_qual_t *qarray;
     size_t n;
-    pmix_tma_t *tma = get_tma(&proc->super);
+    pmix_tma_t *tma = pmix_obj_get_tma(&proc->super);
 
-    darray = (pmix_data_array_t*)pmix_pointer_array_get_item(&proc->quals, index);
+    darray = (pmix_data_array_t*)pmix_pointer_array2_get_item(proc->quals, index);
     if (NULL == darray || NULL == darray->array) {
         return;
     }
@@ -782,5 +825,5 @@ static void erase_qualifiers(pmix_proc_data2_t *proc,
     }
     pmix_tma_free(tma, qarray);
     pmix_tma_free(tma, darray);
-    pmix_pointer_array_set_item(&proc->quals, index, NULL);
+    pmix_pointer_array2_set_item(proc->quals, index, NULL);
 }
