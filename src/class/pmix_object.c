@@ -66,13 +66,13 @@ static const int increment = 10;
 /*
  * Local functions
  */
-static void save_class(pmix_class_t *cls, pmix_tma_t *tma);
-static void expand_array(pmix_tma_t *tma);
+static void save_class(pmix_class_t *cls);
+static void expand_array(void);
 
 /*
  * Lazy initialization of class descriptor.
  */
-void pmix_class_initialize(pmix_class_t *cls, pmix_tma_t *tma)
+void pmix_class_initialize(pmix_class_t *cls)
 {
     pmix_class_t *c;
     pmix_construct_t *cls_construct_array;
@@ -123,7 +123,7 @@ void pmix_class_initialize(pmix_class_t *cls, pmix_tma_t *tma)
      * plus for each a NULL-sentinel
      */
 
-    cls->cls_construct_array = (void (**)(pmix_object_t *)) pmix_tma_malloc(tma,
+    cls->cls_construct_array = (void (**)(pmix_object_t *)) malloc(
         (cls_construct_array_count + cls_destruct_array_count + 2) * sizeof(pmix_construct_t));
     if (NULL == cls->cls_construct_array) {
         perror("Out of memory");
@@ -154,7 +154,7 @@ void pmix_class_initialize(pmix_class_t *cls, pmix_tma_t *tma)
     *cls_destruct_array = NULL; /* end marker for the destructors */
 
     cls->cls_initialized = pmix_class_init_epoch;
-    save_class(cls, tma);
+    save_class(cls);
 
     /* All done */
 
@@ -189,25 +189,25 @@ int pmix_class_finalize(void)
     return 0;
 }
 
-static void save_class(pmix_class_t *cls, pmix_tma_t *tma)
+static void save_class(pmix_class_t *cls)
 {
     if (num_classes >= max_classes) {
-        expand_array(tma);
+        expand_array();
     }
 
     classes[num_classes] = cls->cls_construct_array;
     ++num_classes;
 }
 
-static void expand_array(pmix_tma_t *tma)
+static void expand_array(void)
 {
     int i;
 
     max_classes += increment;
     if (NULL == classes) {
-        classes = (void **) pmix_tma_calloc(tma, max_classes, sizeof(void *));
+        classes = (void **) calloc(max_classes, sizeof(void *));
     } else {
-        classes = (void **) pmix_tma_realloc(tma, classes, sizeof(void *) * max_classes);
+        classes = (void **) realloc(classes, sizeof(void *) * max_classes);
     }
     if (NULL == classes) {
         perror("class malloc failed");

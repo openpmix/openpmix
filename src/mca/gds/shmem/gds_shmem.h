@@ -28,6 +28,9 @@
 
 #include "include/pmix_common.h"
 
+// TODO(skg) Remove
+#include "pmix_hash_table2.h"
+
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -54,19 +57,13 @@
 #define PMIX_GDS_SHMEM_NODE_MAP  0x00000020
 
 /**
- * Environment variables used to find shared-memory segment info.
- */
-#define PMIX_GDS_SHMEM_ENVVAR_SEG_PATH "PMIX_GDS_SHMEM_SEG_PATH"
-#define PMIX_GDS_SHMEM_ENVVAR_SEG_SIZE "PMIX_GDS_SHMEM_SEG_SIZE"
-#define PMIX_GDS_SHMEM_ENVVAR_SEG_ADDR "PMIX_GDS_SHMEM_SEG_ADDR"
-
-/**
  * Default component/module priority.
  */
 #if (PMIX_GDS_SHMEM_DISABLE == 1)
 #define PMIX_GDS_SHMEM_DEFAULT_PRIORITY 0
 #else
-#define PMIX_GDS_SHMEM_DEFAULT_PRIORITY 30
+// We want to be just above hash's priority.
+#define PMIX_GDS_SHMEM_DEFAULT_PRIORITY 20
 #endif
 
 BEGIN_C_DECLS
@@ -77,65 +74,68 @@ typedef struct {
     pmix_gds_base_component_t super;
     /** List of jobs that I'm supporting. */
     pmix_list_t jobs;
-    /** List of sessions that I'm supporting */
-    pmix_list_t sessions;
 } pmix_gds_shmem_component_t;
 // The component must be visible data for the linker to find it.
-PMIX_EXPORT extern pmix_gds_shmem_component_t pmix_mca_gds_shmem_component;
+PMIX_EXPORT extern
+pmix_gds_shmem_component_t pmix_mca_gds_shmem_component;
 
 typedef struct {
     pmix_list_item_t super;
+    /** Hostname. */
+    char *name;
+} pmix_gds_shmem_host_alias_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem_host_alias_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    /* Node ID. */
     uint32_t nodeid;
+    /** Hostname. */
     char *hostname;
-    char **aliases;
-    pmix_list_t info;
+    /** Node name aliases. */
+    pmix_list_t *aliases;
+    /** Node information. */
+    pmix_list_t *info;
 } pmix_gds_shmem_nodeinfo_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_nodeinfo_t);
 
+// Note that the shared data structures in pmix_gds_shmem_shared_data_t are
+// pointers. They need to be because their respective locations must reside on
+// the shared heap located in shared-memory and managed by the shared-memory
+// TMA.
 typedef struct {
-    pmix_list_item_t super;
-    /** Session ID. */
-    uint32_t id;
-    pmix_list_t sessioninfo;
-    pmix_list_t nodeinfo;
-} pmix_gds_shmem_session_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
+    /** Shared-memory allocator. */
+    pmix_tma_t tma;
+    /** Holds the current address of the shared-memory allocator. */
+    void *current_addr;
+    /** Node information. */
+    pmix_list_t *nodeinfo;
+    /** List of applications in this job. */
+    pmix_list_t *apps;
+    /** Stores local (node) data. */
+    pmix_hash_table2_t *local_hashtab;
+    /** Job information. */
+    pmix_list_t *jobinfo;
+} pmix_gds_shmem_shared_data_t;
 
 typedef struct {
     pmix_list_item_t super;
-    /** Namespace identifier. */
+    /** Namespace identifier (name). */
     char *nspace_id;
-    /** Flag indicating if global data were added. */
-    bool gdata_added;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
-    /** Job information. */
-    pmix_list_t jobinfo;
-    /** Node information. */
-    pmix_list_t nodeinfo;
-    // TODO(skg) Is the session nodeinfo the same info?
-    /** Session information. */
-    pmix_gds_shmem_session_t *session;
-    /** List of applications in this job. */
-    pmix_list_t apps;
-    /** Stores internal data. */
-    pmix_hash_table_t hashtab_internal;
-    /** Stores local (node) data. */
-    pmix_hash_table_t hashtab_local;
-    /** Stores remote data. */
-    pmix_hash_table_t hashtab_remote;
     /** Shared-memory object. */
     pmix_shmem_t *shmem;
-    /** Shared-memory allocator. */
-    pmix_tma_t tma;
+    /** Points to shared data located in shared-memory segment. */
+    pmix_gds_shmem_shared_data_t *smdata;
 } pmix_gds_shmem_job_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
 
 typedef struct {
     pmix_list_item_t super;
     uint32_t appnum;
-    pmix_list_t appinfo;
-    pmix_list_t nodeinfo;
+    pmix_list_t *appinfo;
+    pmix_list_t *nodeinfo;
     pmix_gds_shmem_job_t *job;
 } pmix_gds_shmem_app_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_app_t);

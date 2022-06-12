@@ -16,10 +16,10 @@
 
 #include "gds_shmem_fetch.h"
 #include "gds_shmem_utils.h"
-// TODO(skg) This will eventually go away.
-#include "pmix_hash2.h"
-#if 0 // TODO(skg) See ^^^.
+#if 0 // TODO(skg)
 #include "src/util/pmix_hash.h"
+#else
+#include "pmix_hash2.h"
 #endif
 
 #include "src/mca/bfrops/bfrops.h"
@@ -35,6 +35,7 @@ fetch_all_node_info(
     pmix_gds_shmem_nodeinfo_t *nodeinfo,
     pmix_list_t *kvs
 ) {
+    assert(false);
     size_t i = 0;
 
     pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
@@ -44,7 +45,7 @@ fetch_all_node_info(
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
     }
-    size_t nds = pmix_list_get_size(&nodeinfo->info);
+    size_t nds = pmix_list_get_size(nodeinfo->info);
     if (NULL != nodeinfo->hostname) {
         ++nds;
     }
@@ -70,7 +71,7 @@ fetch_all_node_info(
         );
     }
     pmix_kval_t *kvi;
-    PMIX_LIST_FOREACH (kvi, &nodeinfo->info, pmix_kval_t) {
+    PMIX_LIST_FOREACH (kvi, nodeinfo->info, pmix_kval_t) {
         PMIX_GDS_SHMEM_VOUT(
             "%s:%s adding key=%s", __func__,
             PMIX_NAME_PRINT(&pmix_globals.myid), kvi->key
@@ -147,7 +148,7 @@ pmix_gds_shmem_fetch_nodeinfo(
     bool found = false;
 
     PMIX_GDS_SHMEM_VOUT(
-        "%s FETCHING NODE INFO key=%s",
+        "%s:%s key=%s", __func__,
         PMIX_NAME_PRINT(&pmix_globals.myid),
         (NULL == key) ? "NULL" : key
     );
@@ -229,7 +230,7 @@ pmix_gds_shmem_fetch_nodeinfo(
     // info list of this node to find the key they want.
     rc = PMIX_ERR_NOT_FOUND;
     pmix_kval_t *kvi;
-    PMIX_LIST_FOREACH (kvi, &nodeinfo->info, pmix_kval_t) {
+    PMIX_LIST_FOREACH (kvi, nodeinfo->info, pmix_kval_t) {
         if (!PMIX_CHECK_KEY(kvi, key)) {
             continue;
         }
@@ -276,7 +277,7 @@ fetch_all_app_info(
             PMIX_RELEASE(kv);
             return PMIX_ERR_NOMEM;
         }
-        const size_t nds = pmix_list_get_size(&appi->appinfo) + 1;
+        const size_t nds = pmix_list_get_size(appi->appinfo) + 1;
         PMIX_DATA_ARRAY_CREATE(darray, nds, PMIX_INFO);
         if (NULL == darray) {
             PMIX_RELEASE(kv);
@@ -288,7 +289,7 @@ fetch_all_app_info(
         PMIX_INFO_LOAD(&info[i++], PMIX_APPNUM, &appi->appnum, PMIX_UINT32);
         // Transfer the app infos.
         pmix_kval_t *kvi;
-        PMIX_LIST_FOREACH (kvi, &appi->appinfo, pmix_kval_t) {
+        PMIX_LIST_FOREACH (kvi, appi->appinfo, pmix_kval_t) {
             PMIX_LOAD_KEY(info[i].key, kvi->key);
             rc = PMIx_Value_xfer(&info[i].value, kvi->value);
             if (PMIX_SUCCESS != rc) {
@@ -364,7 +365,7 @@ pmix_gds_shmem_fetch_appinfo(
     // See if they wanted to know something about
     // a node that is associated with this app.
     rc = pmix_gds_shmem_fetch_nodeinfo(
-        key, job, &app->nodeinfo, info, ninfo, kvs
+        key, job, app->nodeinfo, info, ninfo, kvs
     );
     if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc) {
         return rc;
@@ -372,7 +373,7 @@ pmix_gds_shmem_fetch_appinfo(
     // Scan the info list of this app to generate the results.
     rc = PMIX_ERR_NOT_FOUND;
     pmix_kval_t *kvi;
-    PMIX_LIST_FOREACH (kvi, &app->appinfo, pmix_kval_t) {
+    PMIX_LIST_FOREACH (kvi, app->appinfo, pmix_kval_t) {
         if (NULL == key || PMIX_CHECK_KEY(kvi, key)) {
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
             kv->key = strdup(kvi->key);
@@ -393,77 +394,7 @@ pmix_gds_shmem_fetch_appinfo(
     return rc;
 }
 
-/**
- * Fetches session information.
- */
-static pmix_status_t
-fetch_session_info(
-    pmix_gds_shmem_job_t *job,
-    const char *key,
-    pmix_info_t qualifiers[],
-    size_t nqual,
-    pmix_list_t *kvs
-) {
-    PMIX_GDS_SHMEM_VOUT(
-        "%s FETCHING PMIX_SESSION_INFO key=%s",
-        PMIX_NAME_PRINT(&pmix_globals.myid),
-        (NULL == key) ? "NULL" : key
-    );
-
-    pmix_status_t rc = PMIX_SUCCESS;
-    pmix_gds_shmem_component_t *component = &pmix_mca_gds_shmem_component;
-    // They must have provided a session ID.
-    for (size_t m = 0; m < nqual; m++) {
-        if (!PMIX_CHECK_KEY(&qualifiers[m], PMIX_SESSION_ID)) {
-            continue;
-        }
-        uint32_t sid;
-        // See if we have this session.
-        PMIX_VALUE_GET_NUMBER(rc, &qualifiers[m].value, sid, uint32_t);
-        if (PMIX_SUCCESS != rc) {
-            // Didn't provide a correct value.
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        pmix_gds_shmem_session_t *si;
-        PMIX_LIST_FOREACH (si, &component->sessions, pmix_gds_shmem_session_t) {
-            if (si->id != sid) {
-                continue;
-            }
-            // See if they want info for a specific node.
-            rc = pmix_gds_shmem_fetch_nodeinfo(
-                key, job, &si->nodeinfo, qualifiers, nqual, kvs
-            );
-            // If they did, then we are done.
-            if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc) {
-                return rc;
-            }
-            // Check the session info.
-            pmix_kval_t *kvi;
-            PMIX_LIST_FOREACH (kvi, &si->sessioninfo, pmix_kval_t) {
-                if (NULL == key || PMIX_CHECK_KEY(kvi, key)) {
-                    pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
-                    kv->key = strdup(kvi->key);
-                    kv->value = NULL;
-                    PMIX_VALUE_XFER(rc, kv->value, kvi->value);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_RELEASE(kv);
-                        return rc;
-                    }
-                    pmix_list_append(kvs, &kv->super);
-                    if (NULL != key) {
-                        // We are done.
-                        return PMIX_SUCCESS;
-                    }
-                }
-            }
-        }
-    }
-    // If we get here, then the session wasn't found.
-    return PMIX_ERR_NOT_FOUND;
-}
-
-static pmix_status_t
+static inline pmix_status_t
 fetch_job_level_info_for_namespace(
     pmix_gds_shmem_job_t *job,
     pmix_info_t qualifiers[],
@@ -472,14 +403,15 @@ fetch_job_level_info_for_namespace(
 ) {
     // Fetch all values from the hash table tied to rank=wildcard.
     pmix_status_t rc = pmix_hash2_fetch(
-        &job->hashtab_internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
+        // TODO(skg) Is this correct?
+        job->smdata->local_hashtab, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
     );
     if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
         return rc;
     }
     // Also need to add any job-level info.
     pmix_kval_t *kvi;
-    PMIX_LIST_FOREACH (kvi, &job->jobinfo, pmix_kval_t) {
+    PMIX_LIST_FOREACH (kvi, job->smdata->jobinfo, pmix_kval_t) {
         pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
         kv->key = strdup(kvi->key);
         kv->value = (pmix_value_t *)malloc(sizeof(pmix_value_t));
@@ -492,14 +424,14 @@ fetch_job_level_info_for_namespace(
     }
     // Collect the relevant node-level info.
     rc = pmix_gds_shmem_fetch_nodeinfo(
-        NULL, job, &job->nodeinfo, qualifiers, nqual, kvs
+        NULL, job, job->smdata->nodeinfo, qualifiers, nqual, kvs
     );
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
     // Collect the relevant app-level info.
     rc = pmix_gds_shmem_fetch_appinfo(
-        NULL, job, &job->apps, qualifiers, nqual, kvs
+        NULL, job, job->smdata->apps, qualifiers, nqual, kvs
     );
     if (PMIX_SUCCESS != rc) {
         return rc;
@@ -509,7 +441,7 @@ fetch_job_level_info_for_namespace(
         pmix_list_t rkvs;
         PMIX_CONSTRUCT(&rkvs, pmix_list_t);
         rc = pmix_hash2_fetch(
-            &job->hashtab_internal, rank, NULL, NULL, 0, &rkvs
+            job->smdata->local_hashtab, rank, NULL, NULL, 0, &rkvs
         );
         if (PMIX_ERR_NOMEM == rc) {
             PMIX_LIST_DESTRUCT(&rkvs);
@@ -555,10 +487,7 @@ pmix_gds_shmem_fetch(
     size_t nqual,
     pmix_list_t *kvs
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(copy);
-
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_hash_table_t *ht = NULL;
     bool nodeinfo = false;
     bool appinfo = false;
     bool nigiven = false;
@@ -566,7 +495,7 @@ pmix_gds_shmem_fetch(
 
     PMIX_GDS_SHMEM_VOUT(
         "%s:%s key=%s for proc=%s on scope=%s",
-        "fetch", PMIX_NAME_PRINT(&pmix_globals.myid),
+        __func__, PMIX_NAME_PRINT(&pmix_globals.myid),
         (NULL == key) ? "NULL" : key, PMIX_NAME_PRINT(proc),
         PMIx_Scope_string(scope)
     );
@@ -578,23 +507,26 @@ pmix_gds_shmem_fetch(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    // If the rank is wildcard and the key is NULL, then the caller is asking
-    // for a complete copy of the job-level info for this nspace---retrieve it.
+    pmix_hash_table2_t *ht = job->smdata->local_hashtab;
+
+    // TODO(skg) Cache during init.
+    pmix_info_t ginfo;
+    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, "hash", PMIX_STRING);
+    pmix_gds_base_module_t *hashmod = pmix_gds_base_assign_module(&ginfo, 1);
+    assert(hashmod);
+    PMIX_INFO_DESTRUCT(&ginfo);
+
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
-        rc = fetch_job_level_info_for_namespace(job, qualifiers, nqual, kvs);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-        return rc;
+        assert(false);
+        return PMIX_ERR_NOT_SUPPORTED;
     }
-    // See if they are asking for session, node, or app-level info.
+
     for (size_t n = 0; n < nqual; n++) {
         if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_SESSION_INFO)) {
-            rc = fetch_session_info(job, key, qualifiers, nqual, kvs);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            return rc;
+            // We don't handle session info, so pass it along.
+            return hashmod->fetch(
+                proc, scope, copy, key, qualifiers, nqual, kvs
+            );
         }
         else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_NODE_INFO)) {
             nodeinfo = PMIX_INFO_TRUE(&qualifiers[n]);
@@ -614,54 +546,31 @@ pmix_gds_shmem_fetch(
             appinfo = true;
         }
     }
+
     if (!PMIX_RANK_IS_VALID(proc->rank)) {
         if (nodeinfo) {
             rc = pmix_gds_shmem_fetch_nodeinfo(
-                key, job, &job->nodeinfo, qualifiers, nqual, kvs
+                key, job, job->smdata->nodeinfo, qualifiers, nqual, kvs
             );
             if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
-                // Need to check internal as we might have an older peer.
-                ht = &job->hashtab_internal;
                 goto doover;
             }
             return rc;
         }
         else if (appinfo) {
             rc = pmix_gds_shmem_fetch_appinfo(
-                key, job, &job->apps, qualifiers, nqual, kvs
+                key, job, job->smdata->apps, qualifiers, nqual, kvs
             );
             if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
-                // Need to check internal as we might have an older peer.
-                ht = &job->hashtab_internal;
                 goto doover;
             }
             return rc;
         }
     }
-    // Fetch from the corresponding hash table. Note that we always provide a
-    // copy as we don't support shared-memory.
-    // TODO(skg) Support shared-memory.
-    if (PMIX_INTERNAL == scope ||
-        PMIX_SCOPE_UNDEF == scope ||
-        PMIX_GLOBAL == scope ||
-        PMIX_RANK_WILDCARD == proc->rank) {
-        ht = &job->hashtab_internal;
-    }
-    else if (PMIX_LOCAL == scope || PMIX_GLOBAL == scope) {
-        ht = &job->hashtab_local;
-    }
-    else if (PMIX_REMOTE == scope) {
-        ht = &job->hashtab_remote;
-    }
-    else {
-        rc = PMIX_ERR_BAD_PARAM;
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    // TODO(skg) Consider moving away from this doover methodology.
 doover:
-    // If rank=PMIX_RANK_UNDEF, then we need to search all known ranks for this
-    // nspace as any one of them could be the source.
+    // If rank=PMIX_RANK_UNDEF, then we need to search all
+    // known ranks for this nspace as any one of them could
+    // be the source.
     if (PMIX_RANK_UNDEF == proc->rank) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
             rc = pmix_hash2_fetch(ht, rnk, key, qualifiers, nqual, kvs);
@@ -672,14 +581,15 @@ doover:
                 return rc;
             }
         }
-        // Also need to check any job-level info.
-        pmix_kval_t *kvi;
-        PMIX_LIST_FOREACH (kvi, &job->jobinfo, pmix_kval_t) {
-            if (NULL == key || PMIX_CHECK_KEY(kvi, key)) {
-                pmix_kval_t* kv = PMIX_NEW(pmix_kval_t);
-                kv->key = strdup(kvi->key);
-                kv->value = NULL;
-                PMIX_VALUE_XFER(rc, kv->value, kvi->value);
+        /* also need to check any job-level info */
+        pmix_kval_t *kvptr;
+        PMIX_LIST_FOREACH (kvptr, job->smdata->jobinfo, pmix_kval_t) {
+            if (NULL == key || PMIX_CHECK_KEY(kvptr, key)) {
+                pmix_kval_t *kv;
+                kv = PMIX_NEW(pmix_kval_t);
+                kv->key = strdup(kvptr->key);
+                kv->value = (pmix_value_t *)malloc(sizeof(pmix_value_t));
+                PMIX_VALUE_XFER(rc, kv->value, kvptr->value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_RELEASE(kv);
                     return rc;
@@ -691,92 +601,21 @@ doover:
             }
         }
         if (NULL == key) {
-            // And need to add all job info just in case
-            // that was passed via a different GDS component.
-            rc = pmix_hash2_fetch(
-                &job->hashtab_internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
-            );
+            // And need to add all job info just in case that was passed via a
+            // different GDS component.
+            rc = pmix_hash2_fetch(ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
         }
         else {
-            rc = PMIX_ERR_NOT_FOUND;
+            return hashmod->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
         }
     }
     else {
         rc = pmix_hash2_fetch(ht, proc->rank, key, qualifiers, nqual, kvs);
     }
-    if (PMIX_SUCCESS == rc) {
-        if (PMIX_GLOBAL == scope) {
-            if (ht == &job->hashtab_local) {
-                // Need to do this again for the remote data.
-                ht = &job->hashtab_remote;
-                goto doover;
-            }
-            else if (ht == &job->hashtab_internal) {
-                // Check local.
-                ht = &job->hashtab_local;
-                goto doover;
-            }
-        }
+    if (PMIX_SUCCESS != rc) {
+        rc = hashmod->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
     }
-    else {
-        if (PMIX_GLOBAL == scope || PMIX_SCOPE_UNDEF == scope) {
-            if (ht == &job->hashtab_internal) {
-                // Need to also try the local data.
-                ht = &job->hashtab_local;
-                goto doover;
-            }
-            else if (ht == &job->hashtab_local) {
-                // Need to also try the remote data.
-                ht = &job->hashtab_remote;
-                goto doover;
-            }
-        }
-    }
-    if (0 == pmix_list_get_size(kvs)) {
-        // If we didn't find it and the rank was valid, then check to see if the
-        // data exists in a different scope.  This is done to avoid having the
-        // process go into a timeout wait when the data will never appear within
-        // the specified scope.
-        if (PMIX_RANK_IS_VALID(proc->rank)) {
-            if (PMIX_LOCAL == scope) {
-                // Check the remote scope.
-                rc = pmix_hash2_fetch(
-                    &job->hashtab_remote, proc->rank,
-                    key, qualifiers, nqual, kvs
-                );
-                if (PMIX_SUCCESS == rc || pmix_list_get_size(kvs) > 0) {
-                    pmix_kval_t *kv;
-                    while (NULL != (kv = (pmix_kval_t *)pmix_list_remove_first(kvs))) {
-                        PMIX_RELEASE(kv);
-                    }
-                    rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
-                }
-                else {
-                    rc = PMIX_ERR_NOT_FOUND;
-                }
-            }
-            else if (PMIX_REMOTE == scope) {
-                // Check the local scope.
-                rc = pmix_hash2_fetch(
-                    &job->hashtab_local, proc->rank,
-                    key, qualifiers, nqual, kvs
-                );
-                if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
-                    pmix_kval_t *kv;
-                    while (NULL != (kv = (pmix_kval_t *)pmix_list_remove_first(kvs))) {
-                        PMIX_RELEASE(kv);
-                    }
-                    rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
-                }
-                else {
-                    rc = PMIX_ERR_NOT_FOUND;
-                }
-            }
-        }
-        else {
-            rc = PMIX_ERR_NOT_FOUND;
-        }
-    }
+
     return rc;
 }
 

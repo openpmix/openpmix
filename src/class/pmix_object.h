@@ -233,8 +233,11 @@ typedef struct pmix_tma {
     void *(*tma_memmove)(struct pmix_tma *tma, const void *src, size_t n);
     /** Pointer to the TMA's free() function. */
     void (*tma_free)(struct pmix_tma *, void *);
-    /** Pointer inside the memory allocation arena. */
-    void *arena;
+    /**
+     * Points to generic data used by a TMA. An example includes a pointer to a
+     * value that maintains the next available address.
+     */
+    void **data_ptr;
 } pmix_tma_t;
 
 static inline void *pmix_tma_malloc(pmix_tma_t *tma, size_t size)
@@ -322,7 +325,7 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_tma.tma_strdup = NULL,             \
             .obj_tma.tma_memmove = NULL,            \
             .obj_tma.tma_free = NULL,               \
-            .obj_tma.arena = NULL,                  \
+            .obj_tma.data_ptr = NULL,               \
             .cls_init_file_name = __FILE__,         \
             .cls_init_lineno = __LINE__             \
         }
@@ -338,7 +341,7 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_tma.tma_strdup = NULL,             \
             .obj_tma.tma_memmove = NULL,            \
             .obj_tma.tma_free = NULL,               \
-            .obj_tma.arena = NULL                   \
+            .obj_tma.data_ptr = NULL                \
         }
 #endif
 
@@ -542,7 +545,7 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *tma)
         obj->obj_tma.tma_strdup = NULL;
         obj->obj_tma.tma_memmove = NULL;
         obj->obj_tma.tma_free = NULL;
-        obj->obj_tma.arena = NULL;
+        obj->obj_tma.data_ptr = NULL;
     } else {
         obj->obj_tma = *tma;
     }
@@ -552,7 +555,7 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *tma)
     do {                                                           \
         PMIX_SET_MAGIC_ID((object), PMIX_OBJ_MAGIC_ID);            \
         if (pmix_class_init_epoch != (type)->cls_initialized) {    \
-            pmix_class_initialize((type), (t));                    \
+            pmix_class_initialize((type));                         \
         }                                                          \
         ((pmix_object_t *) (object))->obj_class = (type);          \
         ((pmix_object_t *) (object))->obj_reference_count = 1;     \
@@ -609,7 +612,7 @@ PMIX_CLASS_DECLARATION(pmix_object_t);
  *
  * @param class    Pointer to class descriptor
  */
-PMIX_EXPORT void pmix_class_initialize(pmix_class_t *cls, pmix_tma_t *tma);
+PMIX_EXPORT void pmix_class_initialize(pmix_class_t *cls);
 
 /**
  * Shut down the class system and release all memory
@@ -686,7 +689,7 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
     object = (pmix_object_t *) pmix_tma_malloc(tma, cls->cls_sizeof);
 
     if (pmix_class_init_epoch != cls->cls_initialized) {
-        pmix_class_initialize(cls, tma);
+        pmix_class_initialize(cls);
     }
     if (NULL != object) {
 #if PMIX_ENABLE_DEBUG
@@ -717,7 +720,7 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
             object->obj_tma.tma_realloc = NULL;
             object->obj_tma.tma_strdup = NULL;
             object->obj_tma.tma_free = NULL;
-            object->obj_tma.arena = NULL;
+            object->obj_tma.data_ptr = NULL;
         } else {
             object->obj_tma = *tma;
         }
@@ -748,6 +751,22 @@ static inline int pmix_obj_update(pmix_object_t *object, int inc)
     ret = (object->obj_reference_count += inc);
     pthread_mutex_unlock(&object->obj_lock);
     return ret;
+}
+
+/**
+ * Get a pointer to a given object's memory allocator. Returns a pointer to the
+ * TMA, if available. Returns NULL Otherwise.
+ */
+static inline pmix_tma_t *
+pmix_obj_get_tma(
+    pmix_object_t *obj
+) {
+    // Look for a given function pointer. If it isn't NULL, then assume that
+    // this object has a custom memory allocator.
+    if (obj->obj_tma.tma_malloc) {
+        return &obj->obj_tma;
+    }
+    return NULL;
 }
 
 END_C_DECLS
