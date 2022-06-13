@@ -124,6 +124,8 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
+    /** Pointer to a full-featured gds module. */
+    pmix_gds_base_module_t *ffgds;
     /** Shared-memory object. */
     pmix_shmem_t *shmem;
     /** Points to shared data located in shared-memory segment. */

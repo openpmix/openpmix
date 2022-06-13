@@ -509,13 +509,6 @@ pmix_gds_shmem_fetch(
     }
     pmix_hash_table2_t *ht = job->smdata->local_hashtab;
 
-    // TODO(skg) Cache during init.
-    pmix_info_t ginfo;
-    PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, "hash", PMIX_STRING);
-    pmix_gds_base_module_t *hashmod = pmix_gds_base_assign_module(&ginfo, 1);
-    assert(hashmod);
-    PMIX_INFO_DESTRUCT(&ginfo);
-
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
         assert(false);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -524,7 +517,7 @@ pmix_gds_shmem_fetch(
     for (size_t n = 0; n < nqual; n++) {
         if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_SESSION_INFO)) {
             // We don't handle session info, so pass it along.
-            return hashmod->fetch(
+            return job->ffgds->fetch(
                 proc, scope, copy, key, qualifiers, nqual, kvs
             );
         }
@@ -606,14 +599,14 @@ doover:
             rc = pmix_hash2_fetch(ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
         }
         else {
-            return hashmod->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
+            return job->ffgds->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
         }
     }
     else {
         rc = pmix_hash2_fetch(ht, proc->rank, key, qualifiers, nqual, kvs);
     }
     if (PMIX_SUCCESS != rc) {
-        rc = hashmod->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
+        rc = job->ffgds->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
     }
 
     return rc;
