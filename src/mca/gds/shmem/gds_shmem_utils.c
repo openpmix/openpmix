@@ -100,6 +100,8 @@ pmix_gds_shmem_get_job_tracker(
         }
         PMIX_RETAIN(inspace);
         target_tracker->nspace = inspace;
+        // Cache a handle to a full-featured gds module.
+        target_tracker->ffgds = pmix_globals.mypeer->nptr->compat.gds;
         // Add it to the list of jobs I'm supporting.
         pmix_list_append(&component->jobs, &target_tracker->super);
     }

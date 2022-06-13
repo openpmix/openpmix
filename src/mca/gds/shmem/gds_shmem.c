@@ -59,6 +59,9 @@
 // TODO(skg) Address FT case at some point. Need to have a broader conversion
 // about how we go about doing this. Ralph has some ideas.
 
+// TODO(skg) Consider using mprotect.
+// TODO(skg) We way need to implement a different hash table.
+
 /**
  * Key names used to find shared-memory segment info.
  */
@@ -270,6 +273,7 @@ job_construct(
 ) {
     job->nspace_id = NULL;
     job->nspace = NULL;
+    job->ffgds = NULL;
     job->shmem = PMIX_NEW(pmix_shmem_t);
     job->smdata = NULL;
 }
@@ -284,6 +288,7 @@ job_destruct(
     if (job->nspace) {
         PMIX_RELEASE(job->nspace);
     }
+    job->ffgds = NULL;
     // This will release the memory for the structures located in the
     // shared-memory segment.
     if (job->shmem) {
@@ -959,6 +964,13 @@ store_job_info(
     // Update the TMA to point to its local function pointers.
     tma_init_function_pointers(&job->smdata->tma);
     pmix_gds_shmem_vout_smdata(job);
+    // Proctect memory: clients can only read from here.
+#if 0
+    mprotect(
+        job->shmem->base_address,
+        job->shmem->size, PROT_READ
+    );
+#endif
     // Done. Before this point the server should have populated the
     // shared-memory segment with the relevant data.
     return rc;
@@ -970,9 +982,18 @@ store(
     pmix_scope_t scope,
     pmix_kval_t *kval
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(proc, scope, kval);
     PMIX_GDS_SHMEM_VOUT_HERE();
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    pmix_status_t rc = PMIX_SUCCESS;
+    // Setup a job tracker for this peer's nspace.
+    pmix_gds_shmem_job_t *job;
+    rc = pmix_gds_shmem_get_job_tracker(proc->nspace, false, &job);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Let a full-featured gds module handle this.
+    return job->ffgds->store(proc, scope, kval);
 }
 
 /**
@@ -982,13 +1003,23 @@ store(
  */
 static pmix_status_t
 store_modex(
-    struct pmix_namespace_t *nspace,
+    struct pmix_namespace_t *nspace_struct,
     pmix_buffer_t *buff,
     void *cbdata
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(nspace, buff, cbdata);
     PMIX_GDS_SHMEM_VOUT_HERE();
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_namespace_t *nspace = (pmix_namespace_t *)nspace_struct;
+    // Setup a job tracker for this peer's nspace.
+    pmix_gds_shmem_job_t *job;
+    rc = pmix_gds_shmem_get_job_tracker(nspace->nspace, false, &job);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Let a full-featured gds module handle this.
+    return job->ffgds->store_modex(nspace_struct, buff, cbdata);
 }
 
 static pmix_status_t
@@ -998,6 +1029,7 @@ server_setup_fork(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(peer, env);
     PMIX_GDS_SHMEM_VOUT_HERE();
+    // Nothing to do here.
     return PMIX_SUCCESS;
 }
 
@@ -1010,9 +1042,11 @@ server_add_nspace(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(nspace, nlocalprocs, info, ninfo);
     PMIX_GDS_SHMEM_VOUT_HERE();
+    // Nothing to do here.
     return PMIX_SUCCESS;
 }
 
+// TODO(skg) Implement.
 static pmix_status_t
 del_nspace(
     const char *nspace
@@ -1029,18 +1063,37 @@ assemb_kvs_req(
     pmix_buffer_t *buff,
     void *cbdata
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(proc, kvs, buff, cbdata);
     PMIX_GDS_SHMEM_VOUT_HERE();
-    return PMIX_ERR_NOT_SUPPORTED;
+
+    pmix_status_t rc = PMIX_SUCCESS;
+    // Setup a job tracker for this peer's nspace.
+    pmix_gds_shmem_job_t *job;
+    rc = pmix_gds_shmem_get_job_tracker(proc->nspace, false, &job);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Let a full-featured gds module handle this.
+    return job->ffgds->assemb_kvs_req(proc, kvs, buff, cbdata);
 }
 
 static pmix_status_t
 accept_kvs_resp(
     pmix_buffer_t *buff
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(buff);
     PMIX_GDS_SHMEM_VOUT_HERE();
-    return PMIX_SUCCESS;
+
+    pmix_status_t rc = PMIX_SUCCESS;
+    const char *nspace = pmix_globals.mypeer->nptr->nspace;
+    // Setup a job tracker for this peer's nspace.
+    pmix_gds_shmem_job_t *job;
+    rc = pmix_gds_shmem_get_job_tracker(nspace, false, &job);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Let a full-featured gds module handle this.
+    return job->ffgds->accept_kvs_resp(buff);
 }
 
 pmix_gds_base_module_t pmix_shmem_module = {
