@@ -208,7 +208,7 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
 
     /* the first 4 bytes contains the uncompressed size */
     memcpy(&len2, inbytes, sizeof(uint32_t));
-    /* add one to hold the NULL terminator */
+    /* add one to hold the NUL terminator */
     ++len2;
 
     /* decompress the bytes */
@@ -216,8 +216,8 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
     rc = doit((uint8_t **) outstring, len2, input, len);
 
     if (rc) {
-        /* ensure this is NULL terminated! */
-        outstring[len2 - 1] = NULL;
+        /* ensure this is NUL terminated! */
+        *outstring[len2 - 1] = '\0';
         return true;
     }
 
