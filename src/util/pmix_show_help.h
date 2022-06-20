@@ -48,7 +48,7 @@
  * appropriate help message to display.  It looks for the message name
  * in the file, reads in the message, and displays it.  printf()-like
  * substitutions are performed (e.g., %d, %s, etc.) --
- * pmix_show_help() takes a variable legnth argument list that are
+ * pmix_show_help() takes a variable length argument list that are
  * used for these substitutions.
  *
  * The format of the help file is simplistic:
@@ -173,7 +173,7 @@ PMIX_EXPORT char *pmix_show_help_vstring(const char *filename,
  * of the show_help functionality. OMPI defines the show_help directory
  * based on where OMPI was installed. However, if the library wants to
  * use show_help to provide error output specific to itself, then it
- * nees to tell pmix_show_help.how to find its own show_help files - without
+ * needs to tell pmix_show_help.how to find its own show_help files - without
  * interfering with the linked ORTE libs when they need to do show_help.
  */
 PMIX_EXPORT pmix_status_t pmix_show_help_add_dir(const char *directory);

@@ -2710,7 +2710,7 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
     # we cannot execute a callback function here as
     # that would cause PMIx to lockup. So we start
     # a new thread on a timer that should execute a
-    # callback after the funciton returns
+    # callback after the function returns
     cdef pmix_proc_t *proc
     proc = NULL
     pmix_copy_nspace(proc[0].nspace, ret_proc['nspace'])
@@ -2795,7 +2795,7 @@ cdef int allocate(const pmix_proc_t *client,
     # we cannot execute a callback function here as
     # that would cause PMIx to lockup. So we start
     # a new thread on a timer that should execute a
-    # callback after the funciton returns
+    # callback after the function returns
     cdef pmix_info_t *info
     cdef pmix_info_t **info_ptr
     cdef size_t ninfo = 0

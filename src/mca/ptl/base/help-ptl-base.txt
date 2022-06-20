@@ -74,7 +74,7 @@ An attempt was made to make a TCP connection between two hosts:
   Receiving host:   %s
 
 Unfortunately, the connection was refused due to a failure to
-authenticate. This is usually caused by a mis-match between
+authenticate. This is usually caused by a mismatch between
 the security domains of the two hosts - e.g., one might be
 using Munge while the other is not. This can typically be
 resolved by specifying the desired security method. For

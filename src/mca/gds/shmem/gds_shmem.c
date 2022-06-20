@@ -964,7 +964,7 @@ store_job_info(
     // Update the TMA to point to its local function pointers.
     tma_init_function_pointers(&job->smdata->tma);
     pmix_gds_shmem_vout_smdata(job);
-    // Proctect memory: clients can only read from here.
+    // Protect memory: clients can only read from here.
 #if 0
     mprotect(
         job->shmem->base_address,

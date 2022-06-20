@@ -112,7 +112,7 @@ PMIX_EXPORT bool pmix_path_is_absolute(const char *path);
 PMIX_EXPORT char *pmix_find_absolute_path(char *app_name) __pmix_attribute_warn_unused_result__;
 
 /**
- * Forms a complete pathname and checks it for existance and
+ * Forms a complete pathname and checks it for existence and
  * permissions
  *
  * @param fname File name

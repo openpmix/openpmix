@@ -754,7 +754,7 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "QUEING MSG TO SERVER %s ON SOCKET %d OF SIZE %d",
+                        "QUEUEING MSG TO SERVER %s ON SOCKET %d OF SIZE %d",
                         PMIX_PNAME_PRINT(&ms->peer->info->pname), ms->peer->sd,
                         (int) ms->bfr->bytes_used);
 

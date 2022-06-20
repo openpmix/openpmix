@@ -172,7 +172,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_hotel_t);
  * already been ("forcibly") checked out *before* the
  * eviction_callback_fn is invoked.
  *
- * @return PMIX_SUCCESS if all initializations were succesful. Otherwise,
+ * @return PMIX_SUCCESS if all initializations were successful. Otherwise,
  *  the error indicate what went wrong in the function.
  */
 PMIX_EXPORT pmix_status_t pmix_hotel_init(pmix_hotel_t *hotel, int num_rooms,

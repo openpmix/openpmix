@@ -38,7 +38,7 @@
  * to set the affinity of that new child process according to a
  * complex series of rules.  This binding may fail in a myriad of
  * different ways.  A lot of this code deals with reporting that error
- * occurately to the end user.  This is a complex task in itself
+ * accurately to the end user.  This is a complex task in itself
  * because the child process is not "really" an PMIX process -- all
  * error reporting must be proxied up to the parent who can use normal
  * PMIX error reporting mechanisms.
@@ -397,7 +397,7 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     set_handler_linux(SIGCHLD);
 
     /* Unblock all signals, for many of the same reasons that we
-       set the default handlers, above.  This is noticable on
+       set the default handlers, above.  This is noticeable on
        Linux where the event library blocks SIGTERM, but we don't
        want that blocked by the launched process. */
     sigprocmask(0, 0, &sigs);

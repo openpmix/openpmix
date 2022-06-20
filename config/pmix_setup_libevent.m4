@@ -113,7 +113,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
           ]])],
           [AC_MSG_RESULT([yes])],
           [AC_MSG_RESULT([no])
-           AC_MSG_WARN([PMIX rquires libevent to be compiled with thread support enabled])
+           AC_MSG_WARN([PMIX requires libevent to be compiled with thread support enabled])
            pmix_libevent_support=0])
     fi
 

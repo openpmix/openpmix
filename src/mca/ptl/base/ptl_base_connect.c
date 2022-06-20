@@ -174,7 +174,7 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
                    in that case is a RST packet, which receive
                    will turn into a connection reset by peer
                    errno.  In that case, leave the socket in
-                   CONNECT_ACK and propogate the error up to
+                   CONNECT_ACK and propagate the error up to
                    recv_connect_ack, who will try to establish the
                    connection again */
                 pmix_output_verbose(8, pmix_ptl_base_framework.framework_output,

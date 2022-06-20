@@ -76,7 +76,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         return (PMIX_SUCCESS);
     }
 
-    /* didnt work, so now have to build our way down the tree */
+    /* didn't work, so now have to build our way down the tree */
     /* Split the requested path up into its individual parts */
 
     parts = pmix_argv_split(path, path_sep[0]);
@@ -104,7 +104,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         }
 
         /* If it's not the first part, ensure that there's a
-           preceeding path_sep and then append this part */
+           preceding path_sep and then append this part */
 
         else {
             if (path_sep[0] != tmp[strlen(tmp) - 1]) {
@@ -164,7 +164,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
     }
 
     /*
-     * Make sure we have access to the the base directory
+     * Make sure we have access to the base directory
      */
     if (PMIX_SUCCESS != (rc = pmix_os_dirpath_access(path, 0))) {
         exit_status = rc;
@@ -210,7 +210,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
         }
 
         /*
-         * If not recursively decending, then if we find a directory then fail
+         * If not recursively descending, then if we find a directory then fail
          * since we were not told to remove it.
          */
         if (is_dir && !recursive) {

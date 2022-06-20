@@ -393,7 +393,7 @@ get_shmem_backing_path(
     return path;
 }
 
-// TODO(skg) Add pmix_vmem_hole_kind_t paremeter. We may not want to use the
+// TODO(skg) Add pmix_vmem_hole_kind_t parameter. We may not want to use the
 // largest available hole all the time.
 /**
  * Create and attach to a shared-memory segment.

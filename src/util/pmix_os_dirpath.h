@@ -110,7 +110,7 @@ typedef bool (*pmix_os_dirpath_destroy_callback_fn_t)(const char *root, const ch
  * @retval PMIX_SUCCESS If the directory was successfully removed or removed to the
  *                      specification of the user (i.e., obeyed the callback function).
  * @retval PMIX_ERR_NOT_FOUND If directory does not exist.
- * @retval PMIX_ERROR If the directory cannnot be removed, accessed properly, or contains
+ * @retval PMIX_ERROR If the directory cannot be removed, accessed properly, or contains
  *                    directories that could not be removed..
  */
 PMIX_EXPORT int pmix_os_dirpath_destroy(const char *path, bool recursive,

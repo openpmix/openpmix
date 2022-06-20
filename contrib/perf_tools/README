@@ -7,7 +7,7 @@ Building instructions:
     If you don't want to test PMI2 - remove pmi2 from the list of "all" targets.
 * run `make`.
 
-The follwoing files (or one of them) will be built as the result:
+The following files (or one of them) will be built as the result:
 * pmix_intra_perf - that is for testing pmix performance
 - pmi2_intra_perf - for testing pmi2 performance
 
@@ -28,7 +28,7 @@ for all environments). To use it open it and fix:
 - OMPI_BASE to point to your MPI installation
 - PMIX_LIB to point to your PMIx installation
 
-If you are running inside the supported batch system you shoud be fine to
+If you are running inside the supported batch system you should be fine to
 just run fixed `run.sh` with the first argument defining how many processes
 needs to be launched and all other parameters will be passed to the performance
 tool. For example:
