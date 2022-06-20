@@ -181,7 +181,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
         # following lines and update the warning when we require a C11 compiler.
         # AC_MSG_WARNING([Open MPI requires a C11 (or newer) compiler])
         # AC_MSG_ERROR([Aborting.])
-        # From Open MPI 1.7 on we require a C99 compiant compiler
+        # From Open MPI 1.7 on we require a C99 compliant compiler
         # with autoconf 2.70 AC_PROG_CC makes AC_PROG_CC_C99 obsolete
         m4_version_prereq([2.70],
             [],
@@ -205,7 +205,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
     PMIX_CC_HELPER([if $CC $1 supports C11 _Thread_local], [pmix_prog_cc_c11_helper__Thread_local_available],
                    [],[[static _Thread_local int  foo = 1;++foo;]])
 
-    dnl At this time, PMIx only needs thread local and the atomic convenience tyes for C11 suport. These
+    dnl At this time, PMIx only needs thread local and the atomic convenience types for C11 support. These
     dnl will likely be required in the future.
     AC_DEFINE_UNQUOTED([PMIX_C_HAVE__THREAD_LOCAL], [$pmix_prog_cc_c11_helper__Thread_local_available],
                        [Whether C compiler supports __Thread_local])

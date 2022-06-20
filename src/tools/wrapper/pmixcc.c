@@ -153,7 +153,7 @@ struct options_data_t {
      * language-binding specific file (for example, a C++ header file)
      * when invoking an optional language binding. */
     char *req_file;
-    /* Default includedir, before variable expansion.  Almost alwyas
+    /* Default includedir, before variable expansion.  Almost always
      * set as ${includedir} outside of multilib situations. */
     char *path_includedir;
     /* Default libdir, before variable expansion.  Almost always set
@@ -619,7 +619,7 @@ int main(int argc, char *argv[])
             old_match = temp;
             temp = strstr(temp + 1, extension);
         }
-        /* Only if there was a match of .exe, erase the last occurence of .exe */
+        /* Only if there was a match of .exe, erase the last occurrence of .exe */
         if (NULL != old_match) {
             *old_match = '\0';
         }

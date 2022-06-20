@@ -48,14 +48,14 @@ int test_connect_disconnect(char *my_nspace, int my_rank)
         TEST_ERROR(("%s:%d: Connect blocking test failed.", my_nspace, my_rank));
         exit(PMIX_ERROR);
     }
-    TEST_VERBOSE(("%s:%d: Connect blocking test succeded", my_nspace, my_rank));
+    TEST_VERBOSE(("%s:%d: Connect blocking test succeeded", my_nspace, my_rank));
 
     rc = PMIx_Disconnect(&proc, 1, NULL, 0);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Disconnect blocking test failed.", my_nspace, my_rank));
         exit(PMIX_ERROR);
     }
-    TEST_VERBOSE(("%s:%d: Disconnect blocking test succeded.", my_nspace, my_rank));
+    TEST_VERBOSE(("%s:%d: Disconnect blocking test succeeded.", my_nspace, my_rank));
 
     cbdata.in_progress = 1;
     rc = PMIx_Connect_nb(&proc, 1, NULL, 0, cnct_cb, &cbdata);
@@ -67,7 +67,7 @@ int test_connect_disconnect(char *my_nspace, int my_rank)
         TEST_ERROR(("%s:%d: Connect non-blocking test failed.", my_nspace, my_rank));
         exit(PMIX_ERROR);
     }
-    TEST_VERBOSE(("%s:%d: Connect non-blocking test succeded.", my_nspace, my_rank));
+    TEST_VERBOSE(("%s:%d: Connect non-blocking test succeeded.", my_nspace, my_rank));
 
     cbdata.in_progress = 1;
     rc = PMIx_Disconnect_nb(&proc, 1, NULL, 0, cd_cb, &cbdata);
@@ -79,6 +79,6 @@ int test_connect_disconnect(char *my_nspace, int my_rank)
         TEST_ERROR(("%s:%d: Disconnect non-blocking test failed.", my_nspace, my_rank));
         exit(PMIX_ERROR);
     }
-    TEST_VERBOSE(("%s:%d: Disconnect non-blocking test succeded.", my_nspace, my_rank));
+    TEST_VERBOSE(("%s:%d: Disconnect non-blocking test succeeded.", my_nspace, my_rank));
     return PMIX_SUCCESS;
 }

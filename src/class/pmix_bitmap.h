@@ -85,7 +85,7 @@ PMIX_EXPORT int pmix_bitmap_init(pmix_bitmap_t *bm, int size);
 
 /**
  * Set a bit of the bitmap. If the bit asked for is beyond the current
- * size of the bitmap, then the bitmap is extended to accomodate the
+ * size of the bitmap, then the bitmap is extended to accommodate the
  * bit
  *
  * @param  bitmap The input bitmap (IN)
@@ -224,7 +224,7 @@ PMIX_EXPORT bool pmix_bitmap_are_different(pmix_bitmap_t *left, pmix_bitmap_t *r
 PMIX_EXPORT char *pmix_bitmap_get_string(pmix_bitmap_t *bitmap);
 
 /**
- * Return the number of 'unset' bits, upto the specified length
+ * Return the number of 'unset' bits, up to the specified length
  *
  * @param bitmap Pointer to the bitmap
  * @param len Number of bits to check
@@ -233,7 +233,7 @@ PMIX_EXPORT char *pmix_bitmap_get_string(pmix_bitmap_t *bitmap);
 PMIX_EXPORT int pmix_bitmap_num_unset_bits(pmix_bitmap_t *bm, int len);
 
 /**
- * Return the number of 'set' bits, upto the specified length
+ * Return the number of 'set' bits, up to the specified length
  *
  * @param bitmap Pointer to the bitmap
  * @param len Number of bits to check

@@ -45,7 +45,7 @@ dnl
 AC_DEFUN([PMIX_CONFIGURE_SETUP],[
 
 # Some helper script functions.  Unfortunately, we cannot use $1 kinds
-# of arugments here because of the m4 substitution.  So we have to set
+# of arguments here because of the m4 substitution.  So we have to set
 # special variable names before invoking the function.  :-\
 
 pmix_show_title() {
@@ -350,7 +350,7 @@ dnl #######################################################################
 # PMIX_APPEND_UNIQ(variable, new_argument)
 # ----------------------------------------
 # Append new_argument to variable if not already in variable.  This assumes a
-# space seperated list.
+# space separated list.
 #
 # This could probably be made more efficient :(.
 AC_DEFUN([PMIX_APPEND_UNIQ], [
@@ -380,7 +380,7 @@ dnl #######################################################################
 # - the argument does not begin with -I, -L, or -l, or
 # - the argument begins with -I, -L, or -l, and it's not already in variable
 #
-# This macro assumes a space seperated list.
+# This macro assumes a space separated list.
 AC_DEFUN([PMIX_FLAGS_APPEND_UNIQ], [
     PMIX_VAR_SCOPE_PUSH([pmix_tmp pmix_append])
 
@@ -409,7 +409,7 @@ dnl #######################################################################
 # - the argument does not begin with -I, -L, or -l, or
 # - the argument begins with -I, -L, or -l, and it's not already in variable
 #
-# This macro assumes a space seperated list.
+# This macro assumes a space separated list.
 AC_DEFUN([PMIX_FLAGS_PREPEND_UNIQ], [
     PMIX_VAR_SCOPE_PUSH([pmix_tmp pmix_prepend])
 
@@ -440,7 +440,7 @@ dnl #######################################################################
 # variable, it is appended to variable.
 #
 # If an argument in new_argument begins with a -l and is already in
-# variable, the existing occurances of the argument are removed from
+# variable, the existing occurrences of the argument are removed from
 # variable and the argument is appended to variable.  This behavior
 # is most useful in LIBS, where ordering matters and being rightmost
 # is usually the right behavior.
@@ -649,7 +649,7 @@ AC_DEFUN([PMIX_COMPUTE_MAX_VALUE], [
                     overflow=1
                 fi
             else
-                # stil negative.  Time to give up.
+                # still negative.  Time to give up.
                 overflow=1
             fi
             pmix_num_bits=0

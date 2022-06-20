@@ -607,7 +607,7 @@ int pmix_mca_base_var_get_value(int vari, void *value, pmix_mca_base_var_source_
     }
 
     if (NULL != value) {
-        /* Return a poiner to our backing store (either a char **, int *,
+        /* Return a pointer to our backing store (either a char **, int *,
            or bool *) */
         *tmp = var->mbv_storage;
     }

@@ -376,7 +376,7 @@ static int pretty_print_nodes(pmix_node_t **nodes, pmix_std_cntr_t num_nodes) {
     pmix_std_cntr_t i;
 
     /*
-     * Caculate segment lengths
+     * Calculate segment lengths
      */
     len_name    = (int) strlen("Node Name");
     len_state   = (int) strlen("State");
@@ -457,7 +457,7 @@ static int pretty_print_jobs(pmix_job_t **jobs, pmix_std_cntr_t num_jobs) {
         jobstr = PMIX_JOBID_PRINT(job->jobid);
 
         /*
-         * Caculate segment lengths
+         * Calculate segment lengths
          */
         len_jobid  = strlen(jobstr);;
         len_state  = (int) (strlen(pmix_job_state_to_str(job->state)) < strlen("State") ?
@@ -529,7 +529,7 @@ static int pretty_print_vpids(pmix_job_t *job) {
     }
 
     /*
-     * Caculate segment lengths
+     * Calculate segment lengths
      */
     len_o_proc_name = (int)strlen("PMIX Name");
     len_proc_name   = (int)strlen("Process Name");

@@ -381,7 +381,7 @@ static inline pmix_list_item_t *pmix_list_get_last(pmix_list_t *list)
  * Similar to the STL, this is a special invalid list item -- it
  * should \em not be used for storage.  It is only suitable for
  * comparison to other items in the list to see if they are valid or
- * not; it's ususally used when iterating through the items in a list.
+ * not; it's usually used when iterating through the items in a list.
  *
  * This is an inlined function in compilers that support inlining, so
  * it's usually a cheap operation.
@@ -403,7 +403,7 @@ static inline pmix_list_item_t *pmix_list_get_begin(pmix_list_t *list)
  * Similar to the STL, this is a special invalid list item -- it
  * should \em not be used for storage.  It is only suitable for
  * comparison to other items in the list to see if they are valid or
- * not; it's ususally used when iterating through the items in a list.
+ * not; it's usually used when iterating through the items in a list.
  *
  * This is an inlined function in compilers that support inlining, so
  * it's usually a cheap operation.
@@ -614,7 +614,7 @@ static inline void pmix_list_prepend(pmix_list_t *list, pmix_list_item_t *item)
     /* reset item's previous pointer */
     item->pmix_list_prev = sentinel;
 
-    /* reset previous first element's previous poiner */
+    /* reset previous first element's previous pointer */
     sentinel->pmix_list_next->pmix_list_prev = item;
 
     /* reset head's next pointer */
@@ -854,7 +854,7 @@ PMIX_EXPORT void pmix_list_join(pmix_list_t *thislist,
  * last) elements of \c xlist are moved into \c thislist,
  * inserting them before \c pos.  \c pos must be a valid iterator
  * in \c thislist and \c [first, last) must be a valid range in \c
- * xlist.  \c postition must not be in the range \c [first, last).
+ * xlist.  \c position must not be in the range \c [first, last).
  * It is, however, valid for \c xlist and \c thislist to be the
  * same list.
  *

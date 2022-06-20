@@ -41,7 +41,7 @@ PMIX_CLASS_INSTANCE(pmix_mca_base_component_priority_list_item_t,
                     pmix_mca_base_component_list_item_t, cpl_constructor, NULL);
 
 /*
- * Just do basic sentinel intialization
+ * Just do basic sentinel initialization
  */
 static void cl_constructor(pmix_object_t *obj)
 {
@@ -50,7 +50,7 @@ static void cl_constructor(pmix_object_t *obj)
 }
 
 /*
- * Just do basic sentinel intialization
+ * Just do basic sentinel initialization
  */
 static void cpl_constructor(pmix_object_t *obj)
 {
