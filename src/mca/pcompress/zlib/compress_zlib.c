@@ -60,15 +60,17 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
     z_stream strm;
     size_t len, len2;
     uint8_t *tmp, *ptr;
+    uint32_t len3;
     int rc;
 
     /* set default output */
     *outbytes = NULL;
     *outlen = 0;
 
-    if (inlen < pmix_compress_base.compress_limit) {
+    if (inlen < pmix_compress_base.compress_limit || inlen >= UINT32_MAX) {
         return false;
     }
+    len3 = inlen;
 
     /* setup the stream */
     memset(&strm, 0, sizeof(strm));
@@ -99,7 +101,7 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
 
     rc = deflate(&strm, Z_FINISH);
     (void) deflateEnd(&strm);
-    if (Z_OK != rc && Z_STREAM_END != rc) {
+    if (Z_STREAM_END != rc) {
         free(tmp);
         return false;
     }
@@ -117,7 +119,7 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
     *outlen = len2;
 
     /* fold the uncompressed length into the buffer */
-    memcpy(ptr, &inlen, sizeof(uint32_t));
+    memcpy(ptr, &len3, sizeof(uint32_t));
     ptr += sizeof(uint32_t);
     /* bring over the compressed data */
     memcpy(ptr, tmp, len2 - sizeof(uint32_t));
@@ -167,7 +169,7 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
 
     rc = inflate(&strm, Z_FINISH);
     inflateEnd(&strm);
-    if (Z_OK == rc) {
+    if (Z_STREAM_END == rc) {
         *outbytes = dest;
         return true;
     }
@@ -176,7 +178,7 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
 }
 static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t inlen)
 {
-    int32_t len2;
+    uint32_t len2;
     bool rc;
     uint8_t *input;
 
@@ -187,7 +189,7 @@ static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *i
     memcpy(&len2, inbytes, sizeof(uint32_t));
 
     pmix_output_verbose(2, pmix_pcompress_base_framework.framework_output,
-                        "DECOMPRESSING INPUT OF LEN %" PRIsize_t " OUTPUT %d", inlen, len2);
+                        "DECOMPRESSING INPUT OF LEN %" PRIsize_t " OUTPUT %u", inlen, len2);
 
     input = (uint8_t *) (inbytes + sizeof(uint32_t)); // step over the size
     rc = doit(outbytes, len2, input, inlen);
@@ -200,13 +202,18 @@ static bool zlib_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *i
 
 static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
 {
-    int32_t len2;
+    uint32_t len2;
     bool rc;
     uint8_t *input;
 
     /* the first 4 bytes contains the uncompressed size */
     memcpy(&len2, inbytes, sizeof(uint32_t));
-    /* add one to hold the NULL terminator */
+    if (len2 == UINT32_MAX) {
+        /* set the default error answer */
+        *outstring = NULL;
+        return false;
+    }
+    /* add one to hold the NUL terminator */
     ++len2;
 
     /* decompress the bytes */
@@ -214,8 +221,8 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
     rc = doit((uint8_t **) outstring, len2, input, len);
 
     if (rc) {
-        /* ensure this is NULL terminated! */
-        outstring[len2 - 1] = NULL;
+        /* ensure this is NUL terminated! */
+        *outstring[len2 - 1] = '\0';
         return true;
     }
 
