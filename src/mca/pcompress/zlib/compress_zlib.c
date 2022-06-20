@@ -99,7 +99,7 @@ static bool zlib_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outbyt
 
     rc = deflate(&strm, Z_FINISH);
     (void) deflateEnd(&strm);
-    if (Z_OK != rc && Z_STREAM_END != rc) {
+    if (Z_STREAM_END != rc) {
         free(tmp);
         return false;
     }
@@ -167,7 +167,7 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
 
     rc = inflate(&strm, Z_FINISH);
     inflateEnd(&strm);
-    if (Z_OK == rc) {
+    if (Z_STREAM_END == rc) {
         *outbytes = dest;
         return true;
     }
