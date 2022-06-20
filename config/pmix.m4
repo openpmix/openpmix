@@ -70,7 +70,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_SUBST(PMIX_top_builddir)
 
     # Get pmix's absolute top srcdir (which may not be the same as the
-    # real $top_srcdir.  First, go back to the startdir incase the
+    # real $top_srcdir.  First, go back to the startdir in case the
     # $srcdir is relative.
 
     cd "$PMIX_startdir"
@@ -1138,7 +1138,7 @@ AS_IF([test "$pmix_install_primary_headers" = "no"],
 #
 AC_ARG_ENABLE([per-user-config-files],
    [AS_HELP_STRING([--enable-per-user-config-files],
-      [Disable per-user configuration files, to save disk accesses during job start-up.  This is likely desirable for large jobs.  Note that this can also be acheived by environment variables at run-time.  (default: enabled)])])
+      [Disable per-user configuration files, to save disk accesses during job start-up.  This is likely desirable for large jobs.  Note that this can also be achieved by environment variables at run-time.  (default: enabled)])])
 if test "$enable_per_user_config_files" = "no" ; then
   result=0
 else

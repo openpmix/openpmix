@@ -632,7 +632,7 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
         }
 
         /*
-         * If not recursively decending, then if we find a directory then fail
+         * If not recursively descending, then if we find a directory then fail
          * since we were not told to remove it.
          */
         if (is_dir && !cd->recurse) {

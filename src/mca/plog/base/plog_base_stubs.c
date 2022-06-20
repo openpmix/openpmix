@@ -224,7 +224,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
              * fails - that error would be returned in the callback function.
              * In this case, the error indicates that the request contained
              * an incorrect/invalid element that prevents the plugin from
-             * executing it. The first such retured error will be cached and
+             * executing it. The first such returned error will be cached and
              * returned to the caller upon completion of all pending operations.
              * No callback from failed plugins shall be executed.
              */

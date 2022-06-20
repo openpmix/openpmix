@@ -408,7 +408,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
          * request. In this case, we create a local tracker for
          * possibly existing keys that are added with the completed
          * commit request. Thus, the get request will be pended in
-         * tracker and will be deffered. This scenario is possible
+         * tracker and will be deferred. This scenario is possible
          * when the non-fence commit-get scheme is used and when
          * the peer GDS component is `dstore`.
          * Checking the peer storage for local keys to avoid creating

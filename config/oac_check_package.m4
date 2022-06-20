@@ -53,7 +53,7 @@ dnl      in the specified path.
 dnl   4. We try to find the specified header and function with no change
 dnl      in CPPFLAGS or LDFLAGS and adding the specified libraries to LIBS.
 dnl
-dnl It is the resposibility of the caller to register arguments of the form
+dnl It is the responsibility of the caller to register arguments of the form
 dnl with-<package name>, with-<package name>-libdir, and with-package name>-incdir.
 dnl All three are optional, nothing will break if the caller doesn't specify them
 dnl (and indeed, if the package being searched for isn't libnl3, it's likely the
@@ -63,7 +63,7 @@ dnl By default, OAC_CHECK_PACKAGE will use <package name> for the module name to
 dnl to pkg-config, meaning there is a <package name>.pc in the filesystem.  If a
 dnl different module name should be used, add a macro to the M4 environment named
 dnl <package name>_pkgconfig_module with the value of the pkgconfig module name
-dnl to use.  For exmaple, if the libevent module name is libevent_core, you could
+dnl to use.  For example, if the libevent module name is libevent_core, you could
 dnl specify:
 dnl
 dnl    m4_define([libevent_pkgconfig_module], [libevent_core])

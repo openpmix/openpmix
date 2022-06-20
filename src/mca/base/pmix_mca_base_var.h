@@ -53,7 +53,7 @@
  * - If nothing else was found, use the variable's default value.
  *
  * Note that there is a second header file (pmix_mca_base_vari.h)
- * that contains several internal type delcarations for the variable
+ * that contains several internal type declarations for the variable
  * system.  The internal file is only used within the variable system
  * itself; it should not be required by any other PMIX entities.
  */
@@ -240,7 +240,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mca_base_var_t);
  *
  * @retval PMIX_SUCCESS
  *
- * This function initalizes the MCA variable system.  It is
+ * This function initializes the MCA variable system.  It is
  * invoked internally (by pmix_mca_base_open()) and is only documented
  * here for completeness.
  */
@@ -383,7 +383,7 @@ PMIX_EXPORT int pmix_mca_base_framework_var_register(
  * creates a new name that by which the same variable value is
  * accessible.
  *
- * Note that the original variable name has precendence over all
+ * Note that the original variable name has precedence over all
  * synonyms.  For example, consider the case if variable is
  * originally registered under the name "A" and is later
  * registered with synonyms "B" and "C".  If the user sets values
@@ -406,7 +406,7 @@ PMIX_EXPORT int pmix_mca_base_var_register_synonym(int synonym_for, const char *
  * @param vari Index returned from pmix_mca_base_var_register() or
  * pmix_mca_base_var_register_synonym().
  *
- * Deregistering a variable does not free the variable or any memory assoicated
+ * Deregistering a variable does not free the variable or any memory associated
  * with it. All memory will be freed and the variable index released when
  * pmix_mca_base_var_finalize() is called.
  *
@@ -544,7 +544,7 @@ PMIX_EXPORT int pmix_mca_base_var_get(int vari, const pmix_mca_base_var_t **var)
 PMIX_EXPORT int pmix_mca_base_var_get_count(void);
 
 /**
- * Obtain a list of enironment variables describing the all
+ * Obtain a list of environment variables describing the all
  * valid (non-default) MCA variables and their sources.
  *
  * @param[out] env A pointer to an argv-style array of key=value

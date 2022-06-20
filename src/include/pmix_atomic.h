@@ -44,8 +44,8 @@
  *
  *  - \c PMIX_HAVE_ATOMIC_MEM_BARRIER atomic memory barriers
  *  - \c PMIX_HAVE_ATOMIC_SPINLOCKS atomic spinlocks
- *  - \c PMIX_HAVE_ATOMIC_MATH_32 if 32 bit add/sub/compare-exchange can be done "atomicly"
- *  - \c PMIX_HAVE_ATOMIC_MATH_64 if 64 bit add/sub/compare-exchange can be done "atomicly"
+ *  - \c PMIX_HAVE_ATOMIC_MATH_32 if 32 bit add/sub/compare-exchange can be done "atomically"
+ *  - \c PMIX_HAVE_ATOMIC_MATH_64 if 64 bit add/sub/compare-exchange can be done "atomically"
  *
  * Note that for the Atomic math, atomic add/sub may be implemented as
  * C code using pmix_atomic_compare_exchange.  The appearance of atomic

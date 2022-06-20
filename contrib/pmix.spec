@@ -244,7 +244,7 @@ and link against PMIx.
 
 #############################################################################
 #
-# Prepatory Section
+# Preparatory Section
 #
 #############################################################################
 %prep
@@ -373,7 +373,7 @@ proc ModulesHelp { } {
    puts stderr "This module adds PMIx v%{version} to various paths"
 }
 
-module-whatis   "Sets up PMIx v%{version} in your enviornment"
+module-whatis   "Sets up PMIx v%{version} in your environment"
 
 prepend-path PATH "%{_prefix}/bin/"
 prepend-path LD_LIBRARY_PATH %{_libdir}

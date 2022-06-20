@@ -737,7 +737,7 @@ void pmix_hash2_register_key(uint32_t inid,
 #endif
 }
 
-// TODO(skg) We may have to modify the signature of thie function. How will we
+// TODO(skg) We may have to modify the signature of this function. How will we
 // get a handle to the TMA?
 pmix_regattr_input_t* pmix_hash2_lookup_key(uint32_t inid,
                                            const char *key)

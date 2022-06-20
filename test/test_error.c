@@ -72,7 +72,7 @@ int test_error(char *my_nspace, int my_rank, test_params params)
 
     TEST_VERBOSE(("test-error: running  error handling test cases"));
     /* register specific client error handlers and test their invocation
-     * by  trigerring events  from server side*/
+     * by  triggering events  from server side*/
     status = PMIX_ERR_TIMEOUT;
     PMIx_Register_event_handler(&status, 1, NULL, 0, timeout_errhandler, errhandler_reg_callbk1,
                                 &errhandler_refs[0]);
