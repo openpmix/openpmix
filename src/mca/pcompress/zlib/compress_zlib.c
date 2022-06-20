@@ -208,6 +208,11 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
 
     /* the first 4 bytes contains the uncompressed size */
     memcpy(&len2, inbytes, sizeof(uint32_t));
+    if (len2 == UINT32_MAX) {
+        /* set the default error answer */
+        *outstring = NULL;
+        return false;
+    }
     /* add one to hold the NUL terminator */
     ++len2;
 
