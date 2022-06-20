@@ -191,7 +191,7 @@ static int send_email(char *msg)
     set_oldsig = true;
 
     /* Try to get a libesmtp session.  If so, assume that libesmtp is
-       happy and proceeed */
+       happy and proceed */
     session = smtp_create_session();
     if (NULL == session) {
         err = PMIX_ERR_NOT_SUPPORTED;

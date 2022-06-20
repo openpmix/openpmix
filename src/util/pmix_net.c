@@ -257,7 +257,7 @@ bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
         if (64 == prefixlen) {
             /* prefixlen is always /64, any other case would be routing.
                Compare the first eight bytes (64 bits) and hope that
-               endianess is not an issue on any system as long as
+               endianness is not an issue on any system as long as
                addresses are always stored in network byte order.
             */
             if (((const uint32_t *) (a6_1))[0] == ((const uint32_t *) (a6_2))[0]
@@ -353,7 +353,7 @@ char *pmix_net_get_hostname(const struct sockaddr *addr)
     case AF_INET6:
 #    if defined(__NetBSD__)
         /* hotfix for netbsd: on my netbsd machine, getnameinfo
-           returns an unkown error code. */
+           returns an unknown error code. */
         if (NULL
             == inet_ntop(AF_INET6, &((struct sockaddr_in6 *) addr)->sin6_addr, name, NI_MAXHOST)) {
             pmix_output(0, "pmix_sockaddr2str failed with error code %d", errno);

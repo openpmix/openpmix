@@ -26,7 +26,7 @@ dnl
 dnl $HEADER$
 dnl
 
-# PMIX_CHECK_TM_PBS_CONFIG_RUN([pbs-config args], [assigmnent variable],
+# PMIX_CHECK_TM_PBS_CONFIG_RUN([pbs-config args], [assignment variable],
 #                              [action-if-successful], [action-if-not-successful])
 # --------------------------------------------------------------------------------
 AC_DEFUN([PMIX_CHECK_TM_PBS_CONFIG_RUN], [

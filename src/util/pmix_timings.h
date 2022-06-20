@@ -199,7 +199,7 @@ PMIX_EXPORT void pmix_timing_end_prep(pmix_timing_prep_t p, const char *func, co
  *
  * @param t timing handler
  * @param account_overhead consider malloc overhead introduced by timing code
- * @param prefix prefix to use when no fname was specifyed to ease grep'ing
+ * @param prefix prefix to use when no fname was specified to ease grep'ing
  * @param fname name of the output file (may be NULL)
  *
  * @retval PMIX_SUCCESS On success
@@ -304,7 +304,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
 /**
  * MSTART: Measurement START
  * Introduce new timing measurement conjuncted with its start
- * on the specifyed timing handler;
+ * on the specified timing handler;
  * will be "compiled out" when PMIX is configured without
  * --enable-timing.
  *
@@ -315,7 +315,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
 
 /**
  * MSTOP: STOP Measurement
- * Finishes the most recent measurement on the specifyed timing handler;
+ * Finishes the most recent measurement on the specified timing handler;
  * will be "compiled out" when PMIX is configured without
  * --enable-timing.
  *
@@ -325,7 +325,7 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
 
 /**
  * MSTOP_ID: STOP Measurement with ID=id.
- * Finishes the measurement with give ID on the specifyed timing handler;
+ * Finishes the measurement with give ID on the specified timing handler;
  * will be "compiled out" when PMIX is configured without
  * --enable-timing.
  *
@@ -335,12 +335,12 @@ PMIX_EXPORT void pmix_timing_release(pmix_timing_t *t);
 
 /**
  * MNEXT: start NEXT Measurement
- * Convinient macro, may be implemented with the sequence of three previously
- * defined macroses:
+ * Convenient macro, may be implemented with the sequence of three previously
+ * defined macros:
  * - finish current measurement (PMIX_TIMING_MSTOP);
  * - introduce new timing measurement (PMIX_TIMING_MDESCR);
  * - starts next measurement (PMIX_TIMING_MSTART_ID)
- * on the specifyed timing handler;
+ * on the specified timing handler;
  * will be "compiled out" when PMIX is configured without
  * --enable-timing.
  *

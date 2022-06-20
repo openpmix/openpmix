@@ -574,7 +574,7 @@ static void local_getfields(char *dptr, char ***fields)
     }
 
     /* working from this point, find the end of each
-     * alpha-numeric field and store it on the stack.
+     * alphanumeric field and store it on the stack.
      * Then shift across the white space to the start
      * of the next one
      */

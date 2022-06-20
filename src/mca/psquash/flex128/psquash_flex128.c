@@ -303,7 +303,7 @@ static pmix_status_t flex128_decode_int(pmix_data_type_t type, void *src, size_t
  *
  * This encoding changes the default representation by introducing an additional
  * bit per each byte to store a "continuation flag". So integers are now encoded
- * with the same representation, but the base B = 128 and the remaning bit is
+ * with the same representation, but the base B = 128 and the remaining bit is
  * used to indicate whether or not the next byte contains more bits of this value.
  */
 static size_t flex_pack_integer(size_t val, uint8_t out_buf[FLEX_BASE7_MAX_BUF_SIZE])

@@ -640,7 +640,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        either or both of them may be included.
 #define PMIX_APP_INFO_ARRAY                 "pmix.app.arr"          // (pmix_data_array_t*) Provide an array of pmix_info_t containing app-level
                                                                     //        information. The PMIX_NSPACE or PMIX_JOBID attributes of the job containing
-                                                                    //        the appplication, plus its PMIX_APPNUM attribute, are required to be
+                                                                    //        the application, plus its PMIX_APPNUM attribute, are required to be
                                                                     //        included in the array.
 #define PMIX_PROC_INFO_ARRAY                "pmix.pdata"            // (pmix_data_array_t*) Provide an array of pmix_info_t containing process-realm
                                                                     //        information. The PMIX_RANK and PMIX_NSPACE attributes, or the
@@ -986,7 +986,7 @@ typedef uint32_t pmix_rank_t;
                                                                    //       storage system's atomic unit of transfer (e.g., block size)
 #define PMIX_STORAGE_OBJECTS_USED           "pmix.strg.objuse"     // (uint64_t) Overall used number of objects (e.g., inodes) for the storage system
 #define PMIX_STORAGE_PERSISTENCE            "pmix.strg.persist"    // (pmix_storage_persistence_t) Persistence level of the storage system
-                                                                   //       (e.g., sratch storage or achive storage)
+                                                                   //       (e.g., sratch storage or archive storage)
 #define PMIX_STORAGE_SUGGESTED_XFER_SIZE    "pmix.strg.sxfer"      // (double) Suggested transfer size (in bytes) for the storage system
 #define PMIX_STORAGE_VERSION                "pmix.strg.ver"        // (char*) Version string for the storage system
 
@@ -1199,7 +1199,7 @@ typedef uint8_t pmix_job_state_t;
 typedef int pmix_status_t;
 
 /* v1.x error values - must be fixed in place for backward
- * compatability. Note that some number of these have been
+ * compatibility. Note that some number of these have been
  * deprecated and may not be returned by v2.x and above
  * clients or servers. However, they must always be
  * at least defined to ensure older codes will compile */
@@ -2060,7 +2060,7 @@ char **pmix_argv_copy(char **argv)
  *
  * The \em env array will be grown if necessary.
  *
- * It is permissable to invoke this function with the
+ * It is permissible to invoke this function with the
  * system-defined \em environ variable.  For example:
  *
  * \code
@@ -2073,7 +2073,7 @@ char **pmix_argv_copy(char **argv)
  * environment.  This may very well lead to a memory leak, so its
  * use is strongly discouraged.
  *
- * It is also permissable to call this function with an empty \em
+ * It is also permissible to call this function with an empty \em
  * env, as long as it is pre-initialized with NULL:
  *
  * \code

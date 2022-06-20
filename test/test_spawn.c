@@ -74,12 +74,12 @@ int test_spawn(char *my_nspace, int my_rank)
         TEST_ERROR(("%s:%d: Spawn blocking test failed.", my_nspace, my_rank));
         exit(rc);
     }
-    TEST_VERBOSE(("%s:%d: Spawn blocking test succeded.", my_nspace, my_rank));
+    TEST_VERBOSE(("%s:%d: Spawn blocking test succeeded.", my_nspace, my_rank));
     rc = test_spawn_common(my_nspace, my_rank, 0);
     if (PMIX_SUCCESS != rc) {
         TEST_ERROR(("%s:%d: Spawn non-blocking test failed.", my_nspace, my_rank));
         exit(rc);
     }
-    TEST_VERBOSE(("%s:%d: Spawn non-blocking test succeded.", my_nspace, my_rank));
+    TEST_VERBOSE(("%s:%d: Spawn non-blocking test succeeded.", my_nspace, my_rank));
     return PMIX_SUCCESS;
 }

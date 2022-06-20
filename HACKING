@@ -85,7 +85,7 @@ installation using the --with-libevent=<dir> option if it is in
 a non-standard location. Similarly, non-standard locations for
 the HWLOC package must be specified using the --with-hwloc=<dir>
 option. In both cases, PMIx will automatically detect these
-packages in standard locations and build-in support for them
+packages in standard locations and built-in support for them
 unless otherwise specified using the respective configure option.
 
 

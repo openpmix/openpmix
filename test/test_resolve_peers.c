@@ -41,7 +41,7 @@ static int resolve_nspace(char *nspace, test_params params, char *my_nspace, int
     }
     if (nprocs != nranks) {
         TEST_ERROR(
-            ("%s:%d: Resolve peers returned incorect result: returned %lu processes, expected %lu",
+            ("%s:%d: Resolve peers returned incorrect result: returned %lu processes, expected %lu",
              my_nspace, my_rank, nprocs, nranks));
         PMIX_PROC_FREE(procs, nprocs);
         PMIX_PROC_FREE(ranks, nranks);

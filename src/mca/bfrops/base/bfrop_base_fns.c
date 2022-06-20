@@ -1332,7 +1332,7 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr,
     if (NULL == iptr) {
         return PMIX_ERR_NOMEM;
     }
-    /* we want to preserve any pointes in the provided
+    /* we want to preserve any pointers in the provided
      * info struct so the result points to the same
      * memory location */
     memcpy(&iptr->info, info, sizeof(pmix_info_t));

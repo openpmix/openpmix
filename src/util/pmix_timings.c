@@ -489,7 +489,7 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
             continue;
         }
 
-        /* id's assigned auomatically. Ther shouldn't be any gaps in descr[] */
+        /* id's assigned auomatically. There shouldn't be any gaps in descr[] */
         assert(NULL != descr[id].descr_ev);
 
         if (ev->type == PMIX_TIMING_INTBEGIN) {
@@ -517,7 +517,7 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
             if (NULL == descr[id].begin_ev) {
                 /* the measurement on this interval wasn't started! */
                 char *file = pmix_basename(ev->file);
-                pmix_output(0, "pmix_timing_deltas: inteval end without start at %s:%d:%s", file,
+                pmix_output(0, "pmix_timing_deltas: interval end without start at %s:%d:%s", file,
                             ev->line, ev->func);
                 free(file);
             } else {

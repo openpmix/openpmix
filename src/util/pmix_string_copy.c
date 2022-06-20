@@ -21,7 +21,7 @@ void pmix_string_copy(char *dest, const char *src, size_t dest_len)
     char *new_dest = dest;
 
     // PMIx does not do *giant* string copies.  Hence, we use the
-    // hueristic: if "dest_len" is too large, this is a programmer
+    // heuristic: if "dest_len" is too large, this is a programmer
     // error.  We pseudo-arbitrarily pick a large value to be the max
     // allowable dest_len: 128K.  If we ever need to increase this
     // value someday (because something has a legit reason to

@@ -42,7 +42,7 @@ int pmix_pdl_base_open(pmix_mca_base_open_flag_t flags)
 }
 
 /* VERY IMPORTANT: This framework is static, and is opened before any
-   other dyanmic frameworks are opened (which makes sense, of course).
+   other dynamic frameworks are opened (which makes sense, of course).
    But we must mark this framework is NO_DSO so that the MCA framework
    base doesn't try to open any dynamic components in this
    framework. */

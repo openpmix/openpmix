@@ -156,7 +156,7 @@ int pmix_ifindextokindex(int if_index)
 }
 
 /*
- *  Attempt to resolve the adddress (given as either IPv4/IPv6 string
+ *  Attempt to resolve the address (given as either IPv4/IPv6 string
  *  or hostname) and lookup corresponding interface.
  */
 

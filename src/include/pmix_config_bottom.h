@@ -486,7 +486,7 @@ typedef PMIX_PTRDIFF_TYPE ptrdiff_t;
 /* Prior to Mac OS X 10.3, the length modifier "ll" wasn't
    supported, but "q" was for long long.  This isn't ANSI
    C and causes a warning when using PRI?64 macros.  We
-   don't support versions prior to OS X 10.3, so we dont'
+   don't support versions prior to OS X 10.3, so we don't
    need such backward compatibility.  Instead, redefine
    the macros to be "ll", which is ANSI C and doesn't
    cause a compiler warning. */

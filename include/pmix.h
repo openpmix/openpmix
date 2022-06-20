@@ -1402,7 +1402,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
  * @param payload The address of a pmix_byte_object_t into which
  * the buffer is to be unloaded
  *
- * @retval PMIX_SUCCESS The request was succesfully completed.
+ * @retval PMIX_SUCCESS The request was successfully completed.
  *
  * @retval PMIX_ERROR(s) An appropriate error code indicating the
  * problem will be returned. This should be handled appropriately by
@@ -1590,7 +1590,7 @@ PMIX_EXPORT void PMIx_Value_destruct(pmix_value_t *val);
 PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
 
-/* Compre the contents of two pmix_value_t structures */
+/* Compare the contents of two pmix_value_t structures */
 PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
                                                 pmix_value_t *v2);
 

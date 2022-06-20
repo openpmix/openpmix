@@ -85,7 +85,7 @@ typedef int (*pmix_mca_base_var_enum_dump_fn_t)(pmix_mca_base_var_enum_t *self, 
  * @retval PMIX_SUCCESS on success
  * @retval PMIX_ERR_VALUE_OUT_OF_BOUNDS if not found
  *
- * @long This function returns the string value for a given interger value in the
+ * @long This function returns the string value for a given integer value in the
  * {string_value} parameter. The {string_value} parameter may be NULL in which case
  * no string is returned. If a string is returned in {string_value} the caller
  * must free the string with free().

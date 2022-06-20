@@ -54,7 +54,7 @@ BEGIN_C_DECLS
  * @retval New array of environ
  *
  * Merge two environ-like arrays into a single, new array,
- * ensuring that there are no duplicate entires.  If there are
+ * ensuring that there are no duplicate entries.  If there are
  * duplicates, entries in the \em major array are favored over
  * those in the \em minor array.
  *
