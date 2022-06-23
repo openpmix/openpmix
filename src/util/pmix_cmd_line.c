@@ -164,7 +164,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         pmix_argv_free(argv);
-                        return PMIX_ERR_SILENT;
+                        return PMIX_OPERATION_SUCCEEDED;
                     }
                     if (0 == strcmp(ptr, "verbose") || 0 == strcmp(ptr, "v")) {
                         str = pmix_show_help_string("help-cli.txt", "verbose", false);
@@ -173,7 +173,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         pmix_argv_free(argv);
-                        return PMIX_ERR_SILENT;
+                        return PMIX_OPERATION_SUCCEEDED;
                     }
                     if (0 == strcmp(ptr, "help") || 0 == strcmp(ptr, "h")) {
                         // they requested help on the "help" option itself
@@ -187,7 +187,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                         pmix_argv_free(argv);
-                        return PMIX_ERR_SILENT;
+                        return PMIX_OPERATION_SUCCEEDED;
                     }
                     /* see if the argument is one of our options */
                     found = false;
@@ -200,7 +200,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                 free(str);
                             }
                             pmix_argv_free(argv);
-                            return PMIX_ERR_SILENT;
+                            return PMIX_OPERATION_SUCCEEDED;
                         }
                     }
                     if (!found) {
@@ -223,6 +223,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         printf("%s", str);
                         free(str);
                     }
+                    pmix_argv_free(argv);
+                    return PMIX_OPERATION_SUCCEEDED;
                 } else {  // unrecognized option
                     str = pmix_show_help_string("help-cli.txt", "unrecognized-option", true,
                                                 pmix_tool_basename, optarg);
@@ -244,7 +246,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 }
                 // if they ask for the version, that is all we do
                 pmix_argv_free(argv);
-                return PMIX_ERR_SILENT;
+                return PMIX_OPERATION_SUCCEEDED;
             default:
                 /* this could be one of the short options other than 'h' or 'V', so
                  * we have to check */
