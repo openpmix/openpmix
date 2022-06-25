@@ -185,13 +185,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_DEFINE_UNQUOTED([PMIX_REPO_REV], ["$PMIX_REPO_REV"],
                        [The OpenPMIx Git Revision])
 
-    # A hint to tell us if we are working with a build from Git or a tarball.
-    # Helpful when preparing diagnostic output.
-    if test -e $PMIX_TOP_SRCDIR/.git; then
-        AC_DEFINE_UNQUOTED([PMIX_GIT_REPO_BUILD], ["1"],
-            [If built from a git repo])
-    fi
-
     PMIX_RELEASE_DATE="`$PMIX_top_srcdir/config/pmix_get_version.sh $PMIX_top_srcdir/VERSION --release-date`"
     if test "$?" != "0"; then
         AC_MSG_ERROR([Cannot continue])
@@ -1017,6 +1010,15 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 ])dnl
 
 AC_DEFUN([PMIX_DEFINE_ARGS],[
+
+    # A hint to tell us if we are working with a build from Git or a tarball.
+    # Helpful when preparing diagnostic output.
+    if test -e $PMIX_TOP_SRCDIR/.git; then
+        AC_DEFINE_UNQUOTED([PMIX_GIT_REPO_BUILD], ["1"],
+            [If built from a git repo])
+        pmix_git_repo_build=yes
+    fi
+
     # do we want dlopen support ?
     AC_MSG_CHECKING([if want dlopen support])
     AC_ARG_ENABLE([dlopen],
@@ -1045,6 +1047,12 @@ AC_ARG_ENABLE(devel-check,
     AS_HELP_STRING([--enable-devel-check],
                    [enable developer-level compiler pickyness when building PMIx (default: disabled)]))
 if test "$enable_devel_check" = "yes"; then
+    AC_MSG_RESULT([yes])
+    WANT_PICKY_COMPILER=1
+elif test "$enable_devel_check" = "no"; then
+    AC_MSG_RESULT([no])
+    WANT_PICKY_COMPILER=0
+elif test "$pmix_git_repo_build" = "yes"; then
     AC_MSG_RESULT([yes])
     WANT_PICKY_COMPILER=1
 else
