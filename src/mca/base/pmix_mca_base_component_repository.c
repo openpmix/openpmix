@@ -203,7 +203,6 @@ static int file_exists(const char *filename, const char *ext)
 
 int pmix_mca_base_component_repository_add(const char *path)
 {
-    PMIX_HIDE_UNUSED_PARAMS(path);
 #if PMIX_HAVE_PDL_SUPPORT
     char *path_to_use = NULL, *dir, *ctx;
     const char sep[] = {PMIX_ENV_SEP, '\0'};
@@ -235,7 +234,8 @@ int pmix_mca_base_component_repository_add(const char *path)
     } while (NULL != (dir = strtok_r(NULL, sep, &ctx)));
 
     free(path_to_use);
-
+#else
+    PMIX_HIDE_UNUSED_PARAMS(project, path);
 #endif /* PMIX_HAVE_PDL_SUPPORT */
 
     return PMIX_SUCCESS;
