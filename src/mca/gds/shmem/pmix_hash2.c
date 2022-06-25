@@ -320,7 +320,7 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table2_t *table,
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_proc_data2_t *proc_data;
     pmix_dstor_t *hv;
-    uint32_t id, kid;
+    uint32_t id, kid=UINT32_MAX;
     char *node;
     pmix_regattr_input_t *p;
     pmix_info_t *iptr;
@@ -507,7 +507,7 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table2_t *table,
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_proc_data2_t *proc_data;
     pmix_dstor_t *d;
-    uint32_t id, kid;
+    uint32_t id, kid=UINT32_MAX;
     int n;
     char *node;
     pmix_regattr_input_t *p;
