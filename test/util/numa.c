@@ -9,7 +9,10 @@
 int main(int argc, char **argv)
 {
     hwloc_topology_t topo;
-    int ret, num, weight, N;
+#if HWLOC_API_VERSION >= 0x20000
+    int ret;
+#endif
+    int num, weight, N;
     hwloc_obj_t obj;
     unsigned width, w;
     hwloc_bitmap_t numas[100], result;

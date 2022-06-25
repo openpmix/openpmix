@@ -15,7 +15,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -97,7 +97,7 @@ typedef signed long intptr_t;
 typedef unsigned long uintptr_t;
 #    endif
 
-#elif HAVE_LONG_LONG && SIZEOF_VOID_P == SIZEOF_LONG_LONG
+#elif HAVE_LONG_LONG && defined(SIZEOF_LONG_LONG) && SIZEOF_VOID_P == SIZEOF_LONG_LONG
 
 #    ifndef HAVE_INTPTR_T
 typedef signed long long intptr_t;
