@@ -97,6 +97,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
     bool takeus;
     char **types;
     size_t n, m;
+    PMIX_HIDE_UNUSED_PARAMS(peer);
 
     PMIX_ACQUIRE_THREAD(&lock);
 
