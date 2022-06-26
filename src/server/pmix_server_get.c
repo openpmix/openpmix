@@ -690,7 +690,6 @@ static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd, pmix_bu
         if (rc != PMIX_SUCCESS) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&pkt);
-            PMIX_DESTRUCT(&pbkt);
             PMIX_DESTRUCT(&cb);
             return rc;
         }
