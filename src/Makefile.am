@@ -26,7 +26,6 @@ SUBDIRS = \
     include \
     class \
     util/keyval \
-    util/showhelp \
     util \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
@@ -38,7 +37,6 @@ DIST_SUBDIRS = \
     include \
     class \
     util/keyval \
-    util/showhelp \
     util \
     mca/base \
     $(MCA_pmix_FRAMEWORKS_SUBDIRS) \
