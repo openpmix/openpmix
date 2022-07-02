@@ -189,29 +189,22 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         pmix_argv_free(argv);
                         return PMIX_OPERATION_SUCCEEDED;
                     }
-                    /* see if the argument is one of our options */
-                    found = false;
-                    for (n=0; NULL != myoptions[n].name; n++) {
-                        if (0 == strcmp(ptr, myoptions[n].name)) {
-                            // it is, so they requested help on this option
-                            str = pmix_show_help_string(helpfile, ptr, false);
-                            if (NULL != str) {
-                                printf("%s", str);
-                                free(str);
-                            }
-                            pmix_argv_free(argv);
-                            return PMIX_OPERATION_SUCCEEDED;
-                        }
-                    }
-                    if (!found) {
-                        // let the user know we don't recognize that option
+                    /* see if we have help on that subject */
+                    str = pmix_show_help_string(helpfile, ptr, false);
+                    if (NULL == str) {
+                        // let the user know we don't recognize that topic
                         str = pmix_show_help_string("help-cli.txt", "unknown-option", true,
                                                     ptr, pmix_tool_basename);
                         if (NULL != str) {
                             printf("%s", str);
                             free(str);
                         }
+                    } else {
+                        printf("%s", str);
+                        free(str);
                     }
+                    pmix_argv_free(argv);
+                    return PMIX_OPERATION_SUCCEEDED;
                 } else if (NULL == optarg) {
                     // high-level help request
                     str = pmix_show_help_string(helpfile, "usage", false,
