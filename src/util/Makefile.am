@@ -95,11 +95,9 @@ sources = \
 libpmix_util_la_SOURCES = $(headers) $(sources)
 
 libpmix_util_la_LIBADD = \
-        keyval/libpmixutilkeyval.la \
-        showhelp/libpmixutilshowhelp.la
+        keyval/libpmixutilkeyval.la
 libpmix_util_la_DEPENDENCIES = \
-        keyval/libpmixutilkeyval.la \
-        showhelp/libpmixutilshowhelp.la
+        keyval/libpmixutilkeyval.la
 
 # Unconditionally install the header files
 

@@ -38,13 +38,16 @@
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
-#include "src/util/showhelp/showhelp_lex.h"
 
 bool pmix_show_help_enabled = false;
 static time_t show_help_time_last_displayed = 0;
 static bool show_help_timer_set = false;
 static pmix_event_t show_help_timer_event;
 static int output_stream = -1;
+
+static pmix_status_t load_array(char ***array,
+                                const char *filename,
+                                const char *topic);
 
 /* How long to wait between displaying duplicate show_help notices */
 static struct timeval show_help_interval = {5, 0};
@@ -402,12 +405,15 @@ static pmix_status_t array2string(char **outstring, int want_error_header, char 
 /*
  * Find the right file to open
  */
-static pmix_status_t open_file(const char *base, const char *topic)
+static pmix_status_t open_file(const char *base,
+                               const char *topic,
+                               FILE **fptr)
 {
     char *filename;
     char *err_msg = NULL;
     size_t base_len;
     int i;
+    FILE *fp = NULL;
 
     /* If no filename was supplied, use the default */
 
@@ -424,8 +430,8 @@ static pmix_status_t open_file(const char *base, const char *topic)
          */
         for (i = 0; NULL != search_dirs[i]; i++) {
             filename = pmix_os_path(false, search_dirs[i], base, NULL);
-            pmix_showhelp_yyin = fopen(filename, "r");
-            if (NULL == pmix_showhelp_yyin) {
+            fp = fopen(filename, "r");
+            if (NULL == fp) {
                 if (NULL != err_msg) {
                     free(err_msg);
                 }
@@ -436,23 +442,22 @@ static pmix_status_t open_file(const char *base, const char *topic)
                 base_len = strlen(base);
                 if (4 > base_len || 0 != strcmp(base + base_len - 4, ".txt")) {
                     free(filename);
-                    if (0
-                        > asprintf(&filename, "%s%s%s.txt", search_dirs[i], PMIX_PATH_SEP, base)) {
+                    if (0 > asprintf(&filename, "%s%s%s.txt", search_dirs[i], PMIX_PATH_SEP, base)) {
                         free(err_msg);
                         return PMIX_ERR_OUT_OF_RESOURCE;
                     }
-                    pmix_showhelp_yyin = fopen(filename, "r");
+                    fp = fopen(filename, "r");
                 }
             }
             free(filename);
-            if (NULL != pmix_showhelp_yyin) {
+            if (NULL != fp) {
                 break;
             }
         }
     }
 
     /* If we still couldn't open it, then something is wrong */
-    if (NULL == pmix_showhelp_yyin) {
+    if (NULL == fp) {
         char *msg;
         pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
                     "the help file:\n    %s.  Sorry!\n%s", dash_line, topic, err_msg, dash_line);
@@ -465,102 +470,142 @@ static pmix_status_t open_file(const char *base, const char *topic)
         free(err_msg);
     }
 
-    /* Set the buffer */
-
-    pmix_showhelp_init_buffer(pmix_showhelp_yyin);
-
+    *fptr = fp;
     /* Happiness */
-
     return PMIX_SUCCESS;
+}
+
+#define PMIX_MAX_LINE_LENGTH 1024
+
+static char *localgetline(FILE *fp)
+{
+    char *ret, *buff;
+    char input[PMIX_MAX_LINE_LENGTH];
+    int i = 0;
+
+    ret = fgets(input, PMIX_MAX_LINE_LENGTH, fp);
+    if (NULL != ret) {
+        if ('\0' != input[0]) {
+            input[strlen(input) - 1] = '\0'; /* remove newline */
+        }
+        buff = strdup(&input[i]);
+        return buff;
+    }
+
+    return NULL;
 }
 
 /*
  * In the file that has already been opened, find the topic that we're
  * supposed to output
  */
-static pmix_status_t find_topic(const char *base, const char *topic)
+static pmix_status_t find_topic(FILE *fp,
+                                const char *base,
+                                const char *topic)
 {
-    int token, ret;
-    char *tmp;
+    char *line, *cptr;
+    PMIX_HIDE_UNUSED_PARAMS(base);
 
     /* Examine every topic */
 
-    while (1) {
-        token = pmix_showhelp_yylex();
-        switch (token) {
-        case PMIX_SHOW_HELP_PARSE_TOPIC:
-            tmp = strdup(pmix_showhelp_yytext);
-            if (NULL == tmp) {
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            tmp[strlen(tmp) - 1] = '\0';
-            ret = strcmp(tmp + 1, topic);
-            free(tmp);
-            if (0 == ret) {
-                return PMIX_SUCCESS;
-            }
-            break;
-
-        case PMIX_SHOW_HELP_PARSE_MESSAGE:
-            break;
-
-        case PMIX_SHOW_HELP_PARSE_DONE: {
-            char *msg;
-            pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
-                    "the help file:\n    %s.  Sorry!\n%s", dash_line, topic, base, dash_line);
-            local_delivery(base, topic, msg);
-            return PMIX_ERR_NOT_FOUND;
+    while (NULL != (line = localgetline(fp))) {
+        /* topics start with a '[' in the first position */
+        if ('[' != line[0]) {
+            free(line);
+            continue;
         }
-        default:
-            break;
+        /* find the end of the topic name */
+        cptr = strchr(line, ']');
+        if (NULL == cptr) {
+            /* this is not a valid topic */
+            free(line);
+            continue;
         }
+        *cptr = '\0';
+        if (0 == strcmp(&line[1], topic)) {
+            /* this is the topic */
+            free(line);
+            return PMIX_SUCCESS;
+        }
+        /* not the topic we want */
+        free(line);
     }
 
-    /* Never get here */
+    return PMIX_ERR_NOT_FOUND;
 }
 
 /*
  * We have an open file, and we're pointed at the right topic.  So
  * read in all the lines in the topic and make a list of them.
  */
-static pmix_status_t read_topic(char ***array)
+static pmix_status_t read_topic(FILE *fp, char ***array)
 {
-    int token, rc;
+    int rc;
+    char *line, *file, *tp;
 
-    while (1) {
-        token = pmix_showhelp_yylex();
-        switch (token) {
-        case PMIX_SHOW_HELP_PARSE_MESSAGE:
-            /* pmix_argv_append_nosize does strdup(pmix_show_help_yytext) */
-            rc = pmix_argv_append_nosize(array, pmix_showhelp_yytext);
-            if (rc != PMIX_SUCCESS) {
+    while (NULL != (line = localgetline(fp))) {
+        /* the topic ends when we see either the end of
+         * the file (indicated by a NULL return) or the
+         * beginning of the next topic */
+        if (0 == strncmp(line, "#include#", strlen("#include#"))) {
+            /* keyword "include" found - check for file/topic */
+            file = &line[strlen("#include#")];
+            if (NULL == file) {
+                /* missing filename */
+                free(line);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            /* see if they provided a topic */
+            tp = strchr(file, '#');
+            if (NULL != tp) {
+                *tp = '\0';  // NULL-terminate the filename
+                ++tp;
+            }
+            rc = load_array(array, file, tp);
+            if (PMIX_SUCCESS != rc) {
+                free(line);
                 return rc;
             }
-            break;
-
-        default:
+        }
+        if ('#' == line[0]) {
+            /* skip comments */
+            free(line);
+            continue;
+        }
+        if ('[' == line[0]) {
+            /* start of the next topic */
+            free(line);
             return PMIX_SUCCESS;
+        }
+        /* save the line */
+        rc = pmix_argv_append_nosize(array, line);
+        free(line);
+        if (rc != PMIX_SUCCESS) {
+            return rc;
         }
     }
 
-    /* Never get here */
+    return PMIX_SUCCESS;
 }
 
-static pmix_status_t load_array(char ***array, const char *filename, const char *topic)
+static pmix_status_t load_array(char ***array,
+                                const char *filename,
+                                const char *topic)
 {
     int ret;
+    FILE *fp;
 
-    if (PMIX_SUCCESS != (ret = open_file(filename, topic))) {
+    ret = open_file(filename, topic, &fp);
+    if (PMIX_SUCCESS != ret) {
         return ret;
     }
 
-    ret = find_topic(filename, topic);
+    ret = find_topic(fp, filename, topic);
     if (PMIX_SUCCESS == ret) {
-        ret = read_topic(array);
+        ret = read_topic(fp, array);
     }
 
-    fclose(pmix_showhelp_yyin);
-    pmix_showhelp_yylex_destroy();
+    fclose(fp);
 
     if (PMIX_SUCCESS != ret) {
         pmix_argv_free(*array);
@@ -569,7 +614,9 @@ static pmix_status_t load_array(char ***array, const char *filename, const char 
     return ret;
 }
 
-char *pmix_show_help_vstring(const char *filename, const char *topic, int want_error_header,
+char *pmix_show_help_vstring(const char *filename,
+                             const char *topic,
+                             int want_error_header,
                              va_list arglist)
 {
     int rc;
