@@ -3306,9 +3306,9 @@ typedef struct pmix_info {
     !((m)->flags & PMIX_INFO_REQD)
 
 /* macros for setting and testing the "reqd processed" flag */
-#define PMIX_INFO_WAS_PROCESSED(m)  \
-    ((m)->flags |= PMIX_INFO_REQD_PROCESSED)
 #define PMIX_INFO_PROCESSED(m)  \
+    ((m)->flags |= PMIX_INFO_REQD_PROCESSED)
+#define PMIX_INFO_WAS_PROCESSED(m)  \
     ((m)->flags & PMIX_INFO_REQD_PROCESSED)
 
 /* macro for testing end of the array */
