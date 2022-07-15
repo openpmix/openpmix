@@ -85,6 +85,11 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
         return PMIX_ERR_INIT;
     }
 
+    /* if there is no data to output, then nothing to do */
+    if (NULL == data) {
+        return PMIX_OPERATION_SUCCEEDED;
+    }
+
     /* we have to serialize our way thru here as we are going
      * to construct a list of the available modules, and those
      * can only be on one list at a time */
@@ -142,9 +147,9 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
         }
         all_complete = false;
         for (m = 0; m < pmix_plog_globals.actives.size; m++) {
-            if (NULL
-                == (active = (pmix_plog_base_active_module_t *)
-                        pmix_pointer_array_get_item(&pmix_plog_globals.actives, m))) {
+            active = (pmix_plog_base_active_module_t *)
+                            pmix_pointer_array_get_item(&pmix_plog_globals.actives, m);
+            if (NULL == active) {
                 continue;
             }
             /* if this channel is included in the ones serviced by this
@@ -177,8 +182,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
     }
     if (all_complete) {
         /* nothing we need do */
-        while (NULL != pmix_list_remove_first(&channels))
-            ;
+        while (NULL != pmix_list_remove_first(&channels));
         PMIX_DESTRUCT(&channels);
         PMIX_RELEASE(mycount);
         PMIX_RELEASE_THREAD(&pmix_plog_globals.lock);
@@ -254,8 +258,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
     }
 
     /* cannot release the modules - just remove everything from the list */
-    while (NULL != pmix_list_remove_first(&channels))
-        ;
+    while (NULL != pmix_list_remove_first(&channels));
     PMIX_DESTRUCT(&channels);
 
     rc = mycount->status; // save the status as it could change when the lock is released
