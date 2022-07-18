@@ -670,7 +670,7 @@ static inline pmix_list_item_t *pmix_list_remove_first(pmix_list_t *list)
     list->pmix_list_length--;
 
     /* get pointer to first element on the list */
-    item = list->pmix_list_sentinel.pmix_list_next;
+    item = (pmix_list_item_t*)list->pmix_list_sentinel.pmix_list_next;
 
     /* reset previous pointer of next item on the list */
     item->pmix_list_next->pmix_list_prev = item->pmix_list_prev;
@@ -731,7 +731,7 @@ static inline pmix_list_item_t *pmix_list_remove_last(pmix_list_t *list)
     list->pmix_list_length--;
 
     /* get item */
-    item = list->pmix_list_sentinel.pmix_list_prev;
+    item = (pmix_list_item_t*)list->pmix_list_sentinel.pmix_list_prev;
 
     /* reset previous pointer on next to last pointer */
     item->pmix_list_prev->pmix_list_next = item->pmix_list_next;
