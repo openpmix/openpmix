@@ -111,6 +111,7 @@ static void curl_perform(int sd, short args, void *cbdata)
     long response_code;
     const char *effective_url = NULL;
     char *content_type;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     while (1) {
         CURLcode res = curl_easy_perform(pcl->curl);
@@ -175,6 +176,7 @@ static void ondataprocessing(char *ptr, size_t size, size_t nmemb, void *cbdata)
 /* provide a hook for the curl reply if it is just to be ignored */
 static size_t http_ignore_data(char *ptr, size_t size, size_t nmemb, void *userdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(ptr, userdata);
     return size * nmemb;
 }
 
@@ -185,6 +187,7 @@ void pmix_common_on_sse_event(char **inheaders, const char *data, const char *re
     pmix_sse_curl_handle_t *reply;
     char *result = NULL;
     int n;
+    PMIX_HIDE_UNUSED_PARAMS(inheaders);
 
     /* pass to the user for processing */
     if (NULL != pcl->ondata) {

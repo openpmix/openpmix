@@ -30,6 +30,7 @@
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
+#include "src/hwloc/pmix_hwloc.h"
 #include "pnet_sshot.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/util/pmix_argv.h"
@@ -73,7 +74,7 @@ static pmix_status_t component_register(void)
 
     (void) pmix_mca_base_component_var_register(
         component, "config_file", "Path of file containing Slingshot fabric configuration",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_mca_pnet_sshot_component.configfile);
 
     (void) pmix_mca_base_component_var_register(component, "num_nodes",
@@ -82,7 +83,7 @@ static pmix_status_t component_register(void)
                                                 &pmix_mca_pnet_sshot_component.numnodes);
     (void) pmix_mca_base_component_var_register(
         component, "devs_per_node", "Number of devices/node to simulate (0 = no simulation)",
-        PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+        PMIX_MCA_BASE_VAR_TYPE_INT,
         &pmix_mca_pnet_sshot_component.numdevs);
 
     (void) pmix_mca_base_component_var_register(component, "ppn", "PPN to simulate",
@@ -97,12 +98,12 @@ static pmix_status_t component_open(void)
     pmix_status_t rc;
 
     // unsure what this will be registered under, so try multiple codes
-    rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x17db, 0x208);  // Cray
+    rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x17db, 0x208);  // Cray
     if (PMIX_SUCCESS != rc) {
-        rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x18c8, 0x208);  // Cray
+        rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x18c8, 0x208);  // Cray
     }
     if (PMIX_SUCCESS != rc) {
-        rc = pmix_ploc.check_vendor(&pmix_globals.topology, 0x1590, 0x208);  // HPE
+        rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x1590, 0x208);  // HPE
     }
 
     return rc;

@@ -44,9 +44,11 @@
 
 static pmix_status_t sshot_init(void);
 static void sshot_finalize(void);
-static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
+static pmix_status_t allocate(pmix_namespace_t *nptr,
+                              pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist);
-static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo);
+static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
+                                         pmix_info_t info[], size_t ninfo);
 pmix_pnet_module_t pmix_sshot_module = {
     .name = "sshot",
     .init = sshot_init,
@@ -165,7 +167,8 @@ static void sshot_finalize(void)
  * (c) the final "blob" that is returned to the caller shall be compressed
  *     prior to adding it to the input "ilist"
  */
-static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo,
+static pmix_status_t allocate(pmix_namespace_t *nptr,
+                              pmix_info_t info[], size_t ninfo,
                               pmix_list_t *ilist)
 {
     int n, m;
@@ -408,7 +411,8 @@ complete:
  * from PMIx_server_setup_application. In this case, we search for a blob
  * that our "allocate" function may have included in that info.
  */
-static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t info[], size_t ninfo)
+static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
+                                         pmix_info_t info[], size_t ninfo)
 {
     size_t n, ndevs, m, d, ndims = 3;
     pmix_buffer_t bkt;
@@ -442,7 +446,7 @@ static pmix_status_t setup_local_network(pmix_namespace_t *nptr, pmix_info_t inf
                         "pnet:sshot:setup_local_network with %lu info", (unsigned long) ninfo);
 
     /* setup the namespace for the job */
-    PMIX_LOAD_NSPACE(proc.nspace, nptr->nspace);
+    PMIX_LOAD_NSPACE(proc.nspace, nptr->ns->nspace);
     /* prep the unpack buffer */
     PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
 
@@ -692,6 +696,8 @@ cleanup:
 
 static void compute_coord(pmix_coord_t *coord, char *xname, pmix_coord_view_t view)
 {
+    PMIX_HIDE_UNUSED_PARAMS(xname);
+
     /* assume three dimensions */
     coord->view = view;
     coord->coord = (uint32_t *) malloc(3 * sizeof(uint32_t));
