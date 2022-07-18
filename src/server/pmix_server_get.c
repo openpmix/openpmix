@@ -948,7 +948,7 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
     pmix_dmdx_reply_caddy_t *caddy = (pmix_dmdx_reply_caddy_t *) cbdata;
     pmix_server_caddy_t *cd;
     pmix_peer_t *peer;
-    pmix_rank_info_t *rinfo;
+    pmix_rank_info_t *rinfo, *rptr;
     int32_t cnt;
     pmix_kval_t *kv;
     pmix_namespace_t *ns, *nptr;
@@ -963,8 +963,10 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(caddy);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    pmix_output_verbose(2, pmix_server_globals.get_output, "[%s:%d] process dmdx reply from %s:%u",
-                        __FILE__, __LINE__, caddy->lcd->proc.nspace, caddy->lcd->proc.rank);
+    pmix_output_verbose(2, pmix_server_globals.get_output,
+                        "[%s:%d] process dmdx reply from %s:%u",
+                        __FILE__, __LINE__,
+                        caddy->lcd->proc.nspace, caddy->lcd->proc.rank);
 
     /* find the nspace object for the proc whose data is being received */
     nptr = NULL;
@@ -1030,7 +1032,13 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                 peer = pmix_globals.mypeer;
             } else {
                 /* there must be at least one local proc */
-                rinfo = (pmix_rank_info_t *) pmix_list_get_first(&nm->ns->ranks);
+                rinfo = NULL;
+                PMIX_LIST_FOREACH(rptr, &nm->ns->ranks, pmix_rank_info_t) {
+                    if (0 <= rptr->peerid) {
+                        rinfo = rptr;
+                        break;
+                    }
+                }
                 if (NULL == rinfo) {
                     PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
                     goto complete;
