@@ -305,6 +305,7 @@ pmix_status_t pmix_pnet_sshot_register_fabric(pmix_fabric_t *fabric, const pmix_
 static void regcbfunc(long response_code, const char *effective_url, void *cbdata)
 {
     pmix_sse_request_t *req = (pmix_sse_request_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(effective_url);
 
     PMIX_ACQUIRE_OBJECT(req); // ensure the object has been updated
 
@@ -320,6 +321,7 @@ static void regcbfunc(long response_code, const char *effective_url, void *cbdat
 static void ondata(const char *stream, char **result, void *userdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) userdata;
+    PMIX_HIDE_UNUSED_PARAMS(result);
 
     PMIX_ACQUIRE_OBJECT(cb);
 
@@ -350,6 +352,7 @@ static pmix_status_t ask_fabric_controller(pmix_fabric_t *fabric, const pmix_inf
     pmix_sse_request_t *req;
     pmix_cb_t *cb;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs);
 
     /* initialize the sse support - it is protected,
      * so it doesn't matter if it was already

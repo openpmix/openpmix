@@ -13,6 +13,8 @@
 AM_CPPFLAGS = $(LTDLINCL) -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix $(common_sse_CPPFLAGS)
 AM_LFLAGS = -Ppmix_util_sse_yy
 LEX_OUTPUT_ROOT = lex.pmix_util_sse_yy
+# we do NOT want picky compilers down here due to use of flex
+CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
 headers = \
 	sse.h \
