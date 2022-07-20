@@ -99,11 +99,11 @@ extern FILE *file;
         char *fname = malloc(strlen(prefix) + MAX_DIGIT_LEN + 2);       \
         sprintf(fname, "%s.%d.%d", prefix, ns_id, rank);                \
         file = fopen(fname, "w");                                       \
-        free(fname);                                                    \
         if (NULL == file) {                                             \
             fprintf(stderr, "Cannot open file %s for writing!", fname); \
             exit(1);                                                    \
         }                                                               \
+        free(fname);                                                    \
     }
 
 #define TEST_CLOSE_FILE()     \
