@@ -847,7 +847,7 @@ release:
 }
 
 /*****   LOCATE A GIVEN ATTRIBUTE    *****/
-PMIX_EXPORT const char *pmix_attributes_lookup(char *attr)
+PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 {
     size_t n;
 
@@ -859,7 +859,7 @@ PMIX_EXPORT const char *pmix_attributes_lookup(char *attr)
     return NULL;
 }
 
-PMIX_EXPORT const char *pmix_attributes_reverse_lookup(char *attrstring)
+PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 {
     size_t n;
 

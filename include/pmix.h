@@ -1133,16 +1133,16 @@ PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
 PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
 PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
-PMIX_EXPORT const char* PMIx_Get_attribute_string(char *attribute);
-PMIX_EXPORT const char* PMIx_Get_attribute_name(char *attrstring);
+PMIX_EXPORT const char* PMIx_Get_attribute_string(const char *attribute);
+PMIX_EXPORT const char* PMIx_Get_attribute_name(const char *attrstring);
 PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state);
 PMIX_EXPORT const char* PMIx_Device_type_string(pmix_device_type_t type);
 PMIX_EXPORT const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp);
 
 /* the following print statements return ALLOCATED strings
  * that the user must release when done */
-PMIX_EXPORT char* PMIx_Info_string(pmix_info_t *info);
-PMIX_EXPORT char* PMIx_Value_string(pmix_value_t *value);
+PMIX_EXPORT char* PMIx_Info_string(const pmix_info_t *info);
+PMIX_EXPORT char* PMIx_Value_string(const pmix_value_t *value);
 PMIX_EXPORT char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 
 /* Get the PMIx version string. Note that the provided string is
