@@ -327,12 +327,12 @@ PMIX_EXPORT const char *PMIx_Job_state_string(pmix_job_state_t state)
     }
 }
 
-PMIX_EXPORT const char *PMIx_Get_attribute_string(char *attribute)
+PMIX_EXPORT const char *PMIx_Get_attribute_string(const char *attribute)
 {
     return pmix_attributes_lookup(attribute);
 }
 
-PMIX_EXPORT const char *PMIx_Get_attribute_name(char *attrstring)
+PMIX_EXPORT const char *PMIx_Get_attribute_name(const char *attrstring)
 {
     return pmix_attributes_reverse_lookup(attrstring);
 }

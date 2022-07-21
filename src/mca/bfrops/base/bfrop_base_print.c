@@ -39,7 +39,7 @@
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_printf.h"
 
-char* PMIx_Info_string(pmix_info_t *info)
+char* PMIx_Info_string(const pmix_info_t *info)
 {
     pmix_status_t rc;
     char *output = NULL;
@@ -56,7 +56,7 @@ char* PMIx_Info_string(pmix_info_t *info)
     return output;
 }
 
-char* PMIx_Value_string(pmix_value_t *value)
+char* PMIx_Value_string(const pmix_value_t *value)
 {
     pmix_status_t rc;
     char *output = NULL;
