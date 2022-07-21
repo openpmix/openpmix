@@ -274,7 +274,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     char *name = NULL;
     size_t n;
 
-    pmix_output_verbose(2, pmix_client_globals.base_output, "[%s:%d] DEBUGGER RELEASE RECVD",
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "[%s:%d] DEBUGGER RELEASE RECVD",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
 
     PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
@@ -290,7 +291,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
         }
         /* if the object wasn't returned, then that is an error */
         if (NULL == lock) {
-            pmix_output_verbose(2, pmix_client_globals.base_output,
+            pmix_output_verbose(2, pmix_server_globals.base_output,
                                 "event handler %s failed to return object",
                                 (NULL == name) ? "NULL" : name);
             /* let the event handler progress */
@@ -318,7 +319,7 @@ static void debugger_aggregator(size_t evhdlr_registration_id, pmix_status_t sta
     pmix_status_t rc;
     pmix_namespace_t *ns, *nptr;
 
-    pmix_output_verbose(2, pmix_client_globals.base_output,
+    pmix_output_verbose(2, pmix_server_globals.base_output,
                         "[%s:%d] DEBUGGER AGGREGATOR CALLED FOR NSPACE %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, source->nspace);
 
