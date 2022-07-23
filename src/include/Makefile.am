@@ -11,7 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2007-2020 Cisco Systems, Inc.  All rights reserved
+# Copyright (c) 2007-2022 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
@@ -22,6 +22,25 @@
 #
 # $HEADER$
 #
+
+# The Automake BUILT_SOURCES hook ultimately calls
+# construct_dictionary.py to generate both pmix_dictionary.h and
+# pmix_dictionary.c.  However, in a parallel "make" invocation, this
+# script could be executed twice simultaneously, which *could* lead to
+# the generated pmix_dictionary.* files being corrupted (i.e., two
+# invokcations simultaneously writing to these generated files).  To
+# prevent that from happening, force this one Makefile to be run
+# serially via the .NOTPARALLEL target.  This has two side-effects:
+#
+# 1. construct_dictionary.py will only be invokved once, because since
+#    both targets are created in the first invocation, make won't need
+#    to invoke it a second time for the second target.  This is both
+#    expected and good.
+# 2. There is a (very) minor performance implication for the
+#    other make steps in this Makefile.am (i.e., they won't be run in
+#    parallel).  But this simple solution to avoid a devious potential
+#    file corruption issue is an acceptable tradeoff.
+.NOTPARALLEL:
 
 AM_CFLAGS = \
             -DPMIX_PROXY_VERSION_STRING="\"@PMIX_VERSION@\"" \
