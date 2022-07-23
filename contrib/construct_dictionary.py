@@ -1,6 +1,6 @@
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
-# Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
+# Copyright (c) 2020-2022 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
@@ -254,14 +254,14 @@ def _write_header(options, base_path, num_elements):
 
 BEGIN_C_DECLS
 
-PMIX_EXPORT extern const pmix_regattr_input_t pmix_dictionary[{}];
+PMIX_EXPORT extern const pmix_regattr_input_t pmix_dictionary[{ne}];
 
-#define PMIX_INDEX_BOUNDARY {}
+#define PMIX_INDEX_BOUNDARY {nem1}
 
 END_C_DECLS
 
 #endif\n
-'''.format(num_elements, num_elements - 1)
+'''.format(ne=num_elements, nem1=num_elements - 1)
 
     if options.dryrun:
         constants = sys.stdout
