@@ -432,7 +432,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EVENT_TEXT_MESSAGE             "pmix.evtext"           // (char*) text message suitable for output by recipient - e.g., describing
                                                                     //         the cause of the event
 #define PMIX_EVENT_TIMESTAMP                "pmix.evtstamp"         // (time_t) System time when the associated event occurred.
-
+#define PMIX_EVENT_ONESHOT                  "pmix.evone"            // (bool) when registering, indicate that this event handler is to be deleted
+                                                                    //        after being invoked
 
 /* fault tolerance-related events */
 #define PMIX_EVENT_TERMINATE_SESSION        "pmix.evterm.sess"      // (bool) RM intends to terminate session

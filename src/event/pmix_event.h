@@ -29,6 +29,7 @@
 
 #include "pmix_common.h"
 #include "src/class/pmix_list.h"
+#include "src/mca/bfrops/bfrops_types.h"
 #include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
@@ -62,6 +63,7 @@ typedef struct {
     char *name;
     size_t index;
     uint8_t precedence;
+    bool oneshot;
     char *locator;
     pmix_proc_t source; // who generated this event
     /* When registering for events, callers can specify
@@ -168,6 +170,9 @@ PMIX_EXPORT bool pmix_notify_check_range(pmix_range_trkr_t *rng, const pmix_proc
 
 PMIX_EXPORT bool pmix_notify_check_affected(pmix_proc_t *interested, size_t ninterested,
                                             pmix_proc_t *affected, size_t naffected);
+
+PMIX_EXPORT pmix_status_t pmix_deregister_event_hdlr(size_t event_hdlr_ref,
+                                                     pmix_buffer_t *msg);
 
 /* invoke the server event notification handler */
 PMIX_EXPORT pmix_status_t pmix_server_notify_client_of_event(pmix_status_t status,
