@@ -559,7 +559,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
     pmix_cmd_t cmd = PMIX_REQ_CMD;
     pmix_status_t code;
     pmix_proc_t wildcard;
-    pmix_info_t ginfo, evinfo[2];
+    pmix_info_t ginfo, evinfo[3];
     pmix_value_t *val = NULL;
     pmix_lock_t reglock, releaselock;
     size_t n;
@@ -884,11 +884,12 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
             PMIX_CONSTRUCT_LOCK(&releaselock);
             PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
             PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-DEBUGGER", PMIX_STRING);
+            PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_ONESHOT, NULL, PMIX_BOOL);
             pmix_output_verbose(2, pmix_client_globals.event_output,
                                 "[%s:%d] REGISTERING WAIT FOR DEBUGGER", pmix_globals.myid.nspace,
                                 pmix_globals.myid.rank);
             code = PMIX_DEBUGGER_RELEASE;
-            PMIx_Register_event_handler(&code, 1, evinfo, 2, notification_fn, evhandler_reg_callbk,
+            PMIx_Register_event_handler(&code, 1, evinfo, 3, notification_fn, evhandler_reg_callbk,
                                         (void *) &reglock);
             /* wait for registration to complete */
             PMIX_WAIT_THREAD(&reglock);
