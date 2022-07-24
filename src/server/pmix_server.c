@@ -521,7 +521,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     size_t n;
     bool nspace_given = false, rank_given = false;
     bool share_topo = false;
-    pmix_info_t ginfo, *iptr, evinfo[2];
+    pmix_info_t ginfo, *iptr, evinfo[3];
     char *evar, *nspace = NULL;
     pmix_rank_t rank = PMIX_RANK_INVALID;
     pmix_rank_info_t *rinfo;
@@ -907,11 +907,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         PMIX_CONSTRUCT_LOCK(&releaselock);
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-RELEASE", PMIX_STRING);
+        PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_ONESHOT, NULL, PMIX_BOOL);
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "[%s:%d] WAITING IN INIT FOR RELEASE", pmix_globals.myid.nspace,
                             pmix_globals.myid.rank);
         code = PMIX_DEBUGGER_RELEASE;
-        PMIx_Register_event_handler(&code, 1, evinfo, 2, notification_fn, evhandler_reg_callbk,
+        PMIx_Register_event_handler(&code, 1, evinfo, 3, notification_fn, evhandler_reg_callbk,
                                     (void *) &reglock);
         /* wait for registration to complete */
         PMIX_WAIT_THREAD(&reglock);
