@@ -42,8 +42,8 @@ greek=a1
 # value would increment to "2" regardless of the
 # magnitude of the changes.
 std_major=4
-std_minor=1
-std_extension=2
+std_minor=2
+std_extension=0
 
 # PMIx Standard ABI Compliance Level(s)
 # The major and minor numbers (MAJOR.MINOR) indicate the version
@@ -106,7 +106,7 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=7:2:5
+libpmix_so_version=8:0:6
 
 # "Common" components install standalone libraries that are run-time
 # # linked by one or more components.  So they need to be versioned as
