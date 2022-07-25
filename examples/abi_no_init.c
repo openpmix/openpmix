@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,12 +16,15 @@
 #include <stdlib.h>
 
 #include <pmix.h>
+#include "examples.h"
 
 int main(int argc, char **argv) {
-    int rc, i;
+    int rc;
+    size_t i;
     size_t ninfo, nqueries;
     pmix_info_t *info = NULL;
     pmix_query_t *query = NULL;
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     nqueries = 2;
 
@@ -34,7 +38,7 @@ int main(int argc, char **argv) {
         return rc;
     }
 
-    printf("--> Query returned (ninfo %d)\n", ninfo);
+    printf("--> Query returned (ninfo %d)\n", (int)ninfo);
     for(i = 0; i < ninfo; ++i) {
         printf("--> KEY: %s\n", info[i].key);
         if (PMIX_CHECK_KEY(&info[i], PMIX_QUERY_STABLE_ABI_VERSION)) {

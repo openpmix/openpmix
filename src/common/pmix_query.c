@@ -7,6 +7,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +19,7 @@
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
 
-#include "pmix.h"
+#include "include/pmix.h"
 #include "pmix_common.h"
 #include "include/pmix_server.h"
 
@@ -900,7 +901,6 @@ static size_t pmix_query_get_num_local_resolve(pmix_query_t queries[], size_t nq
 static int pmix_query_resolve_all_pre_init(pmix_query_t queries[], size_t nqueries,
                                            pmix_info_t **results, size_t *nresults)
 {
-    int rc = PMIX_SUCCESS;
     size_t n, p;
     size_t cur_info = 0, num_info = 0;
 
@@ -911,7 +911,7 @@ static int pmix_query_resolve_all_pre_init(pmix_query_t queries[], size_t nqueri
     if( num_info != nqueries ) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:query Found %d queries of %d queries that cannot be handled before init.",
-                            (nqueries - num_info), nqueries);
+                            (int)(nqueries - num_info), (int)nqueries);
         return PMIX_ERROR;
     }
 
@@ -935,12 +935,12 @@ static int pmix_query_resolve_all_pre_init(pmix_query_t queries[], size_t nqueri
     return PMIX_SUCCESS;
 }
 
-void pmix_query_local_resolve_release_cbfunc(void *cbdata)
+static void local_resolve_release_cbfunc(void *cbdata)
 {
     pmix_local_query_caddy_t *local_cd = (pmix_local_query_caddy_t*)cbdata;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                "pmix:query local release callback");
+                        "pmix:query local release callback");
 
     if (NULL != local_cd) {
         PMIX_RELEASE(local_cd);
@@ -958,7 +958,7 @@ void pmix_query_local_resolve_cbfunc(pmix_status_t status,
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:query local resolve callback (ninfo %d, local %d)",
-                        ninfo, local_cd->num_local);
+                        (int)ninfo, (int)local_cd->num_local);
 
     local_cd->num_info = ninfo + local_cd->num_local;
     PMIX_INFO_CREATE(local_cd->info, local_cd->num_info);
@@ -995,14 +995,14 @@ void pmix_query_local_resolve_cbfunc(pmix_status_t status,
     }
 
     local_cd->orig_cbfunc(status, local_cd->info, local_cd->num_info,
-                          local_cd->orig_cbdata, pmix_query_local_resolve_release_cbfunc, cbdata);
+                          local_cd->orig_cbdata, local_resolve_release_cbfunc, cbdata);
 }
 
 static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
                                                   size_t orig_nqueries,
                                                   size_t nqueries)
 {
-    int rc;
+    int rc = PMIX_SUCCESS;
     size_t n, p, n_idx, p_idx;
     pmix_query_t *queries;
 
@@ -1013,6 +1013,9 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
         for (p = 0; NULL != orig_queries[n].keys[p]; p++) {
             if (!pmix_query_check_is_local_resolve(orig_queries[n].keys[p])) {
                 PMIX_ARGV_APPEND(rc, queries[n_idx].keys, orig_queries[n].keys[p]);
+                if (PMIX_SUCCESS != rc) {
+                    goto out;
+                }
                 ++p_idx;
             }
         }
@@ -1020,6 +1023,10 @@ static pmix_query_t * pmix_query_strip_local_keys(pmix_query_t orig_queries[],
             ++n_idx;
         }
     }
-
+out:
+    if (PMIX_SUCCESS != rc) {
+        PMIX_QUERY_RELEASE(queries);
+        // Note that queries is set to NULL by PMIX_QUERY_RELEASE.
+    }
     return queries;
 }
