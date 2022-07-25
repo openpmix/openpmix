@@ -235,7 +235,7 @@ int pmix_mca_base_component_repository_add(const char *path)
 
     free(path_to_use);
 #else
-    PMIX_HIDE_UNUSED_PARAMS(project, path);
+    PMIX_HIDE_UNUSED_PARAMS(path);
 #endif /* PMIX_HAVE_PDL_SUPPORT */
 
     return PMIX_SUCCESS;

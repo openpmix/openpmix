@@ -6,7 +6,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
- * Copyright (c) 2021      Triad National Security, LLC
+ * Copyright (c) 2021-2022 Triad National Security, LLC
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -320,7 +320,9 @@ pmix_status_t spawn_fn(const pmix_proc_t *proc, const pmix_info_t job_info[], si
     cb->cbdata = cbdata;
 
     spawn_wait = true;
-    PMIx_server_register_nspace("foobar", napps, NULL, 0, release_cb, (void *) cb);
+    pmix_nspace_t foobar;
+    PMIX_LOAD_NSPACE(foobar, "foobar");
+    PMIx_server_register_nspace(foobar, napps, NULL, 0, release_cb, (void *) cb);
     return PMIX_SUCCESS;
 }
 static int numconnect = 0;
