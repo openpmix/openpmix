@@ -16,12 +16,15 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2017-2018 Mellanox Technologies, Inc.
 #                         All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
 #
 # $HEADER$
 #
+# we do NOT want picky compilers down here
+CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
 headers = \
         gds_ds21_base.h \

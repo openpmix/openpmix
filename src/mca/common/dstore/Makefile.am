@@ -13,6 +13,8 @@
 #
 
 # Header files
+# we do NOT want picky compilers down here
+CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
 
 headers = \
         dstore_common.h \
