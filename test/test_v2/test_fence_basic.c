@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2021      Triad National Security, LLC.
+ * Copyright (c) 2021-2022 Triad National Security, LLC.
  *                         All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
     pmixt_post_init(&this_proc, &l_params, &v_params);
 
     PMIX_PROC_CONSTRUCT(&job_proc);
-    strncpy(job_proc.nspace, this_proc.nspace, PMIX_MAX_NSLEN);
+    PMIX_LOAD_NSPACE(job_proc.nspace, this_proc.nspace);
     job_proc.rank = PMIX_RANK_WILDCARD;
 
 
