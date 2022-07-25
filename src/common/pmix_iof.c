@@ -664,7 +664,8 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_b
 
     /* if we are not a server, then we send the provided
      * data to our server for processing */
-    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         msg = PMIX_NEW(pmix_buffer_t);
         if (NULL == msg) {
             return PMIX_ERR_NOMEM;
@@ -1803,21 +1804,31 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
         goto reactivate;
     }
 
+    /* if I am a launcher and connected to a server, then
+     * we want to send things to our server for relay */
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
+        pmix_globals.connected) {
+        goto forward;
+    }
+
     /* if I am a server, then push this up to my host */
-    if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         if (NULL == pmix_host_server.push_stdin) {
             /* nothing we can do with this info - no point in reactivating it */
             return;
         }
         PMIX_BYTE_OBJECT_CREATE(boptr, 1);
-        boptr->bytes = (char*)malloc(bo.size);
-        memcpy(boptr->bytes, bo.bytes, bo.size);
-        boptr->size = bo.size;
+        if (0 < bo.size) {
+            boptr->bytes = (char*)malloc(bo.size);
+            memcpy(boptr->bytes, bo.bytes, bo.size);
+            boptr->size = bo.size;
+        }
         rc = pmix_host_server.push_stdin(&pmix_globals.myid, rev->targets, rev->ntargets,
                                          rev->directives, rev->ndirs, boptr, opcbfn, (void*)boptr);
         goto reactivate;
     }
 
+forward:
     /* pass the data to our PMIx server so it can relay it
      * to the host RM for distribution */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -1911,11 +1922,13 @@ PMIX_CLASS_INSTANCE(pmix_iof_sink_t, pmix_list_item_t, iof_sink_construct, iof_s
 
 static void iof_read_event_construct(pmix_iof_read_event_t *rev)
 {
-    rev->fd = -1;
-    rev->active = false;
-    rev->childproc = NULL;
     rev->tv.tv_sec = 0;
     rev->tv.tv_usec = 0;
+    rev->fd = -1;
+    rev->channel = PMIX_FWD_NO_CHANNELS;
+    rev->active = false;
+    rev->childproc = NULL;
+    rev->always_readable = false;
     rev->targets = NULL;
     rev->ntargets = 0;
     rev->directives = NULL;

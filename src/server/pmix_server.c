@@ -158,7 +158,7 @@ static void server_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
 
     PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
-    pmix_output_verbose(2, pmix_client_globals.iof_output,
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "recvd IOF with %d bytes from %s",
                         (int) buf->bytes_used,
                         PMIX_PNAME_PRINT(&peer->info->pname));

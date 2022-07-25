@@ -43,7 +43,7 @@ pmix_status_t pmix_bfrops_base_pack(pmix_pointer_array_t *regtypes, pmix_buffer_
     pmix_status_t rc;
 
     /* check for error */
-    if (NULL == buffer || NULL == src) {
+    if (NULL == buffer || (NULL == src && 0 < num_vals)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
