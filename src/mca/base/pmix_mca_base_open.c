@@ -67,10 +67,7 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds);
  */
 int pmix_mca_base_open(void)
 {
-#if PMIX_WANT_HOME_CONFIG_FILES
     char *value;
-#endif
-    char **paths = NULL, *cptr;
     pmix_output_stream_t lds;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
     int var_id;
