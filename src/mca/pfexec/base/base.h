@@ -65,6 +65,7 @@ typedef struct {
     int exitcode;
     int keepalive[2];
     pmix_pfexec_base_io_conf_t opts;
+    pmix_iof_sink_t stdinsink;
     pmix_iof_read_event_t *stdoutev;
     pmix_iof_read_event_t *stderrev;
 } pmix_pfexec_child_t;

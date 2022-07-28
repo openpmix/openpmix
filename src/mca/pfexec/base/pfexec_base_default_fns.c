@@ -145,7 +145,8 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     bool nohup = false;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output, "%s pfexec:base spawn proc",
+    pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
+                        "%s pfexec:base spawn proc",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* establish our baseline working directory - we will be potentially
@@ -465,18 +466,21 @@ static pmix_status_t setup_prefork(pmix_pfexec_child_t *child)
             return PMIX_ERR_SYS_OTHER;
         }
     }
-    if (opts->connect_stdin) {
-        if (pipe(opts->p_stdin) < 0) {
-            PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
-            return PMIX_ERR_SYS_OTHER;
-        }
+    /* always leave stdin available in case we forward to it */
+    if (pipe(opts->p_stdin) < 0) {
+        PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
+        return PMIX_ERR_SYS_OTHER;
     }
+
     if (pipe(opts->p_stderr) < 0) {
         PMIX_ERROR_LOG(PMIX_ERR_SYS_OTHER);
         return PMIX_ERR_SYS_OTHER;
     }
 
-    /* connect read ends to IOF */
+    /* connect read/write ends to IOF */
+    PMIX_IOF_SINK_DEFINE(&child->stdinsink, &child->proc, opts->p_stdin[1],
+                         PMIX_FWD_STDIN_CHANNEL, pmix_iof_write_handler);
+
     PMIX_IOF_READ_EVENT_LOCAL(&child->stdoutev, opts->p_stdout[0],
                               pmix_iof_read_local_handler, false);
     PMIX_LOAD_PROCID(&child->stdoutev->name, child->proc.nspace, child->proc.rank);
@@ -496,7 +500,7 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
     int ret;
     pmix_pfexec_base_io_conf_t *opts = &child->opts;
 
-    if (opts->connect_stdin && 0 <= opts->p_stdin[1]) {
+    if (0 <= opts->p_stdin[1]) {
         close(opts->p_stdin[1]);
         opts->p_stdin[1] = -1;
     }
@@ -541,33 +545,15 @@ pmix_status_t pmix_pfexec_base_setup_child(pmix_pfexec_child_t *child)
             }
         }
     }
-    if (opts->connect_stdin) {
-        if (opts->p_stdin[0] != fileno(stdin)) {
-            ret = dup2(opts->p_stdin[0], fileno(stdin));
-            if (ret < 0) {
-                return PMIX_ERR_SYS_OTHER;
-            }
-            if (0 <= opts->p_stdin[0]) {
-                close(opts->p_stdin[0]);
-                opts->p_stdin[0] = -1;
-            }
+    if (opts->p_stdin[0] != fileno(stdin)) {
+        ret = dup2(opts->p_stdin[0], fileno(stdin));
+        if (ret < 0) {
+            return PMIX_ERR_SYS_OTHER;
         }
-    } else {
-        int fd;
-
-        /* connect input to /dev/null */
-        fd = open("/dev/null", O_RDONLY, 0);
-        if (0 > fd) {
-            return PMIX_ERROR;
+        if (0 <= opts->p_stdin[0]) {
+            close(opts->p_stdin[0]);
+            opts->p_stdin[0] = -1;
         }
-        if (fd != fileno(stdin)) {
-            ret = dup2(fd, fileno(stdin));
-            if (ret < 0) {
-                close(fd);
-                return PMIX_ERR_SYS_OTHER;
-            }
-        }
-        close(fd);
     }
 
     if (opts->p_stderr[1] != fileno(stderr)) {

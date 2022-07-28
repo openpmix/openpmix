@@ -246,11 +246,13 @@ static void chcon(pmix_pfexec_child_t *p)
     p->opts.p_stdout[1] = -1;
     p->opts.p_stderr[0] = -1;
     p->opts.p_stderr[1] = -1;
+    PMIX_CONSTRUCT(&p->stdinsink, pmix_iof_sink_t);
     p->stdoutev = NULL;
     p->stderrev = NULL;
 }
 static void chdes(pmix_pfexec_child_t *p)
 {
+    PMIX_DESTRUCT(&p->stdinsink);
     if (NULL != p->stdoutev) {
         PMIX_RELEASE(p->stdoutev);
     }
@@ -264,7 +266,9 @@ static void chdes(pmix_pfexec_child_t *p)
         close(p->keepalive[1]);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_pfexec_child_t, pmix_list_item_t, chcon, chdes);
+PMIX_CLASS_INSTANCE(pmix_pfexec_child_t,
+                    pmix_list_item_t,
+                    chcon, chdes);
 
 static void fccon(pmix_pfexec_fork_caddy_t *p)
 {
@@ -276,8 +280,11 @@ static void fccon(pmix_pfexec_fork_caddy_t *p)
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
-PMIX_CLASS_INSTANCE(pmix_pfexec_fork_caddy_t, pmix_object_t, fccon, NULL);
+PMIX_CLASS_INSTANCE(pmix_pfexec_fork_caddy_t,
+                    pmix_object_t, fccon, NULL);
 
-PMIX_CLASS_INSTANCE(pmix_pfexec_signal_caddy_t, pmix_object_t, NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_pfexec_signal_caddy_t,
+                    pmix_object_t, NULL, NULL);
 
-PMIX_CLASS_INSTANCE(pmix_pfexec_cmpl_caddy_t, pmix_object_t, NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_pfexec_cmpl_caddy_t,
+                    pmix_object_t, NULL, NULL);

@@ -1585,6 +1585,10 @@ void pmix_iof_write_handler(int sd, short args, void *cbdata)
         if (0 == output->numbytes) {
             /* don't reactivate the event */
             PMIX_RELEASE(output);
+            if (2 < wev->fd) {  // close the channel
+                close(wev->fd);
+                wev->fd = -1;
+            }
             return;
         }
         num_written = write(wev->fd, output->data, output->numbytes);
@@ -1767,14 +1771,17 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
         }
 
         PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
-                             "%s iof:read handler Error on stdin",
-                             PMIX_NAME_PRINT(&pmix_globals.myid)));
+                             "%s iof:read handler Error on %s",
+                             PMIX_NAME_PRINT(&pmix_globals.myid),
+                             PMIx_IOF_channel_string(rev->channel)));
         /* Un-recoverable error */
+        bo.bytes = NULL;
+        bo.size = 0;
         numbytes = 0;
+    } else {
+        bo.bytes = (char *) data;
+        bo.size = numbytes;
     }
-
-    bo.bytes = (char *) data;
-    bo.size = numbytes;
 
     /* if this is stdout or stderr of a child, then just output it */
     if (NULL != child &&
@@ -1804,9 +1811,26 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
         goto reactivate;
     }
 
-    /* if I am a launcher and connected to a server, then
+    /* if it is stdin that was read, then see if we have a sink
+     * for a child of ours that matches this target - this has precedence over
+     * anything else */
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        if (rev == stdinev_global && NULL != rev->targets) {
+            PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+                if (PMIX_CHECK_PROCID(&child->proc, &rev->targets[0])) {
+                    /* send the input to that target */
+                    rc = write_output_line(&child->proc, &child->stdinsink.wev, NULL,
+                                           PMIX_FWD_STDIN_CHANNEL, false, false, &bo);
+                    goto reactivate;
+                }
+            }
+        }
+    }
+
+    /* if I am a launcher or a tool and connected to a server, then
      * we want to send things to our server for relay */
-    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
+    if ((PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
+         PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) &&
         pmix_globals.connected) {
         goto forward;
     }
