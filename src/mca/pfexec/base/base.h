@@ -12,7 +12,7 @@
  * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -65,6 +65,7 @@ typedef struct {
     int exitcode;
     int keepalive[2];
     pmix_pfexec_base_io_conf_t opts;
+    pmix_iof_sink_t stdinsink;
     pmix_iof_read_event_t *stdoutev;
     pmix_iof_read_event_t *stderrev;
 } pmix_pfexec_child_t;
