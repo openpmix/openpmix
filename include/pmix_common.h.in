@@ -2188,16 +2188,24 @@ typedef struct pmix_coord {
     .dims = 0                       \
 }
 
-#define PMIX_COORD_CREATE(m, d, n)                                      \
-    do {                                                                \
-        pmix_coord_t *_m;                                               \
-        _m = (pmix_coord_t*)pmix_calloc((d), sizeof(pmix_coord_t));     \
-        if (NULL != _m) {                                               \
-            _m->view = PMIX_COORD_VIEW_UNDEF;                           \
-            _m->dims = (n);                                             \
-            _m->coord = (uint32_t*)pmix_calloc((n), sizeof(uint32_t));  \
-            (m) = _m;                                                   \
-        }                                                               \
+#define PMIX_COORD_CREATE(m, d, n)                                              \
+    do {                                                                        \
+        pmix_coord_t *_m;                                                       \
+        if (0 == (d)) {                                                         \
+            (m) = NULL;                                                         \
+        } else {                                                                \
+            _m = (pmix_coord_t*)pmix_malloc((d) * sizeof(pmix_coord_t));        \
+            if (NULL != _m) {                                                   \
+                _m->view = PMIX_COORD_VIEW_UNDEF;                               \
+                _m->dims = (n);                                                 \
+                if (0 == (n)) {                                                 \
+                    _m->coord = NULL;                                           \
+                } else {                                                        \
+                    _m->coord = (uint32_t*)pmix_malloc((n) * sizeof(uint32_t)); \
+                }                                                               \
+            }                                                                   \
+            (m) = _m;                                                           \
+        }                                                                       \
     } while(0)
 
 #define PMIX_COORD_CONSTRUCT(m)             \
@@ -2253,7 +2261,16 @@ typedef struct{
     memset((m), 0, sizeof(pmix_cpuset_t))
 
 #define PMIX_CPUSET_CREATE(m, n)    \
-    (m) = (pmix_cpuset_t*)calloc((n), sizeof(pmix_cpuset_t));
+    do {                                                                \
+        if (0 == (n))   {                                               \
+            (m) = NULL;                                                 \
+        } else {                                                        \
+            (m) = (pmix_cpuset_t*)malloc((n) * sizeof(pmix_cpuset_t));  \
+            if (NULL != (m)) {                                          \
+                memset((m), 0, (n) * sizeof(pmix_cpuset_t));            \
+            }                                                           \
+        }                                                               \
+    } while(0)
 
 
 /****    PMIX BIND ENVELOPE    ****/
@@ -2278,7 +2295,16 @@ typedef struct {
     memset((m), 0, sizeof(pmix_topology_t))
 
 #define PMIX_TOPOLOGY_CREATE(m, n) \
-    (m) = (pmix_topology_t*)calloc(n, sizeof(pmix_topology_t))
+    do {                                                                    \
+        if (0 == (n)) {                                                     \
+            (m) = NULL;                                                     \
+        } else {                                                            \
+            (m) = (pmix_topology_t*)malloc((n) * sizeof(pmix_topology_t));  \
+            if (NULL != (m)) {                                              \
+                memset((m), 0, (n) * sizeof(pmix_topology_t));              \
+            }                                                               \
+        }                                                                   \
+    } while(0)
 
 /**** PMIX RELATIVE LOCALITY    ****/
 typedef uint16_t pmix_locality_t;
@@ -2330,8 +2356,17 @@ typedef struct pmix_geometry {
         }                                                       \
     } while(0)
 
-#define PMIX_GEOMETRY_CREATE(m, n)                              \
-    (m) = (pmix_geometry_t*)calloc((n), sizeof(pmix_geometry_t))
+#define PMIX_GEOMETRY_CREATE(m, n)                                              \
+    do {                                                                        \
+        if (0 == (n)) {                                                         \
+            (m) = NULL;                                                         \
+        } else {                                                                \
+            (m) = (pmix_geometry_t*)pmix_malloc((n) * sizeof(pmix_geometry_t)); \
+            if (NULL != (m)) {                                                  \
+                memset((m), 0, (n) * sizeof(pmix_geometry_t));                  \
+            }                                                                   \
+        }                                                                       \
+    } while(0)
 
 #define PMIX_GEOMETRY_FREE(m, n)                    \
     do {                                            \
@@ -2391,18 +2426,22 @@ typedef struct pmix_device_distance {
         }                               \
     } while(0)
 
-#define PMIX_DEVICE_DIST_CREATE(m, n)                                                       \
-    do {                                                                                    \
-        size_t _i;                                                                          \
-        pmix_device_distance_t *_m;                                                         \
-        _m = (pmix_device_distance_t*)pmix_calloc((n), sizeof(pmix_device_distance_t));     \
-        if (NULL != _m) {                                                                   \
-            for (_i=0; _i < (n); _i++) {                                                    \
-                _m[_i].mindist = UINT16_MAX;                                                \
-                _m[_i].maxdist = UINT16_MAX;                                                \
-            }                                                                               \
-        }                                                                                   \
-        (m) = _m;                                                                           \
+#define PMIX_DEVICE_DIST_CREATE(m, n)                                                           \
+    do {                                                                                        \
+        size_t _i;                                                                              \
+        pmix_device_distance_t *_m;                                                             \
+        if (0 == (n)) {                                                                         \
+            (m) = NULL;                                                                         \
+        } else {                                                                                \
+            _m = (pmix_device_distance_t*)pmix_malloc((n) * sizeof(pmix_device_distance_t));    \
+            if (NULL != _m) {                                                                   \
+                for (_i=0; _i < (n); _i++) {                                                    \
+                    _m[_i].mindist = UINT16_MAX;                                                \
+                    _m[_i].maxdist = UINT16_MAX;                                                \
+                }                                                                               \
+            }                                                                                   \
+            (m) = _m;                                                                           \
+        }                                                                                       \
     } while(0)
 
 #define PMIX_DEVICE_DIST_FREE(m, n)                     \
@@ -2430,12 +2469,16 @@ typedef struct pmix_byte_object {
     .size = 0                           \
 }
 
-#define PMIX_BYTE_OBJECT_CREATE(m, n)   \
-    do {                                \
-        (m) = (pmix_byte_object_t*)pmix_malloc((n) * sizeof(pmix_byte_object_t));   \
-        if (NULL != (m)) {                                                     \
-            memset((m), 0, (n)*sizeof(pmix_byte_object_t));                    \
-        }                                                                      \
+#define PMIX_BYTE_OBJECT_CREATE(m, n)                                                   \
+    do {                                                                                \
+        if (0 == (n)) {                                                                 \
+            (m) = NULL;                                                                 \
+        } else {                                                                        \
+            (m) = (pmix_byte_object_t*)pmix_malloc((n) * sizeof(pmix_byte_object_t));   \
+            if (NULL != (m)) {                                                          \
+                memset((m), 0, (n)*sizeof(pmix_byte_object_t));                         \
+            }                                                                           \
+        }                                                                               \
     } while(0)
 
 #define PMIX_BYTE_OBJECT_CONSTRUCT(m)   \
@@ -2504,8 +2547,17 @@ typedef struct pmix_endpoint {
         }                               \
     } while(0)
 
-#define PMIX_ENDPOINT_CREATE(m, n)      \
-    (m) = (pmix_endpoint_t*)calloc((n), sizeof(pmix_endpoint_t))
+#define PMIX_ENDPOINT_CREATE(m, n)                                              \
+    do {                                                                        \
+        if (0 == (n)) {                                                         \
+            (m) = NULL;                                                         \
+        } else {                                                                \
+            (m) = (pmix_endpoint_t*)pmix_malloc((n) * sizeof(pmix_endpoint_t)); \
+            if (NULL != (m)) {                                                  \
+                memset((m), 0, (n) * sizeof(pmix_endpoint_t));                  \
+            }                                                                   \
+        }                                                                       \
+    } while(0)
 
 #define PMIX_ENDPOINT_FREE(m, n)                    \
     do {                                            \
@@ -2543,9 +2595,16 @@ typedef struct {
     .separator = '\0'           \
 }
 
-#define PMIX_ENVAR_CREATE(m, n)                                     \
-    do {                                                            \
-        (m) = (pmix_envar_t*)pmix_calloc((n) , sizeof(pmix_envar_t));    \
+#define PMIX_ENVAR_CREATE(m, n)                                             \
+    do {                                                                    \
+        if (0 == (n)) {                                                     \
+            (m) = NULL;                                                     \
+        } else {                                                            \
+            (m) = (pmix_envar_t*)pmix_malloc((n) * sizeof(pmix_envar_t));   \
+            if (NULL != (m)) {                                              \
+                memset((m), 0, (n) * sizeof(pmix_envar_t));                 \
+            }                                                               \
+        }                                                                   \
     } while (0)
 #define PMIX_ENVAR_FREE(m, n)                       \
     do {                                            \
@@ -2597,7 +2656,10 @@ typedef struct {
 }
 #define PMIX_DATA_BUFFER_CREATE(m)                                          \
     do {                                                                    \
-        (m) = (pmix_data_buffer_t*)pmix_calloc(1, sizeof(pmix_data_buffer_t));   \
+        (m) = (pmix_data_buffer_t*)pmix_malloc(sizeof(pmix_data_buffer_t)); \
+        if (NULL != (m)) {                                                  \
+            memset((m), 0, sizeof(pmix_data_buffer_t));                     \
+        }                                                                   \
     } while (0)
 #define PMIX_DATA_BUFFER_RELEASE(m)             \
     do {                                        \
@@ -2654,9 +2716,16 @@ typedef struct pmix_proc {
     .rank = PMIX_RANK_UNDEF     \
 }
 
-#define PMIX_PROC_CREATE(m, n)                                  \
-    do {                                                        \
-        (m) = (pmix_proc_t*)pmix_calloc((n) , sizeof(pmix_proc_t));  \
+#define PMIX_PROC_CREATE(m, n)                                          \
+    do {                                                                \
+        if (0 == (n)) {                                                 \
+            (m) = NULL;                                                 \
+        } else {                                                        \
+            (m) = (pmix_proc_t*)pmix_malloc((n) * sizeof(pmix_proc_t)); \
+            if (NULL != (m)) {                                          \
+                memset((m), 0, (n) * sizeof(pmix_proc_t));              \
+            }                                                           \
+        }                                                               \
     } while (0)
 
 #define PMIX_PROC_RELEASE(m)    \
@@ -2734,9 +2803,16 @@ typedef struct pmix_proc_info {
     .state = PMIX_PROC_STATE_UNDEF  \
 }
 
-#define PMIX_PROC_INFO_CREATE(m, n)                                         \
-    do {                                                                    \
-        (m) = (pmix_proc_info_t*)pmix_calloc((n) , sizeof(pmix_proc_info_t));    \
+#define PMIX_PROC_INFO_CREATE(m, n)                                                 \
+    do {                                                                            \
+        if (0 == (n)) {                                                             \
+            (m) = NULL;                                                             \
+        } else {                                                                    \
+            (m) = (pmix_proc_info_t*)pmix_malloc((n) * sizeof(pmix_proc_info_t));   \
+            if (NULL != (m)) {                                                      \
+                memset((m), 0, (n) * sizeof(pmix_proc_info_t));                     \
+            }                                                                       \
+        }                                                                           \
     } while (0)
 
 #define PMIX_PROC_INFO_RELEASE(m)      \
@@ -2865,9 +2941,16 @@ typedef struct pmix_proc_stats {
     .sample_time = {0, 0}               \
 }
 
-#define PMIX_PROC_STATS_CREATE(m, n)                                            \
-    do {                                                                        \
-        (m) = (pmix_proc_stats_t*)pmix_calloc((n) , sizeof(pmix_proc_stats_t)); \
+#define PMIX_PROC_STATS_CREATE(m, n)                                                \
+    do {                                                                            \
+        if (0 == (n)) {                                                             \
+            (m) = NULL;                                                             \
+        } else {                                                                    \
+            (m) = (pmix_proc_stats_t*)pmix_malloc((n) * sizeof(pmix_proc_stats_t)); \
+            if (NULL != (m)) {                                                      \
+                memset((m), 0, (n) * sizeof(pmix_proc_stats_t));                    \
+            }                                                                       \
+        }                                                                           \
     } while (0)
 
 #define PMIX_PROC_STATS_RELEASE(m)      \
@@ -2941,9 +3024,16 @@ typedef struct {
     .weighted_milliseconds_io = 0       \
 }
 
-#define PMIX_DISK_STATS_CREATE(m, n)                                            \
-    do {                                                                        \
-        (m) = (pmix_disk_stats_t*)pmix_calloc((n) , sizeof(pmix_disk_stats_t)); \
+#define PMIX_DISK_STATS_CREATE(m, n)                                                \
+    do {                                                                            \
+        if (0 == (n)) {                                                             \
+            (m) = NULL;                                                             \
+        } else {                                                                    \
+            (m) = (pmix_disk_stats_t*)pmix_malloc((n) * sizeof(pmix_disk_stats_t)); \
+            if (NULL != (m)) {                                                      \
+                memset((m), 0, (n) * sizeof(pmix_disk_stats_t));                    \
+            }                                                                       \
+        }                                                                           \
     } while (0)
 
 #define PMIX_DISK_STATS_RELEASE(m)      \
@@ -3003,9 +3093,16 @@ typedef struct {
     .num_send_errs = 0              \
 }
 
-#define PMIX_NET_STATS_CREATE(m, n)                                             \
-    do {                                                                        \
-        (m) = (pmix_net_stats_t*)pmix_calloc((n) , sizeof(pmix_net_stats_t));   \
+#define PMIX_NET_STATS_CREATE(m, n)                                                 \
+    do {                                                                            \
+        if (0 == (n)) {                                                             \
+            (m) = NULL;                                                             \
+        } else {                                                                    \
+            (m) = (pmix_net_stats_t*)pmix_malloc((n) * sizeof(pmix_net_stats_t));   \
+            if (NULL != (m)) {                                                      \
+                memset((m), 0, (n) * sizeof(pmix_net_stats_t));                     \
+            }                                                                       \
+        }                                                                           \
     } while (0)
 
 #define PMIX_NET_STATS_RELEASE(m)       \
@@ -3090,9 +3187,16 @@ typedef struct {
     .nnetstats = 0                      \
 }
 
-#define PMIX_NODE_STATS_CREATE(m, n)                                            \
-    do {                                                                        \
-        (m) = (pmix_node_stats_t*)pmix_calloc((n) , sizeof(pmix_node_stats_t)); \
+#define PMIX_NODE_STATS_CREATE(m, n)                                                \
+    do {                                                                            \
+        if (0 == (n)) {                                                             \
+            (m) = NULL;                                                             \
+        } else {                                                                    \
+            (m) = (pmix_node_stats_t*)pmix_malloc((n) * sizeof(pmix_node_stats_t)); \
+            if (NULL != (m)) {                                                      \
+                memset((m), 0, (n) * sizeof(pmix_node_stats_t));                    \
+            }                                                                       \
+        }                                                                           \
     } while (0)
 
 #define PMIX_NODE_STATS_CONSTRUCT(m)                \
@@ -3204,17 +3308,21 @@ typedef struct pmix_value {
 }
 
 /* allocate and initialize a specified number of value structs */
-#define PMIX_VALUE_CREATE(m, n)                                 \
-    do {                                                        \
-        int _ii;                                                \
-        pmix_value_t *_v;                                       \
-        (m) = (pmix_value_t*)pmix_calloc((n), sizeof(pmix_value_t)); \
-        _v = (pmix_value_t*)(m);                                \
-        if (NULL != (m)) {                                      \
-            for (_ii=0; _ii < (int)(n); _ii++) {                \
-                _v[_ii].type = PMIX_UNDEF;                     \
-            }                                                   \
-        }                                                       \
+#define PMIX_VALUE_CREATE(m, n)                                             \
+    do {                                                                    \
+        int _ii;                                                            \
+        pmix_value_t *_v;                                                   \
+        if (0 == (n)) {                                                     \
+            (m) = NULL;                                                     \
+        } else {                                                            \
+            (m) = (pmix_value_t*)pmix_malloc((n) * sizeof(pmix_value_t));   \
+            _v = (pmix_value_t*)(m);                                        \
+            if (NULL != (m)) {                                              \
+                for (_ii=0; _ii < (int)(n); _ii++) {                        \
+                    _v[_ii].type = PMIX_UNDEF;                              \
+                }                                                           \
+            }                                                               \
+        }                                                                   \
     } while (0)
 
 /* initialize a single value struct */
@@ -3277,14 +3385,18 @@ typedef struct pmix_info {
 }
 
 /* utility macros for working with pmix_info_t structs */
-#define PMIX_INFO_CREATE(m, n)                                  \
-    do {                                                        \
-        pmix_info_t *_i;                                        \
-        (m) = (pmix_info_t*)pmix_calloc((n), sizeof(pmix_info_t));   \
-	    if (NULL != (m)) {                                      \
-            _i = (pmix_info_t*)(m);                             \
-            _i[(n)-1].flags = PMIX_INFO_ARRAY_END;              \
-        }                                                       \
+#define PMIX_INFO_CREATE(m, n)                                          \
+    do {                                                                \
+        pmix_info_t *_i;                                                \
+        if (0 == (n)) {                                                 \
+            (m) = NULL;                                                 \
+        } else {                                                        \
+            (m) = (pmix_info_t*)pmix_malloc((n) * sizeof(pmix_info_t)); \
+            if (NULL != (m)) {                                          \
+                _i = (pmix_info_t*)(m);                                 \
+                _i[(n)-1].flags = PMIX_INFO_ARRAY_END;                  \
+            }                                                           \
+        }                                                               \
     } while (0)
 
 #define PMIX_INFO_CONSTRUCT(m)                  \
@@ -3354,9 +3466,16 @@ typedef struct pmix_pdata {
 }
 
 /* utility macros for working with pmix_pdata_t structs */
-#define PMIX_PDATA_CREATE(m, n)                                 \
-    do {                                                        \
-        (m) = (pmix_pdata_t*)pmix_calloc((n), sizeof(pmix_pdata_t)); \
+#define PMIX_PDATA_CREATE(m, n)                                             \
+    do {                                                                    \
+        if (0 == (n)) {                                                     \
+            (m) = NULL;                                                     \
+        } else {                                                            \
+            (m) = (pmix_pdata_t*)pmix_malloc((n) * sizeof(pmix_pdata_t));   \
+            if (NULL != (m)) {                                              \
+                memset((m), 0, (n) * sizeof(pmix_pdata_t));                 \
+            }                                                               \
+        }                                                                   \
     } while (0)
 
 #define PMIX_PDATA_CONSTRUCT(m)                 \
@@ -3389,9 +3508,16 @@ typedef struct pmix_app {
 }
 
 /* utility macros for working with pmix_app_t structs */
-#define PMIX_APP_CREATE(m, n)                                   \
-    do {                                                        \
-        (m) = (pmix_app_t*)pmix_calloc((n), sizeof(pmix_app_t));     \
+#define PMIX_APP_CREATE(m, n)                                           \
+    do {                                                                \
+        if (0 == (n)) {                                                 \
+            (m) = NULL;                                                 \
+        } else {                                                        \
+            (m) = (pmix_app_t*)pmix_malloc((n) * sizeof(pmix_app_t));   \
+            if (NULL != (m)) {                                          \
+                memset((m), 0, (n) * sizeof(pmix_app_t));               \
+            }                                                           \
+        }                                                               \
     } while (0)
 
 #define PMIX_APP_INFO_CREATE(m, n)                  \
@@ -3428,9 +3554,16 @@ typedef struct pmix_query {
 }
 
 /* utility macros for working with pmix_query_t structs */
-#define PMIX_QUERY_CREATE(m, n)                                     \
-    do {                                                            \
-        (m) = (pmix_query_t*)pmix_calloc((n) , sizeof(pmix_query_t));    \
+#define PMIX_QUERY_CREATE(m, n)                                             \
+    do {                                                                    \
+        if (0 == (n)) {                                                     \
+            (m) = NULL;                                                     \
+        } else {                                                            \
+            (m) = (pmix_query_t*)pmix_malloc((n) * sizeof(pmix_query_t));   \
+            if (NULL != (m)) {                                              \
+                memset((m), 0, (n) * sizeof(pmix_query_t));                 \
+            }                                                               \
+        }                                                                   \
     } while (0)
 
 #define PMIX_QUERY_QUALIFIERS_CREATE(m, n)                  \
@@ -3533,9 +3666,16 @@ typedef struct pmix_regattr_t {
         }                                           \
     } while(0)
 
-#define PMIX_REGATTR_CREATE(m, n)                                       \
-    do {                                                                \
-        (m) = (pmix_regattr_t*)pmix_calloc((n) , sizeof(pmix_regattr_t));    \
+#define PMIX_REGATTR_CREATE(m, n)                                               \
+    do {                                                                        \
+        if (0 == (n)) {                                                         \
+            (m) = NULL;                                                         \
+        } else {                                                                \
+            (m) = (pmix_regattr_t*)pmix_malloc((n) * sizeof(pmix_regattr_t));   \
+            if (NULL != (m)) {                                                  \
+                memset((m), 0, (n) * sizeof(pmix_regattr_t));                   \
+            }                                                                   \
+        }                                                                       \
     } while (0)
 
 #define PMIX_REGATTR_FREE(m, n)                         \
@@ -3976,12 +4116,12 @@ typedef void (*pmix_device_dist_cbfunc_t)(pmix_status_t status,
             (m)->array = NULL;                                      \
         }                                                           \
     } while(0)
-#define PMIX_DATA_ARRAY_CREATE(m, n, t)                                         \
-    do {                                                                        \
-        (m) = (pmix_data_array_t*)pmix_calloc(1, sizeof(pmix_data_array_t));    \
-        if (NULL != (m)) {                                                      \
-            PMIX_DATA_ARRAY_CONSTRUCT((m), (n), (t));                           \
-        }                                                                       \
+#define PMIX_DATA_ARRAY_CREATE(m, n, t)                                     \
+    do {                                                                    \
+        (m) = (pmix_data_array_t*)pmix_malloc(sizeof(pmix_data_array_t));   \
+        if (NULL != (m)) {                                                  \
+            PMIX_DATA_ARRAY_CONSTRUCT((m), (n), (t));                       \
+        }                                                                   \
     } while(0)
 
 #include <pmix_deprecated.h>
