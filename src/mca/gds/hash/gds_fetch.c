@@ -102,9 +102,9 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(const char *key,
     }
 
     if (NULL == key) {
-        if (trk->nptr->version.major < 3 ||
-            (3 == trk->nptr->version.major &&
-             0 == trk->nptr->version.minor)) {
+        if (trk->nptr->version.major < 4 ||
+            (4 == trk->nptr->version.major &&
+             1 == trk->nptr->version.minor)) {
             /* we can only transfer the data as independent values */
             PMIX_LIST_FOREACH(kv, sessionlist, pmix_kval_t) {
                 kp2 = PMIX_NEW(pmix_kval_t);
