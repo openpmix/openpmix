@@ -82,7 +82,6 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(const char *key,
     if (UINT32_MAX == sid) {
         /* they just want the session info from this job. */
         if (NULL == trk->session) {
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
             return PMIX_ERR_NOT_FOUND;
         }
         sessionlist = &trk->session->sessioninfo;
@@ -97,7 +96,6 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(const char *key,
         }
     }
     if (NULL == sessionlist) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
         return PMIX_ERR_NOT_FOUND;
     }
 

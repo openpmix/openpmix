@@ -856,7 +856,7 @@ PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
             return pmix_dictionary[n].string;
         }
     }
-    return NULL;
+    return attr;
 }
 
 PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
@@ -868,7 +868,7 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
             return pmix_dictionary[n].name;
         }
     }
-    return NULL;
+    return attrstring;
 }
 
 PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)
