@@ -120,14 +120,16 @@ char *pmix_hwloc_print_cpuset(pmix_cpuset_t *src)
 void pmix_hwloc_destruct_cpuset(pmix_cpuset_t *src)
 {
     if (NULL == src->source ||
-        0 != strncasecmp(src->source, "hwloc", 5) ||
-        NULL == src->bitmap) {
+        0 != strncasecmp(src->source, "hwloc", 5)) {
         return;
     }
 
-    hwloc_bitmap_free(src->bitmap);
-    src->bitmap = NULL;
+    if (NULL != src->bitmap) {
+        hwloc_bitmap_free(src->bitmap);
+        src->bitmap = NULL;
+    }
     free(src->source);
+    src->source = NULL;
 }
 
 // avoid ABI break

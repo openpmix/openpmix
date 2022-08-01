@@ -384,9 +384,11 @@ static void cycle_events(int sd, short args, void *cbdata)
     chain->results = newinfo;
     chain->nresults = cnt;
     /* clear any loaded name and object */
-    chain->ninfo = chain->nallocated - 2;
-    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 2]);
-    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 1]);
+    if (chain->nallocated > chain->ninfo) {
+        chain->ninfo = chain->nallocated - 2;
+        PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 2]);
+        PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 1]);
+    }
     // call their interim cbfunc
     if (NULL != chain->opcbfunc) {
         chain->opcbfunc(chain->interim_status, chain->cbdata);
@@ -1359,9 +1361,6 @@ void pmix_event_timeout_cb(int fd, short flags, void *arg)
     /* remove it from the list */
     pmix_list_remove_item(&pmix_globals.cached_events, &ch->super);
 
-    /* protect the chain */
-    PMIX_RETAIN(ch);
-
     /* process this event thru the regular channels */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
@@ -1500,7 +1499,9 @@ static void evdes(pmix_events_t *p)
     PMIX_LIST_DESTRUCT(&p->multi_events);
     PMIX_LIST_DESTRUCT(&p->default_events);
 }
-PMIX_CLASS_INSTANCE(pmix_events_t, pmix_object_t, evcon, evdes);
+PMIX_CLASS_INSTANCE(pmix_events_t,
+                    pmix_object_t,
+                    evcon, evdes);
 
 static void chcon(pmix_event_chain_t *p)
 {
@@ -1547,4 +1548,6 @@ static void chdes(pmix_event_chain_t *p)
         PMIX_INFO_FREE(p->results, p->nresults);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_event_chain_t, pmix_list_item_t, chcon, chdes);
+PMIX_CLASS_INSTANCE(pmix_event_chain_t,
+                    pmix_list_item_t,
+                    chcon, chdes);
