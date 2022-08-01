@@ -755,17 +755,10 @@ static void get_data(int sd, short args, void *cbdata)
                     }
                 }
             } else {
-                /* it's an invalid rank - if it is our nspace, then we assume they are
-                 * asking about us */
-                if (PMIX_CHECK_NSPACE(cb->proc->nspace, pmix_globals.myid.nspace)) {
-                    lg->hostname = strdup(pmix_globals.hostname);
-                    lg->nodeid = pmix_globals.nodeid;
-                } else {
-                    /* an invalid rank and not our nspace, with nothing else specified,
-                     * leaves us with no way to look this up */
-                    cb->status = PMIX_ERR_NOT_FOUND;
-                    goto done;
-                }
+                /* it's an invalid rank - assume they are asking about this node */
+                cb->proc->rank = PMIX_RANK_UNDEF;
+                lg->hostname = strdup(pmix_globals.hostname);
+                lg->nodeid = pmix_globals.nodeid;
             }
         }
         /* if we have a hostname and that is what they were
