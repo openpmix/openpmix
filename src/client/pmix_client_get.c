@@ -755,7 +755,8 @@ static void get_data(int sd, short args, void *cbdata)
                     }
                 }
             } else {
-                /* it's an invalid rank - assume they are asking about this node */
+                /* it's an invalid rank - assume they are asking about this node.
+                 * This is consistent with prior releases */
                 cb->proc->rank = PMIX_RANK_UNDEF;
                 lg->hostname = strdup(pmix_globals.hostname);
                 lg->nodeid = pmix_globals.nodeid;
@@ -845,16 +846,10 @@ static void get_data(int sd, short args, void *cbdata)
                     }
                 }
             } else {
-                /* rank is invalid - if the nspace is ours, then we assume
-                 * they want info about our app */
-                if (PMIX_CHECK_NSPACE(cb->proc->nspace, pmix_globals.myid.nspace)) {
-                    lg->appnum = pmix_globals.appnum;
-                } else {
-                    /* an invalid rank and not our nspace, with nothing else specified,
-                     * leaves us with no way to look this up */
-                    cb->status = PMIX_ERR_NOT_FOUND;
-                    goto done;
-                }
+                /* rank is invalid - assume they want info about our app.
+                 * This is consistent with prior releases */
+                cb->proc->rank = PMIX_RANK_UNDEF;
+                lg->appnum = pmix_globals.appnum;
             }
         }
         /* we get here with a valid appnum - if that is what they were
@@ -919,16 +914,10 @@ static void get_data(int sd, short args, void *cbdata)
                     }
                 }
             } else {
-                /* rank is invalid - if the nspace is ours, then we assume
-                 * they want info about our session */
-                if (PMIX_CHECK_NSPACE(cb->proc->nspace, pmix_globals.myid.nspace)) {
-                    lg->sessionid = pmix_globals.sessionid;
-                } else {
-                    /* an invalid rank and not our nspace, with nothing else specified,
-                     * leaves us with no way to look this up */
-                    cb->status = PMIX_ERR_NOT_FOUND;
-                    goto done;
-                }
+                /* rank is invalid - assume they want info about our session.
+                 * This is consistent with prior releases */
+                cb->proc->rank = PMIX_RANK_UNDEF;
+                lg->sessionid = pmix_globals.sessionid;
             }
         }
         /* if they were asking for sessionid, then we are done */
