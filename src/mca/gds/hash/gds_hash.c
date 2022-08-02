@@ -945,6 +945,9 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 return rc;
             }
             s = pmix_gds_hash_check_session(trk, sid);
+            if (PMIX_CHECK_NSPACE(nspace, pmix_globals.myid.nspace)) {
+                pmix_globals.sessionid = sid;
+            }
         } else if (PMIX_CHECK_KEY(&kptr, PMIX_SESSION_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_session_array(kptr.value, trk))) {
                 PMIX_ERROR_LOG(rc);
