@@ -649,11 +649,21 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
-    /* and set our buffer type */
-    pmix_globals.mypeer->nptr->compat.type = pmix_bfrops_globals.default_type;
+    /* set the buffer type accordingly if we are given any directives */
+    evar = getenv("PMIX_BFROP_BUFFER_TYPE");
+    if (NULL == evar) {
+        /* just set to our default */
+        pmix_globals.mypeer->nptr->compat.type = pmix_bfrops_globals.default_type;
+    } else if (0 == strcmp(evar, "PMIX_BFROP_BUFFER_FULLY_DESC")) {
+        pmix_globals.mypeer->nptr->compat.type = PMIX_BFROP_BUFFER_FULLY_DESC;
+    } else {
+        pmix_globals.mypeer->nptr->compat.type = PMIX_BFROP_BUFFER_NON_DESC;
+    }
 
-    /* assign our internal security module */
-    pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(NULL);
+    /* if we were passed directives, use them to guide our selection
+     * of security modules */
+    evar = getenv("PMIX_SECURITY_MODE");
+    pmix_globals.mypeer->nptr->compat.psec = pmix_psec_base_assign_module(evar);
     if (NULL == pmix_globals.mypeer->nptr->compat.psec) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE_THREAD(&pmix_global_lock);

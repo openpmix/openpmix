@@ -143,6 +143,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
     pmix_rank_t rank = 0;
     char tmp[2048];
     bool nohup = false;
+    char *security_mode;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
@@ -301,6 +302,16 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             pmix_setenv("PMIX_RANK", tmp, true, &env);
             pmix_setenv("PMIX_SERVER_RANK", tmp, true, &env);
 
+            /* pass our active security modules */
+            security_mode = pmix_psec_base_get_available_modules();
+            pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, &env);
+            free(security_mode);
+            /* pass the type of buffer we are using */
+            if (PMIX_BFROP_BUFFER_FULLY_DESC == pmix_globals.mypeer->nptr->compat.type) {
+                pmix_setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_FULLY_DESC", true, &env);
+            } else {
+                pmix_setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_NON_DESC", true, &env);
+            }
             /* get any PTL contribution such as tmpdir settings for session files */
             if (PMIX_SUCCESS != (rc = pmix_ptl.setup_fork(&child->proc, &env))) {
                 PMIX_ERROR_LOG(rc);
