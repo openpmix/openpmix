@@ -580,8 +580,9 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
     }
     reply = ntohl(u32);
 
-    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) && !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)
-        && !PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
         rc = pmix_ptl_base_client_handshake(peer, reply);
     } else { // we are a tool
         rc = pmix_ptl_base_tool_handshake(peer, reply);
@@ -1013,8 +1014,8 @@ pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp)
     }
 
     /* if we need an identifier, it comes next */
-    if (PMIX_TOOL_NEEDS_ID == peer->proc_type.flag
-        || PMIX_LAUNCHER_NEEDS_ID == peer->proc_type.flag) {
+    if (PMIX_TOOL_NEEDS_ID == peer->proc_type.flag ||
+        PMIX_LAUNCHER_NEEDS_ID == peer->proc_type.flag) {
         PMIX_PTL_RECV_NSPACE(peer->sd, pmix_globals.myid.nspace);
         PMIX_PTL_RECV_U32(peer->sd, pmix_globals.myid.rank);
     }
