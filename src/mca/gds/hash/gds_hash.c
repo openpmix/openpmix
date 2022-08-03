@@ -309,7 +309,6 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                     rc = pmix_hash_store(ht, rank, &kv, NULL, 0);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
-                        PMIX_RELEASE(kp2);
                         goto release;
                     }
                 }
