@@ -112,6 +112,18 @@ typedef struct {
 } pmix_events_t;
 PMIX_CLASS_DECLARATION(pmix_events_t);
 
+#define PMIX_EVENTS_STATIC_INIT                     \
+{                                                   \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t),   \
+    .nhdlrs = 0,                                    \
+    .first = NULL,                                  \
+    .last = NULL,                                   \
+    .actives = PMIX_LIST_STATIC_INIT,               \
+    .single_events = PMIX_LIST_STATIC_INIT,         \
+    .multi_events = PMIX_LIST_STATIC_INIT,          \
+    .default_events = PMIX_LIST_STATIC_INIT         \
+}
+
 /* define an object for chaining event notifications thru
  * the local state machine. Each registered event handler
  * that asked to be notified for a given code is given a

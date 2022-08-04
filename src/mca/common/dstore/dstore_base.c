@@ -2744,6 +2744,7 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     uint32_t appnum;
     char *hostname, **aliases;
     uint32_t nodeid;
+    uint32_t session;
     bool match;
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
@@ -2772,10 +2773,10 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
     	if (PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY)) {
     		/* the dstore currently does not understand info arrays,
-             * which causes problems when users query for node/app
+             * which causes problems when users query for session/node/app
              * info. We cannot fully resolve the problem, but we
              * can mitigate it by at least storing the info for
-             * the local node and this proc's app number */
+             * the local node and this proc's session and app number */
             pmix_info_t *info;
             size_t size, i;
             /* if it is our local node, then we are going to pass
@@ -2872,8 +2873,34 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     }
                 }
             }
-        } else if (PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY) ||
-                   PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
+        } else if (PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
+            /* the dstore currently does not understand info arrays,
+             * but we will store info from our own session */
+            pmix_info_t *info;
+            size_t size, i;
+            /* if it is our session, then we are going to pass
+             * all info */
+            info = kv->value->data.darray->array;
+            size = kv->value->data.darray->size;
+            session = UINT32_MAX;
+            for (i = 0; i < size; i++) {
+                if (PMIX_CHECK_KEY(&info[i], PMIX_SESSION_ID)) {
+                    session = info[i].value.data.uint32;
+                    break;
+                }
+            }
+            if (UINT32_MAX == session || session == pmix_globals.sessionid) {
+                for (i = 0; i < size; i++) {
+                    kv2.key = info[i].key;
+                    kv2.value = &info[i].value;
+                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        continue;
+                    }
+                }
+            }
+        } else if (PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY)) {
             continue;
         } else {
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv, 1, PMIX_KVAL);

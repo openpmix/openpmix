@@ -5,6 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,7 +14,7 @@
  */
 #include "src/include/pmix_config.h"
 
-#include "pmix.h"
+#include "include/pmix.h"
 #include "pmix_common.h"
 #include "include/pmix_server.h"
 
@@ -23,6 +24,7 @@
 #include "src/mca/gds/base/base.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_hash.h"
 
 #include "src/common/pmix_attributes.h"
 #include "src/include/pmix_dictionary.h"
@@ -60,11 +62,26 @@ static PMIX_CLASS_INSTANCE(pmix_attribute_trk_t, pmix_list_item_t, atrkcon, atrk
 
 PMIX_EXPORT void pmix_init_registered_attrs(void)
 {
+    size_t n;
+    pmix_regattr_input_t *p;
+
     if (!initialized) {
         PMIX_CONSTRUCT(&client_attrs, pmix_list_t);
         PMIX_CONSTRUCT(&server_attrs, pmix_list_t);
         PMIX_CONSTRUCT(&host_attrs, pmix_list_t);
         PMIX_CONSTRUCT(&tool_attrs, pmix_list_t);
+
+        /* cycle across the dictionary and load a hash
+         * table with translations of key -> index */
+        for (n=0; UINT32_MAX != pmix_dictionary[n].index; n++) {
+            p = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t));
+            p->index = pmix_dictionary[n].index;
+            p->name = strdup(pmix_dictionary[n].name);
+            p->string = strdup(pmix_dictionary[n].string);
+            p->type = pmix_dictionary[n].type;
+            p->description = pmix_argv_copy(pmix_dictionary[n].description);
+            pmix_hash_register_key(p->index, p);
+        }
         initialized = true;
     }
 }
@@ -127,7 +144,7 @@ PMIX_EXPORT void pmix_release_registered_attrs(void)
         PMIX_LIST_DESTRUCT(&server_attrs);
         PMIX_LIST_DESTRUCT(&host_attrs);
         PMIX_LIST_DESTRUCT(&tool_attrs);
-    }
+   }
     initialized = false;
 }
 

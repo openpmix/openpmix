@@ -62,7 +62,8 @@ headers = \
         pmix_pty.h \
         pmix_few.h \
         pmix_string_copy.h \
-        pmix_getcwd.h
+        pmix_getcwd.h \
+        pmix_vmem.h
 
 sources = \
         pmix_alfg.c \
@@ -90,7 +91,8 @@ sources = \
         pmix_pty.c \
         pmix_few.c \
         pmix_string_copy.c \
-        pmix_getcwd.c
+        pmix_getcwd.c \
+        pmix_vmem.c
 
 libpmix_util_la_SOURCES = $(headers) $(sources)
 
