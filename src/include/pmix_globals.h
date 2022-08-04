@@ -88,6 +88,48 @@ typedef struct {
     char **description;
 } pmix_regattr_input_t;
 
+/* define a struct for storing data in memory */
+typedef struct {
+    uint32_t index;
+    pmix_value_t *value;
+} pmix_qual_t;
+#define PMIX_QUAL_NEW(d, k)                                 \
+do {                                                        \
+    (d) = (pmix_qual_t*)pmix_malloc(sizeof(pmix_qual_t));   \
+    if (NULL != (d)) {                                      \
+        (d)->index = k;                                     \
+        (d)->value = NULL;                                  \
+    }                                                       \
+} while(0)
+#define PMIX_QUAL_RELEASE(d)            \
+do {                                    \
+    if (NULL != (d)->value) {           \
+        PMIX_VALUE_RELEASE((d)->value); \
+    }                                   \
+} while(0)
+
+typedef struct {
+    uint32_t index;
+    uint32_t qualindex;
+    pmix_value_t *value;
+} pmix_dstor_t;
+#define PMIX_DSTOR_NEW(d, k)                                \
+do {                                                        \
+    (d) = (pmix_dstor_t*)pmix_malloc(sizeof(pmix_dstor_t)); \
+    if (NULL != (d)) {                                      \
+        (d)->index = k;                                     \
+        (d)->qualindex = UINT32_MAX;                        \
+        (d)->value = NULL;                                  \
+    }                                                       \
+} while(0)
+#define PMIX_DSTOR_RELEASE(d)           \
+do {                                    \
+    if (NULL != (d)->value) {           \
+        PMIX_VALUE_RELEASE((d)->value); \
+    }                                   \
+} while(0)
+
+
 /* define a struct for passing topology objects */
 typedef struct {
     pmix_object_t super;
@@ -204,6 +246,24 @@ typedef struct {
     bool pattern;
     bool raw;
 } pmix_iof_flags_t;
+
+#define PMIX_IOF_FLAGS_STATIC_INIT  \
+{                                   \
+    .set = false,                   \
+    .xml = false,                   \
+    .timestamp = false,             \
+    .tag = false,                   \
+    .rank = false,                  \
+    .file = NULL,                   \
+    .directory = NULL,              \
+    .nocopy = false,                \
+    .merge = false,                 \
+    .local_output = false,          \
+    .local_output_given = false,    \
+    .pattern = false,               \
+    .raw = false                    \
+}
+
 
 /* objects used by servers for tracking active nspaces */
 typedef struct {
@@ -589,6 +649,7 @@ typedef struct {
     uint32_t appnum;     // my appnum
     pid_t pid;           // my local pid
     uint32_t nodeid;     // my nodeid, if given
+    uint32_t sessionid;
     int pindex;
     pmix_event_base_t *evbase;
     int debug_output;
@@ -614,6 +675,8 @@ typedef struct {
     bool external_topology;
     bool external_progress;
     pmix_iof_flags_t iof_flags;
+    pmix_pointer_array_t keyindex;  // translation table of key <-> index
+    uint32_t next_keyid;
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */
