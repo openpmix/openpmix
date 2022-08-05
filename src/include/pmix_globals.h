@@ -432,6 +432,13 @@ typedef struct {
 } pmix_query_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
 
+typedef struct {
+    pmix_list_item_t super;
+    pmix_proc_t proc;
+    pmix_byte_object_t blob;  // packed blob of info provided by this proc
+} pmix_grpinfo_t;
+PMIX_CLASS_DECLARATION(pmix_grpinfo_t);
+
 /* define a tracker for collective operations
  * - instanced in pmix_server_ops.c */
 typedef struct {
@@ -457,6 +464,7 @@ typedef struct {
     uint32_t local_cnt; // number of local participants who have contributed
     pmix_info_t *info;  // array of info structs
     size_t ninfo;       // number of info structs in array
+    pmix_list_t grpinfo;    // list of group info to be distributed
     pmix_collect_t collect_type; // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
@@ -524,6 +532,8 @@ typedef struct {
     bool pntrval;
     bool stval;
     bool optional;
+    bool add_immediate;
+    bool qualified_value;
     bool refresh_cache;
     pmix_scope_t scope;
 } pmix_get_logic_t;

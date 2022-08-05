@@ -115,8 +115,9 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace, pmix_bu
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buff, &bo, &cnt, PMIX_BYTE_OBJECT);
 
     /* If the collect flag is set, we should have some data for unpacking */
-    if ((PMIX_COLLECT_YES == trk->collect_type)
-        && (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc)) {
+    if ((PMIX_COLLECT_YES == trk->collect_type) &&
+        (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc)) {
+        PMIX_ERROR_LOG(rc);
         goto exit;
     }
 
@@ -129,6 +130,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace, pmix_bu
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
             /* no data was returned, so we are done with this blob */
             PMIX_DESTRUCT(&bkt);
+            PMIX_ERROR_LOG(rc);
             break;
         }
         if (PMIX_SUCCESS != rc) {
