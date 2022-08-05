@@ -340,6 +340,8 @@ static void lgcon(pmix_get_logic_t *p)
     p->pntrval = false;
     p->stval = false;
     p->optional = false;
+    p->add_immediate = false;
+    p->qualified_value = false;
     p->refresh_cache = false;
     p->scope = PMIX_SCOPE_UNDEF;
 }
@@ -387,6 +389,9 @@ static void cbdes(pmix_cb_t *p)
         PMIX_DEVICE_DIST_FREE(p->dist, p->nvals);
     }
     PMIX_LIST_DESTRUCT(&p->kvs);
+    if (NULL != p->lg) {
+        free(p->lg);
+    }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cb_t, pmix_list_item_t, cbcon, cbdes);
 

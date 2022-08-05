@@ -61,9 +61,9 @@
 
 #include "pmix_client_ops.h"
 
-static pmix_buffer_t* _pack_get(char *nspace, pmix_rank_t rank, char *key,
-                               const pmix_info_t info[], size_t ninfo,
-                               pmix_cmd_t cmd);
+static pmix_buffer_t* _pack_get(pmix_cb_t *cb,
+                                pmix_rank_t rank,
+                                pmix_cmd_t cmd);
 
 static void _getnbfn(int sd, short args, void *cbdata);
 
@@ -175,6 +175,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     bool sessiondirective = false;
     bool sessioninfo = false;
     bool refreshcache = false;
+    bool qval = false;
     pmix_value_t *ival = NULL;
     pmix_info_t optional;
 
@@ -612,6 +613,15 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     }
 
   fastpath:
+    /* if the info contains qualifiers, then pass it to the
+     * gds/hash component as dstor doesn't know how to handle it */
+    for (n=0; n < nfo; n++) {
+        if (PMIX_INFO_IS_QUALIFIER(&iptr[n])) {
+            qval = true;
+            goto doget;
+        }
+    }
+
     /* try to get data directly, without threadshift */
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb value trying fastpath for proc %s key %s",
@@ -640,6 +650,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     cb->info = iptr;
     cb->ninfo = nfo;
     cb->infocopy = copy;
+    cb->lg = (pmix_get_logic_t*)pmix_malloc(sizeof(pmix_get_logic_t));
+    memset(cb->lg, 0, sizeof(pmix_get_logic_t));
+    cb->lg->qualified_value = qval;
     cb->cbfunc.valuefn = cbfunc;
     cb->cbdata = cbdata;
     PMIX_THREADSHIFT(cb, _getnbfn);
@@ -660,12 +673,15 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata)
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
-static pmix_buffer_t* _pack_get(char *nspace, pmix_rank_t rank, char *key,
-                               const pmix_info_t info[], size_t ninfo,
-                               pmix_cmd_t cmd)
+static pmix_buffer_t* _pack_get(pmix_cb_t *cb,
+                                pmix_rank_t rank,
+                                pmix_cmd_t cmd)
 {
     pmix_buffer_t *msg;
     pmix_status_t rc;
+    pmix_info_t *immediate;
+    size_t n, nimm;
+    char *nspace = cb->proc->nspace;
 
     /* nope - see if we can get it */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -694,26 +710,37 @@ static pmix_buffer_t* _pack_get(char *nspace, pmix_rank_t rank, char *key,
         return NULL;
     }
     /* pack the number of info structs */
+    if (cb->lg->add_immediate) {
+        nimm = cb->ninfo + 1;
+        PMIX_INFO_CREATE(immediate, nimm);
+        for (n=0; n < cb->ninfo; n++) {
+            PMIX_INFO_XFER(&immediate[n], &cb->info[n]);
+        }
+        PMIX_INFO_LOAD(&immediate[n], PMIX_IMMEDIATE, NULL, PMIX_BOOL);
+        cb->info = immediate;
+        cb->ninfo = nimm;
+        cb->infocopy = true;
+    }
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                     msg, &ninfo, 1, PMIX_SIZE);
+                     msg, &cb->ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return NULL;
     }
-    if (0 < ninfo) {
+    if (0 < cb->ninfo) {
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, info, ninfo, PMIX_INFO);
+                         msg, cb->info, cb->ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             return NULL;
         }
     }
-    if (NULL != key) {
+    if (NULL != cb->key) {
         /* pack the key */
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver,
-                         msg, &key, 1, PMIX_STRING);
+                         msg, &cb->key, 1, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -822,7 +849,9 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
                /* if we are both using the "hash" component, then the server's peer
                 * will simply be pointing at the same hash tables as my peer - no
                 * no point in checking there again */
-                if (0 != strcmp(pmix_globals.mypeer->nptr->compat.gds->name, pmix_client_globals.myserver->nptr->compat.gds->name)) {
+                if (!cb->lg->qualified_value &&
+                    !PMIX_GDS_CHECK_PEER_COMPONENT(pmix_globals.mypeer,
+                                                   pmix_client_globals.myserver)) {
                     pmix_output_verbose(2, pmix_client_globals.get_output,
                                         "pmix: get_nb searching for key %s for proc %s, - %s",
                                         cb->key, PMIX_NAME_PRINT(&proc), pmix_client_globals.myserver->nptr->compat.gds->name);
@@ -945,6 +974,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     size_t n;
     pmix_proc_t proc;
     bool optional = false;
+    bool immediate = false;
     bool internal_only = false;
 
     /* cb was passed to us from another thread - acquire it */
@@ -965,6 +995,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         for (n=0; n < cb->ninfo; n++) {
             if (PMIX_CHECK_KEY(&cb->info[n], PMIX_OPTIONAL)) {
                 optional = PMIX_INFO_TRUE(&cb->info[n]);
+            } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_IMMEDIATE)) {
+                immediate = PMIX_INFO_TRUE(&cb->info[n]);
             } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_DATA_SCOPE)) {
                 cb->scope = cb->info[n].value.data.scope;
             } else if (PMIX_CHECK_KEY(&cb->info[n], PMIX_NODE_INFO) ||
@@ -987,13 +1019,19 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                             "pmix:client data found in internal storage");
         rc = process_values(&val, cb);
         goto respond;
+    } else if (cb->lg->qualified_value) {
+        if (!immediate) {
+            cb->lg->add_immediate = true;
+        }
+        goto request;
     }
+
     pmix_output_verbose(5, pmix_client_globals.get_output,
                         "pmix:client data NOT found in internal storage");
 
     /* if the key is NULL or starts with "pmix", then they are looking
      * for data that was provided by the server at startup */
-    if (!internal_only && (NULL == cb->key || 0 == strncmp(cb->key, "pmix", 4))) {
+    if (!internal_only && (NULL == cb->key || PMIX_CHECK_RESERVED_KEY(cb->key))) {
         pmix_output_verbose(2, pmix_client_globals.get_output,
                             "pmix: get_nb looking for job info");
         cb->proc = &proc;
@@ -1002,7 +1040,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         cb->copy = true;
         /* if the peer and server GDS component are the same, then no
          * point in trying it again */
-        if (0 != strcmp(pmix_globals.mypeer->nptr->compat.gds->name, pmix_client_globals.myserver->nptr->compat.gds->name)) {
+        if (!PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
             PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
         } else {
             rc = PMIX_ERR_NOT_FOUND;
@@ -1010,7 +1048,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(5, pmix_client_globals.get_output,
                                 "pmix:client job-level data NOT found");
-            if (!PMIX_CHECK_NSPACE(cb->pname.nspace, pmix_globals.myid.nspace)) {
+            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100) ||
+                !PMIX_CHECK_NSPACE(cb->pname.nspace, pmix_globals.myid.nspace)) {
                 /* we are asking about the job-level info from another
                  * namespace. It seems that we don't have it - go and
                  * ask server and indicate we only need job-level info
@@ -1019,23 +1058,18 @@ static void _getnbfn(int fd, short flags, void *cbdata)
                 proc.rank = PMIX_RANK_WILDCARD;
                 goto request;
             } else if (NULL != cb->key) {
-                /* => cb->key starts with pmix
-                 * if the server is pre-v3.2, then we have to go up and ask
-                 * for the info */
-                if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
-                    pmix_output_verbose(5, pmix_client_globals.get_output,
-                                        "pmix:client old server - fetching data");
-                    proc.rank = PMIX_RANK_WILDCARD;
-                    goto request;
-                } else if (PMIX_CHECK_KEY(cb, PMIX_GROUP_CONTEXT_ID)) {
-                    goto request;
-                }
-                /* we should have had this info, so respond with the error - if
-                 * they want us to check with the server, they should ask us to
-                 * refresh the cache */
+                /* this is a reserved key - we should have had this info, but
+                 * it is possible that some system don't provide it, thereby
+                 * causing the app to manually distribute it. We will therefore
+                 * request it from the server, but do so under the "immediate"
+                 * use-case, adding that flag if they didn't already include it
+                 */
                 pmix_output_verbose(5, pmix_client_globals.get_output,
-                                    "pmix:client returning NOT FOUND error");
-                goto respond;
+                                    "pmix:client reserved key not locally found");
+                if (!immediate) {
+                    cb->lg->add_immediate = true;
+                }
+                goto request;
             } else {
                 pmix_output_verbose(5, pmix_client_globals.get_output,
                                     "pmix:client NULL KEY - returning error");
@@ -1055,7 +1089,8 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     } else {
         /* if the peer and server GDS component are the same, then no
          * point in trying it again */
-        if (0 == strcmp(pmix_globals.mypeer->nptr->compat.gds->name, pmix_client_globals.myserver->nptr->compat.gds->name)) {
+        if (PMIX_GDS_CHECK_PEER_COMPONENT(pmix_client_globals.myserver,
+                                          pmix_globals.mypeer)) {
             val = NULL;
             goto request;
         }
@@ -1122,7 +1157,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
     }
 
     /* we don't have a pending request, so let's create one */
-    msg = _pack_get(cb->proc->nspace, proc.rank, cb->key, cb->info, cb->ninfo, PMIX_GETNB_CMD);
+    msg = _pack_get(cb, proc.rank, PMIX_GETNB_CMD);
     if (NULL == msg) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);

@@ -732,6 +732,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
 {
     pmix_status_t rc;
     bool found = false;
+    bool used_mypeer = true;
     pmix_buffer_t pbkt, pkt;
     pmix_proc_t proc;
     pmix_cb_t cb;
@@ -784,6 +785,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         }
         if (NULL != peer) {
             PMIX_GDS_FETCH_KV(rc, peer, &cb);
+            used_mypeer = false;
         }
     }
     cb.info = NULL;
@@ -792,7 +794,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         found = true;
         PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
         /* assemble the provided data into a byte object */
-        if (PMIX_RANK_UNDEF == rank || diffnspace) {
+        if (PMIX_RANK_UNDEF == rank || diffnspace || used_mypeer) {
             PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pkt, cd);
         } else {
             PMIX_GDS_ASSEMB_KVS_REQ(rc, cd->peer, &proc, &cb.kvs, &pkt, cd);

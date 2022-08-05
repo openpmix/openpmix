@@ -24,7 +24,7 @@ headers = examples.h
 
 AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_builddir)/include -I$(top_builddir)/include/pmix
 
-noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi tool debugger debuggerd alloc jctrl group asyncgroup hello abi_no_init abi_with_init nodeinfo
+noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi tool debugger debuggerd alloc jctrl group asyncgroup hello abi_no_init abi_with_init nodeinfo group_lcl_cid
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -110,8 +110,12 @@ abi_with_init_SOURCES = abi_with_init.c
 abi_with_init_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 abi_with_init_LDADD =  $(top_builddir)/src/libpmix.la
 
+group_lcl_cid_SOURCES = group_lcl_cid.c
+group_lcl_cid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_lcl_cid_LDADD =  $(top_builddir)/src/libpmix.la
+
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
         debugger debuggerd dmodex dynamic fault group \
         hello jctrl launcher log pub pubi server tool \
-        abi_no_init abi_with_init nodeinfo
+        abi_no_init abi_with_init nodeinfo group_lcl_cid
