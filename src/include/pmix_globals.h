@@ -236,6 +236,8 @@ typedef struct {
     bool xml;
     bool timestamp;
     bool tag;
+    bool tag_detailed;
+    bool tag_fullname;
     bool rank;
     char *file;
     char *directory;
@@ -253,6 +255,8 @@ typedef struct {
     .xml = false,                   \
     .timestamp = false,             \
     .tag = false,                   \
+    .tag_detailed = false,          \
+    .tag_fullname = false,          \
     .rank = false,                  \
     .file = NULL,                   \
     .directory = NULL,              \
