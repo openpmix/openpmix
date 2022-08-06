@@ -916,6 +916,12 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
         PMIX_CHECK_KEY(info, PMIX_TAG_OUTPUT)) {
         flags->tag = PMIX_INFO_TRUE(info);
         flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_DETAILED_OUTPUT)) {
+        flags->tag_detailed = PMIX_INFO_TRUE(info);
+        flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_FULLNAME_OUTPUT)) {
+        flags->tag_fullname = PMIX_INFO_TRUE(info);
+        flags->set = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_RANK_OUTPUT)) {
         flags->rank = PMIX_INFO_TRUE(info);
         flags->set = true;
@@ -1068,8 +1074,15 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     char **segments = NULL;
     pmix_iof_write_output_t *output, *copy;
     size_t offset, j, n, m, bufsize;
-    char *buffer, qprint[15];
+    char *buffer, qprint[15], *cptr;
+    const char *usestring;
     bool bufcopy;
+    pmix_cb_t cb2;
+    pmix_info_t optional;
+    pmix_kval_t *kv;
+    pid_t pid;
+    char *pidstring;
+    pmix_status_t rc;
 
     /* setup output object */
     output = PMIX_NEW(pmix_iof_write_output_t);
@@ -1078,6 +1091,7 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     memset(endtag, 0, PMIX_IOF_BASE_TAG_MAX);
     memset(timestamp, 0, PMIX_IOF_BASE_TAG_MAX);
     memset(outtag, 0, PMIX_IOF_BASE_TAG_MAX);
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
     /* write output data to the corresponding tag */
     if (PMIX_FWD_STDIN_CHANNEL & stream) {
@@ -1132,9 +1146,66 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
      */
     if (myflags->xml) {
         if (myflags->tag) {
+            /* find the '@' delimiter in the nspace */
+            cptr = strrchr(name->nspace, '@');
+            if (NULL == cptr) {
+                usestring = name->nspace;  // just use the whole thing
+            } else {
+                ++cptr;
+                usestring = cptr; // use the jobid portion
+            }
             pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
-                     "<%s nspace=\"%s\" rank=\"%s\"", suffix,
-                     name->nspace, PMIX_RANK_PRINT(name->rank));
+                          "<%s %s=\"%s\" rank=\"%s\"", suffix,
+                          (usestring == name->nspace) ? "nspace" : "jobid",
+                          usestring, PMIX_RANK_PRINT(name->rank));
+        } else if (myflags->tag_fullname) {
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                          "<%s nspace=\"%s\" rank=\"%s\"", suffix,
+                          name->nspace, PMIX_RANK_PRINT(name->rank));
+        } else if (myflags->tag_detailed) {
+            /* we need the hostname and pid of the source */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.proc = (pmix_proc_t*)name;
+            cb2.key = PMIX_HOSTNAME;
+            cb2.info = &optional;
+            cb2.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                cptr = strdup(kv->value->data.string);
+                PMIX_RELEASE(kv);
+            } else {
+                cptr = strdup("unknown");
+            }
+            PMIX_DESTRUCT(&cb2);
+            /* get the pid */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.proc = (pmix_proc_t*)name;
+            cb2.key = PMIX_PROC_PID;
+            cb2.info = &optional;
+            cb2.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                PMIX_VALUE_GET_NUMBER(rc, kv->value, pid, pid_t);
+                PMIX_RELEASE(kv);
+                if (PMIX_SUCCESS != rc) {
+                    pidstring = strdup("unknown");
+                } else {
+                    pmix_asprintf(&pidstring, "%u", pid);
+                }
+            } else {
+                pidstring = strdup("unknown");
+            }
+            PMIX_DESTRUCT(&cb2);
+
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                          "<%s nspace=\"%s\" rank=\"%s\"[\"%s\":\"%s\"",
+                          suffix, name->nspace,
+                          PMIX_RANK_PRINT(name->rank),
+                          cptr, pidstring);
+            free(cptr);
+            free(pidstring);
         } else if (myflags->rank) {
             pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
@@ -1152,11 +1223,81 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
                  "</%s>", suffix);
     } else {
         if (myflags->tag) {
+            /* find the '@' delimiter in the nspace */
+            cptr = strrchr(name->nspace, '@');
+            if (NULL == cptr) {
+                usestring = name->nspace;  // just use the whole thing
+            } else {
+                ++cptr;
+                usestring = cptr; // use the jobid portion
+            }
             pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
-                     "[%s,%s]<%s>: ",
-                     name->nspace,
-                     PMIX_RANK_PRINT(name->rank),
-                     suffix);
+                          "[%s,%s]<%s>: ",
+                          usestring,
+                          PMIX_RANK_PRINT(name->rank),
+                          suffix);
+        } else if (myflags->tag_detailed) {
+            if (myflags->tag_fullname) {
+                usestring = name->nspace;
+            } else {
+                /* find the '@' delimiter in the nspace */
+                cptr = strrchr(name->nspace, '@');
+                if (NULL == cptr) {
+                    usestring = name->nspace;  // just use the whole thing
+                } else {
+                    ++cptr;
+                    usestring = cptr; // use the jobid portion
+                }
+            }
+            /* we need the hostname and pid of the source */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.proc = (pmix_proc_t*)name;
+            cb2.key = PMIX_HOSTNAME;
+            cb2.info = &optional;
+            cb2.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                cptr = strdup(kv->value->data.string);
+                PMIX_RELEASE(kv);
+            } else {
+                cptr = strdup("unknown");
+            }
+            PMIX_DESTRUCT(&cb2);
+            /* get the pid */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.proc = (pmix_proc_t*)name;
+            cb2.key = PMIX_PROC_PID;
+            cb2.info = &optional;
+            cb2.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                PMIX_VALUE_GET_NUMBER(rc, kv->value, pid, pid_t);
+                PMIX_RELEASE(kv);
+                if (PMIX_SUCCESS != rc) {
+                    pidstring = strdup("unknown");
+                } else {
+                    pmix_asprintf(&pidstring, "%u", pid);
+                }
+            } else {
+                pidstring = strdup("unknown");
+            }
+            PMIX_DESTRUCT(&cb2);
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                          "[%s,%s][%s:%s]<%s>: ",
+                          usestring,
+                          PMIX_RANK_PRINT(name->rank),
+                          cptr, pidstring,
+                          suffix);
+            free(cptr);
+            free(pidstring);
+        } else if (myflags->tag_fullname) {
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                          "[%s,%s]<%s>: ",
+                          name->nspace,
+                          PMIX_RANK_PRINT(name->rank),
+                          suffix);
         } else if (myflags->rank) {
             pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
                      "[%s]<%s>: ",
@@ -1167,7 +1308,6 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     /* if we are to timestamp output, start the tag with that */
     if (myflags->timestamp) {
         time_t mytime;
-        char *cptr;
         /* get the timestamp */
         time(&mytime);
         cptr = ctime(&mytime);
