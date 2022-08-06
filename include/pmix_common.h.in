@@ -895,7 +895,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_IOF_PUSH_STDIN                 "pmix.iof.stdin"        // (bool) Used by a tool to request that the PMIx library collect
                                                                     //        the tool's stdin and forward it to the procs specified in
                                                                     //        the PMIx_IOF_push call
-#define PMIX_IOF_TAG_OUTPUT                 "pmix.iof.tag"          // (bool) Tag output with the [nspace,rank] and channel it comes from
+#define PMIX_IOF_TAG_OUTPUT                 "pmix.iof.tag"          // (bool) Tag output with the [local jobid,rank] and channel it comes from
+#define PMIX_IOF_TAG_DETAILED_OUTPUT        "pmix.iof.tagdet"       // (bool) Tag output with the [local jobid,rank][hostname:pid] and channel it comes from
+#define PMIX_IOF_TAG_FULLNAME_OUTPUT        "pmix.iof.tagfull"      // (bool) Tag output with the [nspace,rank] and channel it comes from
 #define PMIX_IOF_RANK_OUTPUT                "pmix.iof.rank"         // (bool) Tag output with the rank it came from
 #define PMIX_IOF_TIMESTAMP_OUTPUT           "pmix.iof.ts"           // (bool) Timestamp output
 #define PMIX_IOF_MERGE_STDERR_STDOUT        "pmix.iof.mrg"          // (bool) merge stdout and stderr streams from application procs
