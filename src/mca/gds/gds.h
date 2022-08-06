@@ -74,6 +74,8 @@ typedef pmix_status_t (*pmix_gds_base_assign_module_fn_t)(pmix_info_t *info, siz
                                                           int *priority);
 
 #define PMIX_GDS_CHECK_COMPONENT(p, s) (0 == strcmp((p)->nptr->compat.gds->name, (s)))
+#define PMIX_GDS_CHECK_PEER_COMPONENT(p1, p2) \
+    (0 == strcmp((p1)->nptr->compat.gds->name, (p2)->nptr->compat.gds->name))
 
 /* SERVER FN: assemble the keys buffer for server answer */
 typedef pmix_status_t (*pmix_gds_base_module_assemb_kvs_req_fn_t)(const pmix_proc_t *proc,
