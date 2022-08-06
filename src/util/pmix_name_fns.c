@@ -175,3 +175,15 @@ char *pmix_util_print_rank(const pmix_rank_t vpid)
     }
     return ptr->buffers[index];
 }
+
+int pmix_util_compare_proc(const void *a, const void *b)
+{
+    const pmix_proc_t *proc_a = (pmix_proc_t *)a;
+    const pmix_proc_t *proc_b = (pmix_proc_t *)b;
+
+    int nspace_dif = strncmp(proc_a->nspace, proc_b->nspace, PMIX_MAX_NSLEN);
+    if (nspace_dif != 0)
+        return nspace_dif;
+
+    return proc_a->rank - proc_b->rank;
+}

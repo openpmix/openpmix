@@ -52,5 +52,8 @@ PMIX_EXPORT char *pmix_util_print_rank(const pmix_rank_t vpid);
 #define PMIX_RANK_PRINT(n) pmix_util_print_rank(n)
 
 #define PMIX_PEER_PRINT(p) pmix_util_print_pname_args(&(p)->info->pname)
+
+PMIX_EXPORT int pmix_util_compare_proc(const void *a, const void *b);
+
 END_C_DECLS
 #endif
