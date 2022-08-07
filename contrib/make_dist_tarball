@@ -14,6 +14,7 @@
 # Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2019      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -109,7 +110,7 @@ if test "$LIBEVENT" != ""; then
     echo "*** Adding --with-libevent=$LIBEVENT to config_args"
     config_args="--with-libevent=$LIBEVENT $config_args"
 fi
-
+config_args="$config_args --enable-devel-check"
 export DISTCHECK_CONFIGURE_FLAGS=$config_args
 
 #
