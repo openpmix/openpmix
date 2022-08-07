@@ -23,6 +23,89 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
+4.2.0 -- TBD
+----------------------
+ - PR #2670 Support broader range of output formats
+ - PR #2668 Multiple commits
+    - Sort proc arrays to remove order sensitivity
+    - Fix multi-node group info distribution
+ - PR #2666 Coordinate psec modules across pfexec child
+ - PR #2665 Complete implementation of group info exchange
+ - PR #2659 Multiple commits
+    - Fix IOF of stdin
+    - Protect "create" macros from zero entries
+    - Return the correct code for register fabric
+    - Forward stdin to apps started using pfexec
+ - PR #2651 Multiple commits
+    - Enable picky compiler options by default in Git repo builds
+    - Remove bad destruct call
+    - Fix PMIX_INFO_PROCESSED macros
+    - Update show-help system
+    - Fix show_help output to include tools in distribution
+    - Fix dmodex operations
+    - Properly cast the pmix_list_item_t struct
+    - Fix potential use after free in tests
+    - Add "const" qualifiers to some string print APIs
+    - Cleanup some debug output
+    - construct_dictionary.py: make .format() safe for Python 2
+    - src/include/Makefile.am: avoid potential file corruption
+    - Stop multiple invocations of debugger-release
+    - Update the dmodex example
+ - PR #2629 Multiple commits
+    - Setup PMIX_STD_ABI_VERSION in the VERSION file
+    - Define the PMIX_QUERY_ABI_VERSION attribute
+    - Backend query support for PMIX_QUERY_ABI_VERSION and local keys
+    - Add examples for using PMIx_Query_info with PMIX_QUERY_ABI_VERSION
+    - Add PMIx Standard version info to pmix_info
+    - Fix pcompress/zlib implementation
+    - Return "succeeded" status when outputting help/version info
+ - PR #2623 Fix greek versioning
+ - PR #2614 Fix retrieval of node/app/session-realm info
+ - PR #2613 Some minor cleanups for picky compilers
+ - PR #2612 Some initial valgrind cleanup
+ - PR #2610 Multiple commits
+    - Remove unnecessary function call in pmix_gds_hash_fetch()
+    - pmix_fd: cap the max FD to try to close
+    - Support colocation of processes
+    - Optimize the file descriptor cleanup on OSX
+    - Require flex only when keyval_lex.c is not provided
+    - Fix hwloc verbose output
+ - PR #2601 Initialize pmix_info_t flags when loading
+ - PR #2594 Backport the utility and class exposure to support PRRTE
+ - PR #2588 configure.ac: update directory space check
+ - PR #2585 configury: do look for sed
+ - PR #2576 Refactor show_help() to use the PMIx_Log() api
+ - PR #2567 Make pmix_common.h stand alone
+ - PR #2564 Error out if no atomic support is available
+ - PR #2543 Properly deal with delayed local get requests
+ - PR #2540 Ensure we get correct return status
+ - PR #2538 Multiple commits
+    - Fix warning - compare of different signs
+    - Fix dmodex operation on local host
+ - PR #2535 Update the configure logic to track master
+ - PR #2534 nitialize size for getsockopt() and revert bad free
+ - PR #2533 Example fixes
+ - PR #2532 Protect critical zone in pmix_obj_update()
+ - PR #2518 Prohibit Python bindings with non-shared lib builds
+ - PR #2517 Fix Coverity warnings
+ - PR #2516 Properly handle queries of tools
+ - PR #2507 Properly handle tools that have tools connected to them
+ - PR #2506 Add print APIs and update pquery to use them
+ - PR #2505 Update configure flags
+ - PR #2504 Don't search home component path if not present
+ - PR #2502 Add missing function and improve error message
+ - PR #2460 Multiple commits
+    - Remove unneeded atomics code
+    - Begin stripping configure of unnecessary checks
+    - Initialize the mutex when constructing an object
+    - Sync the library to the Standard
+    - convert pmix_value_xfer to PMIx_Value_xfer
+    - pmix_iof.c: malloc buffer before memcpy()
+    - Clean up unused return value warnings
+    - Remove unnecessary sys/sysctl.h includes
+    - Include typedef for GCC builtin atomics
+
+
 4.1.2 -- 11 Feb 2022
 ----------------------
 **** NOTE: This release contains a workaround that resolves the prior
