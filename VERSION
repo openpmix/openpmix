@@ -24,7 +24,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=a1
+greek=rc1
 
 # PMIx Standard Compliance Level
 # The major and minor numbers indicate the version
@@ -43,7 +43,7 @@ greek=a1
 # magnitude of the changes.
 std_major=4
 std_minor=2
-std_extension=0
+std_extension=1
 
 # PMIx Standard ABI Compliance Level(s)
 # The major and minor numbers (MAJOR.MINOR) indicate the version
@@ -113,5 +113,5 @@ libpmix_so_version=8:0:6
 # # well.  Yuck; this somewhat breaks the
 # # components-don't-affect-the-build-system abstraction.
 #
-libmca_common_dstore_so_version=1:3:0
+libmca_common_dstore_so_version=1:4:0
 libmca_common_sse_so_version=1:0:0
