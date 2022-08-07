@@ -25,6 +25,7 @@ multiple release branches.
 
 4.2.0 -- TBD
 ----------------------
+ - PR #2672 Fix make_tarball and remove unused variable
  - PR #2670 Support broader range of output formats
  - PR #2668 Multiple commits
     - Sort proc arrays to remove order sensitivity
