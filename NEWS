@@ -25,6 +25,32 @@ multiple release branches.
 
 4.2.0 -- TBD
 ----------------------
+**** NOTE: This release includes a number of new features that
+may be of use to library and application developers. These include:
+  * support for qualified values - i.e., the ability to reuse an
+    attribute, assigning it different values with each value
+    contingent upon one or more qualifiers. Thus, requests to
+    return the value can specify the corresponding qualifiers
+    to identify the specific version of the value being requested.
+  * provide additional information to be included in group construct
+    operations. The result of the operation shall include exchange
+    of such information with all participants, with the information
+    "qualified" by the assigned group context ID.
+  * new output formats that allow prepending output streams with
+    the hostname and pid of the source process
+  * improved support for tools that allow connection to multiple
+    simultaneous servers and better handshakes for establishing
+    connections
+  * fixes for access to session/node/app-realm information
+  * broader support for pretty-print of PMIx structures such
+    as pmix_info_t and pmix_value_t
+  * compliance with the new PMIx ABI definitions. This includes
+    converting some macros to functions, with macros retained
+    for backward compatibility
+  * capture and forwarding of default MCA parameter file values,
+    both from the system and user level
+
+Detailed changes:
  - PR #2672 Fix make_tarball and remove unused variable
  - PR #2670 Support broader range of output formats
  - PR #2668 Multiple commits
@@ -84,7 +110,7 @@ multiple release branches.
     - Fix warning - compare of different signs
     - Fix dmodex operation on local host
  - PR #2535 Update the configure logic to track master
- - PR #2534 nitialize size for getsockopt() and revert bad free
+ - PR #2534 Initialize size for getsockopt() and revert bad free
  - PR #2533 Example fixes
  - PR #2532 Protect critical zone in pmix_obj_update()
  - PR #2518 Prohibit Python bindings with non-shared lib builds
