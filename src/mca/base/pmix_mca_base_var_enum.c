@@ -309,7 +309,6 @@ int pmix_mca_base_var_enum_create_flag(const char *name,
          * hasn't already been specified. */
         assert(!(flags[i].flag & (flags[i].flag - 1)));
         assert(!(flags[i].flag & flags[i].conflicting_flag));
-        assert(!(all_flags & flags[i].flag));
         assert(flags[i].flag);
     }
 
