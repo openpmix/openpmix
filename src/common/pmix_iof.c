@@ -1320,9 +1320,9 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
             pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
                      " timestamp=\"%s\"", cptr);
         } else if (myflags->tag || myflags->rank) {
-            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "[%s]", cptr);
         } else {
-            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s>: ", cptr, suffix);
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "[%s]<%s>: ", cptr, suffix);
         }
     }
 
