@@ -2,6 +2,7 @@ dnl -*- autoconf -*-
 dnl
 dnl Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
+dnl Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -315,9 +316,12 @@ AC_DEFUN([_OAC_CHECK_PACKAGE_PKGCONFIG], [
                       [test -z "${check_package_prefix}"],
                       [check_package_cv_$1_pcfilename="pcname"],
                       [test -r "${check_package_prefix}/lib/pkgconfig/pcname.pc" -a -r "${check_package_prefix}/lib64/pkgconfig/pcname.pc"],
-                      [AC_MSG_ERROR([Found pcname in both ${check_package_prefix}/lib/pkgconfig and
+                      [AS_IF([test ! -L "${check_package_prefix}/lib" &&
+                              test ! -L "${check_package_prefix}/lib64"],
+                             [AC_MSG_ERROR([Found pcname in both ${check_package_prefix}/lib/pkgconfig and
 ${check_package_prefix}/lib64/pkgconfig.  This is confusing.  Please add --with-$1-libdir=PATH
 to configure to help disambiguate.])],
+                             [check_package_cv_$1_pcfilename="${check_package_prefix}/lib/pkgconfig/pcname.pc"])],
                       [test -r "${check_package_prefix}/lib64/pkgconfig/pcname.pc"],
                       [check_package_cv_$1_pcfilename="${check_package_prefix}/lib64/pkgconfig/pcname.pc"],
                       [check_package_cv_$1_pcfilename="${check_package_prefix}/lib/pkgconfig/pcname.pc"])])
@@ -603,9 +607,14 @@ AC_DEFUN([_OAC_CHECK_PACKAGE_GENERIC_PREFIX], [
 
                   AC_MSG_CHECKING([for $1 library (${check_package_generic_search_lib}) in ${check_package_prefix}])
                   AS_IF([test ${check_package_generic_prefix_lib} -eq 1 -a ${check_package_generic_prefix_lib64} -eq 1],
-                        [AC_MSG_ERROR([Found library $check_package_generic_search_lib in both ${check_package_prefix}/lib and
+                        [AS_IF([test ! -L "${check_package_prefix}/lib" &&
+                                test ! -L "${check_package_prefix}/lib64"],
+                               [AC_MSG_ERROR([Found library $check_package_generic_search_lib in both ${check_package_prefix}/lib and
 ${check_package_prefix}/lib64.  This has confused configure.  Please add --with-$1-libdir=PATH to configure to help
 disambiguate.])],
+                               [check_package_generic_prefix_happy=1
+                                $2_LDFLAGS=-L${check_package_prefix}/lib
+                                AC_MSG_RESULT([found -- lib])])],
                         [test ${check_package_generic_prefix_lib} -eq 1],
                         [check_package_generic_prefix_happy=1
                          $2_LDFLAGS=-L${check_package_prefix}/lib
