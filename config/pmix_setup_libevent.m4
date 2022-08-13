@@ -6,7 +6,7 @@
 # Copyright (c) 2017-2019 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 # Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -28,7 +28,7 @@
 #
 # Adds the following to the wrapper compilers:
 #  * CPPFLAGS: none
-#  * LDLFGAS: add pmix_libevent_LDFLAGS
+#  * LDFLAGS: add pmix_libevent_LDFLAGS
 #  * LIBS: add pmix_libevent_LIBS
 AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     PMIX_VAR_SCOPE_PUSH([pmix_event_dir pmix_event_libdir pmix_check_libevent_save_CPPFLAGS pmix_check_libevent_save_LDFLAGS pmix_check_libevent_save_LIBS])
