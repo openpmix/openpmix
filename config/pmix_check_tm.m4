@@ -159,9 +159,9 @@ AC_DEFUN([PMIX_CHECK_TM],[
               [OAC_CHECK_PACKAGE([tm],
                                  [$1],
                                  [tm.h],
-                                 [pbs],
+                                 [pbs crypto z],
                                  [tm_init],
-                                 [pmix_cv_check_tm_libs="pbs"
+                                 [pmix_cv_check_tm_libs="pbs crypto z"
                                   pmix_check_tm_found=1])])
                AS_IF([test ${pmix_check_tm_found} -eq 0],
                      [OAC_CHECK_PACKAGE_INVALIDATE_GENERIC_CACHE([tm], [$1], [tm_init])
