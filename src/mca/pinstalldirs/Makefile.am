@@ -16,7 +16,7 @@ noinst_LTLIBRARIES = libmca_pinstalldirs.la
 libmca_pinstalldirs_la_SOURCES =
 
 # local files
-headers = pinstalldirs.h
+headers = pinstalldirs.h pinstalldirs_types.h
 libmca_pinstalldirs_la_SOURCES += $(headers)
 
 pmixdir = $(pmixincludedir)/$(subdir)
