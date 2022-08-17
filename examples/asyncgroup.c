@@ -18,7 +18,7 @@
  * Copyright (c) 2019      Triad National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,7 +48,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source,
                                 info, ninfo, results, nresults);
 
-    fprintf(stderr, "Client %s:%d NOTIFIED with status %d\n", myproc.nspace, myproc.rank, status);
+    fprintf(stderr, "Client %s:%d NOTIFIED with status %s\n",
+            myproc.nspace, myproc.rank, PMIx_Error_string(status));
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
     }
@@ -72,12 +73,12 @@ static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, v
     DEBUG_WAKEUP_THREAD(lock);
 }
 
-static void grpcomplete(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
-                        pmix_release_cbfunc_t release_fn, void *release_cbdata)
+static void grpcomplete(size_t evhdlr_registration_id, pmix_status_t status, const pmix_proc_t *source,
+                        pmix_info_t info[], size_t ninfo, pmix_info_t results[], size_t nresults,
+                        pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    EXAMPLES_HIDE_UNUSED_PARAMS(status, info, ninfo, cbdata, release_fn, release_cbdata);
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo, results, nresults, cbfunc, cbdata);
 
-    fprintf(stderr, "%s:%d GRPCOMPLETE\n", myproc.nspace, myproc.rank);
     DEBUG_WAKEUP_THREAD(&invitedlock);
 }
 
@@ -93,7 +94,6 @@ static void invitefn(size_t evhdlr_registration_id, pmix_status_t status, const 
 
     /* if I am the leader, I can ignore this event */
     if (PMIX_CHECK_PROCID(source, &myproc)) {
-        fprintf(stderr, "%s:%d INVITED, BUT LEADER\n", myproc.nspace, myproc.rank);
         /* mark the event chain as complete */
         if (NULL != cbfunc) {
             cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -108,16 +108,12 @@ static void invitefn(size_t evhdlr_registration_id, pmix_status_t status, const 
             break;
         }
     }
-    fprintf(stderr, "Client %s:%d INVITED by source %s:%d\n", myproc.nspace, myproc.rank,
-            source->nspace, source->rank);
     invitedlock.status = status;
-    fprintf(stderr, "%s:%d ACCEPTING INVITE\n", myproc.nspace, myproc.rank);
-    rc = PMIx_Group_join_nb(grp, source, PMIX_GROUP_ACCEPT, NULL, 0, grpcomplete, NULL);
+    rc = PMIx_Group_join_nb(grp, source, PMIX_GROUP_ACCEPT, NULL, 0, NULL, NULL);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "%s:%d Error in Group_join_nb: %sn", myproc.nspace, myproc.rank,
                 PMIx_Error_string(rc));
     }
-
     /* mark the event chain as complete */
     if (NULL != cbfunc) {
         cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
@@ -134,8 +130,11 @@ int main(int argc, char **argv)
     pmix_status_t code;
     pmix_info_t *results;
     size_t nresults;
+    char hostname[1024];
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
+
+    gethostname(hostname, sizeof(hostname));
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -143,16 +142,16 @@ int main(int argc, char **argv)
                 PMIx_Error_string(rc));
         exit(0);
     }
-    fprintf(stderr, "[%d] Client ns %s rank %d: Running\n", (int) getpid(), myproc.nspace,
-            myproc.rank);
+    fprintf(stderr, "[%d] Client ns %s rank %d: Running on %s\n",
+            (int) getpid(), myproc.nspace, myproc.rank, hostname);
 
     DEBUG_CONSTRUCT_LOCK(&invitedlock);
 
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
-    /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %s\n", myproc.nspace,
+    /* get our job size */
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
@@ -164,7 +163,7 @@ int main(int argc, char **argv)
         }
         goto done;
     }
-    fprintf(stderr, "Client %s:%d universe size %d\n", myproc.nspace, myproc.rank, nprocs);
+    fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
 
     /* register our default errhandler */
     DEBUG_CONSTRUCT_LOCK(&lock);
@@ -187,6 +186,18 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != rc) {
         goto done;
     }
+    if (2 == myproc.rank || 3 == myproc.rank) {
+        /* need to register for group complete event */
+        DEBUG_CONSTRUCT_LOCK(&lock);
+        code = PMIX_GROUP_CONSTRUCT_COMPLETE;
+        PMIx_Register_event_handler(&code, 1, NULL, 0, grpcomplete, errhandler_reg_callbk, (void *) &lock);
+        DEBUG_WAIT_THREAD(&lock);
+        rc = lock.status;
+        DEBUG_DESTRUCT_LOCK(&lock);
+        if (PMIX_SUCCESS != rc) {
+            goto done;
+        }
+    }
 
     /* call fence to sync */
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
@@ -205,10 +216,10 @@ int main(int argc, char **argv)
         PMIX_PROC_LOAD(&procs[1], myproc.nspace, 2);
         PMIX_PROC_LOAD(&procs[2], myproc.nspace, 3);
         rc = PMIx_Group_invite("ourgroup", procs, nprocs, NULL, 0, &results, &nresults);
+        fprintf(stderr, "Client ns %s rank %d: Group invite complete with status %s!\n",
+                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Group_invite failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
+            exit(1);
         }
         PMIX_PROC_FREE(procs, nprocs);
         fprintf(stderr, "%s:%d Execute fence across group\n", myproc.nspace, myproc.rank);
@@ -217,21 +228,22 @@ int main(int argc, char **argv)
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Fence across group failed: %d\n",
                     myproc.nspace, myproc.rank, rc);
-            goto done;
+            exit(1);
         }
-        fprintf(stderr, "%d executing Group_destruct\n", myproc.rank);
+        fprintf(stderr, "%d Executing Group_destruct\n", myproc.rank);
         rc = PMIx_Group_destruct("ourgroup", NULL, 0);
         if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Group_destruct failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Group_destruct failed: %s\n",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            exit(1);
         }
     } else if (2 == myproc.rank || 3 == myproc.rank) {
         /* wait to be invited */
-        fprintf(stderr, "%s:%d waiting to be invited\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "%s:%d waiting to join group\n", myproc.nspace, myproc.rank);
         DEBUG_WAIT_THREAD(&invitedlock);
         DEBUG_DESTRUCT_LOCK(&invitedlock);
-        fprintf(stderr, "%s:%d Execute fence across group\n", myproc.nspace, myproc.rank);
+        fprintf(stderr, "%s:%d Group complete - executing fence across group\n",
+                myproc.nspace, myproc.rank);
         PMIX_PROC_LOAD(&proc, "ourgroup", PMIX_RANK_WILDCARD);
         rc = PMIx_Fence(&proc, 1, NULL, 0);
         if (PMIX_SUCCESS != rc) {
@@ -239,7 +251,7 @@ int main(int argc, char **argv)
                     myproc.nspace, myproc.rank, rc);
             goto done;
         }
-        fprintf(stderr, "%d executing Group_destruct\n", myproc.rank);
+        fprintf(stderr, "%d Executing Group_destruct\n", myproc.rank);
         rc = PMIx_Group_destruct("ourgroup", NULL, 0);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_destruct failed: %s\n", myproc.nspace,

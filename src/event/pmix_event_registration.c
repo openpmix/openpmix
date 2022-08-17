@@ -245,7 +245,8 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
     pmix_active_code_t *active;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_client_globals.event_output, "pmix: _add_hdlr");
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "pmix: _add_hdlr");
 
     /* check to see if we have an active registration on these codes */
     if (NULL == cd->codes) {

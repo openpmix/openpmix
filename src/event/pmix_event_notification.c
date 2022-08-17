@@ -90,7 +90,9 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
     return rc;
 }
 
-static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+static void notify_event_cbfunc(struct pmix_peer_t *pr,
+                                pmix_ptl_hdr_t *hdr,
+                                pmix_buffer_t *buf,
                                 void *cbdata)
 {
     (void) hdr;
@@ -98,7 +100,7 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmi
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
-    if (0 < hdr->nbytes) {
+    if (0 < buf->bytes_used) {
         /* unpack the status */
         PMIX_BFROPS_UNPACK(rc, pr, buf, &ret, &cnt, PMIX_STATUS);
         if (PMIX_SUCCESS != rc) {
@@ -1200,7 +1202,8 @@ static void _notify_client_event(int sd, short args, void *cbdata)
             }
         }
         PMIX_LIST_DESTRUCT(&trk);
-        if (PMIX_RANGE_LOCAL != cd->range && PMIX_CHECK_PROCID(&cd->source, &pmix_globals.myid)) {
+        if (PMIX_RANGE_LOCAL != cd->range &&
+            PMIX_CHECK_PROCID(&cd->source, &pmix_globals.myid)) {
             /* if we are the source, then we need to post this upwards as
              * well so the host RM can broadcast it as necessary */
             if (NULL != pmix_host_server.notify_event) {
