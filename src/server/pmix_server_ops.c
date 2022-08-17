@@ -931,9 +931,9 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                         rc = PMIX_ERR_BAD_PARAM;
                         goto cleanup;
                     }
-                    /* we own the procs array, so just replace the procs nspace
-                     * (which is the group ID) with that of the member */
-                    PMIX_LOAD_NSPACE(procs[n].nspace, grp->members[n].nspace);
+                    /* we own the procs array, so just replace the procs entry
+                     * with that of the member with that group rank */
+                    memcpy(&procs[n], &grp->members[procs[n].rank], sizeof(pmix_proc_t));
                 }
             }
         }
