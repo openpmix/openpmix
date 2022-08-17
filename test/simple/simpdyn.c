@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,6 +54,7 @@ int main(int argc, char **argv)
     pmix_proc_t *peers;
     size_t npeers, ntmp = 0;
     char *nodelist;
+    pmix_key_t cache;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     gethostname(hostname, sizeof(hostname));
@@ -69,7 +70,8 @@ int main(int argc, char **argv)
     /* get our job size */
     pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         goto done;
@@ -110,7 +112,8 @@ int main(int argc, char **argv)
         pmix_strncpy(proc.nspace, nsp2, PMIX_MAX_NSLEN);
         proc.rank = PMIX_RANK_WILDCARD;
         val = NULL;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val)) || NULL == val) {
+        PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val)) || NULL == val) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Get job %s size failed: %d", myproc.nspace,
                         myproc.rank, nsp2, rc);
             goto done;

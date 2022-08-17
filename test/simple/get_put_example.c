@@ -24,6 +24,7 @@ int main(int argc, char **argv)
     pmix_value_t pvalue;
     pmix_proc_t myproc, rootproc;
     pmix_info_t info;
+    pmix_key_t cache;
     hide_unused_params(rc, argc, argv);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -52,7 +53,8 @@ int main(int argc, char **argv)
     rootproc = myproc;
     rootproc.rank = 0;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&rootproc, "my.foo", NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, "my.foo");
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&rootproc, cache, NULL, 0, &val))) {
         fprintf(stderr, "Get of root's my.foo failed\n");
         exit(1);
     }

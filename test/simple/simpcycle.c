@@ -17,7 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -103,6 +103,7 @@ int main(int argc, char **argv)
     pmix_info_t *iptr;
     size_t ninfo;
     pmix_status_t code;
+    pmix_key_t cache;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us and declare we are a test programming model */
@@ -121,7 +122,8 @@ int main(int argc, char **argv)
     /* test something */
     pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);
@@ -152,7 +154,8 @@ int main(int argc, char **argv)
     }
 
     /* get a list of our local peers */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get local peers failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);

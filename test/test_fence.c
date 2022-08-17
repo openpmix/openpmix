@@ -260,11 +260,13 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
     pmix_rank_t npeers;
     int rc;
     pmix_proc_t proc;
+    pmix_key_t cache;
 
     pmix_strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
     /* get number of neighbors on this node */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_SIZE, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_LOCAL_SIZE);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peer # failed: %d", my_nspace, my_rank, rc));
         exit(rc);
     }
@@ -283,7 +285,8 @@ static int get_local_peers(char *my_nspace, int my_rank, pmix_rank_t **_peers, p
     peers = malloc(sizeof(pmix_rank_t) * npeers);
 
     /* get ranks of neighbors on this node */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
         TEST_ERROR(("%s:%d: PMIx_Get local peers failed: %d", my_nspace, my_rank, rc));
         free(peers);
         exit(rc);
@@ -345,6 +348,7 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
     pmix_value_t *val = &value;
     pmix_proc_t proc;
     pmix_info_t info;
+    pmix_key_t cache;
 
     pmix_strncpy(proc.nspace, my_nspace, PMIX_MAX_NSLEN);
     proc.rank = my_rank;
@@ -445,7 +449,8 @@ int test_job_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
         j = 1;
         PMIX_INFO_LOAD(&info, PMIX_TIMEOUT, &j, PMIX_INT);
         PMIX_INFO_REQUIRED(&info);
-        if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, "foobar", &info, 1, &val))) {
+        PMIX_LOAD_KEY(cache, "foobar");
+        if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, cache, &info, 1, &val))) {
             TEST_ERROR(("%s:%d: PMIx_Get returned success instead of failure", my_nspace, my_rank));
             exit(PMIX_ERROR);
         }

@@ -22,6 +22,7 @@ int main(int argc, char **argv)
     pmix_proc_t myproc;
     pmix_status_t rc=0;
     int rank;
+    pmix_key_t cache;
     hide_unused_params(rc, argc, argv);
 
     rc = PMIx_Init(&myproc, NULL, 0);
@@ -29,7 +30,8 @@ int main(int argc, char **argv)
 
     {
         pmix_value_t *value;
-        rc = PMIx_Get(&myproc, PMIX_RANK, NULL, 0, &value);
+        PMIX_LOAD_KEY(cache, PMIX_RANK);
+        rc = PMIx_Get(&myproc, cache, NULL, 0, &value);
         assert(PMIX_SUCCESS == rc);
         printf("%d\n", value->type);
         assert(value->type == PMIX_INT);

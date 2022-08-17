@@ -274,12 +274,14 @@ typedef struct {
         get_cbdata _cbdata;                                                                       \
         _cbdata.status = PMIX_SUCCESS;                                                            \
         pmix_proc_t _foobar;                                                                      \
+        pmix_key_t __cache;                                                                       \
         SET_KEY(_key, fence_num, ind, use_same_keys);                                             \
+        PMIX_LOAD_KEY(__cache, _key);                                                             \
         PMIX_LOAD_PROCID(&_foobar, ns, r);                                                        \
         TEST_VERBOSE(("%s:%d want to get from %s:%d key %s", my_nspace, my_rank, ns, r, _key));   \
         if (blocking) {                                                                           \
-            if (PMIX_SUCCESS != (rc = PMIx_Get(&_foobar, _key, NULL, 0, &_val))) {                \
-                if (!((rc == PMIX_ERR_NOT_FOUND || rc == PMIX_ERR_NOT_FOUND)           \
+            if (PMIX_SUCCESS != (rc = PMIx_Get(&_foobar, __cache, NULL, 0, &_val))) {             \
+                if (!((rc == PMIX_ERR_NOT_FOUND || rc == PMIX_ERR_NOT_FOUND)                      \
                       && ok_notfnd)) {                                                            \
                     TEST_ERROR(("%s:%d: PMIx_Get failed: %s from %s:%d, key %s", my_nspace,       \
                                 my_rank, PMIx_Error_string(rc), ns, r, _key));                    \
@@ -291,7 +293,7 @@ typedef struct {
             PMIX_VALUE_CREATE(_val, 1);                                                           \
             _cbdata.kv = _val;                                                                    \
             if (PMIX_SUCCESS                                                                      \
-                != (rc = PMIx_Get_nb(&_foobar, _key, NULL, 0, get_cb, (void *) &_cbdata))) {      \
+                != (rc = PMIx_Get_nb(&_foobar, __cache, NULL, 0, get_cb, (void *) &_cbdata))) {   \
                 TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s", my_nspace,      \
                               my_rank, PMIx_Error_string(rc), ns, r, _key));                      \
             } else {                                                                              \

@@ -17,7 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -110,6 +110,8 @@ int main(int argc, char **argv)
     size_t ndist;
     pmix_device_type_t type = PMIX_DEVTYPE_OPENFABRICS | PMIX_DEVTYPE_NETWORK | PMIX_DEVTYPE_COPROC
                               | PMIX_DEVTYPE_GPU;
+    pmix_key_t cache;
+    pmix_nspace_t ncache;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* smoke test */
@@ -131,7 +133,8 @@ int main(int argc, char **argv)
 
     /* get my procID */
     fprintf(stderr, "Getting procID\n");
-    rc = PMIx_Get(NULL, PMIX_PROCID, NULL, 0, &val);
+    PMIX_LOAD_KEY(cache, PMIX_PROCID);
+    rc = PMIx_Get(NULL, cache, NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "Get of my procID failed: %s\n", PMIx_Error_string(rc));
         goto cleanup;
@@ -141,7 +144,8 @@ int main(int argc, char **argv)
 
     /* get my topology */
     fprintf(stderr, "GETTING TOPOLOGY\n");
-    rc = PMIx_Get(&myproc, PMIX_TOPOLOGY2, NULL, 0, &val);
+    PMIX_LOAD_KEY(cache, PMIX_TOPOLOGY2);
+    rc = PMIx_Get(&myproc, cache, NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "Get of my topology failed: %s\n", PMIx_Error_string(rc));
         goto cleanup;
@@ -202,8 +206,9 @@ int main(int argc, char **argv)
     PMIX_INFO_LOAD(&iptr[3], PMIX_SETUP_APP_ENVARS, NULL, PMIX_BOOL);
 
     DEBUG_CONSTRUCT_LOCK(&cd.lock);
+    PMIX_LOAD_NSPACE(ncache, "SIMPSCHED");
     if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_application("SIMPSCHED", iptr, 4, setup_cbfunc, &cd))) {
+        != (rc = PMIx_server_setup_application(ncache, iptr, 4, setup_cbfunc, &cd))) {
         pmix_output(0, "[%s:%d] PMIx_server_setup_application failed: %s", __FILE__, __LINE__,
                     PMIx_Error_string(rc));
         DEBUG_DESTRUCT_LOCK(&cd.lock);
@@ -215,7 +220,7 @@ int main(int argc, char **argv)
     /* setup the local subsystem */
     DEBUG_CONSTRUCT_LOCK(&lock);
     if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_local_support("SIMPSCHED", cd.info, cd.ninfo, local_cbfunc,
+        != (rc = PMIx_server_setup_local_support(ncache, cd.info, cd.ninfo, local_cbfunc,
                                                  &lock))) {
         pmix_output(0, "[%s:%d] PMIx_server_setup_local_support failed: %s", __FILE__, __LINE__,
                     PMIx_Error_string(rc));

@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     size_t nresults, cid, lcid, ninfo;
     pmix_data_array_t darray;
     void *grpinfo, *list;
-
+    pmix_key_t cache;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us */
@@ -103,7 +103,8 @@ int main(int argc, char **argv)
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
     /* get our job size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
@@ -213,7 +214,8 @@ int main(int argc, char **argv)
 
     for (n = 0; n < nprocs; n++) {
         proc.rank = n;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_GROUP_LOCAL_CID, tinfo, 2, &val))) {
+        PMIX_LOAD_KEY(cache, PMIX_GROUP_LOCAL_CID);
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, tinfo, 2, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get of LOCAL CID for rank %d failed: %s\n",
                         myproc.nspace, myproc.rank, n, PMIx_Error_string(rc));
             continue;

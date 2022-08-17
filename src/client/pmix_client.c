@@ -599,6 +599,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
     pid_t pid;
     pmix_kval_t *kptr;
     pmix_iof_req_t *iofreq;
+    pmix_key_t cache;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -901,7 +902,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
     pmix_strncpy(wildcard.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
     wildcard.rank = PMIX_RANK_WILDCARD;
     PMIX_INFO_LOAD(&ginfo, PMIX_OPTIONAL, NULL, PMIX_BOOL);
-    if (PMIX_SUCCESS == PMIx_Get(&wildcard, PMIX_DEBUG_STOP_IN_INIT, &ginfo, 1, &val)) {
+    PMIX_LOAD_KEY(cache, PMIX_DEBUG_STOP_IN_INIT);
+    if (PMIX_SUCCESS == PMIx_Get(&wildcard, cache, &ginfo, 1, &val)) {
         pmix_output_verbose(2, pmix_client_globals.base_output,
                             "[%s:%d] RECEIVED STOP IN INIT FOR RANK %s",
                             pmix_globals.myid.nspace,
@@ -1516,6 +1518,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     pmix_proc_t *pa;
     size_t m, n, np, ninfo;
     pmix_namespace_t *ns;
+    pmix_key_t cache;
 
     /* set default response */
     *procs = NULL;
@@ -1550,7 +1553,8 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
-            rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
+            PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
+            rc = PMIx_Get(&proc, cache, iptr, ninfo, &val);
             if (PMIX_SUCCESS != rc) {
                 continue;
             }
@@ -1628,7 +1632,8 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     /* get the list of local peers for this nspace and node */
     PMIX_LOAD_NSPACE(proc.nspace, nspace);
 
-    rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
+    PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
+    rc = PMIx_Get(&proc, cache, iptr, ninfo, &val);
     if (PMIX_SUCCESS != rc) {
         goto done;
     }
@@ -1681,6 +1686,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
     char **tmp = NULL, **p;
     size_t n;
     pmix_namespace_t *ns;
+    pmix_key_t cache;
 
     /* set default response */
     *nodelist = NULL;
@@ -1700,7 +1706,8 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
-            rc = PMIx_Get(&proc, PMIX_NODE_LIST, NULL, 0, &val);
+            PMIX_LOAD_KEY(cache, PMIX_NODE_LIST);
+            rc = PMIx_Get(&proc, cache, NULL, 0, &val);
             if (PMIX_SUCCESS != rc) {
                 continue;
             }
@@ -1737,7 +1744,8 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
     }
 
     PMIX_LOAD_NSPACE(proc.nspace, nspace);
-    rc = PMIx_Get(&proc, PMIX_NODE_LIST, NULL, 0, &val);
+    PMIX_LOAD_KEY(cache, PMIX_NODE_LIST);
+    rc = PMIx_Get(&proc, cache, NULL, 0, &val);
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
