@@ -69,7 +69,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: executing fence");
+    pmix_output_verbose(2, pmix_client_globals.fence_output,
+                        "pmix: executing fence");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -106,7 +107,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
     rc = cb->status;
     PMIX_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: fence released");
+    pmix_output_verbose(2, pmix_client_globals.fence_output,
+                        "pmix: fence released");
 
     return rc;
 }
@@ -124,7 +126,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.fence_output, "pmix: fence_nb called");
+    pmix_output_verbose(2, pmix_client_globals.fence_output,
+                        "pmix: fence_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
