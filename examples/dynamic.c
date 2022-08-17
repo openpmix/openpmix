@@ -18,7 +18,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,6 +51,7 @@ int main(int argc, char **argv)
     pmix_app_t *app;
     char hostname[1024], dir[1024];
     size_t ntmp = 0;
+    pmix_key_t cache;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -73,7 +74,8 @@ int main(int argc, char **argv)
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
     /* get our job size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace,
                 myproc.rank, rc);
         goto done;
@@ -117,7 +119,8 @@ int main(int argc, char **argv)
         /* get their universe size */
         val = NULL;
         PMIX_LOAD_PROCID(&proc, nsp2, PMIX_RANK_WILDCARD);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val)) || NULL == val) {
+        PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val)) || NULL == val) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace,
                     myproc.rank, rc);
             goto done;
@@ -130,7 +133,8 @@ int main(int argc, char **argv)
         /* get a proc-specific value */
         val = NULL;
         proc.rank = 1;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_RANK, NULL, 0, &val)) || NULL == val) {
+        PMIX_LOAD_KEY(cache, PMIX_LOCAL_RANK);
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val)) || NULL == val) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Get local rank failed: %d\n", myproc.nspace,
                     myproc.rank, rc);
             goto done;

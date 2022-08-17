@@ -273,6 +273,7 @@ int main(int argc, char **argv)
     mylock_t mylock;
     pmix_data_array_t *darray;
     pmix_info_t *iarray;
+    pmix_nspace_t cache;
 
     /* smoke test */
     if (PMIX_SUCCESS != 0) {
@@ -412,8 +413,9 @@ int main(int argc, char **argv)
     /* now load the array */
     PMIX_INFO_LOAD(&info[0], PMIX_ALLOC_NETWORK, darray, PMIX_DATA_ARRAY);
 
+    PMIX_LOAD_NSPACE(cache, "foobar");
     if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_application("foobar", info, ninfo, sacbfunc, (void *) x))) {
+        != (rc = PMIx_server_setup_application(cache, info, ninfo, sacbfunc, (void *) x))) {
         return rc;
     }
     DEBUG_WAIT_THREAD(&x->lock);
@@ -423,14 +425,14 @@ int main(int argc, char **argv)
     /* pass any returned data down */
     DEBUG_CONSTRUCT_LOCK(&x->lock);
     if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_local_support("foobar", x->info, x->ninfo, opcbfunc, x))) {
+        != (rc = PMIx_server_setup_local_support(cache, x->info, x->ninfo, opcbfunc, x))) {
         return rc;
     }
     DEBUG_WAIT_THREAD(&x->lock);
     PMIX_RELEASE(x);
 
     /* fork/exec the test */
-    pmix_strncpy(proc.nspace, "foobar", PMIX_MAX_NSLEN);
+    PMIX_LOAD_NSPACE(proc.nspace, "foobar");
     for (n = 0; n < nprocs; n++) {
         proc.rank = n;
         x = PMIX_NEW(myxfer_t);
@@ -489,7 +491,7 @@ int main(int argc, char **argv)
 
     /* deregister the nspace */
     x = PMIX_NEW(myxfer_t);
-    PMIx_server_deregister_nspace("foobar", opcbfunc, (void *) x);
+    PMIx_server_deregister_nspace(cache, opcbfunc, (void *) x);
     DEBUG_WAIT_THREAD(&x->lock);
     PMIX_RELEASE(x);
 

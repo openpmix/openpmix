@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,6 +48,7 @@ int main(int argc, char **argv)
     pmix_proc_t proc;
     pmix_info_t *info;
     size_t n, ninfo;
+    pmix_key_t cache;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us */
@@ -63,7 +64,8 @@ int main(int argc, char **argv)
     pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
 
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, "my.net.key", NULL, 0, &val))
+    PMIX_LOAD_KEY(cache, "my.net.key");
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))
         || PMIX_DATA_ARRAY != val->type || NULL == val->data.darray
         || NULL == val->data.darray->array) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get my.net.key failed: %s", myproc.nspace,

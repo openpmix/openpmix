@@ -54,6 +54,7 @@ int main(int argc, char **argv)
     pmix_coord_t *coords;
     char *hostname;
     pmix_byte_object_t *bptr;
+    pmix_key_t cache;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -66,7 +67,8 @@ int main(int argc, char **argv)
     /* test something */
     pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get failed: %s", myproc.nspace, myproc.rank,
                     PMIx_Error_string(rc));
         exit(rc);
@@ -76,7 +78,8 @@ int main(int argc, char **argv)
     pmix_output(0, "Client %s:%d job size %d", myproc.nspace, myproc.rank, nprocs);
 
     /* get our assumed hostname */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_HOSTNAME, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_HOSTNAME);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get hostname failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         goto done;
@@ -86,7 +89,8 @@ int main(int argc, char **argv)
     pmix_output(0, "Client %s:%d hostname %s", myproc.nspace, myproc.rank, hostname);
 
     /* get our assigned fabric endpts */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_ENDPT, NULL, 0, &val))) {
+    PMIX_LOAD_KEY(cache, PMIX_FABRIC_ENDPT);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric endpt failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         goto nextstep;
@@ -112,7 +116,8 @@ int main(int argc, char **argv)
 
 nextstep:
     /* get our assigned fabric coordinates */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_FABRIC_COORDINATES, NULL, 0, &val))
+    PMIX_LOAD_KEY(cache, PMIX_FABRIC_COORDINATES);
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))
         || NULL == val) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get fabric coordinate failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
