@@ -379,11 +379,10 @@ exit:
  */
 void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata)
 {
-    (void) sd;
-    (void) flags;
     pmix_peer_t *peer = (pmix_peer_t *) cbdata;
     pmix_ptl_send_t *msg = peer->send_msg;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(peer);
@@ -453,13 +452,13 @@ void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata)
 
 void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
 {
-    (void) flags;
     pmix_status_t rc;
     pmix_peer_t *peer = (pmix_peer_t *) cbdata;
     pmix_ptl_recv_t *msg = NULL;
     pmix_ptl_hdr_t hdr;
     size_t nbytes;
     char *ptr;
+    PMIX_HIDE_UNUSED_PARAMS(flags);
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(peer);
@@ -617,11 +616,10 @@ err_close:
 
 void pmix_ptl_base_send(int sd, short args, void *cbdata)
 {
-    (void) sd;
-    (void) args;
     pmix_ptl_queue_t *queue = (pmix_ptl_queue_t *) cbdata;
     pmix_ptl_send_t *snd;
     pmix_ptl_recv_t *msg;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(queue);
@@ -705,13 +703,12 @@ void pmix_ptl_base_send(int sd, short args, void *cbdata)
 
 void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
 {
-    (void) fd;
-    (void) args;
     pmix_ptl_sr_t *ms = (pmix_ptl_sr_t *) cbdata;
     pmix_ptl_posted_recv_t *req;
     pmix_ptl_send_t *snd;
     uint32_t tag;
     pmix_ptl_recv_t *msg;
+    PMIX_HIDE_UNUSED_PARAMS(fd, args);
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(ms);
@@ -805,11 +802,10 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
 
 void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
 {
-    (void) fd;
-    (void) flags;
     pmix_ptl_recv_t *msg = (pmix_ptl_recv_t *) cbdata;
     pmix_ptl_posted_recv_t *rcv;
     pmix_buffer_t buf;
+    PMIX_HIDE_UNUSED_PARAMS(fd, flags);
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(msg);
@@ -837,8 +833,9 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
                 }
                 msg->data = NULL; // protect the data region
                 pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
-                                    "%s:%d EXECUTE CALLBACK for tag %u", pmix_globals.myid.nspace,
-                                    pmix_globals.myid.rank, msg->hdr.tag);
+                                    "%s:%d EXECUTE CALLBACK for tag %u with %d bytes",
+                                    pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                                    msg->hdr.tag, (int)msg->hdr.nbytes);
                 rcv->cbfunc(msg->peer, &msg->hdr, &buf, rcv->cbdata);
                 pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                                     "%s:%d CALLBACK COMPLETE", pmix_globals.myid.nspace,
