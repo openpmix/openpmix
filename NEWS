@@ -51,6 +51,12 @@ may be of use to library and application developers. These include:
     both from the system and user level
 
 Detailed changes:
+ - PR #2686 Fix/implement the group invite support
+ - PR #2682 Do not error out if lib is symlinked to lib64
+ - PR #2681 Separate out pinstalldirs for inclusion by PRRTE
+ - PR #2679 Fix the tm configure logic
+ - PR #2675 Minor cleanup of timestamp output
+ - PR #2673 Update NEWS, remove unready components, fix missing var
  - PR #2672 Fix make_tarball and remove unused variable
  - PR #2670 Support broader range of output formats
  - PR #2668 Multiple commits
