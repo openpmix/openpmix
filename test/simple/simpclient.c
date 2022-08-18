@@ -117,7 +117,6 @@ int main(int argc, char **argv)
     bool all_local, local;
     pmix_rank_t *locals = NULL;
     pmix_topology_t topo;
-    pmix_key_t cache;
 
     if (1 < argc) {
         if (0 == strcmp("-abort", argv[1])) {
@@ -140,8 +139,7 @@ int main(int argc, char **argv)
 
     /* test something */
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get job size failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);
@@ -151,8 +149,7 @@ int main(int argc, char **argv)
     pmix_output(0, "Client %s:%d job size %d", myproc.nspace, myproc.rank, nprocs);
 
     /* test something */
-    PMIX_LOAD_KEY(cache, PMIX_SERVER_URI);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_SERVER_URI, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get server URI failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);
@@ -160,8 +157,7 @@ int main(int argc, char **argv)
     pmix_output(0, "CLIENT SERVER URI: %s", val->data.string);
     PMIX_VALUE_RELEASE(val);
 
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_RANK);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_LOCAL_RANK, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get LOCAL RANK failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);
@@ -169,8 +165,7 @@ int main(int argc, char **argv)
     pmix_output(0, "CLIENT LOCAL RANK: %u", val->data.uint16);
     PMIX_VALUE_RELEASE(val);
 
-    PMIX_LOAD_KEY(cache, PMIX_HOSTNAME);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_HOSTNAME, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get HOSTNAME failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);
@@ -179,8 +174,7 @@ int main(int argc, char **argv)
     PMIX_VALUE_RELEASE(val);
 
     /* check if a security credential was given */
-    PMIX_LOAD_KEY(cache, PMIX_CREDENTIAL);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_CREDENTIAL, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get CREDENTIAL failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
     } else {
@@ -221,8 +215,7 @@ int main(int argc, char **argv)
     }
 
     /* get a list of our local peers */
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Get local peers failed: %s", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);
@@ -297,8 +290,7 @@ int main(int argc, char **argv)
                 }
                 if (local) {
                     (void) asprintf(&tmp, "%s-%d-local-%d", myproc.nspace, n, j);
-                    PMIX_LOAD_KEY(cache, tmp);
-                    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+                    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                         pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s failed: %s",
                                     myproc.nspace, myproc.rank, j, tmp, PMIx_Error_string(rc));
                         continue;
@@ -333,8 +325,7 @@ int main(int argc, char **argv)
                      * always can get our own remote data as we published it */
                     if (proc.rank != myproc.rank) {
                         (void) asprintf(&tmp, "%s-%d-remote-%d", proc.nspace, n, j);
-                        PMIX_LOAD_KEY(cache, tmp);
-                        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+                        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                             /* this data should _not_ be found as we are on the same node
                              * and the data was "put" with a PMIX_REMOTE scope */
                             pmix_output(0,
@@ -355,8 +346,7 @@ int main(int argc, char **argv)
                 } else {
                     val = NULL;
                     (void) asprintf(&tmp, "%s-%d-remote-%d", proc.nspace, n, j);
-                    PMIX_LOAD_KEY(cache, tmp);
-                    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+                    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                         pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s returned correct",
                                     myproc.nspace, myproc.rank, j, tmp);
                     } else {

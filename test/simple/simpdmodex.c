@@ -126,10 +126,9 @@ int main(int argc, char **argv)
     bool local, all_local;
     char **peers;
     pmix_rank_t *locals = NULL;
+    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
     pmix_info_t timeout, *iptr;
     size_t ninfo;
-    pmix_key_t cache;
-    PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     dofence = false;
     sleeptime = 2;
@@ -170,8 +169,7 @@ int main(int argc, char **argv)
     /* get our job size */
     pmix_strncpy(proc.nspace, myproc.nspace, PMIX_MAX_NSLEN);
     proc.rank = PMIX_RANK_WILDCARD;
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         pmix_output(0, "Rank %d[msg=%d]: PMIx_Get job size failed: %s", myproc.rank, msgnum, PMIx_Error_string(rc));
         ++msgnum;
         exitstatus = 1;
@@ -244,8 +242,7 @@ int main(int argc, char **argv)
     }
 
     /* get a list of our local peers */
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
         pmix_output(0, "Rank %d[msg=%d]: PMIx_Get local peers failed: %s", myproc.rank, msgnum, PMIx_Error_string(rc));
         ++msgnum;
         exitstatus = 1;
@@ -286,8 +283,7 @@ int main(int argc, char **argv)
             pmix_output(0, "Rank %u[msg=%d]: retrieving %s from local proc %u", myproc.rank, msgnum, tmp, n);
             ++msgnum;
             proc.rank = n;
-            PMIX_LOAD_KEY(cache, tmp);
-            if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, cache, iptr, ninfo, valcbfunc, tmp))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp, iptr, ninfo, valcbfunc, tmp))) {
                 pmix_output(0, "Rank %d[msg=%d]: PMIx_Get %s failed: %d", myproc.rank, msgnum, tmp, rc);
                 ++msgnum;
                 exitstatus = 1;
@@ -297,8 +293,7 @@ int main(int argc, char **argv)
         } else {
             (void) asprintf(&tmp, "%s-%d-remote", myproc.nspace, n);
             pmix_output(0, "Rank %u[msg=%d]: retrieving %s from remote proc %u", myproc.rank, msgnum, tmp, n);
-            PMIX_LOAD_KEY(cache, tmp);
-            if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, cache, iptr, ninfo, valcbfunc, tmp))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp, iptr, ninfo, valcbfunc, tmp))) {
                 pmix_output(0, "Rank %d[msg=%d]: PMIx_Get %s failed: %d", myproc.rank, msgnum, tmp, rc);
                 ++msgnum;
                 exitstatus = 1;

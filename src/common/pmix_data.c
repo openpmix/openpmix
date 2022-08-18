@@ -74,7 +74,6 @@ static pmix_peer_t *find_peer(const pmix_proc_t *proc)
     pmix_proc_t wildcard;
     pmix_value_t *value;
     int i;
-    pmix_key_t cache;
 
     if (NULL == proc) {
         return pmix_globals.mypeer;
@@ -102,8 +101,7 @@ static pmix_peer_t *find_peer(const pmix_proc_t *proc)
          * to retrieve it once */
         pmix_strncpy(wildcard.nspace, proc->nspace, PMIX_MAX_NSLEN);
         wildcard.rank = PMIX_RANK_WILDCARD;
-        PMIX_LOAD_KEY(cache, PMIX_BFROPS_MODULE);
-        if (PMIX_SUCCESS != PMIx_Get(&wildcard, cache, NULL, 0, &value)) {
+        if (PMIX_SUCCESS != PMIx_Get(&wildcard, PMIX_BFROPS_MODULE, NULL, 0, &value)) {
             /* couldn't get it - nothing we can do */
             return NULL;
         }
@@ -136,9 +134,9 @@ static pmix_peer_t *find_peer(const pmix_proc_t *proc)
 
     /* If the target is for the server, then
      * pack it using that peer. */
-    if (0 == strncmp(proc->nspace,
-                     pmix_client_globals.myserver->info->pname.nspace,
-                     PMIX_MAX_NSLEN)) {
+    if (0
+        == strncmp(proc->nspace, pmix_client_globals.myserver->info->pname.nspace,
+                   PMIX_MAX_NSLEN)) {
         return pmix_client_globals.myserver;
     }
 
@@ -146,8 +144,7 @@ static pmix_peer_t *find_peer(const pmix_proc_t *proc)
      * cached, so we will only have to retrieve it once */
     pmix_strncpy(wildcard.nspace, proc->nspace, PMIX_MAX_NSLEN);
     wildcard.rank = PMIX_RANK_WILDCARD;
-    PMIX_LOAD_KEY(cache, PMIX_BFROPS_MODULE);
-    if (PMIX_SUCCESS != PMIx_Get(&wildcard, cache, NULL, 0, &value)) {
+    if (PMIX_SUCCESS != PMIx_Get(&wildcard, PMIX_BFROPS_MODULE, NULL, 0, &value)) {
         /* couldn't get it - nothing we can do */
         return NULL;
     }

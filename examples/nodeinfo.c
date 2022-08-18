@@ -44,7 +44,7 @@ int main(int argc, char **argv)
     uint32_t nprocs;
     char *nodelist, **nodes, *hostname;
     pmix_info_t info[2];
-    pmix_key_t cache;
+
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* init us - note that the call to "init" includes the return of
@@ -66,8 +66,7 @@ int main(int argc, char **argv)
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
     /* get our job size */
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n",
                 myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         goto done;
@@ -77,8 +76,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
 
     /* get the list of nodes being used */
-    PMIX_LOAD_KEY(cache, PMIX_NODE_LIST);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_NODE_LIST, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get node list failed: %s\n",
                 myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         goto done;
@@ -100,8 +98,7 @@ int main(int argc, char **argv)
         if (nprocs == proc.rank) {
             proc.rank = 0;
         }
-        PMIX_LOAD_KEY(cache, PMIX_HOSTNAME);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_HOSTNAME, NULL, 0, &val))) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Get hostname for rank %u failed: %s\n",
                     myproc.nspace, myproc.rank, proc.rank, PMIx_Error_string(rc));
             goto done;
@@ -111,8 +108,7 @@ int main(int argc, char **argv)
         hostname = strdup(val->data.string);
         PMIX_VALUE_RELEASE(val);
 
-        PMIX_LOAD_KEY(cache, PMIX_FABRIC_COORDINATES);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_FABRIC_COORDINATES, NULL, 0, &val))) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Get coordinates for rank %u failed: %s\n",
                     myproc.nspace, myproc.rank, proc.rank, PMIx_Error_string(rc));
         } else {
@@ -125,7 +121,7 @@ int main(int argc, char **argv)
         proc.rank = PMIX_RANK_WILDCARD;
         PMIX_INFO_LOAD(&info[0], PMIX_NODE_INFO, NULL, PMIX_BOOL);
         PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, hostname, PMIX_STRING);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, info, 2, &val))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_FABRIC_COORDINATES, info, 2, &val))) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Get coordinates with directive for host %s failed: %s\n",
                     myproc.nspace, myproc.rank, hostname, PMIx_Error_string(rc));
             goto done;

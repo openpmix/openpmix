@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2018 Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -50,7 +50,6 @@ int main(int argc, char **argv)
     test_params params;
     INIT_TEST_PARAMS(params);
     pmix_proc_t myproc, proc;
-    pmix_key_t cache;
 
     parse_cmd(argc, argv, &params);
 
@@ -90,8 +89,7 @@ int main(int argc, char **argv)
     TEST_VERBOSE((" Client ns %s rank %d: PMIx_Init success", myproc.nspace, myproc.rank));
 
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
-    PMIX_LOAD_KEY(cache, PMIX_UNIV_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
         TEST_ERROR(
             ("rank %d: PMIx_Get universe size failed: %s", myproc.rank, PMIx_Error_string(rc)));
         FREE_TEST_PARAMS(params);
@@ -112,8 +110,7 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("rank %d: Universe size check: PASSED", myproc.rank));
 
-    PMIX_LOAD_KEY(cache, PMIX_HOSTNAME);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_HOSTNAME, NULL, 0, &val))) {
         TEST_ERROR(("rank %d: PMIx_Get hostname failed: %s", myproc.rank, PMIx_Error_string(rc)));
         FREE_TEST_PARAMS(params);
         exit(rc);
@@ -132,8 +129,7 @@ int main(int argc, char **argv)
 
     TEST_VERBOSE(("rank %d: Hostname check: PASSED", myproc.rank));
 
-    PMIX_LOAD_KEY(cache, PMIX_NODEID);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_NODEID, NULL, 0, &val))) {
         TEST_ERROR(("rank %d: PMIx_Get nodeid failed: %s", myproc.rank, PMIx_Error_string(rc)));
         FREE_TEST_PARAMS(params);
         exit(rc);
