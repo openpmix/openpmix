@@ -97,6 +97,7 @@ int main(int argc, char **argv)
     pmix_query_t query;
     mylock_t mylock;
     bool refresh = false;
+    bool singleton = false;
 
     if (1 < argc) {
         if (NULL != strstr(argv[1], "true")) {
@@ -113,9 +114,14 @@ int main(int argc, char **argv)
      * is included, then the process will be stopped in this call until
      * the "debugger release" notification arrives */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
-                PMIx_Error_string(rc));
-        exit(0);
+        if (PMIX_ERR_UNREACH == rc) {
+            /* we are operating as a singleton */
+            singleton = true;
+        } else {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
+                    PMIx_Error_string(rc));
+            exit(0);
+        }
     }
     /* get our local rank */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_LOCAL_RANK, NULL, 0, &val))) {
@@ -126,29 +132,32 @@ int main(int argc, char **argv)
     localrank = val->data.uint16;
     PMIX_VALUE_RELEASE(val);
 
-    fprintf(stderr, "Client ns %s rank %d pid %lu: Running on host %s localrank %d\n",
-            myproc.nspace, myproc.rank, (unsigned long) pid, hostname, (int) localrank);
+    fprintf(stderr, "Client ns %s rank %d pid %lu: Running on host %s%slocalrank %d\n",
+            myproc.nspace, myproc.rank, (unsigned long) pid, hostname,
+            singleton ? " as singleton " : " ", (int) localrank);
 
+    if (!singleton) {
 #if PMIX_VERSION_MAJOR >= 4
-    PMIX_QUERY_CONSTRUCT(&query);
-    PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_NUM_PSETS);
-    PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_PSET_NAMES);
-    if (refresh) {
-        PMIX_INFO_CREATE(query.qualifiers, 1);
-        query.nqual = 1;
-        PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_QUERY_REFRESH_CACHE, &refresh, PMIX_BOOL);
-    }
-    /* setup the caddy to retrieve the data */
-    DEBUG_CONSTRUCT_LOCK(&mylock);
-    /* execute the query */
-    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(&query, 1, cbfunc, (void *) &mylock))) {
-        fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
-        goto done;
-    }
-    DEBUG_WAIT_THREAD(&mylock);
-    DEBUG_DESTRUCT_LOCK(&mylock);
+        PMIX_QUERY_CONSTRUCT(&query);
+        PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_NUM_PSETS);
+        PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_PSET_NAMES);
+        if (refresh) {
+            PMIX_INFO_CREATE(query.qualifiers, 1);
+            query.nqual = 1;
+            PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_QUERY_REFRESH_CACHE, &refresh, PMIX_BOOL);
+        }
+        /* setup the caddy to retrieve the data */
+        DEBUG_CONSTRUCT_LOCK(&mylock);
+        /* execute the query */
+        if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(&query, 1, cbfunc, (void *) &mylock))) {
+            fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
+            goto done;
+        }
+        DEBUG_WAIT_THREAD(&mylock);
+        DEBUG_DESTRUCT_LOCK(&mylock);
 
 #endif
+    }
 
 done:
     /* finalize us */
