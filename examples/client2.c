@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -83,7 +83,6 @@ int main(int argc, char **argv)
     bool flag;
     mylock_t mylock;
     pmix_data_array_t da, *dptr;
-    pmix_key_t cache;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -121,8 +120,7 @@ int main(int argc, char **argv)
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
     /* get our job size */
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace,
                 myproc.rank, rc);
         goto done;
@@ -173,8 +171,7 @@ int main(int argc, char **argv)
     /* check the returned data */
     for (n = 0; n < nprocs; n++) {
         proc.rank = n;
-        PMIX_LOAD_KEY(cache, "test-key");
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, "test-key", NULL, 0, &val))) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Get on rank %u failed: %d\n", myproc.nspace,
                     myproc.rank, proc.rank, rc);
             goto done;

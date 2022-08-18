@@ -97,7 +97,6 @@ int main(int argc, char **argv)
     pmix_query_t query;
     mylock_t mylock;
     bool refresh = false;
-    pmix_key_t cache;
 
     if (1 < argc) {
         if (NULL != strstr(argv[1], "true")) {
@@ -119,8 +118,7 @@ int main(int argc, char **argv)
         exit(0);
     }
     /* get our local rank */
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_RANK);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_LOCAL_RANK, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get local rank failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;

@@ -77,7 +77,6 @@ int main(int argc, char *argv[]) {
     long usecs_elapsed;
     unsigned long sleep_time_ms;
     double secs_elapsed, fence_time, sleep_time, padded_fence_time;
-    pmix_key_t cache;
 
     // pass in function pointer for custom argument processing, if no custom processing, will be null
     pmixt_pre_init(argc, argv, &params, &v_params, &parse_fence_client);
@@ -91,13 +90,11 @@ int main(int argc, char *argv[]) {
     PMIX_LOAD_NSPACE(job_proc.nspace, this_proc.nspace);
     job_proc.rank = PMIX_RANK_WILDCARD;
 
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    PMIXT_CHECK(PMIx_Get(&job_proc, cache, NULL, 0, &val), params, v_params);
+    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_JOB_SIZE, NULL, 0, &val), params, v_params);
     PMIX_VALUE_GET_NUMBER(rc, val, num_procs, uint32_t);
     free(val);
 
-    PMIX_LOAD_KEY(cache, PMIX_NUM_NODES);
-    PMIXT_CHECK(PMIx_Get(&job_proc, cache, NULL, 0, &val), params, v_params);
+    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_NUM_NODES, NULL, 0, &val), params, v_params);
     PMIX_VALUE_GET_NUMBER(rc, val, num_nodes, uint32_t);
     free(val);
 

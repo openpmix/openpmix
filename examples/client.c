@@ -136,7 +136,6 @@ int main(int argc, char **argv)
     pmix_topology_t mytopo;
     char **peers;
     pmix_rank_t *locals = NULL;
-    pmix_key_t cache;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -183,8 +182,7 @@ int main(int argc, char **argv)
      * directive is provided so that something like an MPI implementation
      * can do some initial setup in MPI_Init prior to pausing for the
      * debugger */
-    PMIX_LOAD_KEY(cache, PMIX_DEBUG_STOP_IN_APP);
-    if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS == (rc = PMIx_Get(&proc, PMIX_DEBUG_STOP_IN_APP, NULL, 0, &val))) {
         /* register for debugger release */
         DEBUG_CONSTRUCT_LOCK(&mylock);
         PMIX_INFO_CREATE(info, 1);
@@ -219,8 +217,7 @@ int main(int argc, char **argv)
     fprintf(stderr, "Client %s:%d topology loaded\n", myproc.nspace, myproc.rank);
 
     /* get our universe size */
-    PMIX_LOAD_KEY(cache, PMIX_UNIV_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace,
                 myproc.rank, rc);
         goto done;
@@ -231,8 +228,7 @@ int main(int argc, char **argv)
 
     /* get the number of procs in our job - univ size is the total number of allocated
      * slots, not the number of procs in the job */
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace,
                 myproc.rank, rc);
         goto done;
@@ -303,8 +299,7 @@ int main(int argc, char **argv)
     PMIX_INFO_FREE(info, 1);
 
     /* get a list of our local peers */
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get local peers failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
@@ -343,8 +338,7 @@ int main(int argc, char **argv)
             if (0 > asprintf(&tmp, "%s-%d-local", myproc.nspace, proc.rank)) {
                 exit(1);
             }
-            PMIX_LOAD_KEY(cache, tmp);
-            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace,
                         myproc.rank, tmp, rc);
                 free(tmp);
@@ -372,8 +366,7 @@ int main(int argc, char **argv)
             if (0 > asprintf(&tmp, "%s-%d-remote", myproc.nspace, proc.rank)) {
                 exit(1);
             }
-            PMIX_LOAD_KEY(cache, tmp);
-            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace,
                         myproc.rank, tmp, rc);
                 free(tmp);

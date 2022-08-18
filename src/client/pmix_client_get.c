@@ -178,7 +178,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     bool qval = false;
     pmix_value_t *ival = NULL;
     pmix_info_t optional;
-    pmix_key_t cache;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -362,8 +361,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
                     /* lookup the node where that proc is running - if all we
                      * have is the hash component, then we have to threadshift
                      * to make that request */
-                    PMIX_LOAD_KEY(cache, PMIX_HOSTNAME);
-                    rc = _getfn_fastpath(&p, cache, &optional, 1, &ival);
+                    rc = _getfn_fastpath(&p, PMIX_HOSTNAME, &optional, 1, &ival);
                     if (PMIX_ERR_NOT_SUPPORTED == rc) {
                         /* all we have is hash */
                         PMIX_CONSTRUCT(&cb2, pmix_cb_t);
@@ -490,8 +488,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
                 if (UINT32_MAX != appnum) {
                     /* they provided an appnum - if it
                      * isn't our appnum, then we need to redirect */
-                    PMIX_LOAD_KEY(cache, PMIX_APPNUM);
-                    rc = _getfn_fastpath(&pmix_globals.myid, cache, &optional, 1, &ival);
+                    rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, &optional, 1, &ival);
                     if (PMIX_SUCCESS == rc) {
                         PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
                         if (PMIX_SUCCESS != rc) {
@@ -523,8 +520,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
                  * the appnum - if the ID is other than us, then we just need to
                  * flag it as "app-info" and mark it for the undefined rank so
                  * the GDS will know where to look */
-                PMIX_LOAD_KEY(cache, PMIX_APPNUM);
-                rc = _getfn_fastpath(&pmix_globals.myid, cache, &optional, 1, &ival);
+                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, &optional, 1, &ival);
                 if (PMIX_SUCCESS == rc) {
                     PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
                     if (PMIX_SUCCESS != rc) {

@@ -17,7 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -104,8 +104,6 @@ int main(int argc, char **argv)
     mylock_t lock;
     mycaddy_t cd;
     pmix_value_t *val;
-    pmix_nspace_t ncache;
-    pmix_key_t cache;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* smoke test */
@@ -145,8 +143,7 @@ int main(int argc, char **argv)
             }
         }
 
-        PMIX_LOAD_KEY(cache, PMIX_FABRIC_DEVICES);
-        rc = PMIx_Get(NULL, cache, NULL, 0, &val);
+        rc = PMIx_Get(NULL, PMIX_FABRIC_DEVICES, NULL, 0, &val);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Fabric get devices failed with error: %s\n", PMIx_Error_string(rc));
             goto cleanup;
@@ -183,9 +180,8 @@ int main(int argc, char **argv)
     PMIX_INFO_LOAD(&iptr[3], PMIX_SETUP_APP_ENVARS, NULL, PMIX_BOOL);
 
     DEBUG_CONSTRUCT_LOCK(&cd.lock);
-    PMIX_LOAD_NSPACE(ncache, "SIMPSCHED");
     if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_application(ncache, iptr, 4, setup_cbfunc, &cd))) {
+        != (rc = PMIx_server_setup_application("SIMPSCHED", iptr, 4, setup_cbfunc, &cd))) {
         pmix_output(0, "[%s:%d] PMIx_server_setup_application failed: %s", __FILE__, __LINE__,
                     PMIx_Error_string(rc));
         DEBUG_DESTRUCT_LOCK(&cd.lock);
@@ -197,7 +193,7 @@ int main(int argc, char **argv)
     /* setup the local subsystem */
     DEBUG_CONSTRUCT_LOCK(&lock);
     if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_local_support(ncache, cd.info, cd.ninfo, local_cbfunc,
+        != (rc = PMIx_server_setup_local_support("SIMPSCHED", cd.info, cd.ninfo, local_cbfunc,
                                                  &lock))) {
         pmix_output(0, "[%s:%d] PMIx_server_setup_local_support failed: %s", __FILE__, __LINE__,
                     PMIx_Error_string(rc));

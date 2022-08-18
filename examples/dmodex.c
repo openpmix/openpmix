@@ -50,7 +50,6 @@ int main(int argc, char **argv)
     uint8_t j;
     pmix_info_t timeout;
     int tlimit = 10;
-    pmix_key_t cache;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -63,8 +62,7 @@ int main(int argc, char **argv)
 
     /* get our job size */
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
@@ -126,8 +124,7 @@ int main(int argc, char **argv)
     }
 
     /* get a list of our local peers */
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, NULL, 0, &val))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get local peers failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
@@ -170,8 +167,7 @@ int main(int argc, char **argv)
         proc.rank = n;
         if (local) {
             (void)snprintf(tmp, 1024, "%s-%d-local", proc.nspace, n);
-            PMIX_LOAD_KEY(cache, tmp);
-            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, &timeout, 1, &val))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, &timeout, 1, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %s\n", myproc.nspace, myproc.rank,
                         tmp, PMIx_Error_string(rc));
                 goto done;
@@ -191,8 +187,7 @@ int main(int argc, char **argv)
             PMIX_VALUE_RELEASE(val);
         } else {
             (void)snprintf(tmp, 1024, "%s-%d-remote", myproc.nspace, n);
-            PMIX_LOAD_KEY(cache, tmp);
-            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, &timeout, 1, &val))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, &timeout, 1, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %s\n", myproc.nspace, myproc.rank,
                         tmp, PMIx_Error_string(rc));
                 goto done;
@@ -213,8 +208,7 @@ int main(int argc, char **argv)
         }
         /* if this isn't us, then get the ghex key */
         if (n != myproc.rank) {
-            PMIX_LOAD_KEY(cache, "ghex");
-            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, cache, &timeout, 1, &val))) {
+            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, "ghex", &timeout, 1, &val))) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Get ghex failed: %s\n", myproc.nspace,
                         myproc.rank, PMIx_Error_string(rc));
                 goto done;

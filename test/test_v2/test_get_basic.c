@@ -2,7 +2,7 @@
  * Copyright (c) 2020-2021 Triad National Security, LLC.
  *                         All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,7 +27,6 @@ int main(int argc, char *argv[])
     test_params l_params;
     validation_params v_params;
     pmix_proc_t job_proc;
-    pmix_key_t cache;
 
     pmixt_pre_init(argc, argv, &l_params, &v_params, NULL);
     TEST_VERBOSE(("v_params values: pmix_nspace %s; pmix_job_size %d; pmix_univ_size %d",
@@ -46,55 +45,47 @@ int main(int argc, char *argv[])
     job_proc = this_proc;
     job_proc.rank = PMIX_RANK_WILDCARD; // == UINT32_MAX-1
 
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    PMIXT_CHECK(PMIx_Get(&job_proc, cache, NULL, 0, &val), l_params, v_params);
+    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_JOB_SIZE, NULL, 0, &val), l_params, v_params);
     /* After using PMIx_Get to get a value, we need to compare it our validation parameters
        we've passed as an argument; this is the main purpose of pmixt_validate_predefined(). */
 
-    pmixt_validate_predefined(&job_proc, cache, val, PMIX_UINT32, &v_params);
+    pmixt_validate_predefined(&job_proc, PMIX_JOB_SIZE, val, PMIX_UINT32, &v_params);
     free(val);
     TEST_VERBOSE(("after PMIX_JOB_SIZE check"));
 
-    PMIX_LOAD_KEY(cache, PMIX_UNIV_SIZE);
-    PMIXT_CHECK(PMIx_Get(&job_proc, cache, NULL, 0, &val), l_params, v_params);
-    pmixt_validate_predefined(&job_proc, cache, val, PMIX_UINT32, &v_params);
+    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_UNIV_SIZE, NULL, 0, &val), l_params, v_params);
+    pmixt_validate_predefined(&job_proc, PMIX_UNIV_SIZE, val, PMIX_UINT32, &v_params);
     free(val);
     TEST_VERBOSE(("after PMIX_UNIV_SIZE check"));
 
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_SIZE);
-    PMIXT_CHECK(PMIx_Get(&job_proc, cache, NULL, 0, &val), l_params, v_params);
-    pmixt_validate_predefined(&this_proc, cache, val, PMIX_UINT32, &v_params);
+    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_LOCAL_SIZE, NULL, 0, &val), l_params, v_params);
+    pmixt_validate_predefined(&this_proc, PMIX_LOCAL_SIZE, val, PMIX_UINT32, &v_params);
     free(val);
     TEST_VERBOSE(("after PMIX_LOCAL_SIZE check"));
 
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_RANK);
-    PMIXT_CHECK(PMIx_Get(&this_proc, cache, NULL, 0, &val), l_params, v_params);
-    pmixt_validate_predefined(&this_proc, cache, val, PMIX_UINT16, &v_params);
+    PMIXT_CHECK(PMIx_Get(&this_proc, PMIX_LOCAL_RANK, NULL, 0, &val), l_params, v_params);
+    pmixt_validate_predefined(&this_proc, PMIX_LOCAL_RANK, val, PMIX_UINT16, &v_params);
     free(val);
     TEST_VERBOSE(("after PMIX_LOCAL_RANK check"));
 
-    PMIX_LOAD_KEY(cache, PMIX_NODEID);
-    PMIXT_CHECK(PMIx_Get(&this_proc, cache, NULL, 0, &val), l_params, v_params);
-    pmixt_validate_predefined(&this_proc, cache, val, PMIX_UINT32, &v_params);
+    PMIXT_CHECK(PMIx_Get(&this_proc, PMIX_NODEID, NULL, 0, &val), l_params, v_params);
+    pmixt_validate_predefined(&this_proc, PMIX_NODEID, val, PMIX_UINT32, &v_params);
     free(val);
     TEST_VERBOSE(("after PMIX_NODEID check"));
 
-    PMIX_LOAD_KEY(cache, PMIX_LOCAL_PEERS);
-    PMIXT_CHECK(PMIx_Get(&job_proc, cache, NULL, 0, &val), l_params, v_params);
-    pmixt_validate_predefined(&job_proc, cache, val, PMIX_STRING, &v_params);
+    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_LOCAL_PEERS, NULL, 0, &val), l_params, v_params);
+    pmixt_validate_predefined(&job_proc, PMIX_LOCAL_PEERS, val, PMIX_STRING, &v_params);
     free(val);
     TEST_VERBOSE(("after PMIX_LOCAL_PEERS check"));
 
-    PMIX_LOAD_KEY(cache, PMIX_HOSTNAME);
-    PMIXT_CHECK(PMIx_Get(&this_proc, cache, NULL, 0, &val), l_params, v_params);
-    pmixt_validate_predefined(&this_proc, cache, val, PMIX_STRING, &v_params);
+    PMIXT_CHECK(PMIx_Get(&this_proc, PMIX_HOSTNAME, NULL, 0, &val), l_params, v_params);
+    pmixt_validate_predefined(&this_proc, PMIX_HOSTNAME, val, PMIX_STRING, &v_params);
     free(val);
     TEST_VERBOSE(("after PMIX_HOSTNAME check"));
 
     job_proc.rank = PMIX_RANK_INVALID;
-    PMIX_LOAD_KEY(cache, PMIX_RANK);
-    PMIXT_CHECK(PMIx_Get(&job_proc, cache, NULL, 0, &val), l_params, v_params);
-    pmixt_validate_predefined(&job_proc, cache, val, PMIX_PROC_RANK, &v_params);
+    PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_RANK, NULL, 0, &val), l_params, v_params);
+    pmixt_validate_predefined(&job_proc, PMIX_RANK, val, PMIX_PROC_RANK, &v_params);
     TEST_VERBOSE(("after PMIX_RANK check"));
 
     /* finalize */

@@ -37,9 +37,7 @@ static int pmi_set_string(const char *key, void *data, size_t size)
     return 0;
 }
 
-static int pmi_get_string(uint32_t peer_rank,
-                          const pmix_key_t key,
-                          void **data_out,
+static int pmi_get_string(uint32_t peer_rank, const char *key, void **data_out,
                           size_t *data_size_out)
 {
     int rc;
@@ -109,7 +107,6 @@ int main(int argc, char *argv[])
     size_t size_out;
     int rc;
     pmix_value_t *pvalue;
-    pmix_key_t cache;
 
     /* check the args */
     if (1 < argc) {
@@ -150,8 +147,7 @@ int main(int argc, char *argv[])
     PMIX_LOAD_PROCID(&allproc, myproc.nspace, PMIX_RANK_WILDCARD);
 
     /* get the number of procs in our job */
-    PMIX_LOAD_KEY(cache, PMIX_JOB_SIZE);
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&allproc, cache, NULL, 0, &pvalue))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&allproc, PMIX_JOB_SIZE, NULL, 0, &pvalue))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace,
                 myproc.rank, rc);
         exit(1);
@@ -179,11 +175,9 @@ int main(int argc, char *argv[])
     }
 
     if (0 == myproc.rank) {
-        PMIX_LOAD_KEY(cache, "test-key-3");
-        pmi_get_string(1, cache, (void **) &data_out, &size_out);
+        pmi_get_string(1, "test-key-3", (void **) &data_out, &size_out);
     } else {
-        PMIX_LOAD_KEY(cache, "test-key-2");
-        pmi_get_string(0, cache, (void **) &data_out, &size_out);
+        pmi_get_string(0, "test-key-2", (void **) &data_out, &size_out);
     }
     printf("%d: obtained data \"%s\"\n", myproc.rank, data_out);
 
