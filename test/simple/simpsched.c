@@ -104,6 +104,7 @@ int main(int argc, char **argv)
     mylock_t lock;
     mycaddy_t cd;
     pmix_value_t *val;
+    pmix_nspace_t ncache;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* smoke test */
@@ -178,10 +179,10 @@ int main(int argc, char **argv)
     PMIX_INFO_LOAD(&info[1], PMIX_ALLOC_NETWORK_SEC_KEY, NULL, PMIX_BOOL);
 
     PMIX_INFO_LOAD(&iptr[3], PMIX_SETUP_APP_ENVARS, NULL, PMIX_BOOL);
-
+    PMIX_LOAD_NSPACE(ncache, "SIMPSCHED");
     DEBUG_CONSTRUCT_LOCK(&cd.lock);
-    if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_application("SIMPSCHED", iptr, 4, setup_cbfunc, &cd))) {
+    rc = PMIx_server_setup_application(ncache, iptr, 4, setup_cbfunc, &cd);
+    if (PMIX_SUCCESS != rc) {
         pmix_output(0, "[%s:%d] PMIx_server_setup_application failed: %s", __FILE__, __LINE__,
                     PMIx_Error_string(rc));
         DEBUG_DESTRUCT_LOCK(&cd.lock);
@@ -192,9 +193,8 @@ int main(int argc, char **argv)
 
     /* setup the local subsystem */
     DEBUG_CONSTRUCT_LOCK(&lock);
-    if (PMIX_SUCCESS
-        != (rc = PMIx_server_setup_local_support("SIMPSCHED", cd.info, cd.ninfo, local_cbfunc,
-                                                 &lock))) {
+    rc = PMIx_server_setup_local_support(ncache, cd.info, cd.ninfo, local_cbfunc, &lock);
+    if (PMIX_SUCCESS != rc) {
         pmix_output(0, "[%s:%d] PMIx_server_setup_local_support failed: %s", __FILE__, __LINE__,
                     PMIx_Error_string(rc));
         DEBUG_DESTRUCT_LOCK(&lock);
