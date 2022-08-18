@@ -73,7 +73,7 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr,
 
 static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata);
 
-static pmix_status_t _getfn_fastpath(const pmix_proc_t *proc, const pmix_key_t key,
+static pmix_status_t _getfn_fastpath(const pmix_proc_t *proc, const char key[],
                                      const pmix_info_t info[], size_t ninfo,
                                      pmix_value_t **val);
 
@@ -81,7 +81,7 @@ static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb);
 
 
 PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc,
-                                   const pmix_key_t key,
+                                   const char key[],
                                    const pmix_info_t info[], size_t ninfo,
                                    pmix_value_t **val)
 {
@@ -924,7 +924,7 @@ static pmix_status_t process_values(pmix_value_t **v, pmix_cb_t *cb)
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t _getfn_fastpath(const pmix_proc_t *proc, const pmix_key_t key,
+static pmix_status_t _getfn_fastpath(const pmix_proc_t *proc, const char key[],
                                      const pmix_info_t info[], size_t ninfo,
                                      pmix_value_t **val)
 {
