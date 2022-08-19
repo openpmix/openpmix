@@ -336,7 +336,11 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
         }
     }
     if (optind < argc) {
-        results->tail = pmix_argv_copy(&argv[optind]);
+        /* if this is an '&', it simply indicates that the executable
+         * was being pushed into the background - ignore it */
+        if (0 != strcmp(argv[optind], "&")) {
+            results->tail = pmix_argv_copy(&argv[optind]);
+        }
     }
     pmix_argv_free(argv);
     return PMIX_SUCCESS;
