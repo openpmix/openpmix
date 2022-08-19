@@ -85,6 +85,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/util/pmix_show_help.h"
 
 #include "pmix_client_ops.h"
+#include "src/server/pmix_server_ops.h"
 
 #define PMIX_MAX_RETRIES 10
 
@@ -512,7 +513,8 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     pmix_iof_req_t *req;
     pmix_info_t *info = NULL;
 
-    pmix_output_verbose(2, pmix_client_globals.iof_output, "recvd IOF with %d bytes",
+    pmix_output_verbose(2, pmix_client_globals.iof_output,
+                        "recvd IOF with %d bytes",
                         (int) buf->bytes_used);
 
     PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
@@ -728,6 +730,10 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
             PMIX_LOAD_PROCID(proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
         }
         pmix_globals.mypeer->nptr->nspace = strdup(pmix_globals.myid.nspace);
+        /* define us as an IOF endpoint so any output will be printed */
+        pmix_globals.iof_flags.local_output = true;
+        PMIX_CONSTRUCT(&pmix_server_globals.iof, pmix_list_t);
+        PMIX_CONSTRUCT(&pmix_server_globals.iof_residuals, pmix_list_t);
     } else {
         if (NULL != proc) {
             pmix_strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
