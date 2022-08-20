@@ -1144,6 +1144,10 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         }
     }
     PMIX_DESTRUCT(&pmix_client_globals.peers);
+    if (pmix_client_globals.singleton) {
+        PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
+        PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
+    }
 
     if (0 <= pmix_client_globals.myserver->sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
