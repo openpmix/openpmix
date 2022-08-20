@@ -23,7 +23,7 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.2.0 -- TBD
+4.2.0 -- 20 Aug 2022
 ----------------------
 **** NOTE: This release includes a number of new features that
 may be of use to library and application developers. These include:
@@ -51,6 +51,13 @@ may be of use to library and application developers. These include:
     both from the system and user level
 
 Detailed changes:
+ - PR #2697 Multiple commits
+    - Add example to simulate OMPI group usage
+    - Cleanup singleton IOF lists
+ - PR #2695 Output IO as singleton, support background commands
+ - PR #2692,2690 Silence gcc12 warnings
+ - PR #2689 Need to replace the entire proc in fence with group member
+ - PR #2687 Update NEWS/VERSION for rc2
  - PR #2686 Fix/implement the group invite support
  - PR #2682 Do not error out if lib is symlinked to lib64
  - PR #2681 Separate out pinstalldirs for inclusion by PRRTE
