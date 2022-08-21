@@ -191,7 +191,9 @@ static pmix_status_t match(const char *a, const char *b)
 }
 
 
-static pmix_status_t pmix_get_tli(const char *filename, const char *topic, tuple_list_item_t **tli_)
+static pmix_status_t pmix_get_tli(const char *filename,
+                                  const char *topic,
+                                  tuple_list_item_t **tli_)
 {
     tuple_list_item_t *tli = *tli_;
 

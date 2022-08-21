@@ -66,7 +66,8 @@ static void localcbfunc(pmix_status_t status, void *cbdata)
     PMIX_RELEASE_THREAD(&mycount->lock);
 }
 
-pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
+pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
+                                 const pmix_info_t data[], size_t ndata,
                                  const pmix_info_t directives[], size_t ndirs,
                                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
@@ -95,7 +96,8 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t da
      * can only be on one list at a time */
     PMIX_ACQUIRE_THREAD(&pmix_plog_globals.lock);
 
-    pmix_output_verbose(2, pmix_plog_base_framework.framework_output, "plog:log called");
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "plog:log called");
 
     /* initialize the tracker */
     mycount = PMIX_NEW(pmix_mycount_t);
