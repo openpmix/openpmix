@@ -239,10 +239,13 @@ int main(int argc, char **argv)
                              NULL, &results, "help-pattrs.txt");
 
     if (PMIX_SUCCESS != rc) {
-        if (PMIX_ERR_SILENT != rc) {
+        if (PMIX_ERR_SILENT != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
         }
-        return rc;
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            rc = PMIX_SUCCESS;
+        }
+        exit(rc);
     }
 
     client = pmix_cmd_line_get_nth_instance(&results, "client", 0);

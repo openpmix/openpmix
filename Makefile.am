@@ -47,8 +47,6 @@ endif
 pmixdir = $(pmixincludedir)/$(subdir)
 nobase_pmix_HEADERS = $(headers)
 
-include man/Makefile.include
-
 dist-hook:
 	env LS_COLORS= sh "$(top_srcdir)/config/distscript.sh" "$(top_srcdir)" "$(distdir)" "$(PMIX_VERSION)" "$(PMIX_REPO_REV)"
 

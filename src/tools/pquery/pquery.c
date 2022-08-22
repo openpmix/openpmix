@@ -206,10 +206,13 @@ int main(int argc, char **argv)
                              NULL, &results, "help-pquery.txt");
 
     if (PMIX_SUCCESS != rc) {
-        if (PMIX_ERR_SILENT != rc) {
+        if (PMIX_ERR_SILENT != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
         }
-        return rc;
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            rc = PMIX_SUCCESS;
+        }
+        exit(rc);
     }
 
     /* get the argv array of keys they want us to query */
