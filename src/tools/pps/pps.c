@@ -269,10 +269,13 @@ int main(int argc, char *argv[])
                              NULL, &results, "help-pps.txt");
 
     if (PMIX_SUCCESS != rc) {
-        if (PMIX_ERR_SILENT != rc) {
+        if (PMIX_ERR_SILENT != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
         }
-        return rc;
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            rc = PMIX_SUCCESS;
+        }
+        exit(rc);
     }
 
     /* if we were given the pid of a starter, then direct that
