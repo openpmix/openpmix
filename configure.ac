@@ -221,7 +221,7 @@ else
 fi
 # check for Flex
 AC_PROG_LEX(noyywrap)
-if test "x$LEX" != xflex && test ! -e $PMIX_TOP_SRCDIR/util/keyval/keyval_lex.c; then
+if test "x$LEX" != xflex && test ! -e $PMIX_TOP_SRCDIR/src/util/keyval/keyval_lex.c; then
     AC_MSG_WARN([PMIx requires Flex to build from sources that were not])
     AC_MSG_WARN([fully pre-processed (e.g., an official release tarball),])
     AC_MSG_WARN([but Flex was not found. Please install Flex into])
