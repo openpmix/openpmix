@@ -153,8 +153,11 @@ int pmix_info_init(int argc, char **argv)
     ret = pmix_cmd_line_parse(argv, pshorts, poptions,
                               NULL, pmix_info_cmd_line, "help-pmix-info.txt");
     if (PMIX_SUCCESS != ret) {
-        if (PMIX_ERR_SILENT != ret) {
+        if (PMIX_ERR_SILENT != ret && PMIX_OPERATION_SUCCEEDED != ret) {
             fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(ret));
+        }
+        if (PMIX_OPERATION_SUCCEEDED == ret) {
+            ret = PMIX_SUCCESS;
         }
         exit(ret);
     }
