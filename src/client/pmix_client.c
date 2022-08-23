@@ -579,8 +579,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
          * rank should be known. So return them here if
          * requested */
         if (NULL != proc) {
-            pmix_strncpy(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-            proc->rank = pmix_globals.myid.rank;
+            PMIX_LOAD_PROCID(proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
         }
         ++pmix_globals.init_cntr;
         /* we also need to check the info keys to see if something need
@@ -705,7 +704,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
         PMIX_CONSTRUCT(&pmix_server_globals.iof_residuals, pmix_list_t);
     } else {
         if (NULL != proc) {
-            pmix_strncpy(proc->nspace, evar, PMIX_MAX_NSLEN);
+            PMIX_LOAD_NSPACE(proc->nspace, evar);
         }
         PMIX_LOAD_NSPACE(pmix_globals.myid.nspace, evar);
         /* set the global pmix_namespace_t object for our peer */
@@ -732,10 +731,10 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOMEM;
     }
-    pmix_globals.mypeer->info->pname.nspace = strdup(proc->nspace);
-    pmix_globals.mypeer->info->pname.rank = proc->rank;
-    PMIX_LOAD_PROCID(pmix_globals.myidval.data.proc, proc->nspace, proc->rank);
-    pmix_globals.myrankval.data.rank = proc->rank;
+    pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
+    pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
+    PMIX_LOAD_PROCID(pmix_globals.myidval.data.proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+    pmix_globals.myrankval.data.rank = pmix_globals.myid.rank;
 
     /* select our psec compat module - the selection will be based
      * on the corresponding envars that should have been passed
