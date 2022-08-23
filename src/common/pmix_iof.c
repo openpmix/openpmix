@@ -1543,7 +1543,8 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                 /* see if we already have one - we reuse the same sink for
                  * all streams */
                 PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
-                    if (sink->name.rank == name->rank) {
+                    if (sink->name.rank == name->rank &&
+                        ((stream & sink->tag) || nptr->iof_flags.merge)) {
                         channel = &sink->wev;
                         break;
                     }
@@ -1579,7 +1580,12 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         if (PMIX_FWD_STDOUT_CHANNEL & stream) {
             channel = &pmix_client_globals.iof_stdout.wev;
         } else {
-            channel = &pmix_client_globals.iof_stderr.wev;
+            if(!myflags.merge) {
+                channel = &pmix_client_globals.iof_stderr.wev;
+            }
+            else {
+                channel = &pmix_client_globals.iof_stdout.wev;
+            }
         }
     }
 
