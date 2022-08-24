@@ -509,6 +509,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NOTIFY_PROC_ABNORMAL_TERMINATION   "pmix.noteabproc"   // (bool) Requests that the launcher generate the PMIX_EVENT_PROC_TERMINATED
                                                                     //        event only when a process abnormally terminates.
 #define PMIX_ENVARS_HARVESTED               "pmix.evar.hvstd"       // (bool) Envars have been harvested by the spawn requestor
+#define PMIX_RUNTIME_OPTIONS                "pmix.runopt"           // (char*) Runtime directives controlling job behavior
 
 
 /* query keys - value type shown is the type of the value that will be RETURNED by that key  */
