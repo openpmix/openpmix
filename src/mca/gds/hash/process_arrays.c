@@ -596,6 +596,10 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
     }
 
     sptr = pmix_gds_hash_check_session(trk, sid);
+    if (NULL == sptr) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
     PMIX_CONSTRUCT(&ncache, pmix_list_t);
 
     for (j = 1; j < size; j++) {
