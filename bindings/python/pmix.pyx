@@ -1360,7 +1360,8 @@ cdef class PMIxClient:
             ninfo = 0
 
         # pass our hdlr switchyard to the API
-        rc = PMIx_Register_event_handler(codes, ncodes, info, ninfo, pyeventhandler, NULL, NULL)
+        with nogil:
+             rc = PMIx_Register_event_handler(codes, ncodes, info, ninfo, pyeventhandler, NULL, NULL)
 
         # cleanup
         if 0 < ninfo:
