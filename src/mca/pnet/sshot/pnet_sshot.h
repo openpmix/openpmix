@@ -20,9 +20,11 @@ BEGIN_C_DECLS
 
 typedef struct {
     pmix_pnet_base_component_t super;
-    char *configfile;
+    char *vnid_username;
+    char *credential;
+    char *vnid_url;
+    char *nodes;
     int numnodes;
-    int numdevs;
     int ppn;
 } pmix_pnet_sshot_component_t;
 
