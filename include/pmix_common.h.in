@@ -451,7 +451,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_PREFIX                         "pmix.prefix"           // (char*) prefix to use for starting spawned procs
 #define PMIX_WDIR                           "pmix.wdir"             // (char*) working directory for spawned procs
 #define PMIX_WDIR_USER_SPECIFIED            "pmix.wdir.user"        // (bool) User specified the working directory
-#define PMIX_DISPLAY_MAP                    "pmix.dispmap"          // (bool) display process map upon spawn
+#define PMIX_DISPLAY_MAP                    "pmix.dispmap"          // (bool) display placement map upon spawn
+#define PMIX_DISPLAY_MAP_DETAILED           "pmix.dispmapdet"       // (bool) display a highly detailed placement map upon spawn
+#define PMIX_DISPLAY_ALLOCATION             "pmix.dispalloc"        // (bool) display the resource allocation
+#define PMIX_DISPLAY_TOPOLOGY               "pmix.disptopo"         // (char*) comma-delimited list of hosts whose topology is
+                                                                    //         to be displayed
 #define PMIX_PPR                            "pmix.ppr"              // (char*) #procs to spawn on each identified resource
 #define PMIX_MAPBY                          "pmix.mapby"            // (char*) mapping policy
 #define PMIX_RANKBY                         "pmix.rankby"           // (char*) ranking policy
