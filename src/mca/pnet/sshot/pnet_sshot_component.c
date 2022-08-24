@@ -28,6 +28,7 @@
  */
 
 #include "src/include/pmix_config.h"
+#include "mca/base/pmix_mca_base_var.h"
 #include "pmix_common.h"
 
 #include "src/hwloc/pmix_hwloc.h"
@@ -62,10 +63,12 @@ pmix_pnet_sshot_component_t pmix_mca_pnet_sshot_component = {
         .pmix_mca_query_component = component_query,
         .pmix_mca_register_component_params = component_register
     },
-    .configfile = NULL,
+    .vnid_username = "cxi",
+    .credential= NULL,
+    .vnid_url = NULL,
+    .nodes = NULL,
     .numnodes = 0,
-    .numdevs = 8,
-    .ppn = 4
+    .ppn = 0
 };
 
 static pmix_status_t component_register(void)
@@ -73,31 +76,44 @@ static pmix_status_t component_register(void)
     pmix_mca_base_component_t *component = &pmix_mca_pnet_sshot_component.super;
 
     (void) pmix_mca_base_component_var_register(
-        component, "config_file", "Path of file containing Slingshot fabric configuration",
+        component, "vnid_url", "URL for the vnid",
         PMIX_MCA_BASE_VAR_TYPE_STRING,
-        &pmix_mca_pnet_sshot_component.configfile);
+        &pmix_mca_pnet_sshot_component.vnid_url);
 
-    (void) pmix_mca_base_component_var_register(component, "num_nodes",
-                                                "Number of nodes to simulate (0 = no simulation)",
-                                                PMIX_MCA_BASE_VAR_TYPE_INT,
-                                                &pmix_mca_pnet_sshot_component.numnodes);
     (void) pmix_mca_base_component_var_register(
-        component, "devs_per_node", "Number of devices/node to simulate (0 = no simulation)",
+        component, "ppn", "Procs per node.",
         PMIX_MCA_BASE_VAR_TYPE_INT,
-        &pmix_mca_pnet_sshot_component.numdevs);
+        &pmix_mca_pnet_sshot_component.ppn);
 
-    (void) pmix_mca_base_component_var_register(component, "ppn", "PPN to simulate",
-                                                PMIX_MCA_BASE_VAR_TYPE_INT,
-                                                &pmix_mca_pnet_sshot_component.ppn);
+    (void) pmix_mca_base_component_var_register(
+        component, "vnid_username", "The Username for the vnid. Default = \"cxi\"",
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
+        &pmix_mca_pnet_sshot_component.vnid_username);
+
+    (void) pmix_mca_base_component_var_register(
+        component, "credential", "The HPE provided credential, typically found in /etc/vnid/passwd.",
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
+        &pmix_mca_pnet_sshot_component.credential);
+
+    (void) pmix_mca_base_component_var_register(
+        component, "nodes", "The nodes to get group/switch membership for.",
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
+        &pmix_mca_pnet_sshot_component.nodes);
+
+    (void) pmix_mca_base_component_var_register(
+        component, "num_nodes",
+        "Number of nodes in query.",
+        PMIX_MCA_BASE_VAR_TYPE_INT,
+        &pmix_mca_pnet_sshot_component.numnodes);
 
     return PMIX_SUCCESS;
 }
 
 static pmix_status_t component_open(void)
 {
-    pmix_status_t rc;
 
-    // unsure what this will be registered under, so try multiple codes
+    #if 0
+    pmix_status_t rc;
     rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x17db, 0x208);  // Cray
     if (PMIX_SUCCESS != rc) {
         rc = pmix_hwloc_check_vendor(&pmix_globals.topology, 0x18c8, 0x208);  // Cray
@@ -107,6 +123,8 @@ static pmix_status_t component_open(void)
     }
 
     return rc;
+    #endif
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t component_close(void)
@@ -117,7 +135,6 @@ static pmix_status_t component_close(void)
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 0;
-
     if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         /* only servers are supported */
         *module = NULL;

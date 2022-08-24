@@ -26,6 +26,7 @@
 #    include <fcntl.h>
 #endif
 #include <jansson.h>
+#include <curl/curl.h>
 #include <time.h>
 
 #include "pmix_common.h"
@@ -50,347 +51,335 @@
 #include "src/mca/pnet/pnet.h"
 
 /* internal variables */
-static pmix_pointer_array_t mygroups, mynodes, myvertices;
-static int mynswitches = 100, mynnics = 80000;
+static pmix_pointer_array_t mygroups, node_names;
 
-/* internal tracking structures */
+static const char *ama_object_string = "mac";
+static const char *device_object_string = "device";
+static const char *node_name_delim = ",";
+static const char *json_string_fmt = "{\"hosts\":[%s]}";
+static const char *ama_format = "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx";
+static const char *node_nic_name_format = "%s-%s";
+static const char *switch_delim = ":";
+static size_t node_nic_name_size = 128;
+
+typedef struct
+{
+    char *payload;
+    size_t size;
+} vnid_response_t;
+
+typedef struct
+{
+    unsigned int group_id;
+    unsigned int switch_id;
+    unsigned port_id;
+} coordinates;
+
+/*Joins host_name and device_name: host-device.*/
+static char *join_names(size_t size, const char *node_name, const char *nic_name, const char *format)
+{
+    char buffer[node_nic_name_size];
+    int n = snprintf(buffer, size, format, node_name, nic_name);
+    if (n < 0) {
+	return NULL;
+    }
+    return strdup(buffer);
+}
+
+/* Parse out nodenames passed in from RM (e.g., pbs). */
+static void extract_node_names(pmix_pointer_array_t *name_arr, char *names)
+{
+    char *token = strtok(strdup(names), node_name_delim);
+    while (token != NULL) {
+	pmix_pointer_array_add(name_arr, strdup(token));
+	token = strtok(NULL, node_name_delim);
+    }
+    for (int p = 0; p<name_arr->size; p++) {
+	char *name = pmix_pointer_array_get_item(name_arr, p);
+	if (!name) {
+	    break;
+	}
+    }
+}
+
+
+/* Helper function to parse out string ama */
+static int parse_ama(const char *ama, coordinates *coord)
+{
+    int mac_address[8] = {0};
+    if (sscanf(ama, ama_format,
+	       &mac_address[5],
+	       &mac_address[4],
+	       &mac_address[3],
+	       &mac_address[2],
+	       &mac_address[1],
+	       &mac_address[0]
+	    ) != 6)
+	{
+
+	    return 1;
+	}
+
+    // Fabric Group
+    coord->group_id = ((mac_address[3] & 0xF) << 2) |
+	((mac_address[4] & 0xC0) >> 6);
+
+    // Switch ID
+    coord->switch_id = ((mac_address[4] & 0x3F) << 2) |
+	((mac_address[5] & 0xC0) >> 6);
+
+    // Switch Port
+    coord->port_id = mac_address[5] & 0x3F;
+    return 0;
+}
+
+/* Internal structures to store topology state.*/
 typedef struct {
     pmix_object_t super;
-    int grpID;
-    pmix_bitmap_t switches;
-    pmix_bitmap_t nics;
+    int switch_id;
     char **members;
-} pnet_fabricgroup_t;
-static void ncon(pnet_fabricgroup_t *p)
+} sshot_switch_t;
+
+static void switch_con(sshot_switch_t *swtch)
 {
-    /* initialize the switch bitmap */
-    PMIX_CONSTRUCT(&p->switches, pmix_bitmap_t);
-    pmix_bitmap_set_max_size(&p->switches, mynswitches);
-    pmix_bitmap_init(&p->switches, mynswitches);
-    /* initialize the nic bitmap */
-    PMIX_CONSTRUCT(&p->nics, pmix_bitmap_t);
-    pmix_bitmap_set_max_size(&p->nics, mynnics);
-    pmix_bitmap_init(&p->nics, mynnics);
-    /* initialize the argv array of members */
-    p->members = NULL;
+    swtch->switch_id = 0;
+    swtch->members = NULL;
 }
-static void ndes(pnet_fabricgroup_t *p)
+
+static void switch_des(sshot_switch_t *swtch)
 {
-    PMIX_DESTRUCT(&p->switches);
-    PMIX_DESTRUCT(&p->nics);
-    if (NULL != p->members) {
-        pmix_argv_free(p->members);
+    if (NULL != swtch->members) {
+	pmix_argv_free(swtch->members);
     }
 }
-static PMIX_CLASS_INSTANCE(pnet_fabricgroup_t, pmix_object_t, ncon, ndes);
+
+static PMIX_CLASS_INSTANCE(sshot_switch_t, pmix_object_t, switch_con, switch_des);
 
 typedef struct {
     pmix_object_t super;
-    char *name;
-    pnet_fabricgroup_t *grp;
-    pmix_pointer_array_t nics;
-} pnet_node_t;
-static void ndcon(pnet_node_t *p)
-{
-    p->name = NULL;
-    p->grp = NULL;
-    PMIX_CONSTRUCT(&p->nics, pmix_pointer_array_t);
-    pmix_pointer_array_init(&p->nics, 8, INT_MAX, 8);
-}
-static void nddes(pnet_node_t *p)
-{
-    pmix_object_t *item;
-    int n;
+    int group_id;
+    pmix_pointer_array_t switches;
+} sshot_group_t;
 
-    if (NULL != p->name) {
-        free(p->name);
-    }
-    if (NULL != p->grp) {
-        PMIX_RELEASE(p->grp);
-    }
-    for (n = 0; n < p->nics.size; n++) {
-        if (NULL != (item = pmix_pointer_array_get_item(&p->nics, n))) {
-            PMIX_RELEASE(item);
-        }
-    }
-    PMIX_DESTRUCT(&p->nics);
+static void group_con(sshot_group_t *group)
+{
+    group->group_id = 0;
+    PMIX_CONSTRUCT(&group->switches, pmix_pointer_array_t);
+    // overkill on the size
+    pmix_pointer_array_init(&group->switches, 256, INT_MAX, 256);
 }
-static PMIX_CLASS_INSTANCE(pnet_node_t, pmix_object_t, ndcon, nddes);
 
-typedef struct {
-    pmix_object_t super;
-    uint32_t index;
-    pnet_node_t *host;
-    char *addr;
-    pmix_coord_t coord;
-} pnet_vertex_t;
-static void vtcon(pnet_vertex_t *p)
+static void group_des(sshot_group_t *group)
 {
-    p->host = NULL;
-    p->addr = NULL;
-    PMIX_COORD_CONSTRUCT(&p->coord);
-    p->coord.view = PMIX_COORD_LOGICAL_VIEW;
+    PMIX_DESTRUCT(&group->switches);
 }
-static void vtdes(pnet_vertex_t *p)
-{
-    if (NULL != p->host) {
-        PMIX_RELEASE(p->host);
-    }
-    if (NULL != p->addr) {
-        free(p->addr);
-    }
-    PMIX_COORD_DESTRUCT(&p->coord);
-}
-static PMIX_CLASS_INSTANCE(pnet_vertex_t, pmix_object_t, vtcon, vtdes);
+
+static PMIX_CLASS_INSTANCE(sshot_group_t, pmix_object_t, group_con, group_des);
 
 /* internal functions */
-static pmix_status_t ask_fabric_controller(pmix_fabric_t *fabric, const pmix_info_t directives[],
-                                           size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata);
+size_t curl_callback (void *contents, size_t size, size_t nmemb, void *userp);
+static int ask_fabric_controller(char *vnid_url, char *vnid_username, char *credential, char *nodes, const char *fmt, vnid_response_t *response);
 
 pmix_status_t pmix_pnet_sshot_register_fabric(pmix_fabric_t *fabric, const pmix_info_t directives[],
                                               size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    json_t *root, *switches, *ndarray, *sw, *nd, *nic, *nics;
-    json_error_t error;
-    int nswitches, nnodes, m, n, p, grpID, swcNum, nnics;
-    const char *str;
-    pnet_fabricgroup_t *grp;
-    pnet_node_t *node;
-    pnet_vertex_t *vtx;
-    char **grps = NULL, *grpmems, *gmem;
+    PMIX_HIDE_UNUSED_PARAMS(cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(ndirs);
+    PMIX_HIDE_UNUSED_PARAMS(cbfunc);
+    PMIX_HIDE_UNUSED_PARAMS(directives);
 
-    pmix_output_verbose(2, pmix_pnet_base_framework.framework_output, "pnet: sshot init");
+    int num_devices = 0, num_nodes = 0;
+    int err = 0;
+    json_t *root = NULL, *macs = NULL, *devices = NULL;
+    json_error_t jerr;
+    vnid_response_t response;
+    response.size = 0;
+    response.payload = NULL;
 
-    /* if we were given a fabric topology configuration file, then parse
-     * it to get the fabric groups and switches */
-    if (NULL == pmix_mca_pnet_sshot_component.configfile) {
-        /* we were not given a file - see if we can get it
-         * from the fabric controller via REST interface */
-        return ask_fabric_controller(fabric, directives, ndirs, cbfunc, cbdata);
+    if (NULL ==  pmix_mca_pnet_sshot_component.vnid_url) {
+	return PMIX_ERROR;
+    }
+    if (NULL == pmix_mca_pnet_sshot_component.credential) {
+	fprintf(stderr, "credential is %s\n", pmix_mca_pnet_sshot_component.credential);
+	return PMIX_ERROR;
     }
 
-    /* setup to parse the configuration file */
+    if (NULL == pmix_mca_pnet_sshot_component.nodes) {
+      return PMIX_ERROR;
+    }
+
+    PMIX_CONSTRUCT(&node_names, pmix_pointer_array_t);
+    pmix_pointer_array_init(&node_names, 128, INT_MAX, 128);
+    extract_node_names(&node_names, pmix_mca_pnet_sshot_component.nodes);
+
     PMIX_CONSTRUCT(&mygroups, pmix_pointer_array_t);
-    pmix_pointer_array_init(&mygroups, 3, INT_MAX, 2);
-    PMIX_CONSTRUCT(&mynodes, pmix_pointer_array_t);
-    pmix_pointer_array_init(&mynodes, 128, INT_MAX, 64);
-    PMIX_CONSTRUCT(&myvertices, pmix_pointer_array_t);
-    pmix_pointer_array_init(&myvertices, 128, INT_MAX, 64);
+    pmix_pointer_array_init(&mygroups, 64, INT_MAX, 64);
 
-    /* load the file */
-    root = json_load_file(pmix_mca_pnet_sshot_component.configfile, 0, &error);
+    err = ask_fabric_controller(pmix_mca_pnet_sshot_component.vnid_url,
+				pmix_mca_pnet_sshot_component.vnid_username,
+				pmix_mca_pnet_sshot_component.credential,
+				pmix_mca_pnet_sshot_component.nodes,
+				json_string_fmt,
+				&response
+				);
+    if (err) {
+	free(response.payload);
+	return PMIX_ERROR;
+    }
+    root = json_loads(response.payload, 0, &jerr);
+    free(response.payload);
     if (NULL == root) {
-        /* the error object contains info on the error */
-        pmix_show_help("help-pnet-sshot.txt", "json-load", true, error.text, error.source,
-                       error.line, error.column, error.position, json_error_code(&error));
-        return PMIX_ERROR;
+	return PMIX_ERROR;
     }
 
-    /* unpack the switch information and assemble them
-     * into Dragonfly groups */
-    switches = json_object_get(root, "switches");
-    if (!json_is_array(switches)) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        json_decref(root);
-        return PMIX_ERR_BAD_PARAM;
-    }
-    nswitches = json_array_size(switches);
-
-    for (n = 0; n < nswitches; n++) {
-        sw = json_array_get(switches, n);
-        json_unpack(sw, "{s:i, s:i}", "grpID", &grpID, "swcNum", &swcNum);
-        /* see if we already have this group */
-        if (NULL == (grp = (pnet_fabricgroup_t *) pmix_pointer_array_get_item(&mygroups, grpID))) {
-            /* nope - better add it */
-            grp = PMIX_NEW(pnet_fabricgroup_t);
-            grp->grpID = grpID;
-            pmix_pointer_array_set_item(&mygroups, grpID, grp);
-            /* adjust the bitmap, if necessary */
-            if (pmix_bitmap_size(&grp->switches) < nswitches) {
-                pmix_bitmap_set_max_size(&grp->switches, nswitches);
-            }
-            /* indicate that this switch belongs to this group */
-            pmix_bitmap_set_bit(&grp->switches, swcNum);
-        } else {
-            /* indicate that this switch belongs to this group */
-            pmix_bitmap_set_bit(&grp->switches, swcNum);
-        }
+    macs = json_object_get(root, ama_object_string);
+    if (!macs) {
+	return PMIX_ERROR;
     }
 
-    /* get the total number of NICs in each group */
-    ndarray = json_object_get(root, "nodes");
-    if (!json_is_array(ndarray)) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        json_decref(root);
-        return PMIX_ERR_BAD_PARAM;
-    }
-    nnodes = json_array_size(ndarray);
-
-    for (n = 0; n < nnodes; n++) {
-        nd = json_array_get(ndarray, n);
-        node = PMIX_NEW(pnet_node_t);
-        json_unpack(nd, "{s:s}", "name", &str);
-        node->name = strdup(str);
-        pmix_pointer_array_add(&mynodes, node);
-        nics = json_object_get(nd, "nics");
-        nnics = json_array_size(nics);
-        /* adjust the bitmaps, if necessary */
-        for (p = 0; p < mygroups.size; p++) {
-            if (NULL != (grp = (pnet_fabricgroup_t *) pmix_pointer_array_get_item(&mygroups, p))) {
-                if (pmix_bitmap_size(&grp->nics) < nnics) {
-                    pmix_bitmap_set_max_size(&grp->nics, nnics);
-                }
-            }
-        }
-        /* cycle thru the NICs to get the switch
-         * to which they are connected */
-        for (m = 0; m < nnics; m++) {
-            nic = json_array_get(nics, m);
-            json_unpack(nic, "{s:s, s:i}", "id", &str, "switch", &swcNum);
-            /* add the vertex to our array */
-            vtx = PMIX_NEW(pnet_vertex_t);
-            PMIX_RETAIN(node);
-            vtx->host = node;
-            vtx->addr = strdup(str);
-            vtx->index = pmix_pointer_array_add(&myvertices, vtx);
-            /* add the NIC to the node */
-            PMIX_RETAIN(vtx);
-            pmix_pointer_array_add(&node->nics, vtx);
-            /* look for this switch in our groups */
-            for (p = 0; p < mygroups.size; p++) {
-                if (NULL
-                    != (grp = (pnet_fabricgroup_t *) pmix_pointer_array_get_item(&mygroups, p))) {
-                    if (pmix_bitmap_is_set_bit(&grp->switches, swcNum)) {
-                        /* mark that this NIC is part of this group */
-                        pmix_bitmap_set_bit(&grp->nics, vtx->index);
-                        /* record that this node is in this group */
-                        if (NULL == node->grp) {
-                            PMIX_RETAIN(grp);
-                            node->grp = grp;
-                            pmix_argv_append_nosize(&grp->members, node->name);
-                        }
-                        /* record a coordinate for this NIC */
-                        /* we are done */
-                        break;
-                    }
-                }
-            }
-        }
+    devices = json_object_get(root, device_object_string);
+    if (!devices) {
+	return PMIX_ERROR;
     }
 
-    /* assemble the groups and add them to the fabric object */
-    for (p = 0; p < mygroups.size; p++) {
-        if (NULL != (grp = (pnet_fabricgroup_t *) pmix_pointer_array_get_item(&mygroups, p))) {
-            if (NULL == grp->members) {
-                continue;
-            }
-            grpmems = pmix_argv_join(grp->members, ',');
-            pmix_asprintf(&gmem, "%d:%s", grp->grpID, grpmems);
-            pmix_argv_append_nosize(&grps, gmem);
-            free(gmem);
-            free(grpmems);
-        }
-    }
-    if (NULL != grps) {
-        gmem = pmix_argv_join(grps, ';');
-        PMIX_INFO_CREATE(fabric->info, 1);
-        fabric->ninfo = 1;
-        PMIX_INFO_LOAD(&fabric->info[0], PMIX_FABRIC_GROUPS, gmem, PMIX_STRING);
-        free(gmem);
+    num_nodes = json_array_size(macs);
+    num_devices = json_array_size(devices);
+
+    if (num_nodes != num_devices) {
+	return PMIX_ERROR;
     }
 
+    for (int i = 0; i < num_nodes; i++) {
+	json_t *mac_array = json_array_get(macs, i);
+	json_t *dev_array = json_array_get(devices, i);
+	char *nname = pmix_pointer_array_get_item(&node_names, i);
+	int nics_per_node = json_array_size(mac_array);
+	int macs_per_node = json_array_size(dev_array);
+	if (nics_per_node != macs_per_node) {
+	    return PMIX_ERROR;
+	}
+	for (int j = 0; j<nics_per_node; j++) {
+	    json_t *node_macs = json_array_get(mac_array, j);
+	    json_t *node_devs = json_array_get(dev_array, j);
+	    const char *addr = json_string_value(node_macs);
+	    const char *dev = json_string_value(node_devs);
+	    coordinates coord = {0};
+	    err = parse_ama(addr, &coord);
+	    if (err) {
+		return PMIX_ERROR;
+	    }
+	    sshot_group_t *grp;
+	    sshot_switch_t *swtch;
+	    // do we have this group already?
+	    // no
+	    if (NULL == (grp = (sshot_group_t*)pmix_pointer_array_get_item(&mygroups, coord.group_id))) {
+		grp = PMIX_NEW(sshot_group_t);
+		grp->group_id = coord.group_id;
+		pmix_pointer_array_set_item(&mygroups, grp->group_id, grp);
+	    }
+		// now we add the switch.
+	    if (NULL == (swtch = (sshot_switch_t*)pmix_pointer_array_get_item(&grp->switches, coord.switch_id))) {
+		swtch = PMIX_NEW(sshot_switch_t);
+		swtch->switch_id = coord.switch_id;
+		pmix_pointer_array_set_item(&grp->switches, swtch->switch_id, swtch);
+	    }
+	    char *full_name = join_names(node_nic_name_size, nname, dev, node_nic_name_format);
+	    pmix_argv_append_nosize(&swtch->members, full_name);
+	}
+    }
+    // now loop through all group objs, and each switch, and generate the string
+    // format is: group_id:switch_id:mem1,mem2,...,memn;group_id:switch_id:mem1,mem2,....
+    char **group_members = NULL, *all_info = NULL;
+    for (int i = 0; i<mygroups.size; i++) {
+	sshot_group_t *grp = (sshot_group_t*)pmix_pointer_array_get_item(&mygroups, i);
+	if (grp) {
+	    char *switch_members = NULL;
+	    for (int j = 0; j<grp->switches.size; j++) {
+
+		sshot_switch_t *swtch = (sshot_switch_t*)pmix_pointer_array_get_item(&grp->switches, j);
+		if (swtch) {
+		    char *switch_members2 = pmix_argv_join(swtch->members, ',');
+		    pmix_asprintf(&switch_members, "%d%s%s", swtch->switch_id, switch_delim, switch_members2);
+		    free(switch_members2);
+		} else {
+		    continue;
+		}
+	    }
+	    char *group_members2 = NULL;
+	    pmix_asprintf(&group_members2, "%d:%s", grp->group_id, switch_members);
+	    pmix_argv_append_nosize(&group_members, group_members2);
+	    free(group_members2);
+	} else {
+	    continue;
+	}
+    }
+    if (group_members) {
+	all_info = pmix_argv_join(group_members, ';');
+	PMIX_INFO_CREATE(fabric->info, 1);
+	fabric->ninfo = 1;
+	PMIX_INFO_LOAD(&fabric->info[0], PMIX_FABRIC_GROUPS, all_info, PMIX_STRING);
+	free(all_info);
+    }
     return PMIX_OPERATION_SUCCEEDED;
 }
 
-static void regcbfunc(long response_code, const char *effective_url, void *cbdata)
+int ask_fabric_controller(char *vnid_url, char *vnid_username, char *credential, char *nodes, const char *fmt, vnid_response_t *response)
 {
-    pmix_sse_request_t *req = (pmix_sse_request_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(effective_url);
+    char *query_str = NULL;
+    int query_str_length = 0;
+    char full_credential[128] = {0};
 
-    PMIX_ACQUIRE_OBJECT(req); // ensure the object has been updated
+    sprintf(full_credential, "%s:%s", vnid_username, credential);
 
-    req->status = response_code;
-    PMIX_POST_OBJECT(req);          // ensure changes to the object are pushed into memory
-    PMIX_WAKEUP_THREAD(&req->lock); // wakeup the waiting thread
+    query_str_length = strlen(nodes) + strlen(fmt);
+    query_str = (char*)calloc(query_str_length, sizeof(*query_str));
+    sprintf(query_str, fmt, nodes);
+
+    CURL *curl = curl_easy_init();
+    curl_easy_setopt(curl, CURLOPT_URL, vnid_url);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, query_str);
+    curl_easy_setopt(curl, CURLOPT_USERPWD, full_credential);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, response);
+
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+	free(query_str);
+	return 1;
+    }
+    free(query_str);
+    return 0;
 }
 
-/* the following function will be called whenever a data stream
- * is received. It will receive a NULL stream when the channel
- * has been closed
- */
-static void ondata(const char *stream, char **result, void *userdata)
+
+/* callback for curl fetch */
+size_t curl_callback (void *contents, size_t size, size_t nmemb, void *userp)
 {
-    pmix_cb_t *cb = (pmix_cb_t *) userdata;
-    PMIX_HIDE_UNUSED_PARAMS(result);
+    size_t realsize = size * nmemb;                             /* calculate buffer size */
+    vnid_response_t *p = (vnid_response_t *) userp;   /* cast pointer to fetch struct */
+    /* expand buffer using a temporary pointer to avoid memory leaks */
+    char *temp = realloc(p->payload, p->size + realsize + 1);
 
-    PMIX_ACQUIRE_OBJECT(cb);
-
-    /* if the stream is NULL, then the REST server terminated the
-     * connection and there is nothing to return
-     */
-    if (NULL == stream) {
-        cb->status = PMIX_ERR_NOT_AVAILABLE;
-    } else {
-        /* parse the stream to populate the fabric object - see above
-         * parsing of the config file for an example */
-        PMIX_INFO_CREATE(cb->fabric->info, 1);
-        cb->fabric->ninfo = 1;
-        PMIX_INFO_LOAD(&cb->fabric->info[0], PMIX_FABRIC_GROUPS, "0:nodeA,nodeB;1:nodeC,nodeD",
-                       PMIX_STRING);
+    /* check allocation */
+    if (temp == NULL) {
+	/* this isn't good */
+	free(p->payload);
+	return 1;
     }
 
-    /* pass back the status - the results are in the fabric
-     * object whose pointer we were given */
-    cb->cbfunc.opfn(cb->status, cb->cbdata);
-    PMIX_RELEASE(cb);
-    return;
-}
+    /* assign payload */
+    p->payload = temp;
 
-static pmix_status_t ask_fabric_controller(pmix_fabric_t *fabric, const pmix_info_t directives[],
-                                           size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata)
-{
-    pmix_sse_request_t *req;
-    pmix_cb_t *cb;
-    pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs);
+    /* copy contents to buffer */
+    memcpy(&(p->payload[p->size]), contents, realsize);
 
-    /* initialize the sse support - it is protected,
-     * so it doesn't matter if it was already
-     * initialized */
-    pmix_sse_common_init();
-
-    /* setup the request */
-    req = PMIX_NEW(pmix_sse_request_t);
-    req->verb = PMIX_HTTP_GET;
-    /* not sure where one gets the actual URL - this is obviously a fake one */
-    req->url = "https://10.25.24.156:8080/v1/stream/"
-               "cray-logs-containers?batchsize=4&count=2&streamID=stream1";
-    req->max_retries = 10;
-    req->debug = true;
-    req->allow_insecure = true;
-    /* not sure we really want a stream - consider this a placeholder */
-    req->expected_content_type = "text/event-stream";
-    req->ssl_cert = NULL; // replace with appropriate access certificate
-    req->ca_info = NULL;  // replace with appropriate CA certificate file
-
-    /* setup the object to return the info */
-    cb = PMIX_NEW(pmix_cb_t);
-    cb->fabric = fabric;
-    cb->cbfunc.opfn = cbfunc;
-    cb->cbdata = cbdata;
-
-    /* perform the request */
-    rc = pmix_sse_register_request(req, regcbfunc, req, ondata, cb);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(req);
-        return rc;
-    }
-    /* wait for registration to complete */
-    PMIX_WAIT_THREAD(&req->lock);
-    if (PMIX_SUCCESS != req->status) {
-        PMIX_RELEASE(cb);
-        return PMIX_ERROR;
-    }
-
-    return rc;
+    /* set new buffer size */
+    p->size += realsize;
+    /* ensure null termination */
+    p->payload[p->size] = 0;
+    /* return size */
+    return realsize;
 }
