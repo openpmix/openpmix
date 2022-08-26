@@ -34,7 +34,6 @@
 #include "src/class/pmix_list.h"
 #include "src/class/pmix_pointer_array.h"
 #include "src/include/pmix_globals.h"
-#include "src/mca/common/sse/sse.h"
 #include "src/mca/preg/preg.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"

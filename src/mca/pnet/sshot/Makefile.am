@@ -51,9 +51,7 @@ endif
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 pmix_mca_pnet_sshot_la_SOURCES = $(component_sources)
-pmix_mca_pnet_sshot_la_CPPFLAGS = $(common_sse_CPPFLAGS)
-pmix_mca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS) \
-    $(PMIX_TOP_BUILDDIR)/src/mca/common/sse/libmca_common_sse.la
+pmix_mca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS)
 pmix_mca_pnet_sshot_la_LIBADD = -ljansson
 if NEED_LIBPMIX
 pmix_mca_pnet_sshot_la_LIBADD += $(top_builddir)/src/libpmix.la
@@ -61,6 +59,5 @@ endif
 
 noinst_LTLIBRARIES = $(lib)
 libpmix_mca_pnet_sshot_la_SOURCES = $(lib_sources)
-libpmix_mca_pnet_sshot_la_CPPFLAGS = $(common_sse_CPPFLAGS)
 libpmix_mca_pnet_sshot_la_LDFLAGS = -module -avoid-version $(pmix_check_jansson_LDFLAGS)
 libpmix_mca_pnet_sshot_la_LIBADD = -ljansson
