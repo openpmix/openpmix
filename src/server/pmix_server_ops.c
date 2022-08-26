@@ -1947,6 +1947,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &ninf, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
     ninfo = ninf + 1;
@@ -1963,6 +1964,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, cd->peer, buf, info, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
         /* check for a timeout */
