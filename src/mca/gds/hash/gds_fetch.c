@@ -51,53 +51,17 @@
 #include "gds_hash.h"
 #include "src/mca/gds/base/base.h"
 
-pmix_status_t pmix_gds_hash_fetch_sessioninfo(const char *key,
-                                              pmix_job_t *trk,
-                                              pmix_info_t *info, size_t ninfo,
-                                              pmix_list_t *kvs)
+pmix_status_t pmix_gds_hash_xfer_sessioninfo(pmix_session_t *sptr,
+                                             pmix_job_t *trk,
+                                             const char *key,
+                                             pmix_list_t *kvs)
 {
-    size_t n, nds;
-    pmix_status_t rc;
-    pmix_list_t *sessionlist = NULL;
-    uint32_t sid = UINT32_MAX;
-    pmix_session_t *sptr;
+    size_t n;
     pmix_kval_t *kv, *kp2;
     pmix_info_t *iptr;
-
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "FETCHING SESSION INFO");
-
-    /* scan for the nodeID or hostname to identify
-     * which node they are asking about */
-    for (n = 0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, sid, uint32_t);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-            break;
-        }
-    }
-
-    if (UINT32_MAX == sid) {
-        /* they just want the session info from this job. */
-        if (NULL == trk->session) {
-            return PMIX_ERR_NOT_FOUND;
-        }
-        sessionlist = &trk->session->sessioninfo;
-    } else {
-        /* we cannot use the "check_session" function as we don't want
-         * to create a session that doesn't yet exist */
-        PMIX_LIST_FOREACH(sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
-            if (sptr->session == sid) {
-                sessionlist = &sptr->sessioninfo;
-                break;
-            }
-        }
-    }
-    if (NULL == sessionlist) {
-        return PMIX_ERR_NOT_FOUND;
-    }
+    pmix_list_t *sessionlist = &sptr->sessioninfo;
+    uint32_t sid = sptr->session;
+    pmix_status_t rc;
 
     if (NULL == key) {
         if (trk->nptr->version.major < 4 ||
@@ -118,10 +82,10 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(const char *key,
             /* we return it as an info array */
             PMIX_KVAL_NEW(kp2, PMIX_SESSION_INFO_ARRAY);
             kp2->value->type = PMIX_DATA_ARRAY;
-            nds = pmix_list_get_size(sessionlist) + 1;
-            PMIX_DATA_ARRAY_CREATE(kp2->value->data.darray, nds, PMIX_INFO);
+            n = pmix_list_get_size(sessionlist) + 1;
+            PMIX_DATA_ARRAY_CREATE(kp2->value->data.darray, n, PMIX_INFO);
             iptr = (pmix_info_t*)kp2->value->data.darray->array;
-            /* first element has to be the session id */
+            /* first element will be the session id */
             PMIX_INFO_LOAD(&iptr[0], PMIX_SESSION_ID, &sid, PMIX_UINT32);
             /* populate the rest of the array */
             n = 1;
@@ -137,26 +101,61 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(const char *key,
             pmix_list_append(kvs, &kp2->super);
         }
         return PMIX_SUCCESS;
-    } else {
-        /* find the specific key */
-        PMIX_LIST_FOREACH(kv, sessionlist, pmix_kval_t) {
-            if (PMIX_CHECK_KEY(kv, key)) {
-                kp2 = PMIX_NEW(pmix_kval_t);
-                kp2->key = strdup(kv->key);
-                PMIX_VALUE_XFER(rc, kp2->value, kv->value);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_RELEASE(kp2);
-                    return rc;
-                }
-                char *tmp = PMIx_Value_string(kp2->value);
-                free(tmp);
-                pmix_list_append(kvs, &kp2->super);
-                return PMIX_SUCCESS;
+    }
+
+    /* we were given a specific key */
+    PMIX_LIST_FOREACH(kv, sessionlist, pmix_kval_t) {
+        if (PMIX_CHECK_KEY(kv, key)) {
+            kp2 = PMIX_NEW(pmix_kval_t);
+            kp2->key = strdup(kv->key);
+            PMIX_VALUE_XFER(rc, kp2->value, kv->value);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(kp2);
+                return rc;
             }
+            char *tmp = PMIx_Value_string(kp2->value);
+            free(tmp);
+            pmix_list_append(kvs, &kp2->super);
+            return PMIX_SUCCESS;
         }
     }
 
     return PMIX_ERR_NOT_FOUND;
+}
+
+pmix_status_t pmix_gds_hash_fetch_sessioninfo(const char *key,
+                                              pmix_job_t *trk,
+                                              pmix_info_t *info, size_t ninfo,
+                                              pmix_list_t *kvs)
+{
+    size_t n;
+    pmix_status_t rc;
+    uint32_t sid = UINT32_MAX;
+    pmix_session_t *sptr;
+
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                        "FETCHING SESSION INFO");
+
+    /* scan for the session ID to identify
+     * which session they are asking about */
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
+            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, sid, uint32_t);
+            if (PMIX_SUCCESS != rc) {
+                return rc;
+            }
+            break;
+        }
+    }
+
+    sptr = pmix_gds_hash_check_session(trk, sid, false);
+    if (NULL == sptr) {
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* capture the info */
+    rc = pmix_gds_hash_xfer_sessioninfo(sptr, trk, key, kvs);
+    return rc;
 }
 
 pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmix_list_t *tgt,

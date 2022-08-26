@@ -144,67 +144,106 @@ bool pmix_gds_hash_check_node(pmix_nodeinfo_t *n1, pmix_nodeinfo_t *n2)
 }
 
 pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
-                                            uint32_t sid)
+                                            uint32_t sid,
+                                            bool create)
 {
     pmix_session_t *sptr;
+    bool found;
 
-    /* if this is an invalid session ID, we don't look for it
-     * on the list - someone is trying to register a new
-     * session for a job prior to actually getting a
-     * session ID. We simply add it to the end of the
-     * list and return a pointer that they can later
-     * use to assign an actual SID */
-    if (UINT32_MAX != sid) {
-        /* if the tracker is NULL, then they are asking for the
-         * session tracker for a specific sid */
-        if (NULL == trk) {
-            PMIX_LIST_FOREACH(sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
-                if (sptr->session == sid) {
-                    return sptr;
-                }
-            }
-        } else {
-            /* if the job tracker already has a session object, then
-             * check that the IDs match */
-            if (NULL != trk->session) {
-                sptr = trk->session;
-                if (sptr->session != sid) {
-                    /* this is an error */
-                    PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-                    return NULL;
-                }
+    /* if the tracker is NULL, then they are asking for the
+     * session tracker for a specific sid (which can be UINT32_MAX) */
+    if (NULL == trk) {
+        PMIX_LIST_FOREACH(sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
+            if (sptr->session == sid) {
                 return sptr;
             }
         }
-        /* get here because the job tracker doesn't have
-         * a session tracker, so create the session tracker */
-        sptr = PMIX_NEW(pmix_session_t);
-        sptr->session = sid;
-        /* add to the global list */
-        pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
-        if (NULL != trk) {
-            /* also add it to the job */
-            PMIX_RETAIN(sptr);
-            trk->session = sptr;
+        /* if it wasn't found, then add it if permitted */
+        if (create) {
+            sptr = PMIX_NEW(pmix_session_t);
+            sptr->session = sid;
+            pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
+            return sptr;
+        } else {
+            /* we didn't find it */
+            return NULL;
         }
-        return sptr;
     }
 
-    if (NULL == trk) {
-        /* this is an error */
+    if (NULL == trk->session) {
+        /* no session has been assigned to this job - see
+         * if the given ID has already been registered */
+        found = false;
+        PMIX_LIST_FOREACH(sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
+            if (sptr->session == sid) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            /* point the job tracker at this session */
+            PMIX_RETAIN(sptr);
+            trk->session = sptr;
+            return sptr;
+        }
+        /* if it wasn't found, then create it if permitted */
+        if (create) {
+            sptr = PMIX_NEW(pmix_session_t);
+            sptr->session = sid;
+            PMIX_RETAIN(sptr);
+            trk->session = sptr;
+            pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
+            return sptr;
+        } else {
+            return NULL;
+        }
+    }
+
+    /* if the current session object is pointing to the default
+     * global session and we were given a specific session ID,
+     * then update it */
+    if (UINT32_MAX == trk->session->session) {
+        if (UINT32_MAX == sid) {
+            /* if the given sid is also UINT32_MAX, then we just add to it */
+            return trk->session;
+        }
+        /* see if the given ID has already been registered */
+        found = false;
+        PMIX_LIST_FOREACH(sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
+            if (sptr->session == sid) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            /* update the refcount on the current session object */
+            PMIX_RELEASE(trk->session);
+            /* point the job tracker at the new place */
+            PMIX_RETAIN(sptr);
+            trk->session = sptr;
+            return sptr;
+        }
+        /* if it wasn't found, then create it */
+        if (create) {
+            sptr = PMIX_NEW(pmix_session_t);
+            sptr->session = sid;
+            PMIX_RETAIN(sptr);
+            trk->session = sptr;
+            pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
+            return sptr;
+        }
+    }
+
+    /* the job tracker already was assigned a session ID - check
+     * if the new one matches */
+    if (trk->session->session != sid) {
+        /* this is an error - you cannot assign a given job
+         * to multiple sessions */
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return NULL;
     }
-
-    if (NULL != trk->session) {
-        return trk->session;
-    }
-
-    /* create the session tracker */
-    sptr = PMIX_NEW(pmix_session_t);
-    /* we don't add it to the global list because it doesn't have
-     * a specific ID, but we do add it to the job */
-    trk->session = sptr;
+    /* the two must match, so return it */
+    sptr = trk->session;
     return sptr;
 }
 

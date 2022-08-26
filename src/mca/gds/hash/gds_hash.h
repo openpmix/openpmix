@@ -99,7 +99,12 @@ extern pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix
 extern pmix_job_t *pmix_gds_hash_get_tracker(const pmix_nspace_t nspace, bool create);
 
 extern pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
-                                                   uint32_t sid);
+                                                   uint32_t sid,
+                                                   bool create);
+extern pmix_status_t pmix_gds_hash_xfer_sessioninfo(pmix_session_t *sptr,
+                                                    pmix_job_t *trk,
+                                                    const char *key,
+                                                    pmix_list_t *kvs);
 
 extern bool pmix_gds_hash_check_hostname(char *h1, char *h2);
 
