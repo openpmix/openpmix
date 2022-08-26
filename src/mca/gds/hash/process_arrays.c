@@ -461,50 +461,46 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
 
 pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t *trk)
 {
-    pmix_session_t *sptr;
+    pmix_session_t *sptr = NULL;
     size_t j, size;
     pmix_info_t *iptr;
-    pmix_list_t ncache;
+    pmix_list_t ncache, scache;
     pmix_status_t rc;
     pmix_kval_t *kp2;
     pmix_nodeinfo_t *nd;
-    uint32_t sid;
+    uint32_t sid = UINT32_MAX;
 
     /* array of session-level info */
     if (PMIX_DATA_ARRAY != val->type) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
     size = val->data.darray->size;
     iptr = (pmix_info_t *) val->data.darray->array;
 
-    /* the first value is required to be the session ID */
-    if (!PMIX_CHECK_KEY(&iptr[0], PMIX_SESSION_ID)) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
-    }
-    PMIX_VALUE_GET_NUMBER(rc, &iptr[0].value, sid, uint32_t);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
-    sptr = pmix_gds_hash_check_session(trk, sid);
-    if (NULL == sptr) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
-    }
     PMIX_CONSTRUCT(&ncache, pmix_list_t);
+    PMIX_CONSTRUCT(&scache, pmix_list_t);
 
-    for (j = 1; j < size; j++) {
-         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+    for (j = 0; j < size; j++) {
+     //    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+        pmix_output(0,
                     "%s gds:hash:session_array for key %s",
                     PMIX_NAME_PRINT(&pmix_globals.myid),
                     iptr[j].key);
-        if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODE_INFO_ARRAY)) {
+        if (PMIX_CHECK_KEY(&iptr[j], PMIX_SESSION_ID)) {
+            PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, sid, uint32_t);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_LIST_DESTRUCT(&ncache);
+                PMIX_LIST_DESTRUCT(&scache);
+                return rc;
+            }
+            sptr = pmix_gds_hash_check_session(trk, sid, true);
+        } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODE_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_node_array(&iptr[j].value, &ncache))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_LIST_DESTRUCT(&ncache);
+                PMIX_LIST_DESTRUCT(&scache);
                 return rc;
             }
         } else {
@@ -516,13 +512,30 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kp2);
                 PMIX_LIST_DESTRUCT(&ncache);
+                PMIX_LIST_DESTRUCT(&scache);
                 return rc;
             }
             char *tmp = PMIx_Value_string(kp2->value);
             free(tmp);
-            pmix_list_append(&sptr->sessioninfo, &kp2->super);
+            pmix_list_append(&scache, &kp2->super);
         }
     }
+
+    /* if we never got a session ID, then that's an error */
+    if (NULL == sptr) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_LIST_DESTRUCT(&ncache);
+        PMIX_LIST_DESTRUCT(&scache);
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* transfer across the results */
+    kp2 = (pmix_kval_t*)pmix_list_remove_first(&scache);
+    while (NULL != kp2) {
+        pmix_list_append(&sptr->sessioninfo, &kp2->super);
+        kp2 = (pmix_kval_t*)pmix_list_remove_first(&scache);
+    }
+    PMIX_LIST_DESTRUCT(&scache);
 
     nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
     while (NULL != nd) {
