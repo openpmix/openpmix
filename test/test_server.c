@@ -146,7 +146,7 @@ static void set_namespace(int local_size, int univ_size, int base_rank, char *na
     int rc;
 
     PMIX_INFO_CREATE(info, ninfo);
-    pmix_strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
+    pmix_strncpy(info[0].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
     info[0].value.type = PMIX_UINT32;
     info[0].value.data.uint32 = univ_size;
 
