@@ -32,6 +32,7 @@
 #include "test_server.h"
 
 int my_server_id = 0;
+static uint32_t nsession = 0;
 
 server_info_t *my_server_info = NULL;
 pmix_list_t *server_list = NULL;
@@ -138,34 +139,32 @@ static void set_namespace(int local_size, int univ_size, int base_rank, char *na
 {
     size_t ninfo;
     pmix_info_t *info;
-    ninfo = 8;
+    ninfo = 9;
     char *regex, *ppn, *tmp;
     char *ranks = NULL, **nodes = NULL;
     char **rks = NULL;
     int i;
     int rc;
+    uint32_t value;
 
     PMIX_INFO_CREATE(info, ninfo);
-    pmix_strncpy(info[0].key, PMIX_UNIV_SIZE, PMIX_MAX_KEYLEN);
-    info[0].value.type = PMIX_UINT32;
-    info[0].value.data.uint32 = univ_size;
+    PMIX_INFO_LOAD(&info[0], PMIX_SESSION_ID, &nsession, PMIX_UINT32);
+    ++nsession;
 
-    pmix_strncpy(info[1].key, PMIX_SPAWNED, PMIX_MAX_KEYLEN);
-    info[1].value.type = PMIX_UINT32;
-    info[1].value.data.uint32 = 0;
+    PMIX_INFO_LOAD(&info[1], PMIX_UNIV_SIZE, &univ_size, PMIX_UINT32);
 
-    pmix_strncpy(info[2].key, PMIX_LOCAL_SIZE, PMIX_MAX_KEYLEN);
-    info[2].value.type = PMIX_UINT32;
-    info[2].value.data.uint32 = local_size;
+    value = 0;
+    PMIX_INFO_LOAD(&info[2], PMIX_SPAWNED, &value, PMIX_UINT32);
+
+    value = local_size;
+    PMIX_INFO_LOAD(&info[3], PMIX_LOCAL_SIZE, &value, PMIX_UINT32);
 
     /* generate the array of local peers */
     fill_seq_ranks_array(local_size, base_rank, &ranks);
     if (NULL == ranks) {
         return;
     }
-    pmix_strncpy(info[3].key, PMIX_LOCAL_PEERS, PMIX_MAX_KEYLEN);
-    info[3].value.type = PMIX_STRING;
-    info[3].value.data.string = strdup(ranks);
+    PMIX_INFO_LOAD(&info[4], PMIX_LOCAL_PEERS, ranks,PMIX_STRING);
 
     /* assemble the node and proc map info */
     if (1 == params->nservers) {
@@ -187,7 +186,7 @@ static void set_namespace(int local_size, int univ_size, int base_rank, char *na
             return;
         }
         free(tmp);
-        PMIX_INFO_LOAD(&info[4], PMIX_NODE_MAP, regex, PMIX_REGEX);
+        PMIX_INFO_LOAD(&info[5], PMIX_NODE_MAP, regex, PMIX_REGEX);
     }
 
     /* generate the global proc map - if we have two
@@ -220,16 +219,14 @@ static void set_namespace(int local_size, int univ_size, int base_rank, char *na
     }
     PMIx_generate_ppn(ranks, &ppn);
     free(ranks);
-    PMIX_INFO_LOAD(&info[5], PMIX_PROC_MAP, ppn, PMIX_REGEX);
+    PMIX_INFO_LOAD(&info[6], PMIX_PROC_MAP, ppn, PMIX_REGEX);
     free(ppn);
 
-    pmix_strncpy(info[6].key, PMIX_JOB_SIZE, PMIX_MAX_KEYLEN);
-    info[6].value.type = PMIX_UINT32;
-    info[6].value.data.uint32 = univ_size;
+    value = univ_size;
+    PMIX_INFO_LOAD(&info[7], PMIX_JOB_SIZE, &value, PMIX_UINT32);
 
-    pmix_strncpy(info[7].key, PMIX_APPNUM, PMIX_MAX_KEYLEN);
-    info[7].value.type = PMIX_UINT32;
-    info[7].value.data.uint32 = getpid();
+    value = getpid();
+    PMIX_INFO_LOAD(&info[8], PMIX_APPNUM, &value, PMIX_UINT32);
 
     int in_progress = 1;
     if (PMIX_SUCCESS

@@ -482,8 +482,7 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
     PMIX_CONSTRUCT(&scache, pmix_list_t);
 
     for (j = 0; j < size; j++) {
-     //    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
-        pmix_output(0,
+         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
                     "%s gds:hash:session_array for key %s",
                     PMIX_NAME_PRINT(&pmix_globals.myid),
                     iptr[j].key);
