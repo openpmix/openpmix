@@ -3589,7 +3589,7 @@ static void _cnct(int sd, short args, void *cbdata)
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(reply);
                     PMIX_DESTRUCT(&cb);
-                    goto cleanup;
+                    goto error;
                 }
                 PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 /* pack the nspace name */
@@ -3599,7 +3599,7 @@ static void _cnct(int sd, short args, void *cbdata)
                     PMIX_RELEASE(reply);
                     PMIX_DESTRUCT(&pbkt);
                     PMIX_DESTRUCT(&cb);
-                    goto cleanup;
+                    goto error;
                 }
                 PMIX_LIST_FOREACH (kptr, &cb.kvs, pmix_kval_t) {
                     PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, kptr, 1, PMIX_KVAL);
@@ -3608,7 +3608,7 @@ static void _cnct(int sd, short args, void *cbdata)
                         PMIX_RELEASE(reply);
                         PMIX_DESTRUCT(&pbkt);
                         PMIX_DESTRUCT(&cb);
-                        goto cleanup;
+                        goto error;
                     }
                 }
                 PMIX_DESTRUCT(&cb);
@@ -3620,7 +3620,7 @@ static void _cnct(int sd, short args, void *cbdata)
                         PMIX_RELEASE(reply);
                         PMIX_DESTRUCT(&pbkt);
                         PMIX_DESTRUCT(&cb);
-                        goto cleanup;
+                        goto error;
                     }
                 } else {
                     PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
@@ -3630,20 +3630,42 @@ static void _cnct(int sd, short args, void *cbdata)
                         PMIX_RELEASE(reply);
                         PMIX_DESTRUCT(&pbkt);
                         PMIX_DESTRUCT(&cb);
-                        goto cleanup;
+                        goto error;
                     }
                 }
 
                 PMIX_DESTRUCT(&pbkt);
             }
         }
-        pmix_output_verbose(2, pmix_server_globals.base_output,
-                            "server:cnct_cbfunc reply being sent to %s:%u",
-                            cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
+        pmix_output_verbose(2, pmix_server_globals.connect_output,
+                            "server:cnct_cbfunc reply being sent to %s",
+                            PMIX_PEER_PRINT(cd->peer));
         PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
         if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(reply);
         }
+    }
+    goto cleanup;
+
+error:
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
+    /* return an error status so they don't hang */
+    scd->status = rc;
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
+        goto cleanup;
+    }
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
     }
 
 cleanup:
@@ -3662,7 +3684,8 @@ static void cnct_cbfunc(pmix_status_t status, void *cbdata)
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t *) cbdata;
     pmix_shift_caddy_t *scd;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "server:cnct_cbfunc called");
+    pmix_output_verbose(2, pmix_server_globals.connect_output,
+                        "server:cnct_cbfunc called");
 
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
@@ -3715,7 +3738,7 @@ static void _discnct(int sd, short args, void *cbdata)
             PMIX_RELEASE(reply);
             goto cleanup;
         }
-        pmix_output_verbose(2, pmix_server_globals.base_output,
+        pmix_output_verbose(2, pmix_server_globals.connect_output,
                             "server:cnct_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
         PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);

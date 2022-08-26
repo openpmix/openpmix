@@ -232,6 +232,9 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
             pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
             return sptr;
         }
+    } else if (UINT32_MAX == sid) {
+        /* it's a wildcard request, so return the job-tracker session */
+        return trk->session;
     }
 
     /* the job tracker already was assigned a session ID - check
