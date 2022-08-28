@@ -58,7 +58,7 @@ pmix_job_t *pmix_gds_hash_get_tracker(const pmix_nspace_t nspace, bool create)
 
     /* find the hash table for this nspace */
     trk = NULL;
-    PMIX_LIST_FOREACH (t, &pmix_mca_gds_hash_component.myjobs, pmix_job_t) {
+    PMIX_LIST_FOREACH (t, &mca_gds_hash_component.myjobs, pmix_job_t) {
         if (0 == strcmp(nspace, t->ns)) {
             trk = t;
             break;
@@ -87,7 +87,7 @@ pmix_job_t *pmix_gds_hash_get_tracker(const pmix_nspace_t nspace, bool create)
         }
         PMIX_RETAIN(nptr);
         trk->nptr = nptr;
-        pmix_list_append(&pmix_mca_gds_hash_component.myjobs, &trk->super);
+        pmix_list_append(&mca_gds_hash_component.myjobs, &trk->super);
     }
     return trk;
 }
@@ -153,7 +153,7 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
     /* if the tracker is NULL, then they are asking for the
      * session tracker for a specific sid (which can be UINT32_MAX) */
     if (NULL == trk) {
-        PMIX_LIST_FOREACH(sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
+        PMIX_LIST_FOREACH(sptr, &mca_gds_hash_component.mysessions, pmix_session_t) {
             if (sptr->session == sid) {
                 return sptr;
             }
@@ -162,7 +162,7 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
         if (create) {
             sptr = PMIX_NEW(pmix_session_t);
             sptr->session = sid;
-            pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
+            pmix_list_append(&mca_gds_hash_component.mysessions, &sptr->super);
             return sptr;
         } else {
             /* we didn't find it */
@@ -174,7 +174,7 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
         /* no session has been assigned to this job - see
          * if the given ID has already been registered */
         found = false;
-        PMIX_LIST_FOREACH(sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
+        PMIX_LIST_FOREACH(sptr, &mca_gds_hash_component.mysessions, pmix_session_t) {
             if (sptr->session == sid) {
                 found = true;
                 break;
@@ -192,7 +192,7 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
             sptr->session = sid;
             PMIX_RETAIN(sptr);
             trk->session = sptr;
-            pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
+            pmix_list_append(&mca_gds_hash_component.mysessions, &sptr->super);
             return sptr;
         } else {
             return NULL;
@@ -209,7 +209,7 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
         }
         /* see if the given ID has already been registered */
         found = false;
-        PMIX_LIST_FOREACH(sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
+        PMIX_LIST_FOREACH(sptr, &mca_gds_hash_component.mysessions, pmix_session_t) {
             if (sptr->session == sid) {
                 found = true;
                 break;
@@ -229,7 +229,7 @@ pmix_session_t* pmix_gds_hash_check_session(pmix_job_t *trk,
             sptr->session = sid;
             PMIX_RETAIN(sptr);
             trk->session = sptr;
-            pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &sptr->super);
+            pmix_list_append(&mca_gds_hash_component.mysessions, &sptr->super);
             return sptr;
         }
     } else if (UINT32_MAX == sid) {
