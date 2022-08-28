@@ -301,7 +301,9 @@ int pmix_mca_base_var_enum_create_flag(const char *name,
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
+#if PMIX_ENABLE_DEBUG
     int all_flags = 0;
+#endif
     for (i = 0; i < new_enum->super.enum_value_count; ++i) {
         new_enum->enum_flags[i].flag = flags[i].flag;
         new_enum->enum_flags[i].string = strdup(flags[i].string);
@@ -312,7 +314,9 @@ int pmix_mca_base_var_enum_create_flag(const char *name,
         assert(!(flags[i].flag & flags[i].conflicting_flag));
         assert(!(all_flags & flags[i].flag));
         assert(flags[i].flag);
+#if PMIX_ENABLE_DEBUG
         all_flags |= flags[i].flag;
+#endif
     }
 
     *enumerator = new_enum;
