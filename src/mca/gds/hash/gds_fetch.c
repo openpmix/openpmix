@@ -552,17 +552,17 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
         }
         /* collect all the relevant session-level info */
         rc = pmix_gds_hash_fetch_sessioninfo(NULL, trk, qualifiers, nqual, kvs);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
         /* collect the relevant node-level info */
         rc = pmix_gds_hash_fetch_nodeinfo(NULL, trk, &trk->nodeinfo, qualifiers, nqual, kvs);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
         /* collect the relevant app-level info */
         rc = pmix_gds_hash_fetch_appinfo(NULL, trk, &trk->apps, qualifiers, nqual, kvs);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
         /* finally, we need the job-level info for each rank in the job */
@@ -806,21 +806,21 @@ pmix_status_t pmix_gds_hash_fetch_arrays(struct pmix_peer_t *pr, pmix_buffer_t *
     PMIX_CONSTRUCT(&kvs, pmix_list_t);
 
     rc = pmix_gds_hash_fetch_sessioninfo(NULL, trk, NULL, 0, &kvs);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_LIST_DESTRUCT(&kvs);
         return rc;
     }
 
     rc = pmix_gds_hash_fetch_nodeinfo(NULL, trk, &trk->nodeinfo, NULL, 0, &kvs);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_LIST_DESTRUCT(&kvs);
         return rc;
     }
 
     rc = pmix_gds_hash_fetch_appinfo(NULL, trk, &trk->apps, NULL, 0, &kvs);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_LIST_DESTRUCT(&kvs);
         return rc;
