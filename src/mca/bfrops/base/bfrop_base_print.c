@@ -44,6 +44,14 @@ char* PMIx_Info_string(const pmix_info_t *info)
     pmix_status_t rc;
     char *output = NULL;
 
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        pmix_bfrops_base_print_info(&output, NULL, (void*)info, PMIX_INFO);
+        return output;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+
     PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
                       &output, NULL,
                       (void*)info, PMIX_INFO);
@@ -57,6 +65,14 @@ char* PMIx_Value_string(const pmix_value_t *value)
 {
     pmix_status_t rc;
     char *output = NULL;
+
+    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (pmix_globals.init_cntr <= 0) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        pmix_bfrops_base_print_value(&output, NULL, (void*)value, PMIX_VALUE);
+        return output;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
                       &output, NULL,
