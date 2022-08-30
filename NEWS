@@ -23,6 +23,34 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
+4.2.1 -- TBD
+----------------------
+ - PR #2728 Prep for v4.2.1rc1
+    - Add some attributes to support job launch
+    - Update EXCEPTIONS, NEWS, VERSION for v4.2.1rc1
+ - PR #2725 Multiple updates
+    - Make the session info array support conform to the standard
+    - Remove stale common/sse code and cleanup pnet/sshot configure
+    - Resolve confused use of PMIX_UNIV_SIZE for PMIX_JOB_SIZE in
+      test code
+    - Minor cleanups
+ - PR #2718 Release GIL before registering event handler in Python
+      bindings
+ - PR #2716 Multiple commits
+    - Add support for HPE Slingshot fabric
+    - Add runtime options attribute
+ - PR #2713 Multiple commits
+    - iof: Fix merging of stderr to stdout.
+    - Fix bad dereferences when passed a NULL parameter to PMIx_Init
+    - Add new attribute definitions to support display options
+ - PR #2706 Remove man pages
+ - PR #2703 Fix flex detection
+ - PR #2700 Multiple commits
+    - Fix the buildrpm script
+    - Enable show_help output on tools
+    - Bump VERSION to v4.2.1
+
+
 4.2.0 -- 20 Aug 2022
 ----------------------
 **** NOTE: This release includes a number of new features that
