@@ -509,7 +509,19 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NOTIFY_PROC_ABNORMAL_TERMINATION   "pmix.noteabproc"   // (bool) Requests that the launcher generate the PMIX_EVENT_PROC_TERMINATED
                                                                     //        event only when a process abnormally terminates.
 #define PMIX_ENVARS_HARVESTED               "pmix.evar.hvstd"       // (bool) Envars have been harvested by the spawn requestor
-#define PMIX_RUNTIME_OPTIONS                "pmix.runopt"           // (char*) Runtime directives controlling job behavior
+#define PMIX_RUNTIME_OPTIONS                "pmix.runopt"           // (char*) Environment-specific runtime directives that control job behavior
+#define PMIX_ABORT_NON_ZERO_TERM            "pmix.abnz"             // (bool) Abort the spawned job if any process terminates with non-zero status
+#define PMIX_DO_NOT_LAUNCH                  "pmix.dnl"              // (bool) Execute all procedures to prepare the requested job for launch,
+                                                                    //        but do not launch it. Typically combined with the PMIX_DISPLAY_MAP
+                                                                    //        or PMIX_DISPLAY_MAP_DETAILED for debugging purposes.
+#define PMIX_SHOW_LAUNCH_PROGRESS           "pmix.showprog"         // (bool) Provide periodic progress reports on job launch procedure (e.g., after
+                                                                    //        every 100 processes have been spawned)
+#define PMIX_AGGREGATE_HELP                 "pmix.agg.help"         // (bool) Aggregate help messages, reporting each unique help message once
+                                                                    //        accompanied by the number of processes that reported it
+#define PMIX_REPORT_CHILD_SEP               "pmix.rptchildsep"      // (bool) Report the exit status of any child jobs spawned by the primary job
+                                                                    //        separately. If false, then the final exit status reported will be
+                                                                    //        zero if the primary job and all spawned jobs exit normally, or the
+                                                                    //        first non-zero status returned by either primary or child jobs.
 
 
 /* query keys - value type shown is the type of the value that will be RETURNED by that key  */
