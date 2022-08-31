@@ -141,8 +141,9 @@ PMIX_CLASS_INSTANCE(pmix_bfrops_base_active_module_t, pmix_list_item_t, NULL, mo
 /** Value **/
 static void pmix_buffer_construct(pmix_buffer_t *buffer)
 {
-    /** set the default buffer type */
-    buffer->type = pmix_bfrops_globals.default_type;
+    /** set the buffer type  to UNDEF so the first pack operation
+     * can correctly set it */
+    buffer->type = PMIX_BFROP_BUFFER_UNDEF;
 
     /* Make everything NULL to begin with */
     buffer->base_ptr = buffer->pack_ptr = buffer->unpack_ptr = NULL;
