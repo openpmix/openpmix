@@ -200,6 +200,7 @@ int main(int argc, char **argv)
     uid_t uid = geteuid();
     pmix_info_t *info;
     struct stat buf;
+    pmix_nspace_t ncache;
 
     /* define and pass a personal tmpdir to protect the system */
     if (NULL == (tdir = getenv("TMPDIR"))) {
@@ -290,8 +291,9 @@ int main(int argc, char **argv)
     PMIX_RELEASE(x);
 
     /* prep the local node for launch */
+    PMIX_LOAD_NSPACE(ncache, "foobar");
     x = PMIX_NEW(myxfer_t);
-    if (PMIX_SUCCESS != (rc = PMIx_server_setup_local_support("foobar", NULL, 0, opcbfunc, x))) {
+    if (PMIX_SUCCESS != (rc = PMIx_server_setup_local_support(ncache, NULL, 0, opcbfunc, x))) {
         fprintf(stderr, "Setup local support failed: %d\n", rc);
         PMIx_server_finalize();
         system(cleanup);
@@ -301,7 +303,7 @@ int main(int argc, char **argv)
     PMIX_RELEASE(x);
 
     /* fork/exec the test */
-    PMIX_LOAD_NSPACE(proc.nspace, "foobar");
+    PMIX_LOAD_NSPACE(proc.nspace, ncache);
     for (n = 0; n < nprocs; n++) {
         proc.rank = n;
         if (PMIX_SUCCESS != (rc = PMIx_server_setup_fork(&proc, &client_env))) { // n

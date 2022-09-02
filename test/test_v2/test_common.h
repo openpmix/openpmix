@@ -127,11 +127,11 @@ extern FILE *pmixt_outfile;
     char *fname = malloc( strlen(prefix) + MAX_DIGIT_LEN + 2 ); \
     sprintf(fname, "%s.%d.%d", prefix, ns_id, rank); \
     pmixt_outfile = fopen(fname, "w"); \
-    free(fname); \
     if( NULL == pmixt_outfile ){ \
         fprintf(stderr, "Cannot open file %s for writing!", fname); \
         exit(1); \
     } \
+    free(fname); \
 }
 
 #define PMIXT_CLOSE_FILE() { \

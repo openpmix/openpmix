@@ -664,7 +664,8 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_b
 
     /* if we are not a server, then we send the provided
      * data to our server for processing */
-    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         msg = PMIX_NEW(pmix_buffer_t);
         if (NULL == msg) {
             return PMIX_ERR_NOMEM;
@@ -915,6 +916,12 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
         PMIX_CHECK_KEY(info, PMIX_TAG_OUTPUT)) {
         flags->tag = PMIX_INFO_TRUE(info);
         flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_DETAILED_OUTPUT)) {
+        flags->tag_detailed = PMIX_INFO_TRUE(info);
+        flags->set = true;
+    } else if (PMIX_CHECK_KEY(info, PMIX_IOF_TAG_FULLNAME_OUTPUT)) {
+        flags->tag_fullname = PMIX_INFO_TRUE(info);
+        flags->set = true;
     } else if (PMIX_CHECK_KEY(info, PMIX_IOF_RANK_OUTPUT)) {
         flags->rank = PMIX_INFO_TRUE(info);
         flags->set = true;
@@ -1067,8 +1074,15 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     char **segments = NULL;
     pmix_iof_write_output_t *output, *copy;
     size_t offset, j, n, m, bufsize;
-    char *buffer, qprint[15];
+    char *buffer, qprint[15], *cptr;
+    const char *usestring;
     bool bufcopy;
+    pmix_cb_t cb2;
+    pmix_info_t optional;
+    pmix_kval_t *kv;
+    pid_t pid;
+    char *pidstring;
+    pmix_status_t rc;
 
     /* setup output object */
     output = PMIX_NEW(pmix_iof_write_output_t);
@@ -1077,6 +1091,7 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     memset(endtag, 0, PMIX_IOF_BASE_TAG_MAX);
     memset(timestamp, 0, PMIX_IOF_BASE_TAG_MAX);
     memset(outtag, 0, PMIX_IOF_BASE_TAG_MAX);
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
     /* write output data to the corresponding tag */
     if (PMIX_FWD_STDIN_CHANNEL & stream) {
@@ -1131,9 +1146,66 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
      */
     if (myflags->xml) {
         if (myflags->tag) {
+            /* find the '@' delimiter in the nspace */
+            cptr = strrchr(name->nspace, '@');
+            if (NULL == cptr) {
+                usestring = name->nspace;  // just use the whole thing
+            } else {
+                ++cptr;
+                usestring = cptr; // use the jobid portion
+            }
             pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
-                     "<%s nspace=\"%s\" rank=\"%s\"", suffix,
-                     name->nspace, PMIX_RANK_PRINT(name->rank));
+                          "<%s %s=\"%s\" rank=\"%s\"", suffix,
+                          (usestring == name->nspace) ? "nspace" : "jobid",
+                          usestring, PMIX_RANK_PRINT(name->rank));
+        } else if (myflags->tag_fullname) {
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                          "<%s nspace=\"%s\" rank=\"%s\"", suffix,
+                          name->nspace, PMIX_RANK_PRINT(name->rank));
+        } else if (myflags->tag_detailed) {
+            /* we need the hostname and pid of the source */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.proc = (pmix_proc_t*)name;
+            cb2.key = PMIX_HOSTNAME;
+            cb2.info = &optional;
+            cb2.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                cptr = strdup(kv->value->data.string);
+                PMIX_RELEASE(kv);
+            } else {
+                cptr = strdup("unknown");
+            }
+            PMIX_DESTRUCT(&cb2);
+            /* get the pid */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.proc = (pmix_proc_t*)name;
+            cb2.key = PMIX_PROC_PID;
+            cb2.info = &optional;
+            cb2.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                PMIX_VALUE_GET_NUMBER(rc, kv->value, pid, pid_t);
+                PMIX_RELEASE(kv);
+                if (PMIX_SUCCESS != rc) {
+                    pidstring = strdup("unknown");
+                } else {
+                    pmix_asprintf(&pidstring, "%u", pid);
+                }
+            } else {
+                pidstring = strdup("unknown");
+            }
+            PMIX_DESTRUCT(&cb2);
+
+            pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
+                          "<%s nspace=\"%s\" rank=\"%s\"[\"%s\":\"%s\"",
+                          suffix, name->nspace,
+                          PMIX_RANK_PRINT(name->rank),
+                          cptr, pidstring);
+            free(cptr);
+            free(pidstring);
         } else if (myflags->rank) {
             pmix_snprintf(begintag, PMIX_IOF_BASE_TAG_MAX,
                      "<%s rank=\"%s\"", suffix,
@@ -1151,11 +1223,81 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
                  "</%s>", suffix);
     } else {
         if (myflags->tag) {
+            /* find the '@' delimiter in the nspace */
+            cptr = strrchr(name->nspace, '@');
+            if (NULL == cptr) {
+                usestring = name->nspace;  // just use the whole thing
+            } else {
+                ++cptr;
+                usestring = cptr; // use the jobid portion
+            }
             pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
-                     "[%s,%s]<%s>: ",
-                     name->nspace,
-                     PMIX_RANK_PRINT(name->rank),
-                     suffix);
+                          "[%s,%s]<%s>: ",
+                          usestring,
+                          PMIX_RANK_PRINT(name->rank),
+                          suffix);
+        } else if (myflags->tag_detailed) {
+            if (myflags->tag_fullname) {
+                usestring = name->nspace;
+            } else {
+                /* find the '@' delimiter in the nspace */
+                cptr = strrchr(name->nspace, '@');
+                if (NULL == cptr) {
+                    usestring = name->nspace;  // just use the whole thing
+                } else {
+                    ++cptr;
+                    usestring = cptr; // use the jobid portion
+                }
+            }
+            /* we need the hostname and pid of the source */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.proc = (pmix_proc_t*)name;
+            cb2.key = PMIX_HOSTNAME;
+            cb2.info = &optional;
+            cb2.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                cptr = strdup(kv->value->data.string);
+                PMIX_RELEASE(kv);
+            } else {
+                cptr = strdup("unknown");
+            }
+            PMIX_DESTRUCT(&cb2);
+            /* get the pid */
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            cb2.proc = (pmix_proc_t*)name;
+            cb2.key = PMIX_PROC_PID;
+            cb2.info = &optional;
+            cb2.ninfo = 1;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                PMIX_VALUE_GET_NUMBER(rc, kv->value, pid, pid_t);
+                PMIX_RELEASE(kv);
+                if (PMIX_SUCCESS != rc) {
+                    pidstring = strdup("unknown");
+                } else {
+                    pmix_asprintf(&pidstring, "%u", pid);
+                }
+            } else {
+                pidstring = strdup("unknown");
+            }
+            PMIX_DESTRUCT(&cb2);
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                          "[%s,%s][%s:%s]<%s>: ",
+                          usestring,
+                          PMIX_RANK_PRINT(name->rank),
+                          cptr, pidstring,
+                          suffix);
+            free(cptr);
+            free(pidstring);
+        } else if (myflags->tag_fullname) {
+            pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
+                          "[%s,%s]<%s>: ",
+                          name->nspace,
+                          PMIX_RANK_PRINT(name->rank),
+                          suffix);
         } else if (myflags->rank) {
             pmix_snprintf(outtag, PMIX_IOF_BASE_TAG_MAX,
                      "[%s]<%s>: ",
@@ -1166,7 +1308,6 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     /* if we are to timestamp output, start the tag with that */
     if (myflags->timestamp) {
         time_t mytime;
-        char *cptr;
         /* get the timestamp */
         time(&mytime);
         cptr = ctime(&mytime);
@@ -1179,9 +1320,9 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
             pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX,
                      " timestamp=\"%s\"", cptr);
         } else if (myflags->tag || myflags->rank) {
-            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s", cptr);
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "[%s]", cptr);
         } else {
-            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "%s<%s>: ", cptr, suffix);
+            pmix_snprintf(timestamp, PMIX_IOF_BASE_TAG_MAX, "[%s]<%s>: ", cptr, suffix);
         }
     }
 
@@ -1402,7 +1543,8 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
                 /* see if we already have one - we reuse the same sink for
                  * all streams */
                 PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t) {
-                    if (sink->name.rank == name->rank) {
+                    if (sink->name.rank == name->rank &&
+                        ((stream & sink->tag) || nptr->iof_flags.merge)) {
                         channel = &sink->wev;
                         break;
                     }
@@ -1438,7 +1580,12 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         if (PMIX_FWD_STDOUT_CHANNEL & stream) {
             channel = &pmix_client_globals.iof_stdout.wev;
         } else {
-            channel = &pmix_client_globals.iof_stderr.wev;
+            if(!myflags.merge) {
+                channel = &pmix_client_globals.iof_stderr.wev;
+            }
+            else {
+                channel = &pmix_client_globals.iof_stdout.wev;
+            }
         }
     }
 
@@ -1584,6 +1731,10 @@ void pmix_iof_write_handler(int sd, short args, void *cbdata)
         if (0 == output->numbytes) {
             /* don't reactivate the event */
             PMIX_RELEASE(output);
+            if (2 < wev->fd) {  // close the channel
+                close(wev->fd);
+                wev->fd = -1;
+            }
             return;
         }
         num_written = write(wev->fd, output->data, output->numbytes);
@@ -1766,14 +1917,17 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
         }
 
         PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
-                             "%s iof:read handler Error on stdin",
-                             PMIX_NAME_PRINT(&pmix_globals.myid)));
+                             "%s iof:read handler Error on %s",
+                             PMIX_NAME_PRINT(&pmix_globals.myid),
+                             PMIx_IOF_channel_string(rev->channel)));
         /* Un-recoverable error */
+        bo.bytes = NULL;
+        bo.size = 0;
         numbytes = 0;
+    } else {
+        bo.bytes = (char *) data;
+        bo.size = numbytes;
     }
-
-    bo.bytes = (char *) data;
-    bo.size = numbytes;
 
     /* if this is stdout or stderr of a child, then just output it */
     if (NULL != child &&
@@ -1803,21 +1957,48 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
         goto reactivate;
     }
 
+    /* if it is stdin that was read, then see if we have a sink
+     * for a child of ours that matches this target - this has precedence over
+     * anything else */
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        if (rev == stdinev_global && NULL != rev->targets) {
+            PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+                if (PMIX_CHECK_PROCID(&child->proc, &rev->targets[0])) {
+                    /* send the input to that target */
+                    rc = write_output_line(&child->proc, &child->stdinsink.wev, NULL,
+                                           PMIX_FWD_STDIN_CHANNEL, false, false, &bo);
+                    goto reactivate;
+                }
+            }
+        }
+    }
+
+    /* if I am a launcher or a tool and connected to a server, then
+     * we want to send things to our server for relay */
+    if ((PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
+         PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) &&
+        pmix_globals.connected) {
+        goto forward;
+    }
+
     /* if I am a server, then push this up to my host */
-    if (PMIX_PROC_IS_SERVER(&pmix_globals.mypeer->proc_type)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
         if (NULL == pmix_host_server.push_stdin) {
             /* nothing we can do with this info - no point in reactivating it */
             return;
         }
         PMIX_BYTE_OBJECT_CREATE(boptr, 1);
-        boptr->bytes = (char*)malloc(bo.size);
-        memcpy(boptr->bytes, bo.bytes, bo.size);
-        boptr->size = bo.size;
+        if (0 < bo.size) {
+            boptr->bytes = (char*)malloc(bo.size);
+            memcpy(boptr->bytes, bo.bytes, bo.size);
+            boptr->size = bo.size;
+        }
         rc = pmix_host_server.push_stdin(&pmix_globals.myid, rev->targets, rev->ntargets,
                                          rev->directives, rev->ndirs, boptr, opcbfn, (void*)boptr);
         goto reactivate;
     }
 
+forward:
     /* pass the data to our PMIx server so it can relay it
      * to the host RM for distribution */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -1911,11 +2092,13 @@ PMIX_CLASS_INSTANCE(pmix_iof_sink_t, pmix_list_item_t, iof_sink_construct, iof_s
 
 static void iof_read_event_construct(pmix_iof_read_event_t *rev)
 {
-    rev->fd = -1;
-    rev->active = false;
-    rev->childproc = NULL;
     rev->tv.tv_sec = 0;
     rev->tv.tv_usec = 0;
+    rev->fd = -1;
+    rev->channel = PMIX_FWD_NO_CHANNELS;
+    rev->active = false;
+    rev->childproc = NULL;
+    rev->always_readable = false;
     rev->targets = NULL;
     rev->ntargets = 0;
     rev->directives = NULL;

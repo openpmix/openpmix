@@ -51,7 +51,8 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
         return PMIX_ERR_INIT;
     }
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
 
         pmix_output_verbose(2, pmix_server_globals.event_output,
@@ -89,7 +90,9 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
     return rc;
 }
 
-static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
+static void notify_event_cbfunc(struct pmix_peer_t *pr,
+                                pmix_ptl_hdr_t *hdr,
+                                pmix_buffer_t *buf,
                                 void *cbdata)
 {
     (void) hdr;
@@ -97,7 +100,7 @@ static void notify_event_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmi
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
 
-    if (0 < hdr->nbytes) {
+    if (0 < buf->bytes_used) {
         /* unpack the status */
         PMIX_BFROPS_UNPACK(rc, pr, buf, &ret, &cnt, PMIX_STATUS);
         if (PMIX_SUCCESS != rc) {
@@ -273,8 +276,10 @@ static pmix_status_t notify_server_of_event(pmix_status_t status, const pmix_pro
 
     if (PMIX_RANGE_PROC_LOCAL != range && NULL != msg) {
         /* if this is a "lost-connection" event, then there is no
-         * server to pass it to! */
-        if (PMIX_ERR_LOST_CONNECTION == status) {
+         * server to pass it to! Likewise, we don't pass it to
+         * ourselves */
+        if (PMIX_ERR_LOST_CONNECTION == status ||
+            pmix_globals.mypeer == pmix_client_globals.myserver) {
             PMIX_RELEASE(msg);
             goto local;
         }
@@ -381,9 +386,11 @@ static void cycle_events(int sd, short args, void *cbdata)
     chain->results = newinfo;
     chain->nresults = cnt;
     /* clear any loaded name and object */
-    chain->ninfo = chain->nallocated - 2;
-    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 2]);
-    PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 1]);
+    if (chain->nallocated > chain->ninfo) {
+        chain->ninfo = chain->nallocated - 2;
+        PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 2]);
+        PMIX_INFO_DESTRUCT(&chain->info[chain->nallocated - 1]);
+    }
     // call their interim cbfunc
     if (NULL != chain->opcbfunc) {
         chain->opcbfunc(chain->interim_status, chain->cbdata);
@@ -391,10 +398,14 @@ static void cycle_events(int sd, short args, void *cbdata)
 
     /* if the caller indicates that the chain is completed,
      * or we completed the "last" event */
-    if (PMIX_EVENT_ACTION_COMPLETE == chain->interim_status
-        || PMIX_EVENT_ORDER_LAST_OVERALL == chain->evhdlr->precedence || chain->endchain) {
+    if (PMIX_EVENT_ACTION_COMPLETE == chain->interim_status ||
+        PMIX_EVENT_ORDER_LAST_OVERALL == chain->evhdlr->precedence || chain->endchain) {
         if (PMIX_EVENT_ACTION_COMPLETE == chain->interim_status) {
             chain->interim_status = PMIX_SUCCESS;
+        }
+        if (chain->evhdlr->oneshot) {
+            /* remove this handler */
+            pmix_deregister_event_hdlr(chain->evhdlr->index, NULL);
         }
         goto complete;
     }
@@ -409,8 +420,7 @@ static void cycle_events(int sd, short args, void *cbdata)
         } else {
             item = &chain->evhdlr->super;
         }
-        while (pmix_list_get_end(&pmix_globals.events.single_events)
-               != (item = pmix_list_get_next(item))) {
+        while (pmix_list_get_end(&pmix_globals.events.single_events) != (item = pmix_list_get_next(item))) {
             nxt = (pmix_event_hdlr_t *) item;
             if (nxt->codes[0] == chain->status && pmix_notify_check_range(&nxt->rng, &chain->source)
                 && pmix_notify_check_affected(nxt->affected, nxt->naffected, chain->affected,
@@ -499,8 +509,7 @@ static void cycle_events(int sd, short args, void *cbdata)
         } else if (NULL == item) {
             item = &chain->evhdlr->super;
         }
-        if (pmix_list_get_end(&pmix_globals.events.default_events)
-            != (item = pmix_list_get_next(item))) {
+        if (pmix_list_get_end(&pmix_globals.events.default_events) != (item = pmix_list_get_next(item))) {
             nxt = (pmix_event_hdlr_t *) item;
             /* if this event handler provided a range, check to see if
              * the source fits within it */
@@ -687,7 +696,8 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
             }
         }
         if (!found) {
-            pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
+            pmix_output_verbose(8, pmix_client_globals.event_output,
+                                "%s Ignoring event %s:%d",
                                 PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
             goto complete;
         }
@@ -1089,6 +1099,10 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                     if (PMIX_CHECK_PROCID(&cd->source, &pr->peer->info->pname)) {
                         continue;
                     }
+                    /* don't notify ourselves - we handle this internally */
+                    if (PMIX_CHECK_PROCID(&pmix_globals.myid, &pr->peer->info->pname)) {
+                        continue;
+                    }
                     /* if we have already notified this client, then don't do it again */
                     matched = false;
                     PMIX_LIST_FOREACH (nm, &trk, pmix_namelist_t) {
@@ -1188,7 +1202,8 @@ static void _notify_client_event(int sd, short args, void *cbdata)
             }
         }
         PMIX_LIST_DESTRUCT(&trk);
-        if (PMIX_RANGE_LOCAL != cd->range && PMIX_CHECK_PROCID(&cd->source, &pmix_globals.myid)) {
+        if (PMIX_RANGE_LOCAL != cd->range &&
+            PMIX_CHECK_PROCID(&cd->source, &pmix_globals.myid)) {
             /* if we are the source, then we need to post this upwards as
              * well so the host RM can broadcast it as necessary */
             if (NULL != pmix_host_server.notify_event) {
@@ -1349,12 +1364,11 @@ void pmix_event_timeout_cb(int fd, short flags, void *arg)
     /* remove it from the list */
     pmix_list_remove_item(&pmix_globals.cached_events, &ch->super);
 
-    /* protect the chain */
-    PMIX_RETAIN(ch);
-
     /* process this event thru the regular channels */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        pmix_server_notify_client_of_event(ch->status, &ch->source, ch->range, ch->info, ch->ninfo,
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+        pmix_server_notify_client_of_event(ch->status, &ch->source, ch->range,
+                                           ch->info, ch->ninfo,
                                            ch->final_cbfunc, ch->final_cbdata);
     } else {
         pmix_invoke_local_event_hdlr(ch);
@@ -1427,6 +1441,7 @@ static void sevcon(pmix_event_hdlr_t *p)
     p->name = NULL;
     p->index = UINT_MAX;
     p->precedence = PMIX_EVENT_ORDER_NONE;
+    p->oneshot = false;
     p->locator = NULL;
     p->rng.range = PMIX_RANGE_UNDEF;
     p->rng.procs = NULL;
@@ -1487,7 +1502,9 @@ static void evdes(pmix_events_t *p)
     PMIX_LIST_DESTRUCT(&p->multi_events);
     PMIX_LIST_DESTRUCT(&p->default_events);
 }
-PMIX_CLASS_INSTANCE(pmix_events_t, pmix_object_t, evcon, evdes);
+PMIX_CLASS_INSTANCE(pmix_events_t,
+                    pmix_object_t,
+                    evcon, evdes);
 
 static void chcon(pmix_event_chain_t *p)
 {
@@ -1534,4 +1551,6 @@ static void chdes(pmix_event_chain_t *p)
         PMIX_INFO_FREE(p->results, p->nresults);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_event_chain_t, pmix_list_item_t, chcon, chdes);
+PMIX_CLASS_INSTANCE(pmix_event_chain_t,
+                    pmix_list_item_t,
+                    chcon, chdes);

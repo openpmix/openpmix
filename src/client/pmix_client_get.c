@@ -78,6 +78,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
                                      const pmix_info_t info[], size_t ninfo,
                                      pmix_get_logic_t *lg, pmix_value_t **val)
 {
+    pmix_status_t rc;
     pmix_value_t *ival;
     size_t n;
 
@@ -106,17 +107,26 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         return PMIX_ERR_BAD_PARAM;
     }
 
-    /* see if they want a static response (i.e., they provided the storage),
-     * a pointer to the answer, or an allocated storage object */
+    if (NULL != key) {
+        /* see if they are asking about a specific type of info */
+        if (pmix_check_node_info(key)) {
+            lg->nodeinfo = true;
+        } else if (pmix_check_app_info(key)) {
+            lg->appinfo = true;
+        } else if (pmix_check_session_info(key)) {
+            lg->sessioninfo = true;
+        }
+    }
+
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_GET_POINTER_VALUES)) {
-            /* they want the pointer */
+            /* they want a pointer to the answer */
             if (NULL == val) {
                 return PMIX_ERR_BAD_PARAM;
             }
             lg->pntrval = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GET_STATIC_VALUES)) {
-            /* they provided the storage */
+            /* they want a static response (i.e., they provided the storage) */
             if (NULL == val || NULL == *val) {
                 return PMIX_ERR_BAD_PARAM;
             }
@@ -130,6 +140,55 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GET_REFRESH_CACHE)) {
             /* immediately query the server */
             lg->refresh_cache = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_JOB_INFO)) {
+            /* regardless of the default setting, they want us
+             * to get it from the job realm */
+            lg->nodeinfo = false;
+            lg->appinfo = false;
+            lg->sessioninfo = false;
+            /* have to let the loop continue in case there are
+             * other relevant directives - e.g., refresh_cache */
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODE_INFO)) {
+            /* regardless of the default setting, they want us
+             * to get it from the node realm */
+            lg->nodedirective = true;
+            lg->nodeinfo = true;
+            lg->appinfo = false;
+            lg->sessioninfo = false;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_APP_INFO)) {
+            /* regardless of the default setting, they want us
+             * to get it from the app realm */
+            lg->appdirective = true;
+            lg->appinfo = true;
+            lg->nodeinfo = false;
+            lg->sessioninfo = false;
+        } else if (PMIX_CHECK_KEY(info, PMIX_SESSION_INFO)) {
+            /* regardless of the default setting, they want us
+             * to get it from the session realm */
+            lg->sessiondirective = true;
+            lg->sessioninfo = true;
+            lg->nodeinfo = false;
+            lg->appinfo = false;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
+            lg->hostname = info[n].value.data.string;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
+            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, lg->nodeid, uint32_t);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_APPNUM)) {
+            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, lg->appnum, uint32_t);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
+            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, lg->sessionid, uint32_t);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
         }
     }
 
@@ -173,8 +232,9 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
 
     /* if they passed our nspace and an INVALID rank, and are asking
      * for PMIX_RANK, then they are asking for our process rank */
-    if (PMIX_RANK_INVALID == lg->p.rank && PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace)
-        && NULL != key && 0 == strncmp(key, PMIX_RANK, PMIX_MAX_KEYLEN)) {
+    if (PMIX_RANK_INVALID == lg->p.rank &&
+        PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace) &&
+        NULL != key && 0 == strncmp(key, PMIX_RANK, PMIX_MAX_KEYLEN)) {
         if (lg->stval) {
             ival = *val;
             ival->type = PMIX_PROC_RANK;
@@ -624,17 +684,22 @@ static pmix_status_t process_values(pmix_cb_t *cb)
 
 static void get_data(int sd, short args, void *cbdata)
 {
-    pmix_cb_t *cb;
+    pmix_cb_t *cb, cb2;
     pmix_cb_t *cbret;
     pmix_buffer_t *msg;
     pmix_status_t rc;
     pmix_proc_t proc;
     pmix_get_logic_t *lg;
+    pmix_info_t optional, *iptr;
+    size_t nfo, n;
+    pmix_kval_t *kv;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cb);
     cb = (pmix_cb_t*)cbdata;
     lg = cb->lg;
+    iptr = cb->info;
+    nfo = cb->ninfo;
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix:client:get_data value for proc %s key %s",
@@ -643,7 +708,254 @@ static void get_data(int sd, short args, void *cbdata)
     /* check the data provided to us by the server first */
     cb->proc = &lg->p;
     cb->scope = lg->scope;
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
+    if (lg->nodeinfo) {
+        pmix_output_verbose(2, pmix_client_globals.get_output,
+                            "pmix:client:get_data value requesting node-level info for proc %s key %s",
+                            PMIX_NAME_PRINT(&lg->p), (NULL == cb->key) ? "NULL" : cb->key);
+        if (NULL == lg->hostname && UINT32_MAX == lg->nodeid) {
+            /* if they didn't specify the target node, then see if they
+             * specified a proc */
+            if (PMIX_RANK_IS_VALID(cb->proc->rank)) {
+                /* if this is us, then we know our info */
+                if (PMIX_CHECK_PROCID(cb->proc, &pmix_globals.myid)) {
+                    lg->hostname = strdup(pmix_globals.hostname);
+                    lg->nodeid = pmix_globals.nodeid;
+                } else {
+                    PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+                    cb2.proc = cb->proc;
+                    cb2.key = PMIX_HOSTNAME;
+                    cb2.info = &optional;
+                    cb2.ninfo = 1;
+                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                        kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                        PMIX_DESTRUCT(&cb2);
+                        lg->hostname = strdup(kv->value->data.string);
+                        PMIX_RELEASE(kv);
+                    } else {
+                        /* try for the nodeid */
+                        cb2.key = PMIX_NODEID;
+                        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                        if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                            kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                            PMIX_DESTRUCT(&cb2);
+                            PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->nodeid, uint32_t);
+                            PMIX_RELEASE(kv);
+                            if (PMIX_SUCCESS != rc) {
+                                cb->status = rc;
+                                goto done;
+                            }
+                        } else {
+                            /* could not find hostname or nodeid, so we cannot do anything */
+                            cb->status = PMIX_ERR_NOT_FOUND;
+                            goto done;
+                        }
+                    }
+                }
+            } else {
+                /* it's an invalid rank - assume they are asking about this node.
+                 * This is consistent with prior releases */
+                cb->proc->rank = PMIX_RANK_UNDEF;
+                lg->hostname = strdup(pmix_globals.hostname);
+                lg->nodeid = pmix_globals.nodeid;
+            }
+        }
+        /* if we have a hostname and that is what they were
+         * asking for, then we are done */
+        if (NULL != lg->hostname && 0 == strcmp(cb->key, PMIX_HOSTNAME)) {
+            cb->status = PMIX_SUCCESS;
+            PMIX_VALUE_CREATE(cb->value, 1);
+            PMIX_VALUE_LOAD(cb->value, lg->hostname, PMIX_STRING);
+            goto done;
+        }
+        /* if we have a nodeid and that is what they were
+         * asking for, then we are done */
+        if (UINT32_MAX != lg->nodeid && 0 == strcmp(cb->key, PMIX_NODEID)) {
+            cb->status = PMIX_SUCCESS;
+            PMIX_VALUE_CREATE(cb->value, 1);
+            PMIX_VALUE_LOAD(cb->value, &lg->nodeid, PMIX_UINT32);
+            goto done;
+        }
+        /* we have to look for the info, so we need to tell the GDS
+         * that this is a nodeinfo request and pass the
+         * nodename or nodeid */
+        if (lg->nodedirective) {
+            /* just need to add the hostname/nodeid */
+            nfo = cb->ninfo + 2;
+            PMIX_INFO_CREATE(iptr, nfo);
+            for (n=0; n < cb->ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
+            }
+            if (NULL != lg->hostname) {
+                PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_HOSTNAME, lg->hostname, PMIX_STRING);
+            } else {
+                PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_HOSTNAME, &lg->nodeid, PMIX_UINT32);
+            }
+            PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+            cb->infocopy = true;
+        } else {
+            /* need to add directive and hostname/nodeid */
+            nfo = cb->ninfo + 3;
+            PMIX_INFO_CREATE(iptr, nfo);
+            for (n=0; n < cb->ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
+            }
+            PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+            if (NULL != lg->hostname) {
+                PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_HOSTNAME, lg->hostname, PMIX_STRING);
+            } else {
+                PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_HOSTNAME, &lg->nodeid, PMIX_UINT32);
+            }
+            PMIX_INFO_LOAD(&iptr[cb->ninfo+2], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+            cb->infocopy = true;
+        }
+        goto doget;
+    }
+
+    if (lg->appinfo) {
+        /* if they didn't provide an appnum, then we have to look it up */
+        if (UINT32_MAX == lg->appnum) {
+            /* if they didn't specify the target app, then see if they
+             * specified a proc */
+            if (PMIX_RANK_IS_VALID(cb->proc->rank)) {
+                /* if this is us, then we know our appnum */
+                if (PMIX_CHECK_PROCID(cb->proc, &pmix_globals.myid)) {
+                    lg->appnum = pmix_globals.appnum;
+                } else {
+                    PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+                    cb2.proc = cb->proc;
+                    cb2.key = PMIX_APPNUM;
+                    cb2.info = &optional;
+                    cb2.ninfo = 1;
+                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                        kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                        PMIX_DESTRUCT(&cb2);
+                        PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->appnum, uint32_t);
+                        PMIX_RELEASE(kv);
+                        if (PMIX_SUCCESS != rc) {
+                            cb->status = rc;
+                            goto done;
+                        }
+                    } else {
+                        /* couldn't find this proc's appnum - nothing we can do */
+                        cb->status = PMIX_ERR_NOT_FOUND;
+                        goto done;
+                    }
+                }
+            } else {
+                /* rank is invalid - assume they want info about our app.
+                 * This is consistent with prior releases */
+                cb->proc->rank = PMIX_RANK_UNDEF;
+                lg->appnum = pmix_globals.appnum;
+            }
+        }
+        /* we get here with a valid appnum - if that is what they were
+         * asking for, then we are done */
+        if (0 == strcmp(cb->key, PMIX_APPNUM)) {
+            cb->status = PMIX_SUCCESS;
+            PMIX_VALUE_CREATE(cb->value, 1);
+            PMIX_VALUE_LOAD(cb->value, &lg->appnum, PMIX_UINT32);
+            goto done;
+        }
+        /* setup the request */
+        if (lg->appdirective) {
+            /* just need to add the appnum */
+            nfo = cb->ninfo + 2;
+            PMIX_INFO_CREATE(iptr, nfo);
+            for (n=0; n < cb->ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
+            }
+            PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_APPNUM, &lg->appnum, PMIX_UINT32);
+            PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+            cb->infocopy = true;
+        } else {
+            /* need to add directive and appnum */
+            nfo = cb->ninfo + 3;
+            PMIX_INFO_CREATE(iptr, nfo);
+            for (n=0; n < cb->ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
+            }
+            PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
+            PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_APPNUM, &lg->appnum, PMIX_UINT32);
+            PMIX_INFO_LOAD(&iptr[cb->ninfo+2], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+            cb->infocopy = true;
+        }
+        goto doget;
+    }
+
+    if (lg->sessioninfo) {
+        /* if they didn't provide a sessionid, then we have to look it up */
+        if (UINT32_MAX == lg->sessionid) {
+            /* if they didn't specify the target session, then see if they
+             * specified a proc */
+            if (PMIX_RANK_IS_VALID(cb->proc->rank)) {
+                /* if this is us, then we know our info */
+                if (PMIX_CHECK_PROCID(cb->proc, &pmix_globals.myid)) {
+                    lg->sessionid = pmix_globals.sessionid;
+                } else {
+                    PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+                    cb2.proc = cb->proc;
+                    cb2.key = PMIX_SESSION_ID;
+                    cb2.info = &optional;
+                    cb2.ninfo = 1;
+                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                        kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                        PMIX_DESTRUCT(&cb2);
+                        PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->sessionid, uint32_t);
+                        PMIX_RELEASE(kv);
+                        if (PMIX_SUCCESS != rc) {
+                            cb->status = rc;
+                            goto done;
+                        }
+                    }
+                }
+            } else {
+                /* rank is invalid - assume they want info about our session.
+                 * This is consistent with prior releases */
+                cb->proc->rank = PMIX_RANK_UNDEF;
+                lg->sessionid = pmix_globals.sessionid;
+            }
+        }
+        /* if they were asking for sessionid, then we are done */
+        if (0 == strcmp(cb->key, PMIX_SESSION_ID)) {
+            cb->status = PMIX_SUCCESS;
+            PMIX_VALUE_CREATE(cb->value, 1);
+            PMIX_VALUE_LOAD(cb->value, &lg->sessionid, PMIX_UINT32);
+            goto done;
+        }
+        /* setup the request */
+        if (lg->sessiondirective) {
+            /* just need to add the sessionid */
+            nfo = cb->ninfo + 2;
+            PMIX_INFO_CREATE(iptr, nfo);
+            for (n=0; n < cb->ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
+            }
+            PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_SESSION_ID, &lg->sessionid, PMIX_UINT32);
+            PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+            cb->infocopy = true;
+        } else {
+            /* need to add directive and sessionid */
+            nfo = cb->ninfo + 3;
+            PMIX_INFO_CREATE(iptr, nfo);
+            for (n=0; n < cb->ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n], &cb->info[n]);
+            }
+            PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_SESSION_INFO, NULL, PMIX_BOOL);
+            PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_SESSION_ID, &lg->sessionid, PMIX_UINT32);
+            PMIX_INFO_LOAD(&iptr[cb->ninfo+2], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+            cb->infocopy = true;
+        }
+        goto doget;
+    }
+
+doget:
+    cb->info = iptr;
+    cb->ninfo = nfo;
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
     if (PMIX_SUCCESS == rc) {
         pmix_output_verbose(5, pmix_client_globals.get_output,

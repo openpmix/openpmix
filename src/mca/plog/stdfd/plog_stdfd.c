@@ -111,8 +111,9 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    /* if we are not a gateway, then we don't handle this */
-    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
+    /* if we are not a gateway or tool, then we don't handle this */
+    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 

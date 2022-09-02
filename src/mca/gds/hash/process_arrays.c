@@ -212,7 +212,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
 /* process an app array - contains an array of
  * app-level info for a single app. If the
  * appnum is not included in the array, then
- * it is assumed that only app is in the job.
+ * it is assumed that only one app is in the job.
  * This assumption is checked and generates
  * an error if violated */
 pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk)
@@ -227,7 +227,8 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
     pmix_nodeinfo_t *nd;
     bool update;
 
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output, "PROCESSING APP ARRAY");
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
+                        "PROCESSING APP ARRAY");
 
     /* apps have to belong to a job */
     if (NULL == trk) {
@@ -460,96 +461,85 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
 
 pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t *trk)
 {
-    pmix_session_t *s = NULL, *sptr;
+    pmix_session_t *sptr = NULL;
     size_t j, size;
     pmix_info_t *iptr;
-    pmix_list_t cache, ncache;
+    pmix_list_t ncache, scache;
     pmix_status_t rc;
     pmix_kval_t *kp2;
     pmix_nodeinfo_t *nd;
-    uint32_t sid;
+    uint32_t sid = UINT32_MAX;
 
     /* array of session-level info */
     if (PMIX_DATA_ARRAY != val->type) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
     size = val->data.darray->size;
     iptr = (pmix_info_t *) val->data.darray->array;
 
-    PMIX_CONSTRUCT(&cache, pmix_list_t);
     PMIX_CONSTRUCT(&ncache, pmix_list_t);
+    PMIX_CONSTRUCT(&scache, pmix_list_t);
+
     for (j = 0; j < size; j++) {
+         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                    "%s gds:hash:session_array for key %s",
+                    PMIX_NAME_PRINT(&pmix_globals.myid),
+                    iptr[j].key);
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_SESSION_ID)) {
             PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, sid, uint32_t);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
-                PMIX_LIST_DESTRUCT(&cache);
                 PMIX_LIST_DESTRUCT(&ncache);
+                PMIX_LIST_DESTRUCT(&scache);
                 return rc;
             }
-            /* see if we already have this session - it could have
-             * been defined by a separate PMIX_SESSION_ID key */
-            PMIX_LIST_FOREACH (sptr, &pmix_mca_gds_hash_component.mysessions, pmix_session_t) {
-                if (sptr->session == sid) {
-                    s = sptr;
-                    break;
-                }
-            }
-            if (NULL == s) {
-                /* wasn't found, so create one */
-                s = PMIX_NEW(pmix_session_t);
-                s->session = sid;
-                pmix_list_append(&pmix_mca_gds_hash_component.mysessions, &s->super);
-            }
+            sptr = pmix_gds_hash_check_session(trk, sid, true);
         } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODE_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_node_array(&iptr[j].value, &ncache))) {
                 PMIX_ERROR_LOG(rc);
-                PMIX_LIST_DESTRUCT(&cache);
                 PMIX_LIST_DESTRUCT(&ncache);
+                PMIX_LIST_DESTRUCT(&scache);
                 return rc;
             }
         } else {
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
-            kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
             PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kp2);
-                PMIX_LIST_DESTRUCT(&cache);
                 PMIX_LIST_DESTRUCT(&ncache);
+                PMIX_LIST_DESTRUCT(&scache);
                 return rc;
             }
-            pmix_list_append(&cache, &kp2->super);
+            char *tmp = PMIx_Value_string(kp2->value);
+            free(tmp);
+            pmix_list_append(&scache, &kp2->super);
         }
     }
-    if (NULL == s) {
-        /* this is not allowed to happen - they are required
-         * to provide us with a session ID per the standard */
-        PMIX_LIST_DESTRUCT(&cache);
+
+    /* if we never got a session ID, then that's an error */
+    if (NULL == sptr) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         PMIX_LIST_DESTRUCT(&ncache);
-        rc = PMIX_ERR_BAD_PARAM;
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        PMIX_LIST_DESTRUCT(&scache);
+        return PMIX_ERR_BAD_PARAM;
     }
-    /* point the job at it */
-    if (NULL != trk->session) {
-        PMIX_RELEASE(trk->session);
-    }
-    PMIX_RETAIN(s);
-    trk->session = s;
-    /* transfer the data across */
-    kp2 = (pmix_kval_t *) pmix_list_remove_first(&cache);
+
+    /* transfer across the results */
+    kp2 = (pmix_kval_t*)pmix_list_remove_first(&scache);
     while (NULL != kp2) {
-        pmix_list_append(&s->sessioninfo, &kp2->super);
-        kp2 = (pmix_kval_t *) pmix_list_remove_first(&cache);
+        pmix_list_append(&sptr->sessioninfo, &kp2->super);
+        kp2 = (pmix_kval_t*)pmix_list_remove_first(&scache);
     }
-    PMIX_LIST_DESTRUCT(&cache);
-    nd = (pmix_nodeinfo_t *) pmix_list_remove_first(&ncache);
+    PMIX_LIST_DESTRUCT(&scache);
+
+    nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
     while (NULL != nd) {
-        pmix_list_append(&s->nodeinfo, &nd->super);
-        nd = (pmix_nodeinfo_t *) pmix_list_remove_first(&ncache);
+        pmix_list_append(&sptr->nodeinfo, &nd->super);
+        nd = (pmix_nodeinfo_t*)pmix_list_remove_first(&ncache);
     }
     PMIX_LIST_DESTRUCT(&ncache);
     return PMIX_SUCCESS;

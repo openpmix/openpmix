@@ -332,6 +332,7 @@ pmix_status_t pmix_pnet_base_register_fabric(pmix_fabric_t *fabric, const pmix_i
                 }
                 ft->module = active->module;
                 pmix_list_append(&pmix_pnet_globals.fabrics, &ft->super);
+                return rc;
             } else if (PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* just return the result */
                 return rc;

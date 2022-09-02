@@ -74,6 +74,8 @@ typedef pmix_status_t (*pmix_gds_base_assign_module_fn_t)(pmix_info_t *info, siz
                                                           int *priority);
 
 #define PMIX_GDS_CHECK_COMPONENT(p, s) (0 == strcmp((p)->nptr->compat.gds->name, (s)))
+#define PMIX_GDS_CHECK_PEER_COMPONENT(p1, p2) \
+    (0 == strcmp((p1)->nptr->compat.gds->name, (p2)->nptr->compat.gds->name))
 
 /* SERVER FN: assemble the keys buffer for server answer */
 typedef pmix_status_t (*pmix_gds_base_module_assemb_kvs_req_fn_t)(const pmix_proc_t *proc,
@@ -371,38 +373,52 @@ typedef pmix_status_t (*pmix_gds_base_module_del_nspace_fn_t)(const char *nspace
     } while (0)
 
 /* define a convenience macro for is_tsafe for fetch operation */
-#define PMIX_GDS_FETCH_IS_TSAFE(s, p)                                                            \
-    do {                                                                                         \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                      \
-        pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS FETCH IS THREAD SAFE WITH %s", \
-                            __FILE__, __LINE__, _g->name);                                       \
-        if (true == _g->is_tsafe) {                                                              \
-            (s) = PMIX_SUCCESS;                                                                  \
-        } else {                                                                                 \
-            (s) = PMIX_ERR_NOT_SUPPORTED;                                                        \
-        }                                                                                        \
-    } while (0)
+#define PMIX_GDS_FETCH_IS_TSAFE(s, p)                       \
+    do {                                                    \
+        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds; \
+        pmix_output_verbose(1, pmix_gds_base_output,        \
+                "[%s:%d] GDS FETCH IS THREAD SAFE WITH %s", \
+                            __FILE__, __LINE__, _g->name);  \
+        if (true == _g->is_tsafe) {                         \
+            (s) = PMIX_SUCCESS;                             \
+        } else {                                            \
+            (s) = PMIX_ERR_NOT_SUPPORTED;                   \
+        }                                                   \
+    } while(0)
 
-/**
- * structure for gds modules
- */
+typedef pmix_status_t (*pmix_gds_base_module_fetch_array_fn_t)(struct pmix_peer_t *pr,
+                                                               pmix_buffer_t *reply);
+/* define a convenience macro for fetching array info for
+ * a given peer */
+#define PMIX_GDS_FETCH_INFO_ARRAYS(s, p, b)                                 \
+    do {                                                                    \
+        pmix_gds_base_module_t *_g = pmix_globals.mypeer->nptr->compat.gds; \
+        pmix_output_verbose(1, pmix_gds_base_output,                        \
+                            "[%s:%d] GDS FETCH ARRAYS WITH %s",             \
+                            __FILE__, __LINE__, _g->name);                  \
+        (s) = _g->fetch_arrays((struct pmix_peer_t*)(p), b);                \
+    } while(0)
+
+
+/* structure for gds modules */
 typedef struct {
     const char *name;
     const bool is_tsafe;
-    pmix_gds_base_module_init_fn_t init;
-    pmix_gds_base_module_fini_fn_t finalize;
-    pmix_gds_base_assign_module_fn_t assign_module;
-    pmix_gds_base_module_cache_job_info_fn_t cache_job_info;
-    pmix_gds_base_module_register_job_info_fn_t register_job_info;
-    pmix_gds_base_module_store_job_info_fn_t store_job_info;
-    pmix_gds_base_module_store_fn_t store;
-    pmix_gds_base_module_store_modex_fn_t store_modex;
-    pmix_gds_base_module_fetch_fn_t fetch;
-    pmix_gds_base_module_setup_fork_fn_t setup_fork;
-    pmix_gds_base_module_add_nspace_fn_t add_nspace;
-    pmix_gds_base_module_del_nspace_fn_t del_nspace;
-    pmix_gds_base_module_assemb_kvs_req_fn_t assemb_kvs_req;
-    pmix_gds_base_module_accept_kvs_resp_fn_t accept_kvs_resp;
+    pmix_gds_base_module_init_fn_t                  init;
+    pmix_gds_base_module_fini_fn_t                  finalize;
+    pmix_gds_base_assign_module_fn_t                assign_module;
+    pmix_gds_base_module_cache_job_info_fn_t        cache_job_info;
+    pmix_gds_base_module_register_job_info_fn_t     register_job_info;
+    pmix_gds_base_module_store_job_info_fn_t        store_job_info;
+    pmix_gds_base_module_store_fn_t                 store;
+    pmix_gds_base_module_store_modex_fn_t           store_modex;
+    pmix_gds_base_module_fetch_fn_t                 fetch;
+    pmix_gds_base_module_setup_fork_fn_t            setup_fork;
+    pmix_gds_base_module_add_nspace_fn_t            add_nspace;
+    pmix_gds_base_module_del_nspace_fn_t            del_nspace;
+    pmix_gds_base_module_assemb_kvs_req_fn_t        assemb_kvs_req;
+    pmix_gds_base_module_accept_kvs_resp_fn_t       accept_kvs_resp;
+    pmix_gds_base_module_fetch_array_fn_t           fetch_arrays;
 
 } pmix_gds_base_module_t;
 

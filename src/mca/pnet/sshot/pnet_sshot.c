@@ -224,7 +224,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             pmix_argv_append_nosize(&nodes, tmp);
             free(tmp);
 
-            for (m = 0; m < pmix_mca_pnet_sshot_component.numdevs; m++) {
+            for (m = 0; m < pmix_mca_pnet_sshot_component.numnodes; m++) {
                 pmix_asprintf(&tmp, "%02d:%02d:%02d:%02d:%02d:%02d", n % 100, (n + 1) % 100,
                               (n + 2) % 100, (n + 3) % 100, (n + 4) % 100, m);
                 pmix_argv_append_nosize(&targs, tmp);
@@ -236,7 +236,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             pmix_argv_free(targs);
             targs = NULL;
 
-            for (m = 0; m < pmix_mca_pnet_sshot_component.numdevs; m++) {
+            for (m = 0; m < pmix_mca_pnet_sshot_component.numnodes; m++) {
                 pmix_asprintf(&tmp, "x30000c%1dr%02da%04d", n % 10, n % 100, m);
                 pmix_argv_append_nosize(&targs, tmp);
                 free(tmp);
@@ -247,7 +247,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
             pmix_argv_free(targs);
             targs = NULL;
 
-            for (m = 0; m < pmix_mca_pnet_sshot_component.numdevs; m++) {
+            for (m = 0; m < pmix_mca_pnet_sshot_component.numnodes; m++) {
                 pmix_asprintf(&tmp, "eth%1d", m);
                 pmix_argv_append_nosize(&targs, tmp);
                 free(tmp);

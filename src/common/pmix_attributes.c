@@ -847,7 +847,7 @@ release:
 }
 
 /*****   LOCATE A GIVEN ATTRIBUTE    *****/
-PMIX_EXPORT const char *pmix_attributes_lookup(char *attr)
+PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 {
     size_t n;
 
@@ -856,10 +856,10 @@ PMIX_EXPORT const char *pmix_attributes_lookup(char *attr)
             return pmix_dictionary[n].string;
         }
     }
-    return NULL;
+    return attr;
 }
 
-PMIX_EXPORT const char *pmix_attributes_reverse_lookup(char *attrstring)
+PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 {
     size_t n;
 
@@ -868,7 +868,7 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(char *attrstring)
             return pmix_dictionary[n].name;
         }
     }
-    return NULL;
+    return attrstring;
 }
 
 PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)

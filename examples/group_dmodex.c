@@ -64,6 +64,8 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
 
+    fprintf(stderr, "Client %s:%d OP CALLBACK CALLED WITH STATUS %d\n", myproc.nspace, myproc.rank,
+            status);
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -71,8 +73,10 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
-    EXAMPLES_HIDE_UNUSED_PARAMS(errhandler_ref);
-    
+
+    fprintf(stderr,
+            "Client %s:%d ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu\n",
+            myproc.nspace, myproc.rank, status, (unsigned long) errhandler_ref);
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -80,14 +84,15 @@ static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, v
 int main(int argc, char **argv)
 {
     int rc;
+    size_t n;
     pmix_value_t *val = NULL;
+    pmix_value_t value;
     pmix_proc_t proc, *procs;
-    uint32_t nprocs, n;
+    uint32_t nprocs;
     mylock_t lock;
-    pmix_info_t *results, *info, tinfo[2];
-    size_t nresults, cid, lcid, ninfo;
-    pmix_data_array_t darray;
-    void *grpinfo, *list;
+    pmix_info_t *results, info, tinfo;
+    size_t nresults, cid;
+    char tmp[1024];
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -97,19 +102,20 @@ int main(int argc, char **argv)
                 PMIx_Error_string(rc));
         exit(0);
     }
-    fprintf(stderr, "Client ns %s rank %d pid %lu: Running\n", myproc.nspace, myproc.rank, (unsigned long)getpid());
+    fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
 
     PMIX_PROC_CONSTRUCT(&proc);
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
     /* get our job size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n", myproc.nspace,
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
+    fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
 
     /* register our default errhandler */
     DEBUG_CONSTRUCT_LOCK(&lock);
@@ -135,50 +141,8 @@ int main(int argc, char **argv)
     for (n = 0; n < nprocs; n++) {
         PMIX_PROC_LOAD(&procs[n], myproc.nspace, n);
     }
-
-    grpinfo = PMIx_Info_list_start();
-    rc = PMIx_Info_list_add(grpinfo, PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Info_list_add failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
-
-    list = PMIx_Info_list_start();
-    lcid = 1234UL + (unsigned long) myproc.rank;
-    rc = PMIx_Info_list_add(list, PMIX_GROUP_LOCAL_CID, &lcid, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Info_list_add failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
-    rc = PMIx_Info_list_convert(list, &darray);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Info_list_convert failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
-    rc = PMIx_Info_list_add(grpinfo, PMIX_GROUP_INFO, &darray, PMIX_DATA_ARRAY);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Info_list_add failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
-    PMIx_Info_list_release(list);
-    PMIX_DATA_ARRAY_DESTRUCT(&darray);
-
-    rc = PMIx_Info_list_convert(grpinfo, &darray);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Info_list_convert failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
-    info = (pmix_info_t*)darray.array;
-    ninfo = darray.size;
-    PMIx_Info_list_release(grpinfo);
-
-    rc = PMIx_Group_construct("ourgroup", procs, nprocs, info, ninfo, &results, &nresults);
-    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+    PMIX_INFO_LOAD(&info, PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+    rc = PMIx_Group_construct("ourgroup", procs, nprocs, &info, 1, &results, &nresults);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
                 myproc.nspace, myproc.rank, PMIx_Error_string(rc));
@@ -188,12 +152,32 @@ int main(int argc, char **argv)
     if (NULL != results) {
         cid = 0;
         PMIX_VALUE_GET_NUMBER(rc, &results[0].value, cid, size_t);
-        fprintf(stderr, "Rank %d Group construct complete with status %s KEY %s CID %lu\n",
-                myproc.rank, PMIx_Error_string(rc), results[0].key, (unsigned long) cid);
+        fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %ld\n",
+                myproc.rank, PMIx_Error_string(rc), results[0].key, cid);
     } else {
-        fprintf(stderr, "Rank %d Group construct complete, but no CID returned\n", myproc.rank);
+        fprintf(stderr, "%d Group construct complete, but no CID returned\n", myproc.rank);
+        goto done;
     }
     PMIX_PROC_FREE(procs, nprocs);
+
+    /*
+     * put some data
+     */
+    (void) snprintf(tmp, 1024, "%s-%lu-%d-remote", myproc.nspace, cid, myproc.rank);
+    value.type = PMIX_UINT64;
+    value.data.uint64 = 1234UL + (unsigned long) myproc.rank;
+    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, tmp, &value))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
+        goto done;
+    }
+
+    /* commit the data to the server */
+    if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %d\n", myproc.nspace,
+                myproc.rank, rc);
+        goto done;
+    }
 
     /*
      * destruct the group
@@ -205,33 +189,28 @@ int main(int argc, char **argv)
             goto done;
     }
 
-    PMIX_INFO_CONSTRUCT(&tinfo[0]);
-    PMIX_INFO_LOAD(&tinfo[0], PMIX_GROUP_CONTEXT_ID, &cid, PMIX_SIZE);
-    PMIX_INFO_SET_QUALIFIER(&tinfo[0]);
-    PMIX_INFO_CONSTRUCT(&tinfo[1]);
-    PMIX_INFO_LOAD(&tinfo[1], PMIX_TIMEOUT, &get_timeout, PMIX_UINT32);
-
+    PMIX_INFO_CONSTRUCT(&tinfo);
+    PMIX_INFO_LOAD(&tinfo, PMIX_TIMEOUT, &get_timeout, PMIX_UINT32);
     for (n = 0; n < nprocs; n++) {
         proc.rank = n;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_GROUP_LOCAL_CID, tinfo, 2, &val))) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Get of LOCAL CID for rank %d failed: %s\n",
-                        myproc.nspace, myproc.rank, n, PMIx_Error_string(rc));
-            continue;
+        (void)snprintf(tmp, 1024, "%s-%lu-%d-remote", myproc.nspace, cid, (int)n);
+        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, &tinfo, 1, &val))) {
+                fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n",
+                        myproc.nspace, (int)n, tmp, rc);
+            goto done;
         }
-        if (PMIX_SIZE != val->type) {
-           fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong type: %s\n", myproc.nspace,
-                    myproc.rank, n, PMIx_Data_type_string(val->type));
+        if (PMIX_UINT64 != val->type) {
+           fprintf(stderr, "%s:%d: PMIx_Get Key %s returned wrong type: %d\n",
+                   myproc.nspace, myproc.rank, tmp, val->type);
             PMIX_VALUE_RELEASE(val);
-            continue;
+            goto done;
         }
-        if ((1234UL + (unsigned long)n) != val->data.size) {
-            fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong value: %s\n",
-                    myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
+        if ((1234UL + (unsigned long)n) != val->data.uint64) {
+            fprintf(stderr, "%s:%d: PMIx_Get Key %s returned wrong value: %lu\n",
+                    myproc.nspace, myproc.rank, tmp, (unsigned long)val->data.uint64);
             PMIX_VALUE_RELEASE(val);
-            continue;
+            goto done;
         }
-        fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %u SUCCESS value: %s\n",
-                myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
         PMIX_VALUE_RELEASE(val);
     }
 
@@ -250,4 +229,3 @@ done:
     fflush(stderr);
     return (0);
 }
-

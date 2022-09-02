@@ -94,7 +94,7 @@ echo "--> Found specfile: $specfile"
 # Find where the top RPM-building directory is
 #
 
-rpmtopdir=${rpmtopdir:-"`grep %_topdir $HOME/.rpmmacros | awk '{ print $2 }'`"}
+rpmtopdir=${rpmtopdir:-$HOME/RPMBUILD}
 if test "$rpmtopdir" != ""; then
 	rpmbuild_options="$rpmbuild_options --define '_topdir $rpmtopdir'"
     if test ! -d "$rpmtopdir"; then

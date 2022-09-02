@@ -261,6 +261,11 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     /* if we are a server, then process this ourselves */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+
+        if (NULL == pmix_host_server.spawn) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+
         cd = PMIX_NEW(pmix_setup_caddy_t);
         if (NULL == cd) {
             return PMIX_ERR_NOMEM;

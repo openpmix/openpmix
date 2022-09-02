@@ -17,7 +17,7 @@
  * Copyright (c) 2017      Mellanox Technologies. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -67,8 +67,8 @@ PMIX_EXPORT void pmix_attributes_print_attrs(char ***ans, char *function, pmix_r
 PMIX_EXPORT void pmix_attributes_print_headers(char ***ans, char *level);
 
 PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata);
-PMIX_EXPORT const char *pmix_attributes_lookup(char *name);
-PMIX_EXPORT const char *pmix_attributes_reverse_lookup(char *name);
+PMIX_EXPORT const char *pmix_attributes_lookup(const char *name);
+PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *name);
 PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr);
 
 END_C_DECLS

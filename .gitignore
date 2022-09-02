@@ -84,6 +84,7 @@ examples/pubi
 examples/server
 examples/tool
 examples/group
+examples/group_dmodex
 examples/asyncgroup
 examples/hello
 examples/bad_exit
@@ -94,6 +95,7 @@ examples/showkeys
 examples/abi_no_init
 examples/abi_with_init
 examples/group_lcl_cid
+examples/nodeinfo
 
 include/pmix_version.h
 include/pmix_rename.h

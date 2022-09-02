@@ -478,6 +478,7 @@ fetch_job_level_info_for_namespace(
     return rc;
 }
 #endif
+
 pmix_status_t
 pmix_gds_shmem_fetch(
     const pmix_proc_t *proc,
