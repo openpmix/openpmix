@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      ParTec AG.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -148,8 +149,8 @@ int main(int argc, char **argv)
      * is included, then the process will be stopped in this call until
      * the "debugger release" notification arrives */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
-                rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
+                PMIx_Error_string(rc));
         exit(0);
     }
     fprintf(stderr, "Client ns %s rank %d pid %lu: Running\n", myproc.nspace, myproc.rank,
@@ -218,8 +219,8 @@ int main(int argc, char **argv)
 
     /* get our universe size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     fprintf(stderr, "Client %s:%d universe size %d\n", myproc.nspace, myproc.rank,
@@ -229,8 +230,8 @@ int main(int argc, char **argv)
     /* get the number of procs in our job - univ size is the total number of allocated
      * slots, not the number of procs in the job */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     nprocs = val->data.uint32;
@@ -245,8 +246,8 @@ int main(int argc, char **argv)
     value.type = PMIX_UINT32;
     value.data.uint32 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Store_internal(&myproc, tmp, &value))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Store_internal failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Store_internal failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     free(tmp);
@@ -257,8 +258,8 @@ int main(int argc, char **argv)
     value.type = PMIX_UINT64;
     value.data.uint64 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, tmp, &value))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     free(tmp);
@@ -269,16 +270,16 @@ int main(int argc, char **argv)
     value.type = PMIX_STRING;
     value.data.string = "1234";
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, tmp, &value))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     free(tmp);
 
     /* push the data to our PMIx server */
     if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     if (0 == myproc.rank) {
@@ -292,8 +293,8 @@ int main(int argc, char **argv)
     flag = true;
     PMIX_INFO_LOAD(info, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, info, 1))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
-                rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %s\n", myproc.nspace, myproc.rank,
+                PMIx_Error_string(rc));
         goto done;
     }
     PMIX_INFO_FREE(info, 1);
@@ -339,8 +340,8 @@ int main(int argc, char **argv)
                 exit(1);
             }
             if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace,
-                        myproc.rank, tmp, rc);
+                fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %s\n", myproc.nspace,
+                        myproc.rank, tmp, PMIx_Error_string(rc));
                 free(tmp);
                 goto done;
             }
@@ -367,8 +368,8 @@ int main(int argc, char **argv)
                 exit(1);
             }
             if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n", myproc.nspace,
-                        myproc.rank, tmp, rc);
+                fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %s\n", myproc.nspace,
+                        myproc.rank, tmp, PMIx_Error_string(rc));
                 free(tmp);
                 goto done;
             }
@@ -397,8 +398,8 @@ done:
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
     } else {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
                 myproc.nspace, myproc.rank);
