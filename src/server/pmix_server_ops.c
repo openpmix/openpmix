@@ -4114,7 +4114,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     char *grpid;
     pmix_proc_t *procs;
     pmix_group_t *grp, *pgrp;
-    pmix_info_t *info = NULL, *iptr, *grpinfoptr = NULL;
+    pmix_info_t *info = NULL, *iptr = NULL, *grpinfoptr = NULL;
     size_t n, ninfo, ninf, nprocs, n2, ngrpinfo = 0;
     pmix_server_trkr_t *trk;
     struct timeval tv = {0, 0};
@@ -4439,6 +4439,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                 PMIX_INFO_FREE(trk->info, trk->ninfo);
                 trk->info = iptr;
                 trk->ninfo = n2;
+                iptr = NULL;
             }
         }
         rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grp->grpid, trk->pcs, trk->npcs,
@@ -4464,6 +4465,9 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
 error:
     if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
+    }
+    if (NULL != iptr) {
+        PMIX_INFO_FREE(iptr, n2);
     }
     return rc;
 }
