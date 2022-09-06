@@ -50,7 +50,7 @@ char *pmix_mca_base_component_path = NULL;
 int pmix_mca_base_opened = 0;
 char *pmix_mca_base_system_default_path = NULL;
 char *pmix_mca_base_user_default_path = NULL;
-bool pmix_mca_base_component_show_load_errors = (bool) PMIX_SHOW_LOAD_ERRORS_DEFAULT;
+char *pmix_mca_base_component_show_load_errors = NULL;
 bool pmix_mca_base_component_track_load_errors = false;
 bool pmix_mca_base_component_disable_dlopen = false;
 
@@ -124,15 +124,27 @@ int pmix_mca_base_open(const char *add_path)
     }
     free(cptr);
 
-    pmix_mca_base_component_show_load_errors = (bool) PMIX_SHOW_LOAD_ERRORS_DEFAULT;
+    pmix_mca_base_component_show_load_errors = PMIX_SHOW_LOAD_ERRORS_DEFAULT;
     var_id = pmix_mca_base_var_register(
                                         "pmix", "mca", "base", "component_show_load_errors",
-                                        "Whether to show errors for components that failed to load or not",
-                                        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+                                        "Whether to show errors for components that failed to load or not. "
+                                        "Valid values are \"all\" (meaning: all load failures are reported), "
+                                        "\"none\" (no load failures are reported), or a comma-delimited list "
+                                        "of items, each of which can be a framework/component pair or a framework "
+                                        "name (only load failures from the specifically-listed items are reported). "
+                                        "If the comma-delimited list is prefixed with \"^\", then orientation of "
+                                        "the list is negated: warn about all load failures *except* for the listed items.",
+                                        PMIX_MCA_BASE_VAR_TYPE_STRING,
                                         &pmix_mca_base_component_show_load_errors);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL,
                                               "component_show_load_errors",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+
+    // Parse the mca_base_component_show_load_errors value
+    int ret = pmix_mca_base_show_load_errors_init();
+    if (PMIX_SUCCESS != ret) {
+        return ret;
+    }
 
     pmix_mca_base_component_track_load_errors = false;
     var_id = pmix_mca_base_var_register(

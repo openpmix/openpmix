@@ -183,6 +183,58 @@ static inline char* pmix_cmd_line_get_nth_instance(pmix_cli_result_t *results,
     return opt->values[idx];
 }
 
+/* USAGE:
+ *  param "a" is the input command line string
+ *  param "b" is the defined CLI option
+ */
+static inline bool pmix_check_cli_option(char *a, char *b)
+{
+    size_t len1, len2, len, n;
+    char **asplit, **bsplit;
+    bool match;
+
+    /* if there exists a '-' in b, then we are
+     * dealing with a multi-word option. Parse
+     * those by checking each word segment
+     * individually for a match so the user
+     * doesn't have to spell it all out
+     * unless necessary */
+    if (NULL != strchr(b, '-')) {
+        asplit = pmix_argv_split(a, '-');
+        bsplit = pmix_argv_split(b, '-');
+        match = false;
+        for (n=0; NULL != asplit[n] && NULL != bsplit[n]; n++) {
+            len1 = strlen(asplit[n]);
+            len2 = strlen(bsplit[n]);
+            len = len1 < len2 ? len1 : len2;
+            if (0 == strncasecmp(asplit[n], bsplit[n], len)) {
+                match = true;
+            } else {
+                pmix_argv_free(asplit);
+                pmix_argv_free(bsplit);
+                return false;
+            }
+        }
+        pmix_argv_free(asplit);
+        pmix_argv_free(bsplit);
+        return match;
+    }
+
+    /* if this is not a multi-word option, we just
+     * check the strings */
+    len1 = strlen(a);
+    len2 = strlen(b);
+    len = (len1 < len2) ? len1 : len2;
+    if (0 == strncasecmp(a, b, len)) {
+        return true;
+    }
+
+    return false;
+}
+
+#define PMIX_CHECK_CLI_OPTION(a, b) \
+    pmix_check_cli_option(a, b)
+
 #define PMIX_CLI_DEBUG_LIST(r)  \
 do {                                                                    \
     pmix_cli_item_t *_c;                                                \
