@@ -111,7 +111,6 @@ src/include/pmix_dictionary.h
 src/mca/pinstalldirs/config/pinstall_dirs.h
 src/mca/pdl/base/static-components.h
 src/mca/pinstalldirs/base/static-components.h
-src/mca/common/sse/sse_lex.c
 
 src/tools/pattrs/pattrs
 src/tools/pevent/pevent
