@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008-2019 Cisco Systems, Inc.  All rights reserved
+ * Copyright (c) 2008-2022 Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2015      Research Organization for Information Science
@@ -408,8 +408,8 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
                         "%s MCA component \"%s\" at path %s",
                         ri->ri_type, ri->ri_name, ri->ri_path);
 
-    vl = pmix_mca_base_component_show_load_errors ? PMIX_MCA_BASE_VERBOSE_ERROR
-                                                  : PMIX_MCA_BASE_VERBOSE_INFO;
+    vl = pmix_mca_base_show_load_errors(ri->ri_type,
+                                        ri->ri_name) ? PMIX_MCA_BASE_VERBOSE_ERROR : PMIX_MCA_BASE_VERBOSE_INFO;;
 
     /* Ensure that this component is not already loaded (should only happen
        if it was statically loaded).  It's an error if it's already

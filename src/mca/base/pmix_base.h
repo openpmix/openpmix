@@ -69,7 +69,7 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_mca_base_component_priority_list_item_t)
  * Public variables
  */
 PMIX_EXPORT extern char *pmix_mca_base_component_path;
-PMIX_EXPORT extern bool pmix_mca_base_component_show_load_errors;
+PMIX_EXPORT extern char *pmix_mca_base_component_show_load_errors;
 PMIX_EXPORT extern bool pmix_mca_base_component_track_load_errors;
 PMIX_EXPORT extern bool pmix_mca_base_component_disable_dlopen;
 PMIX_EXPORT extern char *pmix_mca_base_system_default_path;
@@ -204,6 +204,10 @@ pmix_mca_base_framework_components_register(struct pmix_mca_base_framework_t *fr
                                             pmix_mca_base_register_flag_t flags);
 
 /* pmix_mca_base_components_open.c */
+PMIX_EXPORT int pmix_mca_base_show_load_errors_init(void);
+PMIX_EXPORT int pmix_mca_base_show_load_errors_finalize(void);
+PMIX_EXPORT bool pmix_mca_base_show_load_errors(const char *framework_name,
+                                                const char *component_name);
 PMIX_EXPORT int pmix_mca_base_framework_components_open(struct pmix_mca_base_framework_t *framework,
                                                         pmix_mca_base_open_flag_t flags);
 
