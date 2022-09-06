@@ -732,8 +732,12 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        lg->hostname = strdup(kv->value->data.string);
-                        PMIX_RELEASE(kv);
+                        if (NULL != kv) {  // will never be NULL
+                            lg->hostname = strdup(kv->value->data.string);
+                            PMIX_RELEASE(kv);
+                        } else {
+                            lg->hostname = strdup("unknown");
+                        }
                     } else {
                         /* try for the nodeid */
                         cb2.key = PMIX_NODEID;
@@ -741,8 +745,12 @@ static void get_data(int sd, short args, void *cbdata)
                         if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                             kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                             PMIX_DESTRUCT(&cb2);
-                            PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->nodeid, uint32_t);
-                            PMIX_RELEASE(kv);
+                            if (NULL != kv) {  // will never be NULL
+                                PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->nodeid, uint32_t);
+                                PMIX_RELEASE(kv);
+                            } else {
+                                rc = PMIX_ERROR;
+                            }
                             if (PMIX_SUCCESS != rc) {
                                 cb->status = rc;
                                 goto done;

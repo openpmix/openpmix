@@ -1172,8 +1172,12 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                cptr = strdup(kv->value->data.string);
-                PMIX_RELEASE(kv);
+                if (NULL != kv) {  // should never be NULL
+                    cptr = strdup(kv->value->data.string);
+                    PMIX_RELEASE(kv);
+                } else {
+                    cptr = strdup("unknown");
+                }
             } else {
                 cptr = strdup("unknown");
             }
@@ -1187,12 +1191,16 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                PMIX_VALUE_GET_NUMBER(rc, kv->value, pid, pid_t);
-                PMIX_RELEASE(kv);
-                if (PMIX_SUCCESS != rc) {
-                    pidstring = strdup("unknown");
+                if (NULL != kv) { // should never be NULL
+                    PMIX_VALUE_GET_NUMBER(rc, kv->value, pid, pid_t);
+                    PMIX_RELEASE(kv);
+                    if (PMIX_SUCCESS != rc) {
+                        pidstring = strdup("unknown");
+                    } else {
+                        pmix_asprintf(&pidstring, "%u", pid);
+                    }
                 } else {
-                    pmix_asprintf(&pidstring, "%u", pid);
+                    pidstring = strdup("unknown");
                 }
             } else {
                 pidstring = strdup("unknown");
