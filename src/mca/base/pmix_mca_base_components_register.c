@@ -118,7 +118,8 @@ static int register_components(pmix_mca_base_framework_t *framework)
                    display the error in the stream where it was
                    expected. */
 
-                if (pmix_mca_base_component_show_load_errors) {
+                if (pmix_mca_base_show_load_errors(component->pmix_mca_type_name,
+                                                   component->pmix_mca_component_name)) {
                     pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_ERROR, output_id,
                                         "pmix:mca: base: components_register: component %s "
                                         "/ %s register function failed",

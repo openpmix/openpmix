@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2022 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
@@ -59,6 +59,9 @@ int pmix_mca_base_close(void)
 
         /* Shut down the dynamic component finder */
         pmix_mca_base_component_find_finalize();
+
+        /* Shut down the show_load_errors processing */
+        pmix_mca_base_show_load_errors_finalize();
 
         /* Close pmix output stream 0 */
         pmix_output_close(0);

@@ -63,6 +63,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 #include <sys/time.h> /* for struct timeval */
 #include <unistd.h> /* for uid_t and gid_t */
 #include <sys/types.h> /* for uid_t and gid_t */
@@ -3462,13 +3463,76 @@ typedef struct pmix_info {
 #define PMIX_INFO_IS_PERSISTENT(ii)  \
     ((ii)->flags & PMIX_INFO_PERSISTENT)
 
+typedef enum {
+    PMIX_BOOL_TRUE,
+    PMIX_BOOL_FALSE,
+    PMIX_NON_BOOL
+} pmix_boolean_t;
+
+/**
+ * Provide a check to see if a value is "true" or
+ * "false", whether given as a string or boolean
+ * input.
+ */
+static inline pmix_boolean_t pmix_check_true(const pmix_value_t *value)
+{
+    char *ptr;
+
+    if (PMIX_UNDEF == value->type) {
+        return PMIX_BOOL_TRUE; // default to true
+    }
+    if (PMIX_BOOL == value->type) {
+        if (value->data.flag) {
+            return PMIX_BOOL_TRUE;
+        } else {
+            return PMIX_BOOL_FALSE;
+        }
+    }
+    if (PMIX_STRING == value->type) {
+        if (NULL == value->data.string) {
+            return PMIX_BOOL_TRUE;
+        }
+        ptr = value->data.string;
+        /* Trim leading whitespace */
+        while (isspace(*ptr)) {
+            ++ptr;
+        }
+        if ('\0' == *ptr) {
+            return PMIX_BOOL_TRUE;
+        }
+        if (isdigit(*ptr)) {
+            if (0 == atoi(ptr)) {
+                return PMIX_BOOL_FALSE;
+            } else {
+                return PMIX_BOOL_TRUE;
+            }
+        } else if (0 == strncasecmp(ptr, "yes", 3) ||
+                   0 == strncasecmp(ptr, "true", 4)) {
+            return PMIX_BOOL_TRUE;
+        } else if (0 == strncasecmp(ptr, "no", 2) ||
+                   0 == strncasecmp(ptr, "false", 5)) {
+            return PMIX_BOOL_FALSE;
+        }
+    }
+
+    return PMIX_NON_BOOL;
+}
+
+/* provide a macro version of it for those preferring
+ * that syntax in their codes where they know the
+ * value being checked IS a boolean of some form
+ */
+#define PMIX_CHECK_TRUE(a) \
+    (PMIX_BOOL_TRUE == pmix_check_true(a) ? true : false)
+
 /* define a special macro for checking if a boolean
  * info is true - when info structs are provided, a
  * type of PMIX_UNDEF is taken to imply a boolean "true"
  * as the presence of the key defaults to indicating
- * "true" */
+ * "true". Also supports passing of string representations
+ * such as "t" or "f" */
 #define PMIX_INFO_TRUE(m)   \
-    (PMIX_UNDEF == (m)->value.type || (PMIX_BOOL == (m)->value.type && (m)->value.data.flag)) ? true : false
+    (PMIX_BOOL_TRUE == pmix_check_true(&(m)->value) ? true : false)
 
 
 /****    PMIX LOOKUP RETURN STRUCT    ****/
