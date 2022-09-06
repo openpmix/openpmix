@@ -3525,6 +3525,9 @@ static inline pmix_boolean_t pmix_check_true(const pmix_value_t *value)
 #define PMIX_CHECK_TRUE(a) \
     (PMIX_BOOL_TRUE == pmix_check_true(a) ? true : false)
 
+#define PMIX_CHECK_BOOL(a) \
+    (PMIX_NON_BOOL == pmix_check_true(a) ? false : true)
+
 /* define a special macro for checking if a boolean
  * info is true - when info structs are provided, a
  * type of PMIX_UNDEF is taken to imply a boolean "true"

@@ -235,6 +235,33 @@ static inline bool pmix_check_cli_option(char *a, char *b)
 #define PMIX_CHECK_CLI_OPTION(a, b) \
     pmix_check_cli_option(a, b)
 
+static inline unsigned int pmix_convert_string_to_time(const char *t)
+{
+    char **tmp = pmix_argv_split(t, ':');
+    int sz = pmix_argv_count(tmp);
+    unsigned int tm;
+
+    /* work upwards from the bottom, where the
+     * bottom represents seconds, then minutes,
+     * then hours, and then days */
+    tm = strtoul(tmp[sz-1], NULL, 10);
+    if (0 <= (sz-2) && NULL != tmp[sz-2]) {
+        tm += 60 * strtoul(tmp[sz-2], NULL, 10);
+    }
+    if (0 <= (sz-3) && NULL != tmp[sz-3]) {
+        tm += 60 * 60 * strtoul(tmp[sz-3], NULL, 10);
+    }
+    if (0 <= (sz-4) && NULL != tmp[sz-4]) {
+        tm += 24 * 60 * 60 * strtoul(tmp[sz-4], NULL, 10);
+    }
+    pmix_argv_free(tmp);
+    return tm;
+}
+
+#define PMIX_CONVERT_TIME(s)    \
+    pmix_convert_string_to_time(s)
+
+
 #define PMIX_CLI_DEBUG_LIST(r)  \
 do {                                                                    \
     pmix_cli_item_t *_c;                                                \
