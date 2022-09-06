@@ -235,12 +235,15 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
         PMIX_DSTOR_RELEASE(hv);
         return rc;
     }
-    pmix_output_verbose(10, pmix_globals.debug_output,
-                        "%s ADDING KEY %s VALUE %s FOR RANK %s WITH %u QUALS TO TABLE %s",
-                        PMIX_NAME_PRINT(&pmix_globals.myid),
-                        kin->key, PMIx_Value_string(kin->value),
-                        PMIX_RANK_PRINT(rank), (unsigned)m,
-                        table->ht_label);
+    if (9 < pmix_output_get_verbosity(pmix_globals.debug_output)) {
+        char *v = PMIx_Value_string(kin->value);
+        pmix_output(0, "%s ADDING KEY %s VALUE %s FOR RANK %s WITH %u QUALS TO TABLE %s",
+                    PMIX_NAME_PRINT(&pmix_globals.myid),
+                    kin->key, v,
+                    PMIX_RANK_PRINT(rank), (unsigned)m,
+                    table->ht_label);
+        free(v);
+    }
     pmix_pointer_array_add(&proc_data->data, hv);
     return PMIX_SUCCESS;
 }

@@ -127,6 +127,7 @@ do {                                    \
     if (NULL != (d)->value) {           \
         PMIX_VALUE_RELEASE((d)->value); \
     }                                   \
+    free(d);                            \
 } while(0)
 
 /* define a struct for passing topology objects */

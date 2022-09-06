@@ -551,7 +551,7 @@ static pmix_status_t read_topic(FILE *fp, char ***array)
         if (0 == strncmp(line, "#include#", strlen("#include#"))) {
             /* keyword "include" found - check for file/topic */
             file = &line[strlen("#include#")];
-            if (NULL == file) {
+            if (0 == strlen(file)) {
                 /* missing filename */
                 free(line);
                 return PMIX_ERR_BAD_PARAM;

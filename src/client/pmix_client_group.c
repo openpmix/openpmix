@@ -643,14 +643,16 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                 PMIX_DESTRUCT(&cb2);
-                PMIX_VALUE_GET_NUMBER(rc, kv->value, jsize, uint32_t);
-                PMIX_RELEASE(kv);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_RELEASE(cb);
-                    PMIX_DESTRUCT(&cb2);
-                    return PMIX_ERR_BAD_PARAM;
+                if (NULL != kv) {  // should never be NULL
+                    PMIX_VALUE_GET_NUMBER(rc, kv->value, jsize, uint32_t);
+                    PMIX_RELEASE(kv);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_RELEASE(cb);
+                        PMIX_DESTRUCT(&cb2);
+                        return PMIX_ERR_BAD_PARAM;
+                    }
+                    cb->nmembers += jsize;
                 }
-                cb->nmembers += jsize;
             } else {
                 PMIX_RELEASE(cb);
                 PMIX_DESTRUCT(&cb2);
