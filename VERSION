@@ -43,7 +43,7 @@ greek=rc1
 # magnitude of the changes.
 std_major=4
 std_minor=2
-std_extension=1
+std_extension=2
 
 # PMIx Standard ABI Compliance Level(s)
 # The major and minor numbers (MAJOR.MINOR) indicate the version

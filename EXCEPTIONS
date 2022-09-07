@@ -148,6 +148,10 @@ PMIX_INFO_SET_QUALIFIER - mark this pmix_info_t as a qualifier to the
 PMIX_INFO_IS_PERSISTENT - test if this pmix_info_t has been marked as persistent
 PMIX_INFO_IS_QUALIFIER - test if this pmix_info_t has been marked as a qualifier
 PMIX_DATA_ARRAY_INIT - initialize a pmix_data_array_t
+PMIX_CHECK_TRUE - check if a pmix_value_t is boolean "true" (supports
+  string as well as traditional boolean values)
+PMIX_CHECK_BOOL - check if a pmix_value_t is a boolean value (supports
+  string as well as traditional boolean values)
 
  - Macros supporting pmix_disk_stats_t objects
 PMIX_DISK_STATS_CONSTRUCT
