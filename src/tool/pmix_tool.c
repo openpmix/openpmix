@@ -158,6 +158,7 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     pmix_cmd_t cmd;
     pmix_event_chain_t *chain;
     size_t ninfo;
+    pmix_data_range_t range;
     PMIX_HIDE_UNUSED_PARAMS(peer, hdr, cbdata);
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
@@ -227,14 +228,33 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
             goto error;
         }
     }
+    /* unpack the range, if provided */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &range, &cnt, PMIX_DATA_RANGE);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(chain);
+        goto error;
+    }
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        range = PMIX_RANGE_LOCAL;
+    }
+    if (PMIX_RANGE_LOCAL != range && pmix_globals.connected &&
+        !(PMIX_CHECK_NSPACE(peer->nptr->nspace, pmix_client_globals.myserver->nptr->nspace) &&
+          peer->info->pname.rank == pmix_client_globals.myserver->info->pname.rank)) {
+        pmix_output_verbose(2, pmix_client_globals.event_output,
+                            "[%s:%d] pmix:tool_notify_recv - relaying to server",
+                            pmix_globals.myid.nspace, pmix_globals.myid.rank);
+        rc = pmix_notify_server_of_event(chain->status, &chain->source, range,
+                                         chain->info, chain->ninfo, NULL, NULL, false);
+    }
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
         "[%s:%d] pmix:tool_notify_recv - processing event %s from source %s:%d, calling errhandler",
         pmix_globals.myid.nspace, pmix_globals.myid.rank, PMIx_Error_string(chain->status),
         chain->source.nspace, chain->source.rank);
 
-    rc = pmix_server_notify_client_of_event(chain->status, &chain->source,
-                                            PMIX_RANGE_LOCAL, // will be ignored
+    rc = pmix_server_notify_client_of_event(chain->status, &chain->source, range,
                                             chain->info, chain->ninfo, _notify_complete, chain);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);

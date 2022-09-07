@@ -192,6 +192,10 @@ PMIX_EXPORT pmix_status_t pmix_server_notify_client_of_event(pmix_status_t statu
                                                              pmix_data_range_t range,
                                                              const pmix_info_t info[], size_t ninfo,
                                                              pmix_op_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_t *source,
+                                                      pmix_data_range_t range, const pmix_info_t info[],
+                                                      size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata,
+                                                      bool dolocal);
 
 PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
 
