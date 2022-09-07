@@ -23,8 +23,19 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.2.1 -- TBD
+4.2.1 -- 09 Sept 2022
 ----------------------
+ - PR #2747 Final prep for release
+ = PR #2746 Ensure tools relay events to their server
+ - PR #2744 Multiple commits
+    - Clean up leftover .gitignore entry
+    - Fix a number of Coverity issues
+    - Add a couple of macro definitions
+ - PR #2739 Multiple commits
+    - Consistently use PMIx_Error_string in client example
+    - Convert the MCA parameter for "show_load_errors"
+ - PR #2734 Add some detail to warning output by flex detector
+ - PR #2731 Do not set the buffer type in construct
  - PR #2728 Prep for v4.2.1rc1
     - Add some attributes to support job launch
     - Update EXCEPTIONS, NEWS, VERSION for v4.2.1rc1
