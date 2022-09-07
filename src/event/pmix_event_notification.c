@@ -28,9 +28,6 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/server/pmix_server_ops.h"
 
-static pmix_status_t notify_server_of_event(pmix_status_t status, const pmix_proc_t *source,
-                                            pmix_data_range_t range, const pmix_info_t info[],
-                                            size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata);
 static void progress_local_event_hdlr(pmix_status_t status, pmix_info_t *results, size_t nresults,
                                       pmix_op_cbfunc_t cbfunc, void *thiscbdata,
                                       void *notification_cbdata);
@@ -83,7 +80,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
                         (NULL == source) ? pmix_globals.myid.nspace : source->nspace,
                         (NULL == source) ? pmix_globals.myid.rank : source->rank, status);
 
-    rc = notify_server_of_event(status, source, range, info, ninfo, cbfunc, cbdata);
+    rc = pmix_notify_server_of_event(status, source, range, info, ninfo, cbfunc, cbdata, true);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }
@@ -160,15 +157,16 @@ pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd)
 }
 
 /* as a client, we pass the notification to our server */
-static pmix_status_t notify_server_of_event(pmix_status_t status, const pmix_proc_t *source,
-                                            pmix_data_range_t range, const pmix_info_t info[],
-                                            size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata)
+pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_t *source,
+                                          pmix_data_range_t range, const pmix_info_t info[],
+                                          size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata,
+                                          bool dolocal)
 {
     pmix_status_t rc;
     pmix_buffer_t *msg = NULL;
     pmix_cmd_t cmd = PMIX_NOTIFY_CMD;
     pmix_cb_t *cb;
-    pmix_event_chain_t *chain;
+    pmix_event_chain_t *chain = NULL;
     size_t n;
     pmix_notify_caddy_t *cd;
 
@@ -220,59 +218,61 @@ static pmix_status_t notify_server_of_event(pmix_status_t status, const pmix_pro
         }
     }
 
-    /* setup for our own local callbacks */
-    chain = PMIX_NEW(pmix_event_chain_t);
-    chain->status = status;
-    chain->range = range;
-    if (NULL == source) {
-        PMIX_LOAD_PROCID(&chain->source, pmix_globals.myid.nspace, pmix_globals.myid.rank);
-    } else {
-        PMIX_LOAD_PROCID(&chain->source, source->nspace, source->rank);
-    }
-    /* we always leave space for event hdlr name and a callback object */
-    chain->nallocated = ninfo + 2;
-    PMIX_INFO_CREATE(chain->info, chain->nallocated);
-    /* prep the chain for processing */
-    pmix_prep_event_chain(chain, info, ninfo, true);
-
-    /* we need to cache this event so we can pass it into
-     * ourselves should someone later register for it */
-    cd = PMIX_NEW(pmix_notify_caddy_t);
-    cd->status = status;
-    PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
-    cd->range = chain->range;
-    if (0 < chain->ninfo) {
-        cd->ninfo = chain->ninfo;
-        PMIX_INFO_CREATE(cd->info, cd->ninfo);
-        cd->nondefault = chain->nondefault;
-        /* need to copy the info */
-        for (n = 0; n < cd->ninfo; n++) {
-            PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
+    if (dolocal) {
+        /* setup for our own local callbacks */
+        chain = PMIX_NEW(pmix_event_chain_t);
+        chain->status = status;
+        chain->range = range;
+        if (NULL == source) {
+            PMIX_LOAD_PROCID(&chain->source, pmix_globals.myid.nspace, pmix_globals.myid.rank);
+        } else {
+            PMIX_LOAD_PROCID(&chain->source, source->nspace, source->rank);
         }
-    }
-    if (NULL != chain->targets) {
-        cd->ntargets = chain->ntargets;
-        PMIX_PROC_CREATE(cd->targets, cd->ntargets);
-        memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
-    }
-    if (NULL != chain->affected) {
-        cd->naffected = chain->naffected;
-        PMIX_PROC_CREATE(cd->affected, cd->naffected);
-        if (NULL == cd->affected) {
-            cd->naffected = 0;
-            rc = PMIX_ERR_NOMEM;
+        /* we always leave space for event hdlr name and a callback object */
+        chain->nallocated = ninfo + 2;
+        PMIX_INFO_CREATE(chain->info, chain->nallocated);
+        /* prep the chain for processing */
+        pmix_prep_event_chain(chain, info, ninfo, true);
+
+        /* we need to cache this event so we can pass it into
+         * ourselves should someone later register for it */
+        cd = PMIX_NEW(pmix_notify_caddy_t);
+        cd->status = status;
+        PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
+        cd->range = chain->range;
+        if (0 < chain->ninfo) {
+            cd->ninfo = chain->ninfo;
+            PMIX_INFO_CREATE(cd->info, cd->ninfo);
+            cd->nondefault = chain->nondefault;
+            /* need to copy the info */
+            for (n = 0; n < cd->ninfo; n++) {
+                PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
+            }
+        }
+        if (NULL != chain->targets) {
+            cd->ntargets = chain->ntargets;
+            PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+            memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+        }
+        if (NULL != chain->affected) {
+            cd->naffected = chain->naffected;
+            PMIX_PROC_CREATE(cd->affected, cd->naffected);
+            if (NULL == cd->affected) {
+                cd->naffected = 0;
+                rc = PMIX_ERR_NOMEM;
+                goto cleanup;
+            }
+            memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+        }
+        /* cache it */
+        rc = pmix_notify_event_cache(cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cd);
             goto cleanup;
         }
-        memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+        chain->cached = true;
     }
-    /* cache it */
-    rc = pmix_notify_event_cache(cd);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(cd);
-        goto cleanup;
-    }
-    chain->cached = true;
 
     if (PMIX_RANGE_PROC_LOCAL != range && NULL != msg) {
         /* if this is a "lost-connection" event, then there is no
@@ -308,8 +308,10 @@ static pmix_status_t notify_server_of_event(pmix_status_t status, const pmix_pro
     }
 
 local:
-    /* now notify any matching registered callbacks we have */
-    pmix_invoke_local_event_hdlr(chain);
+    if (dolocal) {
+        /* now notify any matching registered callbacks we have */
+        pmix_invoke_local_event_hdlr(chain);
+    }
 
     return PMIX_SUCCESS;
 
@@ -837,7 +839,6 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     }
     pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
-
                         __FILE__, __LINE__);
 
     /* if we got here, then nothing was found */
@@ -1183,6 +1184,14 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                             continue;
                         }
                     }
+                    /* pack the range in case they need to relay */
+                    PMIX_BFROPS_PACK(rc, pr->peer, bfr, &cd->range, 1, PMIX_DATA_RANGE);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_RELEASE(bfr);
+                        continue;
+                    }
+
                     PMIX_SERVER_QUEUE_REPLY(rc, pr->peer, 0, bfr);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_RELEASE(bfr);
