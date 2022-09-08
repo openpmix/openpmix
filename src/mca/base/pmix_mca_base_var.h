@@ -538,22 +538,6 @@ PMIX_EXPORT int pmix_mca_base_var_set_value(int vari, const void *value, size_t 
                                             pmix_mca_base_var_source_t source,
                                             const char *source_file);
 
-/**
- * Get the string name corresponding to the MCA variable
- * value in the environment.
- *
- * @param param_name Name of the type containing the variable.
- *
- * @retval string A string suitable for setenv() or appending to
- * an environ-style string array.
- * @retval NULL Upon failure.
- *
- * The string that is returned is owned by the caller; if
- * appropriate, it must be eventually freed by the caller.
- */
-PMIX_EXPORT int pmix_mca_base_var_env_name(const char *param_name, char **env_name);
-
-/**
  * Find the index for an MCA variable based on its names.
  *
  * @param project_name   Name of the project
