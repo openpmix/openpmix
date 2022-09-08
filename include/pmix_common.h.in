@@ -408,6 +408,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_REQUIRED_KEY                   "pmix.req.key"          // (char*) key the user needs prior to responding from a dmodex request
 #define PMIX_LOCAL_COLLECTIVE_STATUS        "pmix.loc.col.st"       // (pmix_status_t) status code for local collective operation being
                                                                     //         reported to host by server library
+#define PMIX_SORTED_PROC_ARRAY              "pmix.sorted.parr"      // (bool) Proc array being passed has been sorted
 
 
 /* event handler registration and notification info keys */
