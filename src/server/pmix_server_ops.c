@@ -971,7 +971,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-    ninfo = ninf + 1;
+    ninfo = ninf + 2;
     PMIX_INFO_CREATE(info, ninfo);
     if (NULL == info) {
         PMIX_PROC_FREE(procs, nprocs);
@@ -979,7 +979,8 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     }
     /* store the default response */
     rc = PMIX_SUCCESS;
-    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    PMIX_INFO_LOAD(&info[ninf+1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    PMIX_INFO_LOAD(&info[ninf], PMIX_SORTED_PROC_ARRAY, NULL, PMIX_BOOL);
     if (0 < ninf) {
         /* unpack the info */
         cnt = ninf;
@@ -1786,7 +1787,7 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     if (PMIX_SUCCESS != rc) {
         return rc;
     }
-    ninfo = ninf + 1;
+    ninfo = ninf + 2;
     PMIX_INFO_CREATE(info, ninfo);
     if (NULL == info) {
         rc = PMIX_ERR_NOMEM;
@@ -1794,7 +1795,8 @@ pmix_status_t pmix_server_disconnect(pmix_server_caddy_t *cd, pmix_buffer_t *buf
     }
     /* store the default response */
     rc = PMIX_SUCCESS;
-    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    PMIX_INFO_LOAD(&info[ninf+1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    PMIX_INFO_LOAD(&info[ninf], PMIX_SORTED_PROC_ARRAY, NULL, PMIX_BOOL);
     if (0 < ninf) {
         /* unpack the info */
         cnt = ninf;
@@ -1956,7 +1958,7 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    ninfo = ninf + 1;
+    ninfo = ninf + 2;
     PMIX_INFO_CREATE(info, ninfo);
     if (NULL == info) {
         rc = PMIX_ERR_NOMEM;
@@ -1964,7 +1966,8 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     }
     /* store the default response */
     rc = PMIX_SUCCESS;
-    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    PMIX_INFO_LOAD(&info[ninf+1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    PMIX_INFO_LOAD(&info[ninf], PMIX_SORTED_PROC_ARRAY, NULL, PMIX_BOOL);
     if (0 < ninf) {
         /* unpack the info */
         cnt = ninf;
@@ -4128,6 +4131,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     bool match, force_local = false;
     bool embed_barrier = false;
     bool barrier_directive_included = false;
+    bool sorted = false;
     pmix_buffer_t bucket, bkt;
     pmix_byte_object_t bo;
     pmix_grpinfo_t *g = NULL;
@@ -4197,6 +4201,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
         grp->members = procs;
         grp->nmbrs = nprocs;
+        sorted = true;
     } else {
         PMIX_PROC_FREE(procs, nprocs);
     }
@@ -4208,11 +4213,20 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    ninfo = ninf + 1;
+    if (sorted) {
+        ninfo = ninf + 2;
+    } else {
+        ninfo = ninf + 1;
+    }
     PMIX_INFO_CREATE(info, ninfo);
     /* store default response */
     rc = PMIX_SUCCESS;
-    PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    if (sorted) {
+        PMIX_INFO_LOAD(&info[ninf], PMIX_SORTED_PROC_ARRAY, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[ninf+1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    } else {
+        PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
+    }
     if (0 < ninf) {
         cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
