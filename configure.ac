@@ -235,10 +235,6 @@ fi
 # Configuration options
 ############################################################################
 
-# Set the MCA prefix
-PMIX_SET_MCA_PREFIX([PMIX_MCA_])
-PMIX_SET_MCA_CMD_LINE_ID([pmca])
-
 # Define PMIx configure arguments
 PMIX_DEFINE_ARGS
 # Define some basic useful values
