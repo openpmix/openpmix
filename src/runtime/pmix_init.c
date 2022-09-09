@@ -19,6 +19,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -74,11 +75,7 @@ const char* pmix_tool_msg = PMIX_PROXY_BUGREPORT_STRING;
 
 PMIX_EXPORT bool pmix_init_called = false;
 /* we have to export the pmix_globals object so
- * all plugins can access it. However, it is included
- * in the pmix_rename.h file for external protection.
- * Initialize only those entries that are not covered
- * by MCA params or are complex structures initialized
- * below */
+ * all plugins can access it. */
 PMIX_EXPORT pmix_globals_t pmix_globals = {
     .init_cntr = 0,
     .myid = PMIX_PROC_STATIC_INIT,
@@ -130,10 +127,9 @@ static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_n
 
 static bool util_initialized = false;
 
-int pmix_init_util(pmix_info_t info[], size_t ninfo, char *helpdir)
+int pmix_init_util(pmix_info_t info[], size_t ninfo, char *libdir)
 {
     pmix_status_t ret;
-    PMIX_HIDE_UNUSED_PARAMS(helpdir);
 
     if (util_initialized) {
         return PMIX_SUCCESS;
@@ -164,7 +160,7 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *helpdir)
     }
 
     /* initialize the help system */
-    pmix_show_help_init(helpdir);
+    pmix_show_help_init(NULL);
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (ret = pmix_util_keyval_parse_init())) {
@@ -185,7 +181,7 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *helpdir)
     }
 
     /* initialize the mca */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_open())) {
+    if (PMIX_SUCCESS != (ret = pmix_mca_base_open(libdir))) {
         fprintf(stderr, "pmix_mca_base_open failed\n");
         return ret;
     }
@@ -218,7 +214,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
 
 #if PMIX_NO_LIB_DESTRUCTOR
     if (pmix_init_called) {
-        /* can't use pmix_pmix_show_help.here */
+        /* can't use pmix_show_help.here */
         fprintf(
             stderr,
             "pmix_init: attempted to initialize after finalize without compiler "
