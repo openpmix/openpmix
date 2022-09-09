@@ -43,8 +43,8 @@
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
 #include "src/mca/pdl/base/base.h"
-#include "src/util/pmix_basename.h"
 #include "src/util/pmix_printf.h"
+#include "src/util/pmix_basename.h"
 #include "src/util/pmix_show_help.h"
 
 #if PMIX_HAVE_PDL_SUPPORT
@@ -94,13 +94,14 @@ static pmix_hash_table_t pmix_mca_base_component_repository;
 
 static int process_repository_item(const char *filename, void *data)
 {
-    (void) data;
-    char name[PMIX_MCA_BASE_MAX_COMPONENT_NAME_LEN + 1];
-    char type[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN + 1];
+    char *project = (char*)data;
+    char *name;
+    char *type;
     pmix_mca_base_component_repository_item_t *ri;
     pmix_list_t *component_list;
-    char *base;
+    char *base, *prefix;
     int ret;
+    size_t prefixlen;
 
     base = pmix_basename(filename);
     if (NULL == base) {
@@ -108,22 +109,29 @@ static int process_repository_item(const char *filename, void *data)
     }
 
     /* check if the plugin has the appropriate prefix */
-    if (0 != strncmp(base, "mca_", 4)) {
+    pmix_asprintf(&prefix, "%s_mca_", project);
+    if (0 != strncmp(base, prefix, strlen(prefix))) {
+        if (pmix_mca_base_show_load_errors(NULL, NULL)) {
+            pmix_output(0, "mca:base:process_repository_item filename %s has bad prefix - expected %s", filename, prefix);
+        }
         free(base);
+        free(prefix);
         return PMIX_SUCCESS;
     }
 
     /* read framework and component names. framework names may not include an _
      * but component names may */
-    ret = sscanf(base,
-                 "mca_%" STRINGIFY(PMIX_MCA_BASE_MAX_TYPE_NAME_LEN) "[^_]_%" STRINGIFY(
-                     PMIX_MCA_BASE_MAX_COMPONENT_NAME_LEN) "s",
-                 type, name);
-    if (0 > ret) {
-        /* does not patch the expected template. skip */
+    prefixlen = strlen(prefix);
+    type = &base[prefixlen];
+    name = strchr(type, '_');
+    if (NULL == name) {
         free(base);
-        return PMIX_SUCCESS;
+        free(prefix);
+        return PMIX_ERR_BAD_PARAM;
     }
+    *name = '\0';
+    ++name;
+    free(prefix);
 
     /* lookup the associated framework list and create if it doesn't already exist */
     ret = pmix_hash_table_get_value_ptr(&pmix_mca_base_component_repository, type, strlen(type),
@@ -157,10 +165,12 @@ static int process_repository_item(const char *filename, void *data)
     ri = PMIX_NEW(pmix_mca_base_component_repository_item_t);
     if (NULL == ri) {
         free(base);
+        free(project);
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
     ri->ri_base = base;
+    ri->ri_project = strdup(project);
 
     ri->ri_path = strdup(filename);
     if (NULL == ri->ri_path) {
@@ -201,7 +211,8 @@ static int file_exists(const char *filename, const char *ext)
 
 #endif /* PMIX_HAVE_PDL_SUPPORT */
 
-int pmix_mca_base_component_repository_add(const char *path)
+int pmix_mca_base_component_repository_add(const char *project,
+                                           const char *path)
 {
 #if PMIX_HAVE_PDL_SUPPORT
     char *path_to_use = NULL, *dir, *ctx;
@@ -216,16 +227,9 @@ int pmix_mca_base_component_repository_add(const char *path)
 
     dir = strtok_r(path_to_use, sep, &ctx);
     do {
-        if ((0 == strcmp(dir, "USER_DEFAULT") || 0 == strcmp(dir, "USR_DEFAULT"))
-            && NULL != pmix_mca_base_user_default_path) {
-            dir = pmix_mca_base_user_default_path;
-        } else if (0 == strcmp(dir, "SYS_DEFAULT") || 0 == strcmp(dir, "SYSTEM_DEFAULT")) {
-            dir = pmix_mca_base_system_default_path;
-        }
-
-        if (0 != pmix_pdl_foreachfile(dir, process_repository_item, NULL)
-            && !(0 == strcmp(dir, pmix_mca_base_system_default_path)
-                 || 0 == strcmp(dir, pmix_mca_base_user_default_path))) {
+        if (0 != pmix_pdl_foreachfile(dir, process_repository_item, (void*)project) &&
+            !(0 == strcmp(dir, pmix_mca_base_system_default_path) ||
+              0 == strcmp(dir, pmix_mca_base_user_default_path))) {
             // It is not an error if a directory fails to add (e.g.,
             // if it doesn't exist).  But we should warn about it as
             // it is something related to "show_load_errors"
@@ -235,7 +239,7 @@ int pmix_mca_base_component_repository_add(const char *path)
 
     free(path_to_use);
 #else
-    PMIX_HIDE_UNUSED_PARAMS(path);
+    PMIX_HIDE_UNUSED_PARAMS(project, path);
 #endif /* PMIX_HAVE_PDL_SUPPORT */
 
     return PMIX_SUCCESS;
@@ -248,11 +252,16 @@ int pmix_mca_base_component_repository_init(void)
 {
     /* Setup internal structures */
 
-    if (!initialized) {
 #if PMIX_HAVE_PDL_SUPPORT
+    char **projects = NULL, *pathstr;
+    char project[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN + 1];
+    int m, n;
+    int ret;
+
+    if (!initialized) {
 
         /* Initialize the dl framework */
-        int ret = pmix_mca_base_framework_open(&pmix_pdl_base_framework,
+        ret = pmix_mca_base_framework_open(&pmix_pdl_base_framework,
                                                PMIX_MCA_BASE_OPEN_DEFAULT);
         if (PMIX_SUCCESS != ret) {
             pmix_output(0,
@@ -269,17 +278,29 @@ int pmix_mca_base_component_repository_init(void)
             (void) pmix_mca_base_framework_close(&pmix_pdl_base_framework);
             return ret;
         }
-
-        ret = pmix_mca_base_component_repository_add(pmix_mca_base_component_path);
+        initialized = true;
+    }
+    /* split on semi-colons to find projects */
+    projects = pmix_argv_split(pmix_mca_base_component_path, ';');
+    for (n=0; NULL != projects[n]; n++) {
+        /* look for the '@' to delimit the project name */
+        for (m=0; '@' != projects[n][m]; m++) {
+            project[m] = projects[n][m];
+        }
+        project[m] = '\0';
+        ++m;
+        pathstr = &projects[n][m];
+        ret = pmix_mca_base_component_repository_add(project, pathstr);
         if (PMIX_SUCCESS != ret) {
             PMIX_DESTRUCT(&pmix_mca_base_component_repository);
             (void) pmix_mca_base_framework_close(&pmix_pdl_base_framework);
+            pmix_argv_free(projects);
             return ret;
         }
+    }
+    pmix_argv_free(projects);
 #endif
 
-        initialized = true;
-    }
 
     /* All done */
 
@@ -478,11 +499,8 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
        Malloc out enough space for it. */
 
     do {
-        ret = asprintf(&struct_name, "mca_%s_%s_component", ri->ri_type, ri->ri_name);
-        if (0 > ret) {
-            ret = PMIX_ERR_OUT_OF_RESOURCE;
-            break;
-        }
+        pmix_asprintf(&struct_name, "%s_mca_%s_%s_component",
+                      ri->ri_project, ri->ri_type, ri->ri_name);
 
         mitem = PMIX_NEW(pmix_mca_base_component_list_item_t);
         if (NULL == mitem) {
@@ -494,12 +512,12 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
         ret = pmix_pdl_lookup(ri->ri_dlhandle, struct_name, (void **) &component_struct, &err_msg);
         if (PMIX_SUCCESS != ret || NULL == component_struct) {
             if (NULL == err_msg) {
-                err_msg = "pmix_dl_loookup() error message was NULL!";
+                err_msg = "pmix_dl_lookup() error message was NULL!";
             }
             pmix_output_verbose(
                 vl, 0,
                 "pmix_mca_base_component_repository_open: \"%s\" does not appear to be a valid "
-                "%s MCA dynamic component (ignored): %s. ret %d",
+                "%s MCA dynamic component (ignored):\n    %s (ret %d)",
                 ri->ri_base, ri->ri_type, err_msg, ret);
 
             ret = PMIX_ERR_BAD_PARAM;
@@ -516,7 +534,7 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
               && PMIX_MCA_BASE_VERSION_MINOR == component_struct->pmix_mca_minor_version)) {
             pmix_output_verbose(
                 vl, 0,
-                "pmix_mca_base_component_repository_open: %s \"%s\" uses an MCA interface that is "
+                "pmix_mca_base_component_repository_open: %s\n    \"%s\" uses an MCA interface that is "
                 "not recognized (component MCA v%d.%d.%d != supported MCA v%d.%d.%d) -- ignored",
                 ri->ri_type, ri->ri_path, component_struct->pmix_mca_major_version,
                 component_struct->pmix_mca_minor_version,
@@ -532,7 +550,7 @@ int pmix_mca_base_component_repository_open(pmix_mca_base_framework_t *framework
             || 0 != strcmp(component_struct->pmix_mca_component_name, ri->ri_name)) {
             pmix_output_verbose(
                 vl, 0,
-                "Component file data does not match filename: %s (%s / %s) != %s %s -- ignored",
+                "Component file data does not match filename:\n    %s (%s / %s) != %s %s -- ignored",
                 ri->ri_path, ri->ri_type, ri->ri_name, component_struct->pmix_mca_type_name,
                 component_struct->pmix_mca_component_name);
             ret = PMIX_ERR_BAD_PARAM;
@@ -630,11 +648,14 @@ static void ri_destructor(pmix_mca_base_component_repository_item_t *ri)
        pointer is no longer valid because it has [potentially] been
        unloaded from memory.  So don't try to use it.  :-) */
 
-    if (ri->ri_path) {
+    if (NULL != ri->ri_project) {
+        free(ri->ri_project);
+    }
+    if (NULL != ri->ri_path) {
         free(ri->ri_path);
     }
 
-    if (ri->ri_base) {
+    if (NULL != ri->ri_base) {
         free(ri->ri_base);
     }
 }

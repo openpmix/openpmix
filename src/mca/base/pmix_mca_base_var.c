@@ -56,30 +56,20 @@
  * local variables
  */
 static pmix_pointer_array_t pmix_mca_base_vars;
-static const char *mca_prefix = "PMIX_MCA_";
 static char *home = NULL;
 static char *cwd = NULL;
 bool pmix_mca_base_var_initialized = false;
 static char *force_agg_path = NULL;
 static char *pmix_mca_base_var_files = NULL;
-static char *pmix_mca_base_envar_files = NULL;
 static char **pmix_mca_base_var_file_list = NULL;
 static char *pmix_mca_base_var_override_file = NULL;
 static char *pmix_mca_base_var_file_prefix = NULL;
-static char *pmix_mca_base_envar_file_prefix = NULL;
 static char *pmix_mca_base_param_file_path = NULL;
-static char *pmix_mca_base_env_list = NULL;
-#define PMIX_MCA_BASE_ENV_LIST_SEP_DEFAULT ";"
-static char *pmix_mca_base_env_list_sep = PMIX_MCA_BASE_ENV_LIST_SEP_DEFAULT;
-static char *pmix_mca_base_env_list_internal = NULL;
 static bool pmix_mca_base_var_suppress_override_warning = false;
-static pmix_list_t pmix_mca_base_var_file_values;
-static pmix_list_t pmix_mca_base_envar_file_values;
-static pmix_list_t pmix_mca_base_var_override_values;
-
+static pmix_list_t pmix_mca_base_var_file_values = PMIX_LIST_STATIC_INIT;
+static pmix_list_t pmix_mca_base_var_override_values = PMIX_LIST_STATIC_INIT;
 static int pmix_mca_base_var_count = 0;
-
-static pmix_hash_table_t pmix_mca_base_var_index_hash;
+static pmix_hash_table_t pmix_mca_base_var_index_hash = PMIX_HASH_TABLE_STATIC_INIT;
 
 #define PMIX_MCA_VAR_MBV_ENUMERATOR_FREE(mbv_enumerator)         \
     {                                                            \
@@ -107,10 +97,6 @@ const size_t pmix_var_type_sizes[] = {sizeof(int),           sizeof(unsigned),
 const char *pmix_var_source_names[] = {"default", "command line", "environment",
                                        "file",    "set",          "override"};
 
-static const char *info_lvl_strings[] = {"user/basic",  "user/detail",  "user/all",
-                                         "tuner/basic", "tuner/detail", "tuner/all",
-                                         "dev/basic",   "dev/detail",   "dev/all"};
-
 /*
  * local functions
  */
@@ -125,11 +111,16 @@ static int var_value_string(pmix_mca_base_var_t *var, char **value_string);
  */
 static void var_constructor(pmix_mca_base_var_t *p);
 static void var_destructor(pmix_mca_base_var_t *p);
-PMIX_CLASS_INSTANCE(pmix_mca_base_var_t, pmix_object_t, var_constructor, var_destructor);
+PMIX_CLASS_INSTANCE(pmix_mca_base_var_t,
+                    pmix_object_t,
+                    var_constructor,
+                    var_destructor);
 
 static void fv_constructor(pmix_mca_base_var_file_value_t *p);
 static void fv_destructor(pmix_mca_base_var_file_value_t *p);
-PMIX_CLASS_INSTANCE(pmix_mca_base_var_file_value_t, pmix_list_item_t, fv_constructor,
+PMIX_CLASS_INSTANCE(pmix_mca_base_var_file_value_t,
+                    pmix_list_item_t,
+                    fv_constructor,
                     fv_destructor);
 
 static const char *pmix_mca_base_var_source_file(const pmix_mca_base_var_t *var)
@@ -227,7 +218,6 @@ static char *append_filename_to_list(const char *filename)
 int pmix_mca_base_var_init(void)
 {
     int ret;
-    char *name = NULL;
 
     if (!pmix_mca_base_var_initialized) {
         /* Init the value array for the param storage */
@@ -244,7 +234,6 @@ int pmix_mca_base_var_init(void)
         /* Init the file param value list */
 
         PMIX_CONSTRUCT(&pmix_mca_base_var_file_values, pmix_list_t);
-        PMIX_CONSTRUCT(&pmix_mca_base_envar_file_values, pmix_list_t);
         PMIX_CONSTRUCT(&pmix_mca_base_var_override_values, pmix_list_t);
         PMIX_CONSTRUCT(&pmix_mca_base_var_index_hash, pmix_hash_table_t);
 
@@ -263,120 +252,8 @@ int pmix_mca_base_var_init(void)
         pmix_mca_base_var_initialized = true;
 
         pmix_mca_base_var_cache_files(false);
-
-        /* register the envar-forwarding params */
-        (void) pmix_mca_base_var_register("pmix", "mca", "base", "env_list",
-                                          "Set SHELL env variables", PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                          NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                          PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                          &pmix_mca_base_env_list);
-
-        pmix_mca_base_env_list_sep = PMIX_MCA_BASE_ENV_LIST_SEP_DEFAULT;
-        (void)
-            pmix_mca_base_var_register("pmix", "mca", "base", "env_list_delimiter",
-                                       "Set SHELL env variables delimiter. Default: semicolon ';'",
-                                       PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                       PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                       PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                       &pmix_mca_base_env_list_sep);
-
-        /* Set OMPI_MCA_pmix_mca_base_env_list variable, it might not be set before
-         * if mca variable was taken from amca conf file. Need to set it
-         * here because pmix_mca_base_var_process_env_list is called from schizo_ompi.c
-         * only when this env variable was set.
-         */
-        if (NULL != pmix_mca_base_env_list) {
-            (void) pmix_mca_base_var_env_name("pmix_mca_base_env_list", &name);
-            if (NULL != name) {
-                pmix_setenv(name, pmix_mca_base_env_list, false, &environ);
-                free(name);
-            }
-        }
-
-        /* Register internal MCA variable pmix_mca_base_env_list_internal. It can be set only during
-         * parsing of amca conf file and contains SHELL env variables specified via -x there.
-         * Its format is the same as for pmix_mca_base_env_list.
-         */
-        (void) pmix_mca_base_var_register("pmix", "mca", "base", "env_list_internal",
-                                          "Store SHELL env variables from amca conf file",
-                                          PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                          PMIX_MCA_BASE_VAR_FLAG_INTERNAL, PMIX_INFO_LVL_3,
-                                          PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                          &pmix_mca_base_env_list_internal);
     }
 
-    return PMIX_SUCCESS;
-}
-
-static void process_env_list(char *env_list, char ***argv, char sep)
-{
-    char **tokens;
-    char *ptr, *value;
-
-    tokens = pmix_argv_split(env_list, (int) sep);
-    if (NULL == tokens) {
-        return;
-    }
-
-    for (int i = 0; NULL != tokens[i]; ++i) {
-        if (NULL == (ptr = strchr(tokens[i], '='))) {
-            value = getenv(tokens[i]);
-            if (NULL == value) {
-                pmix_show_help("help-pmix-mca-var.txt", "incorrect-env-list-param", true, tokens[i],
-                               env_list);
-                break;
-            }
-
-            /* duplicate the value to silence tainted string coverity issue */
-            value = strdup(value);
-            if (NULL == value) {
-                /* out of memory */
-                break;
-            }
-
-            if (NULL != (ptr = strchr(value, '='))) {
-                *ptr = '\0';
-                pmix_setenv(value, ptr + 1, true, argv);
-            } else {
-                pmix_setenv(tokens[i], value, true, argv);
-            }
-
-            free(value);
-        } else {
-            *ptr = '\0';
-            pmix_setenv(tokens[i], ptr + 1, true, argv);
-            /* NTH: don't bother resetting ptr to = since the string will not be used again */
-        }
-    }
-
-    pmix_argv_free(tokens);
-}
-
-int pmix_mca_base_var_process_env_list(char ***argv)
-{
-    char sep;
-    sep = ';';
-    if (NULL != pmix_mca_base_env_list_sep) {
-        if (1 == strlen(pmix_mca_base_env_list_sep)) {
-            sep = pmix_mca_base_env_list_sep[0];
-        } else {
-            pmix_show_help("help-pmix-mca-var.txt", "incorrect-env-list-sep", true,
-                           pmix_mca_base_env_list_sep);
-            return PMIX_SUCCESS;
-        }
-    }
-    if (NULL != pmix_mca_base_env_list) {
-        process_env_list(pmix_mca_base_env_list, argv, sep);
-    }
-
-    return PMIX_SUCCESS;
-}
-
-int pmix_mca_base_var_process_env_list_from_file(char ***argv)
-{
-    if (NULL != pmix_mca_base_env_list_internal) {
-        process_env_list(pmix_mca_base_env_list_internal, argv, ';');
-    }
     return PMIX_SUCCESS;
 }
 
@@ -450,15 +327,12 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     ret = pmix_mca_base_var_register("pmix", "mca", "base", "param_files",
                                      "Path for MCA "
                                      "configuration files containing variable values",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                     PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
-                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_var_files);
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                     &pmix_mca_base_var_files);
     free(tmp);
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
-
-    pmix_mca_base_envar_files = strdup(pmix_mca_base_var_files);
 
     (void) pmix_mca_base_var_register_synonym(ret, "pmix", "mca", NULL, "param_files",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
@@ -474,9 +348,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     ret = pmix_mca_base_var_register("pmix", "mca", "base", "override_param_file",
                                      "Variables set in this file will override any value set in"
                                      "the environment or another configuration file",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                     PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY, PMIX_INFO_LVL_2,
-                                     PMIX_MCA_BASE_VAR_SCOPE_CONSTANT,
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_mca_base_var_override_file);
     free(tmp);
     if (0 > ret) {
@@ -492,8 +364,8 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     ret = pmix_mca_base_var_register(
         "pmix", "mca", "base", "suppress_override_warning",
         "Suppress warnings when attempting to set an overridden value (default: false)",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &pmix_mca_base_var_suppress_override_warning);
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_mca_base_var_suppress_override_warning);
     if (0 > ret) {
         return ret;
     }
@@ -505,26 +377,13 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     pmix_mca_base_var_file_prefix = NULL;
     ret = pmix_mca_base_var_register("pmix", "mca", "base", "param_file_prefix",
                                      "Aggregate MCA parameter file sets",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                     PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_mca_base_var_file_prefix);
     if (0 > ret) {
         return ret;
     }
 
-    pmix_mca_base_envar_file_prefix = NULL;
-    ret = pmix_mca_base_var_register("pmix", "mca", "base", "envar_file_prefix",
-                                     "Aggregate MCA parameter file set for env variables",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                     PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                     &pmix_mca_base_envar_file_prefix);
-    if (0 > ret) {
-        return ret;
-    }
-
-    ret = asprintf(&pmix_mca_base_param_file_path, "%s" PMIX_PATH_SEP "amca-param-sets%c%s",
+   ret = asprintf(&pmix_mca_base_param_file_path, "%s" PMIX_PATH_SEP "amca-param-sets%c%s",
                    pmix_pinstall_dirs.pmixdatadir, PMIX_ENV_SEP, cwd);
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -533,9 +392,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     tmp = pmix_mca_base_param_file_path;
     ret = pmix_mca_base_var_register("pmix", "mca", "base", "param_file_path",
                                      "Aggregate MCA parameter Search path",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                     PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
                                      &pmix_mca_base_param_file_path);
     free(tmp);
     if (0 > ret) {
@@ -545,9 +402,8 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     force_agg_path = NULL;
     ret = pmix_mca_base_var_register("pmix", "mca", "base", "param_file_path_force",
                                      "Forced Aggregate MCA parameter Search path",
-                                     PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                     PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_3,
-                                     PMIX_MCA_BASE_VAR_SCOPE_READONLY, &force_agg_path);
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                     &force_agg_path);
     if (0 > ret) {
         return ret;
     }
@@ -572,12 +428,6 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
                                rel_path_search, &pmix_mca_base_var_files, PMIX_ENV_SEP);
     }
     read_files(pmix_mca_base_var_files, &pmix_mca_base_var_file_values, ',');
-
-    if (NULL != pmix_mca_base_envar_file_prefix) {
-        resolve_relative_paths(&pmix_mca_base_envar_file_prefix, pmix_mca_base_param_file_path,
-                               rel_path_search, &pmix_mca_base_envar_files, ',');
-    }
-    read_files(pmix_mca_base_envar_files, &pmix_mca_base_envar_file_values, ',');
 
     if (0 == access(pmix_mca_base_var_override_file, F_OK)) {
         read_files(pmix_mca_base_var_override_file, &pmix_mca_base_var_override_values,
@@ -803,54 +653,6 @@ static int var_set_from_string(pmix_mca_base_var_t *var, char *src)
 }
 
 /*
- * Set a variable
- */
-int pmix_mca_base_var_set_value(int vari, const void *value, size_t size,
-                                pmix_mca_base_var_source_t source, const char *source_file)
-{
-    (void) size;
-    pmix_mca_base_var_t *var;
-    int ret;
-
-    ret = var_get(vari, &var, true);
-    if (PMIX_SUCCESS != ret) {
-        return ret;
-    }
-
-    if (!PMIX_VAR_IS_VALID(var[0])) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    if (!PMIX_VAR_IS_SETTABLE(var[0])) {
-        return PMIX_ERR_PERM;
-    }
-
-    if (NULL != var->mbv_enumerator) {
-        /* Validate */
-        ret = var->mbv_enumerator->string_from_value(var->mbv_enumerator, ((int *) value)[0], NULL);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-    }
-
-    if (PMIX_MCA_BASE_VAR_TYPE_STRING != var->mbv_type
-        && PMIX_MCA_BASE_VAR_TYPE_VERSION_STRING != var->mbv_type) {
-        memmove(var->mbv_storage, value, pmix_var_type_sizes[var->mbv_type]);
-    } else {
-        var_set_string(var, (char *) value);
-    }
-
-    var->mbv_source = source;
-
-    if (PMIX_MCA_BASE_VAR_SOURCE_FILE == source && NULL != source_file) {
-        var->mbv_file_value = NULL;
-        var->mbv_source_file = append_filename_to_list(source_file);
-    }
-
-    return PMIX_SUCCESS;
-}
-
-/*
  * Deregister a parameter
  */
 int pmix_mca_base_var_deregister(int vari)
@@ -926,20 +728,6 @@ static int var_get(int vari, pmix_mca_base_var_t **var_out, bool original)
     return PMIX_SUCCESS;
 }
 
-int pmix_mca_base_var_env_name(const char *param_name, char **env_name)
-{
-    int ret;
-
-    assert(NULL != env_name);
-
-    ret = asprintf(env_name, "%s%s", mca_prefix, param_name);
-    if (0 > ret) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-
-    return PMIX_SUCCESS;
-}
-
 /*
  * Find the index for an MCA parameter based on its names.
  */
@@ -1008,22 +796,6 @@ int pmix_mca_base_var_find_by_name(const char *full_name, int *vari)
     return var_find_by_name(full_name, vari, false);
 }
 
-int pmix_mca_base_var_set_flag(int vari, pmix_mca_base_var_flag_t flag, bool set)
-{
-    pmix_mca_base_var_t *var;
-    int ret;
-
-    ret = var_get(vari, &var, true);
-    if (PMIX_SUCCESS != ret || PMIX_VAR_IS_SYNONYM(var[0])) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    var->mbv_flags = (var->mbv_flags & ~flag) | (set ? flag : 0);
-
-    /* All done */
-    return PMIX_SUCCESS;
-}
-
 /*
  * Return info on a parameter at an index
  */
@@ -1046,7 +818,7 @@ int pmix_mca_base_var_get(int vari, const pmix_mca_base_var_t **var)
 /*
  * Make an argv-style list of strings suitable for an environment
  */
-int pmix_mca_base_var_build_env(char ***env, int *num_env, bool internal)
+int pmix_mca_base_var_build_env(char ***env, int *num_env)
 {
     pmix_mca_base_var_t *var;
     size_t i, len;
@@ -1070,10 +842,8 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env, bool internal)
             continue;
         }
 
-        /* Don't output default values or internal variables (unless
-           requested) */
-        if (PMIX_MCA_BASE_VAR_SOURCE_DEFAULT == var->mbv_source
-            || (!internal && PMIX_VAR_IS_INTERNAL(var[0]))) {
+        /* Don't output default values */
+        if (PMIX_MCA_BASE_VAR_SOURCE_DEFAULT == var->mbv_source) {
             continue;
         }
 
@@ -1088,7 +858,7 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env, bool internal)
             goto cleanup;
         }
 
-        ret = asprintf(&str, "%s%s=%s", mca_prefix, var->mbv_full_name, value_string);
+        ret = asprintf(&str, "%s%s=%s", var->mbv_prefix, var->mbv_full_name, value_string);
         free(value_string);
         if (0 > ret) {
             goto cleanup;
@@ -1101,11 +871,11 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env, bool internal)
         switch (var->mbv_source) {
         case PMIX_MCA_BASE_VAR_SOURCE_FILE:
         case PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE:
-            ret = asprintf(&str, "%sSOURCE_%s=FILE:%s", mca_prefix, var->mbv_full_name,
+            ret = asprintf(&str, "%sSOURCE_%s=FILE:%s", var->mbv_prefix, var->mbv_full_name,
                            pmix_mca_base_var_source_file(var));
             break;
         case PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE:
-            ret = asprintf(&str, "%sSOURCE_%s=COMMAND_LINE", mca_prefix, var->mbv_full_name);
+            ret = asprintf(&str, "%sSOURCE_%s=COMMAND_LINE", var->mbv_prefix, var->mbv_full_name);
             break;
         case PMIX_MCA_BASE_VAR_SOURCE_ENV:
         case PMIX_MCA_BASE_VAR_SOURCE_SET:
@@ -1146,7 +916,6 @@ cleanup:
 int pmix_mca_base_var_finalize(void)
 {
     pmix_object_t *pmixect;
-    pmix_list_item_t *item;
     int size, i;
 
     if (pmix_mca_base_var_initialized) {
@@ -1159,20 +928,8 @@ int pmix_mca_base_var_finalize(void)
         }
         PMIX_DESTRUCT(&pmix_mca_base_vars);
 
-        while (NULL != (item = pmix_list_remove_first(&pmix_mca_base_var_file_values))) {
-            PMIX_RELEASE(item);
-        }
-        PMIX_DESTRUCT(&pmix_mca_base_var_file_values);
-
-        while (NULL != (item = pmix_list_remove_first(&pmix_mca_base_envar_file_values))) {
-            PMIX_RELEASE(item);
-        }
-        PMIX_DESTRUCT(&pmix_mca_base_envar_file_values);
-
-        while (NULL != (item = pmix_list_remove_first(&pmix_mca_base_var_override_values))) {
-            PMIX_RELEASE(item);
-        }
-        PMIX_DESTRUCT(&pmix_mca_base_var_override_values);
+        PMIX_LIST_DESTRUCT(&pmix_mca_base_var_file_values);
+        PMIX_LIST_DESTRUCT(&pmix_mca_base_var_override_values);
 
         if (NULL != cwd) {
             free(cwd);
@@ -1191,8 +948,6 @@ int pmix_mca_base_var_finalize(void)
 
         PMIX_DESTRUCT(&pmix_mca_base_var_index_hash);
 
-        free(pmix_mca_base_envar_files);
-        pmix_mca_base_envar_files = NULL;
     }
 
     /* All done */
@@ -1309,13 +1064,14 @@ static int read_files(char *file_list, pmix_list_t *file_values, char sep)
 static int register_variable(const char *project_name, const char *framework_name,
                              const char *component_name, const char *variable_name,
                              const char *description, pmix_mca_base_var_type_t type,
-                             pmix_mca_base_var_enum_t *enumerator, int bind,
-                             pmix_mca_base_var_flag_t flags, pmix_mca_base_var_info_lvl_t info_lvl,
-                             pmix_mca_base_var_scope_t scope, int synonym_for, void *storage)
+                             pmix_mca_base_var_flag_internal_t flags,
+                             int synonym_for, void *storage)
 {
     int ret, var_index, group_index, tmp;
     pmix_mca_base_var_group_t *group;
     pmix_mca_base_var_t *var, *original = NULL;
+    char *ntmp;
+    int n;
 
     /* Developer error. Storage can not be NULL and type must exist */
     assert(((flags & PMIX_MCA_BASE_VAR_FLAG_SYNONYM) || NULL != storage) && type >= 0
@@ -1396,30 +1152,18 @@ static int register_variable(const char *project_name, const char *framework_nam
             return group_index;
         }
 
-        /* Read-only and constant variables can't be settable */
-        if (scope < PMIX_MCA_BASE_VAR_SCOPE_LOCAL
-            || (flags & PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY)) {
-            if ((flags & PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY)
-                && (flags & PMIX_MCA_BASE_VAR_FLAG_SETTABLE)) {
-                pmix_show_help("help-pmix-mca-var.txt", "invalid-flag-combination", true,
-                               "PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY",
-                               "PMIX_MCA_BASE_VAR_FLAG_SETTABLE");
-                return PMIX_ERROR;
-            }
-
-            /* Should we print a warning for other cases? */
-            flags &= ~PMIX_MCA_BASE_VAR_FLAG_SETTABLE;
-        }
-
         var = PMIX_NEW(pmix_mca_base_var_t);
-
+        ntmp = (char*)malloc(strlen(project_name)+1);
+        for (n=0; '\0' != project_name[n]; n++) {
+            ntmp[n] = toupper(project_name[n]);
+        }
+        ntmp[n] = '\0';
+        pmix_asprintf(&var->mbv_prefix, "%s_MCA_", ntmp);
+        free(ntmp);
         var->mbv_type = type;
         var->mbv_flags = flags;
         var->mbv_group_index = group_index;
-        var->mbv_info_lvl = info_lvl;
-        var->mbv_scope = scope;
         var->mbv_synonym_for = synonym_for;
-        var->mbv_bind = bind;
 
         if (NULL != description) {
             var->mbv_description = strdup(description);
@@ -1510,17 +1254,6 @@ static int register_variable(const char *project_name, const char *framework_nam
         }
     }
 
-    if (PMIX_MCA_BASE_VAR_TYPE_BOOL == var->mbv_type) {
-        enumerator = &pmix_mca_base_var_enum_bool;
-    } else if (NULL != enumerator) {
-        PMIX_MCA_VAR_MBV_ENUMERATOR_FREE(var->mbv_enumerator);
-        if (!enumerator->enum_is_static) {
-            PMIX_RETAIN(enumerator);
-        }
-    }
-
-    var->mbv_enumerator = enumerator;
-
     if (!original) {
         var->mbv_storage = storage;
 
@@ -1549,54 +1282,35 @@ static int register_variable(const char *project_name, const char *framework_nam
 int pmix_mca_base_var_register(const char *project_name, const char *framework_name,
                                const char *component_name, const char *variable_name,
                                const char *description, pmix_mca_base_var_type_t type,
-                               pmix_mca_base_var_enum_t *enumerator, int bind,
-                               pmix_mca_base_var_flag_t flags,
-                               pmix_mca_base_var_info_lvl_t info_lvl,
-                               pmix_mca_base_var_scope_t scope, void *storage)
+                               void *storage)
 {
-    /* Only integer variables can have enumerator */
-    assert(NULL == enumerator
-           || (PMIX_MCA_BASE_VAR_TYPE_INT == type || PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_INT == type));
-
     return register_variable(project_name, framework_name, component_name, variable_name,
-                             description, type, enumerator, bind, flags, info_lvl, scope, -1,
-                             storage);
+                             description, type, PMIX_MCA_BASE_VAR_FLAG_NONE, 0, storage);
 }
 
 int pmix_mca_base_component_var_register(const pmix_mca_base_component_t *component,
                                          const char *variable_name, const char *description,
-                                         pmix_mca_base_var_type_t type,
-                                         pmix_mca_base_var_enum_t *enumerator, int bind,
-                                         pmix_mca_base_var_flag_t flags,
-                                         pmix_mca_base_var_info_lvl_t info_lvl,
-                                         pmix_mca_base_var_scope_t scope, void *storage)
+                                         pmix_mca_base_var_type_t type, void *storage)
 {
     return pmix_mca_base_var_register(component->pmix_mca_project_name,
                                       component->pmix_mca_type_name,
                                       component->pmix_mca_component_name, variable_name,
-                                      description, type, enumerator, bind,
-                                      flags | PMIX_MCA_BASE_VAR_FLAG_DWG, info_lvl, scope, storage);
+                                      description, type, storage);
 }
 
 int pmix_mca_base_framework_var_register(const pmix_mca_base_framework_t *framework,
                                          const char *variable_name, const char *help_msg,
-                                         pmix_mca_base_var_type_t type,
-                                         pmix_mca_base_var_enum_t *enumerator, int bind,
-                                         pmix_mca_base_var_flag_t flags,
-                                         pmix_mca_base_var_info_lvl_t info_level,
-                                         pmix_mca_base_var_scope_t scope, void *storage)
+                                         pmix_mca_base_var_type_t type, void *storage)
 {
     return pmix_mca_base_var_register(framework->framework_project, framework->framework_name,
-                                      "base", variable_name, help_msg, type, enumerator, bind,
-                                      flags | PMIX_MCA_BASE_VAR_FLAG_DWG, info_level, scope,
-                                      storage);
+                                      "base", variable_name, help_msg, type, storage);
 }
 
 int pmix_mca_base_var_register_synonym(int synonym_for, const char *project_name,
                                        const char *framework_name, const char *component_name,
                                        const char *synonym_name, pmix_mca_base_var_syn_flag_t flags)
 {
-    pmix_mca_base_var_flag_t var_flags = (pmix_mca_base_var_flag_t) PMIX_MCA_BASE_VAR_FLAG_SYNONYM;
+    pmix_mca_base_var_flag_internal_t var_flags = PMIX_MCA_BASE_VAR_FLAG_SYNONYM;
     pmix_mca_base_var_t *var;
     int ret;
 
@@ -1608,13 +1322,9 @@ int pmix_mca_base_var_register_synonym(int synonym_for, const char *project_name
     if (flags & PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED) {
         var_flags |= PMIX_MCA_BASE_VAR_FLAG_DEPRECATED;
     }
-    if (flags & PMIX_MCA_BASE_VAR_SYN_FLAG_INTERNAL) {
-        var_flags |= PMIX_MCA_BASE_VAR_FLAG_INTERNAL;
-    }
 
     return register_variable(project_name, framework_name, component_name, synonym_name,
-                             var->mbv_description, var->mbv_type, var->mbv_enumerator,
-                             var->mbv_bind, var_flags, var->mbv_info_lvl, var->mbv_scope,
+                             var->mbv_description, var->mbv_type, var_flags,
                              synonym_for, NULL);
 }
 
@@ -1624,12 +1334,12 @@ static int var_get_env(pmix_mca_base_var_t *var, const char *name, char **source
     char *source_env, *value_env;
     int ret;
 
-    ret = asprintf(&source_env, "%sSOURCE_%s", mca_prefix, name);
+    ret = asprintf(&source_env, "%sSOURCE_%s", var->mbv_prefix, name);
     if (0 > ret) {
         return PMIX_ERROR;
     }
 
-    ret = asprintf(&value_env, "%s%s", mca_prefix, name);
+    ret = asprintf(&value_env, "%s%s", var->mbv_prefix, name);
     if (0 > ret) {
         free(source_env);
         return PMIX_ERROR;
@@ -1668,14 +1378,6 @@ static int var_set_from_env(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origi
 
     if (PMIX_SUCCESS != ret) {
         return ret;
-    }
-
-    /* we found an environment variable but this variable is default-only. print
-       a warning. */
-    if (PMIX_VAR_IS_DEFAULT_ONLY(original[0])) {
-        pmix_show_help("help-pmix-mca-var.txt", "default-only-param-set", true, var_full_name);
-
-        return PMIX_ERR_NOT_FOUND;
     }
 
     if (PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE == original->mbv_source) {
@@ -1756,20 +1458,6 @@ static int var_set_from_file(pmix_mca_base_var_t *var, pmix_mca_base_var_t *orig
             continue;
         }
 
-        /* found it */
-        if (PMIX_VAR_IS_DEFAULT_ONLY(var[0])) {
-            pmix_show_help("help-pmix-mca-var.txt", "default-only-param-set", true, var_full_name);
-
-            return PMIX_ERR_NOT_FOUND;
-        }
-
-        if (PMIX_MCA_BASE_VAR_FLAG_ENVIRONMENT_ONLY & original->mbv_flags) {
-            pmix_show_help("help-pmix-mca-var.txt", "environment-only-param", true, var_full_name,
-                           fv->mbvfv_value, fv->mbvfv_file);
-
-            return PMIX_ERR_NOT_FOUND;
-        }
-
         if (PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE == original->mbv_source) {
             if (!pmix_mca_base_var_suppress_override_warning) {
                 pmix_show_help("help-pmix-mca-var.txt", "overridden-param-set", true,
@@ -1826,17 +1514,10 @@ static int var_set_initial(pmix_mca_base_var_t *var, pmix_mca_base_var_t *origin
        file. */
     ret = var_set_from_file(var, original, &pmix_mca_base_var_override_values);
     if (PMIX_SUCCESS == ret) {
-        var->mbv_flags = ~PMIX_MCA_BASE_VAR_FLAG_SETTABLE
-                         & (var->mbv_flags | PMIX_MCA_BASE_VAR_FLAG_OVERRIDE);
         var->mbv_source = PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE;
     }
 
     ret = var_set_from_env(var, original);
-    if (PMIX_ERR_NOT_FOUND != ret) {
-        return ret;
-    }
-
-    ret = var_set_from_file(var, original, &pmix_mca_base_envar_file_values);
     if (PMIX_ERR_NOT_FOUND != ret) {
         return ret;
     }
@@ -1885,7 +1566,9 @@ static void var_destructor(pmix_mca_base_var_t *var)
     if (NULL != var->mbv_long_name) {
         free(var->mbv_long_name);
     }
-
+    if (NULL != var->mbv_prefix) {
+        free(var->mbv_prefix);
+    }
     if (NULL != var->mbv_description) {
         free(var->mbv_description);
     }
@@ -2150,19 +1833,6 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
-        /* Output whether it's read only or writable */
-        ret = asprintf(out[0] + line++, "%sstatus:%s", tmp,
-                       PMIX_VAR_IS_DEFAULT_ONLY(var[0]) ? "read-only" : "writeable");
-        if (0 > ret) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-
-        /* Output the info level of this parametere */
-        ret = asprintf(out[0] + line++, "%slevel:%d", tmp, var->mbv_info_lvl + 1);
-        if (0 > ret) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-
         /* If it has a help message, output the help message */
         if (var->mbv_description) {
             ret = asprintf(out[0] + line++, "%shelp:%s", tmp, var->mbv_description);
@@ -2235,10 +1905,8 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
         }
 
         ret = asprintf(out[0],
-                       "%s \"%s\" (current value: \"%s\", data source: %s, level: %d %s, type: %s",
-                       PMIX_VAR_IS_DEFAULT_ONLY(var[0]) ? "informational" : "parameter", full_name,
-                       value_string, source_string, var->mbv_info_lvl + 1,
-                       info_lvl_strings[var->mbv_info_lvl], pmix_var_type_names[var->mbv_type]);
+                       "\"%s\" (current value: \"%s\", data source: %s, type: %s",
+                       full_name, value_string, source_string, pmix_var_type_names[var->mbv_type]);
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }

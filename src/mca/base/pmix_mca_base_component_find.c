@@ -108,7 +108,8 @@ int pmix_mca_base_component_find(const char *directory, pmix_mca_base_framework_
     PMIX_HIDE_UNUSED_PARAMS(open_dso_components);
 
     pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, framework->framework_output,
-                        "mca: base: component_find: searching %s for %s components", directory,
+                        "mca: base: component_find: searching %s for %s components",
+                        (NULL == directory) ? "NULL" : directory,
                         framework->framework_name);
 
     if (!ignore_requested) {
@@ -141,10 +142,9 @@ int pmix_mca_base_component_find(const char *directory, pmix_mca_base_framework_
         find_dyn_components(directory, framework, (const char **) requested_component_names,
                             include_mode);
     } else {
-        pmix_output_verbose(
-            PMIX_MCA_BASE_VERBOSE_INFO, 0,
-            "pmix:mca: base: component_find: dso loading for %s MCA components disabled",
-            framework->framework_name);
+        pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_INFO, 0,
+                            "pmix:mca: base: component_find: dso loading for %s MCA components disabled",
+                            framework->framework_name);
     }
 #endif
 
@@ -252,7 +252,8 @@ static void find_dyn_components(const char *path, pmix_mca_base_framework_t *fra
     int ret;
 
     pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, framework->framework_output,
-                        "mca: base: find_dyn_components: checking %s for %s components", path,
+                        "mca: base: find_dyn_components: checking %s for %s components",
+                        (NULL == path) ? "NULL" : path,
                         framework->framework_name);
 
     if (NULL != path) {

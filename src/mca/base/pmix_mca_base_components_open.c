@@ -222,6 +222,9 @@ bool pmix_mca_base_show_load_errors(const char *framework_name,
     } else if (SHOW_LOAD_ERRORS_NONE == show_load_errors) {
         return false;
     }
+    if (NULL == framework_name) {
+        return false;
+    }
 
     // If we get here, it means we have an include or exclude list.
     // Setup for what to do based on whether it's an include or
@@ -242,7 +245,7 @@ bool pmix_mca_base_show_load_errors(const char *framework_name,
     fc_pair_t *item;
     PMIX_LIST_FOREACH(item, list, fc_pair_t) {
         if (0 == strcmp(framework_name, item->framework_name)) {
-            if (NULL == item->component_name) {
+            if (NULL == component_name) {
                 // If there's no component name, then we're matching
                 // all components in this framework.
                 return value_if_match_found;
