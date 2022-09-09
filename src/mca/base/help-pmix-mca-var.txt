@@ -14,6 +14,7 @@
 # Copyright (c) 2013      Los Alamos National Security, LLC. All rights
 #                         reserved.
 # Copyright (c) 2018      Intel, Inc. All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -122,19 +123,3 @@ starting your job.
 
   Value:      %s
   Source:     %s
-#
-[incorrect-env-list-param]
-WARNING: The format of "pmix_mca_base_env_list" parameter is a delimited list of VAR=VAL or
-VAR instances. By default, the delimiter is a semicolon: VAR1=VAL1;VAR2;VAR3=VAL3;...
-You can set other via "pmix_mca_base_env_list_delimiter" parameter. If the delimiter is a
-semicolon, the value of "pmix_mca_base_env_list" variable should be quoted to not interfere
-with SHELL command line parsing. In the case where a value is not assigned to variable
-VAR, the value will be taken from the current environment.
-The following environment variable was not found in the environment:
-  Variable:             %s
-  MCA variable value:   %s
-#
-[incorrect-env-list-sep]
-An invalid value was supplied for an MCA variable "pmix_mca_base_env_list_delimiter".
-The "pmix_mca_base_env_list" variable will be ignored.
-  Value:     %s
