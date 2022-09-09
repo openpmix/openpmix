@@ -111,6 +111,9 @@ static int process_repository_item(const char *filename, void *data)
     /* check if the plugin has the appropriate prefix */
     pmix_asprintf(&prefix, "%s_mca_", project);
     if (0 != strncmp(base, prefix, strlen(prefix))) {
+        if (pmix_mca_base_show_load_errors(NULL, NULL)) {
+            pmix_output(0, "mca:base:process_repository_item filename %s has bad prefix - expected %s", filename, prefix);
+        }
         free(base);
         free(prefix);
         return PMIX_SUCCESS;
@@ -224,9 +227,9 @@ int pmix_mca_base_component_repository_add(const char *project,
 
     dir = strtok_r(path_to_use, sep, &ctx);
     do {
-        if (0 != pmix_pdl_foreachfile(dir, process_repository_item, (void*)project)
-            && !(0 == strcmp(dir, pmix_mca_base_system_default_path)
-                 || 0 == strcmp(dir, pmix_mca_base_user_default_path))) {
+        if (0 != pmix_pdl_foreachfile(dir, process_repository_item, (void*)project) &&
+            !(0 == strcmp(dir, pmix_mca_base_system_default_path) ||
+              0 == strcmp(dir, pmix_mca_base_user_default_path))) {
             // It is not an error if a directory fails to add (e.g.,
             // if it doesn't exist).  But we should warn about it as
             // it is something related to "show_load_errors"
