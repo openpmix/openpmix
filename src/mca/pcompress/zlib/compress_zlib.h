@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 /* the component must be visible data for the linker to find it */
-PMIX_EXPORT extern pmix_mca_base_component_t mca_pcompress_zlib_component;
+PMIX_EXPORT extern pmix_mca_base_component_t pmix_mca_pcompress_zlib_component;
 extern pmix_compress_base_module_t pmix_pcompress_zlib_module;
 
 #if defined(c_plusplus) || defined(__cplusplus)

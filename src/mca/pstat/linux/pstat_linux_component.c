@@ -52,7 +52,7 @@ static int pstat_linux_component_query(pmix_mca_base_module_t **module, int *pri
  * and pointers to our public functions in it
  */
 
-const pmix_pstat_base_component_t mca_pstat_linux_component = {
+const pmix_pstat_base_component_t pmix_mca_pstat_linux_component = {
 
     /* First, the mca_component_t struct containing meta information
        about the component itself */

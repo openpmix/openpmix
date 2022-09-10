@@ -125,9 +125,9 @@ static const char *message_cb(void **buf, int *len, void *arg)
         return "\r\n";
 
     case SENT_HEADER:
-        if (NULL != mca_plog_smtp_component.body_prefix) {
+        if (NULL != pmix_mca_plog_smtp_component.body_prefix) {
             ms->sent_flag = SENT_BODY_PREFIX;
-            ms->prev_string = crnl(mca_plog_smtp_component.body_prefix);
+            ms->prev_string = crnl(pmix_mca_plog_smtp_component.body_prefix);
             *len = strlen(ms->prev_string);
             return ms->prev_string;
         }
@@ -139,9 +139,9 @@ static const char *message_cb(void **buf, int *len, void *arg)
         return ms->prev_string;
 
     case SENT_BODY:
-        if (NULL != mca_plog_smtp_component.body_suffix) {
+        if (NULL != pmix_mca_plog_smtp_component.body_suffix) {
             ms->sent_flag = SENT_BODY_SUFFIX;
-            ms->prev_string = crnl(mca_plog_smtp_component.body_suffix);
+            ms->prev_string = crnl(pmix_mca_plog_smtp_component.body_suffix);
             *len = strlen(ms->prev_string);
             return ms->prev_string;
         }
@@ -168,7 +168,7 @@ static int send_email(char *msg)
     smtp_session_t session = NULL;
     smtp_message_t message = NULL;
     message_status_t ms;
-    pmix_plog_smtp_component_t *c = &mca_plog_smtp_component;
+    pmix_plog_smtp_component_t *c = &pmix_mca_plog_smtp_component;
 
     if (NULL == c->to_argv) {
         c->to_argv = pmix_argv_split(c->to, ',');

@@ -41,7 +41,7 @@ pmix_status_t pmix20_bfrop_pack(pmix_buffer_t *buffer, const void *src, int32_t 
                                 pmix_data_type_t type)
 {
     pmix_status_t rc;
-    pmix_pointer_array_t *regtypes = &mca_bfrops_v20_component.types;
+    pmix_pointer_array_t *regtypes = &pmix_mca_bfrops_v20_component.types;
 
     /* check for error */
     if (NULL == buffer) {
@@ -94,7 +94,7 @@ pmix_status_t pmix20_bfrop_pack_buffer(pmix_pointer_array_t *regtypes, pmix_buff
 
     if (NULL
         == (info = (pmix_bfrop_type_info_t *)
-                pmix_pointer_array_get_item(&mca_bfrops_v20_component.types, v20type))) {
+                pmix_pointer_array_get_item(&pmix_mca_bfrops_v20_component.types, v20type))) {
         return PMIX_ERR_PACK_FAILURE;
     }
 

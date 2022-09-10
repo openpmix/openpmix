@@ -40,7 +40,7 @@ typedef struct {
     int facility;
 } pmix_plog_syslog_component_t;
 
-PMIX_EXPORT extern pmix_plog_syslog_component_t mca_plog_syslog_component;
+PMIX_EXPORT extern pmix_plog_syslog_component_t pmix_mca_plog_syslog_component;
 extern pmix_plog_module_t pmix_plog_syslog_module;
 
 END_C_DECLS

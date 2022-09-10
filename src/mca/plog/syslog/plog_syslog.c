@@ -87,7 +87,7 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
                            void *cbdata)
 {
     size_t n;
-    int pri = mca_plog_syslog_component.level;
+    int pri = pmix_mca_plog_syslog_component.level;
     pmix_status_t rc;
     time_t timestamp = 0;
 

@@ -84,8 +84,10 @@ static pmix_status_t pmix_psec_open(pmix_mca_base_open_flag_t flags)
     return pmix_mca_base_framework_components_open(&pmix_psec_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psec, "PMIx Security Operations", NULL, pmix_psec_open,
-                                pmix_psec_close, mca_psec_base_static_components,
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, psec, "PMIx Security Operations", NULL,
+                                pmix_psec_open,
+                                pmix_psec_close,
+                                pmix_mca_psec_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 PMIX_CLASS_INSTANCE(pmix_psec_base_active_module_t, pmix_list_item_t, NULL, NULL);

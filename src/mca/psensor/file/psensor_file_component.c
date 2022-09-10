@@ -24,7 +24,7 @@ static int psensor_file_open(void);
 static int psensor_file_close(void);
 static int psensor_file_query(pmix_mca_base_module_t **module, int *priority);
 
-pmix_psensor_file_component_t mca_psensor_file_component = {
+pmix_psensor_file_component_t pmix_mca_psensor_file_component = {
     .super = {
         .base = {
             PMIX_PSENSOR_BASE_VERSION_1_0_0,
@@ -46,7 +46,7 @@ pmix_psensor_file_component_t mca_psensor_file_component = {
 
 static int psensor_file_open(void)
 {
-    PMIX_CONSTRUCT(&mca_psensor_file_component.trackers, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_psensor_file_component.trackers, pmix_list_t);
     return PMIX_SUCCESS;
 }
 
@@ -63,6 +63,6 @@ static int psensor_file_query(pmix_mca_base_module_t **module, int *priority)
 
 static int psensor_file_close(void)
 {
-    PMIX_LIST_DESTRUCT(&mca_psensor_file_component.trackers);
+    PMIX_LIST_DESTRUCT(&pmix_mca_psensor_file_component.trackers);
     return PMIX_SUCCESS;
 }

@@ -42,7 +42,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_gds_hash_component_t mca_gds_hash_component = {
+pmix_gds_hash_component_t pmix_mca_gds_hash_component = {
     .super = {
         .base = {
             PMIX_GDS_BASE_VERSION_1_0_0,

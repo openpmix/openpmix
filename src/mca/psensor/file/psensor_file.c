@@ -157,7 +157,7 @@ static void add_tracker(int sd, short flags, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
     /* add the tracker to our list */
-    pmix_list_append(&mca_psensor_file_component.trackers, &ft->super);
+    pmix_list_append(&pmix_mca_psensor_file_component.trackers, &ft->super);
 
     /* setup the timer event */
     pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev, file_sample, ft);
@@ -233,12 +233,12 @@ static void del_tracker(int sd, short flags, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
     /* remove the tracker from our list */
-    PMIX_LIST_FOREACH_SAFE (ft, ftnext, &mca_psensor_file_component.trackers, file_tracker_t) {
+    PMIX_LIST_FOREACH_SAFE (ft, ftnext, &pmix_mca_psensor_file_component.trackers, file_tracker_t) {
         if (ft->requestor != cd->requestor) {
             continue;
         }
         if (NULL == cd->id || (NULL != ft->id && 0 == strcmp(ft->id, cd->id))) {
-            pmix_list_remove_item(&mca_psensor_file_component.trackers, &ft->super);
+            pmix_list_remove_item(&pmix_mca_psensor_file_component.trackers, &ft->super);
             PMIX_RELEASE(ft);
         }
     }
@@ -338,7 +338,7 @@ static void file_sample(int sd, short args, void *cbdata)
                            ft->last_size, ctime(&ft->last_access), ctime(&ft->last_mod));
         }
         /* stop monitoring this client */
-        pmix_list_remove_item(&mca_psensor_file_component.trackers, &ft->super);
+        pmix_list_remove_item(&pmix_mca_psensor_file_component.trackers, &ft->super);
         /* generate an event */
         pmix_strncpy(source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
         source.rank = ft->requestor->info->pname.rank;

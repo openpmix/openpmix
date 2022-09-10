@@ -39,7 +39,7 @@ static int pdlopen_component_query(pmix_mca_base_module_t **module, int *priorit
  * and pointers to our public functions in it
  */
 
-pmix_pdl_pdlopen_component_t mca_pdl_pdlopen_component = {
+pmix_pdl_pdlopen_component_t pmix_mca_pdl_pdlopen_component = {
 
     /* Fill in the mca_pdl_base_component_t */
     .base = {
@@ -76,16 +76,16 @@ static int pdlopen_component_register(void)
 {
     int ret;
 
-    mca_pdl_pdlopen_component.filename_suffixes_mca_storage = ".so,.dylib,.dll,.sl";
-    ret = pmix_mca_base_component_var_register(&mca_pdl_pdlopen_component.base.base_version, "filename_suffixes",
+    pmix_mca_pdl_pdlopen_component.filename_suffixes_mca_storage = ".so,.dylib,.dll,.sl";
+    ret = pmix_mca_base_component_var_register(&pmix_mca_pdl_pdlopen_component.base.base_version, "filename_suffixes",
                                                "Comma-delimited list of filename suffixes that the pdlopen component will try",
                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                               &mca_pdl_pdlopen_component.filename_suffixes_mca_storage);
+                                               &pmix_mca_pdl_pdlopen_component.filename_suffixes_mca_storage);
     if (ret < 0) {
         return ret;
     }
-    mca_pdl_pdlopen_component.filename_suffixes
-        = pmix_argv_split(mca_pdl_pdlopen_component.filename_suffixes_mca_storage, ',');
+    pmix_mca_pdl_pdlopen_component.filename_suffixes
+        = pmix_argv_split(pmix_mca_pdl_pdlopen_component.filename_suffixes_mca_storage, ',');
 
     return PMIX_SUCCESS;
 }
@@ -97,9 +97,9 @@ static int pdlopen_component_open(void)
 
 static int pdlopen_component_close(void)
 {
-    if (NULL != mca_pdl_pdlopen_component.filename_suffixes) {
-        pmix_argv_free(mca_pdl_pdlopen_component.filename_suffixes);
-        mca_pdl_pdlopen_component.filename_suffixes = NULL;
+    if (NULL != pmix_mca_pdl_pdlopen_component.filename_suffixes) {
+        pmix_argv_free(pmix_mca_pdl_pdlopen_component.filename_suffixes);
+        pmix_mca_pdl_pdlopen_component.filename_suffixes = NULL;
     }
 
     return PMIX_SUCCESS;
@@ -110,7 +110,7 @@ static int pdlopen_component_query(pmix_mca_base_module_t **module, int *priorit
     /* The priority value is somewhat meaningless here; by
        pmix/mca/pdl/configure.m4, there's at most one component
        available. */
-    *priority = mca_pdl_pdlopen_component.base.priority;
+    *priority = pmix_mca_pdl_pdlopen_component.base.priority;
     *module = &pmix_pdl_pdlopen_module.super;
 
     return PMIX_SUCCESS;

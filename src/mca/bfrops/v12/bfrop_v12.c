@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -56,177 +56,177 @@ static pmix_status_t init(void)
     /* some standard types don't require anything special */
     PMIX_REGISTER_TYPE("PMIX_BOOL", PMIX_BOOL, pmix12_bfrop_pack_bool, pmix12_bfrop_unpack_bool,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_bool,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_BYTE", PMIX_BYTE, pmix12_bfrop_pack_byte, pmix12_bfrop_unpack_byte,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_byte,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_STRING", PMIX_STRING, pmix12_bfrop_pack_string,
                        pmix12_bfrop_unpack_string, pmix12_bfrop_copy_string,
-                       pmix12_bfrop_print_string, &mca_bfrops_v12_component.types);
+                       pmix12_bfrop_print_string, &pmix_mca_bfrops_v12_component.types);
 
     /* Register the rest of the standard generic types to point to internal functions */
     PMIX_REGISTER_TYPE("PMIX_SIZE", PMIX_SIZE, pmix12_bfrop_pack_sizet, pmix12_bfrop_unpack_sizet,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_size,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_PID", PMIX_PID, pmix12_bfrop_pack_pid, pmix12_bfrop_unpack_pid,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_pid,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INT", PMIX_INT, pmix12_bfrop_pack_int, pmix12_bfrop_unpack_int,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_int,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     /* Register all the standard fixed types to point to base functions */
     PMIX_REGISTER_TYPE("PMIX_INT8", PMIX_INT8, pmix12_bfrop_pack_byte, pmix12_bfrop_unpack_byte,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_int8,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INT16", PMIX_INT16, pmix12_bfrop_pack_int16, pmix12_bfrop_unpack_int16,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_int16,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INT32", PMIX_INT32, pmix12_bfrop_pack_int32, pmix12_bfrop_unpack_int32,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_int32,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INT64", PMIX_INT64, pmix12_bfrop_pack_int64, pmix12_bfrop_unpack_int64,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_int64,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT", PMIX_UINT, pmix12_bfrop_pack_int, pmix12_bfrop_unpack_int,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_uint,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT8", PMIX_UINT8, pmix12_bfrop_pack_byte, pmix12_bfrop_unpack_byte,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_uint8,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT16", PMIX_UINT16, pmix12_bfrop_pack_int16,
                        pmix12_bfrop_unpack_int16, pmix12_bfrop_std_copy, pmix12_bfrop_print_uint16,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT32", PMIX_UINT32, pmix12_bfrop_pack_int32,
                        pmix12_bfrop_unpack_int32, pmix12_bfrop_std_copy, pmix12_bfrop_print_uint32,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT64", PMIX_UINT64, pmix12_bfrop_pack_int64,
                        pmix12_bfrop_unpack_int64, pmix12_bfrop_std_copy, pmix12_bfrop_print_uint64,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_FLOAT", PMIX_FLOAT, pmix12_bfrop_pack_float, pmix12_bfrop_unpack_float,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_float,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_DOUBLE", PMIX_DOUBLE, pmix12_bfrop_pack_double,
                        pmix12_bfrop_unpack_double, pmix12_bfrop_std_copy, pmix12_bfrop_print_double,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_TIMEVAL", PMIX_TIMEVAL, pmix12_bfrop_pack_timeval,
                        pmix12_bfrop_unpack_timeval, pmix12_bfrop_std_copy,
-                       pmix12_bfrop_print_timeval, &mca_bfrops_v12_component.types);
+                       pmix12_bfrop_print_timeval, &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_TIME", PMIX_TIME, pmix12_bfrop_pack_time, pmix12_bfrop_unpack_time,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_time,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_STATUS", PMIX_STATUS, pmix12_bfrop_pack_status,
                        pmix12_bfrop_unpack_status, pmix12_bfrop_std_copy, pmix12_bfrop_print_status,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     /* structured values need to be done here as they might
      * callback into standard and/or derived values */
     PMIX_REGISTER_TYPE("PMIX_VALUE", PMIX_VALUE, pmix12_bfrop_pack_value, pmix12_bfrop_unpack_value,
                        pmix12_bfrop_copy_value, pmix12_bfrop_print_value,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_PROC", PMIX_PROC, pmix12_bfrop_pack_proc, pmix12_bfrop_unpack_proc,
                        pmix12_bfrop_copy_proc, pmix12_bfrop_print_proc,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_APP", PMIX_APP, pmix12_bfrop_pack_app, pmix12_bfrop_unpack_app,
                        pmix12_bfrop_copy_app, pmix12_bfrop_print_app,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INFO", PMIX_INFO, pmix12_bfrop_pack_info, pmix12_bfrop_unpack_info,
                        pmix12_bfrop_copy_info, pmix12_bfrop_print_info,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_PDATA", PMIX_PDATA, pmix12_bfrop_pack_pdata, pmix12_bfrop_unpack_pdata,
                        pmix12_bfrop_copy_pdata, pmix12_bfrop_print_pdata,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_BUFFER", PMIX_BUFFER, pmix12_bfrop_pack_buf, pmix12_bfrop_unpack_buf,
                        pmix12_bfrop_copy_buf, pmix12_bfrop_print_buf,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_BYTE_OBJECT", PMIX_BYTE_OBJECT, pmix12_bfrop_pack_bo,
                        pmix12_bfrop_unpack_bo, pmix12_bfrop_copy_bo, pmix12_bfrop_print_bo,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_KVAL", PMIX_KVAL, pmix12_bfrop_pack_kval, pmix12_bfrop_unpack_kval,
                        pmix12_bfrop_copy_kval, pmix12_bfrop_print_kval,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_MODEX", PMIX_MODEX, pmix12_bfrop_pack_modex, pmix12_bfrop_unpack_modex,
                        pmix12_bfrop_copy_modex, pmix12_bfrop_print_modex,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_PERSIST", PMIX_PERSIST, pmix12_bfrop_pack_persist,
                        pmix12_bfrop_unpack_persist, pmix12_bfrop_std_copy,
-                       pmix12_bfrop_print_persist, &mca_bfrops_v12_component.types);
+                       pmix12_bfrop_print_persist, &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_POINTER", PMIX_POINTER, pmix12_bfrop_pack_ptr, pmix12_bfrop_unpack_ptr,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_ptr,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_SCOPE", PMIX_SCOPE, pmix12_bfrop_pack_scope, pmix12_bfrop_unpack_scope,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_scope,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_DATA_RANGE", PMIX_DATA_RANGE, pmix12_bfrop_pack_range,
                        pmix12_bfrop_unpack_range, pmix12_bfrop_std_copy, pmix12_bfrop_print_ptr,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_COMMAND", PMIX_COMMAND, pmix12_bfrop_pack_cmd, pmix12_bfrop_unpack_cmd,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_cmd,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_INFO_DIRECTIVES", PMIX_INFO_DIRECTIVES,
                        pmix12_bfrop_pack_info_directives, pmix12_bfrop_unpack_info_directives,
                        pmix12_bfrop_std_copy, pmix12_bfrop_print_info_directives,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_DATA_TYPE", PMIX_DATA_TYPE, pmix12_bfrop_pack_datatype,
                        pmix12_bfrop_unpack_datatype, pmix12_bfrop_std_copy,
-                       pmix12_bfrop_print_datatype, &mca_bfrops_v12_component.types);
+                       pmix12_bfrop_print_datatype, &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_PROC_STATE", PMIX_PROC_STATE, pmix12_bfrop_pack_proc_state,
                        pmix12_bfrop_unpack_proc_state, pmix12_bfrop_std_copy,
-                       pmix12_bfrop_print_proc_state, &mca_bfrops_v12_component.types);
+                       pmix12_bfrop_print_proc_state, &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_PROC_INFO", PMIX_PROC_INFO, pmix12_bfrop_pack_proc_info,
                        pmix12_bfrop_unpack_proc_info, pmix12_bfrop_copy_proc_info,
-                       pmix12_bfrop_print_proc_info, &mca_bfrops_v12_component.types);
+                       pmix12_bfrop_print_proc_info, &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_DATA_ARRAY", PMIX_DATA_ARRAY, pmix12_bfrop_pack_darray,
                        pmix12_bfrop_unpack_darray, pmix12_bfrop_copy_darray,
-                       pmix12_bfrop_print_darray, &mca_bfrops_v12_component.types);
+                       pmix12_bfrop_print_darray, &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_PROC_RANK", PMIX_PROC_RANK, pmix12_bfrop_pack_rank,
                        pmix12_bfrop_unpack_rank, pmix12_bfrop_std_copy, pmix12_bfrop_print_rank,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_QUERY", PMIX_QUERY, pmix12_bfrop_pack_query, pmix12_bfrop_unpack_query,
                        pmix12_bfrop_copy_query, pmix12_bfrop_print_query,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
 
     /**** DEPRECATED ****/
     PMIX_REGISTER_TYPE("PMIX_INFO_ARRAY", PMIX_INFO_ARRAY, pmix12_bfrop_pack_array,
                        pmix12_bfrop_unpack_array, pmix12_bfrop_copy_array, pmix12_bfrop_print_array,
-                       &mca_bfrops_v12_component.types);
+                       &pmix_mca_bfrops_v12_component.types);
     /********************/
 
     return PMIX_SUCCESS;
@@ -237,12 +237,12 @@ static void finalize(void)
     int n;
     pmix_bfrop_type_info_t *info;
 
-    for (n = 0; n < mca_bfrops_v12_component.types.size; n++) {
+    for (n = 0; n < pmix_mca_bfrops_v12_component.types.size; n++) {
         if (NULL
             != (info = (pmix_bfrop_type_info_t *)
-                    pmix_pointer_array_get_item(&mca_bfrops_v12_component.types, n))) {
+                    pmix_pointer_array_get_item(&pmix_mca_bfrops_v12_component.types, n))) {
             PMIX_RELEASE(info);
-            pmix_pointer_array_set_item(&mca_bfrops_v12_component.types, n, NULL);
+            pmix_pointer_array_set_item(&pmix_mca_bfrops_v12_component.types, n, NULL);
         }
     }
 }
@@ -253,7 +253,7 @@ static const char *data_type_string(pmix_data_type_t type)
 
     if (NULL
         == (info = (pmix_bfrop_type_info_t *)
-                pmix_pointer_array_get_item(&mca_bfrops_v12_component.types, type))) {
+                pmix_pointer_array_get_item(&pmix_mca_bfrops_v12_component.types, type))) {
         return NULL;
     }
     return info->odti_name;

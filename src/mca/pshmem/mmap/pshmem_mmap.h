@@ -2,6 +2,7 @@
  * Copyright (c) 2015-2016 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,7 +18,7 @@
 
 BEGIN_C_DECLS
 
-PMIX_EXPORT extern pmix_pshmem_base_component_t mca_pshmem_mmap_component;
+PMIX_EXPORT extern pmix_pshmem_base_component_t pmix_mca_pshmem_mmap_component;
 extern pmix_pshmem_base_module_t pmix_mmap_module;
 
 END_C_DECLS
