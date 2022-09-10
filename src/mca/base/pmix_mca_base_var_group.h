@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -141,18 +141,6 @@ PMIX_EXPORT int pmix_mca_base_var_group_find_by_name(const char *full_name, int 
  */
 PMIX_EXPORT int pmix_mca_base_var_group_get(const int group_index,
                                             const pmix_mca_base_var_group_t **group);
-
-/**
- * Set/unset a flags for all variables in a group.
- *
- * @param[in] group_index Index of group
- * @param[in] flag Flag(s) to set or unset.
- * @param[in] set Boolean indicating whether to set flag(s).
- *
- * Set a flag for every variable in a group. See pmix_mca_base_var_set_flag() for more info.
- */
-PMIX_EXPORT int pmix_mca_base_var_group_set_var_flag(const int group_index, int flags, bool set);
-
 /**
  * Get the number of registered MCA groups
  *

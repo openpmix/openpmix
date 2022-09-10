@@ -341,7 +341,7 @@ int pmix_mca_base_var_group_deregister(int group_index)
         const pmix_mca_base_var_t *var;
 
         ret = pmix_mca_base_var_get(params[i], &var);
-        if (PMIX_SUCCESS != ret || !(var->mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DWG)) {
+        if (PMIX_SUCCESS != ret) {
             continue;
         }
 
@@ -405,30 +405,6 @@ int pmix_mca_base_var_group_get(const int group_index, const pmix_mca_base_var_g
 {
     return pmix_mca_base_var_group_get_internal(group_index, (pmix_mca_base_var_group_t **) group,
                                                 false);
-}
-
-int pmix_mca_base_var_group_set_var_flag(const int group_index, int flags, bool set)
-{
-    pmix_mca_base_var_group_t *group;
-    int size, i, ret;
-    int *vars;
-
-    ret = pmix_mca_base_var_group_get_internal(group_index, &group, false);
-    if (PMIX_SUCCESS != ret) {
-        return ret;
-    }
-
-    /* set the flag on each valid variable */
-    size = pmix_value_array_get_size(&group->group_vars);
-    vars = PMIX_VALUE_ARRAY_GET_BASE(&group->group_vars, int);
-
-    for (i = 0; i < size; ++i) {
-        if (0 <= vars[i]) {
-            (void) pmix_mca_base_var_set_flag(vars[i], flags, set);
-        }
-    }
-
-    return PMIX_SUCCESS;
 }
 
 static void pmix_mca_base_var_group_constructor(pmix_mca_base_var_group_t *group)

@@ -67,21 +67,21 @@ static pmix_status_t component_register(void)
     pmix_mca_base_component_t *component = &mca_pmdl_ompi_component.super.base;
 
     mca_pmdl_ompi_component.incparms = "OMPI_*";
-    (void) pmix_mca_base_component_var_register(
-        component, "include_envars",
-        "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &mca_pmdl_ompi_component.incparms);
+    (void) pmix_mca_base_component_var_register(component,
+                                                "include_envars",
+                                                "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                                &mca_pmdl_ompi_component.incparms);
     if (NULL != mca_pmdl_ompi_component.incparms) {
         mca_pmdl_ompi_component.include = pmix_argv_split(mca_pmdl_ompi_component.incparms, ',');
     }
 
     mca_pmdl_ompi_component.excparms = NULL;
-    (void) pmix_mca_base_component_var_register(
-        component, "exclude_envars",
-        "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &mca_pmdl_ompi_component.excparms);
+    (void) pmix_mca_base_component_var_register(component,
+                                                "exclude_envars",
+                                                "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                                &mca_pmdl_ompi_component.excparms);
     if (NULL != mca_pmdl_ompi_component.excparms) {
         mca_pmdl_ompi_component.exclude = pmix_argv_split(mca_pmdl_ompi_component.excparms, ',');
     }

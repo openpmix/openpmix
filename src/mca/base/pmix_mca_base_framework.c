@@ -91,9 +91,7 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
         }
 
         ret = pmix_mca_base_var_register(framework->framework_project, framework->framework_name,
-                                         NULL, NULL, desc, PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                         PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_2,
-                                         PMIX_MCA_BASE_VAR_SCOPE_ALL_EQ,
+                                         NULL, NULL, desc, PMIX_MCA_BASE_VAR_TYPE_STRING,
                                          &framework->framework_selection);
         free(desc);
         if (0 > ret) {
@@ -110,9 +108,6 @@ int pmix_mca_base_framework_register(struct pmix_mca_base_framework_t *framework
         framework->framework_verbose = PMIX_MCA_BASE_VERBOSE_ERROR;
         ret = pmix_mca_base_framework_var_register(framework, "verbose", desc,
                                                    PMIX_MCA_BASE_VAR_TYPE_INT,
-                                                   &pmix_mca_base_var_enum_verbose, 0,
-                                                   PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_8,
-                                                   PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
                                                    &framework->framework_verbose);
         free(desc);
         if (0 > ret) {
@@ -169,11 +164,6 @@ int pmix_mca_base_framework_open(struct pmix_mca_base_framework_t *framework,
             flags |= PMIX_MCA_BASE_OPEN_STATIC_ONLY;
         }
     }
-
-    /* lock all of this frameworks's variables */
-    ret = pmix_mca_base_var_group_find(framework->framework_project, framework->framework_name,
-                                       NULL);
-    pmix_mca_base_var_group_set_var_flag(ret, PMIX_MCA_BASE_VAR_FLAG_SETTABLE, false);
 
     /* check the verbosity level and open (or close) the output */
     framework_open_output(framework);

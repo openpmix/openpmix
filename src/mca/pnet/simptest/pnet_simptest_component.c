@@ -73,10 +73,10 @@ static pmix_status_t component_register(void)
 {
     pmix_mca_base_component_t *component = &mca_pnet_simptest_component.super.base;
 
-    (void) pmix_mca_base_component_var_register(
-        component, "config_file", "Path of file containing network coordinate configuration",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &mca_pnet_simptest_component.configfile);
+    (void) pmix_mca_base_component_var_register(component, "config_file",
+                                                "Path of file containing network coordinate configuration",
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                                &mca_pnet_simptest_component.configfile);
     return PMIX_SUCCESS;
 }
 
