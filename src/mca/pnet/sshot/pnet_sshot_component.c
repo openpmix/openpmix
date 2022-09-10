@@ -72,21 +72,26 @@ static pmix_status_t component_register(void)
 {
     pmix_mca_base_component_t *component = &pmix_mca_pnet_sshot_component.super;
 
-    (void) pmix_mca_base_component_var_register(
-        component, "config_file", "Path of file containing Slingshot fabric configuration",
-        PMIX_MCA_BASE_VAR_TYPE_STRING,
-        &pmix_mca_pnet_sshot_component.configfile);
+    (void) pmix_mca_base_component_var_register(component,
+                                                "config_file",
+                                                "Path of file containing Slingshot fabric configuration",
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                                &pmix_mca_pnet_sshot_component.configfile);
 
-    (void) pmix_mca_base_component_var_register(component, "num_nodes",
+    (void) pmix_mca_base_component_var_register(component,
+                                                "num_nodes",
                                                 "Number of nodes to simulate (0 = no simulation)",
                                                 PMIX_MCA_BASE_VAR_TYPE_INT,
                                                 &pmix_mca_pnet_sshot_component.numnodes);
-    (void) pmix_mca_base_component_var_register(
-        component, "devs_per_node", "Number of devices/node to simulate (0 = no simulation)",
-        PMIX_MCA_BASE_VAR_TYPE_INT,
-        &pmix_mca_pnet_sshot_component.numdevs);
+    (void) pmix_mca_base_component_var_register(component,
+                                                "devs_per_node",
+                                                "Number of devices/node to simulate (0 = no simulation)",
+                                                PMIX_MCA_BASE_VAR_TYPE_INT,
+                                                &pmix_mca_pnet_sshot_component.numdevs);
 
-    (void) pmix_mca_base_component_var_register(component, "ppn", "PPN to simulate",
+    (void) pmix_mca_base_component_var_register(component,
+                                                "ppn",
+                                                "PPN to simulate",
                                                 PMIX_MCA_BASE_VAR_TYPE_INT,
                                                 &pmix_mca_pnet_sshot_component.ppn);
 

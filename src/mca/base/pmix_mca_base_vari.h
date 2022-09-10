@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -52,22 +52,9 @@ BEGIN_C_DECLS
 /* Internal flags start at bit 16 */
 #define PMIX_MCA_BASE_VAR_FLAG_EXTERNAL_MASK 0x0000ffff
 
-typedef enum {
-    /** Variable is valid */
-    PMIX_MCA_BASE_VAR_FLAG_VALID = 0x00010000,
-    /** Variable is a synonym */
-    PMIX_MCA_BASE_VAR_FLAG_SYNONYM = 0x00020000,
-    /** mbv_source_file needs to be freed */
-    PMIX_MCA_BASE_VAR_FLAG_SOURCE_FILE_NEEDS_FREE = 0x00040000
-} pmix_mca_base_var_flag_internal_t;
-
 #define PMIX_VAR_FLAG_ISSET(var, flag) (!!((var).mbp_flags & (flag)))
-
 #define PMIX_VAR_IS_VALID(var)        (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_VALID))
 #define PMIX_VAR_IS_SYNONYM(var)      (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SYNONYM))
-#define PMIX_VAR_IS_INTERNAL(var)     (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_INTERNAL))
-#define PMIX_VAR_IS_DEFAULT_ONLY(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY))
-#define PMIX_VAR_IS_SETTABLE(var)     (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SETTABLE))
 #define PMIX_VAR_IS_DEPRECATED(var)   (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DEPRECATED))
 
 PMIX_EXPORT extern const char *pmix_var_type_names[];
@@ -131,13 +118,6 @@ PMIX_EXPORT int pmix_mca_base_parse_paramfile(const char *paramfile, pmix_list_t
  * Add a variable to a group
  */
 PMIX_EXPORT int pmix_mca_base_var_group_add_var(const int group_index, const int param_index);
-
-/**
- * \internal
- *
- * Add a performance variable to a group
- */
-PMIX_EXPORT int pmix_mca_base_var_group_add_pvar(const int group_index, const int param_index);
 
 /**
  * \internal

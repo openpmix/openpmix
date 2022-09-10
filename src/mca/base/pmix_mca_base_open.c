@@ -38,10 +38,10 @@
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/mca.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
-#include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/pmix_printf.h"
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_os_dirpath.h"
+#include "src/util/pmix_printf.h"
 
 /*
  * Public variables
@@ -55,6 +55,7 @@ bool pmix_mca_base_component_track_load_errors = false;
 bool pmix_mca_base_component_disable_dlopen = false;
 
 static char *pmix_mca_base_verbose = NULL;
+static char *path_from_param = NULL;
 
 /*
  * Private functions
@@ -65,47 +66,63 @@ static void parse_verbose(char *e, pmix_output_stream_t *lds);
 /*
  * Main MCA initialization.
  */
-int pmix_mca_base_open(void)
+int pmix_mca_base_open(const char *add_path)
 {
+#if PMIX_WANT_HOME_CONFIG_FILES
     char *value;
+#endif
+    char **paths = NULL, *cptr;
     pmix_output_stream_t lds;
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
     int var_id;
+    int rc;
 
-    if (pmix_mca_base_opened++) {
+    if (0 < pmix_mca_base_opened) {
+        /* allow someone to extend the component search path */
+        if (NULL != add_path) {
+            /* put the requested added paths at the front */
+            if (NULL == pmix_mca_base_component_path) {
+                pmix_mca_base_component_path = strdup(add_path);
+            } else {
+                pmix_asprintf(&cptr, "%s;%s", add_path, pmix_mca_base_component_path);
+                free(pmix_mca_base_component_path);
+                pmix_mca_base_component_path = cptr;
+            }
+        }
+        pmix_mca_base_opened++;  // track ref count
         return PMIX_SUCCESS;
     }
+    pmix_mca_base_opened++;
 
     /* define the system and user default paths */
     pmix_mca_base_system_default_path = strdup(pmix_pinstall_dirs.pmixlibdir);
+    pmix_argv_append_nosize(&paths, pmix_mca_base_system_default_path);
 #if PMIX_WANT_HOME_CONFIG_FILES
     value = (char *) pmix_home_directory(geteuid());
     pmix_asprintf(&pmix_mca_base_user_default_path,
                   "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "components", value);
-    if (PMIX_SUCCESS != pmix_os_dirpath_access(pmix_mca_base_user_default_path, 0)) {
-        free(pmix_mca_base_user_default_path);
-        pmix_mca_base_user_default_path = NULL;
+    if (PMIX_SUCCESS == pmix_os_dirpath_access(pmix_mca_base_user_default_path, 0)) {
+        pmix_argv_append_nosize(&paths, pmix_mca_base_user_default_path);
     }
 #endif
 
-    /* see if the user wants to override the defaults */
-    if (NULL == pmix_mca_base_user_default_path) {
-        value = strdup(pmix_mca_base_system_default_path);
-    } else {
-        pmix_asprintf(&value, "%s%c%s", pmix_mca_base_system_default_path, PMIX_ENV_SEP,
-                      pmix_mca_base_user_default_path);
-    }
-
-    pmix_mca_base_component_path = value;
     var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_path",
                                         "Path where to look for additional components",
-                                        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0,
-                                        PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-                                        PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-                                        &pmix_mca_base_component_path);
+                                        PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                        &path_from_param);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "component_path",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
-    free(value);
+    if (NULL != path_from_param) {
+        pmix_argv_append_nosize(&paths, path_from_param);
+    }
+    cptr = pmix_argv_join(paths, PMIX_ENV_SEP);
+    pmix_argv_free(paths);
+    if (NULL != add_path) {
+        pmix_asprintf(&pmix_mca_base_component_path, "%s;pmix@%s", add_path, cptr);
+    } else {
+        pmix_asprintf(&pmix_mca_base_component_path, "pmix@%s", cptr);
+    }
+    free(cptr);
 
     pmix_mca_base_component_show_load_errors = PMIX_SHOW_LOAD_ERRORS_DEFAULT;
     var_id = pmix_mca_base_var_register(
@@ -117,9 +134,7 @@ int pmix_mca_base_open(void)
                                         "name (only load failures from the specifically-listed items are reported). "
                                         "If the comma-delimited list is prefixed with \"^\", then orientation of "
                                         "the list is negated: warn about all load failures *except* for the listed items.",
-                                        PMIX_MCA_BASE_VAR_TYPE_STRING,  NULL, 0,
-                                        PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-                                        PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                        PMIX_MCA_BASE_VAR_TYPE_STRING,
                                         &pmix_mca_base_component_show_load_errors);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL,
                                               "component_show_load_errors",
@@ -135,15 +150,15 @@ int pmix_mca_base_open(void)
     var_id = pmix_mca_base_var_register(
         "pmix", "mca", "base", "component_track_load_errors",
         "Whether to track errors for components that failed to load or not",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_component_track_load_errors);
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+         &pmix_mca_base_component_track_load_errors);
 
     pmix_mca_base_component_disable_dlopen = false;
     var_id = pmix_mca_base_var_register(
         "pmix", "mca", "base", "component_disable_dlopen",
         "Whether to attempt to disable opening dynamic components or not",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_component_disable_dlopen);
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_mca_base_component_disable_dlopen);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL,
                                               "component_disable_dlopen",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
@@ -158,8 +173,8 @@ int pmix_mca_base_open(void)
         "syslog notices), file[:filename] (if filename is not specified, a default filename is "
         "used), fileappend (if not specified, the file is opened for truncation), level[:N] (if "
         "specified, integer verbose level; otherwise, 0 is implied)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_NONE, PMIX_INFO_LVL_9,
-        PMIX_MCA_BASE_VAR_SCOPE_READONLY, &pmix_mca_base_verbose);
+        PMIX_MCA_BASE_VAR_TYPE_STRING,
+        &pmix_mca_base_verbose);
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "verbose",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
@@ -170,7 +185,10 @@ int pmix_mca_base_open(void)
         set_defaults(&lds);
     }
     gethostname(hostname, PMIX_MAXHOSTNAMELEN - 1);
-    pmix_asprintf(&lds.lds_prefix, "[%s:%05d] ", hostname, getpid());
+    rc = asprintf(&lds.lds_prefix, "[%s:%05d] ", hostname, getpid());
+    if (0 > rc) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
     pmix_output_reopen(0, &lds);
     pmix_output_verbose(PMIX_MCA_BASE_VERBOSE_COMPONENT, 0, "mca: base: opening components at %s",
                         pmix_mca_base_component_path);

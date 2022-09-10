@@ -123,7 +123,7 @@ int pmix_mca_base_select(const char *type_name, int output_id, pmix_list_t *comp
         /*
          * Still close the non-selected components
          */
-        pmix_mca_base_components_close(0, /* Pass 0 to keep this from closing the pmix_output.handle */
+        pmix_mca_base_components_close(0, /* Pass 0 to keep this from closing the pmix_output_handle */
                                        components_available, NULL);
         return PMIX_ERR_NOT_FOUND;
     }

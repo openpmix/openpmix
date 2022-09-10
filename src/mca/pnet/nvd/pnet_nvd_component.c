@@ -78,21 +78,21 @@ static pmix_status_t component_register(void)
     pmix_mca_base_component_t *component = &mca_pnet_nvd_component.super.base;
 
     mca_pnet_nvd_component.incparms = "UCX_*,HCOLL_*,UCC_*,SHARP_*,NCCL_*";
-    (void) pmix_mca_base_component_var_register(
-        component, "include_envars",
-        "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &mca_pnet_nvd_component.incparms);
+    (void) pmix_mca_base_component_var_register(component,
+                                                "include_envars",
+                                                "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                                &mca_pnet_nvd_component.incparms);
     if (NULL != mca_pnet_nvd_component.incparms) {
         mca_pnet_nvd_component.include = pmix_argv_split(mca_pnet_nvd_component.incparms, ',');
     }
 
     mca_pnet_nvd_component.excparms = NULL;
-    (void) pmix_mca_base_component_var_register(
-        component, "exclude_envars",
-        "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
-        &mca_pnet_nvd_component.excparms);
+    (void) pmix_mca_base_component_var_register(component,
+                                                "exclude_envars",
+                                                "Comma-delimited list of envars to exclude (\'*\' and \'?\' supported)",
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                                &mca_pnet_nvd_component.excparms);
     if (NULL != mca_pnet_nvd_component.excparms) {
         mca_pnet_nvd_component.exclude = pmix_argv_split(mca_pnet_nvd_component.excparms, ',');
     }

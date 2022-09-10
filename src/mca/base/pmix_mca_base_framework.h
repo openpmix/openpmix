@@ -3,7 +3,7 @@
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -46,7 +46,7 @@ typedef enum pmix_mca_base_open_flag_t pmix_mca_base_open_flag_t;
 /**
  * Register the MCA framework parameters
  *
- * @param[in] flags Registration flags (see mca/base/base.h)
+ * @param[in] flags Registration flags (see mca/base/pmix_base.h)
  *
  * @retval PMIX_SUCCESS on success
  * @retval pmix error code on failure

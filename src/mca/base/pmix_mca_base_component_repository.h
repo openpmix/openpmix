@@ -14,7 +14,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,6 +47,7 @@ BEGIN_C_DECLS
 struct pmix_mca_base_component_repository_item_t {
     pmix_list_item_t super;
 
+    char *ri_project;
     char ri_type[PMIX_MCA_BASE_MAX_TYPE_NAME_LEN + 1];
     char ri_name[PMIX_MCA_BASE_MAX_COMPONENT_NAME_LEN + 1];
 
@@ -89,7 +90,8 @@ PMIX_EXPORT int pmix_mca_base_component_repository_init(void);
  *
  * @param[in] path        delimited list of search paths to add
  */
-PMIX_EXPORT int pmix_mca_base_component_repository_add(const char *path);
+PMIX_EXPORT int pmix_mca_base_component_repository_add(const char *project,
+                                                       const char *path);
 
 /**
  * @brief return the list of components that match a given framework

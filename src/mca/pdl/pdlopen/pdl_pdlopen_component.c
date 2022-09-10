@@ -77,11 +77,10 @@ static int pdlopen_component_register(void)
     int ret;
 
     mca_pdl_pdlopen_component.filename_suffixes_mca_storage = ".so,.dylib,.dll,.sl";
-    ret = pmix_mca_base_component_var_register(
-        &mca_pdl_pdlopen_component.base.base_version, "filename_suffixes",
-        "Comma-delimited list of filename suffixes that the pdlopen component will try",
-        PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, PMIX_MCA_BASE_VAR_FLAG_SETTABLE, PMIX_INFO_LVL_5,
-        PMIX_MCA_BASE_VAR_SCOPE_LOCAL, &mca_pdl_pdlopen_component.filename_suffixes_mca_storage);
+    ret = pmix_mca_base_component_var_register(&mca_pdl_pdlopen_component.base.base_version, "filename_suffixes",
+                                               "Comma-delimited list of filename suffixes that the pdlopen component will try",
+                                               PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                               &mca_pdl_pdlopen_component.filename_suffixes_mca_storage);
     if (ret < 0) {
         return ret;
     }

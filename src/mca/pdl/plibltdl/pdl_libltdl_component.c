@@ -83,8 +83,8 @@ static int plibltpdl_component_register(void)
                                     "have_lt_dladvise",
                                     "Whether the version of plibltdl that this component is built "
                                     "against supports lt_dladvise functionality or not",
-                                    MCA_BASE_VAR_TYPE_BOOL, NULL, 0, MCA_BASE_VAR_FLAG_DEFAULT_ONLY,
-                                    PMIX_INFO_LVL_7, MCA_BASE_VAR_SCOPE_CONSTANT, &supported);
+                                    MCA_BASE_VAR_TYPE_BOOL,
+                                    &supported);
 
     return PMIX_SUCCESS;
 }
