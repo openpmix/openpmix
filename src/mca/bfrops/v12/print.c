@@ -14,7 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -46,7 +46,7 @@ pmix_status_t pmix12_bfrop_print(char **output, char *prefix, void *src, pmix_da
 
     /* Lookup the print function for this type and call it */
 
-    info = (pmix_bfrop_type_info_t *) pmix_pointer_array_get_item(&mca_bfrops_v12_component.types, type);
+    info = (pmix_bfrop_type_info_t *) pmix_pointer_array_get_item(&pmix_mca_bfrops_v12_component.types, type);
     if (NULL == info) {
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }

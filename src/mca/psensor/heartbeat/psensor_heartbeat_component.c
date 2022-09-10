@@ -25,7 +25,7 @@ static int heartbeat_open(void);
 static int heartbeat_close(void);
 static int heartbeat_query(pmix_mca_base_module_t **module, int *priority);
 
-pmix_psensor_heartbeat_component_t mca_psensor_heartbeat_component = {
+pmix_psensor_heartbeat_component_t pmix_mca_psensor_heartbeat_component = {
     .super = {.base = {
                   PMIX_PSENSOR_BASE_VERSION_1_0_0,
 
@@ -45,7 +45,7 @@ pmix_psensor_heartbeat_component_t mca_psensor_heartbeat_component = {
  */
 static int heartbeat_open(void)
 {
-    PMIX_CONSTRUCT(&mca_psensor_heartbeat_component.trackers, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_psensor_heartbeat_component.trackers, pmix_list_t);
 
     return PMIX_SUCCESS;
 }
@@ -63,7 +63,7 @@ static int heartbeat_query(pmix_mca_base_module_t **module, int *priority)
 
 static int heartbeat_close(void)
 {
-    PMIX_LIST_DESTRUCT(&mca_psensor_heartbeat_component.trackers);
+    PMIX_LIST_DESTRUCT(&pmix_mca_psensor_heartbeat_component.trackers);
 
     return PMIX_SUCCESS;
 }

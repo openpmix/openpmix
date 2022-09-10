@@ -2,6 +2,7 @@
 # Copyright (c) 2004-2010 The Trustees of Indiana University.
 #                         All rights reserved.
 # Copyright (c) 2014-2015 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -16,8 +17,8 @@ sources = \
 
 # This component will only ever be built statically -- never as a DSO.
 
-noinst_LTLIBRARIES = libmca_pdl_pdlopen.la
+noinst_LTLIBRARIES = libpmix_mca_pdl_pdlopen.la
 
-libmca_pdl_pdlopen_la_SOURCES = $(sources)
-libmca_pdl_pdlopen_la_LDFLAGS = -module -avoid-version
-libmca_pdl_pdlopen_la_LIBADD = $(pmix_pdl_pdlopen_LIBS)
+libpmix_mca_pdl_pdlopen_la_SOURCES = $(sources)
+libpmix_mca_pdl_pdlopen_la_LDFLAGS = -module -avoid-version
+libpmix_mca_pdl_pdlopen_la_LIBADD = $(pmix_pdl_pdlopen_LIBS)

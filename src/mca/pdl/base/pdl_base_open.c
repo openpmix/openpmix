@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,5 +48,5 @@ int pmix_pdl_base_open(pmix_mca_base_open_flag_t flags)
    framework. */
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pdl, "Dynamic loader framework", NULL /* register */,
                                 pmix_pdl_base_open /* open */, NULL /* close */,
-                                mca_pdl_base_static_components,
+                                pmix_mca_pdl_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_NO_DSO);

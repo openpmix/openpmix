@@ -40,7 +40,7 @@ static int plibltpdl_component_query(mca_base_module_t **module, int *priority);
  * and pointers to our public functions in it
  */
 
-pmix_pdl_plibltpdl_component_t mca_pdl_plibltpdl_component = {
+pmix_pdl_plibltpdl_component_t pmix_mca_pdl_plibltpdl_component = {
 
     /* Fill in the mca_pdl_base_component_t */
     .base = {
@@ -73,13 +73,13 @@ pmix_pdl_plibltpdl_component_t mca_pdl_plibltpdl_component = {
 
     /* Now fill in the plibltdl component-specific members */
 };
+bool supported = PMIX_INT_TO_BOOL(PMIX_DL_LIBLTDL_HAVE_LT_DLADVISE);
 
 static int plibltpdl_component_register(void)
 {
     /* Register an info param indicating whether we have lt_dladvise
        support or not */
-    bool supported = PMIX_INT_TO_BOOL(PMIX_DL_LIBLTDL_HAVE_LT_DLADVISE);
-    mca_base_component_var_register(&mca_pdl_plibltpdl_component.base.base_version,
+    mca_base_component_var_register(&pmix_mca_pdl_plibltpdl_component.base.base_version,
                                     "have_lt_dladvise",
                                     "Whether the version of plibltdl that this component is built "
                                     "against supports lt_dladvise functionality or not",
@@ -140,7 +140,7 @@ static int plibltpdl_component_query(mca_base_module_t **module, int *priority)
     /* The priority value is somewhat meaningless here; by
        pmix/mca/dl/configure.m4, there's at most one component
        available. */
-    *priority = mca_pdl_plibltpdl_component.base.priority;
+    *priority = pmix_mca_pdl_plibltpdl_component.base.priority;
     *module = &pmix_pdl_plibltpdl_module.super;
 
     return PMIX_SUCCESS;

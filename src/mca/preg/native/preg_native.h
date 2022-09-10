@@ -19,7 +19,7 @@
 BEGIN_C_DECLS
 
 /* the component must be visible data for the linker to find it */
-PMIX_EXPORT extern pmix_mca_base_component_t mca_preg_native_component;
+PMIX_EXPORT extern pmix_mca_base_component_t pmix_mca_preg_native_component;
 extern pmix_preg_module_t pmix_preg_native_module;
 
 END_C_DECLS

@@ -50,7 +50,7 @@ pmix_status_t pmix20_bfrop_print(char **output, char *prefix, void *src, pmix_da
 
     if (NULL
         == (info = (pmix_bfrop_type_info_t *)
-                pmix_pointer_array_get_item(&mca_bfrops_v20_component.types, type))) {
+                pmix_pointer_array_get_item(&pmix_mca_bfrops_v20_component.types, type))) {
         return PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
 

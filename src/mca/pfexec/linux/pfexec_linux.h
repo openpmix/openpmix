@@ -36,7 +36,7 @@ BEGIN_C_DECLS
  * PFEXEC Linux module
  */
 PMIX_EXPORT extern pmix_pfexec_base_module_t pmix_pfexec_linux_module;
-PMIX_EXPORT extern pmix_pfexec_base_component_t mca_pfexec_linux_component;
+PMIX_EXPORT extern pmix_pfexec_base_component_t pmix_mca_pfexec_linux_component;
 
 END_C_DECLS
 

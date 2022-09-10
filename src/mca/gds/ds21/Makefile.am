@@ -45,10 +45,10 @@ sources = \
 if MCA_BUILD_pmix_gds_ds21_DSO
 lib =
 lib_sources =
-component = mca_gds_ds21.la
+component = pmix_mca_gds_ds21.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_gds_ds21.la
+lib = libpmix_mca_gds_ds21.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -56,13 +56,13 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_gds_ds21_la_SOURCES = $(component_sources)
-mca_gds_ds21_la_LDFLAGS = -module -avoid-version \
+pmix_mca_gds_ds21_la_SOURCES = $(component_sources)
+pmix_mca_gds_ds21_la_LDFLAGS = -module -avoid-version \
     $(PMIX_TOP_BUILDDIR)/src/mca/common/dstore/libmca_common_dstore.la
 if NEED_LIBPMIX
-mca_gds_ds21_la_LIBADD = $(top_builddir)/src/libpmix.la
+pmix_mca_gds_ds21_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_gds_ds21_la_SOURCES = $(lib_sources)
-libmca_gds_ds21_la_LDFLAGS = -module -avoid-version
+libpmix_mca_gds_ds21_la_SOURCES = $(lib_sources)
+libpmix_mca_gds_ds21_la_LDFLAGS = -module -avoid-version

@@ -62,7 +62,7 @@ static int if_bsdx_ipv6_open(void);
  * bsdi
  * Apple
  */
-pmix_pif_base_component_t mca_pif_bsdx_ipv6_component = {
+pmix_pif_base_component_t pmix_mca_pif_bsdx_ipv6_component = {
     /* First, the mca_component_t struct containing meta information
        about the component itself */
     .base = {

@@ -12,6 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -33,10 +34,10 @@ sources = \
 if MCA_BUILD_pmix_psec_munge_DSO
 lib =
 lib_sources =
-component = mca_psec_munge.la
+component = pmix_mca_psec_munge.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_psec_munge.la
+lib = libpmix_mca_psec_munge.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -44,14 +45,14 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_psec_munge_la_SOURCES = $(component_sources)
-mca_psec_munge_la_LDFLAGS = -module -avoid-version $(psec_munge_LDFLAGS)
-mca_psec_munge_la_LIBADD = $(psec_munge_LIBS)
+pmix_mca_psec_munge_la_SOURCES = $(component_sources)
+pmix_mca_psec_munge_la_LDFLAGS = -module -avoid-version $(psec_munge_LDFLAGS)
+pmix_mca_psec_munge_la_LIBADD = $(psec_munge_LIBS)
 if NEED_LIBPMIX
-mca_psec_munge_la_LIBADD += $(top_builddir)/src/libpmix.la
+pmix_mca_psec_munge_la_LIBADD += $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_psec_munge_la_SOURCES = $(lib_sources)
-libmca_psec_munge_la_LDFLAGS = -module -avoid-version $(psec_munge_LDFLAGS)
-libmca_psec_munge_la_LIBADD = $(psec_munge_LIBS)
+libpmix_mca_psec_munge_la_SOURCES = $(lib_sources)
+libpmix_mca_psec_munge_la_LDFLAGS = -module -avoid-version $(psec_munge_LDFLAGS)
+libpmix_mca_psec_munge_la_LIBADD = $(psec_munge_LIBS)

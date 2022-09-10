@@ -225,7 +225,7 @@ static int pmix_pfexec_base_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pfexec, "PMIx fork/exec Subsystem", pmix_pfexec_register,
                                 pmix_pfexec_base_open, pmix_pfexec_base_close,
-                                mca_pfexec_base_static_components,
+                                pmix_mca_pfexec_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
 
 /**** FRAMEWORK CLASS INSTANTIATIONS ****/

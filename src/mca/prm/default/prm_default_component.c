@@ -27,7 +27,7 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
-pmix_prm_base_component_t mca_prm_default_component = {
+pmix_prm_base_component_t pmix_mca_prm_default_component = {
     .base = {
         PMIX_PRM_BASE_VERSION_1_0_0,
 

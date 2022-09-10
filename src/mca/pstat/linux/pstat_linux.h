@@ -41,7 +41,7 @@ BEGIN_C_DECLS
 /**
  * Globally exported variable
  */
-PMIX_EXPORT extern const pmix_pstat_base_component_t mca_pstat_linux_component;
+PMIX_EXPORT extern const pmix_pstat_base_component_t pmix_mca_pstat_linux_component;
 
 PMIX_EXPORT extern const pmix_pstat_base_module_t pmix_pstat_linux_module;
 

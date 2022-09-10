@@ -80,4 +80,4 @@ static pmix_status_t pmix_pshmem_open(pmix_mca_base_open_flag_t flags)
 
 PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, pshmem, "PMIx Shared memory",
                                 NULL, pmix_pshmem_open, pmix_pshmem_close,
-                                mca_pshmem_base_static_components, 0);
+                                pmix_mca_pshmem_base_static_components, 0);

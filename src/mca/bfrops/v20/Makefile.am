@@ -12,6 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -38,10 +39,10 @@ sources = \
 if MCA_BUILD_pmix_bfrops_v20_DSO
 lib =
 lib_sources =
-component = mca_bfrops_v20.la
+component = pmix_mca_bfrops_v20.la
 component_sources = $(headers) $(sources)
 else
-lib = libmca_bfrops_v20.la
+lib = libpmix_mca_bfrops_v20.la
 lib_sources = $(headers) $(sources)
 component =
 component_sources =
@@ -49,12 +50,12 @@ endif
 
 mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
-mca_bfrops_v20_la_SOURCES = $(component_sources)
-mca_bfrops_v20_la_LDFLAGS = -module -avoid-version
+pmix_mca_bfrops_v20_la_SOURCES = $(component_sources)
+pmix_mca_bfrops_v20_la_LDFLAGS = -module -avoid-version
 if NEED_LIBPMIX
-mca_bfrops_v20_la_LIBADD = $(top_builddir)/src/libpmix.la
+pmix_mca_bfrops_v20_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(lib)
-libmca_bfrops_v20_la_SOURCES = $(lib_sources)
-libmca_bfrops_v20_la_LDFLAGS = -module -avoid-version
+libpmix_mca_bfrops_v20_la_SOURCES = $(lib_sources)
+libpmix_mca_bfrops_v20_la_LDFLAGS = -module -avoid-version

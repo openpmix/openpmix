@@ -149,7 +149,7 @@ static void add_tracker(int sd, short flags, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
     /* add the tracker to our list */
-    pmix_list_append(&mca_psensor_heartbeat_component.trackers, &ft->super);
+    pmix_list_append(&pmix_mca_psensor_heartbeat_component.trackers, &ft->super);
 
     /* setup the timer event */
     pmix_event_evtimer_set(pmix_psensor_base.evbase, &ft->ev, check_heartbeat, ft);
@@ -199,14 +199,14 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
     }
 
     /* if the recv hasn't been posted, so so now */
-    if (!mca_psensor_heartbeat_component.recv_active) {
+    if (!pmix_mca_psensor_heartbeat_component.recv_active) {
         /* setup to receive heartbeats */
         rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
         rcv->tag = PMIX_PTL_TAG_HEARTBEAT;
         rcv->cbfunc = pmix_psensor_heartbeat_recv_beats;
         /* add it to the beginning of the list of recvs */
         pmix_list_prepend(&pmix_ptl_base.posted_recvs, &rcv->super);
-        mca_psensor_heartbeat_component.recv_active = true;
+        pmix_mca_psensor_heartbeat_component.recv_active = true;
     }
 
     /* need to push into our event base to add this to our trackers */
@@ -226,13 +226,13 @@ static void del_tracker(int sd, short flags, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, flags);
 
     /* remove the tracker from our list */
-    PMIX_LIST_FOREACH_SAFE (ft, ftnext, &mca_psensor_heartbeat_component.trackers,
+    PMIX_LIST_FOREACH_SAFE (ft, ftnext, &pmix_mca_psensor_heartbeat_component.trackers,
                             pmix_heartbeat_trkr_t) {
         if (ft->requestor != cd->requestor) {
             continue;
         }
         if (NULL == cd->id || (NULL != ft->id && 0 == strcmp(ft->id, cd->id))) {
-            pmix_list_remove_item(&mca_psensor_heartbeat_component.trackers, &ft->super);
+            pmix_list_remove_item(&pmix_mca_psensor_heartbeat_component.trackers, &ft->super);
             PMIX_RELEASE(ft);
         }
     }
@@ -326,7 +326,7 @@ static void add_beat(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* find this peer in our trackers */
-    PMIX_LIST_FOREACH (ft, &mca_psensor_heartbeat_component.trackers, pmix_heartbeat_trkr_t) {
+    PMIX_LIST_FOREACH (ft, &pmix_mca_psensor_heartbeat_component.trackers, pmix_heartbeat_trkr_t) {
         if (ft->requestor == b->peer) {
             /* increment the beat count */
             ++ft->nbeats;

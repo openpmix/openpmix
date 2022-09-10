@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,7 +26,7 @@
 
 BEGIN_C_DECLS
 
-extern pmix_ptl_base_component_t mca_ptl_client_component;
+extern pmix_ptl_base_component_t pmix_mca_ptl_client_component;
 
 extern pmix_ptl_module_t pmix_ptl_client_module;
 
