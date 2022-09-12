@@ -536,7 +536,7 @@ PMIX_EXPORT void pmix_output_hexdump(int verbose_level, int output_id, void *ptr
  * The intended usage is to invoke the constructor and then enable
  * the output fields that you want.
  */
-PMIX_CLASS_DECLARATION(pmix_output_stream_t);
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_output_stream_t);
 
 END_C_DECLS
 
