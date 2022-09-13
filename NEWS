@@ -23,10 +23,18 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.2.1 -- 09 Sept 2022
+4.2.1 -- 13 Sept 2022
 ----------------------
+ - PR #2754 Multiple commits
+    - Export the output_stream_t class declaration
+    - Update NEWS for release
+ - PR #2752 Catch missing library renames
+ - PR #2751 Multiple commits
+    - Remove stale m4 and unimplemented function declaration
+    - Mark that proc arrays being passed have been sorted
+    - Add improved debug and correct param passing to pmix_init_util
  - PR #2747 Final prep for release
- = PR #2746 Ensure tools relay events to their server
+ - PR #2746 Ensure tools relay events to their server
  - PR #2744 Multiple commits
     - Clean up leftover .gitignore entry
     - Fix a number of Coverity issues
