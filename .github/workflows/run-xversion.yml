@@ -25,6 +25,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Check out the code
         uses: actions/checkout@v1
+        with:
+          submodules: recursive
       # Run the container tester
       - name: Cross-version Client
         run: docker run --rm -v ${GITHUB_WORKSPACE}:/home/pmixer/pmix-pr-to-test --env PR_TARGET_BRANCH=${GITHUB_BASE_REF} ${{ env.IMAGE_NAME }}:latest /bin/bash -c "/home/pmixer/bin/run-xversion.sh --path /home/pmixer/pmix-pr-to-test -- --skip-tool"
@@ -36,6 +38,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Check out the code
         uses: actions/checkout@v1
+        with:
+          submodules: recursive
       # Run the container tester
       - name: Cross-version Tool
         run: docker run --rm -v ${GITHUB_WORKSPACE}:/home/pmixer/pmix-pr-to-test --env PR_TARGET_BRANCH=${GITHUB_BASE_REF} ${{ env.IMAGE_NAME }}:latest /bin/bash -c "/home/pmixer/bin/run-xversion.sh --path /home/pmixer/pmix-pr-to-test -- --skip-client"
@@ -47,6 +51,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: Check out the code
         uses: actions/checkout@v1
+        with:
+          submodules: recursive
       # Run the container tester
       - name: Cross-version Make Check
         run: docker run --rm -v ${GITHUB_WORKSPACE}:/home/pmixer/pmix-pr-to-test --env PR_TARGET_BRANCH=${GITHUB_BASE_REF} ${{ env.IMAGE_NAME }}:latest /bin/bash -c "/home/pmixer/bin/run-xversion.sh --path /home/pmixer/pmix-pr-to-test -- --skip-client --skip-tool --make-check"
