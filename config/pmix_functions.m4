@@ -17,7 +17,7 @@ dnl Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2017      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl $COPYRIGHT$
@@ -506,10 +506,10 @@ dnl #######################################################################
 dnl #######################################################################
 dnl #######################################################################
 
-# Declare some variables; use PMIX_VAR_SCOPE_END to ensure that they
-# are cleaned up / undefined.
-AC_DEFUN([PMIX_VAR_SCOPE_PUSH],[
-
+AC_DEFUN([PMIX_VAR_SCOPE_INIT],
+[
+pmix_var_scope_push()
+{
     # Is the private index set?  If not, set it.
     if test "x$pmix_scope_index" = "x"; then
         pmix_scope_index=1
@@ -519,7 +519,7 @@ AC_DEFUN([PMIX_VAR_SCOPE_PUSH],[
     # This is a simple sanity check to ensure we're not already
     # overwriting pre-existing variables (that have a non-empty
     # value).  It's not a perfect check, but at least it's something.
-    for pmix_var in $1; do
+    for pmix_var in $[]@; do
         pmix_str="pmix_str=\"\$$pmix_var\""
         eval $pmix_str
 
@@ -534,16 +534,16 @@ AC_DEFUN([PMIX_VAR_SCOPE_PUSH],[
 
     # Ok, we passed the simple sanity check.  Save all these names so
     # that we can unset them at the end of the scope.
-    pmix_str="pmix_scope_$pmix_scope_index=\"$1\""
+    pmix_str="pmix_scope_$pmix_scope_index=\"$[]@\""
     eval $pmix_str
     unset pmix_str
 
     env | grep pmix_scope
     pmix_scope_index=`expr $pmix_scope_index + 1`
-])dnl
+}
 
-# Unset a bunch of variables that were previously set
-AC_DEFUN([PMIX_VAR_SCOPE_POP],[
+pmix_var_scope_pop()
+{
     # Unwind the index
     pmix_scope_index=`expr $pmix_scope_index - 1`
     pmix_scope_test=`expr $pmix_scope_index \> 0`
@@ -561,8 +561,28 @@ AC_DEFUN([PMIX_VAR_SCOPE_POP],[
     for pmix_var in $pmix_str; do
         unset $pmix_var
     done
+}
+])
+
+# PMIX_VAR_SCOPE_PUSH(vars list)
+# ------------------------------
+# Scope-check that the vars in the space-separated vars list are not already
+# in use.  Generate a configure-time error if a conflict is found.  Note that
+# the in use check is defined as "defined", so even if a var in vars list is
+# set outside of PMIX_VAR_SCOPE_PUSH, the check will still trip.
+AC_DEFUN([PMIX_VAR_SCOPE_PUSH],[
+    AC_REQUIRE([PMIX_VAR_SCOPE_INIT])
+    pmix_var_scope_push $1
 ])dnl
 
+# PMIX_VAR_SCOPE_POP()
+# --------------------
+# Unset the last set of variables set in PMIX_VAR_SCOPE_POP.  Every call to
+# PMIX_VAR_SCOPE_PUSH should have a matched call to this macro.
+AC_DEFUN([PMIX_VAR_SCOPE_POP],[
+    AC_REQUIRE([PMIX_VAR_SCOPE_INIT])
+    pmix_var_scope_pop
+])dnl
 
 dnl #######################################################################
 dnl #######################################################################
