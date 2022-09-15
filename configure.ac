@@ -240,11 +240,6 @@ PMIX_DEFINE_ARGS
 # Define some basic useful values
 PMIX_BASIC_SETUP
 
-# compatibility for oac_check_package
-m4_copy([PMIX_LOG_COMMAND], [OAC_LOG_COMMAND])
-m4_copy([PMIX_LOG_MSG], [OAC_LOG_MSG])
-m4_copy([PMIX_APPEND], [OAC_APPEND])
-
 # If debug mode, add -g
 AS_IF([test "$pmix_debug" = "1"],
       [CFLAGS="$CFLAGS -g"])
