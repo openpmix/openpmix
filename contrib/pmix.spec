@@ -204,7 +204,9 @@ Prefix: %{_prefix}
 Provides: pmix
 Provides: pmix = %{version}
 BuildRoot: /var/tmp/%{name}-%{version}-%{release}-root
+BuildRequires: gcc
 BuildRequires: libevent-devel
+BuildRequires: hwloc-devel
 %if %{disable_auto_requires}
 AutoReq: no
 %endif
