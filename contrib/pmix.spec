@@ -205,8 +205,11 @@ Provides: pmix
 Provides: pmix = %{version}
 BuildRoot: /var/tmp/%{name}-%{version}-%{release}-root
 BuildRequires: gcc
+BuildRequires: make
 BuildRequires: libevent-devel
 BuildRequires: hwloc-devel
+BuildRequires: python3-devel
+BuildRequires: zlib-devel
 %if %{disable_auto_requires}
 AutoReq: no
 %endif
