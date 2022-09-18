@@ -193,15 +193,21 @@ static inline bool pmix_check_cli_option(char *a, char *b)
     char **asplit, **bsplit;
     bool match;
 
-    /* if there exists a '-' in b, then we are
-     * dealing with a multi-word option. Parse
-     * those by checking each word segment
-     * individually for a match so the user
-     * doesn't have to spell it all out
-     * unless necessary */
-    if (NULL != strchr(b, '-')) {
+    /* if there exists a '-' in either argument,
+     * then we are dealing with a multi-word
+     * option. Parse those by checking each
+     * word segment individually for a match
+     * so the user doesn't have to spell it all
+     * out unless necessary */
+    if (NULL != strchr(b, '-') ||
+        NULL != strchr(a, '-')) {
         asplit = pmix_argv_split(a, '-');
         bsplit = pmix_argv_split(b, '-');
+        if (pmix_argv_count(asplit) != pmix_argv_count(bsplit)) {
+            pmix_argv_free(asplit);
+            pmix_argv_free(bsplit);
+            return false;
+        }
         match = false;
         for (n=0; NULL != asplit[n] && NULL != bsplit[n]; n++) {
             len1 = strlen(asplit[n]);
