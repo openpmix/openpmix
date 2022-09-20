@@ -106,7 +106,7 @@ int pmix_tsd_key_create(pmix_tsd_key_t *key, pmix_tsd_destructor_t destructor)
     return rc;
 }
 
-int pmix_tsd_keys_destruct()
+int pmix_tsd_keys_destruct(void)
 {
     int i;
     void *ptr;
@@ -125,7 +125,7 @@ int pmix_tsd_keys_destruct()
     return PMIX_SUCCESS;
 }
 
-void pmix_thread_set_main()
+void pmix_thread_set_main(void)
 {
     pmix_main_thread = pthread_self();
 }
