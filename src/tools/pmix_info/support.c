@@ -674,12 +674,12 @@ void pmix_info_show_mca_params(const char *type, const char *component)
     }
 }
 
-void pmix_info_do_arch()
+void pmix_info_do_arch(void)
 {
     pmix_info_out("Configured architecture", "config:arch", PMIX_ARCH);
 }
 
-void pmix_info_do_hostname()
+void pmix_info_do_hostname(void)
 {
     pmix_info_out("Configure host", "config:host", PMIX_CONFIGURE_HOST);
 }

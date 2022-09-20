@@ -63,10 +63,10 @@ int pmix_bfrops_base_output = 0;
 
 static int pmix_bfrop_register(pmix_mca_base_register_flag_t flags)
 {
+    PMIX_HIDE_UNUSED_PARAMS(flags);
+
     if (PMIX_MCA_BASE_REGISTER_DEFAULT == flags) {
         /* do something to silence warning */
-        int count = 0;
-        ++count;
     }
     pmix_bfrops_globals.initial_size = PMIX_BFROP_DEFAULT_INITIAL_SIZE;
     pmix_mca_base_var_register("pmix", "bfrops", "base", "initial_size", "Initial size of a buffer",

@@ -165,7 +165,7 @@ do_local_init:
     return pmix_tsd_key_create(&hostname_tsd_key, hostname_cleanup);
 }
 
-int pmix_net_finalize()
+int pmix_net_finalize(void)
 {
     free(private_ipv4);
     private_ipv4 = NULL;
@@ -400,12 +400,12 @@ int pmix_net_get_port(const struct sockaddr *addr)
 
 #else /* HAVE_STRUCT_SOCKADDR_IN */
 
-int pmix_net_init()
+int pmix_net_init(void)
 {
     return PMIX_SUCCESS;
 }
 
-int pmix_net_finalize()
+int pmix_net_finalize(void)
 {
     return PMIX_SUCCESS;
 }
