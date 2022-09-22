@@ -64,6 +64,16 @@ PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
         return "PROC-ABORT-REQUESTED";
     case PMIX_ERR_PROC_ABORTING:
         return "PROC-ABORTING";
+    case PMIX_ERR_PROC_KILLED_BY_CMD:
+        return"PROC-KILLED-BY-CMD";
+    case PMIX_ERR_PROC_FAILED_TO_START:
+        return "PROC-FAILED-TO-START";
+    case PMIX_ERR_PROC_ABORTED_BY_SIG:
+        return "PROC-ABORTED-BY-SIG";
+    case PMIX_ERR_PROC_SENSOR_BOUND_EXCEEDED:
+        return "PROC-SENSOR-BOUND-EXCEEDED";
+    case PMIX_ERR_EXIT_NONZERO_TERM:
+        return "PROC-EXIT-NONZERO-TERM";
 
     case PMIX_ERR_SERVER_FAILED_REQUEST:
         return "SERVER FAILED REQUEST";
