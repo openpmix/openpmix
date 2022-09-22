@@ -558,3 +558,9 @@ return_error:
     }
     return ret;
 }
+
+int pmix_finalize_util(void)
+{
+    util_initialized = false;
+    return PMIX_SUCCESS;
+}
