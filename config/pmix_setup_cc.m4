@@ -22,6 +22,7 @@ dnl                         reserved.
 dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
 dnl
 dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2022      Amazon.com, Inc. or its affiliates.  All Rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -225,7 +226,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
     AC_DEFINE_UNQUOTED([PMIX_C_HAVE___THREAD], [$pmix_prog_cc__thread_available],
                        [Whether C compiler supports __thread])
 
-    PMIX_C_COMPILER_VENDOR([pmix_c_vendor])
+    OAC_C_COMPILER_VENDOR()
 
     # GNU C and autotools are inconsistent about whether this is
     # defined so let's make it true everywhere for now...  However, IBM
@@ -235,7 +236,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # Don't use AC_GNU_SOURCE because it requires that no compiler
     # tests are done before setting it, and we need to at least do
     # enough tests to figure out if we're using XL or not.
-    AS_IF([test "$pmix_cv_c_compiler_vendor" != "ibm"],
+    AS_IF([test "$oac_cv_c_compiler_vendor" != "ibm"],
           [AH_VERBATIM([_GNU_SOURCE],
                        [/* Enable GNU extensions on systems that have them.  */
 #ifndef _GNU_SOURCE
@@ -295,7 +296,7 @@ AC_DEFUN([PMIX_SETUP_CC],[
 
     # Try to enable restrict keyword
     RESTRICT_CFLAGS=
-    case "$pmix_c_vendor" in
+    case "$oac_cv_c_compiler_vendor" in
         intel)
             RESTRICT_CFLAGS="-restrict"
         ;;
@@ -413,7 +414,7 @@ AC_DEFUN([_PMIX_PROG_CC],[
 ])
 
 AC_DEFUN([PMIX_SETUP_PICKY_COMPILERS],[
-    if test $WANT_PICKY_COMPILER -eq 1 && test "$pmix_c_vendor" != "pgi"; then
+    if test $WANT_PICKY_COMPILER -eq 1 && test "$oac_cv_c_compiler_vendor" != "portland group"; then
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wundef, Wundef)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wno-long-long, Wno_long_long, int main() { long long x; })
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wsign-compare, Wsign_compare)
@@ -428,7 +429,7 @@ AC_DEFUN([PMIX_SETUP_PICKY_COMPILERS],[
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wall, Wall)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Wextra, Wextra)
         _PMIX_CHECK_SPECIFIC_CFLAGS(-Werror, Werror)
-        if test $WANT_MEMORY_SANITIZERS -eq 1 && test "$pmix_c_vendor" != "pgi"; then
+        if test $WANT_MEMORY_SANITIZERS -eq 1 && test "$oac_cv_c_compiler_vendor" != "portland group"; then
             _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=address, fsanaddress)
             _PMIX_CHECK_SPECIFIC_CFLAGS(-fsanitize=undefined, fsanundefined)
         fi

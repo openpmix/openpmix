@@ -18,8 +18,7 @@ dnl Copyright (c) 2017      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl
 dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
-dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
-dnl                         All Rights reserved.
+dnl Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.  All Rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
