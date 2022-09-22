@@ -191,30 +191,32 @@ static inline bool pmix_check_cli_option(char *a, char *b)
 {
     size_t len1, len2, len, n;
     char **asplit, **bsplit;
-    bool match;
+    int match;
 
     /* if there exists a '-' in either argument,
      * then we are dealing with a multi-word
      * option. Parse those by checking each
      * word segment individually for a match
      * so the user doesn't have to spell it all
-     * out unless necessary */
+     * out unless necessary. We consider it a
+     * valid match if all provided segments match
+     * that of the target option */
     if (NULL != strchr(b, '-') ||
         NULL != strchr(a, '-')) {
         asplit = pmix_argv_split(a, '-');
         bsplit = pmix_argv_split(b, '-');
-        if (pmix_argv_count(asplit) != pmix_argv_count(bsplit)) {
+        if (pmix_argv_count(asplit) > pmix_argv_count(bsplit)) {
             pmix_argv_free(asplit);
             pmix_argv_free(bsplit);
             return false;
         }
-        match = false;
+        match = 0;
         for (n=0; NULL != asplit[n] && NULL != bsplit[n]; n++) {
             len1 = strlen(asplit[n]);
             len2 = strlen(bsplit[n]);
             len = len1 < len2 ? len1 : len2;
             if (0 == strncasecmp(asplit[n], bsplit[n], len)) {
-                match = true;
+                ++match;
             } else {
                 pmix_argv_free(asplit);
                 pmix_argv_free(bsplit);
@@ -223,7 +225,11 @@ static inline bool pmix_check_cli_option(char *a, char *b)
         }
         pmix_argv_free(asplit);
         pmix_argv_free(bsplit);
-        return match;
+        if (match == pmix_argv_count(asplit)) {
+            /* all provided segments match */
+            return true;
+        }
+        return false;
     }
 
     /* if this is not a multi-word option, we just

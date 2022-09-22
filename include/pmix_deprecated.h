@@ -76,7 +76,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_ERR_SILENT                             -2
 #define PMIX_ERR_DEBUGGER_RELEASE                   -3
 #define PMIX_ERR_PROC_ABORTED                       -7
-#define PMIX_ERR_PROC_REQUESTED_ABORT               -8
 #define PMIX_ERR_PROC_ABORTING                      -9
 #define PMIX_ERR_SERVER_FAILED_REQUEST              -10
 #define PMIX_EXISTS                                 -11
