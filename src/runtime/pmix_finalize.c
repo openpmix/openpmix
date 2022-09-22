@@ -48,6 +48,7 @@
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
+#include "src/runtime/pmix_init_util.h"
 #include <event.h>
 
 #include "src/runtime/pmix_progress_threads.h"
@@ -161,4 +162,6 @@ void pmix_rte_finalize(void)
     /* now safe to release the event base */
     (void) pmix_progress_thread_stop(NULL);
     pmix_tsd_keys_destruct();
+
+    pmix_finalize_util();
 }

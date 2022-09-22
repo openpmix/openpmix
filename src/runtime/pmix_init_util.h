@@ -36,6 +36,7 @@ PMIX_EXPORT extern const char* pmix_tool_org;
 PMIX_EXPORT extern const char* pmix_tool_msg;
 
 PMIX_EXPORT int pmix_init_util(pmix_info_t info[], size_t ninfo, char *helpdir);
+PMIX_EXPORT int pmix_finalize_util(void);
 
 END_C_DECLS
 
