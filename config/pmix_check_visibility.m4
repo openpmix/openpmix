@@ -14,6 +14,7 @@
 # Copyright (c) 2009-2011 Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2017      Intel, Inc. All rights reserved.
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Amazon.com, Inc. or its affiliates.  All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -42,7 +43,7 @@ AC_DEFUN([PMIX_CHECK_VISIBILITY],[
         CFLAGS_orig=$CFLAGS
 
         pmix_add=
-        case "$pmix_c_vendor" in
+        case "$oac_cv_c_compiler_vendor" in
         sun)
             # Check using Sun Studio -xldscope=hidden flag
             pmix_add=-xldscope=hidden
