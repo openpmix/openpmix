@@ -21,8 +21,7 @@
 # Copyright (c) 2015      Intel, Inc. All rights reserved.
 #########################
 # Copyright (c) 2021      Nanook Consulting.  All rights reserved.
-# Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
-#                         reserved.
+# Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.  All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -205,8 +204,8 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
         [])
 
     ATTRIBUTE_CFLAGS=
-    case "$pmix_c_vendor" in
-        gnu)
+    case "$oac_cv_c_compiler_vendor" in
+        gnu|clang)
             ATTRIBUTE_CFLAGS="-Wall"
             ;;
         intel)
@@ -231,8 +230,8 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
         [$ATTRIBUTE_CFLAGS])
 
     ATTRIBUTE_CFLAGS=
-    case "$pmix_c_vendor" in
-        gnu)
+    case "$oac_cv_c_compiler_vendor" in
+        gnu|clang)
             ATTRIBUTE_CFLAGS="-Wall"
             ;;
         intel)
@@ -299,8 +298,8 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
     # Ignored by PGI-6.2.5 (pgCC) -- recognized by cross-check
     #
     ATTRIBUTE_CFLAGS=
-    case "$pmix_c_vendor" in
-        gnu)
+    case "$oac_cv_c_compiler_vendor" in
+        gnu|clang)
             ATTRIBUTE_CFLAGS="-Wall"
             ;;
         intel)
@@ -383,8 +382,8 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
     # Ignored by pathcc-2.2.1 -- recognized by cross-check (through grep ignore)
     #
     ATTRIBUTE_CFLAGS=
-    case "$pmix_c_vendor" in
-        gnu)
+    case "$oac_cv_c_compiler_vendor" in
+        gnu|clang)
             ATTRIBUTE_CFLAGS="-Wall"
             ;;
         intel)
@@ -435,8 +434,8 @@ AC_DEFUN([PMIX_CHECK_ATTRIBUTES], [
     # Ignored by pathcc-2.2.1 -- recognized by cross-check (through grep ignore)
     #
     ATTRIBUTE_CFLAGS=
-    case "$pmix_c_vendor" in
-        gnu)
+    case "$oac_cv_c_compiler_vendor" in
+        gnu|clang)
             ATTRIBUTE_CFLAGS="-Wall"
             ;;
         intel)
