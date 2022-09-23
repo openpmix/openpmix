@@ -635,6 +635,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         cb->cbfunc.valuefn = cbfunc;
         cb->cbdata = cbdata;
         PMIX_THREADSHIFT(cb, gcbfn);
+        if (copy) {
+            PMIX_INFO_FREE(iptr, nfo);
+        }
         return PMIX_SUCCESS;
     }
 
