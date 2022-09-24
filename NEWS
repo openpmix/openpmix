@@ -23,6 +23,21 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
+4.2.2 -- TBD
+----------------------
+**** NOTE: This is the minimum version required to support PRRTE v3.0.
+
+ - PR #2771 Plug a memory leak
+ - PR #2770 Multiple commits
+    - Fix the "check_cli_option" code
+    - Provide more detailed process failure codes and fix
+      CLI parsing
+    - pmix_reinit: a fix to allow PMIx to be reinitable
+    - Update specfile BuildRequires
+    - Additional BuildRequires in spec
+ - PR #2766 Roll to v4.2.2
+
+
 4.2.1 -- 13 Sept 2022
 ----------------------
  - PR #2754 Multiple commits
