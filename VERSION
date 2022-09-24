@@ -24,7 +24,7 @@ release=2
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=a1
+greek=rc1
 
 # PMIx Standard Compliance Level
 # The major and minor numbers indicate the version
@@ -106,7 +106,7 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=8:1:6
+libpmix_so_version=8:2:6
 
 # "Common" components install standalone libraries that are run-time
 # # linked by one or more components.  So they need to be versioned as

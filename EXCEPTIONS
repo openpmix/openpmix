@@ -6,6 +6,191 @@ PMIx Standard and then be removed from the list of exceptions in some future Ope
 
 ==========================================================================================
 
+OpenPMIx v4.2.2
+---------------------------------
+OpenPMIx v4.2.2 is based on the PMIx v4.2.1 Standard and includes the following EXTENSIONS:
+
+APIs
+------
+void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset)
+  Destruct a pmix_cpuset_t object
+
+void PMIx_Data_array_destruct(pmix_data_array_t *d)
+  Destruct a pmix_data_array_t object
+
+pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info)
+  Append a pmix_info_t object to a list, marking it as not to be
+  destructed upon release of that list. This protects the included
+  data from release.
+
+pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
+                                    pmix_value_t *v2)
+  Compare two pmix_value_t objects, returning an enum indicating
+  whether they are equal, v1 is greater, v2 is greater, or that
+  the types don't match
+
+const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp)
+  Pretty-print a string representation of the pmix_value_cmp_t value compare enum
+
+void PMIx_Value_destruct(pmix_value_t *val)
+  Destruct a pmix_value_t object
+
+The following APIs have been slightly modified to add a "const"
+qualifier to their input parameter:
+
+const char* PMIx_Get_attribute_string(const char *attribute)
+const char* PMIx_Get_attribute_name(const char *attrstring)
+char* PMIx_Info_string(const pmix_info_t *info)
+char* PMIx_Value_string(const pmix_value_t *value)
+
+This is not expected to cause any issues for users.
+
+
+Constants
+------------
+PMIX_DATA_BUFFER - data type for packing/unpacking of pmix_data_buffer_t objects
+PMIX_DISK_STATS - data type for packing/unpacking of pmix_disk_stats_t objects
+PMIX_NET_STATS - data type for packing/unpacking of pmix_net_stats_t objects
+PMIX_NODE_STATS - data type for packing/unpacking of pmix_node_stats_t objects
+PMIX_PROC_STATS - data type for packing/unpacking of pmix_proc_stats_t objects
+PMIX_ERR_JOB_EXE_NOT_FOUND - specified executable not found
+PMIX_ERR_JOB_INSUFFICIENT_RESOURCES - insufficient resources to spawn job
+PMIX_ERR_JOB_SYS_OP_FAILED - system library operation failed
+PMIX_ERR_JOB_WDIR_NOT_FOUND - specified working directory not found
+PMIX_READY_FOR_DEBUG - event indicating job/proc is ready for debug (accompanied by PMIX_BREAKPOINT indicating where proc is waiting)
+PMIX_ERR_PROC_REQUESTED_ABORT - process called PMIx_Abort
+PMIX_ERR_PROC_KILLED_BY_CMD - process was terminated by RTE command
+PMIX_ERR_PROC_FAILED_TO_START - process failed to start
+PMIX_ERR_PROC_ABORTED_BY_SIG - process aborted by signal (e.g., segmentation fault)
+PMIX_ERR_PROC_SENSOR_BOUND_EXCEEDED - process terminated due to exceeding a sensor boundary
+PMIX_ERR_EXIT_NONZERO_TERM - process exited normally, but with a non-zero status
+
+
+Attributes
+------------
+PMIX_BIND_PROGRESS_THREAD           "pmix.bind.pt"          // (char*) Comma-delimited ranges of CPUs that the internal PMIx progress
+                                                            //         thread shall be bound to
+PMIX_BIND_REQUIRED                  "pmix.bind.reqd"        // (bool) Return error if the internal PMIx progress thread cannot be bound
+PMIX_COLOCATE_PROCS                 "pmix.colproc"          // (pmix_data_array_t*) Array of pmix_proc_t identifying the procs
+                                                            //        with which the new job's procs are to be colocated
+PMIX_COLOCATE_NPERPROC              "pmix.colnum.proc"      // (uint16_t) Number of procs to colocate with each identified proc
+PMIX_COLOCATE_NPERNODE              "pmix.colnum.node"      // (uint16_t) Number of procs to colocate on the node of each identified proc
+PMIX_EVENT_ONESHOT                  "pmix.evone"            // (bool) when registering, indicate that this event handler is to be deleted
+                                                            //        after being invoked
+PMIX_GROUP_ADD_MEMBERS              "pmix.grp.add"          // (pmix_data_array_t*) Array of pmix_proc_t identifying procs that are not
+                                                            //        included in the membership specified in the procs array passed to
+                                                            //        the PMIx_Group_construct[_nb] call, but are to be included in the
+                                                            //        final group. The identified procs will be sent an invitation to
+                                                            //        join the group during the construction procedure. This is used when
+                                                            //        some members of the proposed group do not know the full membership
+                                                            //        and therefore cannot include all members in the call to construct.
+PMIX_GROUP_LOCAL_CID                "pmix.grp.lclid"        // (size_t) local context ID for the specified process member of a group
+PMIX_IOF_TAG_DETAILED_OUTPUT        "pmix.iof.tagdet"       // (bool) Tag output with the [local jobid,rank][hostname:pid] and channel it comes from
+PMIX_IOF_TAG_FULLNAME_OUTPUT        "pmix.iof.tagfull"      // (bool) Tag output with the [nspace,rank] and channel it comes from
+PMIX_LOG_AGG                        "pmix.log.agg"          // (bool) Whether to aggregate and prevent duplicate logging messages
+                                                            //        based on key value pairs.
+PMIX_LOG_KEY                        "pmix.log.key"          // (char*) key to a logging message
+PMIX_LOG_VAL                        "pmix.log.val"          // (char*) value to a logging message
+PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
+PMIX_QUALIFIED_VALUE                "pmix.qual.val"         // (pmix_data_array_t*) Value being provided consists of the primary
+                                                            //        key-value pair in first position, followed by one or more
+                                                            //        key-value qualifiers to be used when subsequently retrieving
+                                                            //        the primary value
+PMIX_WDIR_USER_SPECIFIED            "pmix.wdir.user"        // (bool) User specified the working directory
+PMIX_RUNTIME_OPTIONS                "pmix.runopt"           // (char*) Environment-specific runtime directives that control job behavior
+PMIX_ABORT_NON_ZERO_TERM            "pmix.abnz"             // (bool) Abort the spawned job if any process terminates with non-zero status
+PMIX_DO_NOT_LAUNCH                  "pmix.dnl"              // (bool) Execute all procedures to prepare the requested job for launch,
+                                                            //        but do not launch it. Typically combined with the PMIX_DISPLAY_MAP
+                                                            //        or PMIX_DISPLAY_MAP_DETAILED for debugging purposes.
+PMIX_SHOW_LAUNCH_PROGRESS           "pmix.showprog"         // (bool) Provide periodic progress reports on job launch procedure (e.g., after
+                                                            //        every 100 processes have been spawned)
+PMIX_AGGREGATE_HELP                 "pmix.agg.help"         // (bool) Aggregate help messages, reporting each unique help message once
+                                                            //        accompanied by the number of processes that reported it
+PMIX_REPORT_CHILD_SEP               "pmix.rptchildsep"      // (bool) Report the exit status of any child jobs spawned by the primary job
+                                                            //        separately. If false, then the final exit status reported will be
+                                                            //        zero if the primary job and all spawned jobs exit normally, or the
+                                                            //        first non-zero status returned by either primary or child jobs.
+PMIX_DISPLAY_MAP_DETAILED           "pmix.dispmapdet"       // (bool) display a highly detailed placement map upon spawn
+PMIX_DISPLAY_ALLOCATION             "pmix.dispalloc"        // (bool) display the resource allocation
+PMIX_DISPLAY_TOPOLOGY               "pmix.disptopo"         // (char*) comma-delimited list of hosts whose topology is
+                                                            //         to be displayed
+PMIX_SORTED_PROC_ARRAY              "pmix.sorted.parr"      // (bool) Proc array being passed has been sorted
+
+
+
+Datatypes
+------------
+pmix_value_cmp_t - an enum indicating the relative value of
+  two pmix_value_t objects. Values include:
+  * PMIX_EQUAL
+  * PMIX_VALUE1_GREATER
+  * PMIX_VALUE2_GREATER
+  * PMIX_VALUE_TYPE_DIFFERENT
+  * PMIX_VALUE_INCOMPATIBLE_OBJECTS
+  * PMIX_VALUE_COMPARISON_NOT_AVAIL
+pmix_disk_stats_t - contains statistics on disk read/write operations
+pmix_net_stats_t - contains statistics on network activity
+pmix_node_stats_t - contains statistics on node resource usage
+pmix_proc_stats_t - contains statistics on process resource usage
+
+
+Datatype static initializers
+----------------------------
+Static initializers were added for each complex data type (i.e., a data type
+defined as a struct). The following are for datatypes beyond those in v4.2 of
+the Standard:
+PMIX_PROC_STATS_STATIC_INIT
+PMIX_DISK_STATS_STATIC_INIT
+PMIX_NET_STATS_STATIC_INIT
+PMIX_NODE_STATS_STATIC_INIT
+
+
+Macros
+---------
+PMIX_XFER_PROCID - transfer a pmix_proc_t to another one (non-destructive copy)
+PMIX_INFO_SET_END - mark this pmix_info_t as being at the end of an array
+PMIX_INFO_SET_PERSISTENT - mark that the data in this pmix_info_t is not to
+  be released by PMIX_Info_destruct (or its macro form)
+PMIX_INFO_SET_QUALIFIER - mark this pmix_info_t as a qualifier to the
+  primary key
+PMIX_INFO_IS_PERSISTENT - test if this pmix_info_t has been marked as persistent
+PMIX_INFO_IS_QUALIFIER - test if this pmix_info_t has been marked as a qualifier
+PMIX_DATA_ARRAY_INIT - initialize a pmix_data_array_t
+PMIX_CHECK_TRUE - check if a pmix_value_t is boolean "true" (supports
+  string as well as traditional boolean values)
+PMIX_CHECK_BOOL - check if a pmix_value_t is a boolean value (supports
+  string as well as traditional boolean values)
+
+ - Macros supporting pmix_disk_stats_t objects
+PMIX_DISK_STATS_CONSTRUCT
+PMIX_DISK_STATS_CREATE
+PMIX_DISK_STATS_DESTRUCT
+PMIX_DISK_STATS_FREE
+PMIX_DISK_STATS_RELEASE
+
+ - Macros supporting pmix_net_stats_t objects
+PMIX_NET_STATS_CONSTRUCT
+PMIX_NET_STATS_CREATE
+PMIX_NET_STATS_DESTRUCT
+PMIX_NET_STATS_FREE
+PMIX_NET_STATS_RELEASE
+
+ - Macros supporting pmix_node_stats_t objects
+PMIX_NODE_STATS_CONSTRUCT
+PMIX_NODE_STATS_CREATE
+PMIX_NODE_STATS_DESTRUCT
+PMIX_NODE_STATS_RELEASE
+
+ - Macros supporting pmix_proc_stats_t objects
+PMIX_PROC_STATS_CONSTRUCT
+PMIX_PROC_STATS_CREATE
+PMIX_PROC_STATS_DESTRUCT
+PMIX_PROC_STATS_FREE
+PMIX_PROC_STATS_RELEASE
+
+
+
+
 OpenPMIx v4.2.1
 ---------------------------------
 OpenPMIx v4.2.1 is based on the PMIx v4.2.1 Standard and includes the following EXTENSIONS:
