@@ -897,7 +897,7 @@ void pmix_bfrops_base_value_destruct(pmix_value_t *v)
             break;
         case PMIX_DATA_ARRAY:
             if (NULL != v->data.darray) {
-                pmix_bfrops_base_darray_destruct(v->data.darray);
+                PMIX_DATA_ARRAY_FREE(v->data.darray);
             }
             break;
         case PMIX_ENVAR:
