@@ -930,17 +930,17 @@ void pmix_bfrops_base_value_destruct(pmix_value_t *v)
             break;
         case PMIX_DEVICE_DIST:
             if (NULL != v->data.devdist) {
-                PMIX_DEVICE_DIST_DESTRUCT(v->data.devdist);
+                PMIX_DEVICE_DIST_FREE(v->data.devdist, 1);
             }
             break;
         case PMIX_ENDPOINT:
             if (NULL != v->data.endpoint) {
-                PMIX_ENDPOINT_DESTRUCT(v->data.endpoint);
+                PMIX_ENDPOINT_FREE(v->data.endpoint, 1);
             }
             break;
         case PMIX_REGATTR:
             if (NULL != v->data.ptr) {
-                PMIX_REGATTR_DESTRUCT((pmix_regattr_t*)v->data.ptr);
+                PMIX_REGATTR_FREE(v->data.ptr, 1);
             }
             break;
         case PMIX_REGEX:
