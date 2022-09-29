@@ -319,13 +319,15 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_class = PMIX_CLASS(BASE_CLASS),    \
             .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
             .obj_reference_count = 1,               \
-            .obj_tma.tma_malloc = NULL,             \
-            .obj_tma.tma_calloc = NULL,             \
-            .obj_tma.tma_realloc = NULL,            \
-            .obj_tma.tma_strdup = NULL,             \
-            .obj_tma.tma_memmove = NULL,            \
-            .obj_tma.tma_free = NULL,               \
-            .obj_tma.data_ptr = NULL,               \
+            .obj_tma = {                            \
+                .tma_malloc = NULL,                 \
+                .tma_calloc = NULL,                 \
+                .tma_realloc = NULL,                \
+                .tma_strdup = NULL,                 \
+                .tma_memmove = NULL,                \
+                .tma_free = NULL,                   \
+                .data_ptr = NULL                    \
+            },                                      \
             .cls_init_file_name = __FILE__,         \
             .cls_init_lineno = __LINE__             \
         }
@@ -335,13 +337,15 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
             .obj_class = PMIX_CLASS(BASE_CLASS),    \
             .obj_lock = PTHREAD_MUTEX_INITIALIZER,  \
             .obj_reference_count = 1,               \
-            .obj_tma.tma_malloc = NULL,             \
-            .obj_tma.tma_calloc = NULL,             \
-            .obj_tma.tma_realloc = NULL,            \
-            .obj_tma.tma_strdup = NULL,             \
-            .obj_tma.tma_memmove = NULL,            \
-            .obj_tma.tma_free = NULL,               \
-            .obj_tma.data_ptr = NULL                \
+            .obj_tma = {                            \
+                .tma_malloc = NULL,                 \
+                .tma_calloc = NULL,                 \
+                .tma_realloc = NULL,                \
+                .tma_strdup = NULL,                 \
+                .tma_memmove = NULL,                \
+                .tma_free = NULL,                   \
+                .data_ptr = NULL                    \
+            }                                       \
         }
 #endif
 
