@@ -254,7 +254,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                               pmix_info_t *qualifiers, size_t nquals,
                               pmix_list_t *kvals)
 {
-    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_status_t rc;
     pmix_proc_data_t *proc_data;
     pmix_dstor_t *hv;
     uint32_t id, kid=UINT32_MAX;
@@ -306,13 +306,14 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
         kid = p->index;
     }
 
+    rc = PMIX_SUCCESS;
     while (PMIX_SUCCESS == rc) {
         proc_data = lookup_proc(table, id, false);
         if (NULL == proc_data) {
             pmix_output_verbose(10, pmix_globals.debug_output,
-                        "HASH:FETCH[%s:%d] proc data for rank %s not found",
+                        "HASH:FETCH[%s:%d] proc data for rank %s not found - key %s",
                         __func__, __LINE__,
-                        PMIX_RANK_PRINT(rank));
+                        PMIX_RANK_PRINT(rank), key);
             return PMIX_ERR_NOT_FOUND;
         }
 
