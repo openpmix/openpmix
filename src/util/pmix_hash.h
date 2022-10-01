@@ -53,6 +53,50 @@ PMIX_EXPORT void pmix_hash_register_key(uint32_t inid,
 PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
                                                        const char *key);
 
+#define PMIX_HASH_TRACE_KEY_ACTUAL(s, r, k, id, tbl, v)                     \
+do {                                                                        \
+    const char *_k;                                                         \
+    char *_v;                                                               \
+    pmix_regattr_input_t *_p;                                               \
+    if (NULL == (k) && UINT32_MAX != id) {                                  \
+        _p = pmix_hash_lookup_key((id), NULL);                              \
+        if (NULL == _p) {                                                   \
+            _k = "KEY NOT FOUND";                                           \
+        } else {                                                            \
+            _k = _p->string;                                                \
+        }                                                                   \
+    } else if (NULL != (k)) {                                               \
+        _k = (k);                                                           \
+    } else {                                                                \
+        _k = NULL;                                                          \
+    }                                                                       \
+    if (NULL != _k) {                                                       \
+        if (0 == strcmp((s), _k)) {                                         \
+            if (NULL != (v)) {                                              \
+                _v = PMIx_Value_string(v);                                  \
+            } else {                                                        \
+                _v = strdup("\tValue is NULL");                             \
+            }                                                               \
+            pmix_output(0, "[%s:%s:%d] %s: Rank %s Key %s\n%s\n\n",         \
+                        __FILE__, __func__, __LINE__,                       \
+                        (tbl)->ht_label, PMIX_RANK_PRINT(r),                \
+                        PMIx_Get_attribute_name(_k), _v);                   \
+            free(_v);                                                       \
+        }                                                                   \
+    }                                                                       \
+} while(0)
+
+#define PMIX_HASH_TRACE_KEY(c, r, s, k, id, v, tbl)             \
+do {                                                            \
+    if (0 == strcasecmp(c, "SERVER") &&                         \
+        PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {             \
+        PMIX_HASH_TRACE_KEY_ACTUAL(s, r, k, id, tbl, v);           \
+    } else if (0 == strcasecmp(c, "CLIENT") &&                  \
+               !PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {     \
+        PMIX_HASH_TRACE_KEY_ACTUAL(s, r, k, id, tbl, v);        \
+    }                                                           \
+} while (0)
+
 END_C_DECLS
 
 #endif /* PMIX_HASH_H */

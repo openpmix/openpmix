@@ -783,6 +783,28 @@ PMIX_EXPORT void pmix_hide_unused_params(int x, ...);
 #define PMIX_HIDE_UNUSED_PARAMS(...)
 #endif
 
+#define PMIX_TRACE_KEY_ACTUAL(s, k, v)                  \
+do {                                                    \
+    if (0 == strcmp(s, k)) {                            \
+        char *_v = PMIx_Value_string(v);                \
+        pmix_output(0, "[%s:%s:%d] %s\n%s\n",           \
+                    __FILE__, __func__, __LINE__,       \
+                    PMIx_Get_attribute_name(k), _v);    \
+        free(_v);                                       \
+    }                                                   \
+} while(0)
+
+#define PMIX_TRACE_KEY(c, s, k, v)                          \
+do {                                                        \
+    if (0 == strcasecmp(c, "SERVER") &&                     \
+        PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {         \
+        PMIX_TRACE_KEY_ACTUAL(s, k, v);                     \
+    } else if (0 == strcasecmp(c, "CLIENT") &&              \
+           !PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {     \
+           PMIX_TRACE_KEY_ACTUAL(s, k, v);                  \
+    }                                                       \
+} while (0)
+
 END_C_DECLS
 
 #endif /* PMIX_GLOBALS_H */
