@@ -4,6 +4,8 @@
  *                         and Technology (RIST).  All rights reserved.
  *
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      High Performance Computing Center Stuttgart,
+ *                         University of Stuttgart.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,5 +57,6 @@ static pmix_status_t tm_notify(pmix_status_t status, const pmix_proc_t *source,
                                pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(status, source, range, info, ninfo, cbfunc, cbdata);
     return PMIX_ERR_NOT_SUPPORTED;
 }
