@@ -325,6 +325,26 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 if (found) {
                     break;
                 }
+                /* see if the option is in the list - if it is, then it is a
+                 * "recognized" option but may be missing an argument. The
+                 * getopt_long function declares these as "unrecognized", but
+                 * we would like to provide a more user-friendly error message */
+                for (n=0; NULL != myoptions[n].name; n++) {
+                    /* skip the "--" prefix */
+                    if (0 == strcmp(&argv[optind-1][2], myoptions[n].name)) {
+                        /* the option is recognized - probably misssing
+                         * an argument */
+                        str = pmix_show_help_string("help-cli.txt", "missing-argument", true,
+                                                    pmix_tool_basename, argv[optind-1],
+                                                    pmix_tool_basename, &argv[optind-1][2]);
+                        if (NULL != str) {
+                            printf("%s", str);
+                            free(str);
+                        }
+                        pmix_argv_free(argv);
+                        return PMIX_ERR_SILENT;
+                    }
+                }
                 str = pmix_show_help_string("help-cli.txt", "unregistered-option", true,
                                             pmix_tool_basename, argv[optind-1], pmix_tool_basename);
                 if (NULL != str) {

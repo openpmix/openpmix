@@ -80,3 +80,12 @@ but included an argument while the option does not support one:
   Given argument: %s
 
 Please correct the command line and try again.
+#
+[missing-argument]
+An option was included on the %s command line that requires
+an argument, but no argument was given:
+
+  Option: %s
+
+Please use the "%s --help %s" command to learn more about
+this option.
