@@ -739,7 +739,7 @@ static inline bool pmix_check_app_info(const char *key)
 {
     char *keys[] = {
         PMIX_APP_SIZE,  PMIX_APPLDR,       PMIX_APP_ARGV,      PMIX_WDIR,
-        PMIX_PSET_NAME, PMIX_APP_MAP_TYPE, PMIX_APP_MAP_REGEX,
+        PMIX_PSET_NAME, PMIX_PSET_MEMBERS, PMIX_APP_MAP_TYPE,  PMIX_APP_MAP_REGEX,
         NULL
     };
     size_t n;

@@ -249,7 +249,8 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
 
     for (j = 0; j < size; j++) {
         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
-                            "%s gds:hash:app_array for key %s", PMIX_NAME_PRINT(&pmix_globals.myid),
+                            "%s gds:hash:app_array for key %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid),
                             iptr[j].key);
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_APPNUM)) {
             PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, appnum, uint32_t);
