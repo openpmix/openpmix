@@ -762,6 +762,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
     pmix_session_t *s = NULL;
     pmix_apptrkr_t *apptr;
     bool found;
+    bool myproc;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%u] pmix:gds:hash store job info for nspace %s",
@@ -815,6 +816,12 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 PMIX_DESTRUCT(&buf2);
                 return rc;
             }
+            if (PMIX_CHECK_NSPACE(pmix_globals.myid.nspace, nptr->nspace) &&
+                rank == pmix_globals.myid.rank) {
+                myproc = true;
+            } else {
+                myproc = false;
+            }
             /* unpack the blob and save the values for this rank */
             cnt = 1;
             PMIX_CONSTRUCT(&kp2, pmix_kval_t);
@@ -836,6 +843,15 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                     PMIX_DESTRUCT(&kptr);
                     PMIX_DESTRUCT(&buf2);
                     return rc;
+                }
+                if (myproc) {
+                    if (PMIX_CHECK_KEY(&kp2, PMIX_APPNUM)) {
+                        PMIX_VALUE_GET_NUMBER(rc, kp2.value, pmix_globals.appnum, uint32_t);
+                    } else if (PMIX_CHECK_KEY(&kp2, PMIX_NODEID)) {
+                        PMIX_VALUE_GET_NUMBER(rc, kp2.value, pmix_globals.nodeid, uint32_t);
+                    } else if (PMIX_CHECK_KEY(&kp2, PMIX_HOSTNAME)) {
+                        pmix_globals.hostname = strdup(kp2.value->data.string);
+                    }
                 }
                 cnt = 1;
                 PMIX_DESTRUCT(&kp2);
