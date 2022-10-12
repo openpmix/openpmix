@@ -89,7 +89,8 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
 static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, pmix_info_t info[],
                                           size_t ninfo, pmix_modex_cbfunc_t cbfunc, void *cbdata,
                                           pmix_dmdx_local_t **lcd, pmix_dmdx_request_t **rq);
-static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd, pmix_buffer_t *pbkt);
+static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd,
+                                  char *key, pmix_buffer_t *pbkt);
 static void get_timeout(int sd, short args, void *cbdata);
 
 /* declare a function whose sole purpose is to
@@ -288,12 +289,12 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         goto request;
     }
 
-    /* the target nspace is known, so we can process the request.
-     * if the rank is wildcard, then they are asking for the job-level
-     * info for this nspace - provide it */
+    /* the target nspace is known, so we can process the request */
     if (PMIX_RANK_WILDCARD == rank) {
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-        rc = get_job_data(nptr->nspace, cd, &pbkt);
+        /* they are asking for the job-level info for (or at least a
+         * reserved key from) this nspace */
+        rc = get_job_data(nptr->nspace, cd, key, &pbkt);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&pbkt);
             return rc;
@@ -452,7 +453,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         /* we did find it, so go ahead and collect the payload */
     } else if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 4, 0, 0)) {
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
-        rc = get_job_data(nspace, cd, &pbkt);
+        rc = get_job_data(nspace, cd, key, &pbkt);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&pbkt);
             return rc;
@@ -665,7 +666,10 @@ void pmix_pending_nspace_requests(pmix_namespace_t *nptr)
     }
 }
 
-static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd, pmix_buffer_t *pbkt)
+static pmix_status_t get_job_data(char *nspace,
+                                  pmix_server_caddy_t *cd,
+                                  char *key,
+                                  pmix_buffer_t *pbkt)
 {
     pmix_status_t rc;
     pmix_buffer_t pkt;
@@ -679,6 +683,7 @@ static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd, pmix_bu
      * of returning a copy of the data, or a pointer to
      * local storage */
     cb.proc = &proc;
+    cb.key = key;
     cb.scope = PMIX_INTERNAL;
     cb.copy = false;
     cb.info = cd->info;
@@ -755,7 +760,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     /* if the rank is WILDCARD or the target is in an nspace different
      * from the requester, include a copy of the job-level data */
     if (PMIX_RANK_WILDCARD == rank || diffnspace) {
-        rc = get_job_data(nptr->nspace, cd, &pbkt);
+        rc = get_job_data(nptr->nspace, cd, NULL, &pbkt);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&pbkt);
             return rc;
