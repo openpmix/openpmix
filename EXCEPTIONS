@@ -116,6 +116,8 @@ PMIX_DISPLAY_TOPOLOGY               "pmix.disptopo"         // (char*) comma-del
                                                             //         to be displayed
 PMIX_SORTED_PROC_ARRAY              "pmix.sorted.parr"      // (bool) Proc array being passed has been sorted
 
+The attribute PMIX_DEBUG_STOP_IN_APP has been modified to only support a PMIX_BOOL value instead of an optional array of ranks due to
+questions over the use-case calling for stopping a subset of a job's processes while allowing others to run "free".
 
 
 Datatypes
