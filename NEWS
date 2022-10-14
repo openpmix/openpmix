@@ -23,10 +23,24 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.2.2 -- TBD
+4.2.2 -- 21 Oct 2022
 ----------------------
 **** NOTE: This is the minimum version required to support PRRTE v3.0.
 
+ - PR #2789 Multiple commits
+    - Cleanup some store/retrieve issues
+    - Stop-in-init applies to all procs in a job
+ - PR #2787 Update EXCEPTIONS
+ - PR #2783 Multiple commits
+    - Add some debug macros for tracking key values
+    - Provide a little more useful error output
+ - PR #2777 Multiple commits
+    - llvm/oneapi: fixes to bring pmix up to iso c99
+    - pnet/nvd: Fix macro escaping issue
+    - Enhance the performance of the var_scope_push/pop script
+    - PMIX_OBJ_STATIC_INIT: fixed initialization
+ - PR #2775 Plug amemory leaks
+ - PR #2772 Update headers for release
  - PR #2771 Plug a memory leak
  - PR #2770 Multiple commits
     - Fix the "check_cli_option" code
