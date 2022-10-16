@@ -2757,9 +2757,10 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     cb.scope = PMIX_INTERNAL;
     cb.copy = false;
 
-    PMIX_OUTPUT_VERBOSE((8, pmix_gds_base_framework.framework_output,
+  //  PMIX_OUTPUT_VERBOSE((8, pmix_gds_base_framework.framework_output,
+    pmix_output(0,
                         "STORE JOB INFO FOR PROC %s",
-                        PMIX_NAME_PRINT(proc)));
+                        PMIX_NAME_PRINT(proc));
 
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS != rc) {
@@ -2846,61 +2847,9 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     continue;
                 }
             }
-        } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY)) {
-            /* the dstore currently does not understand info arrays,
-             * but we will store info from our own app */
-            pmix_info_t *info;
-            size_t size, i;
-            /* if it is our local node, then we are going to pass
-             * all info */
-            info = kv->value->data.darray->array;
-            size = kv->value->data.darray->size;
-            appnum = UINT32_MAX;
-            for (i = 0; i < size; i++) {
-                if (PMIX_CHECK_KEY(&info[i], PMIX_APPNUM)) {
-                    appnum = info[i].value.data.uint32;
-                    break;
-                }
-            }
-            if (appnum == pmix_globals.appnum) {
-                for (i = 0; i < size; i++) {
-                    kv2.key = info[i].key;
-                    kv2.value = &info[i].value;
-                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        continue;
-                    }
-                }
-            }
-        } else if (PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
-            /* the dstore currently does not understand info arrays,
-             * but we will store info from our own session */
-            pmix_info_t *info;
-            size_t size, i;
-            /* if it is our session, then we are going to pass
-             * all info */
-            info = kv->value->data.darray->array;
-            size = kv->value->data.darray->size;
-            session = UINT32_MAX;
-            for (i = 0; i < size; i++) {
-                if (PMIX_CHECK_KEY(&info[i], PMIX_SESSION_ID)) {
-                    session = info[i].value.data.uint32;
-                    break;
-                }
-            }
-            if (UINT32_MAX == session || session == pmix_globals.sessionid) {
-                for (i = 0; i < size; i++) {
-                    kv2.key = info[i].key;
-                    kv2.value = &info[i].value;
-                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        continue;
-                    }
-                }
-            }
-        } else if (PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY)) {
+        } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY) ||
+                   PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY) ||
+                   PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY)) {
             continue;
         } else {
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, kv, 1, PMIX_KVAL);
