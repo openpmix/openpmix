@@ -164,7 +164,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     uint32_t sessionid = UINT32_MAX;
     uint32_t nodeid = UINT32_MAX;
     uint32_t appnum = UINT32_MAX;
-    uint32_t app;
     pmix_proc_t p;
     pmix_info_t *iptr;
     bool copy = false;
@@ -468,75 +467,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         }
 
         if (appinfo) {
-            if (PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 2, 100)) {
-               /* have to get this from the hash */
-                if (!appdirective) {
-                    /* didn't provide a directive - add it */
-                    nfo = ninfo + 2;
-                    PMIX_INFO_CREATE(iptr, nfo);
-                    for (n=0; n < ninfo; n++) {
-                        PMIX_INFO_XFER(&iptr[n], &info[n]);
-                    }
-                    PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
-                    PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
-                    copy = true;
-                    goto doget;
-                }
-                goto doget;
-            }
-            if (appdirective) {
-                if (UINT32_MAX != appnum) {
-                    /* they provided an appnum - if it
-                     * isn't our appnum, then we need to redirect */
-                    rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, &optional, 1, &ival);
-                    if (PMIX_SUCCESS == rc) {
-                        PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
-                        if (PMIX_SUCCESS != rc) {
-                            PMIX_ERROR_LOG(rc);
-                            PMIX_VALUE_RELEASE(ival);
-                            return rc;
-                        }
-                        PMIX_VALUE_RELEASE(ival);
-                        if (app == appnum) {
-                            /* it is our appnum - info should be in dstore */
-                            if (PMIX_RANK_UNDEF == p.rank) {
-                                p.rank = PMIX_RANK_WILDCARD;
-                            }
-                            goto fastpath;
-                        }
-                    }
-                    /* go get it from the hash */
-                    goto doget;
-                }
-                /* missing the appnum - assume it is ours */
-                if (PMIX_RANK_UNDEF == p.rank) {
-                    p.rank = PMIX_RANK_WILDCARD;
-                }
-                goto fastpath;
-            }
-
-            if (UINT32_MAX != appnum) {
-                /* they did not provide the "app-info" attribute but did specify
-                 * the appnum - if the ID is other than us, then we just need to
-                 * flag it as "app-info" and mark it for the undefined rank so
-                 * the GDS will know where to look */
-                rc = _getfn_fastpath(&pmix_globals.myid, PMIX_APPNUM, &optional, 1, &ival);
-                if (PMIX_SUCCESS == rc) {
-                    PMIX_VALUE_GET_NUMBER(rc, ival, app, uint32_t);
-                    if (PMIX_SUCCESS != rc) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_VALUE_RELEASE(ival);
-                        return rc;
-                    }
-                    PMIX_VALUE_RELEASE(ival);
-                    if (app == appnum) {
-                        /* it is our appnum - info is in dstore */
-                        if (PMIX_RANK_UNDEF == p.rank) {
-                            p.rank = PMIX_RANK_WILDCARD;
-                        }
-                        goto fastpath;
-                    }
-                }
+           /* have to get this from the hash */
+            nfo = ninfo;
+            if (!appdirective) {
+                /* didn't provide a directive - add it */
                 nfo = ninfo + 2;
                 PMIX_INFO_CREATE(iptr, nfo);
                 for (n=0; n < ninfo; n++) {
@@ -545,14 +479,14 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
                 PMIX_INFO_LOAD(&iptr[ninfo], PMIX_APP_INFO, NULL, PMIX_BOOL);
                 PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
                 copy = true;
-                goto doget;
-            } else {
-                /* missing both - all we can do is assume they want our info */
+            }
+            if (UINT32_MAX == appnum) {
+              /* missing the appnum - assume it is ours */
                 if (PMIX_RANK_UNDEF == p.rank) {
                     p.rank = PMIX_RANK_WILDCARD;
                 }
-                goto fastpath;
             }
+            goto doget;
         }
 
         if (sessioninfo) {

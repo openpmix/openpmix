@@ -601,6 +601,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
     pid_t pid;
     pmix_kval_t *kptr;
     pmix_iof_req_t *iofreq;
+    uint32_t u32;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -903,8 +904,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* look for a debugger attach key */
-    pmix_strncpy(wildcard.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
-    wildcard.rank = PMIX_RANK_WILDCARD;
+    PMIX_LOAD_PROCID(&wildcard, pmix_globals.myid.nspace, PMIX_RANK_WILDCARD);
     PMIX_INFO_LOAD(&ginfo, PMIX_OPTIONAL, NULL, PMIX_BOOL);
     if (PMIX_SUCCESS == PMIx_Get(&wildcard, PMIX_DEBUG_STOP_IN_INIT, &ginfo, 1, &val)) {
         pmix_output_verbose(2, pmix_client_globals.base_output,
@@ -979,6 +979,32 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
             return rc;
         }
         PMIX_RELEASE(kptr); // maintain accounting
+    }
+
+    /* get our app number */
+    rc = PMIx_Get(&pmix_globals.myid, PMIX_APPNUM, &ginfo, 1, &val);
+    if (PMIX_SUCCESS == rc) {
+        PMIX_VALUE_GET_NUMBER(rc, val, u32, uint32_t);
+        if (PMIX_SUCCESS == rc) {
+            pmix_globals.appnum = u32;
+        }
+        PMIX_VALUE_FREE(val, 1);
+    }
+    /* get our nodeid */
+    if (PMIX_SUCCESS == PMIx_Get(&pmix_globals.myid, PMIX_NODEID, &ginfo, 1, &val)) {
+        PMIX_VALUE_GET_NUMBER(rc, val, u32, uint32_t);
+        if (PMIX_SUCCESS == rc) {
+            pmix_globals.nodeid = u32;
+        }
+        PMIX_VALUE_FREE(val, 1);
+    }
+    /* get our hostname */
+    if (PMIX_SUCCESS == PMIx_Get(&pmix_globals.myid, PMIX_HOSTNAME, &ginfo, 1, &val)) {
+        if (PMIX_SUCCESS == rc) {
+            pmix_globals.hostname = val->data.string;
+            val->data.string = NULL;
+        }
+        PMIX_VALUE_FREE(val, 1);
     }
 
     /* register the client supported attrs */
