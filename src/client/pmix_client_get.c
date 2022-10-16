@@ -468,7 +468,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
 
         if (appinfo) {
            /* have to get this from the hash */
-            nfo = ninfo;
             if (!appdirective) {
                 /* didn't provide a directive - add it */
                 nfo = ninfo + 2;
@@ -490,53 +489,25 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         }
 
         if (sessioninfo) {
-            if (sessiondirective) {
-                if (UINT32_MAX != sessionid) {
-                    /* they provided a session ID - if it
-                     * isn't our session ID, then we need to redirect */
-                    if (sessionid != pmix_globals.sessionid) {
-                        /* go get it from the hash */
-                        nfo = ninfo + 1;
-                        PMIX_INFO_CREATE(iptr, nfo);
-                        for (n=0; n < ninfo; n++) {
-                            PMIX_INFO_XFER(&iptr[n], &info[n]);
-                        }
-                        PMIX_INFO_LOAD(&iptr[ninfo], PMIX_OPTIONAL, NULL, PMIX_BOOL);
-                        copy = true;
-                        goto doget;
-                    }
+            /* have to get this from the hash */
+            if (!sessiondirective) {
+                /* didn't provide a directive - add it */
+                nfo = ninfo + 2;
+                PMIX_INFO_CREATE(iptr, nfo);
+                for (n=0; n < ninfo; n++) {
+                    PMIX_INFO_XFER(&iptr[n], &info[n]);
                 }
+                PMIX_INFO_LOAD(&iptr[ninfo], PMIX_SESSION_INFO, NULL, PMIX_BOOL);
+                PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+                copy = true;
+            }
+            if (UINT32_MAX == sessionid) {
                 /* missing the session ID - assume it is ours */
                 if (PMIX_RANK_UNDEF == p.rank) {
                     p.rank = PMIX_RANK_WILDCARD;
                 }
-                goto fastpath;
             }
-
-            if (UINT32_MAX != sessionid) {
-                /* they did not provide the "session-info" attribute but did specify
-                 * the session ID - if the ID is other than us, then we just need to
-                 * flag it as "session-info" and mark it for the undefined rank so
-                 * the GDS will know where to look */
-                if (sessionid != pmix_globals.sessionid) {
-                    /* go get it from the hash */
-                    nfo = ninfo + 2;
-                    PMIX_INFO_CREATE(iptr, nfo);
-                    for (n=0; n < ninfo; n++) {
-                        PMIX_INFO_XFER(&iptr[n], &info[n]);
-                    }
-                    PMIX_INFO_LOAD(&iptr[ninfo], PMIX_SESSION_INFO, NULL, PMIX_BOOL);
-                    PMIX_INFO_LOAD(&iptr[ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
-                    copy = true;
-                    goto doget;
-                }
-            } else {
-                /* missing both - all we can do is assume they want our info */
-                if (PMIX_RANK_UNDEF == p.rank) {
-                    p.rank = PMIX_RANK_WILDCARD;
-                }
-                goto fastpath;
-            }
+            goto doget;
         }
     }
 
