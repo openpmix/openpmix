@@ -23,10 +23,15 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.2.2 -- 21 Oct 2022
+4.2.2 -- 25 Oct 2022
 ----------------------
 **** NOTE: This is the minimum version required to support PRRTE v3.0.
 
+ - PR #2793 Update NEWS
+ - PR #2792 Multiple commits
+    - Handle app-info in the gds/hash component
+    - Handle session-info in the gds/hash component
+ - PR #2790 Update NEWS
  - PR #2789 Multiple commits
     - Cleanup some store/retrieve issues
     - Stop-in-init applies to all procs in a job
