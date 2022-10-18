@@ -2757,10 +2757,9 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     cb.scope = PMIX_INTERNAL;
     cb.copy = false;
 
-  //  PMIX_OUTPUT_VERBOSE((8, pmix_gds_base_framework.framework_output,
-    pmix_output(0,
+    PMIX_OUTPUT_VERBOSE((8, pmix_gds_base_framework.framework_output,
                         "STORE JOB INFO FOR PROC %s",
-                        PMIX_NAME_PRINT(proc));
+                        PMIX_NAME_PRINT(proc)));
 
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     if (PMIX_SUCCESS != rc) {
