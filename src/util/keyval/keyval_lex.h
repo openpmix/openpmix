@@ -11,7 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -36,21 +36,16 @@
 
 #include <stdio.h>
 
-enum pmix_keyval_parse_state_t {
-    PMIX_UTIL_KEYVAL_PARSE_DONE,
-    PMIX_UTIL_KEYVAL_PARSE_ERROR,
-
-    PMIX_UTIL_KEYVAL_PARSE_NEWLINE,
-    PMIX_UTIL_KEYVAL_PARSE_EQUAL,
-    PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD,
-    PMIX_UTIL_KEYVAL_PARSE_VALUE,
-    PMIX_UTIL_KEYVAL_PARSE_MCAVAR,
-    PMIX_UTIL_KEYVAL_PARSE_ENVVAR,
-    PMIX_UTIL_KEYVAL_PARSE_ENVEQL,
-
-    PMIX_UTIL_KEYVAL_PARSE_MAX
-};
-typedef enum pmix_keyval_parse_state_t pmix_keyval_parse_state_t;
+#define PMIX_UTIL_KEYVAL_PARSE_DONE         0
+#define PMIX_UTIL_KEYVAL_PARSE_ERROR        1
+#define PMIX_UTIL_KEYVAL_PARSE_NEWLINE      2
+#define PMIX_UTIL_KEYVAL_PARSE_EQUAL        3
+#define PMIX_UTIL_KEYVAL_PARSE_SINGLE_WORD  4
+#define PMIX_UTIL_KEYVAL_PARSE_VALUE        5
+#define PMIX_UTIL_KEYVAL_PARSE_MCAVAR       6
+#define PMIX_UTIL_KEYVAL_PARSE_ENVVAR       7
+#define PMIX_UTIL_KEYVAL_PARSE_ENVEQL       8
+#define PMIX_UTIL_KEYVAL_PARSE_MAX          9
 
 int pmix_util_keyval_yylex(void);
 int pmix_util_keyval_init_buffer(FILE *file);
