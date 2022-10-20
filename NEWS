@@ -27,6 +27,7 @@ multiple release branches.
 ----------------------
 **** NOTE: This is the minimum version required to support PRRTE v3.0.
 
+ - PR #2797 Silence complaint about enum vs int
  - PR #2793 Update NEWS
  - PR #2792 Multiple commits
     - Handle app-info in the gds/hash component

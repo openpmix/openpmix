@@ -40,7 +40,7 @@ static size_t key_buffer_len = 0;
 static pmix_mutex_t keyval_mutex;
 
 static int parse_line(const char *filename, pmix_keyval_parse_fn_t callback);
-static int parse_line_new(const char *filename, pmix_keyval_parse_state_t first_val,
+static int parse_line_new(const char *filename, int first_val,
                           pmix_keyval_parse_fn_t callback);
 static void parse_error(int num, const char *filename);
 
@@ -307,10 +307,10 @@ static int add_to_env_str(char *var, char *val)
     return PMIX_SUCCESS;
 }
 
-static int parse_line_new(const char *filename, pmix_keyval_parse_state_t first_val,
+static int parse_line_new(const char *filename, int first_val,
                           pmix_keyval_parse_fn_t callback)
 {
-    pmix_keyval_parse_state_t val;
+    int val;
     char *tmp;
     int rc;
 
