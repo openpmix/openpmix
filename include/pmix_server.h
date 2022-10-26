@@ -849,7 +849,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_generate_cpuset_string(const pmix_cpuset_t
  * Provide a function by which the host environment can define a new process set.
  */
 PMIX_EXPORT pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members,
-                                                         size_t nmembers, char *pset_name);
+                                                         size_t nmembers, const char *pset_name);
 
 /* Delete a process set
  * Provide a function by which the host environment can delete a new process set.
