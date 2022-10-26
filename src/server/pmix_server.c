@@ -2973,7 +2973,7 @@ static void psetdef(int sd, short args, void *cbdata)
 }
 
 pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t nmembers,
-                                             char *pset_name)
+                                             const char *pset_name)
 {
     pmix_setup_caddy_t cd;
     pmix_status_t rc;
