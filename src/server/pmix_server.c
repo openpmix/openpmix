@@ -2986,7 +2986,7 @@ pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t 
 
     /* need to threadshift this request */
     PMIX_CONSTRUCT(&cd, pmix_setup_caddy_t);
-    cd.nspace = pset_name;
+    cd.nspace = (char*)pset_name;
     cd.procs = (pmix_proc_t *) members;
     cd.nprocs = nmembers;
     cd.opcbfunc = opcbfunc;
