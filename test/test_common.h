@@ -286,7 +286,6 @@ typedef struct {
                 }                                                                                 \
             }                                                                                     \
         } else {                                                                                  \
-            int _count;                                                                           \
             _cbdata.in_progress = 1;                                                              \
             PMIX_VALUE_CREATE(_val, 1);                                                           \
             _cbdata.kv = _val;                                                                    \
@@ -295,13 +294,11 @@ typedef struct {
                 TEST_VERBOSE(("%s:%d: PMIx_Get_nb failed: %s from %s:%d, key=%s", my_nspace,      \
                               my_rank, PMIx_Error_string(rc), ns, r, _key));                      \
             } else {                                                                              \
-                _count = 0;                                                                       \
                 while (_cbdata.in_progress) {                                                     \
                     struct timespec ts;                                                           \
                     ts.tv_sec = 0;                                                                \
                     ts.tv_nsec = 100;                                                             \
                     nanosleep(&ts, NULL);                                                         \
-                    _count++;                                                                     \
                 }                                                                                 \
                 rc = _cbdata.status;                                                              \
                 PMIX_ACQUIRE_OBJECT(&_cbdata);                                                    \
