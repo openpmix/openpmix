@@ -3380,21 +3380,24 @@ cdef class PMIxTool(PMIxServer):
         ndirs       = 0
 
         # convert data to pmix_byte_object_t
-        bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
-        if not bo:
-            return PMIX_ERR_NOMEM
-        cred = bytes(data['bytes'], 'ascii')
-        bo.size = sizeof(cred)
-        bo.bytes = <char*> PyMem_Malloc(bo.size)
-        if not bo.bytes:
-            return PMIX_ERR_NOMEM
-        pyptr = <const char*>cred
-        memcpy(bo.bytes, pyptr, bo.size)
+        if data:
+            bo = <pmix_byte_object_t*>malloc(sizeof(pmix_byte_object_t))
+            if not bo:
+                return PMIX_ERR_NOMEM
+            cred = bytes(data['bytes'], 'ascii')
+            bo.size = len(cred)
+            bo.bytes = <char*> malloc(bo.size)
+            if not bo.bytes:
+                return PMIX_ERR_NOMEM
+            pyptr = <const char*>cred
+            memcpy(bo.bytes, pyptr, bo.size)
+        else:
+            bo = NULL
 
         # convert list of proc targets to array of pmix_proc_t's
         if pytargets is not None:
             ntargets = len(pytargets)
-            targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
+            targets = <pmix_proc_t*>malloc(ntargets * sizeof(pmix_proc_t))
             if not targets:
                 return PMIX_ERR_NOMEM
             rc = pmix_load_procs(targets, pytargets)
@@ -3403,7 +3406,7 @@ cdef class PMIxTool(PMIxServer):
                 return rc
         else:
             ntargets = 1
-            targets = <pmix_proc_t*> PyMem_Malloc(ntargets * sizeof(pmix_proc_t))
+            targets = <pmix_proc_t*>malloc(ntargets * sizeof(pmix_proc_t))
             if not targets:
                 return PMIX_ERR_NOMEM
             pmix_copy_nspace(targets[0].nspace, self.myproc.nspace)
