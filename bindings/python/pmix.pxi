@@ -1649,14 +1649,12 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
         try:
             if p['env'] is not None:
                 m = len(p['env']) + 1
-            else:
-                m = 1
-            env = <char**> malloc(m * sizeof(char*))
-            if not argv:
-                return PMIX_ERR_NOMEM
-            memset(env, 0, m)
-            if p['env'] is not None:
+                env = <char**> malloc(m * sizeof(char*))
+                if not env:
+                    return PMIX_ERR_NOMEM
+                memset(env, 0, m)
                 pmix_load_argv(env, p['env'])
+                apps[n].env = env
         except:
             pass
 
