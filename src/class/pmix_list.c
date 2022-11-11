@@ -138,9 +138,9 @@ bool pmix_list_insert(pmix_list_t *list, pmix_list_item_t *item, long long idx)
         assert(1 == item->pmix_list_item_refcount);
         item->pmix_list_item_belong_to = list;
 #endif
+        list->pmix_list_length++;
     }
 
-    list->pmix_list_length++;
     return true;
 }
 
