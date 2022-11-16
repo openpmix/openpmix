@@ -51,7 +51,7 @@ AC_DEFUN([PMIX_CHECK_JANSSON],[
                       [pmix_check_jansson_happy="yes"],
 		      [pmix_check_jansson_happy="no"])
 
-    if test "$pmix_check_jansson_happy" == "yes"; then
+    if test "$pmix_check_jansson_happy" = "yes"; then
         AC_MSG_CHECKING([if libjansson version is 2.11 or greater])
         pmix_check_jansson_save_CPPFLAGS="${CPPFLAGS}"
         PMIX_FLAGS_APPEND_UNIQ([CPPFLAGS], [${pmix_check_jansson_CPPFLAGS}])
