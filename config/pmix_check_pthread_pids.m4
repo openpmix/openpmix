@@ -49,7 +49,7 @@ AC_RUN_IFELSE([AC_LANG_SOURCE([#include <pthread.h>
 #include <stdlib.h>
 
 void *checkpid(void *arg);
-int main() {
+int main(void) {
   pthread_t thr;
   int pid, *retval;
   pid = getpid();
