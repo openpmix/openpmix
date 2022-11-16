@@ -35,7 +35,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
     pmix_have_topology_dup=0
 
-    if test "$with_hwloc" == "no"; then
+    if test "$with_hwloc" = "no"; then
         AC_MSG_WARN([PMIx requires HWLOC topology library support.])
         AC_MSG_WARN([Please reconfigure so we can find the library.])
         AC_MSG_ERROR([Cannot continue.])
