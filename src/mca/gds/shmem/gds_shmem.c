@@ -15,6 +15,7 @@
  */
 
 #include "gds_shmem.h"
+#include "gds_shmem_tma.h"
 #include "gds_shmem_utils.h"
 #include "gds_shmem_store.h"
 #include "gds_shmem_fetch.h"
@@ -273,6 +274,7 @@ job_construct(
 ) {
     job->nspace_id = NULL;
     job->nspace = NULL;
+    job->session = NULL;
     job->ffgds = NULL;
     job->shmem = PMIX_NEW(pmix_shmem_t);
     job->smdata = NULL;
@@ -287,6 +289,9 @@ job_destruct(
     }
     if (job->nspace) {
         PMIX_RELEASE(job->nspace);
+    }
+    if (job->session) {
+        PMIX_RELEASE(job->session);
     }
     job->ffgds = NULL;
     // This will release the memory for the structures located in the
@@ -335,6 +340,30 @@ PMIX_CLASS_INSTANCE(
     app_destruct
 );
 
+static void
+session_construct(
+    pmix_gds_shmem_session_t *s
+) {
+    s->session = UINT32_MAX;
+    PMIX_CONSTRUCT(&s->sessioninfo, pmix_list_t);
+    PMIX_CONSTRUCT(&s->nodeinfo, pmix_list_t);
+}
+
+static void
+session_destruct(
+    pmix_gds_shmem_session_t *s
+) {
+    PMIX_LIST_DESTRUCT(&s->sessioninfo);
+    PMIX_LIST_DESTRUCT(&s->nodeinfo);
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem_session_t,
+    pmix_list_item_t,
+    session_construct,
+    session_destruct
+);
+
 static pmix_status_t
 module_init(
     pmix_info_t info[],
@@ -344,6 +373,7 @@ module_init(
 
     PMIX_GDS_SHMEM_VOUT_HERE();
     PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.jobs, pmix_list_t);
+    PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.sessions, pmix_list_t);
     return PMIX_SUCCESS;
 }
 
@@ -352,6 +382,7 @@ module_finalize(void)
 {
     PMIX_GDS_SHMEM_VOUT_HERE();
     PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.jobs);
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.sessions);
 }
 
 static pmix_status_t
@@ -392,7 +423,6 @@ assign_module(
     // If they don't want us, then disqualify ourselves.
     if (specified && *priority != max_priority) {
         *priority = 0;
-        return PMIX_SUCCESS;
     }
     return PMIX_SUCCESS;
 }
@@ -420,8 +450,10 @@ prepare_backing_store_for_local_job_data(
     pmix_status_t rc = PMIX_SUCCESS;
     // Initial hash table size.
     const size_t ihtsize = 256;
-    // Keep in sync with the number of lists in pmix_gds_shmem_app_t.
-    const size_t nlists = 3;
+    // TODO(skg) Make sure that the comment and value is correct. I think we
+    // should sum up all the lists that exist in the structures that are shared.
+    // Keep in sync with the number of pmix_list_ts in pmix_gds_shmem_app_t.
+    const size_t nlists = 2;
     // Used as a multiplier to size some structures.
     const size_t nranks = (size_t)job->nspace->nprocs;
     // First, see if the given job already has initialized its shared info.
@@ -571,18 +603,21 @@ unpack_shmem_connection_info(
     pmix_buffer_t *buffer
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    int32_t count = 1;
 
     pmix_kval_t kval;
     PMIX_CONSTRUCT(&kval, pmix_kval_t);
+
+    int32_t count = 1;
     PMIX_BFROPS_UNPACK(
         rc, pmix_client_globals.myserver,
         buffer, &kval, &count, PMIX_KVAL
     );
+
     while (PMIX_SUCCESS == rc) {
         // We only pack string, so make sure this is the right kind of data.
         if (kval.value->type != PMIX_STRING) {
             rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
             break;
         }
         const char *val = kval.value->data.string;
@@ -593,6 +628,7 @@ unpack_shmem_connection_info(
             );
             if (nw >= PMIX_PATH_MAX) {
                 rc = PMIX_ERROR;
+                PMIX_ERROR_LOG(rc);
                 break;
             }
         }
@@ -600,6 +636,7 @@ unpack_shmem_connection_info(
             // Set job shared-memory segment size.
             rc = strtost(val, 16, &job->shmem->size);
             if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 break;
             }
         }
@@ -608,6 +645,7 @@ unpack_shmem_connection_info(
             // Convert string base address to something we can use.
             rc = strtost(val, 16, &base_addr);
             if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 break;
             }
             // Set job segment base address.
@@ -615,11 +653,13 @@ unpack_shmem_connection_info(
         }
         else {
             rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
             break;
         }
-        count = 1;
         PMIX_DESTRUCT(&kval);
+
         PMIX_CONSTRUCT(&kval, pmix_kval_t);
+        count = 1;
         PMIX_BFROPS_UNPACK(
             rc, pmix_client_globals.myserver,
             buffer, &kval, &count, PMIX_KVAL
@@ -695,12 +735,14 @@ register_job_info(
         return rc;
     }
 
-    pmix_hash_table2_t *ht = job->smdata->local_hashtab;
     PMIX_LIST_FOREACH (kvi, &job_cb.kvs, pmix_kval_t) {
         if (PMIX_DATA_ARRAY == kvi->value->type) {
             // We support the following keys of this type.
             if (pmix_gds_shmem_keys_eq(kvi->key, PMIX_APP_INFO_ARRAY)) {
-                PMIX_GDS_SHMEM_VOUT("storing app info array ---------------");
+                PMIX_GDS_SHMEM_VOUT(
+                    "%s: storing app info array ---------------",
+                    __func__
+                );
                 rc = pmix_gds_shmem_store_app_array(job, kvi->value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -708,7 +750,10 @@ register_job_info(
                 }
             }
             else if (pmix_gds_shmem_keys_eq(kvi->key, PMIX_NODE_INFO_ARRAY)) {
-                PMIX_GDS_SHMEM_VOUT("storing node info array --------------");
+                PMIX_GDS_SHMEM_VOUT(
+                    "%s: storing node info array ---------------",
+                    __func__
+                );
                 rc = pmix_gds_shmem_store_node_array(
                     job, kvi->value, job->smdata->nodeinfo
                 );
@@ -718,30 +763,54 @@ register_job_info(
                 }
             }
             else if (pmix_gds_shmem_keys_eq(kvi->key, PMIX_PROC_INFO_ARRAY)) {
-                PMIX_GDS_SHMEM_VOUT("storing proc info array --------------");
+                PMIX_GDS_SHMEM_VOUT(
+                    "%s: storing proc info array ---------------",
+                    __func__
+                );
                 rc = pmix_gds_shmem_store_proc_data(job, kvi);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     break;
                 }
             }
+            else if (pmix_gds_shmem_keys_eq(kvi->key, PMIX_SESSION_INFO_ARRAY)) {
+                PMIX_GDS_SHMEM_VOUT(
+                    "%s: storing session info array ---------------",
+                    __func__
+                );
+                rc = pmix_gds_shmem_store_session_array(job, kvi->value);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    break;
+                }
+            }
             else {
+                PMIX_GDS_SHMEM_VOUT(
+                    "%s: ERROR unsupported array type=%s",
+                    __func__, kvi->key
+                );
                 rc = PMIX_ERR_NOT_SUPPORTED;
                 PMIX_ERROR_LOG(rc);
                 break;
             }
         }
         else {
-            PMIX_GDS_SHMEM_VOUT("storing key=%s--------------", kvi->key);
+            PMIX_GDS_SHMEM_VOUT(
+                "%s: storing key=%s --------------",
+                __func__, kvi->key
+            );
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, kvi->key);
-            PMIX_GDS_SHMEM_VALUE_XFER(rc, kv->value, kvi->value, tma);
+            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, kvi->value, tma);
             if (PMIX_SUCCESS != rc) {
                 PMIX_RELEASE(kv);
                 PMIX_ERROR_LOG(rc);
                 break;
             }
-            rc = pmix_hash2_store(ht, PMIX_RANK_WILDCARD, kvi, NULL, 0);
+            rc = pmix_hash2_store(
+                job->smdata->local_hashtab,
+                PMIX_RANK_WILDCARD, kvi, NULL, 0
+            );
             if (PMIX_SUCCESS != rc) {
                 PMIX_RELEASE(kv);
                 PMIX_ERROR_LOG(rc);
@@ -752,6 +821,7 @@ register_job_info(
     // No longer needed, as we already saved its data.
     PMIX_DESTRUCT(&job_cb);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
     // Now pack the payload for delivery.
@@ -795,11 +865,12 @@ register_job_info(
         }
     }
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
     // If we have more than one local client for this nspace,
     // save this packed object so we don't do this again.
-    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) || 1 < ns->nlocalprocs) {
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) || ns->nlocalprocs > 1) {
         PMIX_RETAIN(reply);
         ns->jobbkt = reply;
     }
@@ -885,6 +956,7 @@ store_job_info(
         rc, pmix_client_globals.myserver,
         buff, &kval, &cnt, PMIX_KVAL
     );
+
     while (PMIX_SUCCESS == rc) {
         if (PMIX_CHECK_KEY(&kval, PMIX_PROC_BLOB)) {
             pmix_rank_t rank;
@@ -909,6 +981,7 @@ store_job_info(
                 PMIX_DESTRUCT(&bbuff);
                 return rc;
             }
+
             rc = unpack_shmem_connection_info(job, &bbuff);
             PMIX_DESTRUCT(&bbuff);
             if (PMIX_SUCCESS != rc) {
@@ -917,8 +990,18 @@ store_job_info(
                 return rc;
             }
         }
+        // TODO(skg) Ask Ralph why we are seeing these values now.
+        else if (PMIX_CHECK_KEY(&kval, PMIX_SESSION_INFO_ARRAY) ||
+                 PMIX_CHECK_KEY(&kval, PMIX_NODE_INFO_ARRAY) ||
+                 PMIX_CHECK_KEY(&kval, PMIX_APP_INFO_ARRAY)) {
+            PMIX_GDS_SHMEM_VOUT("%s:skipping type=%s", __func__, kval.key);
+        }
         else {
+            PMIX_GDS_SHMEM_VOUT(
+                "%s:ERROR unexpected type=%s", __func__, kval.key
+            );
             rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
             break;
         }
         PMIX_DESTRUCT(&kval);

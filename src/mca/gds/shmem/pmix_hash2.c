@@ -56,7 +56,7 @@
 #include "src/util/pmix_output.h"
 
 // TODO(skg) This shouldn't be here. For XFER now.
-#include "gds_shmem_utils.h"
+#include "gds_shmem_tma.h"
 
 #ifdef HAVE_STRING_H
 #include <string.h>
@@ -290,7 +290,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table2_t *table,
 #if 0
     PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, (void **)&hv->value, kin->value, PMIX_VALUE);
 #else
-    PMIX_GDS_SHMEM_BFROPS_COPY_TMA(rc, &hv->value, kin->value, PMIX_VALUE, tma);
+    PMIX_GDS_SHMEM_TMA_BFROPS_COPY_TMA(rc, &hv->value, kin->value, PMIX_VALUE, tma);
 #endif
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
