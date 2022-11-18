@@ -421,7 +421,7 @@ AC_DEFUN([_OAC_CHECK_PACKAGE_WRAPPER_COMPILER], [
     m4_ifdef([$1_wrapper_compiler],
              [m4_define([wrapper_compiler_name], [$1_wrapper_compiler])],
              [m4_define([wrapper_compiler_name], [$1cc])])
-    AS_IF([test "${$1_USE_WRAPPER_COMPILER}" == "1"],
+    AS_IF([test "${$1_USE_WRAPPER_COMPILER}" = "1"],
           [# search for the package using wrapper compilers.  If the user
            # provided a --with-$1 argument, be explicit about where we look
            # for the compiler, so we don't find the wrong one.
