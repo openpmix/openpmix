@@ -15,6 +15,7 @@
  */
 
 #include "gds_shmem_store.h"
+#include "gds_shmem_tma.h"
 #include "gds_shmem_utils.h"
 // TODO(skg) This will eventually go away.
 #include "pmix_hash2.h"
@@ -164,7 +165,7 @@ cache_node_info(
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
             kv->value = NULL;
-            PMIX_GDS_SHMEM_VALUE_XFER(rc, kv->value, &info[j].value, tma);
+            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
@@ -176,7 +177,7 @@ cache_node_info(
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
             kv->value = NULL;
-            PMIX_GDS_SHMEM_VALUE_XFER(rc, kv->value, &info[j].value, tma);
+            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
@@ -310,7 +311,7 @@ pmix_gds_shmem_store_app_array(
         else {
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
-            PMIX_GDS_SHMEM_VALUE_XFER(rc, kv->value, &info[j].value, tma);
+            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
@@ -464,7 +465,7 @@ pmix_gds_shmem_store_job_array(
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, iptr[j].key);
             kv->value = NULL;
-            PMIX_GDS_SHMEM_VALUE_XFER(rc, kv->value, &iptr[j].value, tma);
+            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &iptr[j].value, tma);
             if (PMIX_SUCCESS != rc) {
                 PMIX_RELEASE(kv);
                 PMIX_LIST_DESTRUCT(cache);
@@ -492,6 +493,79 @@ pmix_gds_shmem_store_job_array(
         }
     }
     return rc;
+}
+
+pmix_status_t
+pmix_gds_shmem_store_session_array(
+    pmix_gds_shmem_job_t *job,
+    pmix_value_t *val
+) {
+    pmix_gds_shmem_session_t *sptr;
+    size_t j, size;
+    pmix_info_t *iptr;
+    pmix_list_t ncache;
+    pmix_status_t rc;
+    pmix_kval_t *kp2;
+    pmix_gds_shmem_nodeinfo_t *nd;
+    uint32_t sid;
+
+    // We expect an array of session-level info.
+    if (PMIX_DATA_ARRAY != val->type) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_TYPE_MISMATCH;
+    }
+    size = val->data.darray->size;
+    iptr = (pmix_info_t *) val->data.darray->array;
+
+    /* the first value is required to be the session ID */
+    if (!PMIX_CHECK_KEY(&iptr[0], PMIX_SESSION_ID)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    PMIX_VALUE_GET_NUMBER(rc, &iptr[0].value, sid, uint32_t);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    sptr = pmix_gds_shmem_check_session(job, sid);
+    PMIX_CONSTRUCT(&ncache, pmix_list_t);
+
+    for (j = 1; j < size; j++) {
+        PMIX_GDS_SHMEM_VOUT(
+            "%s:%s key=%s",
+            __func__, PMIX_NAME_PRINT(&pmix_globals.myid), iptr[j].key
+        );
+        if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODE_INFO_ARRAY)) {
+            if (PMIX_SUCCESS != (rc = pmix_gds_shmem_store_node_array(job, &iptr[j].value, &ncache))) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_LIST_DESTRUCT(&ncache);
+                return rc;
+            }
+        } else {
+            kp2 = PMIX_NEW(pmix_kval_t);
+            kp2->key = strdup(iptr[j].key);
+            kp2->value = (pmix_value_t*)malloc(sizeof(pmix_value_t));
+            PMIX_VALUE_XFER(rc, kp2->value, &iptr[j].value);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(kp2);
+                PMIX_LIST_DESTRUCT(&ncache);
+                return rc;
+            }
+            char *tmp = PMIx_Value_string(kp2->value);
+            free(tmp);
+            pmix_list_append(&sptr->sessioninfo, &kp2->super);
+        }
+    }
+
+    nd = (pmix_gds_shmem_nodeinfo_t *)pmix_list_remove_first(&ncache);
+    while (NULL != nd) {
+        pmix_list_append(&sptr->nodeinfo, &nd->super);
+        nd = (pmix_gds_shmem_nodeinfo_t *)pmix_list_remove_first(&ncache);
+    }
+    PMIX_LIST_DESTRUCT(&ncache);
+    return PMIX_SUCCESS;
 }
 
 /*

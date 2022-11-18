@@ -49,6 +49,7 @@
  * Defines a bitmask to track what information may not
  * have been provided but is computable from other info.
  */
+// TODO(skg) These can probably go into base.
 #define PMIX_GDS_SHMEM_PROC_DATA 0x00000001
 #define PMIX_GDS_SHMEM_JOB_SIZE  0x00000002
 #define PMIX_GDS_SHMEM_MAX_PROCS 0x00000004
@@ -74,6 +75,8 @@ typedef struct {
     pmix_gds_base_component_t super;
     /** List of jobs that I'm supporting. */
     pmix_list_t jobs;
+    /** List of sessions that I'm supporting. */
+    pmix_list_t sessions;
 } pmix_gds_shmem_component_t;
 // The component must be visible data for the linker to find it.
 PMIX_EXPORT extern
@@ -88,7 +91,7 @@ PMIX_CLASS_DECLARATION(pmix_gds_shmem_host_alias_t);
 
 typedef struct {
     pmix_list_item_t super;
-    /* Node ID. */
+    /** Node ID. */
     uint32_t nodeid;
     /** Hostname. */
     char *hostname;
@@ -98,6 +101,17 @@ typedef struct {
     pmix_list_t *info;
 } pmix_gds_shmem_nodeinfo_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_nodeinfo_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    /** Session ID. */
+    uint32_t session;
+    /** Session information. */
+    pmix_list_t sessioninfo;
+    /** Node information. */
+    pmix_list_t nodeinfo;
+} pmix_gds_shmem_session_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
 
 // Note that the shared data structures in pmix_gds_shmem_shared_data_t are
 // pointers. They need to be because their respective locations must reside on
@@ -124,6 +138,9 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
+    // TODO(skg) Should this be in shared-memory?
+    /** Session information. */
+    pmix_gds_shmem_session_t *session;
     /** Pointer to a full-featured gds module. */
     pmix_gds_base_module_t *ffgds;
     /** Shared-memory object. */

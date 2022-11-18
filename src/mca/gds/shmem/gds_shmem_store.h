@@ -44,13 +44,16 @@ pmix_gds_shmem_store_app_array(
     pmix_value_t *val
 );
 
-/**
- *
- */
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_store_proc_data(
     pmix_gds_shmem_job_t *job,
     const pmix_kval_t *kval
+);
+
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem_store_session_array(
+    pmix_gds_shmem_job_t *job,
+    pmix_value_t *val
 );
 
 PMIX_EXPORT pmix_status_t

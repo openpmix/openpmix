@@ -33,27 +33,6 @@ do {                                                                           \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 
-// TODO(skg) This shouldn't live here. Figure out a way to get this in an
-// appropriate place. This modifies PMIX_VALUE_XFER() for our needs.
-#define PMIX_GDS_SHMEM_VALUE_XFER(r, v, s, tma)                                \
-do {                                                                           \
-    if (NULL == (v)) {                                                         \
-        (v) = (pmix_value_t *)pmix_tma_malloc((tma), sizeof(pmix_value_t));    \
-        if (NULL == (v)) {                                                     \
-            (r) = PMIX_ERR_NOMEM;                                              \
-        } else {                                                               \
-            (r) = pmix_gds_shmem_value_xfer((v), (s), (tma));                  \
-        }                                                                      \
-    } else {                                                                   \
-        (r) = pmix_gds_shmem_value_xfer((v), (s), (tma));                      \
-    }                                                                          \
-} while(0)
-
-// TODO(skg) This shouldn't live here. Figure out a way to get this in an
-// appropriate place. This modifies PMIX_BFROPS_COPY() for our needs.
-#define PMIX_GDS_SHMEM_BFROPS_COPY_TMA(r, d, s, t, tma)                        \
-(r) = pmix_gds_shmem_bfrops_base_copy_value(d, s, t, tma)
-
 BEGIN_C_DECLS
 
 PMIX_EXPORT pmix_status_t
@@ -75,6 +54,12 @@ pmix_gds_shmem_check_hostname(
     const char *h2
 );
 
+PMIX_EXPORT pmix_gds_shmem_session_t *
+pmix_gds_shmem_check_session(
+    pmix_gds_shmem_job_t *job,
+    uint32_t sid
+);
+
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_get_value_size(
     const pmix_value_t *value,
@@ -91,29 +76,6 @@ pmix_gds_shmem_segment_create_and_attach(
     pmix_gds_shmem_job_t *job,
     const char *segment_id,
     size_t segment_size
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_value_xfer(
-    pmix_value_t *p,
-    const pmix_value_t *src,
-    pmix_tma_t *tma
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_bfrops_base_copy_value(
-    pmix_value_t **dest,
-    pmix_value_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_copy_darray(
-    pmix_data_array_t **dest,
-    pmix_data_array_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
 );
 
 static inline pmix_tma_t *
