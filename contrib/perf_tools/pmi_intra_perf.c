@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2016      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -8,6 +9,10 @@
  * $HEADER$
  *
  */
+
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -203,9 +208,12 @@ int main(int argc, char **argv)
 
     key_val = calloc(key_size, sizeof(int));
     for (cnt=0; cnt < key_count; cnt++) {
-        int i;
+        int i, bp;
         if( local_cnt > 0 ){
-            (void)asprintf(&key_name, "KEY-%d-local-%d", rank, cnt);
+            bp = asprintf(&key_name, "KEY-%d-local-%d", rank, cnt);
+            if (bp == -1) {
+                abort();
+            }
             for(i=0; i < key_size; i++){
                 key_val[i] = rank * rank_shift + cnt;
             }
@@ -216,7 +224,10 @@ int main(int argc, char **argv)
             free(key_name);
         }
         if( remote_cnt > 0 ){
-            (void)asprintf(&key_name, "KEY-%d-remote-%d", rank, cnt);
+            bp = asprintf(&key_name, "KEY-%d-remote-%d", rank, cnt);
+            if (bp == -1) {
+                abort();
+            }
             for(i=0; i < key_size; i++){
                 key_val[i] = rank * rank_shift + cnt;
             }
@@ -243,10 +254,13 @@ int main(int argc, char **argv)
         int i;
 
         for(i = 0; i < remote_cnt; i++){
-            int rank = remote_ranks[i], j;
+            int rank = remote_ranks[i], j, bp;
             int *key_val, key_size_new;
             double start;
-            (void)asprintf(&key_name, "KEY-%d-remote-%d", rank, cnt);
+            bp = asprintf(&key_name, "KEY-%d-remote-%d", rank, cnt);
+            if (bp == -1) {
+                abort();
+            }
 
             start = GET_TS;
             pmi_get_key_rem(rank, key_name, &key_val, &key_size_new);
@@ -272,10 +286,13 @@ int main(int argc, char **argv)
 
          // check the returned data
         for(i = 0; i < local_cnt; i++){
-            int rank = local_ranks[i], j;
+            int rank = local_ranks[i], j, bp;
             int *key_val, key_size_new;
             double start;
-            (void)asprintf(&key_name, "KEY-%d-local-%d", rank, cnt);
+            bp = asprintf(&key_name, "KEY-%d-local-%d", rank, cnt);
+            if (bp == -1) {
+                abort();
+            }
 
             start = GET_TS;
             pmi_get_key_loc(rank, key_name, &key_val, &key_size_new);

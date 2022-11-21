@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2016      Intel, Inc.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -236,7 +237,7 @@ void pmi_fence(int collect)
     if( collect ){
         PMIX_INFO_CREATE(info, 1);
         (void)strncpy(info->key, PMIX_COLLECT_DATA, PMIX_MAX_KEYLEN);
-        pmix_value_load(&info->value, &value, PMIX_BOOL);
+        PMIx_Value_load(&info->value, &value, PMIX_BOOL);
         ninfo = 1;
     }
 
@@ -316,7 +317,8 @@ double pmi_get_double(int rank, char *key_name)
     return v;
 }
 
-pmi_fini()
+void
+pmi_fini(void)
 {
     int rc;
 #if (PMIX_VERSION_MAJOR == 1 )
