@@ -175,15 +175,15 @@ static pmix_status_t sigproc(pid_t pd, int signum)
 
     if (0 != kill(pid, signum)) {
         if (ESRCH != errno) {
-            PMIX_OUTPUT_VERBOSE((2, pmix_pfexec_base_framework.framework_output,
+            pmix_output_verbose(2, pmix_pfexec_base_framework.framework_output,
                                  "%s pfexec:linux:SENT SIGNAL %d TO PID %d GOT ERRNO %d",
-                                 PMIX_NAME_PRINT(&pmix_globals.myid), signum, (int) pid, errno));
+                                 PMIX_NAME_PRINT(&pmix_globals.myid), signum, (int) pid, errno);
             return errno;
         }
     }
-    PMIX_OUTPUT_VERBOSE((2, pmix_pfexec_base_framework.framework_output,
+    pmix_output_verbose(2, pmix_pfexec_base_framework.framework_output,
                          "%s pfexec:linux:SENT SIGNAL %d TO PID %d SUCCESS",
-                         PMIX_NAME_PRINT(&pmix_globals.myid), signum, (int) pid));
+                         PMIX_NAME_PRINT(&pmix_globals.myid), signum, (int) pid);
     return 0;
 }
 

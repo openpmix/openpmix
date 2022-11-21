@@ -555,9 +555,9 @@ again:
     if (-1 == fsrc && -1 == vfsrc) {
         char *last_sep;
 
-        PMIX_OUTPUT_VERBOSE((10, 0,
+        pmix_output_verbose(10, 0,
                              "pmix_path_nfs: stat(v)fs on file:%s failed errno:%d directory:%s\n",
-                             fname, errno, file));
+                             fname, errno, file);
         if (EPERM == errno) {
             free(file);
             if (NULL != ret_fstype) {
@@ -641,8 +641,8 @@ found:
                     continue;
                 }
                 if (0 == strcasecmp(fs_types[x].f_fsname, fs_type)) {
-                    PMIX_OUTPUT_VERBOSE(
-                        (10, 0, "pmix_path_nfs: file:%s on fs:%s\n", fname, fs_type));
+                    pmix_output_verbose
+                        (10, 0, "pmix_path_nfs: file:%s on fs:%s\n", fname, fs_type);
                     free(fs_type);
                     if (NULL != ret_fstype) {
                         *ret_fstype = strdup(fs_types[x].f_fsname);
@@ -658,7 +658,7 @@ found:
         }
     }
 
-    PMIX_OUTPUT_VERBOSE((10, 0, "pmix_path_nfs: file:%s on fs:%s\n", fname, fs_types[i].f_fsname));
+    pmix_output_verbose(10, 0, "pmix_path_nfs: file:%s on fs:%s\n", fname, fs_types[i].f_fsname);
     if (NULL != ret_fstype) {
         *ret_fstype = strdup(fs_types[i].f_fsname);
     }
@@ -693,10 +693,10 @@ int pmix_path_df(const char *path, uint64_t *out_avail)
     } while (-1 == rc && ESTALE == err && (--trials > 0));
 
     if (-1 == rc) {
-        PMIX_OUTPUT_VERBOSE((10, 2,
+        pmix_output_verbose(10, 2,
                              "pmix_path_df: stat(v)fs on "
                              "path: %s failed with errno: %d (%s)\n",
-                             path, err, strerror(err)));
+                             path, err, strerror(err));
         return PMIX_ERROR;
     }
 
@@ -704,10 +704,10 @@ int pmix_path_df(const char *path, uint64_t *out_avail)
     /* sometimes buf.f_bavail is negative */
     *out_avail = buf.f_bsize * ((int) buf.f_bavail < 0 ? 0 : buf.f_bavail);
 
-    PMIX_OUTPUT_VERBOSE((10, 2,
+    pmix_output_verbose(10, 2,
                          "pmix_path_df: stat(v)fs states "
                          "path: %s has %" PRIu64 " B of free space.",
-                         path, *out_avail));
+                         path, *out_avail);
 
     return PMIX_SUCCESS;
 }

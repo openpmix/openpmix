@@ -165,10 +165,10 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
     size_t n;
     pmix_ptl_posted_recv_t *rcv;
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+    pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] checking heartbeat monitoring for requestor %s:%d",
                          pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                         requestor->info->pname.nspace, requestor->info->pname.rank));
+                         requestor->info->pname.nspace, requestor->info->pname.rank);
 
     /* if they didn't ask for heartbeats, then nothing for us to do */
     if (0 != strcmp(monitor->key, PMIX_MONITOR_HEARTBEAT)) {
@@ -280,17 +280,17 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(fd, dummy);
 
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+    pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] sensor:check_heartbeat for proc %s:%d", pmix_globals.myid.nspace,
                          pmix_globals.myid.rank, ft->requestor->info->pname.nspace,
-                         ft->requestor->info->pname.rank));
+                         ft->requestor->info->pname.rank);
 
     if (0 == ft->nbeats && !ft->stopped) {
         /* no heartbeat recvd in last window */
-        PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+        pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                              "[%s:%d] sensor:check_heartbeat failed for proc %s:%d",
                              pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                             ft->requestor->info->pname.nspace, ft->requestor->info->pname.rank));
+                             ft->requestor->info->pname.nspace, ft->requestor->info->pname.rank);
         /* generate an event */
         pmix_strncpy(source.nspace, ft->requestor->info->pname.nspace, PMIX_MAX_NSLEN);
         source.rank = ft->requestor->info->pname.rank;
@@ -305,10 +305,10 @@ static void check_heartbeat(int fd, short dummy, void *cbdata)
             PMIX_ERROR_LOG(rc);
         }
     } else {
-        PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+        pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                              "[%s:%d] sensor:check_heartbeat detected %d beats for proc %s:%d",
                              pmix_globals.myid.nspace, pmix_globals.myid.rank, ft->nbeats,
-                             ft->requestor->info->pname.nspace, ft->requestor->info->pname.rank));
+                             ft->requestor->info->pname.nspace, ft->requestor->info->pname.rank);
     }
     /* reset for next period */
     ft->nbeats = 0;
