@@ -399,23 +399,23 @@ void pmix_pfexec_base_kill_proc(int sd, short args, void *cbdata)
        If it is in a stopped state and we do not first change it to
        running, then SIGTERM will not get delivered.  Ignore return
        value. */
-    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGCONT",
-                         PMIX_NAME_PRINT(&pmix_globals.myid)));
+    pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGCONT",
+                         PMIX_NAME_PRINT(&pmix_globals.myid));
     scd->sigfn(child->pid, SIGCONT);
 
     /* wait a little to give the proc a chance to wakeup */
     sleep(pmix_pfexec_globals.timeout_before_sigkill);
     /* issue a SIGTERM */
-    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGTERM",
-                         PMIX_NAME_PRINT(&pmix_globals.myid)));
+    pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGTERM",
+                         PMIX_NAME_PRINT(&pmix_globals.myid));
     scd->lock->status = scd->sigfn(child->pid, SIGTERM);
 
     if (0 != scd->lock->status) {
         /* wait a little again */
         sleep(pmix_pfexec_globals.timeout_before_sigkill);
         /* issue a SIGKILL */
-        PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGKILL",
-                             PMIX_NAME_PRINT(&pmix_globals.myid)));
+        pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output, "%s SENDING SIGKILL",
+                             PMIX_NAME_PRINT(&pmix_globals.myid));
         scd->lock->status = scd->sigfn(child->pid, SIGKILL);
     }
 
@@ -446,8 +446,8 @@ void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata)
         return;
     }
 
-    PMIX_OUTPUT_VERBOSE((5, pmix_pfexec_base_framework.framework_output, "%s SIGNALING %d",
-                         PMIX_NAME_PRINT(&pmix_globals.myid), scd->signal));
+    pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output, "%s SIGNALING %d",
+                         PMIX_NAME_PRINT(&pmix_globals.myid), scd->signal);
     scd->lock->status = scd->sigfn(child->pid, scd->signal);
 
     PMIX_WAKEUP_THREAD(scd->lock);

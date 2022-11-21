@@ -176,10 +176,10 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
 
     PMIX_HIDE_UNUSED_PARAMS(error);
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+    pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] checking file monitoring for requestor %s:%d",
                          pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                         requestor->info->pname.nspace, requestor->info->pname.rank));
+                         requestor->info->pname.nspace, requestor->info->pname.rank);
 
     /* if they didn't ask to monitor a file, then nothing for us to do */
     if (0 != strcmp(monitor->key, PMIX_MONITOR_FILE)) {
@@ -284,26 +284,26 @@ static void file_sample(int sd, short args, void *cbdata)
 
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+    pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] sampling file %s", pmix_globals.myid.nspace,
-                         pmix_globals.myid.rank, ft->file));
+                         pmix_globals.myid.rank, ft->file);
 
     /* stat the file and get its info */
     /* coverity[TOCTOU] */
     if (0 > stat(ft->file, &buf)) {
         /* cannot stat file */
-        PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+        pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                              "[%s:%d] could not stat %s", pmix_globals.myid.nspace,
-                             pmix_globals.myid.rank, ft->file));
+                             pmix_globals.myid.rank, ft->file);
         /* re-add the timer, in case this file shows up */
         pmix_event_evtimer_add(&ft->ev, &ft->tv);
         return;
     }
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+    pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] size %lu access %s\tmod %s", pmix_globals.myid.nspace,
                          pmix_globals.myid.rank, (unsigned long) buf.st_size, ctime(&buf.st_atime),
-                         ctime(&buf.st_mtime)));
+                         ctime(&buf.st_mtime));
 
     if (ft->file_size) {
         if (buf.st_size == (int64_t) ft->last_size) {
@@ -328,9 +328,9 @@ static void file_sample(int sd, short args, void *cbdata)
         }
     }
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_psensor_base_framework.framework_output,
+    pmix_output_verbose(1, pmix_psensor_base_framework.framework_output,
                          "[%s:%d] sampled file %s misses %d", pmix_globals.myid.nspace,
-                         pmix_globals.myid.rank, ft->file, ft->nmisses));
+                         pmix_globals.myid.rank, ft->file, ft->nmisses);
 
     if (ft->nmisses == ft->ndrops) {
         if (4 < pmix_output_get_verbosity(pmix_psensor_base_framework.framework_output)) {
