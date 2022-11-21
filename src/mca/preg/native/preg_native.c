@@ -598,8 +598,8 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_preg_base_framework.framework_output,
-                         "pmix:extract:nodes: checking list: %s", regexp));
+    pmix_output_verbose(1, pmix_preg_base_framework.framework_output,
+                         "pmix:extract:nodes: checking list: %s", regexp);
 
     do {
         /* Find the base */
@@ -675,9 +675,9 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
             } else {
                 suffix = NULL;
             }
-            PMIX_OUTPUT_VERBOSE((1, pmix_preg_base_framework.framework_output,
+            pmix_output_verbose(1, pmix_preg_base_framework.framework_output,
                                  "regex:extract:nodes: parsing range %s %s %s", base, base + i,
-                                 suffix));
+                                 suffix);
 
             ret = regex_parse_value_ranges(base, base + i, num_digits, suffix, names);
             if (NULL != suffix) {
@@ -747,8 +747,8 @@ static pmix_status_t regex_parse_value_ranges(char *base, char *ranges, int num_
 
     if (start < orig + len) {
 
-        PMIX_OUTPUT_VERBOSE((1, pmix_preg_base_framework.framework_output,
-                             "regex:parse:ranges: parse range %s (2)", start));
+        pmix_output_verbose(1, pmix_preg_base_framework.framework_output,
+                             "regex:parse:ranges: parse range %s (2)", start);
 
         ret = regex_parse_value_range(base, start, num_digits, suffix, names);
         if (PMIX_SUCCESS != ret) {

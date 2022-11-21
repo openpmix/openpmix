@@ -58,31 +58,6 @@ static char *output_prefix = NULL;
  * Internal data structures and helpers for the generalized output
  * stream mechanism.
  */
-typedef struct {
-    bool ldi_used;
-    bool ldi_enabled;
-    int ldi_verbose_level;
-
-    bool ldi_syslog;
-    int ldi_syslog_priority;
-
-    char *ldi_syslog_ident;
-    char *ldi_prefix;
-    int ldi_prefix_len;
-
-    char *ldi_suffix;
-    int ldi_suffix_len;
-
-    bool ldi_stdout;
-    bool ldi_stderr;
-
-    bool ldi_file;
-    bool ldi_file_want_append;
-    char *ldi_file_suffix;
-    int ldi_fd;
-    int ldi_file_num_lines_lost;
-} output_desc_t;
-
 /*
  * Private functions
  */
@@ -91,11 +66,10 @@ static void destruct(pmix_object_t *stream);
 static int do_open(int output_id, pmix_output_stream_t *lds);
 static int open_file(int i);
 static void free_descriptor(int output_id);
-static int make_string(char **out, char **no_newline_string, output_desc_t *ldi, const char *format,
+static int make_string(char **out, char **no_newline_string, pmix_output_desc_t *ldi, const char *format,
                        va_list arglist);
 static int output(int output_id, const char *format, va_list arglist);
 
-#define PMIX_OUTPUT_MAX_STREAMS 64
 #if defined(HAVE_SYSLOG)
 #    define USE_SYSLOG 1
 #else
@@ -105,13 +79,13 @@ static int output(int output_id, const char *format, va_list arglist);
 /* global state */
 bool pmix_output_redirected_to_syslog = false;
 int pmix_output_redirected_syslog_pri = 0;
-
+pmix_output_desc_t pmix_output_info[PMIX_OUTPUT_MAX_STREAMS];
 /*
  * Local state
  */
 static bool initialized = false;
 static int default_stderr_fd = -1;
-static output_desc_t info[PMIX_OUTPUT_MAX_STREAMS];
+
 #if defined(HAVE_SYSLOG)
 static bool syslog_opened = false;
 #endif
@@ -183,15 +157,15 @@ bool pmix_output_init(void)
     }
 
     for (i = 0; i < PMIX_OUTPUT_MAX_STREAMS; ++i) {
-        info[i].ldi_used = false;
-        info[i].ldi_enabled = false;
+        pmix_output_info[i].ldi_used = false;
+        pmix_output_info[i].ldi_enabled = false;
 
-        info[i].ldi_syslog = pmix_output_redirected_to_syslog;
-        info[i].ldi_file = false;
-        info[i].ldi_file_suffix = NULL;
-        info[i].ldi_file_want_append = false;
-        info[i].ldi_fd = -1;
-        info[i].ldi_file_num_lines_lost = 0;
+        pmix_output_info[i].ldi_syslog = pmix_output_redirected_to_syslog;
+        pmix_output_info[i].ldi_file = false;
+        pmix_output_info[i].ldi_file_suffix = NULL;
+        pmix_output_info[i].ldi_file_want_append = false;
+        pmix_output_info[i].ldi_fd = -1;
+        pmix_output_info[i].ldi_file_num_lines_lost = 0;
     }
 
     initialized = true;
@@ -238,8 +212,8 @@ bool pmix_output_switch(int output_id, bool enable)
     }
 
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS) {
-        ret = info[output_id].ldi_enabled;
-        info[output_id].ldi_enabled = enable;
+        ret = pmix_output_info[output_id].ldi_enabled;
+        pmix_output_info[output_id].ldi_enabled = enable;
     }
 
     return ret;
@@ -287,14 +261,14 @@ void pmix_output_close(int output_id)
     /* If it's valid, used, enabled, and has an open file descriptor,
      * free the resources associated with the descriptor */
 
-    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && info[output_id].ldi_used
-        && info[output_id].ldi_enabled) {
+    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && pmix_output_info[output_id].ldi_used
+        && pmix_output_info[output_id].ldi_enabled) {
         free_descriptor(output_id);
 
         /* If no one has the syslog open, we should close it */
 
         for (i = 0; i < PMIX_OUTPUT_MAX_STREAMS; ++i) {
-            if (info[i].ldi_used && info[i].ldi_syslog) {
+            if (pmix_output_info[i].ldi_used && pmix_output_info[i].ldi_syslog) {
                 break;
             }
         }
@@ -320,25 +294,6 @@ PMIX_EXPORT void pmix_output(int output_id, const char *format, ...)
     }
 }
 
-/*
- * Send a message to a stream if the verbose level is high enough
- */
-PMIX_EXPORT bool pmix_output_check_verbosity(int level, int output_id)
-{
-    return (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS
-            && info[output_id].ldi_verbose_level >= level);
-}
-
-/*
- * Send a message to a stream if the verbose level is high enough
- */
-void pmix_output_vverbose(int level, int output_id, const char *format, va_list arglist)
-{
-    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS
-        && info[output_id].ldi_verbose_level >= level) {
-        output(output_id, format, arglist);
-    }
-}
 
 /*
  * Set the verbosity level of a stream
@@ -346,7 +301,7 @@ void pmix_output_vverbose(int level, int output_id, const char *format, va_list 
 void pmix_output_set_verbosity(int output_id, int level)
 {
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS) {
-        info[output_id].ldi_verbose_level = level;
+        pmix_output_info[output_id].ldi_verbose_level = level;
     }
 }
 
@@ -382,7 +337,7 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
     int i, j;
 
     if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS
-        && info[output_id].ldi_verbose_level >= verbose_level) {
+        && pmix_output_info[output_id].ldi_verbose_level >= verbose_level) {
         pmix_output_verbose(verbose_level, output_id, "dump data at %p %d bytes\n", ptr, buflen);
         for (i = 0; i < buflen; i += 16) {
             out_pos = 0;
@@ -495,7 +450,7 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
 
     if (-1 == output_id) {
         for (i = 0; i < PMIX_OUTPUT_MAX_STREAMS; ++i) {
-            if (!info[i].ldi_used) {
+            if (!pmix_output_info[i].ldi_used) {
                 break;
             }
         }
@@ -521,39 +476,39 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
 
     /* Got a stream -- now initialize it and open relevant outputs */
 
-    info[i].ldi_used = true;
-    info[i].ldi_enabled = lds->lds_is_debugging ? (bool) PMIX_ENABLE_DEBUG : true;
-    info[i].ldi_verbose_level = lds->lds_verbose_level;
+    pmix_output_info[i].ldi_used = true;
+    pmix_output_info[i].ldi_enabled = lds->lds_is_debugging ? (bool) PMIX_ENABLE_DEBUG : true;
+    pmix_output_info[i].ldi_verbose_level = lds->lds_verbose_level;
 
 #if USE_SYSLOG
 #    if defined(HAVE_SYSLOG)
     if (pmix_output_redirected_to_syslog) {
-        info[i].ldi_syslog = true;
-        info[i].ldi_syslog_priority = pmix_output_redirected_syslog_pri;
+        pmix_output_info[i].ldi_syslog = true;
+        pmix_output_info[i].ldi_syslog_priority = pmix_output_redirected_syslog_pri;
         if (NULL != redirect_syslog_ident) {
-            info[i].ldi_syslog_ident = strdup(redirect_syslog_ident);
+            pmix_output_info[i].ldi_syslog_ident = strdup(redirect_syslog_ident);
             openlog(redirect_syslog_ident, LOG_PID, LOG_USER);
         } else {
-            info[i].ldi_syslog_ident = NULL;
+            pmix_output_info[i].ldi_syslog_ident = NULL;
             openlog("pmix", LOG_PID, LOG_USER);
         }
         syslog_opened = true;
     } else {
 #    endif
-        info[i].ldi_syslog = lds->lds_want_syslog;
+        pmix_output_info[i].ldi_syslog = lds->lds_want_syslog;
         if (lds->lds_want_syslog) {
 
 #    if defined(HAVE_SYSLOG)
             if (NULL != lds->lds_syslog_ident) {
-                info[i].ldi_syslog_ident = strdup(lds->lds_syslog_ident);
+                pmix_output_info[i].ldi_syslog_ident = strdup(lds->lds_syslog_ident);
                 openlog(lds->lds_syslog_ident, LOG_PID, LOG_USER);
             } else {
-                info[i].ldi_syslog_ident = NULL;
+                pmix_output_info[i].ldi_syslog_ident = NULL;
                 openlog("pmix", LOG_PID, LOG_USER);
             }
 #    endif
             syslog_opened = true;
-            info[i].ldi_syslog_priority = lds->lds_syslog_priority;
+            pmix_output_info[i].ldi_syslog_priority = lds->lds_syslog_priority;
         }
 
 #    if defined(HAVE_SYSLOG)
@@ -561,56 +516,56 @@ static int do_open(int output_id, pmix_output_stream_t *lds)
 #    endif
 
 #else
-    info[i].ldi_syslog = false;
+    pmix_output_info[i].ldi_syslog = false;
 #endif
 
     if (NULL != lds->lds_prefix) {
-        info[i].ldi_prefix = strdup(lds->lds_prefix);
-        info[i].ldi_prefix_len = (int) strlen(lds->lds_prefix);
+        pmix_output_info[i].ldi_prefix = strdup(lds->lds_prefix);
+        pmix_output_info[i].ldi_prefix_len = (int) strlen(lds->lds_prefix);
     } else {
-        info[i].ldi_prefix = NULL;
-        info[i].ldi_prefix_len = 0;
+        pmix_output_info[i].ldi_prefix = NULL;
+        pmix_output_info[i].ldi_prefix_len = 0;
     }
 
     if (NULL != lds->lds_suffix) {
-        info[i].ldi_suffix = strdup(lds->lds_suffix);
-        info[i].ldi_suffix_len = (int) strlen(lds->lds_suffix);
+        pmix_output_info[i].ldi_suffix = strdup(lds->lds_suffix);
+        pmix_output_info[i].ldi_suffix_len = (int) strlen(lds->lds_suffix);
     } else {
-        info[i].ldi_suffix = NULL;
-        info[i].ldi_suffix_len = 0;
+        pmix_output_info[i].ldi_suffix = NULL;
+        pmix_output_info[i].ldi_suffix_len = 0;
     }
 
     if (pmix_output_redirected_to_syslog) {
         /* since all is redirected to syslog, ensure
          * we don't duplicate the output to the std places
          */
-        info[i].ldi_stdout = false;
-        info[i].ldi_stderr = false;
-        info[i].ldi_file = false;
-        info[i].ldi_fd = -1;
+        pmix_output_info[i].ldi_stdout = false;
+        pmix_output_info[i].ldi_stderr = false;
+        pmix_output_info[i].ldi_file = false;
+        pmix_output_info[i].ldi_fd = -1;
     } else {
         /* since we aren't redirecting to syslog, use what was
          * given to us
          */
         if (NULL != str && redirect_to_file) {
-            info[i].ldi_stdout = false;
-            info[i].ldi_stderr = false;
-            info[i].ldi_file = true;
+            pmix_output_info[i].ldi_stdout = false;
+            pmix_output_info[i].ldi_stderr = false;
+            pmix_output_info[i].ldi_file = true;
         } else {
-            info[i].ldi_stdout = lds->lds_want_stdout;
-            info[i].ldi_stderr = lds->lds_want_stderr;
+            pmix_output_info[i].ldi_stdout = lds->lds_want_stdout;
+            pmix_output_info[i].ldi_stderr = lds->lds_want_stderr;
 
-            info[i].ldi_fd = -1;
-            info[i].ldi_file = lds->lds_want_file;
+            pmix_output_info[i].ldi_fd = -1;
+            pmix_output_info[i].ldi_file = lds->lds_want_file;
         }
         if (NULL != sfx) {
-            info[i].ldi_file_suffix = strdup(sfx);
+            pmix_output_info[i].ldi_file_suffix = strdup(sfx);
         } else {
-            info[i].ldi_file_suffix = (NULL == lds->lds_file_suffix) ? NULL
+            pmix_output_info[i].ldi_file_suffix = (NULL == lds->lds_file_suffix) ? NULL
                                                                      : strdup(lds->lds_file_suffix);
         }
-        info[i].ldi_file_want_append = lds->lds_want_file_append;
-        info[i].ldi_file_num_lines_lost = 0;
+        pmix_output_info[i].ldi_file_want_append = lds->lds_want_file_append;
+        pmix_output_info[i].ldi_file_num_lines_lost = 0;
     }
 
     /* Don't open a file in the session directory now -- do that lazily
@@ -633,27 +588,27 @@ static int open_file(int i)
         if (i == n) {
             continue;
         }
-        if (!info[n].ldi_used) {
+        if (!pmix_output_info[n].ldi_used) {
             continue;
         }
-        if (!info[n].ldi_file) {
+        if (!pmix_output_info[n].ldi_file) {
             continue;
         }
-        if (NULL != info[i].ldi_file_suffix && NULL != info[n].ldi_file_suffix) {
-            if (0 != strcmp(info[i].ldi_file_suffix, info[n].ldi_file_suffix)) {
+        if (NULL != pmix_output_info[i].ldi_file_suffix && NULL != pmix_output_info[n].ldi_file_suffix) {
+            if (0 != strcmp(pmix_output_info[i].ldi_file_suffix, pmix_output_info[n].ldi_file_suffix)) {
                 break;
             }
         }
-        if (NULL == info[i].ldi_file_suffix && NULL != info[n].ldi_file_suffix) {
+        if (NULL == pmix_output_info[i].ldi_file_suffix && NULL != pmix_output_info[n].ldi_file_suffix) {
             break;
         }
-        if (NULL != info[i].ldi_file_suffix && NULL == info[n].ldi_file_suffix) {
+        if (NULL != pmix_output_info[i].ldi_file_suffix && NULL == pmix_output_info[n].ldi_file_suffix) {
             break;
         }
-        if (info[n].ldi_fd < 0) {
+        if (pmix_output_info[n].ldi_fd < 0) {
             break;
         }
-        info[i].ldi_fd = info[n].ldi_fd;
+        pmix_output_info[i].ldi_fd = pmix_output_info[n].ldi_fd;
         return PMIX_SUCCESS;
     }
 
@@ -669,28 +624,28 @@ static int open_file(int i)
         if (NULL != output_prefix) {
             strcat(filename, output_prefix);
         }
-        if (info[i].ldi_file_suffix != NULL) {
-            strcat(filename, info[i].ldi_file_suffix);
+        if (pmix_output_info[i].ldi_file_suffix != NULL) {
+            strcat(filename, pmix_output_info[i].ldi_file_suffix);
         } else {
-            info[i].ldi_file_suffix = NULL;
+            pmix_output_info[i].ldi_file_suffix = NULL;
             strcat(filename, "output.txt");
         }
         flags = O_CREAT | O_RDWR;
-        if (!info[i].ldi_file_want_append) {
+        if (!pmix_output_info[i].ldi_file_want_append) {
             flags |= O_TRUNC;
         }
 
         /* Actually open the file */
-        info[i].ldi_fd = open(filename, flags, 0644);
+        pmix_output_info[i].ldi_fd = open(filename, flags, 0644);
         free(filename); /* release the filename in all cases */
-        if (-1 == info[i].ldi_fd) {
-            info[i].ldi_used = false;
+        if (-1 == pmix_output_info[i].ldi_fd) {
+            pmix_output_info[i].ldi_used = false;
             return PMIX_ERR_IN_ERRNO;
         }
 
         /* Make the file be close-on-exec to prevent child inheritance
          * problems */
-        if (-1 == fcntl(info[i].ldi_fd, F_SETFD, 1)) {
+        if (-1 == fcntl(pmix_output_info[i].ldi_fd, F_SETFD, 1)) {
             return PMIX_ERR_IN_ERRNO;
         }
     }
@@ -706,11 +661,11 @@ static int open_file(int i)
  */
 static void free_descriptor(int output_id)
 {
-    output_desc_t *ldi;
+    pmix_output_desc_t *ldi;
 
-    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && info[output_id].ldi_used
-        && info[output_id].ldi_enabled) {
-        ldi = &info[output_id];
+    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && pmix_output_info[output_id].ldi_used
+        && pmix_output_info[output_id].ldi_enabled) {
+        ldi = &pmix_output_info[output_id];
 
         if (-1 != ldi->ldi_fd) {
             close(ldi->ldi_fd);
@@ -741,7 +696,7 @@ static void free_descriptor(int output_id)
     }
 }
 
-static int make_string(char **out, char **no_newline_string, output_desc_t *ldi, const char *format,
+static int make_string(char **out, char **no_newline_string, pmix_output_desc_t *ldi, const char *format,
                        va_list arglist)
 {
     size_t len, total_len, temp_str_len;
@@ -818,7 +773,7 @@ static int output(int output_id, const char *format, va_list arglist)
 {
     int rc = PMIX_SUCCESS;
     char *str = NULL, *out = NULL;
-    output_desc_t *ldi;
+    pmix_output_desc_t *ldi;
 
     /* Setup */
 
@@ -828,9 +783,9 @@ static int output(int output_id, const char *format, va_list arglist)
 
     /* If it's valid, used, and enabled, output */
 
-    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && info[output_id].ldi_used
-        && info[output_id].ldi_enabled) {
-        ldi = &info[output_id];
+    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && pmix_output_info[output_id].ldi_used
+        && pmix_output_info[output_id].ldi_enabled) {
+        ldi = &pmix_output_info[output_id];
 
         /* Make the strings */
         if (PMIX_SUCCESS != (rc = make_string(&out, &str, ldi, format, arglist))) {
@@ -909,8 +864,8 @@ cleanup:
 
 int pmix_output_get_verbosity(int output_id)
 {
-    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && info[output_id].ldi_used) {
-        return info[output_id].ldi_verbose_level;
+    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS && pmix_output_info[output_id].ldi_used) {
+        return pmix_output_info[output_id].ldi_verbose_level;
     } else {
         return -1;
     }

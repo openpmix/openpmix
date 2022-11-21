@@ -1118,8 +1118,8 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     } else {
         /* error - this should never happen */
         PMIX_ERROR_LOG(PMIX_ERR_VALUE_OUT_OF_BOUNDS);
-        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output, "%s stream %0x",
-                             PMIX_NAME_PRINT(&pmix_globals.myid), stream));
+        pmix_output_verbose(1, pmix_client_globals.iof_output, "%s stream %0x",
+                             PMIX_NAME_PRINT(&pmix_globals.myid), stream);
         return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
     }
 
@@ -1469,9 +1469,9 @@ process:
     /* is the write event issued? */
     if (!channel->pending) {
         /* issue it */
-        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
+        pmix_output_verbose(1, pmix_client_globals.iof_output,
                              "%s write:output adding write event",
-                             PMIX_NAME_PRINT(&pmix_globals.myid)));
+                             PMIX_NAME_PRINT(&pmix_globals.myid));
         PMIX_IOF_SINK_ACTIVATE(channel);
     }
 
@@ -1597,11 +1597,11 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t 
         }
     }
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
+    pmix_output_verbose(1, pmix_client_globals.iof_output,
                          "%s write:output setting up to write %lu bytes to %s for %s on fd %d",
                          PMIX_NAME_PRINT(&pmix_globals.myid), (unsigned long) bo->size,
                          PMIx_IOF_channel_string(stream), PMIX_NAME_PRINT(name),
-                         (NULL == channel) ? -1 : channel->fd));
+                         (NULL == channel) ? -1 : channel->fd);
 
     /* zero bytes can just be passed along */
     if (0 == bo->size) {
@@ -1730,9 +1730,9 @@ void pmix_iof_write_handler(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(sink);
 
-    PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
+    pmix_output_verbose(1, pmix_client_globals.iof_output,
                          "%s write:handler writing data to %d",
-                         PMIX_NAME_PRINT(&pmix_globals.myid), wev->fd));
+                         PMIX_NAME_PRINT(&pmix_globals.myid), wev->fd);
 
     while (NULL != (item = pmix_list_remove_first(&wev->outputs))) {
         output = (pmix_iof_write_output_t *) item;
@@ -1924,10 +1924,10 @@ void pmix_iof_read_local_handler(int sd, short args, void *cbdata)
             return;
         }
 
-        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,
+        pmix_output_verbose(1, pmix_client_globals.iof_output,
                              "%s iof:read handler Error on %s",
                              PMIX_NAME_PRINT(&pmix_globals.myid),
-                             PMIx_IOF_channel_string(rev->channel)));
+                             PMIx_IOF_channel_string(rev->channel));
         /* Un-recoverable error */
         bo.bytes = NULL;
         bo.size = 0;
@@ -2090,9 +2090,9 @@ static void iof_sink_construct(pmix_iof_sink_t *ptr)
 static void iof_sink_destruct(pmix_iof_sink_t *ptr)
 {
     if (0 <= ptr->wev.fd) {
-        PMIX_OUTPUT_VERBOSE(
+        pmix_output_verbose
             (20, pmix_client_globals.iof_output, "%s iof: closing sink for process %s on fd %d",
-             PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(&ptr->name), ptr->wev.fd));
+             PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(&ptr->name), ptr->wev.fd);
         PMIX_DESTRUCT(&ptr->wev);
     }
 }
@@ -2118,8 +2118,8 @@ static void iof_read_event_destruct(pmix_iof_read_event_t *rev)
         pmix_event_del(&rev->ev);
     }
     if (0 <= rev->fd) {
-        PMIX_OUTPUT_VERBOSE((20, pmix_client_globals.iof_output, "%s iof: closing fd %d",
-                             PMIX_NAME_PRINT(&pmix_globals.myid), rev->fd));
+        pmix_output_verbose(20, pmix_client_globals.iof_output, "%s iof: closing fd %d",
+                             PMIX_NAME_PRINT(&pmix_globals.myid), rev->fd);
         close(rev->fd);
         rev->fd = -1;
     }
@@ -2151,9 +2151,9 @@ static void iof_write_event_destruct(pmix_iof_write_event_t *wev)
     }
     free(wev->ev);
     if (2 < wev->fd) {
-        PMIX_OUTPUT_VERBOSE((20, pmix_client_globals.iof_output,
+        pmix_output_verbose(20, pmix_client_globals.iof_output,
                              "%s iof: closing fd %d for write event",
-                             PMIX_NAME_PRINT(&pmix_globals.myid), wev->fd));
+                             PMIX_NAME_PRINT(&pmix_globals.myid), wev->fd);
         close(wev->fd);
     }
     PMIX_LIST_DESTRUCT(&wev->outputs);
