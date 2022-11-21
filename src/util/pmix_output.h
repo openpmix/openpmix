@@ -77,6 +77,8 @@
 
 BEGIN_C_DECLS
 
+#define PMIX_OUTPUT_MAX_STREAMS 64
+
 /* There are systems where all output needs to be redirected to syslog
  * and away from stdout/stderr or files - e.g., embedded systems whose
  * sole file system is in flash. To support such systems, we provide
@@ -96,8 +98,8 @@ BEGIN_C_DECLS
  * subsystem to tell it to dump any collected output directly to
  * syslog instead of forwarding it to another location.
  */
-extern bool pmix_output_redirected_to_syslog;
-extern int pmix_output_redirected_syslog_pri;
+PMIX_EXPORT extern bool pmix_output_redirected_to_syslog;
+PMIX_EXPORT extern int pmix_output_redirected_syslog_pri;
 
 /**
  * \class pmix_output_stream_t
@@ -251,6 +253,34 @@ struct pmix_output_stream_t {
  * Convenience typedef
  */
 typedef struct pmix_output_stream_t pmix_output_stream_t;
+
+/* tracking structure */
+typedef struct {
+    bool ldi_used;
+    bool ldi_enabled;
+    int ldi_verbose_level;
+
+    bool ldi_syslog;
+    int ldi_syslog_priority;
+
+    char *ldi_syslog_ident;
+    char *ldi_prefix;
+    int ldi_prefix_len;
+
+    char *ldi_suffix;
+    int ldi_suffix_len;
+
+    bool ldi_stdout;
+    bool ldi_stderr;
+
+    bool ldi_file;
+    bool ldi_file_want_append;
+    char *ldi_file_suffix;
+    int ldi_fd;
+    int ldi_file_num_lines_lost;
+} pmix_output_desc_t;
+
+PMIX_EXPORT extern pmix_output_desc_t pmix_output_info[];
 
 /**
  * Initializes the output stream system and opens a default
@@ -413,15 +443,15 @@ PMIX_EXPORT void pmix_output(int output_id, const char *format, ...)
  *
  * @see pmix_output_set_verbosity()
  */
-#define pmix_output_verbose(verbose_level, output_id, ...)       \
-    if (pmix_output_check_verbosity(verbose_level, output_id)) { \
-        pmix_output(output_id, __VA_ARGS__);                     \
+#define pmix_output_verbose(level, output_id, ...)              \
+    if (output_id >= 0 && output_id < PMIX_OUTPUT_MAX_STREAMS &&    \
+        pmix_output_info[output_id].ldi_verbose_level >= level) {   \
+        pmix_output(output_id, __VA_ARGS__);                        \
     }
 
-PMIX_EXPORT bool pmix_output_check_verbosity(int verbose_level, int output_id);
-
-PMIX_EXPORT void pmix_output_vverbose(int verbose_level, int output_id, const char *format,
-                                      va_list ap) __pmix_attribute_format__(__printf__, 3, 0);
+/* protect legacy users */
+#define PMIX_OUTPUT_VERBOSE(a) pmix_output_verbose a
+#define PMIX_OUTPUT(a) pmix_output a
 
 /**
  * Set the verbosity level for a stream.
@@ -489,44 +519,6 @@ PMIX_EXPORT void pmix_output_set_output_file_info(const char *dir, const char *p
  * Same as pmix_output_verbose(), but pointer to buffer and size.
  */
 PMIX_EXPORT void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen);
-
-#if PMIX_ENABLE_DEBUG
-/**
- * Main macro for use in sending debugging output to output streams;
- * will be "compiled out" when PMIX is configured without
- * --enable-debug.
- *
- * @see pmix_output()
- */
-#    define PMIX_OUTPUT(a) pmix_output a
-
-/**
- * Macro for use in sending debugging output to the output
- * streams.  Will be "compiled out" when PMIX is configured
- * without --enable-debug.
- *
- * @see pmix_output_verbose()
- */
-#    define PMIX_OUTPUT_VERBOSE(a) pmix_output_verbose a
-#else
-/**
- * Main macro for use in sending debugging output to output streams;
- * will be "compiled out" when PMIX is configured without
- * --enable-debug.
- *
- * @see pmix_output()
- */
-#    define PMIX_OUTPUT(a)
-
-/**
- * Macro for use in sending debugging output to the output
- * streams.  Will be "compiled out" when PMIX is configured
- * without --enable-debug.
- *
- * @see pmix_output_verbose()
- */
-#    define PMIX_OUTPUT_VERBOSE(a)
-#endif
 
 /**
  * Declare the class of this type.  Note that the constructor for

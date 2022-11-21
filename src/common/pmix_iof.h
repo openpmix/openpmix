@@ -171,8 +171,8 @@ static inline bool pmix_iof_fd_always_ready(int fd)
  * endpoint list for this proc */
 #define PMIX_IOF_SINK_DEFINE(snk, nm, fid, tg, wrthndlr)                                           \
     do {                                                                                           \
-        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output,                                    \
-                             "defining endpt: file %s line %d fd %d", __FILE__, __LINE__, (fid))); \
+        pmix_output_verbose(1, pmix_client_globals.iof_output,                                     \
+                             "defining endpt: file %s line %d fd %d", __FILE__, __LINE__, (fid));  \
         PMIX_CONSTRUCT((snk), pmix_iof_sink_t);                                                    \
         pmix_strncpy((snk)->name.nspace, (nm)->nspace, PMIX_MAX_NSLEN);                            \
         (snk)->name.rank = (nm)->rank;                                                             \
@@ -213,8 +213,8 @@ static inline bool pmix_iof_fd_always_ready(int fd)
     do {                                                                                         \
         size_t _ii;                                                                              \
         pmix_iof_read_event_t *rev;                                                              \
-        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output, "defining read event at: %s %d", \
-                             __FILE__, __LINE__));                                               \
+        pmix_output_verbose(1, pmix_client_globals.iof_output, "defining read event at: %s %d", \
+                             __FILE__, __LINE__);                                                \
         rev = PMIX_NEW(pmix_iof_read_event_t);                                                   \
         if (NULL != (p)) {                                                                       \
             (rev)->ntargets = (np);                                                              \
@@ -244,8 +244,8 @@ static inline bool pmix_iof_fd_always_ready(int fd)
 #define PMIX_IOF_READ_EVENT_LOCAL(rv, fid, cbfunc, actv)                                         \
     do {                                                                                         \
         pmix_iof_read_event_t *rev;                                                              \
-        PMIX_OUTPUT_VERBOSE((1, pmix_client_globals.iof_output, "defining read event at: %s %d", \
-                             __FILE__, __LINE__));                                               \
+        pmix_output_verbose(1, pmix_client_globals.iof_output, "defining read event at: %s %d", \
+                             __FILE__, __LINE__);                                                \
         rev = PMIX_NEW(pmix_iof_read_event_t);                                                   \
         rev->fd = (fid);                                                                         \
         rev->always_readable = pmix_iof_fd_always_ready(fid);                                    \
