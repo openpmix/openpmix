@@ -84,14 +84,6 @@ pmix_gds_shmem_get_job_tma(
     return &job->smdata->tma;
 }
 
-static inline bool
-pmix_gds_shmem_keys_eq(
-    const char *k1,
-    const char *k2
-) {
-    return 0 == strcmp(k1, k2);
-}
-
 static inline void
 pmix_gds_shmem_vout_smdata(
     pmix_gds_shmem_job_t *job
