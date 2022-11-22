@@ -25,13 +25,13 @@ pmix_gds_shmem_get_job_tracker(
     pmix_gds_shmem_job_t **job
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_gds_shmem_job_t *target_tracker = NULL, *tracker = NULL;
 
     // Try to find the tracker for this job.
+    pmix_gds_shmem_job_t *ti = NULL, *target_tracker = NULL;
     pmix_gds_shmem_component_t *component = &pmix_mca_gds_shmem_component;
-    PMIX_LIST_FOREACH (tracker, &component->jobs, pmix_gds_shmem_job_t) {
-        if (0 == strcmp(nspace, tracker->nspace_id)) {
-            target_tracker = tracker;
+    PMIX_LIST_FOREACH (ti, &component->jobs, pmix_gds_shmem_job_t) {
+        if (0 == strcmp(nspace, ti->nspace_id)) {
+            target_tracker = ti;
             break;
         }
     }
@@ -206,172 +206,6 @@ pmix_gds_shmem_check_hostname(
 }
 
 /**
- * Error function for catching unhandled data types.
- */
-static inline pmix_status_t
-unhandled_type(
-    pmix_data_type_t val_type
-) {
-    static const pmix_status_t rc = PMIX_ERR_FATAL;
-    PMIX_GDS_SHMEM_VOUT(
-        "%s: %s", __func__, PMIx_Data_type_string(val_type)
-    );
-    PMIX_ERROR_LOG(rc);
-    return rc;
-}
-
-/**
- * Returns the size required to store the given type.
- */
-// TODO(skg) This probably shouldn't live here. Figure out a way to get this in
-// an appropriate place.
-pmix_status_t
-pmix_gds_shmem_get_value_size(
-    const pmix_value_t *value,
-    size_t *result
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-    size_t total = 0;
-
-    const pmix_data_type_t type = value->type;
-    // NOTE(skg) This follows the size conventions set in include/pmix_common.h.
-    switch (type) {
-        case PMIX_ALLOC_DIRECTIVE:
-        case PMIX_BYTE:
-        case PMIX_DATA_RANGE:
-        case PMIX_INT8:
-        case PMIX_PERSIST:
-        case PMIX_POINTER:
-        case PMIX_PROC_STATE:
-        case PMIX_SCOPE:
-        case PMIX_UINT8:
-            total += sizeof(int8_t);
-            break;
-        case PMIX_BOOL:
-            total += sizeof(bool);
-            break;
-        // TODO(skg) This needs more work. For example, we can potentially miss
-        // the storage requirements of scaffolding around things like
-        // PMIX_STRINGs, for example. See pmix_gds_shmem_copy_darray().
-        case PMIX_DATA_ARRAY: {
-            total += sizeof(pmix_data_array_t);
-            const size_t n = value->data.darray->size;
-            PMIX_GDS_SHMEM_VOUT(
-                "%s: %s of type=%s has size=%zd",
-                __func__, PMIx_Data_type_string(type),
-                PMIx_Data_type_string(value->data.darray->type), n
-            );
-            // We don't construct or destruct tmp_value because we are only
-            // interested in inspecting its values for the purposes of
-            // estimating its size using this function.
-            pmix_value_t tmp_value = {
-                .type = value->data.darray->type
-            };
-            size_t sizeofn = 0;
-            rc = pmix_gds_shmem_get_value_size(&tmp_value, &sizeofn);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-            total += n * sizeofn;
-            break;
-        }
-        case PMIX_DOUBLE:
-            total += sizeof(double);
-            break;
-        case PMIX_ENVAR: {
-            const pmix_envar_t *val = &value->data.envar;
-            total += sizeof(*val);
-            total += strlen(val->envar) + 1;
-            total += strlen(val->value) + 1;
-            break;
-        }
-        case PMIX_FLOAT:
-            total += sizeof(float);
-            break;
-        case PMIX_INFO:
-            total += sizeof(pmix_info_t);
-            break;
-        case PMIX_INT:
-        case PMIX_UINT:
-        case PMIX_STATUS:
-            total += sizeof(int);
-            break;
-        case PMIX_INT16:
-            total += sizeof(int16_t);
-            break;
-        case PMIX_INT32:
-            total += sizeof(int32_t);
-            break;
-        case PMIX_INT64:
-            total += sizeof(int64_t);
-            break;
-        case PMIX_PID:
-            total += sizeof(pid_t);
-            break;
-        case PMIX_PROC:
-            total += sizeof(pmix_proc_t);
-            break;
-        case PMIX_PROC_RANK:
-            total += sizeof(pmix_rank_t);
-            break;
-        case PMIX_REGEX:
-            total += sizeof(pmix_byte_object_t);
-            total += value->data.bo.size;
-            break;
-        case PMIX_STRING:
-            total += strlen(value->data.string) + 1;
-            break;
-        case PMIX_SIZE:
-            total += sizeof(size_t);
-            break;
-        case PMIX_UINT16:
-            total += sizeof(uint16_t);
-            break;
-        case PMIX_UINT32:
-            total += sizeof(uint32_t);
-            break;
-        case PMIX_UINT64:
-            total += sizeof(uint64_t);
-            break;
-        case PMIX_APP:
-        case PMIX_BUFFER:
-        case PMIX_BYTE_OBJECT:
-        case PMIX_COMMAND:
-        case PMIX_COMPRESSED_STRING:
-        case PMIX_COORD:
-        case PMIX_DATA_BUFFER:
-        case PMIX_DATA_TYPE:
-        case PMIX_DEVICE_DIST:
-        case PMIX_DEVTYPE:
-        case PMIX_DISK_STATS:
-        case PMIX_ENDPOINT:
-        case PMIX_GEOMETRY:
-        case PMIX_INFO_DIRECTIVES:
-        case PMIX_IOF_CHANNEL:
-        case PMIX_JOB_STATE:
-        case PMIX_KVAL:
-        case PMIX_LINK_STATE:
-        case PMIX_NET_STATS:
-        case PMIX_NODE_STATS:
-        case PMIX_PDATA:
-        case PMIX_PROC_CPUSET:
-        case PMIX_PROC_INFO:
-        case PMIX_PROC_NSPACE:
-        case PMIX_PROC_STATS:
-        case PMIX_QUERY:
-        case PMIX_REGATTR:
-        case PMIX_TIME:
-        case PMIX_TIMEVAL:
-        case PMIX_TOPO:
-        case PMIX_VALUE:
-        default:
-            return unhandled_type(type);
-    }
-    *result = total;
-    return rc;
-}
-
-/**
  * Returns page size.
  */
 static inline size_t
@@ -386,7 +220,7 @@ get_page_size(void)
 }
 
 /**
- * Returns amount needed to pad to page boundary.
+ * Returns amount needed to pad provided size to page boundary.
  */
 size_t
 pmix_gds_shmem_pad_amount_to_page(

@@ -26,10 +26,15 @@ do {                                                                           \
                         ":%s called at line %d", __func__, __LINE__);          \
 } while (0)
 
-// TODO(skg) Support different verbosity settings. Like VV or something.
 #define PMIX_GDS_SHMEM_VOUT(...)                                               \
 do {                                                                           \
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
+                        "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
+} while (0)
+
+#define PMIX_GDS_SHMEM_VVOUT(...)                                              \
+do {                                                                           \
+    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,          \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 
@@ -58,12 +63,6 @@ PMIX_EXPORT pmix_gds_shmem_session_t *
 pmix_gds_shmem_check_session(
     pmix_gds_shmem_job_t *job,
     uint32_t sid
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_get_value_size(
-    const pmix_value_t *value,
-    size_t *result
 );
 
 PMIX_EXPORT size_t
