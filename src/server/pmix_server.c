@@ -2976,7 +2976,6 @@ pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t 
                                              const char *pset_name)
 {
     pmix_setup_caddy_t cd;
-    pmix_status_t rc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -2994,15 +2993,11 @@ pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t 
     cd.cbdata = &cd.lock;
     PMIX_THREADSHIFT(&cd, psetdef);
     PMIX_WAIT_THREAD(&cd.lock);
-    rc = cd.lock.status;
     /* protect the input */
     cd.procs = NULL;
     cd.nprocs = 0;
     PMIX_DESTRUCT(&cd);
-    if (PMIX_SUCCESS == rc) {
-        rc = PMIX_OPERATION_SUCCEEDED;
-    }
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 static void psetdel(int sd, short args, void *cbdata)
@@ -3038,7 +3033,6 @@ static void psetdel(int sd, short args, void *cbdata)
 pmix_status_t PMIx_server_delete_process_set(char *pset_name)
 {
     pmix_setup_caddy_t cd;
-    pmix_status_t rc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (pmix_globals.init_cntr <= 0) {
@@ -3054,12 +3048,8 @@ pmix_status_t PMIx_server_delete_process_set(char *pset_name)
     cd.cbdata = &cd.lock;
     PMIX_THREADSHIFT(&cd, psetdel);
     PMIX_WAIT_THREAD(&cd.lock);
-    rc = cd.lock.status;
     PMIX_DESTRUCT(&cd);
-    if (PMIX_SUCCESS == rc) {
-        rc = PMIX_OPERATION_SUCCEEDED;
-    }
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 /****    THE FOLLOWING CALLBACK FUNCTIONS ARE USED BY THE HOST SERVER    ****
