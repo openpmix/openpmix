@@ -636,7 +636,7 @@ unpack_shmem_connection_info(
         }
 
         const char *val = kv.value->data.string;
-        if (pmix_gds_shmem_keys_eq(kv.key, PMIX_GDS_SHMEM_KEY_SEG_PATH)) {
+        if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_KEY_SEG_PATH)) {
             // Set job segment path.
             int nw = snprintf(
                 job->shmem->backing_path, PMIX_PATH_MAX, "%s", val
@@ -647,7 +647,7 @@ unpack_shmem_connection_info(
                 break;
             }
         }
-        else if (pmix_gds_shmem_keys_eq(kv.key, PMIX_GDS_SHMEM_KEY_SEG_SIZE)) {
+        else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_KEY_SEG_SIZE)) {
             // Set job shared-memory segment size.
             rc = strtost(val, 16, &job->shmem->size);
             if (PMIX_SUCCESS != rc) {
@@ -655,7 +655,7 @@ unpack_shmem_connection_info(
                 break;
             }
         }
-        else if (pmix_gds_shmem_keys_eq(kv.key, PMIX_GDS_SHMEM_KEY_SEG_ADDR)) {
+        else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_KEY_SEG_ADDR)) {
             size_t base_addr = 0;
             // Convert string base address to something we can use.
             rc = strtost(val, 16, &base_addr);
@@ -760,14 +760,14 @@ store_local_job_data_in_shmem(
         PMIX_GDS_SHMEM_VVOUT("%s: key=%s ------------", __func__, kvi->key);
         if (PMIX_DATA_ARRAY == kvi->value->type) {
             // We support the following data array keys.
-            if (pmix_gds_shmem_keys_eq(kvi->key, PMIX_APP_INFO_ARRAY)) {
+            if (PMIX_CHECK_KEY(kvi, PMIX_APP_INFO_ARRAY)) {
                 rc = pmix_gds_shmem_store_app_array(job, kvi->value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     break;
                 }
             }
-            else if (pmix_gds_shmem_keys_eq(kvi->key, PMIX_NODE_INFO_ARRAY)) {
+            else if (PMIX_CHECK_KEY(kvi, PMIX_NODE_INFO_ARRAY)) {
                 rc = pmix_gds_shmem_store_node_array(
                     job, kvi->value, job->smdata->nodeinfo
                 );
@@ -776,14 +776,14 @@ store_local_job_data_in_shmem(
                     break;
                 }
             }
-            else if (pmix_gds_shmem_keys_eq(kvi->key, PMIX_PROC_INFO_ARRAY)) {
+            else if (PMIX_CHECK_KEY(kvi, PMIX_PROC_INFO_ARRAY)) {
                 rc = pmix_gds_shmem_store_proc_data(job, kvi);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     break;
                 }
             }
-            else if (pmix_gds_shmem_keys_eq(kvi->key, PMIX_SESSION_INFO_ARRAY)) {
+            else if (PMIX_CHECK_KEY(kvi, PMIX_SESSION_INFO_ARRAY)) {
                 rc = pmix_gds_shmem_store_session_array(job, kvi->value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
