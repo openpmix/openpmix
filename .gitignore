@@ -68,6 +68,8 @@ bindings/python/build/
 bindings/python/pmix_constants.pxd
 bindings/python/pmix_constants.pxi
 bindings/python/tests/__pycache__/
+bindings/python/dist/
+bindings/python/pypmix.egg-info/
 
 examples/alloc
 examples/client

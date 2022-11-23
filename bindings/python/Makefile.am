@@ -15,12 +15,17 @@
 # Copyright (c) 2018      Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2021      IBM Corporation.  All rights reserved.
+# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
 #
 # $HEADER$
 #
+
+# we do NOT want picky compilers down here
+CFLAGS = $(PMIX_CFLAGS_BEFORE_PICKY)
+PYTHONPATH=$PYTHONPATH:$(DESTDIR)$(prefix)/lib/python$(PYTHON_VERSION)/site-packages
 
 helpers = setup.py pmix.pyx pmix.pxi construct.py
 
@@ -30,9 +35,9 @@ if WANT_PYTHON_BINDINGS
 
 install-exec-local: $(helpers)
 	$(PYTHON) $(top_srcdir)/bindings/python/construct.py --src="$(top_builddir)/include" --include-dir="$(top_srcdir)/include"
-	PMIX_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
+	PMIX_BINDINGS_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_BINDINGS_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
 		$(PYTHON) $(top_srcdir)/bindings/python/setup.py build_ext --library-dirs="$(DESTDIR)$(libdir)" --user
-	PMIX_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
+	PMIX_BINDINGS_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_BINDINGS_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
 		$(PYTHON) $(top_srcdir)/bindings/python/setup.py install --prefix="$(DESTDIR)$(prefix)"
 
 uninstall-hook:
@@ -42,6 +47,6 @@ uninstall-hook:
 CLEANFILES += pmix.c
 
 clean-local:
-	rm -rf build
+	rm -rf build pypmix.egg-info dist
 
 endif

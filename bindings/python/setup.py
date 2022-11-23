@@ -10,8 +10,8 @@ from subprocess import check_output, CalledProcessError
 def get_include():
     dirs = []
     try:
-        dirs.append(os.environ['PMIX_TOP_BUILDDIR'] + "/include")
-        dirs.append(os.environ['PMIX_TOP_SRCDIR'] + "/include")
+        dirs.append(os.environ['PMIX_BINDINGS_TOP_BUILDDIR'] + "/include")
+        dirs.append(os.environ['PMIX_BINDINGS_TOP_SRCDIR'] + "/include")
     except:
         return dirs
     return dirs
@@ -54,20 +54,26 @@ setup(
     url = 'https://pmix.org',
     license = '3-clause BSD',
     author = 'Ralph H. Castain',
-    author_email = 'ralph.h.castain@intel.com',
+    author_email = 'rhc@pmix.org',
     description = 'Python bindings for PMIx',
     classifiers = [
-            'Development Status :: 1 - Under Construction',
+            'Development Status :: 5 - Production/Stable',
             'Intended Audience :: Developers',
             'Topic :: HPC :: Parallel Programming :: System Management',
-            'License :: 3-clause BSD',
+            'License :: OSI Approved :: BSD License',
             'Programming Language :: Python :: 3.4',
             'Programming Language :: Python :: 3.5',
-            'Programming Language :: Python :: 3.6'],
+            'Programming Language :: Python :: 3.6',
+            'Programming Language :: Python :: 3.7',
+            'Programming Language :: Python :: 3.8',
+            'Programming Language :: Python :: 3.9',
+            'Programming Language :: Python :: 3.10',
+            'Programming Language :: Python :: 3.11',
+            'Programming Language :: Python :: 3.12'],
     keywords = 'PMI PMIx HPC MPI SHMEM',
     platforms = 'any',
     ext_modules = cythonize([Extension("pmix",
-                                       [os.environ['PMIX_TOP_SRCDIR']+"/bindings/python/pmix.pyx"],
+                                       [os.environ['PMIX_BINDINGS_TOP_SRCDIR']+"/bindings/python/pmix.pyx"],
                                        libraries=["pmix"]) ],
                             compiler_directives={'language_level': 3}),
     include_dirs = get_include()
