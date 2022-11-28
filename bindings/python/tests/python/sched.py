@@ -28,23 +28,23 @@ def main():
     print("Version: ", vers)
 
     # Register a fabric
-    rc = foo.register_fabric(None)
+    rc = foo.fabric_register(None)
     print("Fabric registered: ", rc)
 
     # setup the application
-    (rc, regex) = foo.generate_regex("test000,test001,test002")
+    (rc, regex) = foo.generate_regex(["test000","test001","test002"])
     print("Node regex, rc: ", regex, rc)
-    (rc, ppn) = foo.generate_ppn("0,1,2;3,4,5;6,7")
+    (rc, ppn) = foo.generate_ppn(["0,1,2", "3,4,5", "6,7"])
     print("PPN, rc: ", ppn, rc)
-    darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_NETWORK_ID,
+    darray = {'type':PMIX_INFO, 'array':[{'key':PMIX_ALLOC_FABRIC_ID,
                             'value':'SIMPSCHED.net', 'val_type':PMIX_STRING},
-                           {'key':PMIX_ALLOC_NETWORK_SEC_KEY, 'value':'T',
+                           {'key':PMIX_ALLOC_FABRIC_SEC_KEY, 'value':'T',
                             'val_type':PMIX_BOOL},
                            {'key':PMIX_SETUP_APP_ENVARS, 'value':'T',
                             'val_type':PMIX_BOOL}]}
     kyvals = [{'key':PMIX_NODE_MAP, 'value':regex, 'val_type':PMIX_STRING},
               {'key':PMIX_PROC_MAP, 'value':ppn, 'val_type':PMIX_STRING},
-              {'key':PMIX_ALLOC_NETWORK, 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
+              {'key':PMIX_ALLOC_FABRIC, 'value':darray, 'val_type':PMIX_DATA_ARRAY}]
 
     appinfo = []
     rc, appinfo = foo.setup_application("SIMPSCHED", kyvals)

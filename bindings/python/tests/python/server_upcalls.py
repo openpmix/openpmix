@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from pmix import *
 import signal, time
 global killer
@@ -40,6 +42,8 @@ def clientfence(args:dict is not None):
                     except:
                         #it can be ignored
                         pass
+    except:
+        pass
     print("COMPLETE")
     return PMIX_SUCCESS, output
 
@@ -58,7 +62,7 @@ def clientunpublish(args:dict is not None):
     print("SERVER: UNPUBLISH")
     for k in args['keys']:
         for d in pmix_locdata:
-            if k.decode('ascii') == d['key']:
+            if k == d['key']:
                 pmix_locdata.remove(d)
     return PMIX_OPERATION_SUCCEEDED
 
