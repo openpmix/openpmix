@@ -5,7 +5,7 @@ dnl Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2014      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
 dnl
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -23,7 +23,7 @@ AC_DEFUN([PMIX_CHECK_OS_FLAVOR_SPECIFIC],
     AC_MSG_CHECKING([$1])
     AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
      [[#ifndef $1
-      error: this isnt $1
+      #this is not $1, error
       #endif
      ]])],
                       [pmix_found_$2=yes],
