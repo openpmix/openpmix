@@ -1237,7 +1237,10 @@ cdef dict pmix_unload_value(const pmix_value_t *value):
         return {'value':value[0].data.byte, 'val_type':PMIX_BYTE}
     elif PMIX_STRING == value[0].type:
         pyb = value[0].data.string
-        pystr = pyb.decode("ascii")
+        try:
+            pystr = pyb.decode("ascii")
+        except:
+            pystr = pyb
         return {'value':pystr, 'val_type':PMIX_STRING}
     elif PMIX_SIZE == value[0].type:
         return {'value':value[0].data.size, 'val_type':PMIX_SIZE}
@@ -1398,12 +1401,12 @@ cdef int pmix_unload_info(const pmix_info_t *info, size_t ninfo, ilist:list):
     cdef size_t n
     n = 0
     while n < ninfo:
+        kystr = strdup(info[n].key)
         # pmix_unload_value returns a python dict of val, val_type
         val = pmix_unload_value(&info[n].value)
         if val['val_type'] == PMIX_UNDEF:
             return PMIX_ERR_NOT_SUPPORTED
         d     = {}
-        kystr = strdup(info[n].key)
         pykey = str(kystr.decode("ascii"))
         free(kystr)
         d['key']      = pykey
