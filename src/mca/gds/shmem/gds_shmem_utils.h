@@ -19,12 +19,16 @@
 
 #include "gds_shmem.h"
 
+#if PMIX_ENABLE_DEBUG
 #define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
 do {                                                                           \
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
+    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,          \
                         "gds:" PMIX_GDS_SHMEM_NAME                             \
                         ":%s called at line %d", __func__, __LINE__);          \
 } while (0)
+#else
+#define PMIX_GDS_SHMEM_VOUT_HERE()
+#endif
 
 #define PMIX_GDS_SHMEM_VOUT(...)                                               \
 do {                                                                           \
@@ -32,11 +36,17 @@ do {                                                                           \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 
+#if PMIX_ENABLE_DEBUG
 #define PMIX_GDS_SHMEM_VVOUT(...)                                              \
 do {                                                                           \
     pmix_output_verbose(12, pmix_gds_base_framework.framework_output,          \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
+#else
+#define PMIX_GDS_SHMEM_VVOUT(...)
+#endif
+
+#define pmix_gds_shmem_ffgds pmix_globals.mypeer->nptr->compat.gds
 
 BEGIN_C_DECLS
 

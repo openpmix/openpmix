@@ -141,8 +141,6 @@ typedef struct {
     // TODO(skg) Should this be in shared-memory?
     /** Session information. */
     pmix_gds_shmem_session_t *session;
-    /** Pointer to a full-featured gds module. */
-    pmix_gds_base_module_t *ffgds;
     /** Shared-memory object. */
     pmix_shmem_t *shmem;
     /** Points to shared data located in shared-memory segment. */

@@ -25,6 +25,8 @@
 
 AM_CPPFLAGS = $(gds_shmem_CPPFLAGS)
 
+dist_pmixdata_DATA = help-gds-shmem.txt
+
 # TODO(skg) Eventually reincorporate pmix_hash2.
 # TODO(skg) Eventually reincorporate pmix_hash_table2.
 # TODO(skg) Eventually reincorporate pmix_pointer_array2.

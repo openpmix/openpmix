@@ -16,6 +16,7 @@
 
 #include "gds_shmem_utils.h"
 
+#include "src/util/pmix_show_help.h"
 #include "src/mca/pcompress/base/base.h"
 
 pmix_status_t
@@ -43,7 +44,6 @@ pmix_gds_shmem_get_job_tracker(
     }
     // Create one if not found and asked to create one.
     if (!target_tracker && create) {
-        pmix_namespace_t *ns = NULL, *inspace = NULL;
         target_tracker = PMIX_NEW(pmix_gds_shmem_job_t);
         if (!target_tracker) {
             rc = PMIX_ERR_NOMEM;
@@ -55,9 +55,10 @@ pmix_gds_shmem_get_job_tracker(
             goto out;
         }
         // See if we already have this nspace in global namespaces.
-        PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-            if (0 == strcmp(ns->nspace, nspace)) {
-                inspace = ns;
+        pmix_namespace_t *nsi = NULL, *inspace = NULL;
+        PMIX_LIST_FOREACH (nsi, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (0 == strcmp(nsi->nspace, nspace)) {
+                inspace = nsi;
                 break;
             }
         }
@@ -77,8 +78,6 @@ pmix_gds_shmem_get_job_tracker(
         }
         PMIX_RETAIN(inspace);
         target_tracker->nspace = inspace;
-        // Cache a handle to a full-featured gds module.
-        target_tracker->ffgds = pmix_globals.mypeer->nptr->compat.gds;
         // Add it to the list of jobs I'm supporting.
         pmix_list_append(&component->jobs, &target_tracker->super);
     }
@@ -231,33 +230,92 @@ pmix_gds_shmem_pad_amount_to_page(
 }
 
 /**
+ * Returns the base temp directory.
+ */
+static const char *
+fetch_base_tmpdir(
+    pmix_gds_shmem_job_t *job
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    static char fetched_path[PMIX_PATH_MAX] = {'\0'};
+    // Keys we will need to fetch in priority order.
+    char *fetch_keys[] = {
+        PMIX_NSDIR,
+        PMIX_TMPDIR,
+        NULL
+    };
+    // Did we get a usable fetched key/value?
+    bool fetched_kv = false;
+
+    for (int i = 0; NULL != fetch_keys[i]; ++i) {
+        pmix_cb_t cb;
+        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+
+        pmix_proc_t wildcard;
+        PMIX_LOAD_PROCID(
+            &wildcard,
+            job->nspace->nspace,
+            PMIX_RANK_WILDCARD
+        );
+
+        cb.key = fetch_keys[i];
+        cb.proc = &wildcard;
+        cb.copy = true;
+        cb.scope = PMIX_LOCAL;
+
+        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+        if (rc != PMIX_SUCCESS) {
+            PMIX_DESTRUCT(&cb);
+            break;
+        }
+        // We should only have one item here.
+        assert(1 == pmix_list_get_size(&cb.kvs));
+        // Get a pointer to the only item in the list.
+        pmix_kval_t *kv = (pmix_kval_t *)pmix_list_get_first(&cb.kvs);
+        // Make sure we are dealing with the right stuff.
+        assert(PMIX_CHECK_KEY(kv, fetch_keys[i]));
+        assert(kv->value->type == PMIX_STRING);
+        // Copy the value over.
+        size_t nw = snprintf(
+            fetched_path, PMIX_PATH_MAX, "%s",
+            kv->value->data.string
+        );
+        PMIX_DESTRUCT(&cb);
+        if (nw >= PMIX_PATH_MAX) {
+            // Try another.
+            continue;
+        }
+        else {
+            // We got a usable fetched key.
+            fetched_kv = true;
+            break;
+        }
+    }
+    // Didn't find a specific temp basedir, so just use a general one.
+    if (!fetched_kv) {
+        static const char *tmpdir = NULL;
+        if (NULL == (tmpdir = getenv("TMPDIR"))) {
+            tmpdir = "/tmp";
+        }
+        return tmpdir;
+    }
+    else {
+        return fetched_path;
+    }
+}
+
+/**
  * Returns a valid path or NULL on error.
  */
 static const char *
 get_shmem_backing_path(
+    pmix_gds_shmem_job_t *job,
     const char *id
 ) {
     static char path[PMIX_PATH_MAX] = {'\0'};
-    const char *basedir = NULL;
-    // TODO(skg) Fix
-#if 0
-    for (size_t i = 0; i < ninfo; ++i) {
-        if (PMIX_CHECK_KEY(&info[i], PMIX_NSDIR)) {
-            basedir = info[i].value.data.string;
-            break;
-        }
-        if (PMIX_CHECK_KEY(&info[i], PMIX_TMPDIR)) {
-            basedir = info[i].value.data.string;
-            break;
-        }
-    }
-#endif
-    if (!basedir) {
-        if (NULL == (basedir = getenv("TMPDIR"))) {
-            basedir = "/tmp";
-        }
-    }
-    // Now that we have the base dir, append file name.
+    const char *basedir = fetch_base_tmpdir(job);
+    // Now that we have the base path, append unique name.
     size_t nw = snprintf(
         path, PMIX_PATH_MAX, "%s/gds-%s.%s.%d",
         basedir, PMIX_GDS_SHMEM_NAME, id, getpid()
@@ -268,8 +326,6 @@ get_shmem_backing_path(
     return path;
 }
 
-// TODO(skg) Add pmix_vmem_hole_kind_t parameter. We may not want to use the
-// largest available hole all the time.
 /**
  * Create and attach to a shared-memory segment.
  */
@@ -280,8 +336,7 @@ pmix_gds_shmem_segment_create_and_attach(
     size_t segment_size
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    const char *segment_path = NULL;
-    uintptr_t mmap_addr = 0;
+
     // Find a hole in virtual memory that meets our size requirements.
     size_t base_addr = 0;
     rc = pmix_vmem_find_hole(
@@ -291,11 +346,10 @@ pmix_gds_shmem_segment_create_and_attach(
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
-        "%s: found vmhole at address=0x%zx",
-        __func__, base_addr
+        "%s: found vmhole at address=0x%zx", __func__, base_addr
     );
     // Find a unique path for the shared-memory backing file.
-    segment_path = get_shmem_backing_path(segment_id);
+    const char *segment_path = get_shmem_backing_path(job, segment_id);
     if (!segment_path) {
         rc = PMIX_ERROR;
         goto out;
@@ -312,6 +366,7 @@ pmix_gds_shmem_segment_create_and_attach(
         goto out;
     }
     // Attach to the shared-memory segment with the given address.
+    uintptr_t mmap_addr;
     rc = pmix_shmem_segment_attach(
         job->shmem, (void *)base_addr, &mmap_addr
     );
@@ -320,7 +375,14 @@ pmix_gds_shmem_segment_create_and_attach(
     }
     // Make sure that we mapped to the requested address.
     if (mmap_addr != (uintptr_t)job->shmem->base_address) {
-        // TODO(skg) Add a nice error message.
+        pmix_show_help(
+            "help-gds-shmem.txt",
+            "shmem-segment-attach:address-mismatch",
+            true,
+            (size_t)base_addr,
+            (size_t)mmap_addr
+
+        );
         rc = PMIX_ERROR;
         goto out;
     }
