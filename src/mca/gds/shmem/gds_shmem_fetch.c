@@ -519,7 +519,7 @@ pmix_gds_shmem_fetch(
     for (size_t n = 0; n < nqual; n++) {
         if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_SESSION_INFO)) {
             // We don't handle session info, so pass it along.
-            return job->ffgds->fetch(
+            return pmix_gds_shmem_ffgds->fetch(
                 proc, scope, copy, key, qualifiers, nqual, kvs
             );
         }
@@ -601,14 +601,14 @@ doover:
             rc = pmix_hash2_fetch(ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
         }
         else {
-            return job->ffgds->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
+            return pmix_gds_shmem_ffgds->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
         }
     }
     else {
         rc = pmix_hash2_fetch(ht, proc->rank, key, qualifiers, nqual, kvs);
     }
     if (PMIX_SUCCESS != rc) {
-        rc = job->ffgds->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
+        rc = pmix_gds_shmem_ffgds->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
     }
 
     return rc;
