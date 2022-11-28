@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-import time
+import time, sys
 from pmix import *
 
 test_count = 0
 test_fails = 0
+test_complete = 0
 
 def test_put(client, scope, ky, val):
     print("PUT")
@@ -84,29 +85,32 @@ def test_query(client, pyqueries):
         print("QUERY TEST FAILED: ", client.error_string(rc))
     print("QUERY INFO RETURNED: ", pyresults)
 
-def test_pyhandler(st:int, pysource:dict, pyinfo:list, pyresults:list):
-    print("PYHANDLER")
+def test_pyhandler(evid:int, st:int, pysource:dict, pyinfo:list, pyresults:list):
+    global test_complete
+    print("PYHANDLER", file=sys.stderr)
     status = PMIX_EVENT_ACTION_COMPLETE
     results = [{'key':'eventkey', 'value':'testevent', 'val_type':PMIX_STRING}]
-    print("PYHANDLER RETURNED: ", results)
+    print("PYHANDLER RETURNED: ", pyinfo)
+    test_complete = 1
     return status, results
 
 def test_register_event_handler(client, pycodes, info, test_pyhandler):
-    print("REGISTER EVENT HANDLER")
+    print("REGISTER EVENT HANDLER", file=sys.stderr)
     global test_count, test_fails
     test_count = test_count + 1
-    rc = client.register_event_handler(pycodes, info, test_pyhandler)
+    rc, hdlr = client.register_event_handler(pycodes, info, test_pyhandler)
     if rc != 0 and rc != -47:
         test_fails = test_fails + 1
         print("REGISTER EVENT HANDLER TEST FAILED: ", client.error_string(rc))
 
 def main():
+    global test_complete
     foo = PMIxClient()
     print("Testing PMIx ", foo.get_version())
-    info = [{'key':PMIX_PROGRAMMING_MODEL, 'value':'TEST', 'val_type':PMIX_STRING},
-            {'key':PMIX_MODEL_LIBRARY_NAME, 'value':'PMIX', 'val_type':PMIX_STRING}]
+    info = [{'key':PMIX_PROGRAMMING_MODEL, 'flags': 0, 'value':'TEST', 'val_type':PMIX_STRING},
+            {'key':PMIX_MODEL_LIBRARY_NAME, 'flags': 0, 'value':'PMIX', 'val_type':PMIX_STRING}]
     my_result,myname = foo.init(info)
-    print("Init result ", my_result)
+    print("Init result ", my_result, file=sys.stderr)
     if 0 != my_result:
         print("FAILED TO INIT")
         exit(1)
@@ -154,7 +158,13 @@ def main():
     info = [{'key': PMIX_EVENT_HDLR_NAME, 'value': 'SIMPCLIENT-MODEL', 'val_type': PMIX_STRING}]
     test_register_event_handler(foo, pycodes, info, test_pyhandler)
 
-    time.sleep(2)
+    loopcount = 0
+    while test_complete != 1 and loopcount < 3:
+        time.sleep(1)
+        loopcount = loopcount + 1
+
+    if test_complete == 0:
+        print("MODEL EVENT FAILED TO ARRIVE", file=sys.stderr)
 
     # finalize
     info = []
