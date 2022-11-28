@@ -7,7 +7,7 @@ from libc.string cimport memcpy
 from libc.stdio cimport printf
 from ctypes import addressof, c_int
 from cython.operator import address
-import signal, time
+import signal, time, sys
 import threading, ctypes
 import queue
 import array
@@ -640,14 +640,15 @@ cdef class PMIxClient:
                     PyMem_Free(keys[n])
                     n += 1
                 return rc
-            else:
-                keys = NULL
         else:
             keys = NULL
 
         # allocate and load pmix info structs from python list of dictionaries
-        info_ptr = &info
-        rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
+        if dicts is not None:
+            info_ptr = &info
+            rc = pmix_alloc_info(info_ptr, &ninfo, dicts)
+        else:
+            info = NULL
 
         # pass it into the unpublish API
         rc = PMIx_Unpublish(keys, info, ninfo)
@@ -2648,7 +2649,7 @@ cdef int query(pmix_proc_t *source,
         args['queries'] = pyqueries
         pmix_unload_procs(source, 1, myproc)
         args['source'] = myproc[0]
-        rc,results = pmixservermodule['query'](args, pyqueries)
+        rc,results = pmixservermodule['query'](args)
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
         results = []
