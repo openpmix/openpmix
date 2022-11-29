@@ -166,7 +166,10 @@ pmix_status_t pmix_gds_ds12_lock_init(pmix_common_dstor_lock_ctx_t *ctx, const c
         snprintf(lock_ctx->segment->seg_name, PMIX_PATH_MAX, "%s", lock_ctx->lockfile);
         if (PMIX_SUCCESS != (rc = pmix_pshmem.segment_attach(lock_ctx->segment,
                                                              PMIX_PSHMEM_RW))) {
-            PMIX_ERROR_LOG(rc);
+            /* do not error_log this as we hit it
+             * if the host server didn't create a ds12
+             * segment - just silently disqualify
+             * ourselves */
             goto error;
         }
         lock_ctx->rwlock = (pthread_rwlock_t *)lock_ctx->segment->seg_base_addr;
