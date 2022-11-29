@@ -1725,6 +1725,23 @@ cdef class PMIxServer(PMIxClient):
             rc = PMIx_server_init(&self.myserver, NULL, 0)
         return rc
 
+    # Allow a tool to set server module callback functions
+    # when it needs to also act as a server
+    def set_server_module(self, map:dict):
+        # setup server module
+        if map is None or 0 == len(map):
+            print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
+            return PMIX_ERR_INIT
+        kvkeys = list(map.keys())
+        for key in kvkeys:
+            try:
+                print("ASSIGNED FN", key)
+                setmodulefn(key, map[key])
+            except KeyError:
+                print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
+                return PMIX_ERR_INIT
+        return PMIX_SUCCESS
+
     def finalize(self):
         global stop_progress
         global progressThread

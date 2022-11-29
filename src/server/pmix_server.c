@@ -2114,7 +2114,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "pmix:server setup_fork for nspace %s rank %u", proc->nspace, proc->rank);
+                        "pmix:server setup_fork for nspace %s rank %u",
+                        proc->nspace, proc->rank);
 
     /* pass the nspace */
     pmix_setenv("PMIX_NAMESPACE", proc->nspace, true, env);
