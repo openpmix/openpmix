@@ -287,7 +287,8 @@ static void tool_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     pmix_info_t *info = NULL;
     PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
-    pmix_output_verbose(2, pmix_client_globals.iof_output, "recvd IOF with %d bytes",
+    pmix_output_verbose(2, pmix_client_globals.iof_output,
+                        "recvd IOF with %d bytes",
                         (int) buf->bytes_used);
 
     /* if the buffer is empty, they are simply closing the socket */
@@ -401,7 +402,8 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     size_t n;
     PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
-    pmix_output_verbose(2, pmix_client_globals.base_output, "[%s:%d] DEBUGGER RELEASE RECVD",
+    pmix_output_verbose(2, pmix_client_globals.base_output,
+                        "[%s:%d] DEBUGGER RELEASE RECVD",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
     if (NULL != info) {
         lock = NULL;
@@ -778,6 +780,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             pmix_client_globals.myserver->info->pname.rank = pmix_globals.myid.rank;
             pmix_client_globals.myserver->info->uid = pmix_globals.uid;
             pmix_client_globals.myserver->info->gid = pmix_globals.gid;
+            /* mark us as not connecting to avoid asking for our job info */
+            do_not_connect = true;
         }
     }
     /* setup the wildcard ID */
@@ -812,9 +816,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
 
     /* open the pmdl framework and select the active modules for this environment
      * as we might need them if we are asking a server to launch something for us */
-    if (PMIX_SUCCESS
-        != (rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework,
-                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    rc = pmix_mca_base_framework_open(&pmix_pmdl_base_framework,
+                                      PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -966,9 +970,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     /* if we are acting as a server, then start listening */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* setup the fork/exec framework */
-        if (PMIX_SUCCESS
-            != (rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework,
-                                                  PMIX_MCA_BASE_OPEN_DEFAULT))) {
+        rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework,
+                                          PMIX_MCA_BASE_OPEN_DEFAULT);
+        if (PMIX_SUCCESS != rc) {
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_pfexec_base_select())) {
@@ -983,9 +987,9 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         }
 
         /* open the pnet framework and select the active modules for this environment */
-        if (PMIX_SUCCESS
-            != (rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
-                                                  PMIX_MCA_BASE_OPEN_DEFAULT))) {
+        rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
+                                          PMIX_MCA_BASE_OPEN_DEFAULT);
+        if (PMIX_SUCCESS != rc) {
             return rc;
         }
         if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
