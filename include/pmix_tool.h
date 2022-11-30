@@ -98,6 +98,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_init(pmix_proc_t *proc,
  * operation. */
 PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void);
 
+/* Check if the tool is connected to a PMIx server */
+PMIX_EXPORT bool PMIx_tool_is_connected(void);
+
 /* Establish a connection to a PMIx server. The target server can
  * be given as:
  *
