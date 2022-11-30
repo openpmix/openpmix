@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -73,6 +73,7 @@ struct pmix_ptl_base_t {
     char *report_uri;
     char *uri;
     char *urifile;
+    char *scheduler_filename;
     char *system_filename;
     char *session_filename;
     char *nspace_filename;
@@ -81,6 +82,7 @@ struct pmix_ptl_base_t {
     bool created_rendezvous_file;
     bool created_session_tmpdir;
     bool created_system_tmpdir;
+    bool created_scheduler_filename;
     bool created_system_filename;
     bool created_session_filename;
     bool created_nspace_filename;
