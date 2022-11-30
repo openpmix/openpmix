@@ -200,35 +200,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
 
     /* if I am a scheduler server, then I should be able
      * to support this myself */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-        /* see if we can do it ourselves */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         rc = pmix_pnet.register_fabric(fabric, directives, ndirs, cbfunc, cbdata);
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            /* did it atomically */
-            return rc;
-        } else if (PMIX_SUCCESS == rc) {
-            /* in progress - the pnet component will callback
-             * when it is complete */
-            return rc;
-        }
-        /* otherwise, see if we can pass
-         * it up to our host so they can send it to the scheduler */
-        if (NULL == pmix_host_server.fabric) {
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        if (NULL != cbfunc) {
-            cb = PMIX_NEW(pmix_cb_t);
-            cb->fabric = fabric;
-            cb->cbfunc.opfn = cbfunc;
-            cb->cbdata = cbdata;
-        } else {
-            cb = (pmix_cb_t *) cbdata;
-        }
-        rc = pmix_host_server.fabric(&pmix_globals.myid, PMIX_FABRIC_REQUEST_INFO, directives,
-                                     ndirs, fcb, (void *) cb);
-        if (PMIX_SUCCESS != rc && NULL != cbfunc) {
-            PMIX_RELEASE(cb);
-        }
         return rc;
     }
 
