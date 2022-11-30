@@ -525,6 +525,10 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                 if (PMIX_INFO_TRUE(&info[n])) {
                     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_LAUNCHER);
                 }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SCHEDULER)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SCHEDULER);
+                }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
@@ -967,7 +971,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are acting as a server, then start listening */
-    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         /* setup the fork/exec framework */
         rc = pmix_mca_base_framework_open(&pmix_pfexec_base_framework,
                                           PMIX_MCA_BASE_OPEN_DEFAULT);
@@ -1550,6 +1555,11 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_class_finalize();
 
     return PMIX_SUCCESS;
+}
+
+bool PMIx_tool_is_connected(void)
+{
+    return pmix_globals.connected;
 }
 
 pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc, pmix_info_t info[], size_t ninfo)
