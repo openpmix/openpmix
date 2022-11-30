@@ -113,10 +113,23 @@ typedef struct {
 } pmix_gds_shmem_session_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
 
+/**
+ * Metadata for pmix_gds_shmem_shared_data_t, so keep in sync.
+ */
+typedef enum {
+    /** Number of lists maintained within pmix_gds_shmem_shared_data_t. */
+    PMIX_GDS_SHMEM_SHARED_NLISTS = 3
+} pmix_gds_shmem_shared_metadata_t;
+
 // Note that the shared data structures in pmix_gds_shmem_shared_data_t are
-// pointers. They need to be because their respective locations must reside on
-// the shared heap located in shared-memory and managed by the shared-memory
-// TMA.
+// pointers since their respective locations must reside on the shared heap
+// located in shared-memory and managed by the shared-memory TMA.
+//
+// Note to developers: if you modify this structure, please make sure that the
+// values in pmix_gds_shmem_shared_metadata_t are updated appropriately.
+/**
+ * Shared data structures that reside in shared-memory.
+ */
 typedef struct {
     /** Shared-memory allocator. */
     pmix_tma_t tma;
@@ -124,12 +137,12 @@ typedef struct {
     void *current_addr;
     /** Node information. */
     pmix_list_t *nodeinfo;
+    /** Job information. */
+    pmix_list_t *jobinfo;
     /** List of applications in this job. */
     pmix_list_t *apps;
     /** Stores local (node) data. */
     pmix_hash_table2_t *local_hashtab;
-    /** Job information. */
-    pmix_list_t *jobinfo;
 } pmix_gds_shmem_shared_data_t;
 
 typedef struct {
@@ -138,7 +151,6 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
-    // TODO(skg) Should this be in shared-memory?
     /** Session information. */
     pmix_gds_shmem_session_t *session;
     /** Shared-memory object. */

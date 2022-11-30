@@ -27,7 +27,7 @@ typedef enum {
     /* Use the biggest hole between heap and stack. */
     VMEM_HOLE_IN_LIBS = 4,
     /* Use given address, if available. */
-    VMEM_HOLE_CUSTOM = 5,
+    VMEM_HOLE_CUSTOM = 5
 } pmix_vmem_hole_kind_t;
 
 PMIX_EXPORT pmix_status_t

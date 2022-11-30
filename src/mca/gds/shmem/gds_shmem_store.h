@@ -21,48 +21,10 @@
 
 BEGIN_C_DECLS
 
-/**
- * Process a node array: an array of node-level info for a single node. Either
- * the node ID, hostname, or both must be included in the array to identify the
- * node.
- */
 PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_node_array(
+pmix_gds_shmem_store_local_job_data_in_shmem(
     pmix_gds_shmem_job_t *job,
-    pmix_value_t *val,
-    pmix_list_t *target
-);
-
-/**
- * Process an app array: an array of app-level info for a single app.  If the
- * appnum is not included in the array, then it is assumed that only app is in
- * the job.  This assumption is checked and generates an error if violated
- */
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_app_array(
-    pmix_gds_shmem_job_t *job,
-    pmix_value_t *val
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_proc_data(
-    pmix_gds_shmem_job_t *job,
-    const pmix_kval_t *kval
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_session_array(
-    pmix_gds_shmem_job_t *job,
-    pmix_value_t *val
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_job_array(
-    pmix_info_t *info,
-    pmix_gds_shmem_job_t *job,
-    uint32_t *flags,
-    char ***procs,
-    char ***nodes
+    pmix_list_t *job_data
 );
 
 END_C_DECLS
