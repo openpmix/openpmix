@@ -35,6 +35,7 @@ fetch_all_node_info(
     pmix_gds_shmem_nodeinfo_t *nodeinfo,
     pmix_list_t *kvs
 ) {
+    // TODO(skg)
     assert(false);
     size_t i = 0;
 
@@ -394,91 +395,7 @@ pmix_gds_shmem_fetch_appinfo(
     return rc;
 }
 
-#if 0
-static inline pmix_status_t
-fetch_job_level_info_for_namespace(
-    pmix_gds_shmem_job_t *job,
-    pmix_info_t qualifiers[],
-    size_t nqual,
-    pmix_list_t *kvs
-) {
-    // Fetch all values from the hash table tied to rank=wildcard.
-    pmix_status_t rc = pmix_hash2_fetch(
-        // TODO(skg) Is this correct?
-        job->smdata->local_hashtab, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
-    );
-    if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
-        return rc;
-    }
-    // Also need to add any job-level info.
-    pmix_kval_t *kvi;
-    PMIX_LIST_FOREACH (kvi, job->smdata->jobinfo, pmix_kval_t) {
-        pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
-        kv->key = strdup(kvi->key);
-        kv->value = (pmix_value_t *)malloc(sizeof(pmix_value_t));
-        PMIX_VALUE_XFER(rc, kv->value, kvi->value);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_RELEASE(kv);
-            return rc;
-        }
-        pmix_list_append(kvs, &kv->super);
-    }
-    // Collect the relevant node-level info.
-    rc = pmix_gds_shmem_fetch_nodeinfo(
-        NULL, job, job->smdata->nodeinfo, qualifiers, nqual, kvs
-    );
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-    // Collect the relevant app-level info.
-    rc = pmix_gds_shmem_fetch_appinfo(
-        NULL, job, job->smdata->apps, qualifiers, nqual, kvs
-    );
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-    // Finally, we need the job-level info for each rank in the job.
-    for (pmix_rank_t rank = 0; rank < job->nspace->nprocs; rank++) {
-        pmix_list_t rkvs;
-        PMIX_CONSTRUCT(&rkvs, pmix_list_t);
-        rc = pmix_hash2_fetch(
-            job->smdata->local_hashtab, rank, NULL, NULL, 0, &rkvs
-        );
-        if (PMIX_ERR_NOMEM == rc) {
-            PMIX_LIST_DESTRUCT(&rkvs);
-            return rc;
-        }
-        if (0 == pmix_list_get_size(&rkvs)) {
-            PMIX_DESTRUCT(&rkvs);
-            continue;
-        }
-        const size_t ninfo = pmix_list_get_size(&rkvs);
-        // Setup to return the result.
-        pmix_kval_t *kv;
-        PMIX_KVAL_NEW(kv, PMIX_PROC_DATA);
-        kv->value->type = PMIX_DATA_ARRAY;
-        const size_t niptr = ninfo + 1; // Need space for the rank.
-        PMIX_DATA_ARRAY_CREATE(kv->value->data.darray, niptr, PMIX_INFO);
-        pmix_info_t *iptr = (pmix_info_t *)kv->value->data.darray->array;
-        /* start with the rank */
-        PMIX_INFO_LOAD(&iptr[0], PMIX_RANK, &rank, PMIX_PROC_RANK);
-        // Now transfer rest of data across.
-        size_t n = 1;
-        pmix_kval_t *kvptr;
-        PMIX_LIST_FOREACH(kvptr, &rkvs, pmix_kval_t) {
-            PMIX_LOAD_KEY(&iptr[n].key, kvptr->key);
-            PMIx_Value_xfer(&iptr[n].value, kvptr->value);
-            ++n;
-        }
-        // Add to the results.
-        pmix_list_append(kvs, &kv->super);
-        // Release the search result.
-        PMIX_LIST_DESTRUCT(&rkvs);
-    }
-    return rc;
-}
-#endif
-
+// TODO(skg) This needs plenty of work.
 pmix_status_t
 pmix_gds_shmem_fetch(
     const pmix_proc_t *proc,
@@ -509,11 +426,12 @@ pmix_gds_shmem_fetch(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    pmix_hash_table2_t *ht = job->smdata->local_hashtab;
+    pmix_hash_table2_t *const ht = job->smdata->local_hashtab;
 
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
-        assert(false);
-        return PMIX_ERR_NOT_SUPPORTED;
+        return pmix_gds_shmem_ffgds->fetch(
+            proc, scope, copy, key, qualifiers, nqual, kvs
+        );
     }
 
     for (size_t n = 0; n < nqual; n++) {

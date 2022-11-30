@@ -53,16 +53,17 @@
 #include <time.h>
 #endif
 
-// Some notes:
+//
+// Notes for developers:
 // We cannot use PMIX_CONSTRUCT for data that are stored in shared memory
 // because their address is on the stack of the process in which they are
 // constructed.
+//
 
-// TODO(skg) Address FT case at some point. Need to have a broader conversion
-// about how we go about doing this. Ralph has some ideas.
-
-// TODO(skg) Consider using mprotect.
-// TODO(skg) We way need to implement a different hash table.
+// Some items for future consideration:
+// * Address FT case at some point. We need to have a broader conversion about
+//   how we go about doing this. Ralph has some ideas.
+// * Is it worth adding memory arena boundary checks to our TMA allocators?
 
 /**
  * Key names used to find shared-memory segment info.
@@ -71,6 +72,14 @@
 #define PMIX_GDS_SHMEM_SEG_PATH_KEY "PMIX_GDS_SHMEM_SEG_PATH"
 #define PMIX_GDS_SHMEM_SEG_SIZE_KEY "PMIX_GDS_SHMEM_SEG_SIZE"
 #define PMIX_GDS_SHMEM_SEG_ADDR_KEY "PMIX_GDS_SHMEM_SEG_ADDR"
+
+/**
+ * Stores packed job statistics.
+ */
+typedef struct {
+    size_t packed_size;
+    size_t hash_table_size;
+} pmix_gds_shmem_local_job_stats_t;
 
 /**
  * String to size_t.
@@ -106,18 +115,17 @@ addr_align_8(
     size_t size
 ) {
 #if 0 // Helpful debug
-    PMIX_GDS_SHMEM_VOUT("------------------------ADDRINN=%p,%zd", base, size);
+    PMIX_GDS_SHMEM_VVOUT("------------------------ADDRINN=%p,%zd", base, size);
 #endif
     void *result = (void *)(((uintptr_t)base + size + 7) & ~(uintptr_t)0x07);
 #if 0 // Helpful debug
     // Make sure that it's 8-byte aligned.
     assert ((uintptr_t)result % 8 == 0);
-    PMIX_GDS_SHMEM_VOUT("------------------------ADDROUT=%p,%zd", result, size);
+    PMIX_GDS_SHMEM_VVOUT("------------------------ADDROUT=%p,%zd", result, size);
 #endif
     return result;
 }
 
-// TODO(skg) Add memory arena boundary checks.
 static inline void *
 tma_malloc(
     pmix_tma_t *tma,
@@ -129,7 +137,6 @@ tma_malloc(
     return current;
 }
 
-// TODO(skg) Add memory arena boundary checks.
 static inline void *
 tma_calloc(
     struct pmix_tma *tma,
@@ -143,7 +150,6 @@ tma_calloc(
     return current;
 }
 
-// TODO(skg)
 static inline void *
 tma_realloc(
     pmix_tma_t *tma,
@@ -155,7 +161,6 @@ tma_realloc(
     return NULL;
 }
 
-// TODO(skg) Add memory arena boundary checks.
 static inline char *
 tma_strdup(
     pmix_tma_t *tma,
@@ -167,7 +172,6 @@ tma_strdup(
     return (char *)memmove(current, s, size);
 }
 
-// TODO(skg) Add memory arena boundary checks.
 static inline void *
 tma_memmove(
     struct pmix_tma *tma,
@@ -179,7 +183,6 @@ tma_memmove(
     return memmove(current, src, size);
 }
 
-// TODO(skg)
 static inline void
 tma_free(
     struct pmix_tma *tma,
@@ -361,6 +364,39 @@ PMIX_CLASS_INSTANCE(
 );
 
 static pmix_status_t
+job_smdata_construct(
+    pmix_gds_shmem_job_t *job,
+    size_t ihtsize
+) {
+    // Setup the shared information structure. It will be at the base address of
+    // the shared-memory segment. The memory is already allocated, so let the
+    // job know about its smdata located at the base of the segment.
+    void *baseaddr = job->shmem->base_address;
+    job->smdata = baseaddr;
+    memset(job->smdata, 0, sizeof(*job->smdata));
+    // Save the starting address for TMA memory allocations.
+    job->smdata->current_addr = baseaddr;
+    // Setup the TMA.
+    tma_init(&job->smdata->tma);
+    job->smdata->tma.data_ptr = &job->smdata->current_addr;
+    // Now we need to update the TMA's pointer to account for our using up some
+    // space for its header.
+    *(job->smdata->tma.data_ptr) = addr_align_8(baseaddr, sizeof(*job->smdata));
+    // We can now safely get the job's TMA.
+    pmix_tma_t *tma = pmix_gds_shmem_get_job_tma(job);
+    // Now that we know the TMA, allocate smdata structures using it.
+    job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
+    job->smdata->jobinfo = PMIX_NEW(pmix_list_t, tma);
+    job->smdata->apps = PMIX_NEW(pmix_list_t, tma);
+    job->smdata->local_hashtab = PMIX_NEW(pmix_hash_table2_t, tma);
+    pmix_hash_table2_init(job->smdata->local_hashtab, ihtsize);
+
+    pmix_gds_shmem_vout_smdata(job);
+
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t
 module_init(
     pmix_info_t info[],
     size_t ninfo
@@ -441,23 +477,12 @@ server_cache_job_info(
 static pmix_status_t
 prepare_shmem_store_for_local_job_data(
     pmix_gds_shmem_job_t *job,
-    size_t data_size
+    pmix_gds_shmem_local_job_stats_t *stats
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
+    const size_t kvsize = (sizeof(pmix_kval_t) + sizeof(pmix_value_t));
     // Initial hash table size.
-    const size_t ihtsize = 256;
-    // TODO(skg) Make sure that the comment and value is correct. I think we
-    // should sum up all the lists that exist in the structures that are shared.
-    // Keep in sync with the number of pmix_list_ts in pmix_gds_shmem_app_t.
-    const size_t nlists = 3;
-    // Used as a multiplier to size some structures.
-    const size_t nranks = (size_t)job->nspace->nprocs;
-    // First, see if the given job already has initialized its shared info.
-    // If so, we are done.
-    if (job->smdata) {
-        return PMIX_SUCCESS;
-    }
-    // Else we have to setup the memory allocator.
+    const size_t htsize = stats->hash_table_size;
     // Calculate a rough estimate on the amount of storage required to store the
     // values associated with the pmix_gds_shmem_shared_data_t. Err on the side
     // of overestimation.
@@ -465,16 +490,16 @@ prepare_shmem_store_for_local_job_data(
     size_t seg_size = sizeof(pmix_gds_shmem_shared_data_t);
     // We need to store some lists in the shared-memory segment, so calculate
     // a rough estimate on the memory required for their storage.
-    seg_size += nlists * sizeof(pmix_list_t) * nranks;
+    seg_size += PMIX_GDS_SHMEM_SHARED_NLISTS * sizeof(pmix_list_t);
     // We need to store a hash table in the shared-memory segment, so calculate
     // a rough estimate on the memory required for its storage.
     seg_size += sizeof(pmix_hash_table2_t);
-    seg_size += ihtsize * pmix_hash_table2_t_sizeof_hash_element();
+    seg_size += htsize * pmix_hash_table2_t_sizeof_hash_element();
     // Add a little extra to compensate for the value storage requirements. Here
     // we add an additional storage space for each entry.
-    seg_size += ihtsize * (sizeof(pmix_kval_t) + sizeof(pmix_value_t));
-    // Finally add the data size contribution.
-    seg_size += data_size;
+    seg_size += htsize * kvsize;
+    // Finally add the data size contribution, plus a little extra.
+    seg_size += stats->packed_size * 1.25;
     // Add some extra fluff in case we weren't precise enough.
     seg_size *= 1.5;
     // Pad to fill an entire page.
@@ -482,46 +507,18 @@ prepare_shmem_store_for_local_job_data(
     // Create and attach to the shared-memory segment associated with this job.
     // This will be the backing store for metadata associated with static,
     // read-only data shared between the server and its clients.
-    char segment_name[PMIX_PATH_MAX] = {'\0'};
-    size_t nw = snprintf(
-        segment_name, PMIX_PATH_MAX, "%s", job->nspace_id
+    rc = pmix_gds_shmem_segment_create_and_attach(
+        job, job->nspace_id, seg_size
     );
-    if (nw >= PMIX_PATH_MAX) {
-        rc = PMIX_ERROR;
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    // Create and attach to the shared-memory segment.
-    rc = pmix_gds_shmem_segment_create_and_attach(
-        job, segment_name, seg_size
-    );
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-    // Setup the shared information structure. It will be at the base address of
-    // the shared-memory segment. The memory is already allocated, so let the
-    // job know about its smdata located at the base of the segment.
-    void *baseaddr = job->shmem->base_address;
-    job->smdata = baseaddr;
-    memset(job->smdata, 0, sizeof(*job->smdata));
-    // Save the starting address for TMA memory allocations.
-    job->smdata->current_addr = baseaddr;
-    // Setup the TMA.
-    tma_init(&job->smdata->tma);
-    job->smdata->tma.data_ptr = &job->smdata->current_addr;
-    // Now we need to update the TMA's pointer to account for our using up some
-    // space for its header.
-    *(job->smdata->tma.data_ptr) = addr_align_8(baseaddr, sizeof(*job->smdata));
-    // We can now safely get the job's TMA.
-    pmix_tma_t *tma = pmix_gds_shmem_get_job_tma(job);
-    // Now that we know the TMA, allocate its structures.
-    job->smdata->jobinfo = PMIX_NEW(pmix_list_t, tma);
-    job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
-    job->smdata->apps = PMIX_NEW(pmix_list_t, tma);
-    job->smdata->local_hashtab = PMIX_NEW(pmix_hash_table2_t, tma);
-    pmix_hash_table2_init(job->smdata->local_hashtab, ihtsize);
 
-    pmix_gds_shmem_vout_smdata(job);
+    rc = job_smdata_construct(job, htsize);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
 
     return rc;
 }
@@ -714,106 +711,64 @@ fetch_local_job_data(
     return rc;
 }
 
+/**
+ * Internally the hash table can do some interesting sizing calculations, so we
+ * just construct a temporary one with the number of expected elements, then
+ * query it for its actual capacity.
+ */
+static size_t
+get_actual_hashtab_capacity(
+    size_t num_elements
+) {
+    pmix_hash_table2_t tmp;
+    PMIX_CONSTRUCT(&tmp, pmix_hash_table2_t);
+    pmix_hash_table2_init(&tmp, num_elements);
+    // Grab the actual capacity.
+    const size_t result = tmp.ht_capacity;
+    PMIX_DESTRUCT(&tmp);
+
+    return result;
+}
+
 static pmix_status_t
-get_packed_local_job_data_size(
+get_local_job_data_stats(
     pmix_peer_t *peer,
     pmix_cb_t *job_cb,
-    size_t *data_size
+    pmix_gds_shmem_local_job_stats_t *stats
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    *data_size = 0;
+    size_t nhtentries = 0;
+
+    memset(stats, 0, sizeof(*stats));
 
     pmix_buffer_t data;
     PMIX_CONSTRUCT(&data, pmix_buffer_t);
 
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, &job_cb->kvs, pmix_kval_t) {
+        // Calculate some statistics so we can make an educated estimate on the
+        // size of structures we need for our backing store.
+        if (PMIX_DATA_ARRAY == kvi->value->type) {
+            // PMIX_PROC_DATA is stored in the hash table.
+            if (PMIX_CHECK_KEY(kvi, PMIX_PROC_DATA)) {
+                nhtentries += kvi->value->data.darray->size;
+            }
+        }
+        // Just a key/value pair, so they will like go into the hash table.
+        else {
+            nhtentries += 1;
+        }
+
         PMIX_BFROPS_PACK(rc, peer, &data, kvi, 1, PMIX_KVAL);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto out;
         }
     }
-    *data_size = data.bytes_allocated;
+    stats->packed_size = data.bytes_used;
+    stats->hash_table_size = get_actual_hashtab_capacity(nhtentries);
 out:
     PMIX_DESTRUCT(&data);
-    return rc;
-}
-
-static pmix_status_t
-store_local_job_data_in_shmem(
-    pmix_gds_shmem_job_t *job,
-    pmix_cb_t *job_cb
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    pmix_kval_t *kvi;
-    PMIX_LIST_FOREACH (kvi, &job_cb->kvs, pmix_kval_t) {
-        PMIX_GDS_SHMEM_VVOUT("%s: key=%s ------------", __func__, kvi->key);
-        if (PMIX_DATA_ARRAY == kvi->value->type) {
-            // We support the following data array keys.
-            if (PMIX_CHECK_KEY(kvi, PMIX_APP_INFO_ARRAY)) {
-                rc = pmix_gds_shmem_store_app_array(job, kvi->value);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
-            }
-            else if (PMIX_CHECK_KEY(kvi, PMIX_NODE_INFO_ARRAY)) {
-                rc = pmix_gds_shmem_store_node_array(
-                    job, kvi->value, job->smdata->nodeinfo
-                );
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
-            }
-            else if (PMIX_CHECK_KEY(kvi, PMIX_PROC_INFO_ARRAY)) {
-                rc = pmix_gds_shmem_store_proc_data(job, kvi);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
-            }
-            else if (PMIX_CHECK_KEY(kvi, PMIX_SESSION_INFO_ARRAY)) {
-                rc = pmix_gds_shmem_store_session_array(job, kvi->value);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
-            }
-            else {
-                PMIX_GDS_SHMEM_VVOUT(
-                    "%s: ERROR unsupported array type=%s", __func__, kvi->key
-                );
-                rc = PMIX_ERR_NOT_SUPPORTED;
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-        }
-        else {
-            pmix_tma_t *tma = pmix_gds_shmem_get_job_tma(job);
-
-            pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
-            kv->key = pmix_tma_strdup(tma, kvi->key);
-            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, kvi->value, tma);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_RELEASE(kv);
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-
-            rc = pmix_hash2_store(
-                job->smdata->local_hashtab,
-                PMIX_RANK_WILDCARD, kvi, NULL, 0
-            );
-            if (PMIX_SUCCESS != rc) {
-                PMIX_RELEASE(kv);
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-        }
-    }
     return rc;
 }
 
@@ -884,8 +839,7 @@ server_register_new_job_info(
     pmix_buffer_t *reply
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_namespace_t *ns = peer->nptr;
-    size_t data_size = 0;
+    pmix_namespace_t *const ns = peer->nptr;
 
     // Setup a new job tracker for this peer's nspace.
     pmix_gds_shmem_job_t *job;
@@ -905,21 +859,20 @@ server_register_new_job_info(
     }
     // Pack the data so we can see how large it is. This will help inform how
     // large to make the shared-memory segment associated with these data.
-    rc = get_packed_local_job_data_size(
-        peer, &job_cb, &data_size
-    );
+    pmix_gds_shmem_local_job_stats_t stats;
+    rc = get_local_job_data_stats(peer, &job_cb, &stats);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto out;
     }
     // Get the shared-memory segment ready for job data.
-    rc = prepare_shmem_store_for_local_job_data(job, data_size);
+    rc = prepare_shmem_store_for_local_job_data(job, &stats);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto out;
     }
     // Store fetched data into a shared-memory segment.
-    rc = store_local_job_data_in_shmem(job, &job_cb);
+    rc = pmix_gds_shmem_store_local_job_data_in_shmem(job, &job_cb.kvs);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto out;
@@ -1087,8 +1040,8 @@ store_job_info(
     // Update the TMA to point to its local function pointers.
     tma_init_function_pointers(&job->smdata->tma);
     pmix_gds_shmem_vout_smdata(job);
-    // Protect memory: clients can only read from here.
 #if 0
+    // Protect memory: clients can only read from here.
     mprotect(
         job->shmem->base_address,
         job->shmem->size, PROT_READ

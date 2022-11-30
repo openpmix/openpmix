@@ -27,7 +27,8 @@ do {                                                                           \
                         ":%s called at line %d", __func__, __LINE__);          \
 } while (0)
 #else
-#define PMIX_GDS_SHMEM_VOUT_HERE()
+#define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
+do { } while (0)
 #endif
 
 #define PMIX_GDS_SHMEM_VOUT(...)                                               \
@@ -43,7 +44,8 @@ do {                                                                           \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 #else
-#define PMIX_GDS_SHMEM_VVOUT(...)
+#define PMIX_GDS_SHMEM_VVOUT(...)                                              \
+do { } while (0)
 #endif
 
 #define pmix_gds_shmem_ffgds pmix_globals.mypeer->nptr->compat.gds

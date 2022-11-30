@@ -29,7 +29,7 @@ pmix_gds_shmem_get_job_tracker(
 
     // Try to find the tracker for this job.
     pmix_gds_shmem_job_t *ti = NULL, *target_tracker = NULL;
-    pmix_gds_shmem_component_t *component = &pmix_mca_gds_shmem_component;
+    pmix_gds_shmem_component_t *const component = &pmix_mca_gds_shmem_component;
     PMIX_LIST_FOREACH (ti, &component->jobs, pmix_gds_shmem_job_t) {
         if (0 == strcmp(nspace, ti->nspace_id)) {
             target_tracker = ti;
@@ -239,7 +239,7 @@ fetch_base_tmpdir(
     pmix_status_t rc = PMIX_SUCCESS;
 
     static char fetched_path[PMIX_PATH_MAX] = {'\0'};
-    // Keys we will need to fetch in priority order.
+    // Keys we may fetch, in priority order.
     char *fetch_keys[] = {
         PMIX_NSDIR,
         PMIX_TMPDIR,
@@ -392,7 +392,6 @@ pmix_gds_shmem_segment_create_and_attach(
 out:
     if (PMIX_SUCCESS != rc) {
         (void)pmix_shmem_segment_detach(job->shmem);
-        PMIX_ERROR_LOG(rc);
     }
     return rc;
 }
