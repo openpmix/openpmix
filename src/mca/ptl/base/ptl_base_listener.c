@@ -316,7 +316,8 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     char *leftover;
     size_t n;
 
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "ptl:tool setup_listener");
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:tool setup_listener");
 
     for (n = 0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
@@ -594,7 +595,8 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     if (0 > rc || NULL == lt->uri) {
         goto sockerror;
     }
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "ptl:base URI %s", lt->uri);
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "ptl:base URI %s", lt->uri);
 
     /* save the URI internally so we can report it */
     urikv = PMIX_NEW(pmix_kval_t);
@@ -673,6 +675,21 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     }
 
 nextstep:
+    /* if we are the scheduler, then drop an appropriately named
+     * contact file so the system's resource manager can find us */
+    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
+        if (0 > asprintf(&pmix_ptl_base.scheduler_filename, "%s/pmix.sched.%s",
+                         pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
+            goto sockerror;
+        }
+        rc = pmix_base_write_rndz_file(pmix_ptl_base.scheduler_filename, lt->uri,
+                                       &pmix_ptl_base.created_system_tmpdir);
+        if (PMIX_SUCCESS != rc) {
+            goto sockerror;
+        }
+        pmix_ptl_base.created_scheduler_filename = true;
+    }
+
     /* if we are going to support tools, then drop contact file(s) */
     if (pmix_ptl_base.system_tool) {
         if (0 > asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",

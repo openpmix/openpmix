@@ -376,6 +376,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t 
     size_t n;
     bool system_level = false;
     bool system_level_only = false;
+    bool scheduler = false;
     pid_t pid = 0, mypid;
     pmix_list_t ilist;
     pmix_info_caddy_t *kv;
@@ -404,6 +405,9 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_SYSTEM_FIRST)) {
                 /* try the system-level */
                 system_level = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SCHEDULER)) {
+                /* find the scheduler */
+                scheduler = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO)) {
                 pid = info[n].value.data.pid;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
@@ -610,6 +614,40 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t 
                             "ptl:tool: connecting to system failed");
         rc = PMIX_ERR_UNREACH;
         goto cleanup;
+    }
+
+    /* if they asked for the scheduler, then look for it */
+    if (scheduler) {
+        if (0 > asprintf(&filename, "%s/pmix.sched.%s",
+                         pmix_ptl_base.system_tmpdir,
+                         pmix_globals.hostname)) {
+            rc = PMIX_ERR_NOMEM;
+            goto cleanup;
+        }
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:tool:tool looking for scheduler at %s", filename);
+        /* try to read the file */
+        PMIX_CONSTRUCT(&connections, pmix_list_t);
+        rc = pmix_ptl_base_parse_uri_file(filename, &connections);
+        free(filename);
+        if (PMIX_SUCCESS == rc) {
+            rc = check_connections(&connections);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_LIST_DESTRUCT(&connections);
+                goto cleanup;
+            }
+            cn = (pmix_connection_t *) pmix_list_get_first(&connections);
+            nspace = cn->nspace;
+            cn->nspace = NULL;
+            rank = cn->rank;
+            suri = cn->uri;
+            cn->uri = NULL;
+            peer->protocol = PMIX_PROTOCOL_V2;
+            PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+            PMIX_LIST_DESTRUCT(&connections);
+            goto complete;
+        }
+        PMIX_LIST_DESTRUCT(&connections);
     }
 
     /* if they gave us a pid, then look for it */
