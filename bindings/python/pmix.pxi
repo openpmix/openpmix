@@ -1209,8 +1209,11 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         pynsptr = <const char *>(pyns)
         value[0].data.envar.value = strdup(pynsptr)
         # TODO: way/function to verify char type
-        pyseparator = <char>ord(val['value']['separator'])
-        value[0].data.envar.separator = pyseparator
+        enval = val['value']['separator']
+        if isinstance(enval, pmix_int_types):
+            value[0].data.envar.separator = enval
+        else:
+            value[0].data.envar.separator = ord(enval)
     elif val['val_type'] == PMIX_REGEX:
         regex = val['value']
         ba = pmix_convert_regex(regex)
