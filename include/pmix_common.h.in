@@ -200,6 +200,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CONNECT_TO_SYSTEM              "pmix.cnct.sys"         // (bool) The requestor requires that a connection be made only to
                                                                     //        a local system-level PMIx server
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first
+#define PMIX_CONNECT_TO_SCHEDULER           "pmix.cnct.sched"       // (bool) Connect to the system scheduler
 #define PMIX_SERVER_URI                     "pmix.srvr.uri"         // (char*) URI of server to be contacted
 #define PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
 #define PMIX_SERVER_HOSTNAME                "pmix.srvr.host"        // (char*) node where target server is located
@@ -1519,7 +1520,7 @@ typedef uint8_t pmix_alloc_directive_t;
 #define PMIX_ALLOC_NEW          1  // new allocation is being requested. The resulting allocation will be
                                    // disjoint (i.e., not connected in a job sense) from the requesting allocation
 #define PMIX_ALLOC_EXTEND       2  // extend the existing allocation, either in time or as additional resources
-#define PMIX_ALLOC_RELEASE      3  // release part of the existing allocation. Attributes in the accompanying
+#define PMIX_ALLOC_RELEASE      3  // release part or all of the existing allocation. Attributes in the accompanying
                                    // pmix\_info\_t array may be used to specify permanent release of the
                                    // identified resources, or "lending" of those resources for some period
                                    // of time.
