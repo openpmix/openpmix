@@ -92,11 +92,10 @@ def pyevhdlr(stop):
     return
 
 
-# create a progress thread for processing events
-progressThread = threading.Thread(target = pyevhdlr, args =(lambda : stop_progress, ))
-# ensure the thread dies at termination of main so we can exit
+# create a progress thread for processing events - ensure the
+# thread dies at termination of main so we can exit
 # if we should terminate without finalizing
-progressThread.setDaemon(True)
+progressThread = threading.Thread(target = pyevhdlr, daemon = True, args =(lambda : stop_progress, ))
 
 cdef void dmodx_cbfunc(pmix_status_t status,
                        char *data, size_t sz,
@@ -3226,6 +3225,10 @@ cdef class PMIxTool(PMIxServer):
         # finalize
         rc = PMIx_tool_finalize()
         return rc
+
+    # see if the tool is connected
+    def is_connected(self):
+        return PMIx_tool_is_connected()
 
     # Disconnect from a server
     def disconnect(server:dict):
