@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,6 +49,7 @@
 
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
+#include "src/mca/gds/base/base.h"
 
 /****    SUPPORTING FUNCTIONS    ****/
 static void timeout(int sd, short args, void *cbdata);

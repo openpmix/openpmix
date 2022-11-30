@@ -46,6 +46,7 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/gds/base/base.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"

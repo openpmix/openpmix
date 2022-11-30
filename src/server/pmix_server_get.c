@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,7 +48,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/gds/gds.h"
+#include "src/mca/gds/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"

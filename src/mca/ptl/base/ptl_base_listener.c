@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -62,6 +63,7 @@
 #include "src/util/pmix_show_help.h"
 
 #include "src/mca/ptl/base/base.h"
+#include "src/mca/gds/base/base.h"
 
 // local functions for connection support
 static void *listen_thread(void *obj);

@@ -5,6 +5,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -85,12 +86,16 @@ typedef pmix_status_t (*pmix_gds_base_module_assemb_kvs_req_fn_t)(const pmix_pro
 /* define a macro for server keys answer based on peer */
 #define PMIX_GDS_ASSEMB_KVS_REQ(s, p, r, k, b, c)                                            \
     do {                                                                                     \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                  \
-        (s) = PMIX_SUCCESS;                                                                  \
-        if (NULL != _g->assemb_kvs_req) {                                                    \
-            pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS ASSEMBLE REQ WITH %s", \
-                                __FILE__, __LINE__, _g->name);                               \
-            (s) = _g->assemb_kvs_req(r, k, b, (void *) c);                                   \
+        (s) = PMIX_ERROR;                                                                    \
+        pmix_gds_base_active_module_t*_gi;                                                   \
+        PMIX_LIST_FOREACH (_gi, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {  \
+            if (NULL != _gi->module->assemb_kvs_req) {                                       \
+                pmix_output_verbose(1, pmix_gds_base_output,                                 \
+                                    "[%s:%d] GDS ASSEMBLE REQ WITH %s",                      \
+                                    __FILE__, __LINE__, _gi->module->name);                  \
+                (s) = _gi->module->assemb_kvs_req(r, k, b, (void *) c);                      \
+                break;                                                                       \
+            }                                                                                \
         }                                                                                    \
     } while (0)
 
@@ -100,12 +105,16 @@ typedef pmix_status_t (*pmix_gds_base_module_accept_kvs_resp_fn_t)(pmix_buffer_t
 /* define a macro for client key processing from a server response based on peer */
 #define PMIX_GDS_ACCEPT_KVS_RESP(s, p, b)                                                   \
     do {                                                                                    \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                 \
-        (s) = PMIX_SUCCESS;                                                                 \
-        if (NULL != _g->accept_kvs_resp) {                                                  \
-            pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS ACCEPT RESP WITH %s", \
-                                __FILE__, __LINE__, _g->name);                              \
-            (s) = _g->accept_kvs_resp(b);                                                   \
+        (s) = PMIX_ERROR;                                                                   \
+        pmix_gds_base_active_module_t*_gi;                                                  \
+        PMIX_LIST_FOREACH (_gi, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) { \
+            if (NULL != _gi->module->accept_kvs_resp) {                                     \
+                pmix_output_verbose(1, pmix_gds_base_output,                                \
+                                    "[%s:%d] GDS ACCEPT RESP WITH %s",                      \
+                                    __FILE__, __LINE__, _gi->module->name);                 \
+                (s) = _gi->module->accept_kvs_resp(b);                                      \
+                break;                                                                      \
+            }                                                                               \
         }                                                                                   \
     } while (0)
 
@@ -208,10 +217,17 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
 /* define a convenience macro for storing key-val pairs based on peer */
 #define PMIX_GDS_STORE_KV(s, p, pc, sc, k)                                                     \
     do {                                                                                       \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                    \
-        pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS STORE KV WITH %s", __FILE__, \
-                            __LINE__, _g->name);                                               \
-        (s) = _g->store(pc, sc, k);                                                            \
+        (s) = PMIX_ERROR;                                                                      \
+        pmix_gds_base_active_module_t*_gi;                                                     \
+        PMIX_LIST_FOREACH (_gi, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {    \
+            if (NULL != _gi->module->store) {                                                  \
+                pmix_output_verbose(1, pmix_gds_base_output,                                   \
+                                    "[%s:%d] GDS STORE KV WITH %s",                            \
+                                    __FILE__, __LINE__, _gi->module->name);                    \
+                (s) = _gi->module->store(pc, sc, k);                                           \
+                break;                                                                         \
+            }                                                                                  \
+        }                                                                                      \
     } while (0)
 
 /**
