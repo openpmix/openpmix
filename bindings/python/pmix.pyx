@@ -335,9 +335,7 @@ cdef class PMIxClient:
         global progressThread
 
         # start the event handler progress thread
-        print("CLIENT STARTING THREAD")
         progressThread.start()
-        print("CLIENT THREAD STARTED")
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &klen, dicts)
@@ -1734,7 +1732,6 @@ cdef class PMIxServer(PMIxClient):
         kvkeys = list(map.keys())
         for key in kvkeys:
             try:
-                print("ASSIGNED FN", key)
                 setmodulefn(key, map[key])
             except KeyError:
                 print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
