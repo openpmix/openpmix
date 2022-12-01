@@ -48,8 +48,6 @@ do {                                                                           \
 do { } while (0)
 #endif
 
-#define pmix_gds_shmem_ffgds pmix_globals.mypeer->nptr->compat.gds
-
 BEGIN_C_DECLS
 
 PMIX_EXPORT pmix_status_t
@@ -59,22 +57,10 @@ pmix_gds_shmem_get_job_tracker(
     pmix_gds_shmem_job_t **job
 );
 
-PMIX_EXPORT pmix_gds_shmem_nodeinfo_t *
-pmix_gds_shmem_get_nodeinfo_by_nodename(
-    pmix_list_t *nodes,
-    const char *hostname
-);
-
 PMIX_EXPORT bool
 pmix_gds_shmem_check_hostname(
     const char *h1,
     const char *h2
-);
-
-PMIX_EXPORT pmix_gds_shmem_session_t *
-pmix_gds_shmem_check_session(
-    pmix_gds_shmem_job_t *job,
-    uint32_t sid
 );
 
 PMIX_EXPORT size_t

@@ -275,7 +275,6 @@ job_construct(
 ) {
     job->nspace_id = NULL;
     job->nspace = NULL;
-    job->session = NULL;
     job->shmem = PMIX_NEW(pmix_shmem_t);
     job->smdata = NULL;
 }
@@ -289,9 +288,6 @@ job_destruct(
     }
     if (job->nspace) {
         PMIX_RELEASE(job->nspace);
-    }
-    if (job->session) {
-        PMIX_RELEASE(job->session);
     }
     // This will release the memory for the structures located in the
     // shared-memory segment.
@@ -343,17 +339,23 @@ static void
 session_construct(
     pmix_gds_shmem_session_t *s
 ) {
+    pmix_tma_t *tma = pmix_obj_get_tma(&s->super.super);
+
     s->session = UINT32_MAX;
-    PMIX_CONSTRUCT(&s->sessioninfo, pmix_list_t);
-    PMIX_CONSTRUCT(&s->nodeinfo, pmix_list_t);
+    s->sessioninfo = PMIX_NEW(pmix_list_t, tma);
+    s->nodeinfo = PMIX_NEW(pmix_list_t, tma);
 }
 
 static void
 session_destruct(
     pmix_gds_shmem_session_t *s
 ) {
-    PMIX_LIST_DESTRUCT(&s->sessioninfo);
-    PMIX_LIST_DESTRUCT(&s->nodeinfo);
+    if (s->sessioninfo) {
+        PMIX_LIST_DESTRUCT(s->sessioninfo);
+    }
+    if (s->nodeinfo) {
+        PMIX_LIST_DESTRUCT(s->nodeinfo);
+    }
 }
 
 PMIX_CLASS_INSTANCE(
@@ -366,7 +368,7 @@ PMIX_CLASS_INSTANCE(
 static pmix_status_t
 job_smdata_construct(
     pmix_gds_shmem_job_t *job,
-    size_t ihtsize
+    size_t htsize
 ) {
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
@@ -384,12 +386,13 @@ job_smdata_construct(
     *(job->smdata->tma.data_ptr) = addr_align_8(baseaddr, sizeof(*job->smdata));
     // We can now safely get the job's TMA.
     pmix_tma_t *tma = pmix_gds_shmem_get_job_tma(job);
-    // Now that we know the TMA, allocate smdata structures using it.
-    job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
+    // Now that we know the TMA, initialize smdata structures using it.
+    job->smdata->session = NULL;
     job->smdata->jobinfo = PMIX_NEW(pmix_list_t, tma);
+    job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
     job->smdata->apps = PMIX_NEW(pmix_list_t, tma);
     job->smdata->local_hashtab = PMIX_NEW(pmix_hash_table2_t, tma);
-    pmix_hash_table2_init(job->smdata->local_hashtab, ihtsize);
+    pmix_hash_table2_init(job->smdata->local_hashtab, htsize);
 
     pmix_gds_shmem_vout_smdata(job);
 
@@ -414,7 +417,8 @@ module_finalize(void)
 {
     PMIX_GDS_SHMEM_VOUT_HERE();
     PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.jobs);
-    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.sessions);
+    // TODO(skg) Fix crash.
+    //PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.sessions);
 }
 
 static pmix_status_t
@@ -484,10 +488,10 @@ prepare_shmem_store_for_local_job_data(
     // Initial hash table size.
     const size_t htsize = stats->hash_table_size;
     // Calculate a rough estimate on the amount of storage required to store the
-    // values associated with the pmix_gds_shmem_shared_data_t. Err on the side
-    // of overestimation.
+    // values associated with the pmix_gds_shmem_shared_job_data_t. Err on the
+    // side of overestimation.
     // Start with the size of the segment header.
-    size_t seg_size = sizeof(pmix_gds_shmem_shared_data_t);
+    size_t seg_size = sizeof(pmix_gds_shmem_shared_job_data_t);
     // We need to store some lists in the shared-memory segment, so calculate
     // a rough estimate on the memory required for their storage.
     seg_size += PMIX_GDS_SHMEM_SHARED_NLISTS * sizeof(pmix_list_t);
@@ -754,7 +758,7 @@ get_local_job_data_stats(
                 nhtentries += kvi->value->data.darray->size;
             }
         }
-        // Just a key/value pair, so they will like go into the hash table.
+        // Just a key/value pair, so they will likely go into the hash table.
         else {
             nhtentries += 1;
         }
@@ -982,7 +986,6 @@ store_job_info(
                 break;
             }
         }
-        // TODO(skg) Ask Ralph why we are seeing these values now.
         else if (PMIX_CHECK_KEY(&kval, PMIX_SESSION_INFO_ARRAY) ||
                  PMIX_CHECK_KEY(&kval, PMIX_NODE_INFO_ARRAY) ||
                  PMIX_CHECK_KEY(&kval, PMIX_APP_INFO_ARRAY)) {
@@ -1052,22 +1055,15 @@ store_job_info(
     return rc;
 }
 
-static pmix_status_t
-store(
-    const pmix_proc_t *proc,
-    pmix_scope_t scope,
-    pmix_kval_t *kval
-) {
-    PMIX_GDS_SHMEM_VOUT_HERE();
-    // Let a full-featured gds module handle this.
-    return pmix_gds_shmem_ffgds->store(proc, scope, kval);
-}
-
 /**
  * This function is only called by the PMIx server when its host has received
  * data from some other peer. It therefore always contains data solely from
  * remote procs, and we shall store it accordingly.
  */
+// TODO(skg) Maybe just store in a new segment?  Called by the server. The
+// clients will only be calling fetch.  When the modex gets called, server on
+// each node does a fetch on endpoint info. Store meta in job shmem. Then create
+// a new one.
 static pmix_status_t
 store_modex(
     struct pmix_namespace_t *nspace_struct,
@@ -1075,8 +1071,9 @@ store_modex(
     void *cbdata
 ) {
     PMIX_GDS_SHMEM_VOUT_HERE();
-    // Let a full-featured gds module handle this.
-    return pmix_gds_shmem_ffgds->store_modex(nspace_struct, buff, cbdata);
+    PMIX_HIDE_UNUSED_PARAMS(nspace_struct, buff, cbdata);
+    // TODO(skg) Implement.
+    return PMIX_SUCCESS;
 }
 
 static pmix_status_t
@@ -1121,27 +1118,6 @@ del_nspace(
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t
-assemb_kvs_req(
-    const pmix_proc_t *proc,
-    pmix_list_t *kvs,
-    pmix_buffer_t *buff,
-    void *cbdata
-) {
-    PMIX_GDS_SHMEM_VOUT_HERE();
-    // Let a full-featured gds module handle this.
-    return pmix_gds_shmem_ffgds->assemb_kvs_req(proc, kvs, buff, cbdata);
-}
-
-static pmix_status_t
-accept_kvs_resp(
-    pmix_buffer_t *buff
-) {
-    PMIX_GDS_SHMEM_VOUT_HERE();
-    // Let a full-featured gds module handle this.
-    return pmix_gds_shmem_ffgds->accept_kvs_resp(buff);
-}
-
 pmix_gds_base_module_t pmix_shmem_module = {
     .name = PMIX_GDS_SHMEM_NAME,
     .is_tsafe = false,
@@ -1151,14 +1127,14 @@ pmix_gds_base_module_t pmix_shmem_module = {
     .cache_job_info = server_cache_job_info,
     .register_job_info = server_register_job_info,
     .store_job_info = store_job_info,
-    .store = store,
+    .store = NULL,
     .store_modex = store_modex,
     .fetch = pmix_gds_shmem_fetch,
     .setup_fork = server_setup_fork,
     .add_nspace = server_add_nspace,
     .del_nspace = del_nspace,
-    .assemb_kvs_req = assemb_kvs_req,
-    .accept_kvs_resp = accept_kvs_resp
+    .assemb_kvs_req = NULL,
+    .accept_kvs_resp = NULL
 };
 
 /*

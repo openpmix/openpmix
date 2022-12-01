@@ -46,18 +46,6 @@
 #define PMIX_GDS_SHMEM_DISABLE 1
 
 /**
- * Defines a bitmask to track what information may not
- * have been provided but is computable from other info.
- */
-// TODO(skg) These can probably go into base.
-#define PMIX_GDS_SHMEM_PROC_DATA 0x00000001
-#define PMIX_GDS_SHMEM_JOB_SIZE  0x00000002
-#define PMIX_GDS_SHMEM_MAX_PROCS 0x00000004
-#define PMIX_GDS_SHMEM_NUM_NODES 0x00000008
-#define PMIX_GDS_SHMEM_PROC_MAP  0x00000010
-#define PMIX_GDS_SHMEM_NODE_MAP  0x00000020
-
-/**
  * Default component/module priority.
  */
 #if (PMIX_GDS_SHMEM_DISABLE == 1)
@@ -107,21 +95,21 @@ typedef struct {
     /** Session ID. */
     uint32_t session;
     /** Session information. */
-    pmix_list_t sessioninfo;
+    pmix_list_t *sessioninfo;
     /** Node information. */
-    pmix_list_t nodeinfo;
+    pmix_list_t *nodeinfo;
 } pmix_gds_shmem_session_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
 
 /**
- * Metadata for pmix_gds_shmem_shared_data_t, so keep in sync.
+ * Metadata for pmix_gds_shmem_shared_job_data_t, so keep in sync.
  */
 typedef enum {
-    /** Number of lists maintained within pmix_gds_shmem_shared_data_t. */
+    /** Number of lists maintained within pmix_gds_shmem_shared_job_data_t. */
     PMIX_GDS_SHMEM_SHARED_NLISTS = 3
 } pmix_gds_shmem_shared_metadata_t;
 
-// Note that the shared data structures in pmix_gds_shmem_shared_data_t are
+// Note that the shared data structures in pmix_gds_shmem_shared_job_data_t are
 // pointers since their respective locations must reside on the shared heap
 // located in shared-memory and managed by the shared-memory TMA.
 //
@@ -135,15 +123,17 @@ typedef struct {
     pmix_tma_t tma;
     /** Holds the current address of the shared-memory allocator. */
     void *current_addr;
-    /** Node information. */
-    pmix_list_t *nodeinfo;
+    /** Session information. */
+    pmix_gds_shmem_session_t *session;
     /** Job information. */
     pmix_list_t *jobinfo;
+    /** Node information. */
+    pmix_list_t *nodeinfo;
     /** List of applications in this job. */
     pmix_list_t *apps;
-    /** Stores local (node) data. */
+    /** Stores local (node) job data. */
     pmix_hash_table2_t *local_hashtab;
-} pmix_gds_shmem_shared_data_t;
+} pmix_gds_shmem_shared_job_data_t;
 
 typedef struct {
     pmix_list_item_t super;
@@ -151,12 +141,10 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
-    /** Session information. */
-    pmix_gds_shmem_session_t *session;
     /** Shared-memory object. */
     pmix_shmem_t *shmem;
     /** Points to shared data located in shared-memory segment. */
-    pmix_gds_shmem_shared_data_t *smdata;
+    pmix_gds_shmem_shared_job_data_t *smdata;
 } pmix_gds_shmem_job_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
 

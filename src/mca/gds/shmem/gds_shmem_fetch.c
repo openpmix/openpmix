@@ -25,6 +25,44 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/pcompress/base/base.h"
 
+static pmix_gds_shmem_nodeinfo_t *
+get_nodeinfo_by_nodename(
+    pmix_list_t *nodes,
+    const char *hostname
+) {
+    bool aliases_exist = false;
+
+    if (NULL == hostname) {
+        return NULL;
+    }
+    // First, just check all the node names as this is the most likely match.
+    pmix_gds_shmem_nodeinfo_t *ni;
+    PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem_nodeinfo_t) {
+        if (0 == strcmp(ni->hostname, hostname)) {
+            return ni;
+        }
+        if (!pmix_list_is_empty(ni->aliases)) {
+            aliases_exist = true;
+        }
+    }
+    // We didn't find it by name and name aliases do not exists.
+    if (!aliases_exist) {
+        return NULL;
+    }
+    // If a match wasn't found, then we have to try the aliases.
+    PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem_nodeinfo_t) {
+        pmix_gds_shmem_host_alias_t *nai = NULL;
+        PMIX_LIST_FOREACH (nai, ni->aliases, pmix_gds_shmem_host_alias_t) {
+            if (0 == strcmp(nai->name, hostname)) {
+                return ni;
+            }
+        }
+    }
+    // No match found.
+    return NULL;
+}
+
+
 /**
  * Fetches all node info from a given nodeinfo.
  */
@@ -73,7 +111,7 @@ fetch_all_node_info(
     }
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, nodeinfo->info, pmix_kval_t) {
-        PMIX_GDS_SHMEM_VOUT(
+        PMIX_GDS_SHMEM_VVOUT(
             "%s:%s adding key=%s", __func__,
             PMIX_NAME_PRINT(&pmix_globals.myid), kvi->key
         );
@@ -133,8 +171,8 @@ fetch_all_node_info_from_list(
     return rc;
 }
 
-pmix_status_t
-pmix_gds_shmem_fetch_nodeinfo(
+static pmix_status_t
+fetch_nodeinfo(
     const char *key,
     pmix_gds_shmem_job_t *job,
     pmix_list_t *nodeinfos,
@@ -190,7 +228,7 @@ pmix_gds_shmem_fetch_nodeinfo(
         }
     }
     else if (NULL != hostname) {
-        nodeinfo = pmix_gds_shmem_get_nodeinfo_by_nodename(nodeinfos, hostname);
+        nodeinfo = get_nodeinfo_by_nodename(nodeinfos, hostname);
     }
 
     if (NULL == nodeinfo) {
@@ -308,8 +346,8 @@ fetch_all_app_info(
     return rc;
 }
 
-pmix_status_t
-pmix_gds_shmem_fetch_appinfo(
+static pmix_status_t
+fetch_appinfo(
     const char *key,
     pmix_gds_shmem_job_t *job,
     pmix_list_t *target,
@@ -365,7 +403,7 @@ pmix_gds_shmem_fetch_appinfo(
     }
     // See if they wanted to know something about
     // a node that is associated with this app.
-    rc = pmix_gds_shmem_fetch_nodeinfo(
+    rc = fetch_nodeinfo(
         key, job, app->nodeinfo, info, ninfo, kvs
     );
     if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc) {
@@ -396,6 +434,7 @@ pmix_gds_shmem_fetch_appinfo(
 }
 
 // TODO(skg) This needs plenty of work.
+// TODO(skg) Maybe easy enough to just look at the scope
 pmix_status_t
 pmix_gds_shmem_fetch(
     const pmix_proc_t *proc,
@@ -412,11 +451,12 @@ pmix_gds_shmem_fetch(
     bool nigiven = false;
     bool apigiven = false;
 
+    PMIX_HIDE_UNUSED_PARAMS(copy);
+
     PMIX_GDS_SHMEM_VOUT(
-        "%s:%s key=%s for proc=%s on scope=%s",
-        __func__, PMIX_NAME_PRINT(&pmix_globals.myid),
-        (NULL == key) ? "NULL" : key, PMIX_NAME_PRINT(proc),
-        PMIx_Scope_string(scope)
+        "%s:%s key=%s for proc=%s on scope=%s", __func__,
+        PMIX_NAME_PRINT(&pmix_globals.myid), !key ? "NULL" : key,
+        PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope)
     );
     // Get the tracker for this job. We should have already created one, so
     // that's why we pass false in pmix_gds_shmem_get_job_tracker().
@@ -429,17 +469,13 @@ pmix_gds_shmem_fetch(
     pmix_hash_table2_t *const ht = job->smdata->local_hashtab;
 
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
-        return pmix_gds_shmem_ffgds->fetch(
-            proc, scope, copy, key, qualifiers, nqual, kvs
-        );
+        return PMIX_ERR_NOT_FOUND;
     }
 
     for (size_t n = 0; n < nqual; n++) {
         if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_SESSION_INFO)) {
-            // We don't handle session info, so pass it along.
-            return pmix_gds_shmem_ffgds->fetch(
-                proc, scope, copy, key, qualifiers, nqual, kvs
-            );
+            // TODO(skg) Implement.
+            return PMIX_ERR_NOT_FOUND;
         }
         else if (PMIX_CHECK_KEY(&qualifiers[n], PMIX_NODE_INFO)) {
             nodeinfo = PMIX_INFO_TRUE(&qualifiers[n]);
@@ -462,7 +498,7 @@ pmix_gds_shmem_fetch(
 
     if (!PMIX_RANK_IS_VALID(proc->rank)) {
         if (nodeinfo) {
-            rc = pmix_gds_shmem_fetch_nodeinfo(
+            rc = fetch_nodeinfo(
                 key, job, job->smdata->nodeinfo, qualifiers, nqual, kvs
             );
             if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
@@ -471,7 +507,7 @@ pmix_gds_shmem_fetch(
             return rc;
         }
         else if (appinfo) {
-            rc = pmix_gds_shmem_fetch_appinfo(
+            rc = fetch_appinfo(
                 key, job, job->smdata->apps, qualifiers, nqual, kvs
             );
             if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
@@ -519,14 +555,14 @@ doover:
             rc = pmix_hash2_fetch(ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
         }
         else {
-            return pmix_gds_shmem_ffgds->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
+            return PMIX_ERR_NOT_FOUND;
         }
     }
     else {
         rc = pmix_hash2_fetch(ht, proc->rank, key, qualifiers, nqual, kvs);
     }
     if (PMIX_SUCCESS != rc) {
-        rc = pmix_gds_shmem_ffgds->fetch(proc, scope, copy, key, qualifiers, nqual, kvs);
+        rc = PMIX_ERR_NOT_FOUND;
     }
 
     return rc;
