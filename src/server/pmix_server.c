@@ -3576,10 +3576,14 @@ static void _cnct(int sd, short args, void *cbdata)
                 cb.copy = false;
                 PMIX_GDS_FETCH_KV(rc, cd->peer, &cb);
                 if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(reply);
-                    PMIX_DESTRUCT(&cb);
-                    goto error;
+                    /* try getting it from our storage */
+                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_RELEASE(reply);
+                        PMIX_DESTRUCT(&cb);
+                        goto error;
+                    }
                 }
                 PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
                 /* pack the nspace name */
