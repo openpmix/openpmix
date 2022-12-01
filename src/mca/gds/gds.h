@@ -5,6 +5,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -83,30 +84,46 @@ typedef pmix_status_t (*pmix_gds_base_module_assemb_kvs_req_fn_t)(const pmix_pro
                                                                   pmix_buffer_t *buf, void *cbdata);
 
 /* define a macro for server keys answer based on peer */
-#define PMIX_GDS_ASSEMB_KVS_REQ(s, p, r, k, b, c)                                            \
-    do {                                                                                     \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                  \
-        (s) = PMIX_SUCCESS;                                                                  \
-        if (NULL != _g->assemb_kvs_req) {                                                    \
-            pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS ASSEMBLE REQ WITH %s", \
-                                __FILE__, __LINE__, _g->name);                               \
-            (s) = _g->assemb_kvs_req(r, k, b, (void *) c);                                   \
-        }                                                                                    \
+#define PMIX_GDS_ASSEMB_KVS_REQ(s, p, r, k, b, c)                              \
+    do {                                                                       \
+        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                    \
+        (s) = PMIX_SUCCESS;                                                    \
+        if (NULL == _g->assemb_kvs_req) {                                      \
+            if (0 == strcmp(_g->name, "hash")) {                               \
+                (s) = PMIX_ERR_NOT_SUPPORTED;                                  \
+            } else {                                                           \
+                _g = pmix_globals.mypeer->nptr->compat.gds;                    \
+            }                                                                  \
+        }                                                                      \
+        if (NULL != _g->assemb_kvs_req) {                                      \
+            pmix_output_verbose(1, pmix_gds_base_output,                       \
+                                "[%s:%d] GDS ASSEMBLE REQ WITH %s",            \
+                                __FILE__, __LINE__, _g->name);                 \
+            (s) = _g->assemb_kvs_req(r, k, b, (void *) c);                     \
+        }                                                                      \
     } while (0)
 
 /* CLIENT FN: unpack buffer and key processing */
 typedef pmix_status_t (*pmix_gds_base_module_accept_kvs_resp_fn_t)(pmix_buffer_t *buf);
 
 /* define a macro for client key processing from a server response based on peer */
-#define PMIX_GDS_ACCEPT_KVS_RESP(s, p, b)                                                   \
-    do {                                                                                    \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                 \
-        (s) = PMIX_SUCCESS;                                                                 \
-        if (NULL != _g->accept_kvs_resp) {                                                  \
-            pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS ACCEPT RESP WITH %s", \
-                                __FILE__, __LINE__, _g->name);                              \
-            (s) = _g->accept_kvs_resp(b);                                                   \
-        }                                                                                   \
+#define PMIX_GDS_ACCEPT_KVS_RESP(s, p, b)                                      \
+    do {                                                                       \
+        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                    \
+        (s) = PMIX_SUCCESS;                                                    \
+        if (NULL == _g->accept_kvs_resp) {                                     \
+            if (0 == strcmp(_g->name, "hash")) {                               \
+                (s) = PMIX_ERR_NOT_SUPPORTED;                                  \
+            } else {                                                           \
+                _g = pmix_globals.mypeer->nptr->compat.gds;                    \
+            }                                                                  \
+        }                                                                      \
+        if (NULL != _g->accept_kvs_resp) {                                     \
+            pmix_output_verbose(1, pmix_gds_base_output,                       \
+                                "[%s:%d] GDS ACCEPT RESP WITH %s",             \
+                                __FILE__, __LINE__, _g->name);                 \
+            (s) = _g->accept_kvs_resp(b);                                      \
+        }                                                                      \
     } while (0)
 
 /* SERVER FN: cache job-level info in the server's GDS until client
@@ -206,12 +223,23 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
                                                          pmix_scope_t scope, pmix_kval_t *kv);
 
 /* define a convenience macro for storing key-val pairs based on peer */
-#define PMIX_GDS_STORE_KV(s, p, pc, sc, k)                                                     \
-    do {                                                                                       \
-        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                    \
-        pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS STORE KV WITH %s", __FILE__, \
-                            __LINE__, _g->name);                                               \
-        (s) = _g->store(pc, sc, k);                                                            \
+#define PMIX_GDS_STORE_KV(s, p, pc, sc, k)                                     \
+    do {                                                                       \
+        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                    \
+        (s) = PMIX_SUCCESS;                                                    \
+        if (NULL == _g->store) {                                               \
+            if (0 == strcmp(_g->name, "hash")) {                               \
+                (s) = PMIX_ERR_NOT_SUPPORTED;                                  \
+            } else {                                                           \
+                _g = pmix_globals.mypeer->nptr->compat.gds;                    \
+            }                                                                  \
+        }                                                                      \
+        if (NULL != _g->store) {                                               \
+            pmix_output_verbose(1, pmix_gds_base_output,                       \
+                                "[%s:%d] GDS STORE KV WITH %s",                \
+                                __FILE__, __LINE__, _g->name);                 \
+            (s) = _g->store(pc, sc, k);                                        \
+        }                                                                      \
     } while (0)
 
 /**
