@@ -113,8 +113,6 @@ pmix_status_t pmix_gds_hash_xfer_sessioninfo(pmix_session_t *sptr,
                 PMIX_RELEASE(kp2);
                 return rc;
             }
-            char *tmp = PMIx_Value_string(kp2->value);
-            free(tmp);
             pmix_list_append(kvs, &kp2->super);
             return PMIX_SUCCESS;
         }

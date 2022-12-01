@@ -7,6 +7,7 @@
  *                         All rights reserved.
  *
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -515,8 +516,6 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
                 PMIX_LIST_DESTRUCT(&scache);
                 return rc;
             }
-            char *tmp = PMIx_Value_string(kp2->value);
-            free(tmp);
             pmix_list_append(&scache, &kp2->super);
         }
     }
