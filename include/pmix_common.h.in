@@ -546,7 +546,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_PROC_TABLE               "pmix.qry.ptable"       // (pmix_data_array_t*) returns (pmix_data_array_t*) an array of pmix_proc_info_t
                                                                     //         REQUIRES a PMIX_NSPACE qualifier indicating the nspace being queried
 #define PMIX_QUERY_LOCAL_PROC_TABLE         "pmix.qry.lptable"      // (pmix_data_array_t*) returns (pmix_data_array_t*) an array of pmix_proc_info_t
-                                                                    //         of pmix_proc_info_t for procs in job on same node
+                                                                    //         for procs in job on same node
                                                                     //         REQUIRES a PMIX_NSPACE qualifier indicating the nspace being queried
 #define PMIX_QUERY_AUTHORIZATIONS           "pmix.qry.auths"        // (pmix_data_array_t*) return operations tool is authorized to perform. The contents
                                                                     //         of the array elements have not yet been standardized. NO QUALIFIERS
@@ -556,7 +556,14 @@ typedef uint32_t pmix_rank_t;
                                                                     //        SUPPORTED QUALIFIERS: PMIX_NSPACE/PMIX_RANK, or PMIX_PROCID of specific proc(s)
                                                                     //        whose info is being requested
 #define PMIX_QUERY_ALLOC_STATUS             "pmix.query.alloc"      // (char*) return a string reporting status of an allocation request
-                                                                    //         REQUIRES a PMIX_ALLOC_ID qualifier indicating the allocation request being queried
+                                                                    //         REQUIRES a PMIX_ALLOC_REQUEST_ID qualifier indicating the allocation request
+                                                                    //         being queried
+#define PMIX_QUERY_ALLOCATION               "pmix.query.allc"       // (pmix_data_array_t*) returns an array of pmix_info_t describing the nodes known to the
+                                                                    //         server. Each array element will consist of the PMIX_NODE_INFO key containing
+                                                                    //         a pmix_data_array_t of pmix_info_t - the first element of the array must be
+                                                                    //         the hostname of that node, with additional info on the node in subsequent entries.
+                                                                    //         SUPPORTED_QUALIFIER: a PMIX_ALLOC_ID qualifier indicating the specific
+                                                                    //         allocation of interest
 #define PMIX_TIME_REMAINING                 "pmix.time.remaining"   // (uint32_t) returns number of seconds remaining in allocation
                                                                     //         for the specified nspace (defaults to allocation containing the caller)
                                                                     //         SUPPORTED QUALIFIERS: PMIX_NSPACE of the nspace whose info is being requested
@@ -624,7 +631,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        the query on the key.
 
 
-/* PMIx_Get information retrieval attributes */
+/* PMIx_Get information retrieval qualifiers */
 #define PMIX_SESSION_INFO                   "pmix.ssn.info"         // (bool) Return information about the specified session. If information
                                                                     //        about a session other than the one containing the requesting
                                                                     //        process is desired, then the attribute array must contain a
