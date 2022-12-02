@@ -37,6 +37,7 @@
 
 #include "src/common/pmix_attributes.h"
 #include "src/include/pmix_globals.h"
+#include "src/util/pmix_printf.h"
 
 PMIX_EXPORT const char *PMIx_Proc_state_string(pmix_proc_state_t state)
 {
@@ -391,4 +392,72 @@ const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp)
     default:
         return "UNKNOWN VALUE";
     }
+}
+
+char* PMIx_App_string(const pmix_app_t *app)
+{
+    char **ans = NULL;
+    char *tmp, *str;
+    size_t n;
+
+    /* add the command */
+    pmix_asprintf(&tmp, "CMD: %s", app->cmd);
+    pmix_argv_append_nosize(&ans, tmp);
+    free(tmp);
+
+    /* add the argv */
+    pmix_argv_append_nosize(&ans, "    ARGV:");
+    if (NULL == app->argv) {
+        pmix_argv_append_nosize(&ans, "        NONE");
+    } else {
+        for (n=0; NULL != app->argv[n]; n++) {
+            pmix_asprintf(&tmp, "        ARGV[%d]: %s", (int)n, app->argv[n]);
+            pmix_argv_append_nosize(&ans, tmp);
+            free(tmp);
+        }
+    }
+
+    /* add the env */
+    pmix_argv_append_nosize(&ans, "    ENV:");
+    if (NULL == app->env) {
+        pmix_argv_append_nosize(&ans, "        NONE");
+    } else {
+        for (n=0; NULL != app->env[n]; n++) {
+            pmix_asprintf(&tmp, "        ENV[%d]: %s", (int)n, app->env[n]);
+            pmix_argv_append_nosize(&ans, tmp);
+            free(tmp);
+        }
+    }
+
+    /* add the cwd */
+    if (NULL == app->cwd) {
+        pmix_argv_append_nosize(&ans, "    CWD: NULL");
+    } else {
+        pmix_asprintf(&tmp, "    CWD: %s", app->cwd);
+        pmix_argv_append_nosize(&ans, tmp);
+        free(tmp);
+    }
+
+    /* add the maxprocs */
+    pmix_asprintf(&tmp, "    MAXPROCS: %d", app->maxprocs);
+    pmix_argv_append_nosize(&ans, tmp);
+    free(tmp);
+
+    /* add any info */
+    if (NULL == app->info) {
+        pmix_argv_append_nosize(&ans, "    INFO: NONE");
+    } else {
+        pmix_argv_append_nosize(&ans, "    INFO:");
+        for (n=0; n < app->ninfo; n++) {
+            str = PMIx_Info_string(&app->info[n]);
+            pmix_asprintf(&tmp, "        INFO[%d]: %s", (int)n, str);
+            pmix_argv_append_nosize(&ans, tmp);
+            free(tmp);
+            free(str);
+        }
+    }
+
+    tmp = pmix_argv_join(ans, '\n');
+    pmix_argv_free(ans);
+    return tmp;
 }
