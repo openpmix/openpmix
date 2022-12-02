@@ -92,6 +92,101 @@ out:
     return rc;
 }
 
+pmix_gds_shmem_session_t *
+pmix_gds_shmem_check_session(
+    pmix_gds_shmem_job_t *job,
+    uint32_t sid,
+    bool create
+) {
+    // This is an error: we should always be given a job.
+    if (!job) {
+        return NULL;
+    }
+    // Stash a pointer to the job's TMA.
+    pmix_gds_shmem_component_t *const comp = &pmix_mca_gds_shmem_component;
+    pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
+
+    if (NULL == job->smdata->session) {
+        bool found = false;
+        // No session has been assigned to this job. See
+        // if the given ID has already been registered.
+        pmix_gds_shmem_session_t *si;
+        PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem_session_t) {
+            if (si->session == sid) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            // Point the job tracker at this session.
+            PMIX_RETAIN(si);
+            job->smdata->session = si;
+            return si;
+        }
+        // If it wasn't found, then create it if permitted.
+        if (create) {
+            si = PMIX_NEW(pmix_gds_shmem_session_t, tma);
+            si->session = sid;
+            PMIX_RETAIN(si);
+            job->smdata->session = si;
+            pmix_list_append(&comp->sessions, &si->super);
+            return si;
+        }
+        else {
+            return NULL;
+        }
+    }
+    // If the current session object is pointing to the default global session
+    // and we were given a specific session ID, then update it.
+    if (UINT32_MAX == job->smdata->session->session) {
+        if (UINT32_MAX == sid) {
+            // If the given SID is also UINT32_MAX, then we just add to it.
+            return job->smdata->session;
+        }
+        // See if the given ID has already been registered.
+        bool found = false;
+        pmix_gds_shmem_session_t *si;
+        PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem_session_t) {
+            if (si->session == sid) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            // Update the refcount on the current session object.
+            PMIX_RELEASE(job->smdata->session);
+            // Point the job tracker at the new place.
+            PMIX_RETAIN(si);
+            job->smdata->session = si;
+            return si;
+        }
+        // If it wasn't found, then create it.
+        if (create) {
+            si = PMIX_NEW(pmix_gds_shmem_session_t, tma);
+            si->session = sid;
+            PMIX_RETAIN(si);
+            job->smdata->session = si;
+            pmix_list_append(&comp->sessions, &si->super);
+            return si;
+        }
+    }
+    else if (UINT32_MAX == sid) {
+        // It's a wildcard request, so return the job-tracker session.
+        return job->smdata->session;
+    }
+
+    // The job tracker already was assigned a session ID.
+    // Check if the new one matches.
+    if (job->smdata->session->session != sid) {
+        // This is an error: you cannot assign a given job to multiple sessions.
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return NULL;
+    }
+    // The two must match, so return it.
+    return job->smdata->session;
+}
+
+
 bool
 pmix_gds_shmem_check_hostname(
     const char *h1,
@@ -213,8 +308,8 @@ get_shmem_backing_path(
     const char *basedir = fetch_base_tmpdir(job);
     // Now that we have the base path, append unique name.
     size_t nw = snprintf(
-        path, PMIX_PATH_MAX, "%s/gds-%s.%s.%d",
-        basedir, PMIX_GDS_SHMEM_NAME, id, getpid()
+        path, PMIX_PATH_MAX, "%s/%s-gds-%s.%s.%d", basedir,
+        PACKAGE_NAME, PMIX_GDS_SHMEM_NAME, id, getpid()
     );
     if (nw >= PMIX_PATH_MAX) {
         return NULL;
