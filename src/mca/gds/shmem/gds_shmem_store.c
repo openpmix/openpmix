@@ -71,103 +71,6 @@ out:
     return rc;
 }
 
-// TODO(skg) We can probably trim this down further since we support only a very
-// limited use case.
-static pmix_gds_shmem_session_t *
-check_session(
-    pmix_gds_shmem_job_t *job,
-    uint32_t sid,
-    bool create
-) {
-    // This is an error: we should always be given a job.
-    if (!job) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return NULL;
-    }
-    // Stash a pointer to the job's TMA.
-    pmix_gds_shmem_component_t *const comp = &pmix_mca_gds_shmem_component;
-    pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
-
-    if (NULL == job->smdata->session) {
-        bool found = false;
-        // No session has been assigned to this job. See
-        // if the given ID has already been registered.
-        pmix_gds_shmem_session_t *si;
-        PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem_session_t) {
-            if (si->session == sid) {
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            // Point the job tracker at this session.
-            PMIX_RETAIN(si);
-            job->smdata->session = si;
-            return si;
-        }
-        // If it wasn't found, then create it if permitted.
-        if (create) {
-            si = PMIX_NEW(pmix_gds_shmem_session_t, tma);
-            si->session = sid;
-            PMIX_RETAIN(si);
-            job->smdata->session = si;
-            pmix_list_append(&comp->sessions, &si->super);
-            return si;
-        }
-        else {
-            return NULL;
-        }
-    }
-    // If the current session object is pointing to the default global session
-    // and we were given a specific session ID, then update it.
-    if (UINT32_MAX == job->smdata->session->session) {
-        if (UINT32_MAX == sid) {
-            // If the given SID is also UINT32_MAX, then we just add to it.
-            return job->smdata->session;
-        }
-        // See if the given ID has already been registered.
-        bool found = false;
-        pmix_gds_shmem_session_t *si;
-        PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem_session_t) {
-            if (si->session == sid) {
-                found = true;
-                break;
-            }
-        }
-        if (found) {
-            // Update the refcount on the current session object.
-            PMIX_RELEASE(job->smdata->session);
-            // Point the job tracker at the new place.
-            PMIX_RETAIN(si);
-            job->smdata->session = si;
-            return si;
-        }
-        // If it wasn't found, then create it.
-        if (create) {
-            si = PMIX_NEW(pmix_gds_shmem_session_t, tma);
-            si->session = sid;
-            PMIX_RETAIN(si);
-            job->smdata->session = si;
-            pmix_list_append(&comp->sessions, &si->super);
-            return si;
-        }
-    }
-    else if (UINT32_MAX == sid) {
-        // It's a wildcard request, so return the job-tracker session.
-        return job->smdata->session;
-    }
-
-    // The job tracker already was assigned a session ID.
-    // Check if the new one matches.
-    if (job->smdata->session->session != sid) {
-        // This is an error: you cannot assign a given job to multiple sessions.
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return NULL;
-    }
-    // The two must match, so return it.
-    return job->smdata->session;
-}
-
 static pmix_status_t
 cache_node_info(
     pmix_info_t *info,
@@ -325,12 +228,13 @@ store_app_array(
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
-    pmix_tma_t *tma = pmix_gds_shmem_get_job_tma(job);
+    pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
     // Setup arrays and lists.
     pmix_list_t *app_cache = PMIX_NEW(pmix_list_t, tma);
     if (!app_cache) {
         return PMIX_ERR_NOMEM;
     }
+
     pmix_list_t *node_cache = PMIX_NEW(pmix_list_t, tma);
     if (!node_cache) {
         PMIX_LIST_DESTRUCT(app_cache);
@@ -428,6 +332,7 @@ store_proc_data(
     const pmix_kval_t *kval
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
+
     // First, make sure this is proc data.
     if (!PMIX_CHECK_KEY(kval, PMIX_PROC_DATA)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
@@ -439,23 +344,23 @@ store_proc_data(
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
-    pmix_info_t *const iptr = (pmix_info_t *)kval->value->data.darray->array;
+    pmix_info_t *const info = (pmix_info_t *)kval->value->data.darray->array;
     // First element of the array must be the rank.
-    if (!PMIX_CHECK_KEY(&iptr[0], PMIX_RANK) ||
-        iptr[0].value.type != PMIX_PROC_RANK) {
+    if (!PMIX_CHECK_KEY(&info[0], PMIX_RANK) ||
+        info[0].value.type != PMIX_PROC_RANK) {
         rc = PMIX_ERR_TYPE_MISMATCH;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     pmix_hash_table2_t *const local_hashtab = job->smdata->local_hashtab;
-    const pmix_rank_t rank = iptr[0].value.data.rank;
+    const pmix_rank_t rank = info[0].value.data.rank;
     const size_t size = kval->value->data.darray->size;
     // Cycle through the values for this rank and store them.
     for (size_t j = 1; j < size; j++) {
         pmix_kval_t kv = {
-            .key = iptr[j].key,
-            .value = &iptr[j].value
+            .key = info[j].key,
+            .value = &info[j].value
         };
         PMIX_GDS_SHMEM_VVOUT(
             "%s:%s for nspace=%s rank=%u key=%s",
@@ -486,21 +391,22 @@ store_session_array(
     }
 
     // The first value is required to be the session ID.
-    pmix_info_t *const iptr = (pmix_info_t *)val->data.darray->array;
-    if (!PMIX_CHECK_KEY(&iptr[0], PMIX_SESSION_ID)) {
+    pmix_info_t *const info = (pmix_info_t *)val->data.darray->array;
+    if (!PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
 
     uint32_t sid;
-    PMIX_VALUE_GET_NUMBER(rc, &iptr[0].value, sid, uint32_t);
+    PMIX_VALUE_GET_NUMBER(rc, &info[0].value, sid, uint32_t);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
-    pmix_gds_shmem_session_t *sptr = check_session(job, sid, true);
-    if (!sptr) {
+    pmix_gds_shmem_session_t *sesh;
+    sesh = pmix_gds_shmem_check_session(job, sid, true);
+    if (!sesh) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -518,10 +424,10 @@ store_session_array(
     for (size_t j = 1; j < size; j++) {
         PMIX_GDS_SHMEM_VOUT(
             "%s:%s key=%s",
-            __func__, PMIX_NAME_PRINT(&pmix_globals.myid), iptr[j].key
+            __func__, PMIX_NAME_PRINT(&pmix_globals.myid), info[j].key
         );
-        if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODE_INFO_ARRAY)) {
-            rc = store_node_array(job, &iptr[j].value, ncache);
+        if (PMIX_CHECK_KEY(&info[j], PMIX_NODE_INFO_ARRAY)) {
+            rc = store_node_array(job, &info[j].value, ncache);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 goto out;
@@ -529,20 +435,20 @@ store_session_array(
         }
         else {
             pmix_kval_t *kval = PMIX_NEW(pmix_kval_t, tma);
-            kval->key = pmix_tma_strdup(tma, iptr[j].key);
-            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kval->value, &iptr[j].value, tma);
+            kval->key = pmix_tma_strdup(tma, info[j].key);
+            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kval->value, &info[j].value, tma);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kval);
                 goto out;
             }
-            pmix_list_append(sptr->sessioninfo, &kval->super);
+            pmix_list_append(sesh->sessioninfo, &kval->super);
         }
     }
 
-    pmix_gds_shmem_nodeinfo_t *nd;
-    while ((nd = (pmix_gds_shmem_nodeinfo_t *)pmix_list_remove_first(ncache))) {
-        pmix_list_append(sptr->nodeinfo, &nd->super);
+    pmix_gds_shmem_nodeinfo_t *ni;
+    while ((ni = (pmix_gds_shmem_nodeinfo_t *)pmix_list_remove_first(ncache))) {
+        pmix_list_append(sesh->nodeinfo, &ni->super);
     }
 out:
     PMIX_LIST_DESTRUCT(ncache);

@@ -57,6 +57,13 @@ pmix_gds_shmem_get_job_tracker(
     pmix_gds_shmem_job_t **job
 );
 
+PMIX_EXPORT pmix_gds_shmem_session_t *
+pmix_gds_shmem_check_session(
+    pmix_gds_shmem_job_t *job,
+    uint32_t sid,
+    bool create
+);
+
 PMIX_EXPORT bool
 pmix_gds_shmem_check_hostname(
     const char *h1,
