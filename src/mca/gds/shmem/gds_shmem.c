@@ -1193,7 +1193,8 @@ store_modex(
 
     // Estimated size required to store the unpacked modex data.
     // TODO(skg) Improve estimate.
-    const size_t seg_size = buff->bytes_used * 1024;
+    size_t seg_size = buff->bytes_used * 1024;
+    seg_size += pmix_gds_shmem_pad_amount_to_page(seg_size);
     // Create and attach to the shared-memory segment that will back these data.
     rc = pmix_gds_shmem_segment_create_and_attach(
         job, job->modex_shmem, "modexdata", seg_size
