@@ -345,6 +345,7 @@ typedef uint32_t pmix_rank_t;
 /* topology info */
 #define PMIX_TOPOLOGY2                      "pmix.topo2"            // (pmix_topology_t*) pointer to a PMIx topology object
 #define PMIX_LOCALITY_STRING                "pmix.locstr"           // (char*) string describing a proc's location
+#define PMIX_TOPOLOGY_INDEX                 "pmix.topo.index"       // (int)  index of a topology in a storage array
 
 
 /* request-related info */
