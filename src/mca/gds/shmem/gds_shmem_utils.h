@@ -78,6 +78,7 @@ pmix_gds_shmem_pad_amount_to_page(
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_segment_create_and_attach(
     pmix_gds_shmem_job_t *job,
+    pmix_shmem_t *shmem,
     const char *segment_id,
     size_t segment_size
 );

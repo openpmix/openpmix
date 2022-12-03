@@ -26,6 +26,8 @@
 
 #include "src/mca/pmdl/pmdl.h"
 
+// TODO(skg) Do we need to TMA kvs if going into ht?
+
 /**
  * Populates the provided with the elements present in the given comma-delimited
  * string. If the list is not empty, it is first cleared and then set.
@@ -36,7 +38,7 @@ set_host_aliases_from_cds(
     const char *cds
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_tma_t *tma = pmix_obj_get_tma(&list->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&list->super);
     // If the list isn't empty, release remove and release its items.
     if (!pmix_list_is_empty(list)) {
         pmix_list_item_t *it;
@@ -423,8 +425,9 @@ store_session_array(
     const size_t size = val->data.darray->size;
     for (size_t j = 1; j < size; j++) {
         PMIX_GDS_SHMEM_VOUT(
-            "%s:%s key=%s",
-            __func__, PMIX_NAME_PRINT(&pmix_globals.myid), info[j].key
+            "%s:%s key=%s", __func__,
+            PMIX_NAME_PRINT(&pmix_globals.myid),
+            info[j].key
         );
         if (PMIX_CHECK_KEY(&info[j], PMIX_NODE_INFO_ARRAY)) {
             rc = store_node_array(job, &info[j].value, ncache);
@@ -452,6 +455,46 @@ store_session_array(
     }
 out:
     PMIX_LIST_DESTRUCT(ncache);
+    return rc;
+}
+
+// TODO(skg) This needs work.
+pmix_status_t
+pmix_gds_shmem_store_qualified(
+    pmix_hash_table2_t *ht,
+    pmix_rank_t rank,
+    pmix_value_t *value
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
+
+    // The value contains a pmix_data_array_t whose first position contains the
+    // key-value being stored, followed by one or more qualifiers.
+    pmix_info_t *const info = (pmix_info_t *)value->data.darray->array;
+    const size_t ninfo = value->data.darray->size;
+
+    // TODO(skg) We may not need to TMA this if its contents get copied in
+    // ht_store() below.
+    const size_t nquals = ninfo - 1;
+    pmix_info_t *quals;
+    PMIX_GDS_SHMEM_TMA_INFO_CREATE(quals, nquals, tma);
+    for (size_t i = 1; i < ninfo; i++) {
+        PMIX_INFO_SET_QUALIFIER(&quals[i - 1]);
+        PMIX_GDS_SHMEM_TMA_INFO_XFER(&quals[i - 1], &info[i], tma);
+    }
+
+    // Extract the primary value.
+    pmix_kval_t kv;
+    PMIX_CONSTRUCT(&kv, pmix_kval_t);
+    kv.key = info[0].key;
+    kv.value = &info[0].value;
+
+    // Store the result.
+    rc = pmix_hash2_store(ht, rank, &kv, quals, nquals);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    PMIX_INFO_FREE(quals, nquals);
     return rc;
 }
 
@@ -507,8 +550,9 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
             }
         }
         else {
-            pmix_tma_t *tma = pmix_gds_shmem_get_job_tma(job);
+            pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
 
+            // TODO(skg) We might not need to TMA this.
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, kvi->key);
             PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, kvi->value, tma);
@@ -517,10 +561,9 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
                 PMIX_ERROR_LOG(rc);
                 break;
             }
-
             rc = pmix_hash2_store(
                 job->smdata->local_hashtab,
-                PMIX_RANK_WILDCARD, kvi, NULL, 0
+                PMIX_RANK_WILDCARD, kv, NULL, 0
             );
             if (PMIX_SUCCESS != rc) {
                 PMIX_RELEASE(kv);

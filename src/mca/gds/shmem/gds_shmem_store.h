@@ -22,6 +22,13 @@
 BEGIN_C_DECLS
 
 PMIX_EXPORT pmix_status_t
+pmix_gds_shmem_store_qualified(
+    pmix_hash_table2_t *ht,
+    pmix_rank_t rank,
+    pmix_value_t *value
+);
+
+PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_store_local_job_data_in_shmem(
     pmix_gds_shmem_job_t *job,
     pmix_list_t *job_data
