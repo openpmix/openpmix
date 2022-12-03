@@ -102,37 +102,42 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
 
 /**
- * Metadata for pmix_gds_shmem_shared_job_data_t, so keep in sync.
- */
-typedef enum {
-    /** Number of lists maintained within pmix_gds_shmem_shared_job_data_t. */
-    PMIX_GDS_SHMEM_SHARED_NLISTS = 3
-} pmix_gds_shmem_shared_metadata_t;
-
-// Note that the shared data structures in pmix_gds_shmem_shared_job_data_t are
-// pointers since their respective locations must reside on the shared heap
-// located in shared-memory and managed by the shared-memory TMA.
-//
-// Note to developers: if you modify this structure, please make sure that the
-// values in pmix_gds_shmem_shared_metadata_t are updated appropriately.
-/**
- * Shared data structures that reside in shared-memory.
+ * Shared data structures that reside in shared-memory. The server populates
+ * these data and clients are only permitted to read from them.
+ *
+ * Note that the shared data structures in pmix_gds_shmem_shared_*_data_t are
+ * pointers since their respective locations must reside on the shared heap
+ * located in shared-memory and managed by a shared-memory TMA.
  */
 typedef struct {
-    /** Shared-memory allocator. */
+    /** Shared-memory allocator for data this structure. */
     pmix_tma_t tma;
     /** Holds the current address of the shared-memory allocator. */
     void *current_addr;
-    /** Session information. */
+    /** Stores static remote job data. */
+    pmix_hash_table2_t *hashtab;
+} pmix_gds_shmem_shared_modex_data_t;
+
+typedef struct {
+    /** Shared-memory allocator for data this structure. */
+    pmix_tma_t tma;
+    /** Holds the current address of the shared-memory allocator. */
+    void *current_addr;
+    /** Points to this job's session information. */
     pmix_gds_shmem_session_t *session;
-    /** Job information. */
+    /** List containing job information. */
     pmix_list_t *jobinfo;
-    /** Node information. */
+    /** List containing this job's node information. */
     pmix_list_t *nodeinfo;
     /** List of applications in this job. */
     pmix_list_t *apps;
-    /** Stores local (node) job data. */
+    /** Stores static local (node) job data. */
     pmix_hash_table2_t *local_hashtab;
+    /**
+     * If not NULL, points to a structure that maintains static
+     * modex data residing in another shared-memory segment.
+     */
+    pmix_gds_shmem_shared_modex_data_t *smmodex;
 } pmix_gds_shmem_shared_job_data_t;
 
 typedef struct {
@@ -141,8 +146,16 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
-    /** Shared-memory object. */
+    /**
+     * Shared-memory object that maintains information for the 'base'
+     * shared-memory segment containing job information that may internally
+     * point to other data spanning multiple shared-memory segments.
+     */
     pmix_shmem_t *shmem;
+    /**
+     * Shared-memory object that maintains information for shared modex data.
+     */
+    pmix_shmem_t *modex_shmem;
     /** Points to shared data located in shared-memory segment. */
     pmix_gds_shmem_shared_job_data_t *smdata;
 } pmix_gds_shmem_job_t;

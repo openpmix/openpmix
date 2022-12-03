@@ -308,8 +308,9 @@ get_shmem_backing_path(
     const char *basedir = fetch_base_tmpdir(job);
     // Now that we have the base path, append unique name.
     size_t nw = snprintf(
-        path, PMIX_PATH_MAX, "%s/%s-gds-%s.%s.%d", basedir,
-        PACKAGE_NAME, PMIX_GDS_SHMEM_NAME, id, getpid()
+        path, PMIX_PATH_MAX, "%s/%s-gds-%s.%s.%s.%d",
+        basedir, PACKAGE_NAME, PMIX_GDS_SHMEM_NAME,
+        job->nspace_id, id, getpid()
     );
     if (nw >= PMIX_PATH_MAX) {
         return NULL;
@@ -323,6 +324,7 @@ get_shmem_backing_path(
 pmix_status_t
 pmix_gds_shmem_segment_create_and_attach(
     pmix_gds_shmem_job_t *job,
+    pmix_shmem_t *shmem,
     const char *segment_id,
     size_t segment_size
 ) {
@@ -350,22 +352,18 @@ pmix_gds_shmem_segment_create_and_attach(
         __func__, segment_path, segment_size
     );
     // Create a shared-memory segment backing store at the given path.
-    rc = pmix_shmem_segment_create(
-        job->shmem, segment_size, segment_path
-    );
+    rc = pmix_shmem_segment_create(shmem, segment_size, segment_path);
     if (PMIX_SUCCESS != rc) {
         goto out;
     }
     // Attach to the shared-memory segment with the given address.
     uintptr_t mmap_addr;
-    rc = pmix_shmem_segment_attach(
-        job->shmem, (void *)base_addr, &mmap_addr
-    );
+    rc = pmix_shmem_segment_attach(shmem, (void *)base_addr, &mmap_addr);
     if (PMIX_SUCCESS != rc) {
         goto out;
     }
     // Make sure that we mapped to the requested address.
-    if (mmap_addr != (uintptr_t)job->shmem->base_address) {
+    if (mmap_addr != (uintptr_t)shmem->base_address) {
         pmix_show_help(
             "help-gds-shmem.txt",
             "shmem-segment-attach:address-mismatch",
@@ -382,7 +380,7 @@ pmix_gds_shmem_segment_create_and_attach(
     );
 out:
     if (PMIX_SUCCESS != rc) {
-        (void)pmix_shmem_segment_detach(job->shmem);
+        (void)pmix_shmem_segment_detach(shmem);
     }
     return rc;
 }
