@@ -2300,6 +2300,8 @@ typedef struct{
 #define PMIX_CPUSET_CONSTRUCT(m) \
     memset((m), 0, sizeof(pmix_cpuset_t))
 
+#define PMIX_CPUSET_DESTRUCT(m)
+
 #define PMIX_CPUSET_CREATE(m, n)    \
     do {                                                                    \
         if (0 == (n))   {                                                   \
