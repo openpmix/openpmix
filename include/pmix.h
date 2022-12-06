@@ -444,7 +444,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
                                       const pmix_info_t directives[], size_t ndirs,
                                       pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* Request an allocation operation from the host resource manager.
+/* Request an allocation operation from the host scheduler.
  * Several broad categories are envisioned, including the ability to:
  *
  * - request allocation of additional resources, including memory,

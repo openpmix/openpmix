@@ -85,6 +85,7 @@ ctypedef struct pmix_pyshift_t:
     pmix_credential_cbfunc_t getcredential
     pmix_validation_cbfunc_t validationcredential
     pmix_info_cbfunc_t allocate
+    pmix_info_cbfunc_t sessioncontrol
     void *notification_cbdata
     void *cbdata
 

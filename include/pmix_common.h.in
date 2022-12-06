@@ -841,6 +841,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_FABRIC_ENDPTS_NODE       "pmix.alloc.endpts.nd"  // (size_t) number of endpoints to allocate per node
 #define PMIX_ALLOC_FABRIC_SEC_KEY           "pmix.alloc.nsec"       // (pmix_byte_object_t) fabric security key
 #define PMIX_ALLOC_QUEUE                    "pmix.alloc.queue"      // (char*) name of queue being referenced
+#define PMIX_ALLOC_PREEMPTIBLE              "pmix.alloc.preempt"    // (bool) by default, all jobs in the resulting allocation are to be
+                                                                    //        considered preemptible (overridable at per-job level)
 
 
 /* job control attributes */
@@ -874,6 +876,47 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CLEANUP_LEAVE_TOPDIR           "pmix.clnup.lvtop"      // (bool) when recursively cleaning subdirs, do not remove
                                                                     //        the top-level directory (the one given in the
                                                                     //        cleanup request)
+/* session control attributes */
+#define PMIX_SESSION_CTRL_ID                "pmix.ssnctrl.id"       // (char*) provide a string identifier for this request
+
+/* session instantiation attributes - called by scheduler
+ * Schedulers calling to create a session are required to provide:
+ *  - the effective userID and groupID that the session should have
+ *    when instantiated.
+ *  - description of the resources that are to be included in the session
+ *  - if applicable, the image that should be provisioned on nodes
+ *    included in the session
+ *  - an array of applications (if any) that are to be started in the
+ *    session once instantiated
+ */
+#define PMIX_SESSION_APP                    "pmix.ssn.app"          // (pmix_data_array_t*) Array of pmix_app_t to be executed in the assigned
+                                                                    //        session upon session instantiation
+#define PMIX_SESSION_PROVISION              "pmix.ssn.pvn"          // (pmix_data_array_t*) description of nodes to be provisioned with
+                                                                    //       specified image
+#define PMIX_SESSION_PROVISION_NODES        "pmix.ssn.pvnnds"       // (char*) regex identifying nodes that are to be provisioned
+#define PMIX_SESSION_PROVISION_IMAGE        "pmix.ssn.pvnimg"       // (char*) name of the image that is to be provisioned
+
+/* session operational attributes - called by scheduler */
+#define PMIX_SESSION_PAUSE                  "pmix.ssn.pause"        // (bool) pause all jobs in the specified session
+#define PMIX_SESSION_RESUME                 "pmix.ssn.resume"       // (bool) "un-pause" all jobs in the specified session
+#define PMIX_SESSION_TERMINATE              "pmix.ssn.terminate"    // (bool) terminate all jobs in the specified session and recover all
+                                                                    //        resources included in the session.
+#define PMIX_SESSION_PREEMPT                "pmix.ssn.preempt"      // (bool) preempt indicated jobs (given in accompanying pmix_info_t via
+                                                                    //        the PMIX_NSPACE attribute) in the specified session and recover
+                                                                    //        all their resources. If no PMIX_NSPACE is specified, then preempt
+                                                                    //        all jobs in the session.
+#define PMIX_SESSION_RESTORE                "pmix.ssn.restore"      // (bool) restore indicated jobs (given in accompanying pmix_info_t via
+                                                                    //        the PMIX_NSPACE attribute) in the specified session, including
+                                                                    //        all their resources. If no PMIX_NSPACE is specified, then restore
+                                                                    //        all jobs in the session.
+#define PMIX_SESSION_SIGNAL                 "pmix.ssn.sig"          // (int) send given signal to all processes of every job in the session
+
+/* session operational attributes - called by RTE */
+#define PMIX_SESSION_COMPLETE               "pmix.ssn.complete"     // (bool) specified session has completed, all resources have been
+                                                                    //        recovered and are available for scheduling. Must include
+                                                                    //        pmix_info_t indicating ID and returned status of any jobs
+                                                                    //        executing in the session.
+
 
 /* monitoring attributes */
 #define PMIX_MONITOR_ID                     "pmix.monitor.id"       // (char*) provide a string identifier for this request
@@ -1525,14 +1568,15 @@ typedef uint32_t pmix_info_directives_t;
 
 /* define a set of directives for allocation requests */
 typedef uint8_t pmix_alloc_directive_t;
-#define PMIX_ALLOC_NEW          1  // new allocation is being requested. The resulting allocation will be
-                                   // disjoint (i.e., not connected in a job sense) from the requesting allocation
-#define PMIX_ALLOC_EXTEND       2  // extend the existing allocation, either in time or as additional resources
-#define PMIX_ALLOC_RELEASE      3  // release part or all of the existing allocation. Attributes in the accompanying
-                                   // pmix\_info\_t array may be used to specify permanent release of the
-                                   // identified resources, or "lending" of those resources for some period
-                                   // of time.
-#define PMIX_ALLOC_REAQUIRE     4  // reacquire resources that were previously "lent" back to the scheduler
+#define PMIX_ALLOC_NEW          1   // new allocation is being requested. The resulting allocation will be
+                                    // disjoint (i.e., not connected in a job sense) from the requesting allocation
+#define PMIX_ALLOC_EXTEND       2   // extend the existing allocation, either in time or as additional resources
+#define PMIX_ALLOC_RELEASE      3   // release part or all of the existing allocation. Attributes in the accompanying
+                                    // pmix\_info\_t array may be used to specify permanent release of the
+                                    // identified resources, or "lending" of those resources for some period
+                                    // of time.
+#define PMIX_ALLOC_REAQUIRE     4   // reacquire resources that were previously "lent" back to the scheduler
+#define PMIX_ALLOC_REQ_CANCEL   5   // Cancel the indicated allocation request
 
 /* define a value boundary beyond which implementers are free
  * to define their own directive values */
