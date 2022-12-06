@@ -82,6 +82,12 @@ static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, p
 
 static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf);
 
+static void mark_modex_complete(struct pmix_peer_t *peer,
+                                pmix_list_t *nslist,
+                                pmix_buffer_t *buff);
+
+static void recv_modex_complete(pmix_buffer_t *buff);
+
 pmix_gds_base_module_t pmix_hash_module = {
     .name = "hash",
     .is_tsafe = false,
@@ -99,7 +105,9 @@ pmix_gds_base_module_t pmix_hash_module = {
     .del_nspace = nspace_del,
     .assemb_kvs_req = assemb_kvs_req,
     .accept_kvs_resp = accept_kvs_resp,
-    .fetch_arrays = pmix_gds_hash_fetch_arrays
+    .fetch_arrays = pmix_gds_hash_fetch_arrays,
+    .mark_modex_complete = mark_modex_complete,
+    .recv_modex_complete = recv_modex_complete
 };
 
 static pmix_status_t hash_init(pmix_info_t info[], size_t ninfo)
@@ -1568,4 +1576,18 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
         return rc;
     }
     return rc;
+}
+
+static void mark_modex_complete(struct pmix_peer_t *peer,
+                                pmix_list_t *nslist,
+                                pmix_buffer_t *buff)
+{
+    PMIX_HIDE_UNUSED_PARAMS(peer, nslist, buff);
+    return;
+}
+
+static void recv_modex_complete(pmix_buffer_t *buff)
+{
+    PMIX_HIDE_UNUSED_PARAMS(buff);
+    return;
 }

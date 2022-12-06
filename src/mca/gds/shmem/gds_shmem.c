@@ -1259,6 +1259,20 @@ del_nspace(
     return PMIX_SUCCESS;
 }
 
+static void mark_modex_complete(struct pmix_peer_t *peer,
+                                pmix_list_t *nslist,
+                                pmix_buffer_t *buff)
+{
+    PMIX_HIDE_UNUSED_PARAMS(peer, nslist, buff);
+    return;
+}
+
+static void recv_modex_complete(pmix_buffer_t *buff)
+{
+    PMIX_HIDE_UNUSED_PARAMS(buff);
+    return;
+}
+
 pmix_gds_base_module_t pmix_shmem_module = {
     .name = PMIX_GDS_SHMEM_NAME,
     .is_tsafe = false,
@@ -1275,7 +1289,9 @@ pmix_gds_base_module_t pmix_shmem_module = {
     .add_nspace = server_add_nspace,
     .del_nspace = del_nspace,
     .assemb_kvs_req = NULL,
-    .accept_kvs_resp = NULL
+    .accept_kvs_resp = NULL,
+    .mark_modex_complete = mark_modex_complete,
+    .recv_modex_complete = recv_modex_complete
 };
 
 /*

@@ -277,6 +277,28 @@ typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_names
         (r) = (n)->compat.gds->store_modex((struct pmix_namespace_t *) n, b, t);                  \
     } while (0)
 
+typedef void (*pmix_gds_base_module_mark_modex_complete_fn_t)(struct pmix_peer_t *peer,
+                                                              pmix_list_t *nslist,
+                                                              pmix_buffer_t *buff);
+#define PMIX_GDS_MARK_MODEX_COMPLETE(p, l, b)                               \
+    do {                                                                    \
+        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                 \
+        pmix_output_verbose(1, pmix_gds_base_output,                        \
+                            "[%s:%d] GDS MARK MODEX COMPLETE WITH %s",      \
+                            __FILE__, __LINE__, _g->name);                  \
+        _g->mark_modex_complete(p, l, b);                                   \
+    } while (0)
+
+typedef void (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buffer_t *buff);
+#define PMIX_GDS_RECV_MODEX_COMPLETE(b)                                     \
+    do {                                                                    \
+        pmix_gds_base_module_t *_g = pmix_globals.mypeer->nptr->compat.gds; \
+        pmix_output_verbose(1, pmix_gds_base_output,                        \
+                            "[%s:%d] GDS RECV MODEX COMPLETE WITH %s",      \
+                            __FILE__, __LINE__, _g->name);                  \
+        _g->recv_modex_complete(b);                                         \
+    } while (0)
+
 /**
  * fetch value corresponding to provided key from within the defined
  * scope. A NULL key returns all values committed by the given peer
@@ -447,7 +469,8 @@ typedef struct {
     pmix_gds_base_module_assemb_kvs_req_fn_t        assemb_kvs_req;
     pmix_gds_base_module_accept_kvs_resp_fn_t       accept_kvs_resp;
     pmix_gds_base_module_fetch_array_fn_t           fetch_arrays;
-
+    pmix_gds_base_module_mark_modex_complete_fn_t   mark_modex_complete;
+    pmix_gds_base_module_recv_modex_complete_fn_t   recv_modex_complete;
 } pmix_gds_base_module_t;
 
 /* NOTE: there is no public GDS interface structure - all access is
