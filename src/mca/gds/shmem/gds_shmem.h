@@ -133,6 +133,8 @@ typedef struct {
     pmix_list_t *apps;
     /** Stores static local (node) job data. */
     pmix_hash_table2_t *local_hashtab;
+    /** Shared-memory object that maintains information for smmodex data. */
+    pmix_shmem_t *modex_shmem;
     /**
      * If not NULL, points to a structure that maintains static
      * modex data residing in another shared-memory segment.
@@ -146,16 +148,14 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
+    /** Flag indicating whether or not to release shmem. */
+    bool release_shmem;
     /**
      * Shared-memory object that maintains information for the 'base'
      * shared-memory segment containing job information that may internally
      * point to other data spanning multiple shared-memory segments.
      */
     pmix_shmem_t *shmem;
-    /**
-     * Shared-memory object that maintains information for shared modex data.
-     */
-    pmix_shmem_t *modex_shmem;
     /** Points to shared data located in shared-memory segment. */
     pmix_gds_shmem_shared_job_data_t *smdata;
 } pmix_gds_shmem_job_t;

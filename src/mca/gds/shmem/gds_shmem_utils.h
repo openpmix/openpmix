@@ -96,19 +96,19 @@ pmix_gds_shmem_vout_smdata(
 ) {
     PMIX_GDS_SHMEM_VOUT(
         "shmem@%p, "
+        "smdata tma@%p, "
+        "smdata tma data_ptr=%p, "
         "jobinfo@%p, "
         "apps@%p, "
         "nodeinfo@%p, "
-        "local_hashtab@%p, "
-        "tma@%p, "
-        "tma.data_ptr=%p",
+        "local_hashtab@%p",
         (void *)job->shmem->base_address,
+        (void *)&job->smdata->tma,
+        (void *)job->smdata->tma.data_ptr,
         (void *)job->smdata->jobinfo,
         (void *)job->smdata->apps,
         (void *)job->smdata->nodeinfo,
-        (void *)job->smdata->local_hashtab,
-        (void *)&job->smdata->tma,
-        (void *)job->smdata->tma.data_ptr
+        (void *)job->smdata->local_hashtab
     );
 }
 

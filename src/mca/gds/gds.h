@@ -289,14 +289,14 @@ typedef void (*pmix_gds_base_module_mark_modex_complete_fn_t)(struct pmix_peer_t
         _g->mark_modex_complete(p, l, b);                                   \
     } while (0)
 
-typedef void (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buffer_t *buff);
-#define PMIX_GDS_RECV_MODEX_COMPLETE(b)                                     \
+typedef pmix_status_t (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buffer_t *buff);
+#define PMIX_GDS_RECV_MODEX_COMPLETE(r, p, b)                               \
     do {                                                                    \
-        pmix_gds_base_module_t *_g = pmix_globals.mypeer->nptr->compat.gds; \
+        pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                 \
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS RECV MODEX COMPLETE WITH %s",      \
                             __FILE__, __LINE__, _g->name);                  \
-        _g->recv_modex_complete(b);                                         \
+        (r) = _g->recv_modex_complete(b);                                   \
     } while (0)
 
 /**

@@ -34,6 +34,15 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
     pmix_list_t *job_data
 );
 
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem_store_modex_in_shmem(
+    pmix_gds_base_ctx_t ctx,
+    pmix_proc_t *proc,
+    pmix_gds_modex_key_fmt_t key_fmt,
+    char **kmap,
+    pmix_buffer_t *pbkt
+);
+
 END_C_DECLS
 
 #endif
