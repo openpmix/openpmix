@@ -197,6 +197,11 @@ static pmix_status_t unpack_return(pmix_buffer_t *data)
     }
     pmix_output_verbose(2, pmix_client_globals.fence_output,
                         "client:unpack fence received status %d", ret);
+    
+    /* provide an opportunity to store any data (or at least how to access
+     * any data) that was included in the fence */
+    PMIX_GDS_RECV_MODEX_COMPLETE(data);
+
     return ret;
 }
 
