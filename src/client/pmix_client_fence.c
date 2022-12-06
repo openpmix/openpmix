@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -200,7 +201,12 @@ static pmix_status_t unpack_return(pmix_buffer_t *data)
     
     /* provide an opportunity to store any data (or at least how to access
      * any data) that was included in the fence */
-    PMIX_GDS_RECV_MODEX_COMPLETE(data);
+    // TODO(skg) Is this peer correct? It seems to work.
+    PMIX_GDS_RECV_MODEX_COMPLETE(rc, pmix_client_globals.myserver, data);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
     return ret;
 }

@@ -86,7 +86,7 @@ static void mark_modex_complete(struct pmix_peer_t *peer,
                                 pmix_list_t *nslist,
                                 pmix_buffer_t *buff);
 
-static void recv_modex_complete(pmix_buffer_t *buff);
+static pmix_status_t recv_modex_complete(pmix_buffer_t *buff);
 
 pmix_gds_base_module_t pmix_hash_module = {
     .name = "hash",
@@ -1586,8 +1586,9 @@ static void mark_modex_complete(struct pmix_peer_t *peer,
     return;
 }
 
-static void recv_modex_complete(pmix_buffer_t *buff)
+static pmix_status_t recv_modex_complete(pmix_buffer_t *buff)
 {
     PMIX_HIDE_UNUSED_PARAMS(buff);
-    return;
+    /* nothing to do. */
+    return PMIX_SUCCESS;
 }

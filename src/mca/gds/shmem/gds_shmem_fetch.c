@@ -64,7 +64,6 @@ get_nodeinfo_by_nodename(
     return NULL;
 }
 
-
 /**
  * Fetches all node info from a given nodeinfo.
  */
@@ -572,20 +571,27 @@ pmix_gds_shmem_fetch(
         return rc;
     }
 
-    pmix_hash_table2_t *const ht = job->smdata->local_hashtab;
+    pmix_hash_table2_t *const local_ht = job->smdata->local_hashtab;
+    // Modex data are stored in PMIX_REMOTE.
+#if 0
+    pmix_hash_table2_t *const remote_ht = job->smdata->smmodex ?
+                                          job->smdata->smmodex->hashtab : NULL;
+#else
+    pmix_hash_table2_t *const remote_ht = NULL;
+#endif
 
-    // If the rank is wildcard and the key is NULL, then the caller is asking
-    // for a complete copy of the job-level info for this nspace, so retrieve
-    // it.
+    // If the rank is wildcard and key is NULL, then the caller is asking for a
+    // complete copy of the job-level info for this nspace, so retrieve it.
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
         // Fetch all values from the hash table tied to rank=wildcard.
         rc = pmix_hash2_fetch(
-            ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
+            local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
         );
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
         // Also need to add any job-level info.
+        // TODO(skg) Pass back the pointer to kv->value.
         pmix_kval_t *kvi;
         PMIX_LIST_FOREACH (kvi, job->smdata->jobinfo, pmix_kval_t) {
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
@@ -617,11 +623,13 @@ pmix_gds_shmem_fetch(
             return rc;
         }
         // Finally, we need the job-level info for each rank in the job.
-        for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
+        for (pmix_rank_t rank = 0; rank < job->nspace->nprocs; rank++) {
             pmix_list_t rkvs;
             PMIX_CONSTRUCT(&rkvs, pmix_list_t);
 
-            rc = pmix_hash2_fetch(ht, rnk, NULL, NULL, 0, &rkvs);
+            rc = pmix_hash2_fetch(
+                local_ht, rank, NULL, NULL, 0, &rkvs
+            );
             if (PMIX_ERR_NOMEM == rc) {
                 PMIX_LIST_DESTRUCT(&rkvs);
                 return rc;
@@ -641,7 +649,7 @@ pmix_gds_shmem_fetch(
             PMIX_DATA_ARRAY_CREATE(kv->value->data.darray, niptr, PMIX_INFO);
             pmix_info_t *iptr = (pmix_info_t *)kv->value->data.darray->array;
             // Start with the rank.
-            PMIX_INFO_LOAD(&iptr[0], PMIX_RANK, &rnk, PMIX_PROC_RANK);
+            PMIX_INFO_LOAD(&iptr[0], PMIX_RANK, &rank, PMIX_PROC_RANK);
             // Now transfer rest of data across.
             size_t i = 1;
             PMIX_LIST_FOREACH(kvi, &rkvs, pmix_kval_t) {
@@ -711,10 +719,32 @@ pmix_gds_shmem_fetch(
             return rc;
         }
     }
+
+    // Fetch from the corresponding hash table.
+    // TODO(skg) I'm guessing this is one spot where we can decide if a copy is
+    // appropriate.
+    pmix_hash_table2_t *ht = job->smdata->local_hashtab;
+    if (PMIX_INTERNAL == scope ||
+        PMIX_LOCAL == scope ||
+        PMIX_GLOBAL == scope ||
+        PMIX_SCOPE_UNDEF == scope ||
+        PMIX_RANK_WILDCARD == proc->rank) {
+        ht = local_ht;
+    }
+    else if (PMIX_REMOTE == scope) {
+        // Note that this ht can be NULL.
+        ht = remote_ht;
+    }
+    else {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+doover:
     // If rank=PMIX_RANK_UNDEF, then we need to search all
     // known ranks for this nspace as any one of them could
     // be the source.
-    if (PMIX_RANK_UNDEF == proc->rank) {
+    if (PMIX_RANK_UNDEF == proc->rank && ht) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
             rc = pmix_hash2_fetch(ht, rnk, key, qualifiers, nqual, kvs);
             if (PMIX_ERR_NOMEM == rc) {
@@ -725,13 +755,13 @@ pmix_gds_shmem_fetch(
             }
         }
         // Also need to check any job-level info.
-        pmix_kval_t *kvptr;
-        PMIX_LIST_FOREACH (kvptr, job->smdata->jobinfo, pmix_kval_t) {
-            if (NULL == key || PMIX_CHECK_KEY(kvptr, key)) {
+        pmix_kval_t *kvi;
+        PMIX_LIST_FOREACH (kvi, job->smdata->jobinfo, pmix_kval_t) {
+            if (NULL == key || PMIX_CHECK_KEY(kvi, key)) {
                 pmix_kval_t *kv;
                 kv = PMIX_NEW(pmix_kval_t);
-                kv->key = strdup(kvptr->key);
-                PMIX_VALUE_XFER(rc, kv->value, kvptr->value);
+                kv->key = strdup(kvi->key);
+                PMIX_VALUE_XFER(rc, kv->value, kvi->value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_RELEASE(kv);
                     return rc;
@@ -743,16 +773,50 @@ pmix_gds_shmem_fetch(
             }
         }
         if (NULL == key) {
-            // And need to add all job info just in case that was passed via a
-            // different GDS component.
-            rc = pmix_hash2_fetch(ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
+            // And need to add all job info just in case
+            // that was passed via a different GDS component.
+            rc = pmix_hash2_fetch(
+                local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
+            );
         }
         else {
             rc = PMIX_ERR_NOT_FOUND;
         }
     }
     else {
-        rc = pmix_hash2_fetch(ht, proc->rank, key, qualifiers, nqual, kvs);
+        if (ht) {
+            rc = pmix_hash2_fetch(
+                ht, proc->rank, key, qualifiers, nqual, kvs
+            );
+        }
+        else {
+            rc = PMIX_ERR_NOT_FOUND;
+        }
+    }
+
+    if (PMIX_SUCCESS == rc) {
+        if (PMIX_GLOBAL == scope) {
+            if (ht == local_ht) {
+                // We need to do this again for the remote data.
+                ht = remote_ht;
+                goto doover;
+            }
+        }
+    }
+    else {
+        if (PMIX_GLOBAL == scope || PMIX_SCOPE_UNDEF == scope) {
+            if (ht == local_ht) {
+                // We need to also try the remote data.
+                ht = remote_ht;
+                goto doover;
+            }
+        }
+    }
+
+    if (0 == pmix_list_get_size(kvs)) {
+        // If we didn't find it and the rank was
+        // valid, then let hash deal with it.
+        rc = PMIX_ERR_NOT_FOUND;
     }
 
     return rc;

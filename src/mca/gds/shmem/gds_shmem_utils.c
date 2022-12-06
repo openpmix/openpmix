@@ -376,11 +376,15 @@ pmix_gds_shmem_segment_create_and_attach(
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
-        "%s: mmapd at address=0x%zx", __func__, (size_t)mmap_addr
+        "%s:%s mmapd at address=0x%zx",
+        __func__, segment_id, (size_t)mmap_addr
     );
 out:
     if (PMIX_SUCCESS != rc) {
         (void)pmix_shmem_segment_detach(shmem);
+    }
+    else {
+        job->release_shmem = true;
     }
     return rc;
 }
