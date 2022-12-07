@@ -2286,6 +2286,11 @@ typedef uint8_t pmix_link_state_t;
 
 
 /****   PMIX CPUSET    ****/
+/* Bring function definition across for symmetry macro. We have to do this as
+ * there are people who only included pmix_common.h if they were using macros
+ * but not APIs */
+PMIX_EXPORT void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset);
+
 typedef struct{
     char *source;
     void *bitmap;
@@ -2300,7 +2305,8 @@ typedef struct{
 #define PMIX_CPUSET_CONSTRUCT(m) \
     memset((m), 0, sizeof(pmix_cpuset_t))
 
-#define PMIX_CPUSET_DESTRUCT(m)
+#define PMIX_CPUSET_DESTRUCT(m) \
+    PMIx_Cpuset_destruct(m);
 
 #define PMIX_CPUSET_CREATE(m, n)    \
     do {                                                                    \
