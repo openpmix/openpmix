@@ -277,16 +277,16 @@ typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_names
         (r) = (n)->compat.gds->store_modex((struct pmix_namespace_t *) n, b, t);                  \
     } while (0)
 
-typedef void (*pmix_gds_base_module_mark_modex_complete_fn_t)(struct pmix_peer_t *peer,
-                                                              pmix_list_t *nslist,
-                                                              pmix_buffer_t *buff);
-#define PMIX_GDS_MARK_MODEX_COMPLETE(p, l, b)                               \
+typedef pmix_status_t (*pmix_gds_base_module_mark_modex_complete_fn_t)(struct pmix_peer_t *peer,
+                                                                       pmix_list_t *nslist,
+                                                                       pmix_buffer_t *buff);
+#define PMIX_GDS_MARK_MODEX_COMPLETE(r, p, l, b)                            \
     do {                                                                    \
         pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                 \
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS MARK MODEX COMPLETE WITH %s",      \
                             __FILE__, __LINE__, _g->name);                  \
-        _g->mark_modex_complete(p, l, b);                                   \
+        (r) = _g->mark_modex_complete(p, l, b);                             \
     } while (0)
 
 typedef pmix_status_t (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buffer_t *buff);
