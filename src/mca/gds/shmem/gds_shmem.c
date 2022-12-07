@@ -1192,13 +1192,14 @@ del_nspace(
     return PMIX_SUCCESS;
 }
 
-static void
+static pmix_status_t
 server_mark_modex_complete(
     struct pmix_peer_t *peer,
     pmix_list_t *nslist,
     pmix_buffer_t *buff
 ) {
     PMIX_HIDE_UNUSED_PARAMS(peer, nslist, buff);
+    return PMIX_SUCCESS;
 }
 
 // TODO(skg) The buffer will eventually contain a list of nspaces that we need

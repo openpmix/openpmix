@@ -3441,7 +3441,12 @@ finish_collective:
         }
         /* let the gds have a chance to add any data it needs
          * for providing access to any collected data */
-        PMIX_GDS_MARK_MODEX_COMPLETE(cd->peer, &nslist, reply);
+        PMIX_GDS_MARK_MODEX_COMPLETE(rc, cd->peer, &nslist, reply);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(reply);
+            PMIX_ERROR_LOG(rc);
+            goto cleanup;
+        }
         pmix_output_verbose(2, pmix_server_globals.base_output,
                             "server:modex_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
