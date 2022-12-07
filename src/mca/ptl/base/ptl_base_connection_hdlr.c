@@ -60,6 +60,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     char *msg = NULL, *mg, *p, *blob = NULL;
     uint32_t u32;
     size_t cnt;
+    size_t len = 0;
     pmix_namespace_t *nptr, *tmp;
     pmix_rank_info_t *info = NULL, *iptr;
     pmix_proc_t proc;
@@ -83,8 +84,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     memset(&hdr, 0, sizeof(pmix_ptl_hdr_t));
 
     /* get the header */
-    if (PMIX_SUCCESS
-        != pmix_ptl_base_recv_blocking(pnd->sd, (char *) &hdr, sizeof(pmix_ptl_hdr_t))) {
+    rc = pmix_ptl_base_recv_blocking(pnd->sd, (char *) &hdr, sizeof(pmix_ptl_hdr_t));
+    if (PMIX_SUCCESS != rc) {
         goto error;
     }
 
@@ -150,7 +151,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     case PMIX_TOOL_NEEDS_ID:
     case PMIX_LAUNCHER_NEEDS_ID:
         /* self-started tool/launcher process that needs an identifier */
-        if (3 == pnd->flag) {
+        if (PMIX_TOOL_NEEDS_ID == pnd->flag) {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
         } else {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
@@ -165,11 +166,14 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     case PMIX_TOOL_GIVEN_ID:
     case PMIX_LAUNCHER_GIVEN_ID:
     case PMIX_SINGLETON_CLIENT:
+    case PMIX_SCHEDULER_WITH_ID:
         /* self-started tool/launcher process that was given an identifier by caller */
-        if (4 == pnd->flag) {
+        if (PMIX_TOOL_GIVEN_ID == pnd->flag) {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
-        } else {
+        } else if (PMIX_LAUNCHER_GIVEN_ID == pnd->flag) {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
+        } else if (PMIX_SCHEDULER_WITH_ID == pnd->flag) {
+            PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_SCHEDULER);
         }
         /* get their uid/gid */
         PMIX_PTL_GET_U32(pnd->uid);
@@ -181,7 +185,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     case PMIX_TOOL_CLIENT:
     case PMIX_LAUNCHER_CLIENT:
         /* tool/launcher that was started by a PMIx server - identifier specified by server */
-        if (5 == pnd->flag) {
+        if (PMIX_TOOL_CLIENT == pnd->flag) {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_TOOL);
         } else {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
@@ -228,7 +232,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 
         /* extract the blob */
         if (0 < cnt) {
-            PMIX_PTL_GET_BLOB(blob, cnt);
+            len = cnt;
+            PMIX_PTL_GET_BLOB(blob, len);
         }
     }
 
@@ -236,7 +241,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (PMIX_SIMPLE_CLIENT != pnd->flag) {
         /* nope, it's for a tool, so process it
          * separately - it is a 2-step procedure */
-        rc = process_tool_request(pnd, blob, cnt);
+        rc = process_tool_request(pnd, blob, len);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto error;
@@ -668,7 +673,8 @@ static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata)
     PMIX_THREADSHIFT(cd, process_cbfunc);
 }
 
-static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd, char *mg, size_t cnt)
+static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
+                                          char *mg, size_t cnt)
 {
     pmix_peer_t *peer;
     pmix_namespace_t *nptr, *tmp;

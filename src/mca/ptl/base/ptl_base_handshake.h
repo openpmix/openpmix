@@ -31,29 +31,32 @@ BEGIN_C_DECLS
 
 /* define flag values that indicate the type of process attempting
  * to connect to a server:
- * 0 => simple client process
- * 1 => legacy tool - may or may not have an identifier
- * 2 => legacy launcher - may or may not have an identifier
+ *  0 => simple client process
+ *  1 => legacy tool - may or may not have an identifier
+ *  2 => legacy launcher - may or may not have an identifier
  * ------------------------------------------
- * 3 => self-started tool process that needs an identifier
- * 4 => self-started tool process that was given an identifier by caller
- * 5 => tool that was started by a PMIx server - identifier specified by server
- * 6 => self-started launcher that needs an identifier
- * 7 => self-started launcher that was given an identifier by caller
- * 8 => launcher that was started by a PMIx server - identifier specified by server
- * 9 => singleton client - treated like a tool that has an identifier
+ *  3 => self-started tool process that needs an identifier
+ *  4 => self-started tool process that was given an identifier by caller
+ *  5 => tool that was started by a PMIx server - identifier specified by server
+ *  6 => self-started launcher that needs an identifier
+ *  7 => self-started launcher that was given an identifier by caller
+ *  8 => launcher that was started by a PMIx server - identifier specified by server
+ *  9 => singleton client - treated like a tool that has an identifier
+ * ------------------------------------------
+ * 10 => scheduler
  */
 typedef uint8_t pmix_rnd_flag_t;
-#define PMIX_SIMPLE_CLIENT     0
-#define PMIX_LEGACY_TOOL       1
-#define PMIX_LEGACY_LAUNCHER   2
-#define PMIX_TOOL_NEEDS_ID     3
-#define PMIX_TOOL_GIVEN_ID     4
-#define PMIX_TOOL_CLIENT       5
-#define PMIX_LAUNCHER_NEEDS_ID 6
-#define PMIX_LAUNCHER_GIVEN_ID 7
-#define PMIX_LAUNCHER_CLIENT   8
-#define PMIX_SINGLETON_CLIENT  9
+#define PMIX_SIMPLE_CLIENT      0
+#define PMIX_LEGACY_TOOL        1
+#define PMIX_LEGACY_LAUNCHER    2
+#define PMIX_TOOL_NEEDS_ID      3
+#define PMIX_TOOL_GIVEN_ID      4
+#define PMIX_TOOL_CLIENT        5
+#define PMIX_LAUNCHER_NEEDS_ID  6
+#define PMIX_LAUNCHER_GIVEN_ID  7
+#define PMIX_LAUNCHER_CLIENT    8
+#define PMIX_SINGLETON_CLIENT   9
+#define PMIX_SCHEDULER_WITH_ID 10
 
 /* The following macros are used in the ptl_base_connection_hdlr.c
  * file to parse the handshake message and extract its fields */

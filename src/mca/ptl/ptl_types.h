@@ -77,10 +77,13 @@ typedef struct {
 #define PMIX_RELEASE_WILDCARD 255
 
 /* use 255 as WILDCARD for the release triplet values */
-#define PMIX_PROC_TYPE_STATIC_INIT                                                           \
-    {                                                                                        \
-        .type = PMIX_PROC_UNDEF, .major = PMIX_MAJOR_WILDCARD, .minor = PMIX_MINOR_WILDCARD, \
-        .release = PMIX_RELEASE_WILDCARD, .flag = 0                                          \
+#define PMIX_PROC_TYPE_STATIC_INIT          \
+    {                                       \
+        .type = PMIX_PROC_UNDEF,            \
+        .major = PMIX_MAJOR_WILDCARD,       \
+        .minor = PMIX_MINOR_WILDCARD,       \
+        .release = PMIX_RELEASE_WILDCARD,   \
+        .flag = 0                           \
     }
 
 /* Define process types - we use a bit-mask as procs can

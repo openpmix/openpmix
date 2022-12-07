@@ -516,13 +516,15 @@ pmix_status_t pmix_ptl_base_setup_connection(char *uri, struct sockaddr_storage 
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t send_connect_ack(pmix_peer_t *peer, pmix_info_t iptr[], size_t niptr)
+static pmix_status_t send_connect_ack(pmix_peer_t *peer,
+                                      pmix_info_t iptr[], size_t niptr)
 {
     char *msg;
     size_t sdsize = 0;
     pmix_status_t rc;
 
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "pmix:ptl SEND CONNECT ACK");
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:ptl SEND CONNECT ACK");
 
     /* allow space for a marker indicating client vs tool */
     sdsize = 1;
@@ -533,6 +535,7 @@ static pmix_status_t send_connect_ack(pmix_peer_t *peer, pmix_info_t iptr[], siz
     /* construct the contact message */
     rc = pmix_ptl_base_construct_message(peer, &msg, &sdsize, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
 
@@ -722,6 +725,12 @@ pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz)
             }
         }
 
+    } else if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
+        /* add space for our uid/gid for ACL purposes */
+        sdsize += 2 * sizeof(uint32_t);
+        flag = PMIX_SCHEDULER_WITH_ID;
+        sdsize += strlen(pmix_globals.myid.nspace) + 1 + sizeof(uint32_t);
+
     } else if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)
                && !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         if (PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
@@ -879,6 +888,7 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, char **msgout, 
 
     case PMIX_TOOL_GIVEN_ID:
     case PMIX_LAUNCHER_GIVEN_ID:
+    case PMIX_SCHEDULER_WITH_ID:
     case PMIX_SINGLETON_CLIENT:
         /* self-started tool/launcher/singleton process that was given an identifier by caller */
         euid = geteuid();
