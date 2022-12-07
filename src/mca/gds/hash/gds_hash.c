@@ -82,9 +82,9 @@ static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, p
 
 static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf);
 
-static void mark_modex_complete(struct pmix_peer_t *peer,
-                                pmix_list_t *nslist,
-                                pmix_buffer_t *buff);
+static pmix_status_t mark_modex_complete(struct pmix_peer_t *peer,
+                                         pmix_list_t *nslist,
+                                         pmix_buffer_t *buff);
 
 static void recv_modex_complete(pmix_buffer_t *buff);
 
@@ -1578,12 +1578,13 @@ static pmix_status_t accept_kvs_resp(pmix_buffer_t *buf)
     return rc;
 }
 
-static void mark_modex_complete(struct pmix_peer_t *peer,
-                                pmix_list_t *nslist,
-                                pmix_buffer_t *buff)
+static pmix_status_t mark_modex_complete(struct pmix_peer_t *peer,
+                                         pmix_list_t *nslist,
+                                         pmix_buffer_t *buff)
 {
     PMIX_HIDE_UNUSED_PARAMS(peer, nslist, buff);
-    return;
+    /* nothing to do. */
+    return PMIX_SUCCESS;
 }
 
 static void recv_modex_complete(pmix_buffer_t *buff)
