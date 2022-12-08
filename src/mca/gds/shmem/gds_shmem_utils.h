@@ -70,6 +70,16 @@ pmix_gds_shmem_check_hostname(
     const char *h2
 );
 
+/**
+ * Sets shmem to the appropriate pmix_shmem_t *.
+ */
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem_get_job_shmem_from_id(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id,
+    pmix_shmem_t **shmem
+);
+
 PMIX_EXPORT size_t
 pmix_gds_shmem_pad_amount_to_page(
     size_t size
@@ -81,6 +91,12 @@ pmix_gds_shmem_segment_create_and_attach(
     pmix_shmem_t *shmem,
     const char *segment_id,
     size_t segment_size
+);
+
+PMIX_EXPORT pmix_status_t
+pmix_gds_shmem_segment_attach_and_init(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id
 );
 
 static inline pmix_tma_t *

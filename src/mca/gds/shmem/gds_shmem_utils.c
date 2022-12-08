@@ -195,6 +195,27 @@ pmix_gds_shmem_check_hostname(
     return (0 == strcmp(h1, h2));
 }
 
+pmix_status_t
+pmix_gds_shmem_get_job_shmem_from_id(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id,
+    pmix_shmem_t **shmem
+) {
+    switch (shmem_id) {
+        case PMIX_GDS_SHMEM_JOB_SHMEM_JOB:
+            *shmem = job->shmem;
+            break;
+        case PMIX_GDS_SHMEM_JOB_SHMEM_MODEX:
+            *shmem = job->modex_shmem;
+            break;
+        case PMIX_GDS_SHMEM_JOB_SHMEM_INVALID:
+        default:
+            *shmem = NULL;
+            return PMIX_ERROR;
+    }
+    return PMIX_SUCCESS;
+}
+
 /**
  * Returns page size.
  */
@@ -319,6 +340,50 @@ get_shmem_backing_path(
 }
 
 /**
+ * Attaches to the given shared-memory segment.
+ */
+static pmix_status_t
+shmem_attach(
+    pmix_shmem_t *shmem,
+    uintptr_t req_addr
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    uintptr_t mmap_addr = 0;
+    rc = pmix_shmem_segment_attach(
+        shmem, (void *)req_addr, &mmap_addr
+    );
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    // Make sure that we mapped to the requested address.
+    // TODO(skg) Why doesn't this display sometimes?
+    if (mmap_addr != req_addr) {
+        pmix_show_help(
+            "help-gds-shmem.txt",
+            "shmem-segment-attach:address-mismatch",
+            true, (size_t)req_addr, (size_t)mmap_addr
+        );
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+
+    PMIX_GDS_SHMEM_VOUT(
+        "%s: mmapd at address=0x%zx", __func__, (size_t)mmap_addr
+    );
+
+out:
+    if (PMIX_SUCCESS != rc) {
+        (void)pmix_shmem_segment_detach(shmem);
+    }
+
+    return rc;
+}
+
+/**
  * Create and attach to a shared-memory segment.
  */
 pmix_status_t
@@ -339,7 +404,8 @@ pmix_gds_shmem_segment_create_and_attach(
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
-        "%s: found vmhole at address=0x%zx", __func__, base_addr
+        "%s:%s found vmhole at address=0x%zx",
+        __func__, segment_id, base_addr
     );
     // Find a unique path for the shared-memory backing file.
     const char *segment_path = get_shmem_backing_path(job, segment_id);
@@ -356,36 +422,70 @@ pmix_gds_shmem_segment_create_and_attach(
     if (PMIX_SUCCESS != rc) {
         goto out;
     }
-    // Attach to the shared-memory segment with the given address.
-    uintptr_t mmap_addr;
-    rc = pmix_shmem_segment_attach(shmem, (void *)base_addr, &mmap_addr);
-    if (PMIX_SUCCESS != rc) {
-        goto out;
-    }
-    // Make sure that we mapped to the requested address.
-    if (mmap_addr != (uintptr_t)shmem->base_address) {
-        pmix_show_help(
-            "help-gds-shmem.txt",
-            "shmem-segment-attach:address-mismatch",
-            true,
-            (size_t)base_addr,
-            (size_t)mmap_addr
-
-        );
-        rc = PMIX_ERROR;
-        goto out;
-    }
-    PMIX_GDS_SHMEM_VOUT(
-        "%s:%s mmapd at address=0x%zx",
-        __func__, segment_id, (size_t)mmap_addr
-    );
+    // Attach to the shared-memory segment.
+    rc = shmem_attach(shmem, (uintptr_t)base_addr);
 out:
-    if (PMIX_SUCCESS != rc) {
-        (void)pmix_shmem_segment_detach(shmem);
-    }
-    else {
+    if (PMIX_SUCCESS == rc) {
         job->release_shmem = true;
     }
+
+    return rc;
+}
+
+static inline pmix_status_t
+init_sm_data(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id
+) {
+    switch (shmem_id) {
+        case PMIX_GDS_SHMEM_JOB_SHMEM_JOB:
+            job->smdata = job->shmem->base_address;
+            break;
+        case PMIX_GDS_SHMEM_JOB_SHMEM_MODEX:
+            job->smmodex = job->modex_shmem->base_address;
+            break;
+        case PMIX_GDS_SHMEM_JOB_SHMEM_INVALID:
+        default:
+            return PMIX_ERROR;
+    }
+    // Note: don't update the TMA to point to its local function pointers
+    // because clients should only be reading from the shared-memory segment.
+    pmix_gds_shmem_vout_smdata(job);
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t
+pmix_gds_shmem_segment_attach_and_init(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    pmix_shmem_t *shmem;
+    rc = pmix_gds_shmem_get_job_shmem_from_id(
+        job, shmem_id, &shmem
+    );
+    if (rc != PMIX_SUCCESS) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    // Note that shmem->base_address should have already been populated.
+    const uintptr_t req_addr = (uintptr_t)shmem->base_address;
+    rc = shmem_attach(shmem, req_addr);
+    if (rc != PMIX_SUCCESS) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    // Now we can safely initialize our shared data structures.
+    rc = init_sm_data(job, shmem_id);
+#if 0
+    // Protect memory: clients can only read from here.
+    mprotect(
+        shmem->base_address, shmem->size, PROT_READ
+    );
+#endif
     return rc;
 }
 

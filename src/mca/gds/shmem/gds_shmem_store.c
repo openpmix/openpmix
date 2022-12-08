@@ -597,7 +597,7 @@ pmix_gds_shmem_store_modex_in_shmem(
         return rc;
     }
 
-    pmix_hash_table2_t *const ht = job->smdata->smmodex->hashtab;
+    pmix_hash_table2_t *const ht = job->smmodex->hashtab;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
     // This is data returned via the PMIx_Fence call when data collection was
