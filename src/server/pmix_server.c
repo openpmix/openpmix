@@ -3389,12 +3389,6 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
         goto finish_collective;
     }
 
-    // Skip the data if we didn't collect it
-    if (PMIX_COLLECT_YES != tracker->collect_type || NULL == scd->data) {
-        rc = PMIX_SUCCESS;
-        goto finish_collective;
-    }
-
     /* Collect the nptr list with uniq GDS components of all local
      * participants. It does not allow multiple storing to the
      * same GDS if participants have mutual GDS. */
@@ -3415,6 +3409,13 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
             pmix_list_append(&nslist, &nptr->super);
         }
     }
+
+    // Skip storing the data if we didn't collect it
+    if (PMIX_COLLECT_YES != tracker->collect_type || NULL == scd->data) {
+        rc = PMIX_SUCCESS;
+        goto finish_collective;
+    }
+
     PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
         /* pass the blobs being returned */
         PMIX_LOAD_BUFFER(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
