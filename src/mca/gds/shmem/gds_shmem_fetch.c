@@ -573,12 +573,8 @@ pmix_gds_shmem_fetch(
 
     pmix_hash_table2_t *const local_ht = job->smdata->local_hashtab;
     // Modex data are stored in PMIX_REMOTE.
-#if 0
-    pmix_hash_table2_t *const remote_ht = job->smdata->smmodex ?
-                                          job->smdata->smmodex->hashtab : NULL;
-#else
-    pmix_hash_table2_t *const remote_ht = NULL;
-#endif
+    pmix_hash_table2_t *const remote_ht = job->modex_shmem ?
+                                          job->smmodex->hashtab : NULL;
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
     // complete copy of the job-level info for this nspace, so retrieve it.

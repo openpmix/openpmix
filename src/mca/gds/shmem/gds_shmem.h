@@ -59,6 +59,15 @@ BEGIN_C_DECLS
 
 extern pmix_gds_base_module_t pmix_shmem_module;
 
+/**
+ * IDs for pmix_shmem_ts in pmix_gds_shmem_job_t.
+ */
+typedef enum {
+    PMIX_GDS_SHMEM_JOB_SHMEM_JOB,
+    PMIX_GDS_SHMEM_JOB_SHMEM_MODEX,
+    PMIX_GDS_SHMEM_JOB_SHMEM_INVALID
+} pmix_gds_shmem_job_shmem_id_t;
+
 typedef struct {
     pmix_gds_base_component_t super;
     /** List of jobs that I'm supporting. */
@@ -133,13 +142,6 @@ typedef struct {
     pmix_list_t *apps;
     /** Stores static local (node) job data. */
     pmix_hash_table2_t *local_hashtab;
-    /** Shared-memory object that maintains information for smmodex data. */
-    pmix_shmem_t *modex_shmem;
-    /**
-     * If not NULL, points to a structure that maintains static
-     * modex data residing in another shared-memory segment.
-     */
-    pmix_gds_shmem_shared_modex_data_t *smmodex;
 } pmix_gds_shmem_shared_job_data_t;
 
 typedef struct {
@@ -150,14 +152,17 @@ typedef struct {
     pmix_namespace_t *nspace;
     /** Flag indicating whether or not to release shmem. */
     bool release_shmem;
-    /**
-     * Shared-memory object that maintains information for the 'base'
-     * shared-memory segment containing job information that may internally
-     * point to other data spanning multiple shared-memory segments.
-     */
+    /** Shared-memory object that maintains information for smjob data. */
     pmix_shmem_t *shmem;
+    /** Shared-memory object that maintains information for smmodex data. */
+    pmix_shmem_t *modex_shmem;
     /** Points to shared data located in shared-memory segment. */
     pmix_gds_shmem_shared_job_data_t *smdata;
+    /**
+     * Points to a structure that maintains static modex
+     * data residing in another shared-memory segment.
+     */
+    pmix_gds_shmem_shared_modex_data_t *smmodex;
 } pmix_gds_shmem_job_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
 
