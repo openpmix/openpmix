@@ -20,17 +20,11 @@
 // TODO(skg) This will eventually go away.
 #include "pmix_hash2.h"
 
-#include "src/common/pmix_iof.h"
-
-#include "src/mca/pcompress/base/base.h"
-
-#include "src/mca/pmdl/pmdl.h"
-
 /**
  * Populates the provided with the elements present in the given comma-delimited
  * string. If the list is not empty, it is first cleared and then set.
  */
-static pmix_status_t
+static inline pmix_status_t
 set_host_aliases_from_cds(
     pmix_list_t *list,
     const char *cds
@@ -48,7 +42,7 @@ set_host_aliases_from_cds(
 
     // Now, add each element present in the comma-delimited string list.
     char **tmp = pmix_argv_split(cds, ',');
-    if (!tmp) {
+    if (PMIX_UNLIKELY(!tmp)) {
         rc = PMIX_ERR_NOMEM;
         goto out;
     }
@@ -56,17 +50,16 @@ set_host_aliases_from_cds(
     for (size_t i = 0; NULL != tmp[i]; i++) {
         pmix_gds_shmem_host_alias_t *alias;
         alias = PMIX_NEW(pmix_gds_shmem_host_alias_t, tma);
-        if (!alias) {
+        if (PMIX_UNLIKELY(!alias)) {
             rc = PMIX_ERR_NOMEM;
             break;
         }
 
         alias->name = pmix_tma_strdup(tma, tmp[i]);
-        if (!alias->name) {
+        if (PMIX_UNLIKELY(!alias->name)) {
             rc = PMIX_ERR_NOMEM;
             break;
         }
-
         pmix_list_append(list, &alias->super);
     }
 out:
@@ -103,7 +96,7 @@ cache_node_info(
             PMIX_VALUE_GET_NUMBER(
                 rc, &info[j].value, inodeinfo->nodeid, uint32_t
             );
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
@@ -122,7 +115,7 @@ cache_node_info(
                 inodeinfo->aliases,
                 info[j].value.data.string
             );
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
@@ -130,7 +123,7 @@ cache_node_info(
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
             PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
                 break;
@@ -141,7 +134,7 @@ cache_node_info(
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
             PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
                 break;
@@ -150,7 +143,7 @@ cache_node_info(
         }
     }
     // Make sure that the caller passed us node identifier info.
-    if (!have_node_id_info) {
+    if (PMIX_UNLIKELY(!have_node_id_info)) {
         rc = PMIX_ERR_BAD_PARAM;
     }
 
@@ -171,7 +164,7 @@ store_node_array(
 
     // We expect an array of node-level info for a specific
     // node. Make sure we were given the correct type.
-    if (PMIX_DATA_ARRAY != val->type) {
+    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type)) {
         rc = PMIX_ERR_TYPE_MISMATCH;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -180,7 +173,7 @@ store_node_array(
     // Construct node info cache from provided data.
     pmix_tma_t *const tma = pmix_obj_get_tma(&target->super);
     pmix_list_t *cache = PMIX_NEW(pmix_list_t, tma);
-    if (!cache) {
+    if (PMIX_UNLIKELY(!cache)) {
         rc = PMIX_ERR_NOMEM;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -193,7 +186,7 @@ store_node_array(
         cache,
         &nodeinfo
     );
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         goto out;
     }
 
@@ -219,13 +212,13 @@ store_app_array(
     pmix_gds_shmem_app_t *app = NULL;
 
     // Apps must belong to a job.
-    if (!job) {
+    if (PMIX_UNLIKELY(!job)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
     // We expect an array of node-level info for a specific
     // node. Make sure we were given the correct type.
-    if (PMIX_DATA_ARRAY != val->type) {
+    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type)) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
@@ -233,12 +226,12 @@ store_app_array(
     pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
     // Setup arrays and lists.
     pmix_list_t *app_cache = PMIX_NEW(pmix_list_t, tma);
-    if (!app_cache) {
+    if (PMIX_UNLIKELY(!app_cache)) {
         return PMIX_ERR_NOMEM;
     }
 
     pmix_list_t *node_cache = PMIX_NEW(pmix_list_t, tma);
-    if (!node_cache) {
+    if (PMIX_UNLIKELY(!node_cache)) {
         PMIX_LIST_DESTRUCT(app_cache);
         return PMIX_ERR_NOMEM;
     }
@@ -253,13 +246,13 @@ store_app_array(
         if (PMIX_CHECK_KEY(&info[j], PMIX_APPNUM)) {
             uint32_t appnum;
             PMIX_VALUE_GET_NUMBER(rc, &info[j].value, appnum, uint32_t);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 goto out;
             }
             // This is an error: there can be only
             // one app described in this array.
-            if (NULL != app) {
+            if (PMIX_UNLIKELY(NULL != app)) {
                 PMIX_RELEASE(app);
                 rc = PMIX_ERR_BAD_PARAM;
                 PMIX_ERROR_LOG(rc);
@@ -270,7 +263,7 @@ store_app_array(
         }
         else if (PMIX_CHECK_KEY(&info[j], PMIX_NODE_INFO_ARRAY)) {
             rc = store_node_array(&info[j].value, node_cache);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 goto out;
             }
@@ -279,7 +272,7 @@ store_app_array(
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
             PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
                 goto out;
@@ -291,7 +284,7 @@ store_app_array(
     if (NULL == app) {
         // Per the standard, they don't have to provide us with
         // an appnum so long as only one app is in the job.
-        if (0 == pmix_list_get_size(job->smdata->apps)) {
+        if (0 == pmix_list_get_size(job->smdata->appinfo)) {
             app = PMIX_NEW(pmix_gds_shmem_app_t, tma);
             app->appnum = 0;
         }
@@ -304,7 +297,7 @@ store_app_array(
         }
     }
     // Add it to our list of apps.
-    pmix_list_append(job->smdata->apps, &app->super);
+    pmix_list_append(job->smdata->appinfo, &app->super);
     // Point the app at its job.
     if (NULL == app->job) {
         // Do NOT retain the tracker. We will not release it in the app
@@ -336,19 +329,19 @@ store_proc_data(
     pmix_status_t rc = PMIX_SUCCESS;
 
     // First, make sure this is proc data.
-    if (!PMIX_CHECK_KEY(kval, PMIX_PROC_DATA)) {
+    if (PMIX_UNLIKELY(!PMIX_CHECK_KEY(kval, PMIX_PROC_DATA))) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
     // We are expecting an array of data pertaining to a specific proc.
-    if (PMIX_DATA_ARRAY != kval->value->type) {
+    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != kval->value->type)) {
         PMIX_ERROR_LOG(PMIX_ERR_TYPE_MISMATCH);
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
     pmix_info_t *const info = (pmix_info_t *)kval->value->data.darray->array;
     // First element of the array must be the rank.
-    if (!PMIX_CHECK_KEY(&info[0], PMIX_RANK) ||
+    if (PMIX_UNLIKELY(!PMIX_CHECK_KEY(&info[0], PMIX_RANK)) ||
         info[0].value.type != PMIX_PROC_RANK) {
         rc = PMIX_ERR_TYPE_MISMATCH;
         PMIX_ERROR_LOG(rc);
@@ -372,7 +365,7 @@ store_proc_data(
         );
         // Store it in the hash_table.
         rc = pmix_hash2_store(ht, rank, kv, NULL, 0);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
         }
@@ -388,28 +381,28 @@ store_session_array(
     pmix_status_t rc = PMIX_SUCCESS;
 
     // We expect an array of session-level info.
-    if (PMIX_DATA_ARRAY != val->type) {
+    if (PMIX_UNLIKELY(PMIX_DATA_ARRAY != val->type)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_TYPE_MISMATCH;
     }
 
     // The first value is required to be the session ID.
     pmix_info_t *const info = (pmix_info_t *)val->data.darray->array;
-    if (!PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID)) {
+    if (PMIX_UNLIKELY(!PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID))) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
 
     uint32_t sid;
     PMIX_VALUE_GET_NUMBER(rc, &info[0].value, sid, uint32_t);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     pmix_gds_shmem_session_t *sesh;
     sesh = pmix_gds_shmem_check_session(job, sid, true);
-    if (!sesh) {
+    if (PMIX_UNLIKELY(!sesh)) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -417,7 +410,7 @@ store_session_array(
 
     pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
     pmix_list_t *ncache = PMIX_NEW(pmix_list_t, tma);
-    if (!ncache) {
+    if (PMIX_UNLIKELY(!ncache)) {
         rc = PMIX_ERR_NOMEM;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -425,14 +418,14 @@ store_session_array(
 
     const size_t size = val->data.darray->size;
     for (size_t j = 1; j < size; j++) {
-        PMIX_GDS_SHMEM_VOUT(
+        PMIX_GDS_SHMEM_VVOUT(
             "%s:%s key=%s", __func__,
             PMIX_NAME_PRINT(&pmix_globals.myid),
             info[j].key
         );
         if (PMIX_CHECK_KEY(&info[j], PMIX_NODE_INFO_ARRAY)) {
             rc = store_node_array(&info[j].value, ncache);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 goto out;
             }
@@ -441,7 +434,7 @@ store_session_array(
             pmix_kval_t *kval = PMIX_NEW(pmix_kval_t, tma);
             kval->key = pmix_tma_strdup(tma, info[j].key);
             PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kval->value, &info[j].value, tma);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kval);
                 goto out;
@@ -513,7 +506,7 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
             // We support the following data array keys.
             if (PMIX_CHECK_KEY(kvi, PMIX_APP_INFO_ARRAY)) {
                 rc = store_app_array(job, kvi->value);
-                if (PMIX_SUCCESS != rc) {
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_ERROR_LOG(rc);
                     break;
                 }
@@ -522,21 +515,21 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
                 rc = store_node_array(
                     kvi->value, job->smdata->nodeinfo
                 );
-                if (PMIX_SUCCESS != rc) {
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_ERROR_LOG(rc);
                     break;
                 }
             }
             else if (PMIX_CHECK_KEY(kvi, PMIX_PROC_INFO_ARRAY)) {
                 rc = store_proc_data(job, kvi);
-                if (PMIX_SUCCESS != rc) {
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_ERROR_LOG(rc);
                     break;
                 }
             }
             else if (PMIX_CHECK_KEY(kvi, PMIX_SESSION_INFO_ARRAY)) {
                 rc = store_session_array(job, kvi->value);
-                if (PMIX_SUCCESS != rc) {
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_ERROR_LOG(rc);
                     break;
                 }
@@ -554,7 +547,7 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, kvi->key);
             PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, kvi->value, tma);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_RELEASE(kv);
                 PMIX_ERROR_LOG(rc);
                 break;
@@ -562,7 +555,7 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
             rc = pmix_hash2_store(
                 local_ht, PMIX_RANK_WILDCARD, kv, NULL, 0
             );
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_RELEASE(kv);
                 PMIX_ERROR_LOG(rc);
                 break;
@@ -592,7 +585,7 @@ pmix_gds_shmem_store_modex_in_shmem(
 
     pmix_gds_shmem_job_t *job;
     rc = pmix_gds_shmem_get_job_tracker(proc->nspace, false, &job);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -624,7 +617,7 @@ pmix_gds_shmem_store_modex_in_shmem(
             else {
                 rc = pmix_hash2_store(ht, 0, kv, NULL, 0);
             }
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
@@ -637,7 +630,7 @@ pmix_gds_shmem_store_modex_in_shmem(
             else {
                 rc = pmix_hash2_store(ht, proc->rank, kv, NULL, 0);
             }
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
@@ -652,7 +645,6 @@ pmix_gds_shmem_store_modex_in_shmem(
     else {
         rc = PMIX_SUCCESS;
     }
-
     return rc;
 }
 

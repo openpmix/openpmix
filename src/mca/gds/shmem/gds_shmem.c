@@ -19,41 +19,15 @@
 #include "gds_shmem_utils.h"
 #include "gds_shmem_store.h"
 #include "gds_shmem_fetch.h"
-// TODO(skg) This will eventually go away.
-#include "pmix_hash2.h"
-
-#include "src/client/pmix_client_ops.h"
-#include "src/server/pmix_server_ops.h"
 
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_environ.h"
-#include "src/util/pmix_shmem.h"
 
-#include "src/mca/pmdl/pmdl.h"
-#include "src/mca/ptl/base/base.h"
-#include "src/mca/pcompress/base/base.h"
-
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
-#ifdef HAVE_FCNTL_H
-#include <fcntl.h>
-#endif
-#ifdef HAVE_TIME_H
-#include <time.h>
-#endif
-#ifdef HAVE_STDINT_H
-#include <stdint.h>
-#endif
+#include "src/client/pmix_client_ops.h"
+#include "src/server/pmix_server_ops.h"
 
 //
 // Notes for developers:
@@ -405,7 +379,7 @@ job_smdata_construct(
     // that both smdata->session and smdata->smmodex are both NULL.
     job->smdata->jobinfo = PMIX_NEW(pmix_list_t, tma);
     job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
-    job->smdata->apps = PMIX_NEW(pmix_list_t, tma);
+    job->smdata->appinfo = PMIX_NEW(pmix_list_t, tma);
     // Will always have local data, so set it up.
     job->smdata->local_hashtab = PMIX_NEW(pmix_hash_table2_t, tma);
     pmix_hash_table2_init(job->smdata->local_hashtab, htsize);
@@ -542,7 +516,7 @@ prepare_shmem_store_for_local_job_data(
                       sizeof(*job->smdata->session) +
                       sizeof(*job->smdata->jobinfo) +
                       sizeof(*job->smdata->nodeinfo) +
-                      sizeof(*job->smdata->apps) +
+                      sizeof(*job->smdata->appinfo) +
                       sizeof(*job->smdata->local_hashtab);
     // We need to store a hash table in the shared-memory segment, so calculate
     // a rough estimate on the memory required for its storage.
@@ -1126,10 +1100,10 @@ store_job_info(
     while (true) {
         PMIX_CONSTRUCT(&kval, pmix_kval_t);
 
-        int32_t cnt = 1;
+        int32_t nvals = 1;
         PMIX_BFROPS_UNPACK(
             rc, pmix_client_globals.myserver,
-            buff, &kval, &cnt, PMIX_KVAL
+            buff, &kval, &nvals , PMIX_KVAL
         );
         if (PMIX_SUCCESS != rc) {
             break;
@@ -1212,12 +1186,15 @@ server_store_modex(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
+    // TODO(skg) We need to calculate this somehow.
+    const size_t htsize = 256 * job->nspace->nprocs;
     // Estimated size required to store the unpacked modex data.
     // TODO(skg) Improve estimate.
     // Add some extra fluff in case we weren't precise enough.
     // TODO(skg) Consider making fluff an MCA parameter.
     size_t seg_size = buff->bytes_used * 1024;
+    seg_size += sizeof(pmix_hash_table2_t);
+    seg_size += htsize * pmix_hash_table2_t_sizeof_hash_element();
     seg_size += pmix_gds_shmem_pad_amount_to_page(seg_size);
     // Create and attach to the shared-memory segment that will back these data.
     rc = pmix_gds_shmem_segment_create_and_attach(
@@ -1228,8 +1205,6 @@ server_store_modex(
         return rc;
     }
 
-    // TODO(skg) We need to calculate this somehow.
-    const size_t htsize = 256 * job->nspace->nprocs;
     rc = modex_smdata_construct(job, htsize);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
@@ -1283,7 +1258,6 @@ del_nspace(
     return PMIX_SUCCESS;
 }
 
-
 // TODO(skg) We may have to retain, release the reply. See jobbkt.
 static pmix_status_t
 server_mark_modex_complete(
@@ -1292,12 +1266,7 @@ server_mark_modex_complete(
     pmix_buffer_t *reply
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-
-    if (pmix_list_is_empty(nslist)) {
-        // Nothing to do.
-        return rc;
-    }
-    // Else we pack connection info for each ns in nslist.
+    // Pack connection info for each ns in nslist.
     pmix_nspace_caddy_t *nsi;
     PMIX_LIST_FOREACH (nsi, nslist, pmix_nspace_caddy_t) {
         pmix_gds_shmem_job_t *job;
@@ -1307,6 +1276,10 @@ server_mark_modex_complete(
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             break;
+        }
+        // Looks like server_store_modex() hasn't yet been called, so skip.
+        if (!job->modex_shmem) {
+            continue;
         }
         // TODO(skg) At some point we will probably
         // need to also pack job data, too.
@@ -1331,10 +1304,10 @@ client_recv_modex_complete(
     while (true) {
         PMIX_CONSTRUCT(&kval, pmix_kval_t);
 
-        int32_t cnt = 1;
+        int32_t nvals = 1;
         PMIX_BFROPS_UNPACK(
             rc, pmix_client_globals.myserver,
-            buff, &kval, &cnt, PMIX_KVAL
+            buff, &kval, &nvals, PMIX_KVAL
         );
         if (PMIX_SUCCESS != rc) {
             break;
@@ -1378,7 +1351,6 @@ client_recv_modex_complete(
     else {
         rc = PMIX_SUCCESS;
     }
-
     return rc;
 }
 

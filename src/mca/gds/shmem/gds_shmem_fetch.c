@@ -22,9 +22,6 @@
 #include "pmix_hash2.h"
 #endif
 
-#include "src/mca/bfrops/bfrops.h"
-#include "src/mca/pcompress/base/base.h"
-
 // TODO(skg) Avoid copies where appropriate.
 
 static pmix_gds_shmem_nodeinfo_t *
@@ -613,7 +610,7 @@ pmix_gds_shmem_fetch(
         }
         // Collect the relevant app-level info.
         rc = fetch_appinfo(
-            NULL, job, job->smdata->apps, qualifiers, nqual, kvs
+            NULL, job, job->smdata->appinfo, qualifiers, nqual, kvs
         );
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
@@ -706,7 +703,7 @@ pmix_gds_shmem_fetch(
         }
         else if (appinfo) {
             rc = fetch_appinfo(
-                key, job, job->smdata->apps, qualifiers, nqual, kvs
+                key, job, job->smdata->appinfo, qualifiers, nqual, kvs
             );
             if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
                 // Let hash deal with this one.

@@ -17,7 +17,7 @@
 #include "gds_shmem_utils.h"
 
 #include "src/util/pmix_show_help.h"
-#include "src/mca/pcompress/base/base.h"
+#include "src/util/pmix_vmem.h"
 
 pmix_status_t
 pmix_gds_shmem_get_job_tracker(
@@ -45,12 +45,12 @@ pmix_gds_shmem_get_job_tracker(
     // Create one if not found and asked to create one.
     if (!target_tracker && create) {
         target_tracker = PMIX_NEW(pmix_gds_shmem_job_t);
-        if (!target_tracker) {
+        if (PMIX_UNLIKELY(!target_tracker)) {
             rc = PMIX_ERR_NOMEM;
             goto out;
         }
         target_tracker->nspace_id = strdup(nspace);
-        if (!target_tracker->nspace_id) {
+        if (PMIX_UNLIKELY(!target_tracker->nspace_id)) {
             rc = PMIX_ERR_NOMEM;
             goto out;
         }
@@ -65,12 +65,12 @@ pmix_gds_shmem_get_job_tracker(
         // If not, create one and update global namespace list.
         if (!inspace) {
             inspace = PMIX_NEW(pmix_namespace_t);
-            if (!inspace) {
+            if (PMIX_UNLIKELY(!inspace)) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
             }
             inspace->nspace = strdup(nspace);
-            if (!inspace->nspace) {
+            if (PMIX_UNLIKELY(!inspace->nspace)) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
             }
@@ -82,7 +82,7 @@ pmix_gds_shmem_get_job_tracker(
         pmix_list_append(&component->jobs, &target_tracker->super);
     }
 out:
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         if (target_tracker) {
             PMIX_RELEASE(target_tracker);
             target_tracker = NULL;
@@ -102,9 +102,9 @@ pmix_gds_shmem_check_session(
     if (!job) {
         return NULL;
     }
-    // Stash a pointer to the job's TMA.
-    pmix_gds_shmem_component_t *const comp = &pmix_mca_gds_shmem_component;
+
     pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
+    pmix_gds_shmem_component_t *const comp = &pmix_mca_gds_shmem_component;
 
     if (NULL == job->smdata->session) {
         bool found = false;
@@ -174,7 +174,6 @@ pmix_gds_shmem_check_session(
         // It's a wildcard request, so return the job-tracker session.
         return job->smdata->session;
     }
-
     // The job tracker already was assigned a session ID.
     // Check if the new one matches.
     if (job->smdata->session->session != sid) {
@@ -185,7 +184,6 @@ pmix_gds_shmem_check_session(
     // The two must match, so return it.
     return job->smdata->session;
 }
-
 
 bool
 pmix_gds_shmem_check_hostname(
@@ -374,12 +372,10 @@ shmem_attach(
     PMIX_GDS_SHMEM_VOUT(
         "%s: mmapd at address=0x%zx", __func__, (size_t)mmap_addr
     );
-
 out:
     if (PMIX_SUCCESS != rc) {
         (void)pmix_shmem_segment_detach(shmem);
     }
-
     return rc;
 }
 
@@ -428,7 +424,6 @@ out:
     if (PMIX_SUCCESS == rc) {
         job->release_shmem = true;
     }
-
     return rc;
 }
 
