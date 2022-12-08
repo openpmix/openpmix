@@ -115,14 +115,14 @@ pmix_gds_shmem_vout_smdata(
         "smdata tma@%p, "
         "smdata tma data_ptr=%p, "
         "jobinfo@%p, "
-        "apps@%p, "
+        "appinfo@%p, "
         "nodeinfo@%p, "
         "local_hashtab@%p",
         (void *)job->shmem->base_address,
         (void *)&job->smdata->tma,
         (void *)job->smdata->tma.data_ptr,
         (void *)job->smdata->jobinfo,
-        (void *)job->smdata->apps,
+        (void *)job->smdata->appinfo,
         (void *)job->smdata->nodeinfo,
         (void *)job->smdata->local_hashtab
     );
