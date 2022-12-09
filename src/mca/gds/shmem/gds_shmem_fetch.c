@@ -650,7 +650,7 @@ pmix_gds_shmem_fetch(
             // Now transfer rest of data across.
             size_t i = 1;
             PMIX_LIST_FOREACH(kvi, &rkvs, pmix_kval_t) {
-                PMIX_LOAD_KEY(&iptr[i].key, kvi->key);
+                PMIX_LOAD_KEY(iptr[i].key, kvi->key);
                 PMIx_Value_xfer(&iptr[i].value, kvi->value);
                 i++;
             }
