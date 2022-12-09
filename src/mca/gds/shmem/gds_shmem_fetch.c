@@ -569,9 +569,19 @@ pmix_gds_shmem_fetch(
     }
 
     pmix_hash_table2_t *const local_ht = job->smdata->local_hashtab;
+
+    // Modex data ready for use?
+    const bool mdrfu = pmix_gds_shmem_has_status(
+        job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_READY_FOR_USE
+    );
+    if (mdrfu) {
+        PMIX_GDS_SHMEM_VVOUT("%p READY FOR USE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", (void *)job->smmodex->hashtab);
+    }
+    else {
+        PMIX_GDS_SHMEM_VVOUT("NRFU!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    }
     // Modex data are stored in PMIX_REMOTE.
-    pmix_hash_table2_t *const remote_ht = job->modex_shmem ?
-                                          job->smmodex->hashtab : NULL;
+    pmix_hash_table2_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
     // complete copy of the job-level info for this nspace, so retrieve it.

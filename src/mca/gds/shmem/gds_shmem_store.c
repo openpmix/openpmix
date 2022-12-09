@@ -458,6 +458,8 @@ pmix_gds_shmem_store_qualified(
     pmix_rank_t rank,
     pmix_value_t *value
 ) {
+    // TODO(skg) FIXME need to use TMA functions here.
+    assert(false);
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
@@ -562,6 +564,12 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
             }
         }
     }
+    if (PMIX_SUCCESS == rc) {
+        // Segment is ready for use.
+        pmix_gds_shmem_set_status(
+            job, PMIX_GDS_SHMEM_JOB_ID, PMIX_GDS_SHMEM_READY_FOR_USE
+        );
+    }
     return rc;
 }
 
@@ -643,6 +651,10 @@ pmix_gds_shmem_store_modex_in_shmem(
         PMIX_ERROR_LOG(rc);
     }
     else {
+        // Segment is ready for use.
+        pmix_gds_shmem_set_status(
+            job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_READY_FOR_USE
+        );
         rc = PMIX_SUCCESS;
     }
     return rc;

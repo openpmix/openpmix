@@ -19,10 +19,12 @@
 
 #include "gds_shmem.h"
 
+// FIXME
+
 #if PMIX_ENABLE_DEBUG
 #define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
 do {                                                                           \
-    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,          \
+    pmix_output_verbose(1, pmix_gds_base_framework.framework_output,          \
                         "gds:" PMIX_GDS_SHMEM_NAME                             \
                         ":%s called at line %d", __func__, __LINE__);          \
 } while (0)
@@ -33,14 +35,14 @@ do { } while (0)
 
 #define PMIX_GDS_SHMEM_VOUT(...)                                               \
 do {                                                                           \
-    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
+    pmix_output_verbose(1, pmix_gds_base_framework.framework_output,           \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 
 #if PMIX_ENABLE_DEBUG
 #define PMIX_GDS_SHMEM_VVOUT(...)                                              \
 do {                                                                           \
-    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,          \
+    pmix_output_verbose(1, pmix_gds_base_framework.framework_output,          \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 #else
@@ -74,29 +76,45 @@ pmix_gds_shmem_check_hostname(
  * Sets shmem to the appropriate pmix_shmem_t *.
  */
 PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_get_job_shmem_from_id(
+pmix_gds_shmem_get_job_shmem_by_shmem_id(
     pmix_gds_shmem_job_t *job,
     pmix_gds_shmem_job_shmem_id_t shmem_id,
     pmix_shmem_t **shmem
 );
 
+/**
+ * Returns amount needed to pad provided size to page boundary.
+ */
 PMIX_EXPORT size_t
 pmix_gds_shmem_pad_amount_to_page(
     size_t size
 );
 
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_segment_create_and_attach(
+PMIX_EXPORT void
+pmix_gds_shmem_set_status(
     pmix_gds_shmem_job_t *job,
-    pmix_shmem_t *shmem,
-    const char *segment_id,
-    size_t segment_size
+    pmix_gds_shmem_job_shmem_id_t shmem_id,
+    pmix_gds_shmem_status_flag_t flag
 );
 
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_segment_attach_and_init(
+PMIX_EXPORT void
+pmix_gds_shmem_clear_status(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id,
+    pmix_gds_shmem_status_flag_t flag
+);
+
+PMIX_EXPORT void
+pmix_gds_shmem_clearall_status(
     pmix_gds_shmem_job_t *job,
     pmix_gds_shmem_job_shmem_id_t shmem_id
+);
+
+PMIX_EXPORT bool
+pmix_gds_shmem_has_status(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id,
+    pmix_gds_shmem_status_flag_t flag
 );
 
 static inline pmix_tma_t *
@@ -125,6 +143,22 @@ pmix_gds_shmem_vout_smdata(
         (void *)job->smdata->appinfo,
         (void *)job->smdata->nodeinfo,
         (void *)job->smdata->local_hashtab
+    );
+}
+
+static inline void
+pmix_gds_shmem_vout_smmodex(
+    pmix_gds_shmem_job_t *job
+) {
+    PMIX_GDS_SHMEM_VOUT(
+        "modex_shmem@%p, "
+        "smmodex tma@%p, "
+        "smmodex tma data_ptr=%p, "
+        "hashtab@%p",
+        (void *)job->modex_shmem->base_address,
+        (void *)&job->smmodex->tma,
+        (void *)job->smmodex->tma.data_ptr,
+        (void *)job->smmodex->hashtab
     );
 }
 
