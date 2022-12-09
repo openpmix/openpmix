@@ -48,12 +48,6 @@ do {                                \
     }                               \
 } while(0)
 
-PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
-                                                pmix_value_t *v2)
-{
-    return pmix_bfrops_base_value_cmp(v1, v2);
-}
-
 static pmix_value_cmp_t cmp_string(char *s1, char *s2)
 {
     int ret;
