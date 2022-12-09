@@ -207,27 +207,52 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
  * macros that utilize them. We have to do this as there are people who
  * only included pmix_common.h if they were using macros but not APIs */
 
+PMIX_EXPORT void PMIx_Load_key(pmix_key_t key, const char *src);
+
+PMIX_EXPORT void PMIx_Value_construct(pmix_value_t *val);
+PMIX_EXPORT void PMIx_Value_destruct(pmix_value_t *val);
+PMIX_EXPORT pmix_value_t* PMIx_Value_create(size_t n);
+PMIX_EXPORT void PMIx_Value_free(pmix_value_t *v, size_t n);
+PMIX_EXPORT pmix_boolean_t PMIx_Value_true(const pmix_value_t *v);
 PMIX_EXPORT pmix_status_t PMIx_Value_load(pmix_value_t *val,
                                           const void *data,
                                           pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
                                             void **data,
                                             size_t *sz);
-PMIX_EXPORT void PMIx_Value_destruct(pmix_value_t *val);
 PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
 PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
                                                 pmix_value_t *v2);
+
+
 PMIX_EXPORT void PMIx_Data_array_destruct(pmix_data_array_t *d);
 
+PMIX_EXPORT void PMIx_Info_construct(pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_destruct(pmix_info_t *p);
+PMIX_EXPORT pmix_info_t* PMIx_Info_create(size_t n);
+PMIX_EXPORT void PMIx_Info_free(pmix_info_t *p, size_t n);
+PMIX_EXPORT pmix_boolean_t PMIx_Info_true(const pmix_info_t *p);
 PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
                                          const char *key,
                                          const void *data,
                                          pmix_data_type_t type);
-
+PMIX_EXPORT void PMIx_Info_required(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_is_required(pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_processed(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_was_processed(pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_set_end(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_is_end(pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_persistent(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_is_persistent(pmix_info_t *p);
 PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
                                          const pmix_info_t *src);
 
+PMIX_EXPORT void PMIx_Coord_construct(pmix_coord_t *m);
+PMIX_EXPORT void PMIx_Coord_destruct(pmix_coord_t *m);
+PMIX_EXPORT pmix_coord_t* PMIx_Coord_create(size_t dims,
+                                            size_t number);
+PMIX_EXPORT void PMIx_Coord_free(pmix_coord_t *m, size_t number);
 
 PMIX_EXPORT void PMIx_Topology_construct(pmix_topology_t *t);
 PMIX_EXPORT void PMIx_Topology_destruct(pmix_topology_t *topo);
@@ -261,6 +286,64 @@ PMIX_EXPORT void PMIx_Endpoint_destruct(pmix_endpoint_t *e);
 PMIX_EXPORT pmix_endpoint_t* PMIx_Endpoint_create(size_t n);
 PMIX_EXPORT void PMIx_Endpoint_free(pmix_endpoint_t *e, size_t n);
 
+PMIX_EXPORT void PMIx_Envar_construct(pmix_envar_t *e);
+PMIX_EXPORT void PMIx_Envar_destruct(pmix_envar_t *e);
+PMIX_EXPORT pmix_envar_t* PMIx_Envar_create(size_t n);
+PMIX_EXPORT void PMIx_Envar_free(pmix_envar_t *e, size_t n);
+PMIX_EXPORT void PMIx_Envar_load(pmix_envar_t *e,
+                                 char *var,
+                                 char *value,
+                                 char separator);
+
+PMIX_EXPORT void PMIx_Data_buffer_construct(pmix_data_buffer_t *b);
+PMIX_EXPORT void PMIx_Data_buffer_destruct(pmix_data_buffer_t *b);
+PMIX_EXPORT pmix_data_buffer_t* PMIx_Data_buffer_create(void);
+PMIX_EXPORT void PMIx_Data_buffer_release(pmix_data_buffer_t *b);
+PMIX_EXPORT void PMIx_Data_buffer_load(pmix_data_buffer_t *b,
+                                       char *bytes, size_t sz);
+PMIX_EXPORT void PMIx_Data_buffer_unload(pmix_data_buffer_t *b,
+                                         char **bytes, size_t *sz);
+
+PMIX_EXPORT void PMIx_Proc_construct(pmix_proc_t *p);
+PMIX_EXPORT void PMIx_Proc_destruct(pmix_proc_t *p);
+PMIX_EXPORT pmix_proc_t* PMIx_Proc_create(size_t n);
+PMIX_EXPORT void PMIx_Proc_free(pmix_proc_t *p, size_t n);
+PMIX_EXPORT void PMIx_Proc_load(pmix_proc_t *p,
+                                char *nspace, pmix_rank_t rank);
+PMIX_EXPORT void PMIx_Multicluster_nspace_construct(pmix_nspace_t target,
+                                                    pmix_nspace_t cluster,
+                                                    pmix_nspace_t nspace);
+PMIX_EXPORT void PMIx_Multicluster_nspace_parse(pmix_nspace_t target,
+                                                pmix_nspace_t cluster,
+                                                pmix_nspace_t nspace);
+
+PMIX_EXPORT void PMIx_Proc_info_construct(pmix_proc_info_t *p);
+PMIX_EXPORT void PMIx_Proc_info_destruct(pmix_proc_info_t *p);
+PMIX_EXPORT pmix_proc_info_t* PMIx_Proc_info_create(size_t n);
+PMIX_EXPORT void PMIx_Proc_info_free(pmix_proc_info_t *p, size_t n);
+
+PMIX_EXPORT void PMIx_Proc_stats_construct(pmix_proc_stats_t *p);
+PMIX_EXPORT void PMIx_Proc_stats_destruct(pmix_proc_stats_t *p);
+PMIX_EXPORT pmix_proc_stats_t* PMIx_Proc_stats_create(size_t n);
+PMIX_EXPORT void PMIx_Proc_stats_free(pmix_proc_stats_t *p, size_t n);
+
+PMIX_EXPORT void PMIx_Disk_stats_construct(pmix_disk_stats_t *p);
+PMIX_EXPORT void PMIx_Disk_stats_destruct(pmix_disk_stats_t *p);
+PMIX_EXPORT pmix_disk_stats_t* PMIx_Disk_stats_create(size_t n);
+PMIX_EXPORT void PMIx_Disk_stats_free(pmix_disk_stats_t *p, size_t n);
+
+PMIX_EXPORT void PMIx_Net_stats_construct(pmix_net_stats_t *p);
+PMIX_EXPORT void PMIx_Net_stats_destruct(pmix_net_stats_t *p);
+PMIX_EXPORT pmix_net_stats_t* PMIx_Net_stats_create(size_t n);
+PMIX_EXPORT void PMIx_Net_stats_free(pmix_net_stats_t *p, size_t n);
+
+PMIX_EXPORT void PMIx_Node_stats_construct(pmix_node_stats_t *p);
+PMIX_EXPORT void PMIx_Node_stats_destruct(pmix_node_stats_t *p);
+PMIX_EXPORT pmix_node_stats_t* PMIx_Node_stats_create(size_t n);
+PMIX_EXPORT void PMIx_Node_stats_free(pmix_node_stats_t *p, size_t n);
+
+
+
 PMIX_EXPORT void* PMIx_Info_list_start(void);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
@@ -278,6 +361,39 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *p
 PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 
 /* Macros that have been converted to functions */
+
+#define PMIX_LOAD_KEY(a, b) \
+    PMIx_Load_key(a, b)
+
+
+#define PMIX_VALUE_CONSTRUCT(m) \
+    PMIx_Value_construct(m)
+
+#define PMIX_VALUE_DESTRUCT(m) \
+    PMIx_Value_destruct(m)
+
+#define PMIX_VALUE_CREATE(m, n) \
+    (m) = PMIx_Value_create(n)
+
+#define PMIX_VALUE_RELEASE(m)       \
+    do {                            \
+        PMIx_Value_destruct((m));   \
+        pmix_free((m));             \
+        (m) = NULL;                 \
+    } while (0)
+
+#define PMIX_VALUE_FREE(m, n)   \
+    do {                        \
+        PMIx_Value_free(m, n);  \
+        pmix_free((m));         \
+        (m) = NULL;             \
+    } while (0)
+
+#define PMIX_CHECK_TRUE(a) \
+    (PMIX_BOOL_TRUE == PMIx_Value_true(a) ? true : false)
+
+#define PMIX_CHECK_BOOL(a) \
+    (PMIX_NON_BOOL == PMIx_Value_true(a) ? false : true)
 
 #define PMIX_VALUE_LOAD(v, d, t) \
     PMIx_Value_load((v), (d), (t))
@@ -308,6 +424,7 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 #define PMIX_INFO_XFER(d, s)    \
     (void) PMIx_Info_xfer(d, s)
 
+
 #define PMIX_PDATA_LOAD(m, p, k, v, t)                                      \
     do {                                                                    \
         if (NULL != (m)) {                                                  \
@@ -329,6 +446,9 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
             PMIx_Value_xfer(&((d)->value), &((s)->value));                      \
         }                                                                       \
     } while (0)
+
+#define PMIX_INFO_TRUE(m)   \
+    (PMIX_BOOL_TRUE == PMIx_Info_true(m) ? true : false)
 
 #define PMIX_INFO_LIST_START(p)    \
     (p) = PMIx_Info_list_start()
@@ -443,6 +563,179 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 
 #define PMIX_ENDPOINT_FREE(m, n) \
     PMIx_Endpoint_free(m, n)
+
+#define PMIX_ENVAR_CREATE(m, n) \
+    (m) = PMIx_Envar_create(n)
+
+#define PMIX_ENVAR_FREE(m, n)   \
+    do {                        \
+        PMIx_Envar_free(m, n);  \
+        pmix_free(m);           \
+        (m) = NULL;             \
+    } while(0)
+
+#define PMIX_ENVAR_CONSTRUCT(m) \
+    PMIx_Envar_construct(m)
+
+#define PMIX_ENVAR_DESTRUCT(m) \
+    PMIx_Envar_destruct(m)
+
+#define PMIX_ENVAR_LOAD(m, e, v, s) \
+    PMIx_Envar_load(m, e, v, s)
+
+
+#define PMIX_DATA_BUFFER_CREATE(m)  \
+    (m) = PMIx_Data_buffer_create()
+
+#define PMIX_DATA_BUFFER_RELEASE(m)     \
+    do {                                \
+        PMIx_Data_buffer_release(m);    \
+        pmix_free((m));                 \
+        (m) = NULL;                     \
+    } while (0)
+
+#define PMIX_DATA_BUFFER_CONSTRUCT(m)       \
+    PMIx_Data_buffer_construct(m)
+
+#define PMIX_DATA_BUFFER_DESTRUCT(m)        \
+    PMIx_Data_buffer_destruct(m)
+
+#define PMIX_DATA_BUFFER_LOAD(b, d, s)  \
+    PMIx_Data_buffer_load(b, d, s)
+
+#define PMIX_DATA_BUFFER_UNLOAD(b, d, s)    \
+    PMIx_Data_buffer_unload(b, &(d), &(s))
+
+
+#define PMIX_PROC_CREATE(m, n) \
+    (m) = PMIx_Proc_create(n)
+
+#define PMIX_PROC_CONSTRUCT(m) \
+    PMIx_Proc_construct(m)
+
+#define PMIX_PROC_DESTRUCT(m) \
+    PMIx_Proc_destruct(m)
+
+#define PMIX_PROC_FREE(m, n)    \
+    do {                        \
+        PMIx_Proc_free(m, n);   \
+        if (NULL != (m)) {      \
+            pmix_free((m));     \
+            (m) = NULL;         \
+        }                       \
+    } while (0)
+
+#define PMIX_PROC_RELEASE(m)    \
+    PMIX_PROC_FREE(m, 1)
+
+
+#define PMIX_PROC_LOAD(m, n, r) \
+    PMIx_Proc_load(m, n, r)
+
+#define PMIX_MULTICLUSTER_NSPACE_CONSTRUCT(t, c, n) \
+    PMIx_Multicluster_nspace_construct(t, c, n)
+
+#define PMIX_MULTICLUSTER_NSPACE_PARSE(t, c, n) \
+    PMIx_Multicluster_nspace_parse(t, c, n)
+
+
+#define PMIX_PROC_INFO_CREATE(m, n) \
+    (m) = PMIx_Proc_info_create(n)
+
+#define PMIX_PROC_INFO_CONSTRUCT(m) \
+    PMIx_Proc_info_construct(m)
+
+#define PMIX_PROC_INFO_DESTRUCT(m) \
+    PMIx_Proc_info_destruct(m)
+
+#define PMIX_PROC_INFO_FREE(m, n)   \
+    do {                            \
+        PMIx_Proc_info_free(m, n);  \
+        pmix_free((m));             \
+    } while (0)
+
+#define PMIX_PROC_INFO_RELEASE(m) \
+    PMIX_PROC_INFO_FREE((m), 1)
+
+
+#define PMIX_PROC_STATS_CONSTRUCT(m) \
+    PMIx_Proc_stats_construct(m)
+
+#define PMIX_PROC_STATS_DESTRUCT(m) \
+    PMIx_Proc_stats_destruct(m)
+
+#define PMIX_PROC_STATS_CREATE(m, n) \
+    (m) = PMIx_Proc_stats_create(n)
+
+#define PMIX_PROC_STATS_FREE(m, n)  \
+do {                                \
+    PMIx_Proc_stats_free(m, n);     \
+    pmix_free(m);                   \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_PROC_STATS_RELEASE(m) \
+        PMIX_PROC_STATS_FREE((m), 1);
+
+
+#define PMIX_DISK_STATS_CONSTRUCT(m) \
+    PMIx_Disk_stats_construct(m)
+
+#define PMIX_DISK_STATS_DESTRUCT(m) \
+    PMIx_Disk_stats_destruct(m)
+
+#define PMIX_DISK_STATS_CREATE(m, n) \
+    (m) = PMIx_Disk_stats_create(n)
+
+#define PMIX_DISK_STATS_FREE(m, n)  \
+do {                                \
+    PMIx_Disk_stats_free(m, n);     \
+    pmix_free(m);                   \
+    (m) = NULL;                     \
+} while(0)
+
+#define PMIX_DISK_STATS_RELEASE(m)      \
+        PMIX_DISK_STATS_FREE((m), 1);   \
+
+
+#define PMIX_NET_STATS_CONSTRUCT(m) \
+    PMIx_Net_stats_construct(m)
+
+#define PMIX_NET_STATS_DESTRUCT(m) \
+    PMIx_Net_stats_destruct(m)
+
+#define PMIX_NET_STATS_CREATE(m, n) \
+    (m) = PMIx_Net_stats_create(n)
+
+#define PMIX_NET_STATS_FREE(m, n)  \
+do {                               \
+    PMIx_Net_stats_free(m, n);     \
+    pmix_free(m);                  \
+    (m) = NULL;                    \
+} while(0)
+
+#define PMIX_NET_STATS_RELEASE(m)      \
+        PMIX_NET_STATS_FREE((m), 1);   \
+
+
+#define PMIX_NODE_STATS_CONSTRUCT(m) \
+    PMIx_Node_stats_construct(m)
+
+#define PMIX_NODE_STATS_DESTRUCT(m) \
+    PMIx_Node_stats_destruct(m)
+
+#define PMIX_NODE_STATS_CREATE(m, n) \
+    (m) = PMIx_Node_stats_create(n)
+
+#define PMIX_NODE_STATS_FREE(m, n)  \
+do {                               \
+    PMIx_Node_stats_free(m, n);     \
+    pmix_free(m);                  \
+    (m) = NULL;                    \
+} while(0)
+
+#define PMIX_NODE_STATS_RELEASE(m)      \
+        PMIX_NODE_STATS_FREE((m), 1);   \
 
 
 #if defined(c_plusplus) || defined(__cplusplus)

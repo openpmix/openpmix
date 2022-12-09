@@ -1267,7 +1267,7 @@ complete:
     /* convert the list to an array */
     if (0 < (ndata = pmix_list_get_size(&mylist))) {
         ians = PMIX_NEW(pmix_infolist_t);
-        PMIX_LOAD_KEY(&ians->info.key, PMIX_SERVER_INFO_ARRAY);
+        PMIX_LOAD_KEY(ians->info.key, PMIX_SERVER_INFO_ARRAY);
         ians->info.value.type = PMIX_DATA_ARRAY;
         PMIX_DATA_ARRAY_CREATE(ians->info.value.data.darray, ndata, PMIX_INFO);
         sdata = (pmix_info_t *) ians->info.value.data.darray->array;

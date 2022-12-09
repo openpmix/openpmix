@@ -349,7 +349,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                         PMIX_DATA_ARRAY_CREATE(darray, nq+1, PMIX_INFO);
                         iptr = (pmix_info_t*)darray->array;
                         /* the first location is the actual value */
-                        PMIX_LOAD_KEY(&iptr[0].key, p->string);
+                        PMIX_LOAD_KEY(iptr[0].key, p->string);
                         PMIx_Value_xfer(&iptr[0].value, hv->value);
                         /* now add the qualifiers */
                         for (m=0; m < nq; m++) {
@@ -360,7 +360,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                                 PMIX_DATA_ARRAY_FREE(darray);
                                 return PMIX_ERR_BAD_PARAM;
                             }
-                            PMIX_LOAD_KEY(&iptr[m+1].key, p->string);
+                            PMIX_LOAD_KEY(iptr[m+1].key, p->string);
                             PMIx_Value_xfer(&iptr[m+1].value, quals[m].value);
                             PMIX_INFO_SET_QUALIFIER(&iptr[m+1]);
                         }
