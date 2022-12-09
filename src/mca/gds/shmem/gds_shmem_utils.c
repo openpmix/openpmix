@@ -16,9 +16,6 @@
 
 #include "gds_shmem_utils.h"
 
-#include "src/util/pmix_show_help.h"
-#include "src/util/pmix_vmem.h"
-
 pmix_status_t
 pmix_gds_shmem_get_job_tracker(
     const pmix_nspace_t nspace,
@@ -194,24 +191,77 @@ pmix_gds_shmem_check_hostname(
 }
 
 pmix_status_t
-pmix_gds_shmem_get_job_shmem_from_id(
+pmix_gds_shmem_get_job_shmem_by_shmem_id(
     pmix_gds_shmem_job_t *job,
     pmix_gds_shmem_job_shmem_id_t shmem_id,
     pmix_shmem_t **shmem
 ) {
     switch (shmem_id) {
-        case PMIX_GDS_SHMEM_JOB_SHMEM_JOB:
+        case PMIX_GDS_SHMEM_JOB_ID:
             *shmem = job->shmem;
             break;
-        case PMIX_GDS_SHMEM_JOB_SHMEM_MODEX:
+        case PMIX_GDS_SHMEM_MODEX_ID:
             *shmem = job->modex_shmem;
             break;
-        case PMIX_GDS_SHMEM_JOB_SHMEM_INVALID:
+        case PMIX_GDS_SHMEM_INVALID_ID:
         default:
             *shmem = NULL;
             return PMIX_ERROR;
     }
     return PMIX_SUCCESS;
+}
+
+static inline pmix_gds_shmem_status_t *
+get_job_shmem_status_flagp(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id
+) {
+    switch (shmem_id) {
+        case PMIX_GDS_SHMEM_JOB_ID:
+            return &job->shmem_status;
+        case PMIX_GDS_SHMEM_MODEX_ID:
+            return &job->modex_shmem_status;
+        case PMIX_GDS_SHMEM_INVALID_ID:
+        default:
+            // This is a fatal internal error.
+            assert(false);
+            return NULL;
+    }
+}
+
+void
+pmix_gds_shmem_set_status(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id,
+    pmix_gds_shmem_status_flag_t flag
+) {
+    *get_job_shmem_status_flagp(job, shmem_id) |= flag;
+}
+
+void
+pmix_gds_shmem_clear_status(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id,
+    pmix_gds_shmem_status_flag_t flag
+) {
+    *get_job_shmem_status_flagp(job, shmem_id) &= ~flag;
+}
+
+void
+pmix_gds_shmem_clearall_status(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id
+) {
+    *get_job_shmem_status_flagp(job, shmem_id) = 0;
+}
+
+bool
+pmix_gds_shmem_has_status(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id,
+    pmix_gds_shmem_status_flag_t flag
+) {
+    return (*get_job_shmem_status_flagp(job, shmem_id) & flag);
 }
 
 /**
@@ -228,260 +278,12 @@ get_page_size(void)
     return i;
 }
 
-/**
- * Returns amount needed to pad provided size to page boundary.
- */
 size_t
 pmix_gds_shmem_pad_amount_to_page(
     size_t size
 ) {
     const size_t page_size = get_page_size();
     return ((~size) + page_size + 1) & (page_size - 1);
-}
-
-/**
- * Returns the base temp directory.
- */
-static const char *
-fetch_base_tmpdir(
-    pmix_gds_shmem_job_t *job
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    static char fetched_path[PMIX_PATH_MAX] = {'\0'};
-    // Keys we may fetch, in priority order.
-    char *fetch_keys[] = {
-        PMIX_NSDIR,
-        PMIX_TMPDIR,
-        NULL
-    };
-    // Did we get a usable fetched key/value?
-    bool fetched_kv = false;
-
-    for (int i = 0; NULL != fetch_keys[i]; ++i) {
-        pmix_cb_t cb;
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
-
-        pmix_proc_t wildcard;
-        PMIX_LOAD_PROCID(
-            &wildcard,
-            job->nspace->nspace,
-            PMIX_RANK_WILDCARD
-        );
-
-        cb.key = fetch_keys[i];
-        cb.proc = &wildcard;
-        cb.copy = true;
-        cb.scope = PMIX_LOCAL;
-
-        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-        if (rc != PMIX_SUCCESS) {
-            PMIX_DESTRUCT(&cb);
-            break;
-        }
-        // We should only have one item here.
-        assert(1 == pmix_list_get_size(&cb.kvs));
-        // Get a pointer to the only item in the list.
-        pmix_kval_t *kv = (pmix_kval_t *)pmix_list_get_first(&cb.kvs);
-        // Make sure we are dealing with the right stuff.
-        assert(PMIX_CHECK_KEY(kv, fetch_keys[i]));
-        assert(kv->value->type == PMIX_STRING);
-        // Copy the value over.
-        size_t nw = snprintf(
-            fetched_path, PMIX_PATH_MAX, "%s",
-            kv->value->data.string
-        );
-        PMIX_DESTRUCT(&cb);
-        if (nw >= PMIX_PATH_MAX) {
-            // Try another.
-            continue;
-        }
-        else {
-            // We got a usable fetched key.
-            fetched_kv = true;
-            break;
-        }
-    }
-    // Didn't find a specific temp basedir, so just use a general one.
-    if (!fetched_kv) {
-        static const char *tmpdir = NULL;
-        if (NULL == (tmpdir = getenv("TMPDIR"))) {
-            tmpdir = "/tmp";
-        }
-        return tmpdir;
-    }
-    else {
-        return fetched_path;
-    }
-}
-
-/**
- * Returns a valid path or NULL on error.
- */
-static const char *
-get_shmem_backing_path(
-    pmix_gds_shmem_job_t *job,
-    const char *id
-) {
-    static char path[PMIX_PATH_MAX] = {'\0'};
-    const char *basedir = fetch_base_tmpdir(job);
-    // Now that we have the base path, append unique name.
-    size_t nw = snprintf(
-        path, PMIX_PATH_MAX, "%s/%s-gds-%s.%s.%s.%d",
-        basedir, PACKAGE_NAME, PMIX_GDS_SHMEM_NAME,
-        job->nspace_id, id, getpid()
-    );
-    if (nw >= PMIX_PATH_MAX) {
-        return NULL;
-    }
-    return path;
-}
-
-/**
- * Attaches to the given shared-memory segment.
- */
-static pmix_status_t
-shmem_attach(
-    pmix_shmem_t *shmem,
-    uintptr_t req_addr
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    uintptr_t mmap_addr = 0;
-    rc = pmix_shmem_segment_attach(
-        shmem, (void *)req_addr, &mmap_addr
-    );
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
-    // Make sure that we mapped to the requested address.
-    // TODO(skg) Why doesn't this display sometimes?
-    if (mmap_addr != req_addr) {
-        pmix_show_help(
-            "help-gds-shmem.txt",
-            "shmem-segment-attach:address-mismatch",
-            true, (size_t)req_addr, (size_t)mmap_addr
-        );
-        rc = PMIX_ERROR;
-        PMIX_ERROR_LOG(rc);
-        goto out;
-    }
-
-    PMIX_GDS_SHMEM_VOUT(
-        "%s: mmapd at address=0x%zx", __func__, (size_t)mmap_addr
-    );
-out:
-    if (PMIX_SUCCESS != rc) {
-        (void)pmix_shmem_segment_detach(shmem);
-    }
-    return rc;
-}
-
-/**
- * Create and attach to a shared-memory segment.
- */
-pmix_status_t
-pmix_gds_shmem_segment_create_and_attach(
-    pmix_gds_shmem_job_t *job,
-    pmix_shmem_t *shmem,
-    const char *segment_id,
-    size_t segment_size
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    // Find a hole in virtual memory that meets our size requirements.
-    size_t base_addr = 0;
-    rc = pmix_vmem_find_hole(
-        VMEM_HOLE_BIGGEST, &base_addr, segment_size
-    );
-    if (PMIX_SUCCESS != rc) {
-        goto out;
-    }
-    PMIX_GDS_SHMEM_VOUT(
-        "%s:%s found vmhole at address=0x%zx",
-        __func__, segment_id, base_addr
-    );
-    // Find a unique path for the shared-memory backing file.
-    const char *segment_path = get_shmem_backing_path(job, segment_id);
-    if (!segment_path) {
-        rc = PMIX_ERROR;
-        goto out;
-    }
-    PMIX_GDS_SHMEM_VOUT(
-        "%s: segment backing file path is %s (size=%zd B)",
-        __func__, segment_path, segment_size
-    );
-    // Create a shared-memory segment backing store at the given path.
-    rc = pmix_shmem_segment_create(shmem, segment_size, segment_path);
-    if (PMIX_SUCCESS != rc) {
-        goto out;
-    }
-    // Attach to the shared-memory segment.
-    rc = shmem_attach(shmem, (uintptr_t)base_addr);
-out:
-    if (PMIX_SUCCESS == rc) {
-        job->release_shmem = true;
-    }
-    return rc;
-}
-
-static inline pmix_status_t
-init_sm_data(
-    pmix_gds_shmem_job_t *job,
-    pmix_gds_shmem_job_shmem_id_t shmem_id
-) {
-    switch (shmem_id) {
-        case PMIX_GDS_SHMEM_JOB_SHMEM_JOB:
-            job->smdata = job->shmem->base_address;
-            break;
-        case PMIX_GDS_SHMEM_JOB_SHMEM_MODEX:
-            job->smmodex = job->modex_shmem->base_address;
-            break;
-        case PMIX_GDS_SHMEM_JOB_SHMEM_INVALID:
-        default:
-            return PMIX_ERROR;
-    }
-    // Note: don't update the TMA to point to its local function pointers
-    // because clients should only be reading from the shared-memory segment.
-    pmix_gds_shmem_vout_smdata(job);
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t
-pmix_gds_shmem_segment_attach_and_init(
-    pmix_gds_shmem_job_t *job,
-    pmix_gds_shmem_job_shmem_id_t shmem_id
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    pmix_shmem_t *shmem;
-    rc = pmix_gds_shmem_get_job_shmem_from_id(
-        job, shmem_id, &shmem
-    );
-    if (rc != PMIX_SUCCESS) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
-    // Note that shmem->base_address should have already been populated.
-    const uintptr_t req_addr = (uintptr_t)shmem->base_address;
-    rc = shmem_attach(shmem, req_addr);
-    if (rc != PMIX_SUCCESS) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
-    // Now we can safely initialize our shared data structures.
-    rc = init_sm_data(job, shmem_id);
-#if 0
-    // Protect memory: clients can only read from here.
-    mprotect(
-        shmem->base_address, shmem->size, PROT_READ
-    );
-#endif
-    return rc;
 }
 
 /*

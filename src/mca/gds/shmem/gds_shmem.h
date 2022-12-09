@@ -13,15 +13,18 @@
 #define PMIX_GDS_SHMEM_H
 
 #include "pmix_config.h"
+
 #include "include/pmix_common.h"
+
 #include "src/include/pmix_globals.h"
-
 #include "src/util/pmix_shmem.h"
-
 #include "src/mca/gds/base/base.h"
-
 // TODO(skg) Remove
 #include "pmix_hash_table2.h"
+
+#ifdef HAVE_STDINT_h
+#include <stdint.h>
+#endif
 
 /**
  * The name of this module.
@@ -51,10 +54,24 @@ extern pmix_gds_base_module_t pmix_shmem_module;
  * IDs for pmix_shmem_ts in pmix_gds_shmem_job_t.
  */
 typedef enum {
-    PMIX_GDS_SHMEM_JOB_SHMEM_JOB,
-    PMIX_GDS_SHMEM_JOB_SHMEM_MODEX,
-    PMIX_GDS_SHMEM_JOB_SHMEM_INVALID
+    PMIX_GDS_SHMEM_JOB_ID = 0,
+    PMIX_GDS_SHMEM_MODEX_ID,
+    PMIX_GDS_SHMEM_INVALID_ID
 } pmix_gds_shmem_job_shmem_id_t;
+
+/**
+ * Bitmap container for flags associated with a pmix_shmem_t structure.
+ */
+typedef uint8_t pmix_gds_shmem_status_t;
+
+typedef enum {
+    /** Indicates that caller is responsible for shmem release. */
+    PMIX_GDS_SHMEM_RELEASE = 0x01,
+    /** Indicates that the shared-memory segment is attached to. */
+    PMIX_GDS_SHMEM_ATTACHED = 0x02,
+    /** Indicates that the shared-memory segment is ready for use. */
+    PMIX_GDS_SHMEM_READY_FOR_USE = 0x04
+} pmix_gds_shmem_status_flag_t;
 
 typedef struct {
     pmix_gds_base_component_t super;
@@ -138,13 +155,15 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
-    /** Flag indicating whether or not to release shmem. */
-    bool release_shmem;
+    /** Stores status for shmem. */
+    pmix_gds_shmem_status_t shmem_status;
     /** Shared-memory object that maintains information for smdata data. */
     pmix_shmem_t *shmem;
+    /** Stores status for modex_shmem. */
+    pmix_gds_shmem_status_t modex_shmem_status;
     /** Shared-memory object that maintains information for smmodex data. */
     pmix_shmem_t *modex_shmem;
-    /** Points to shared data located in a shared-memory segment. */
+    /** Points to shared job data located in a shared-memory segment. */
     pmix_gds_shmem_shared_job_data_t *smdata;
     /** Points to shared modex data located in a shared-memory segment. */
     pmix_gds_shmem_shared_modex_data_t *smmodex;
