@@ -84,7 +84,8 @@ pmix_status_t pmix_hwloc_unpack_cpuset(pmix_buffer_t *buf, pmix_cpuset_t *dest,
 
 pmix_status_t pmix_hwloc_copy_cpuset(pmix_cpuset_t *dest, pmix_cpuset_t *src)
 {
-    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
+    if (NULL == src->source ||
+        0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
     if (NULL == src->bitmap) {
@@ -119,7 +120,7 @@ char *pmix_hwloc_print_cpuset(pmix_cpuset_t *src)
 
 void pmix_hwloc_destruct_cpuset(pmix_cpuset_t *src)
 {
-    if (NULL == src->source ||
+    if (NULL == src || NULL == src->source ||
         0 != strncasecmp(src->source, "hwloc", 5)) {
         return;
     }
@@ -143,7 +144,7 @@ void pmix_hwloc_release_cpuset(pmix_cpuset_t *ptr, size_t sz)
 {
     size_t n;
 
-    if (NULL == ptr->source || 0 != strncasecmp(ptr->source, "hwloc", 5)) {
+    if (NULL == ptr) {
         return;
     }
 
@@ -484,9 +485,8 @@ char *pmix_hwloc_print_topology(pmix_topology_t *src)
 
 void pmix_hwloc_destruct_topology(pmix_topology_t *src)
 {
-    if (NULL == src->source ||
-        0 != strncasecmp(src->source, "hwloc", 5) ||
-        NULL == src->topology) {
+    if (NULL == src || NULL == src->source ||
+        0 != strncasecmp(src->source, "hwloc", 5)) {
         return;
     }
     hwloc_topology_destroy(src->topology);
@@ -504,14 +504,13 @@ void pmix_hwloc_release_topology(pmix_topology_t *src, size_t sz)
 {
     size_t n;
 
-    if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
+    if (NULL == src) {
         return;
     }
 
     for (n = 0; n < sz; n++) {
         pmix_hwloc_destruct_topology(&src[n]);
     }
-    free(src);
 }
 
 // avoid ABI break

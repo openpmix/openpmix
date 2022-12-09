@@ -228,6 +228,39 @@ PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
 PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
                                          const pmix_info_t *src);
 
+
+PMIX_EXPORT void PMIx_Topology_construct(pmix_topology_t *t);
+PMIX_EXPORT void PMIx_Topology_destruct(pmix_topology_t *topo);
+PMIX_EXPORT pmix_topology_t* PMIx_Topology_create(size_t n);
+PMIX_EXPORT void PMIx_Topology_free(pmix_topology_t *t, size_t n);
+
+PMIX_EXPORT void PMIx_Cpuset_construct(pmix_cpuset_t *c);
+PMIX_EXPORT void PMIx_Cpuset_destruct(pmix_cpuset_t *c);
+PMIX_EXPORT pmix_cpuset_t* PMIx_Cpuset_create(size_t n);
+PMIX_EXPORT void PMIx_Cpuset_free(pmix_cpuset_t *c, size_t n);
+
+PMIX_EXPORT void PMIx_Geometry_construct(pmix_geometry_t *g);
+PMIX_EXPORT void PMIx_Geometry_destruct(pmix_geometry_t *g);
+PMIX_EXPORT pmix_geometry_t* PMIx_Geometry_create(size_t n);
+PMIX_EXPORT void PMIx_Geometry_free(pmix_geometry_t *g, size_t n);
+
+PMIX_EXPORT void PMIx_Device_distance_construct(pmix_device_distance_t *d);
+PMIX_EXPORT void PMIx_Device_distance_destruct(pmix_device_distance_t *d);
+PMIX_EXPORT pmix_device_distance_t* PMIx_Device_distance_create(size_t n);
+PMIX_EXPORT void PMIx_Device_distance_free(pmix_device_distance_t *d, size_t n);
+
+PMIX_EXPORT void PMIx_Byte_object_construct(pmix_byte_object_t *b);
+PMIX_EXPORT void PMIx_Byte_object_destruct(pmix_byte_object_t *b);
+PMIX_EXPORT pmix_byte_object_t* PMIx_Byte_object_create(size_t n);
+PMIX_EXPORT void PMIx_Byte_object_free(pmix_byte_object_t *b, size_t n);
+PMIX_EXPORT void PMIx_Byte_object_load(pmix_byte_object_t *b,
+                                       char *d, size_t sz);
+
+PMIX_EXPORT void PMIx_Endpoint_construct(pmix_endpoint_t *e);
+PMIX_EXPORT void PMIx_Endpoint_destruct(pmix_endpoint_t *e);
+PMIX_EXPORT pmix_endpoint_t* PMIx_Endpoint_create(size_t n);
+PMIX_EXPORT void PMIx_Endpoint_free(pmix_endpoint_t *e, size_t n);
+
 PMIX_EXPORT void* PMIx_Info_list_start(void);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
@@ -243,6 +276,8 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
 PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
 
 PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
+
+/* Macros that have been converted to functions */
 
 #define PMIX_VALUE_LOAD(v, d, t) \
     PMIx_Value_load((v), (d), (t))
@@ -313,8 +348,102 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 #define PMIX_INFO_LIST_RELEASE(p) \
     PMIx_Info_list_release((p))
 
+#define PMIX_TOPOLOGY_CONSTRUCT(m) \
+    PMIx_Topology_construct(m)
+
+#define PMIX_TOPOLOGY_CREATE(m, n) \
+    (m) = PMIx_Topology_create(n)
+
 #define PMIX_TOPOLOGY_DESTRUCT(x) \
     PMIx_Topology_destruct(x)
+
+#define PMIX_TOPOLOGY_FREE(m, n) \
+    PMIx_Topology_free(m, n)
+
+
+#define PMIX_COORD_CREATE(m, n, d)  \
+    (m) = PMIx_Coord_create(d, n)
+
+#define PMIX_COORD_CONSTRUCT(m) \
+    PMIx_Coord_construct(m)
+
+#define PMIX_COORD_DESTRUCT(m)  \
+    PMIx_Coord_destruct(m)
+
+#define PMIX_COORD_FREE(m, n)   \
+    do {                        \
+        PMIx_Coord_free(m, n);  \
+        free((m));              \
+        (m) = NULL;             \
+    } while(0)
+
+#define PMIX_CPUSET_CONSTRUCT(m) \
+    PMIx_Cpuset_construct(m)
+
+#define PMIX_CPUSET_DESTRUCT(m) \
+    PMIx_Cpuset_destruct(m)
+
+#define PMIX_CPUSET_CREATE(m, n) \
+    (m) = PMIx_Cpuset_create(n)
+
+#define PMIX_CPUSET_FREE(m, n) \
+    PMIx_Cpuset_free(m, n)
+
+#define PMIX_GEOMETRY_CONSTRUCT(m) \
+    PMIx_Geometry_construct(m)
+
+#define PMIX_GEOMETRY_DESTRUCT(m) \
+    PMIx_Geometry_destruct(m)
+
+#define PMIX_GEOMETRY_CREATE(m, n) \
+    (m) = PMIx_Geometry_create(n)
+
+#define PMIX_GEOMETRY_FREE(m, n) \
+    PMIx_Geometry_free(m, n)
+
+#define PMIX_DEVICE_DIST_CONSTRUCT(m) \
+    PMIx_Device_distance_construct(m)
+
+#define PMIX_DEVICE_DIST_DESTRUCT(m) \
+    PMIx_Device_distance_destruct(m)
+
+#define PMIX_DEVICE_DIST_CREATE(m, n) \
+    (m) = PMIx_Device_distance_create(n)
+
+#define PMIX_DEVICE_DIST_FREE(m, n) \
+    PMIx_Device_distance_free(m, n)
+
+#define PMIX_BYTE_OBJECT_CONSTRUCT(m) \
+    PMIx_Byte_object_construct(m)
+
+#define PMIX_BYTE_OBJECT_DESTRUCT(m) \
+    PMIx_Byte_object_destruct(m)
+
+#define PMIX_BYTE_OBJECT_CREATE(m, n) \
+    (m) = PMIx_Byte_object_create(n)
+
+#define PMIX_BYTE_OBJECT_FREE(m, n) \
+    PMIx_Byte_object_free(m, n)
+
+#define PMIX_BYTE_OBJECT_LOAD(b, d, s)  \
+    do {                                \
+        PMIx_Byte_object_load(b, d, s); \
+        (d) = NULL;                     \
+        (s) = 0;                        \
+    } while(0)
+
+#define PMIX_ENDPOINT_CONSTRUCT(m) \
+    PMIx_Endpoint_construct(m)
+
+#define PMIX_ENDPOINT_DESTRUCT(m) \
+    PMIx_Endpoint_destruct(m)
+
+#define PMIX_ENDPOINT_CREATE(m, n) \
+    (m) = PMIx_Endpoint_create(n)
+
+#define PMIX_ENDPOINT_FREE(m, n) \
+    PMIx_Endpoint_free(m, n)
+
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
