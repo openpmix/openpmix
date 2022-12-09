@@ -106,7 +106,7 @@ int pmix_mca_base_show_load_errors_init(void)
     // boolean value
     pmix_value_t value;
     PMIX_VALUE_LOAD(&value, pmix_mca_base_component_show_load_errors, PMIX_STRING);
-    pmix_boolean_t ret = pmix_check_true(&value);
+    pmix_boolean_t ret = PMIx_Value_true(&value);
 
     // Treat true values as a synonym for "all", and false values
     // as a synonym for "none".

@@ -589,7 +589,7 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
             /* now transfer rest of data across */
             n = 1;
             PMIX_LIST_FOREACH(kvptr, &rkvs, pmix_kval_t) {
-                PMIX_LOAD_KEY(&iptr[n].key, kvptr->key);
+                PMIX_LOAD_KEY(iptr[n].key, kvptr->key);
                 PMIx_Value_xfer(&iptr[n].value, kvptr->value);
                 ++n;
             }
