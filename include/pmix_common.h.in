@@ -2268,58 +2268,64 @@ typedef struct pmix_coord {
     .dims = 0                       \
 }
 
-#define PMIX_COORD_CREATE(m, d, n)                                              \
-    do {                                                                        \
-        pmix_coord_t *_m;                                                       \
-        if (0 == (d)) {                                                         \
-            (m) = NULL;                                                         \
-        } else {                                                                \
-            _m = (pmix_coord_t*)pmix_malloc((d) * sizeof(pmix_coord_t));        \
-            if (NULL != _m) {                                                   \
-                memset((m), 0, (d)*sizeof(pmix_coord_t));                       \
-                _m->view = PMIX_COORD_VIEW_UNDEF;                               \
-                _m->dims = (n);                                                 \
-                if (0 == (n)) {                                                 \
-                    _m->coord = NULL;                                           \
-                } else {                                                        \
-                    _m->coord = (uint32_t*)pmix_malloc((n) * sizeof(uint32_t)); \
-                    if (NULL != _m->coord) {                                    \
-                        memset(_m->coord, 0, (n)*sizeof(uint32_t));             \
-                    }                                                           \
-                }                                                               \
-            }                                                                   \
-            (m) = _m;                                                           \
-        }                                                                       \
-    } while(0)
+static inline pmix_coord_t* PMIx_Coord_create(size_t dims,
+                                              size_t number)
+{
+    pmix_coord_t *m;
 
-#define PMIX_COORD_CONSTRUCT(m)             \
-    do {                                    \
-        (m)->view = PMIX_COORD_VIEW_UNDEF;  \
-        (m)->coord = NULL;                  \
-        (m)->dims = 0;                      \
-    } while(0)
+    if (0 == number) {
+        return NULL;
+    }
+    m = (pmix_coord_t*)pmix_malloc(number * sizeof(pmix_coord_t));
+    if (NULL == m) {
+        return NULL;
+    }
+    m->view = PMIX_COORD_VIEW_UNDEF;
+    m->dims = dims;
+    if (0 == dims) {
+        m->coord = NULL;
+    } else {
+        m->coord = (uint32_t*)pmix_malloc(dims * sizeof(uint32_t));
+        if (NULL != m->coord) {
+            memset(m->coord, 0, dims * sizeof(uint32_t));
+        }
+    }
+    return m;
+}
 
-#define PMIX_COORD_DESTRUCT(m)              \
-    do {                                    \
-        (m)->view = PMIX_COORD_VIEW_UNDEF;  \
-        if (NULL != (m)->coord) {           \
-            pmix_free((m)->coord);          \
-            (m)->coord = NULL;              \
-            (m)->dims = 0;                  \
-        }                                   \
-    } while(0)
+static inline void PMIx_Coord_construct(pmix_coord_t *m)
+{
+    if (NULL == m) {
+        return;
+    }
+    m->view = PMIX_COORD_VIEW_UNDEF;
+    m->coord = NULL;
+    m->dims = 0;
+}
 
-#define PMIX_COORD_FREE(m, n)                       \
-    do {                                            \
-        size_t _nc_;                                \
-        if (NULL != (m)) {                          \
-            for (_nc_ = 0; _nc_ < (n); _nc_++) {    \
-                PMIX_COORD_DESTRUCT(&(m)[_nc_]);    \
-            }                                       \
-            free((m));                              \
-            (m) = NULL;                             \
-        }                                           \
-    } while(0)
+static inline void PMIx_Coord_destruct(pmix_coord_t *m)
+{
+    if (NULL == m) {
+        return;
+    }
+    m->view = PMIX_COORD_VIEW_UNDEF;
+    if (NULL != m->coord) {
+        pmix_free(m->coord);
+        m->coord = NULL;
+        m->dims = 0;
+    }
+}
+
+static inline void PMIx_Coord_free(pmix_coord_t *m, size_t number)
+{
+    size_t n;
+    if (NULL == m) {
+        return;
+    }
+    for (n=0; n < number; n++) {
+        PMIx_Coord_destruct(&m[n]);
+    }
+}
 
 
 /****    PMIX LINK STATES    ****/
@@ -2341,21 +2347,6 @@ typedef struct{
     .bitmap = NULL              \
 }
 
-#define PMIX_CPUSET_CONSTRUCT(m) \
-    memset((m), 0, sizeof(pmix_cpuset_t))
-
-#define PMIX_CPUSET_CREATE(m, n)    \
-    do {                                                                    \
-        if (0 == (n))   {                                                   \
-            (m) = NULL;                                                     \
-        } else {                                                            \
-            (m) = (pmix_cpuset_t*)pmix_malloc((n) * sizeof(pmix_cpuset_t)); \
-            if (NULL != (m)) {                                              \
-                memset((m), 0, (n) * sizeof(pmix_cpuset_t));                \
-            }                                                               \
-        }                                                                   \
-    } while(0)
-
 
 /****    PMIX BIND ENVELOPE    ****/
 typedef uint8_t pmix_bind_envelope_t;
@@ -2375,20 +2366,6 @@ typedef struct {
     .topology = NULL                \
 }
 
-#define PMIX_TOPOLOGY_CONSTRUCT(m) \
-    memset((m), 0, sizeof(pmix_topology_t))
-
-#define PMIX_TOPOLOGY_CREATE(m, n) \
-    do {                                                                        \
-        if (0 == (n)) {                                                         \
-            (m) = NULL;                                                         \
-        } else {                                                                \
-            (m) = (pmix_topology_t*)pmix_malloc((n) * sizeof(pmix_topology_t)); \
-            if (NULL != (m)) {                                                  \
-                memset((m), 0, (n) * sizeof(pmix_topology_t));                  \
-            }                                                                   \
-        }                                                                       \
-    } while(0)
 
 /**** PMIX RELATIVE LOCALITY    ****/
 typedef uint16_t pmix_locality_t;
@@ -2422,48 +2399,6 @@ typedef struct pmix_geometry {
     .ncoords = 0                    \
 }
 
-#define PMIX_GEOMETRY_CONSTRUCT(m) \
-    memset((m), 0, sizeof(pmix_geometry_t));
-
-#define PMIX_GEOMETRY_DESTRUCT(m)                               \
-    do {                                                        \
-        if (NULL != (m)->uuid) {                                \
-            free((m)->uuid);                                    \
-            (m)->uuid = NULL;                                   \
-        }                                                       \
-        if (NULL != (m)->osname) {                              \
-            free((m)->osname);                                  \
-            (m)->osname = NULL;                                 \
-        }                                                       \
-        if (NULL != (m)->coordinates) {                         \
-            PMIX_COORD_FREE((m)->coordinates, (m)->ncoords);    \
-        }                                                       \
-    } while(0)
-
-#define PMIX_GEOMETRY_CREATE(m, n)                                              \
-    do {                                                                        \
-        if (0 == (n)) {                                                         \
-            (m) = NULL;                                                         \
-        } else {                                                                \
-            (m) = (pmix_geometry_t*)pmix_malloc((n) * sizeof(pmix_geometry_t)); \
-            if (NULL != (m)) {                                                  \
-                memset((m), 0, (n) * sizeof(pmix_geometry_t));                  \
-            }                                                                   \
-        }                                                                       \
-    } while(0)
-
-#define PMIX_GEOMETRY_FREE(m, n)                    \
-    do {                                            \
-        size_t _i;                                  \
-        if (NULL != (m)) {                          \
-            for (_i=0; _i < (n); _i++) {            \
-                PMIX_GEOMETRY_DESTRUCT(&(m)[_i]);   \
-            }                                       \
-            pmix_free((m));                         \
-            (m) = NULL;                             \
-        }                                           \
-    } while(0)
-
 
 /****    PMIX_DEVICE_TYPE    ****/
 typedef uint64_t pmix_device_type_t;
@@ -2493,54 +2428,6 @@ typedef struct pmix_device_distance {
     .maxdist = 0                        \
 }
 
-#define PMIX_DEVICE_DIST_CONSTRUCT(m)                       \
-    do {                                                    \
-        memset((m), 0, sizeof(pmix_device_distance_t));     \
-        (m)->mindist = UINT16_MAX;                          \
-        (m)->maxdist = UINT16_MAX;                          \
-    } while(0);
-
-#define PMIX_DEVICE_DIST_DESTRUCT(m)    \
-    do {                                \
-        if (NULL != ((m)->uuid)) {      \
-            pmix_free((m)->uuid);       \
-        }                               \
-        if (NULL != ((m)->osname)) {    \
-            pmix_free((m)->osname);     \
-        }                               \
-    } while(0)
-
-#define PMIX_DEVICE_DIST_CREATE(m, n)                                                           \
-    do {                                                                                        \
-        size_t _i;                                                                              \
-        pmix_device_distance_t *_m;                                                             \
-        if (0 == (n)) {                                                                         \
-            (m) = NULL;                                                                         \
-        } else {                                                                                \
-            _m = (pmix_device_distance_t*)pmix_malloc((n) * sizeof(pmix_device_distance_t));    \
-            if (NULL != _m) {                                                                   \
-                memset(_m, 0, (n)*sizeof(pmix_device_distance_t));                              \
-                for (_i=0; _i < (n); _i++) {                                                    \
-                    _m[_i].mindist = UINT16_MAX;                                                \
-                    _m[_i].maxdist = UINT16_MAX;                                                \
-                }                                                                               \
-            }                                                                                   \
-            (m) = _m;                                                                           \
-        }                                                                                       \
-    } while(0)
-
-#define PMIX_DEVICE_DIST_FREE(m, n)                     \
-    do {                                                \
-        size_t _i;                                      \
-        if (NULL != (m)) {                              \
-            for (_i=0; _i < (n); _i++) {                \
-                PMIX_DEVICE_DIST_DESTRUCT(&(m)[_i]);    \
-            }                                           \
-            pmix_free((m));                             \
-            (m) = NULL;                                 \
-        }                                               \
-    } while(0)
-
 
 /****    PMIX BYTE OBJECT    ****/
 typedef struct pmix_byte_object {
@@ -2553,53 +2440,6 @@ typedef struct pmix_byte_object {
     .bytes = NULL,                      \
     .size = 0                           \
 }
-
-#define PMIX_BYTE_OBJECT_CREATE(m, n)                                                   \
-    do {                                                                                \
-        if (0 == (n)) {                                                                 \
-            (m) = NULL;                                                                 \
-        } else {                                                                        \
-            (m) = (pmix_byte_object_t*)pmix_malloc((n) * sizeof(pmix_byte_object_t));   \
-            if (NULL != (m)) {                                                          \
-                memset((m), 0, (n)*sizeof(pmix_byte_object_t));                         \
-            }                                                                           \
-        }                                                                               \
-    } while(0)
-
-#define PMIX_BYTE_OBJECT_CONSTRUCT(m)   \
-    do {                                \
-        (m)->bytes = NULL;              \
-        (m)->size = 0;                  \
-    } while(0)
-
-#define PMIX_BYTE_OBJECT_DESTRUCT(m)    \
-    do {                                \
-        if (NULL != (m)->bytes) {       \
-            pmix_free((m)->bytes);      \
-        }                               \
-        (m)->bytes = NULL;              \
-        (m)->size = 0;                  \
-    } while(0)
-
-#define PMIX_BYTE_OBJECT_FREE(m, n)                     \
-    do {                                                \
-        size_t _bon;                                    \
-        if (NULL != (m)) {                              \
-            for (_bon=0; _bon < n; _bon++) {            \
-                PMIX_BYTE_OBJECT_DESTRUCT(&(m)[_bon]);  \
-            }                                           \
-            pmix_free((m));                             \
-            (m) = NULL;                                 \
-        }                                               \
-    } while(0)
-
-#define PMIX_BYTE_OBJECT_LOAD(b, d, s)      \
-    do {                                    \
-        (b)->bytes = (char*)(d);            \
-        (d) = NULL;                         \
-        (b)->size = (s);                    \
-        (s) = 0;                            \
-    } while(0)
 
 
 /****    PMIX ENDPOINT    ****/
@@ -2615,47 +2455,6 @@ typedef struct pmix_endpoint {
     .osname = NULL,                         \
     .endpt = PMIX_BYTE_OBJECT_STATIC_INIT   \
 }
-
-#define PMIX_ENDPOINT_CONSTRUCT(m)      \
-    memset((m), 0, sizeof(pmix_endpoint_t))
-
-#define PMIX_ENDPOINT_DESTRUCT(m)       \
-    do {                                \
-        if (NULL != (m)->uuid) {        \
-            free((m)->uuid);            \
-        }                               \
-        if (NULL != (m)->osname) {      \
-            free((m)->osname);          \
-        }                               \
-        if (NULL != (m)->endpt.bytes) { \
-            free((m)->endpt.bytes);     \
-        }                               \
-    } while(0)
-
-#define PMIX_ENDPOINT_CREATE(m, n)                                              \
-    do {                                                                        \
-        if (0 == (n)) {                                                         \
-            (m) = NULL;                                                         \
-        } else {                                                                \
-            (m) = (pmix_endpoint_t*)pmix_malloc((n) * sizeof(pmix_endpoint_t)); \
-            if (NULL != (m)) {                                                  \
-                memset((m), 0, (n) * sizeof(pmix_endpoint_t));                  \
-            }                                                                   \
-        }                                                                       \
-    } while(0)
-
-#define PMIX_ENDPOINT_FREE(m, n)                    \
-    do {                                            \
-        size_t _n;                                  \
-        if (NULL != (m)) {                          \
-            for (_n=0; _n < (n); _n++) {            \
-                PMIX_ENDPOINT_DESTRUCT(&((m)[_n])); \
-            }                                       \
-            free((m));                              \
-            (m) = NULL;                             \
-        }                                           \
-    } while(0)
-
 
 
 /****    PMIX ENVAR STRUCT   ****/

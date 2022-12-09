@@ -1066,9 +1066,6 @@ PMIX_EXPORT pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *topo,
  */
 PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo);
 
-
-PMIX_EXPORT void PMIx_Topology_destruct(pmix_topology_t *topo);
-
 /* Get the PU binding bitmap from its string representation
  *
  * cpuset_string - string representation of the binding bitmap
@@ -1086,8 +1083,6 @@ PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string,
 	                                               pmix_cpuset_t *cpuset);
 
 PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t ref);
-
-PMIX_EXPORT void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset);
 
 /* Get the relative locality of two local processes given their locality strings.
  *
@@ -1610,6 +1605,90 @@ PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
  * executed as a COPY operation, so the original data is not altered */
 PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
                                          const pmix_info_t *src);
+
+/* initialize a topology struct */
+PMIX_EXPORT void PMIx_Topology_construct(pmix_topology_t *t);
+
+/* free memory stored inside a topology struct */
+PMIX_EXPORT void PMIx_Topology_destruct(pmix_topology_t *topo);
+
+/* create and initialize an array of topology structs */
+PMIX_EXPORT pmix_topology_t* PMIx_Topology_create(size_t n);
+
+/* free memory stored inside an array of topology structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Topology_free(pmix_topology_t *t, size_t n);
+
+/* initialize a cpuset struct */
+PMIX_EXPORT void PMIx_Cpuset_construct(pmix_cpuset_t *cpuset);
+
+/* free memory stored inside a cpuset struct */
+PMIX_EXPORT void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset);
+
+/* create and initialize an array of cpuset structs */
+PMIX_EXPORT pmix_cpuset_t* PMIx_Cpuset_create(size_t n);
+
+/* free memory stored inside an array of cpuset structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Cpuset_free(pmix_cpuset_t *c, size_t n);
+
+/* initialize a geometry struct */
+PMIX_EXPORT void PMIx_Geometry_construct(pmix_geometry_t *g);
+
+/* free memory stored inside a cpuset struct */
+PMIX_EXPORT void PMIx_Geometry_destruct(pmix_geometry_t *g);
+
+/* create and initialize an array of cpuset structs */
+PMIX_EXPORT pmix_geometry_t* PMIx_Geometry_create(size_t n);
+
+/* free memory stored inside an array of cpuset structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Geometry_free(pmix_geometry_t *g, size_t n);
+
+/* initialize a device distance struct */
+PMIX_EXPORT void PMIx_Device_distance_construct(pmix_device_distance_t *d);
+
+/* free memory stored inside a device distance struct */
+PMIX_EXPORT void PMIx_Device_distance_destruct(pmix_device_distance_t *d);
+
+/* create and initialize an array of device distance structs */
+PMIX_EXPORT pmix_device_distance_t* PMIx_Device_distance_create(size_t n);
+
+/* free memory stored inside an array of device distance structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Device_distance_free(pmix_device_distance_t *d, size_t n);
+
+
+/* initialize a byte object struct */
+PMIX_EXPORT void PMIx_Byte_object_construct(pmix_byte_object_t *b);
+
+/* free memory stored inside a byte object struct */
+PMIX_EXPORT void PMIx_Byte_object_destruct(pmix_byte_object_t *g);
+
+/* create and initialize an array of byte object structs */
+PMIX_EXPORT pmix_byte_object_t* PMIx_Byte_object_create(size_t n);
+
+/* free memory stored inside an array of byte object structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Byte_object_free(pmix_byte_object_t *g, size_t n);
+
+/* load a byte object */
+PMIX_EXPORT void PMIx_Byte_object_load(pmix_byte_object_t *b,
+                                       char *d, size_t sz);
+
+/* initialize an endpoint struct */
+PMIX_EXPORT void PMIx_Endpoint_construct(pmix_endpoint_t *e);
+
+/* free memory stored inside an endpoint struct */
+PMIX_EXPORT void PMIx_Endpoint_destruct(pmix_endpoint_t *e);
+
+/* create and initialize an array of endpoint structs */
+PMIX_EXPORT pmix_endpoint_t* PMIx_Endpoint_create(size_t n);
+
+/* free memory stored inside an array of endpoint structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Endpoint_free(pmix_endpoint_t *e, size_t n);
+
 
 /* Constructing arrays of pmix_info_t for passing to an API can
  * be tedious since the pmix_info_t itself is not a "list object".

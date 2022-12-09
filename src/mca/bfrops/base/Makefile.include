@@ -36,4 +36,6 @@ sources += \
         base/bfrop_base_print.c \
         base/bfrop_base_unpack.c \
         base/bfrop_base_stubs.c \
-        base/bfrop_base_cmp.c
+        base/bfrop_base_cmp.c \
+        base/bfrop_base_stubs.c \
+        base/bfrop_base_macro_backers.c
