@@ -26,6 +26,7 @@
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
+#include "src/util/pmix_string_copy.h"
 #include "src/util/pmix_vmem.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -60,6 +61,19 @@ typedef struct {
     size_t packed_size;
     size_t hash_table_size;
 } pmix_gds_shmem_local_job_stats_t;
+
+/**
+ * Store unpacked shared-memory segment information.
+ */
+typedef struct {
+    pmix_object_t super;
+    char *nsid;
+    pmix_gds_shmem_job_shmem_id_t smid;
+    char *seg_path;
+    size_t seg_size;
+    size_t seg_addr;
+} pmix_gds_shmem_unpacked_seg_blob_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem_unpacked_seg_blob_t);
 
 /**
  * String to size_t.
@@ -195,6 +209,32 @@ tma_init(
 }
 
 static void
+unpacked_seg_blob_construct(
+    pmix_gds_shmem_unpacked_seg_blob_t *ub
+) {
+    ub->nsid = NULL;
+    ub->smid = PMIX_GDS_SHMEM_INVALID_ID;
+    ub->seg_path = NULL;
+    ub->seg_size = 0;
+    ub->seg_addr = 0;
+}
+
+static void
+unpacked_seg_blob_destruct(
+    pmix_gds_shmem_unpacked_seg_blob_t *ub
+) {
+    free(ub->nsid);
+    free(ub->seg_path);
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem_unpacked_seg_blob_t,
+    pmix_object_t,
+    unpacked_seg_blob_construct,
+    unpacked_seg_blob_destruct
+);
+
+static void
 host_alias_construct(
     pmix_gds_shmem_host_alias_t *a
 ) {
@@ -279,16 +319,12 @@ job_destruct(
         PMIX_RELEASE(job->nspace);
     }
     // Releases memory for the structures located in shared-memory.
-    if (pmix_gds_shmem_has_status(
-            job, PMIX_GDS_SHMEM_JOB_ID, PMIX_GDS_SHMEM_RELEASE
-    )) {
+    if (pmix_gds_shmem_has_status(job, PMIX_GDS_SHMEM_JOB_ID, PMIX_GDS_SHMEM_RELEASE)) {
         if (job->shmem) {
             PMIX_RELEASE(job->shmem);
         }
     }
-    if (pmix_gds_shmem_has_status(
-            job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_RELEASE
-    )) {
+    if (pmix_gds_shmem_has_status(job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_RELEASE)) {
         if (job->modex_shmem) {
             PMIX_RELEASE(job->modex_shmem);
         }
@@ -524,9 +560,9 @@ get_shmem_backing_path(
     const char *basedir = fetch_base_tmpdir(job);
     // Now that we have the base path, append unique name.
     size_t nw = snprintf(
-        path, PMIX_PATH_MAX, "%s/%s-gds-%s.%s.%s.%d",
+        path, PMIX_PATH_MAX, "%s/%s-gds-%s.%s-%s.%s.%d",
         basedir, PACKAGE_NAME, PMIX_GDS_SHMEM_NAME,
-        job->nspace_id, id, getpid()
+        pmix_globals.hostname, job->nspace_id, id, getpid()
     );
     if (nw >= PMIX_PATH_MAX) {
         return NULL;
@@ -621,27 +657,32 @@ init_client_side_sm_data(
 static pmix_status_t
 shmem_segment_attach_and_init(
     pmix_gds_shmem_job_t *job,
-    pmix_gds_shmem_job_shmem_id_t shmem_id
+    pmix_gds_shmem_unpacked_seg_blob_t *seginfo
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
     pmix_shmem_t *shmem;
     rc = pmix_gds_shmem_get_job_shmem_by_shmem_id(
-        job, shmem_id, &shmem
+        job, seginfo->smid, &shmem
     );
     if (rc != PMIX_SUCCESS) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    // Note that shmem->base_address should have already been populated.
-    const uintptr_t req_addr = (uintptr_t)shmem->base_address;
-    rc = shmem_attach(job, shmem_id, req_addr);
+    // Initialize the segment path.
+    const size_t buffmax = sizeof(shmem->backing_path);
+    pmix_string_copy(shmem->backing_path, seginfo->seg_path, buffmax);
+    // Initialize the segment size.
+    shmem->size = seginfo->seg_size;
+
+    const uintptr_t req_addr = (uintptr_t)seginfo->seg_addr;
+    rc = shmem_attach(job, seginfo->smid, req_addr);
     if (rc != PMIX_SUCCESS) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     // Now we can safely initialize our shared data structures.
-    rc = init_client_side_sm_data(job, shmem_id);
+    rc = init_client_side_sm_data(job, seginfo->smid);
 #if 0
     // Protect memory: clients can only read from here.
     mprotect(
@@ -864,8 +905,7 @@ pack_shmem_connection_info(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
-    // First pack the namespace name.
+    // Pack the namespace name.
     pmix_kval_t kv;
     PMIX_CONSTRUCT(&kv, pmix_kval_t);
     kv.key = strdup(PMIX_GDS_SHMEM_SEG_NSID_KEY);
@@ -940,6 +980,29 @@ pack_shmem_connection_info(
 }
 
 /**
+ * Emits the contents of an pmix_gds_shmem_unpacked_seg_blob_t.
+ */
+static void
+vout_unpacked_seg_blob(
+    pmix_gds_shmem_unpacked_seg_blob_t *usb,
+    const char *called_by
+) {
+#if (PMIX_ENABLE_DEBUG == 0)
+    PMIX_HIDE_UNUSED_PARAMS(usb, called_by);
+#endif
+    PMIX_GDS_SHMEM_VVOUT(
+        "%s: "
+        PMIX_GDS_SHMEM_SEG_NSID_KEY "=%s "
+        PMIX_GDS_SHMEM_SEG_SMID_KEY "=%" PRIu8 " "
+        PMIX_GDS_SHMEM_SEG_PATH_KEY "=%s "
+        PMIX_GDS_SHMEM_SEG_SIZE_KEY "=%zd "
+        PMIX_GDS_SHMEM_SEG_ADDR_KEY "=0x%zx",
+        called_by, usb->nsid, usb->smid,
+        usb->seg_path, usb->seg_size, usb->seg_addr
+    );
+}
+
+/**
  * Sets shared-memory connection information from a pmix_kval_t by unpacking the
  * blob and saving the values for the caller. If successful, returns relevant
  * data associated with the unpacked data.
@@ -947,15 +1010,9 @@ pack_shmem_connection_info(
 static pmix_status_t
 unpack_shmem_connection_info(
     pmix_kval_t *kvbo,
-    bool create_job_tracker,
-    pmix_gds_shmem_job_t **job,
-    pmix_gds_shmem_job_shmem_id_t *shmem_id
+    pmix_gds_shmem_unpacked_seg_blob_t *usb
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    size_t st_shmem_id = PMIX_GDS_SHMEM_INVALID_ID;
-    // These values are invalid until we successfully unpack all data.
-    *job = NULL;
-    *shmem_id = PMIX_GDS_SHMEM_INVALID_ID;
 
     // Make sure this is the expected type.
     if (PMIX_UNLIKELY(PMIX_BYTE_OBJECT != kvbo->value->type)) {
@@ -974,9 +1031,6 @@ unpack_shmem_connection_info(
         kvbo->value->data.bo.size
     );
 
-    pmix_gds_shmem_job_t *ijob = NULL;
-    pmix_shmem_t *shmem = NULL;
-
     pmix_kval_t kv;
     while (true) {
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
@@ -992,78 +1046,43 @@ unpack_shmem_connection_info(
 
         const char *val = kv.value->data.string;
         if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_NSID_KEY)) {
-            rc = pmix_gds_shmem_get_job_tracker(
-                val, create_job_tracker, &ijob
-            );
-            if (PMIX_SUCCESS != rc) {
+            int nw = asprintf(&usb->nsid, "%s", val);
+            if (nw == -1) {
+                rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
                 break;
             }
         }
         else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_SMID_KEY)) {
-            // The job info should have already been processed.
-            if (!ijob) {
-                rc = PMIX_ERR_UNPACK_FAILURE;
-                break;
-            }
-            // Get the shared-memory segment ID.
+            size_t st_shmem_id;
             rc = strtost(val, 10, &st_shmem_id);
             if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 break;
             }
-            // Now get a pointer to the appropriate shmem.
-            rc = pmix_gds_shmem_get_job_shmem_by_shmem_id(
-                ijob, (pmix_gds_shmem_job_shmem_id_t)st_shmem_id, &shmem
-            );
-            if (rc != PMIX_SUCCESS) {
-                break;
-            }
+            usb->smid = (pmix_gds_shmem_job_shmem_id_t)st_shmem_id;
         }
         else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_PATH_KEY)) {
-            // The shmem info should have already been processed.
-            if (!shmem) {
-                rc = PMIX_ERR_UNPACK_FAILURE;
-                break;
-            }
-            // Set segment path.
-            int nw = snprintf(
-                shmem->backing_path, PMIX_PATH_MAX, "%s", val
-            );
-            if (nw >= PMIX_PATH_MAX) {
-                rc = PMIX_ERROR;
+            int nw = asprintf(&usb->seg_path, "%s", val);
+            if (nw == -1) {
+                rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
                 break;
             }
         }
         else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_SIZE_KEY)) {
-            // The shmem info should have already been processed.
-            if (!shmem) {
-                rc = PMIX_ERR_UNPACK_FAILURE;
-                break;
-            }
-            // Set shared-memory segment size.
-            rc = strtost(val, 16, &shmem->size);
+            rc = strtost(val, 16, &usb->seg_size);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
         }
         else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_ADDR_KEY)) {
-            // The shmem info should have already been processed.
-            if (!shmem) {
-                rc = PMIX_ERR_UNPACK_FAILURE;
-                break;
-            }
-
-            size_t base_addr = 0;
-            // Convert string base address to something we can use.
-            rc = strtost(val, 16, &base_addr);
+            rc = strtost(val, 16, &usb->seg_addr);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
-            // Set segment base address.
-            shmem->base_address = (void *)base_addr;
         }
         else {
             rc = PMIX_ERR_BAD_PARAM;
@@ -1082,21 +1101,7 @@ unpack_shmem_connection_info(
         PMIX_ERROR_LOG(rc);
     }
     else {
-        PMIX_GDS_SHMEM_VVOUT(
-            "%s: " PMIX_GDS_SHMEM_SEG_PATH_KEY "=%s",
-            __func__, shmem->backing_path
-        );
-        PMIX_GDS_SHMEM_VVOUT(
-            "%s: " PMIX_GDS_SHMEM_SEG_SIZE_KEY "=%zd B",
-            __func__, shmem->size
-        );
-        PMIX_GDS_SHMEM_VVOUT(
-            "%s: " PMIX_GDS_SHMEM_SEG_ADDR_KEY "=0x%zx",
-            __func__, (size_t)shmem->base_address
-        );
-        // Unpacked all the data, so return relevant info.
-        *job = ijob;
-        *shmem_id = (pmix_gds_shmem_job_shmem_id_t)st_shmem_id;
+        vout_unpacked_seg_blob(usb, __func__);
         rc = PMIX_SUCCESS;
     }
     return rc;
@@ -1223,14 +1228,13 @@ pack_shmem_seg_blob(
             .value = &blob
         };
 
-        // TODO(skg) FIXME Do I need to do this on the modex side?
         PMIX_UNLOAD_BUFFER(&buff, blob.data.bo.bytes, blob.data.bo.size);
         PMIX_BFROPS_PACK(rc, peer, reply, &kv, 1, PMIX_KVAL);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
         PMIX_VALUE_DESTRUCT(&blob);
-    } while (0);
+    } while (false);
     PMIX_DESTRUCT(&buff);
 
     return rc;
@@ -1384,13 +1388,57 @@ server_register_job_info(
 }
 
 static pmix_status_t
+unpack_shmem_seg_blob_and_attach_if_necessary(
+    pmix_kval_t *kvbo
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    pmix_gds_shmem_unpacked_seg_blob_t usb;
+    PMIX_CONSTRUCT(&usb, pmix_gds_shmem_unpacked_seg_blob_t);
+    do {
+        rc = unpack_shmem_connection_info(kvbo, &usb);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        // Get the associated job tracker.
+        pmix_gds_shmem_job_t *job;
+        rc = pmix_gds_shmem_get_job_tracker(usb.nsid, true, &job);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        if (usb.smid == PMIX_GDS_SHMEM_MODEX_ID && access(usb.seg_path, F_OK) == -1) {
+            rc = pmix_shmem_segment_create(
+                job->modex_shmem, usb.seg_size, usb.seg_path
+            );
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        // Make sure we aren't already attached to the given shmem.
+        if (pmix_gds_shmem_has_status(job, usb.smid, PMIX_GDS_SHMEM_ATTACHED)) {
+            break;
+        }
+        // Looks like we have to attach and initialize it.
+        rc = shmem_segment_attach_and_init(job, &usb);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+    } while (false);
+    PMIX_DESTRUCT(&usb);
+
+    return rc;
+}
+
+static pmix_status_t
 store_job_info(
     const char *nspace,
     pmix_buffer_t *buff
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    // Create a job tracker during unpack for the given namespace.
-    const bool create_job_tracker = true;
 
     PMIX_GDS_SHMEM_VOUT(
         "%s:%s for namespace=%s", __func__,
@@ -1411,18 +1459,7 @@ store_job_info(
         }
 
         if (PMIX_CHECK_KEY(&kval, PMIX_GDS_SHMEM_SEG_BLOB_KEY)) {
-            pmix_gds_shmem_job_t *job;
-            pmix_gds_shmem_job_shmem_id_t shmem_id;
-
-            rc = unpack_shmem_connection_info(
-                &kval, create_job_tracker, &job, &shmem_id
-            );
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-
-            rc = shmem_segment_attach_and_init(job, shmem_id);
+            rc = unpack_shmem_seg_blob_and_attach_if_necessary(&kval);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 break;
@@ -1469,6 +1506,8 @@ server_store_modex(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
+    PMIX_GDS_SHMEM_VOUT_HERE();
+
     pmix_gds_shmem_job_t *job;
     rc = pmix_gds_shmem_get_job_tracker(
         ((pmix_namespace_t *)(ns))->nspace, false, &job
@@ -1478,31 +1517,35 @@ server_store_modex(
         return rc;
     }
 
-    // TODO(skg) We need to calculate this somehow.
-    const size_t htsize = 256 * job->nspace->nprocs;
-    // Estimated size required to store the unpacked modex data.
-    // TODO(skg) Improve estimate.
-    // Add some extra fluff in case we weren't precise enough.
-    // TODO(skg) Consider making fluff an MCA parameter.
-    size_t seg_size = buff->bytes_used * 1024;
-    seg_size += sizeof(pmix_hash_table2_t);
-    seg_size += htsize * pmix_hash_table2_t_sizeof_hash_element();
-    seg_size += pmix_gds_shmem_pad_amount_to_page(seg_size);
-    // Create and attach to the shared-memory segment that will back these data.
-    rc = shmem_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM_MODEX_ID, "modexdata", seg_size
+    const bool attached = pmix_gds_shmem_has_status(
+        job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_ATTACHED
     );
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
+    if (!attached) {
+        // TODO(skg) We need to calculate this somehow.
+        const size_t htsize = 256 * job->nspace->nprocs;
+        // Estimated size required to store the unpacked modex data.
+        // TODO(skg) Improve estimate.
+        // Add some extra fluff in case we weren't precise enough.
+        // TODO(skg) Consider making fluff an MCA parameter.
+        size_t seg_size = buff->bytes_used * 1024;
+        seg_size += sizeof(pmix_hash_table2_t);
+        seg_size += htsize * pmix_hash_table2_t_sizeof_hash_element();
+        seg_size += pmix_gds_shmem_pad_amount_to_page(seg_size);
+        // Create and attach to the shared-memory segment that will back these data.
+        rc = shmem_segment_create_and_attach(
+            job, PMIX_GDS_SHMEM_MODEX_ID, "modexdata", seg_size
+        );
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
 
-    rc = modex_smdata_construct(job, htsize);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
+        rc = modex_smdata_construct(job, htsize);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
-
     return pmix_gds_base_store_modex(
         ns, buff, NULL, pmix_gds_shmem_store_modex_in_shmem, cbdata
     );
@@ -1611,24 +1654,7 @@ client_recv_modex_complete(
         }
 
         if (PMIX_CHECK_KEY(&kval, PMIX_GDS_SHMEM_SEG_BLOB_KEY)) {
-            pmix_gds_shmem_job_t *job;
-            pmix_gds_shmem_job_shmem_id_t shmem_id;
-            // true here because we may need to create a new job tracker.
-            rc = unpack_shmem_connection_info(
-                &kval, true, &job, &shmem_id
-            );
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-            // Make sure we wan't already attached to the given shmem.
-            if (pmix_gds_shmem_has_status(
-                    job, shmem_id, PMIX_GDS_SHMEM_ATTACHED
-            )) {
-                continue;
-            }
-            // If we aren't, then do it.
-            rc = shmem_segment_attach_and_init(job, shmem_id);
+            rc = unpack_shmem_seg_blob_and_attach_if_necessary(&kval);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 break;

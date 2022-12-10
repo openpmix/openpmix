@@ -652,6 +652,8 @@ pmix_gds_shmem_store_modex_in_shmem(
     }
     else {
         // Segment is ready for use.
+        // TODO(skg) This is not true. Only valid for use once all modex
+        // participants have stored their data.
         pmix_gds_shmem_set_status(
             job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_READY_FOR_USE
         );

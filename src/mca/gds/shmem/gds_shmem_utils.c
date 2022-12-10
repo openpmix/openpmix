@@ -183,7 +183,7 @@ pmix_gds_shmem_check_session(
 }
 
 bool
-pmix_gds_shmem_check_hostname(
+pmix_gds_shmem_hostnames_eq(
     const char *h1,
     const char *h2
 ) {
