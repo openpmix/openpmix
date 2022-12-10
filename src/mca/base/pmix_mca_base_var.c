@@ -591,13 +591,14 @@ static int var_set_from_string(pmix_mca_base_var_t *var, char *src)
     pmix_mca_base_var_storage_t *dst = var->mbv_storage;
     uint64_t int_value = 0;
     int ret;
+    bool *boolcastme;
+    char *tmp;
 
     switch (var->mbv_type) {
     case PMIX_MCA_BASE_VAR_TYPE_INT:
     case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_INT:
     case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_LONG:
     case PMIX_MCA_BASE_VAR_TYPE_UNSIGNED_LONG_LONG:
-    case PMIX_MCA_BASE_VAR_TYPE_BOOL:
     case PMIX_MCA_BASE_VAR_TYPE_SIZE_T:
         ret = int_from_string(src, var->mbv_enumerator, &int_value);
         if (PMIX_ERR_VALUE_OUT_OF_BOUNDS == ret
@@ -632,12 +633,26 @@ static int var_set_from_string(pmix_mca_base_var_t *var, char *src)
         } else if (PMIX_MCA_BASE_VAR_TYPE_SIZE_T == var->mbv_type) {
             size_t *castme = (size_t *) var->mbv_storage;
             *castme = (size_t) int_value;
-        } else if (PMIX_MCA_BASE_VAR_TYPE_BOOL == var->mbv_type) {
-            bool *castme = (bool *) var->mbv_storage;
-            *castme = !!int_value;
         }
 
         return ret;
+
+    case PMIX_MCA_BASE_VAR_TYPE_BOOL:
+        boolcastme = (bool *) var->mbv_storage;
+        int_value = strtoull(src, &tmp, 0);
+        if (tmp[0] == '\0') {
+            *boolcastme = !!int_value;
+        } else {
+            if (0 == strncasecmp(src, "true", strlen(src))) {
+                *boolcastme = true;
+            } else if (0 == strncasecmp(src, "false", strlen(src))) {
+                *boolcastme = false;
+            } else {
+                return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
+            }
+        }
+        return PMIX_SUCCESS;
+
     case PMIX_MCA_BASE_VAR_TYPE_DOUBLE:
         dst->lfval = strtod(src, NULL);
         break;
