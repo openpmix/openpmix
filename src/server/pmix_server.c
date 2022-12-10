@@ -3396,7 +3396,7 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
         // see if we already have this nspace
         found = false;
         PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
-            if (0 == strcmp(nptr->ns->compat.gds->name, cd->peer->nptr->compat.gds->name)) {
+            if (0 == strcmp(nptr->ns->nspace, cd->peer->nptr->nspace)) {
                 found = true;
                 break;
             }

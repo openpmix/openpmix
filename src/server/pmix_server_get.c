@@ -860,7 +860,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
         /* pass it back */
         cbfunc(rc, data, sz, cbdata, relfn, data);
         // Safe to free pkt.
-        PMIX_DATA_BUFFER_DESTRUCT(&pkt);
+        PMIX_DESTRUCT(&pkt);
         return rc;
     }
 
