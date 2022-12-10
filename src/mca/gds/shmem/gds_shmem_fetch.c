@@ -37,7 +37,7 @@ get_nodeinfo_by_nodename(
     // First, just check all the node names as this is the most likely match.
     pmix_gds_shmem_nodeinfo_t *ni;
     PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem_nodeinfo_t) {
-        if (0 == strcmp(ni->hostname, hostname)) {
+        if (pmix_gds_shmem_hostnames_eq(ni->hostname, hostname)) {
             return ni;
         }
         if (!pmix_list_is_empty(ni->aliases)) {
@@ -52,7 +52,7 @@ get_nodeinfo_by_nodename(
     PMIX_LIST_FOREACH (ni, nodes, pmix_gds_shmem_nodeinfo_t) {
         pmix_gds_shmem_host_alias_t *nai = NULL;
         PMIX_LIST_FOREACH (nai, ni->aliases, pmix_gds_shmem_host_alias_t) {
-            if (0 == strcmp(nai->name, hostname)) {
+            if (pmix_gds_shmem_hostnames_eq(nai->name, hostname)) {
                 return ni;
             }
         }
@@ -574,12 +574,6 @@ pmix_gds_shmem_fetch(
     const bool mdrfu = pmix_gds_shmem_has_status(
         job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_READY_FOR_USE
     );
-    if (mdrfu) {
-        PMIX_GDS_SHMEM_VVOUT("%p READY FOR USE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", (void *)job->smmodex->hashtab);
-    }
-    else {
-        PMIX_GDS_SHMEM_VVOUT("NRFU!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    }
     // Modex data are stored in PMIX_REMOTE.
     pmix_hash_table2_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;
 

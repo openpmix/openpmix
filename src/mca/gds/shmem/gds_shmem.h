@@ -25,6 +25,7 @@
 #ifdef HAVE_STDINT_h
 #include <stdint.h>
 #endif
+#include <inttypes.h>
 
 /**
  * The name of this module.

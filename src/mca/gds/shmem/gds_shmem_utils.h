@@ -19,36 +19,30 @@
 
 #include "gds_shmem.h"
 
-// FIXME
-
-#if PMIX_ENABLE_DEBUG
-#define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
+#define PMIX_GDS_SHMEM_OUT(...)                                                \
 do {                                                                           \
-    pmix_output_verbose(1, pmix_gds_base_framework.framework_output,          \
-                        "gds:" PMIX_GDS_SHMEM_NAME                             \
-                        ":%s called at line %d", __func__, __LINE__);          \
+    pmix_output(0, "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);                \
 } while (0)
-#else
-#define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
-do { } while (0)
-#endif
 
 #define PMIX_GDS_SHMEM_VOUT(...)                                               \
 do {                                                                           \
-    pmix_output_verbose(1, pmix_gds_base_framework.framework_output,           \
+    pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 
 #if PMIX_ENABLE_DEBUG
 #define PMIX_GDS_SHMEM_VVOUT(...)                                              \
 do {                                                                           \
-    pmix_output_verbose(1, pmix_gds_base_framework.framework_output,          \
+    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,          \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 #else
 #define PMIX_GDS_SHMEM_VVOUT(...)                                              \
 do { } while (0)
 #endif
+
+#define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
+PMIX_GDS_SHMEM_VVOUT(":%s called at line %d", __func__, __LINE__)
 
 BEGIN_C_DECLS
 
@@ -67,7 +61,7 @@ pmix_gds_shmem_check_session(
 );
 
 PMIX_EXPORT bool
-pmix_gds_shmem_check_hostname(
+pmix_gds_shmem_hostnames_eq(
     const char *h1,
     const char *h2
 );
