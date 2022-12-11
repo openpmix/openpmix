@@ -26,6 +26,16 @@ release=0
 
 greek=a1
 
+# PMIx required dependency versions.
+# List in x.y.z format.
+
+hwloc_min_version=1.11.0
+event_min_version=2.0.21
+automake_min_version=1.13.4
+autoconf_min_version=2.69.0
+libtool_min_version=2.4.2
+flex_min_version=2.5.4
+
 # PMIx Standard Compliance Level
 # The major and minor numbers indicate the version
 # of the official PMIx Standard that is supported

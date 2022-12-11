@@ -19,7 +19,7 @@
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2013      Mellanox Technologies, Inc.
 #                         All rights reserved.
-# Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2014-2022 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
@@ -344,6 +344,7 @@ AC_CONFIG_FILES(pmix_config_prefix[contrib/Makefile]
                 pmix_config_prefix[test/simple/Makefile]
                 pmix_config_prefix[test/sshot/Makefile]
                 pmix_config_prefix[test/util/Makefile]
+                pmix_config_prefix[docs/Makefile]
                 pmix_config_prefix[maint/pmix.pc])
 
 pmix_show_title "Configuration complete"

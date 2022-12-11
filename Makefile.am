@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2006-2016 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
-# Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2013-2022 Intel, Inc.  All rights reserved.
 # Copyright (c) 2019      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
 # Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
@@ -26,14 +26,14 @@
 # via AC_CONFIG_MACRO_DIR in configure.ac.
 ACLOCAL_AMFLAGS = -I ./config
 
-SUBDIRS = config contrib include src etc bindings
+SUBDIRS = config contrib include src etc bindings docs
 
 AM_DISTCHECK_CONFIGURE_FLAGS = --disable-dlopen
 
 headers =
 sources =
 nodist_headers =
-EXTRA_DIST = AUTHORS README HACKING INSTALL VERSION LICENSE autogen.pl EXCEPTIONS
+EXTRA_DIST = AUTHORS README.md VERSION LICENSE autogen.pl
 
 # Only install the valgrind suppressions file and man pages
 # if we're building in standalone mode
