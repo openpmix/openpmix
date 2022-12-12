@@ -155,7 +155,7 @@ int pmix_mca_base_component_find(const char *directory, pmix_mca_base_framework_
 component_find_out:
 
     if (NULL != requested_component_names) {
-        pmix_argv_free(requested_component_names);
+        PMIx_Argv_free(requested_component_names);
     }
 
     /* All done */
@@ -211,7 +211,7 @@ int pmix_mca_base_components_filter(pmix_mca_base_framework_t *framework)
     }
 
     if (NULL != requested_component_names) {
-        pmix_argv_free(requested_component_names);
+        PMIx_Argv_free(requested_component_names);
     }
 
     return ret;
@@ -364,7 +364,7 @@ int pmix_mca_base_component_parse_requested(const char *requested, bool *include
     }
 
     /* Split up the value into individual component names */
-    *requested_component_names = pmix_argv_split(requested, ',');
+    *requested_component_names = PMIx_Argv_split(requested, ',');
 
     /* All done */
     return PMIX_SUCCESS;

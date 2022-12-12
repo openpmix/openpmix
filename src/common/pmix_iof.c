@@ -142,11 +142,11 @@ static void process_cache(int sd, short args, void *cbdata)
         }
         /* never forward back to the source! This can happen if the source
          * is a launcher */
-        if (PMIX_CHECK_PROCID(&iof->source, &req->requestor->info->pname)) {
+        if (PMIX_CHECK_NAMES(&iof->source, &req->requestor->info->pname)) {
             continue;
         }
         /* never forward to myself */
-        if (PMIX_CHECK_PROCID(&req->requestor->info->pname, &pmix_globals.myid)) {
+        if (PMIX_CHECK_NAMES(&req->requestor->info->pname, &pmix_globals.myid)) {
             continue;
         }
         /* if the source does not match the request, then ignore it */
@@ -995,11 +995,11 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     if (NULL == req->requestor->info || req->requestor->finalized) {
         return PMIX_SUCCESS;
     }
-    if (PMIX_CHECK_PROCID(source, &req->requestor->info->pname)) {
+    if (PMIX_CHECK_NAMES(source, &req->requestor->info->pname)) {
         return PMIX_SUCCESS;
     }
     /* never forward to myself */
-    if (PMIX_CHECK_PROCID(&req->requestor->info->pname, &pmix_globals.myid)) {
+    if (PMIX_CHECK_NAMES(&req->requestor->info->pname, &pmix_globals.myid)) {
         return PMIX_SUCCESS;
     }
 
@@ -1336,19 +1336,19 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
 
     /* start with the starttag */
     if (0 < strlen(begintag)) {
-        pmix_argv_append_nosize(&segments, begintag);
+        PMIx_Argv_append_nosize(&segments, begintag);
     }
     /* add the timestamp */
     if (0 < strlen(timestamp)) {
-        pmix_argv_append_nosize(&segments, timestamp);
+        PMIx_Argv_append_nosize(&segments, timestamp);
     }
     /* add the output tag */
     if (0 < strlen(outtag)) {
-        pmix_argv_append_nosize(&segments, outtag);
+        PMIx_Argv_append_nosize(&segments, outtag);
     }
     /* if xml, end the starttag with a '>' */
     if (myflags->xml) {
-        pmix_argv_append_nosize(&segments, ">");
+        PMIx_Argv_append_nosize(&segments, ">");
     }
 
     /* if we are doing XML, then we need to replace key characters */

@@ -89,7 +89,7 @@ PMIX_EXPORT pmix_status_t pmix_argv_append(int *argc, char ***argv, const char *
  * @retval PMIX_SUCCESS On success
  * @retval PMIX_ERROR On failure
  *
- * This function is identical to the pmix_argv_append_unique_nosize() function
+ * This function is identical to the PMIx_Argv_append_unique_nosize() function
  * but it has an extra argument defining the index of the item in the array.
  */
 PMIX_EXPORT pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *arg);

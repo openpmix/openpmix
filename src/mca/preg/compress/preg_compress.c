@@ -167,7 +167,7 @@ static pmix_status_t parse_nodes(const char *regexp, char ***names)
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     /* tmp now contains the comma-delimited list of node names */
-    argv = pmix_argv_split(tmp, ',');
+    argv = PMIx_Argv_split(tmp, ',');
     free(tmp);
     *names = argv;
     return PMIX_SUCCESS;
@@ -204,7 +204,7 @@ static pmix_status_t parse_procs(const char *regexp, char ***procs)
     }
 
     /* tmp now contains the semicolon-delimited list of procs */
-    argv = pmix_argv_split(tmp, ';');
+    argv = PMIx_Argv_split(tmp, ';');
     free(tmp);
     *procs = argv;
     return PMIX_SUCCESS;

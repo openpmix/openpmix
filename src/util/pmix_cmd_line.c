@@ -67,7 +67,7 @@ static void check_store(const char *name, const char *option,
              * a boolean value - the presence of the option in
              * the results is considered "true" */
             if (NULL != option) {
-                pmix_argv_append_nosize(&opt->values, option);
+                PMIx_Argv_append_nosize(&opt->values, option);
             }
             return;
         }
@@ -81,7 +81,7 @@ static void check_store(const char *name, const char *option,
      * a boolean value - the presence of the option in
      * the results is considered "true" */
     if (NULL != option) {
-        pmix_argv_append_nosize(&opt->values, option);
+        PMIx_Argv_append_nosize(&opt->values, option);
     }
     return;
 }
@@ -102,7 +102,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
      * we have to protect it here - remove all leading/trailing
      * quotes to ensure we are looking at simple options/values */
     argv = pmix_argv_copy_strip(pargv);
-    argc = pmix_argv_count(argv);
+    argc = PMIx_Argv_count(argv);
     // assign a default store_fn if one isn't provided
     if (NULL == storefn) {
         mystore = check_store;
@@ -163,7 +163,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             printf("%s", str);
                             free(str);
                         }
-                        pmix_argv_free(argv);
+                        PMIx_Argv_free(argv);
                         return PMIX_OPERATION_SUCCEEDED;
                     }
                     if (0 == strcmp(ptr, "verbose") || 0 == strcmp(ptr, "v")) {
@@ -172,7 +172,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             printf("%s", str);
                             free(str);
                         }
-                        pmix_argv_free(argv);
+                        PMIx_Argv_free(argv);
                         return PMIX_OPERATION_SUCCEEDED;
                     }
                     if (0 == strcmp(ptr, "help") || 0 == strcmp(ptr, "h")) {
@@ -186,7 +186,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             printf("%s", str);
                             free(str);
                         }
-                        pmix_argv_free(argv);
+                        PMIx_Argv_free(argv);
                         return PMIX_OPERATION_SUCCEEDED;
                     }
                     /* see if we have help on that subject */
@@ -203,7 +203,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         printf("%s", str);
                         free(str);
                     }
-                    pmix_argv_free(argv);
+                    PMIx_Argv_free(argv);
                     return PMIX_OPERATION_SUCCEEDED;
                 } else if (NULL == optarg) {
                     // high-level help request
@@ -216,7 +216,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         printf("%s", str);
                         free(str);
                     }
-                    pmix_argv_free(argv);
+                    PMIx_Argv_free(argv);
                     return PMIX_OPERATION_SUCCEEDED;
                 } else {  // unrecognized option
                     str = pmix_show_help_string("help-cli.txt", "unrecognized-option", true,
@@ -226,7 +226,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         free(str);
                     }
                 }
-                pmix_argv_free(argv);
+                PMIx_Argv_free(argv);
                 return PMIX_ERR_SILENT;
             case 'V':
                 str = pmix_show_help_string(helpfile, "version", false,
@@ -238,7 +238,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     free(str);
                 }
                 // if they ask for the version, that is all we do
-                pmix_argv_free(argv);
+                PMIx_Argv_free(argv);
                 return PMIX_OPERATION_SUCCEEDED;
             default:
                 /* this could be one of the short options other than 'h' or 'V', so
@@ -294,7 +294,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                             printf("%s", str);
                                             free(str);
                                         }
-                                        pmix_argv_free(argv);
+                                        PMIx_Argv_free(argv);
                                         return PMIX_ERR_SILENT;
                                     }
                                     ptr = NULL;
@@ -318,7 +318,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             printf("%s", str);
                             free(str);
                         }
-                        pmix_argv_free(argv);
+                        PMIx_Argv_free(argv);
                         return PMIX_ERR_SILENT;
                     }
                 }
@@ -341,7 +341,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             printf("%s", str);
                             free(str);
                         }
-                        pmix_argv_free(argv);
+                        PMIx_Argv_free(argv);
                         return PMIX_ERR_SILENT;
                     }
                 }
@@ -351,7 +351,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     printf("%s", str);
                     free(str);
                 }
-                pmix_argv_free(argv);
+                PMIx_Argv_free(argv);
                 return PMIX_ERR_SILENT;
         }
     }
@@ -359,10 +359,10 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
         /* if this is an '&', it simply indicates that the executable
          * was being pushed into the background - ignore it */
         if (0 != strcmp(argv[optind], "&")) {
-            results->tail = pmix_argv_copy(&argv[optind]);
+            results->tail = PMIx_Argv_copy(&argv[optind]);
         }
     }
-    pmix_argv_free(argv);
+    PMIx_Argv_free(argv);
     return PMIX_SUCCESS;
 }
 
@@ -377,7 +377,7 @@ static void ides(pmix_cli_item_t *p)
         free(p->key);
     }
     if (NULL != p->values) {
-        pmix_argv_free(p->values);
+        PMIx_Argv_free(p->values);
     }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cli_item_t,
@@ -393,7 +393,7 @@ static void odes(pmix_cli_result_t *p)
 {
     PMIX_LIST_DESTRUCT(&p->instances);
     if (NULL != p->tail) {
-        pmix_argv_free(p->tail);
+        PMIx_Argv_free(p->tail);
     }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cli_result_t,

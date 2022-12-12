@@ -1056,7 +1056,7 @@ static void _getnbfn(int fd, short flags, void *cbdata)
      * this nspace:rank. If we do, then no need to ask again as the
      * request will return _all_ data from that proc */
     PMIX_LIST_FOREACH(cbret, &pmix_client_globals.pending_requests, pmix_cb_t) {
-        if (PMIX_CHECK_PROCID(&cbret->pname, &cb->pname)) {
+        if (PMIX_CHECK_NAMES(&cbret->pname, &cb->pname)) {
             /* we do have a pending request, but we still need to track this
              * outstanding request so we can satisfy it once the data is returned */
             pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);

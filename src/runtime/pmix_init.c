@@ -479,7 +479,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     /* open the psec and select the active plugins */
     if (NULL != (evar = getenv("PMIX_SECURITY_MODE"))) {
         /* convert to an MCA param, but don't overwrite something already there */
-        pmix_setenv("PMIX_MCA_psec", evar, false, &environ);
+        PMIx_Setenv("PMIX_MCA_psec", evar, false, &environ);
     }
     ret = pmix_mca_base_framework_open(&pmix_psec_base_framework,
                                        PMIX_MCA_BASE_OPEN_DEFAULT);

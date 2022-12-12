@@ -112,7 +112,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
         for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
                 /* split the specified string */
-                types = pmix_argv_split(directives[n].value.data.string, ',');
+                types = PMIx_Argv_split(directives[n].value.data.string, ',');
                 takeus = false;
                 for (m = 0; NULL != types[m]; m++) {
                     if (0 == strcmp(types[m], "munge")) {
@@ -121,7 +121,7 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
                         break;
                     }
                 }
-                pmix_argv_free(types);
+                PMIx_Argv_free(types);
                 if (!takeus) {
                     PMIX_RELEASE_THREAD(&lock);
                     return PMIX_ERR_NOT_SUPPORTED;
@@ -188,7 +188,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
         for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_CRED_TYPE, PMIX_MAX_KEYLEN)) {
                 /* split the specified string */
-                types = pmix_argv_split(directives[n].value.data.string, ',');
+                types = PMIx_Argv_split(directives[n].value.data.string, ',');
                 takeus = false;
                 for (m = 0; NULL != types[m]; m++) {
                     if (0 == strcmp(types[m], "munge")) {
@@ -197,7 +197,7 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
                         break;
                     }
                 }
-                pmix_argv_free(types);
+                PMIx_Argv_free(types);
                 if (!takeus) {
                     return PMIX_ERR_NOT_SUPPORTED;
                 }

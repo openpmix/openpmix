@@ -400,7 +400,7 @@ int main(int argc, char **argv)
 
     /* generate the query */
     PMIX_QUERY_CONSTRUCT(&query);
-    pmix_argv_append_nosize(&query.keys, PMIX_QUERY_ATTRIBUTE_SUPPORT);
+    PMIx_Argv_append_nosize(&query.keys, PMIX_QUERY_ATTRIBUTE_SUPPORT);
     PMIX_QUERY_QUALIFIERS_CREATE(&query, 1);
     if (hostfns) {
         PMIX_INFO_LOAD(&query.qualifiers[0], PMIX_HOST_FUNCTIONS, NULL, PMIX_BOOL);
@@ -422,12 +422,12 @@ int main(int argc, char **argv)
         /* print out the returned value(s) */
         for (n = 0; n < mq.ninfo; n++) {
             if (PMIX_CHECK_KEY(&mq.info[n], PMIX_HOST_FUNCTIONS)) {
-                fns = pmix_argv_split(mq.info[n].value.data.string, ',');
+                fns = PMIx_Argv_split(mq.info[n].value.data.string, ',');
                 fprintf(stderr, "HOST SUPPORTED FUNCTIONS:\n");
                 for (m = 0; NULL != fns[m]; m++) {
                     fprintf(stderr, "\t%s\n", fns[m]);
                 }
-                pmix_argv_free(fns);
+                PMIx_Argv_free(fns);
             } else {
                 pmix_attributes_print_headers(&ans, PMIX_HOST_ATTRIBUTES);
                 if (PMIX_DATA_ARRAY == mq.info[n].value.type) {
@@ -444,7 +444,7 @@ int main(int argc, char **argv)
                 for (m = 0; NULL != ans[m]; m++) {
                     fprintf(stderr, "%s\n", ans[m]);
                 }
-                pmix_argv_free(ans);
+                PMIx_Argv_free(ans);
                 ans = NULL;
             }
         }

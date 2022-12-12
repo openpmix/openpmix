@@ -148,8 +148,8 @@ int main(int argc, char **argv)
 
     if (0 == myproc.rank) {
         char **keys = NULL;
-        pmix_argv_append_nosize(&keys, "FOOBAR");
-        pmix_argv_append_nosize(&keys, "PANDA");
+        PMIx_Argv_append_nosize(&keys, "FOOBAR");
+        PMIx_Argv_append_nosize(&keys, "PANDA");
 
         if (PMIX_SUCCESS != (rc = PMIx_Unpublish(keys, NULL, 0))) {
             pmix_output(0, "Client ns %s rank %d: PMIx_Unpublish failed: %d", myproc.nspace,

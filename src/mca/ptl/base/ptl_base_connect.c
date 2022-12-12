@@ -291,7 +291,7 @@ char *pmix_ptl_base_get_cmd_line(void)
     cp = procargs + sizeof(nargs);
     cp += strlen(cp);
     /* this is the first argv */
-    pmix_argv_append_nosize(&stack, cp);
+    PMIx_Argv_append_nosize(&stack, cp);
     /* skip any embedded NULLs */
     while (cp < &procargs[size] && '\0' == *cp) {
         ++cp;
@@ -302,7 +302,7 @@ char *pmix_ptl_base_get_cmd_line(void)
         num = 0;
         while (cp < &procargs[size] && num < nargs) {
             if ('\0' == *cp) {
-                pmix_argv_append_nosize(&stack, cptr);
+                PMIx_Argv_append_nosize(&stack, cptr);
                 ++cp; // skip over the NULL
                 cptr = cp;
                 ++num;
@@ -312,8 +312,8 @@ char *pmix_ptl_base_get_cmd_line(void)
         }
     }
 
-    p = pmix_argv_join(stack, ' ');
-    pmix_argv_free(stack);
+    p = PMIx_Argv_join(stack, ' ');
+    PMIx_Argv_free(stack);
     free(procargs);
 #else
     char tmp[512];

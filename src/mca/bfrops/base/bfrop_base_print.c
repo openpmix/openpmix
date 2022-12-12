@@ -1743,23 +1743,23 @@ pmix_status_t pmix_bfrops_base_print_geometry(char **output, char *prefix, pmix_
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    pmix_argv_append_nosize(&result, tmp);
+    PMIx_Argv_append_nosize(&result, tmp);
     free(tmp);
 
     for (n = 0; n < src->ncoords; n++) {
         ret = pmix_bfrops_base_print_coord(&tmp, prefix, &src->coordinates[n], PMIX_COORD);
         if (PMIX_SUCCESS != ret) {
             if (NULL != result) {
-                pmix_argv_free(result);
+                PMIx_Argv_free(result);
             }
             return ret;
         }
-        pmix_argv_append_nosize(&result, tmp);
+        PMIx_Argv_append_nosize(&result, tmp);
         free(tmp);
     }
 
-    *output = pmix_argv_join(result, '\n');
-    pmix_argv_free(result);
+    *output = PMIx_Argv_join(result, '\n');
+    PMIx_Argv_free(result);
 
     return PMIX_SUCCESS;
 }
@@ -1860,31 +1860,31 @@ pmix_status_t pmix_bfrops_base_print_locality(char **output, char *prefix, pmix_
         str = strdup("NONLOCAL");
     } else {
         if (PMIX_LOCALITY_SHARE_HWTHREAD & *src) {
-            pmix_argv_append_nosize(&tmp, "HWTHREAD");
+            PMIx_Argv_append_nosize(&tmp, "HWTHREAD");
         }
         if (PMIX_LOCALITY_SHARE_CORE & *src) {
-            pmix_argv_append_nosize(&tmp, "CORE");
+            PMIx_Argv_append_nosize(&tmp, "CORE");
         }
         if (PMIX_LOCALITY_SHARE_L1CACHE & *src) {
-            pmix_argv_append_nosize(&tmp, "L1");
+            PMIx_Argv_append_nosize(&tmp, "L1");
         }
         if (PMIX_LOCALITY_SHARE_L2CACHE & *src) {
-            pmix_argv_append_nosize(&tmp, "L2");
+            PMIx_Argv_append_nosize(&tmp, "L2");
         }
         if (PMIX_LOCALITY_SHARE_L3CACHE & *src) {
-            pmix_argv_append_nosize(&tmp, "L3");
+            PMIx_Argv_append_nosize(&tmp, "L3");
         }
         if (PMIX_LOCALITY_SHARE_PACKAGE & *src) {
-            pmix_argv_append_nosize(&tmp, "CORE");
+            PMIx_Argv_append_nosize(&tmp, "CORE");
         }
         if (PMIX_LOCALITY_SHARE_NUMA & *src) {
-            pmix_argv_append_nosize(&tmp, "NUMA");
+            PMIx_Argv_append_nosize(&tmp, "NUMA");
         }
         if (PMIX_LOCALITY_SHARE_NODE & *src) {
-            pmix_argv_append_nosize(&tmp, "NODE");
+            PMIx_Argv_append_nosize(&tmp, "NODE");
         }
-        str = pmix_argv_join(tmp, ':');
-        pmix_argv_free(tmp);
+        str = PMIx_Argv_join(tmp, ':');
+        PMIx_Argv_free(tmp);
     }
 
     ret = asprintf(output, "%sData type: PMIX_LOCALITY\tValue: %s",
@@ -2055,25 +2055,25 @@ pmix_status_t pmix_bfrops_base_print_smed(char **output, char *prefix,
         str = strdup("UNKNOWN");
     } else {
         if (PMIX_STORAGE_MEDIUM_TAPE & *src) {
-            pmix_argv_append_nosize(&tmp, "TAPE");
+            PMIx_Argv_append_nosize(&tmp, "TAPE");
         }
         if (PMIX_STORAGE_MEDIUM_HDD & *src) {
-            pmix_argv_append_nosize(&tmp, "HDD");
+            PMIx_Argv_append_nosize(&tmp, "HDD");
         }
         if (PMIX_STORAGE_MEDIUM_SSD & *src) {
-            pmix_argv_append_nosize(&tmp, "SSD");
+            PMIx_Argv_append_nosize(&tmp, "SSD");
         }
         if (PMIX_STORAGE_MEDIUM_NVME & *src) {
-            pmix_argv_append_nosize(&tmp, "NVME");
+            PMIx_Argv_append_nosize(&tmp, "NVME");
         }
         if (PMIX_STORAGE_MEDIUM_PMEM & *src) {
-            pmix_argv_append_nosize(&tmp, "PMEM");
+            PMIx_Argv_append_nosize(&tmp, "PMEM");
         }
         if (PMIX_STORAGE_MEDIUM_RAM & *src) {
-            pmix_argv_append_nosize(&tmp, "RAM");
+            PMIx_Argv_append_nosize(&tmp, "RAM");
         }
-        str = pmix_argv_join(tmp, ':');
-        pmix_argv_free(tmp);
+        str = PMIx_Argv_join(tmp, ':');
+        PMIx_Argv_free(tmp);
     }
 
     ret = asprintf(output, "%sData type: PMIX_STOR_MEDIUM\tValue: %s",
@@ -2097,25 +2097,25 @@ pmix_status_t pmix_bfrops_base_print_sacc(char **output, char *prefix,
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     if (PMIX_STORAGE_ACCESSIBILITY_NODE & *src) {
-        pmix_argv_append_nosize(&tmp, "NODE");
+        PMIx_Argv_append_nosize(&tmp, "NODE");
     }
     if (PMIX_STORAGE_ACCESSIBILITY_SESSION & *src) {
-        pmix_argv_append_nosize(&tmp, "SESSION");
+        PMIx_Argv_append_nosize(&tmp, "SESSION");
     }
     if (PMIX_STORAGE_ACCESSIBILITY_JOB & *src) {
-        pmix_argv_append_nosize(&tmp, "JOB");
+        PMIx_Argv_append_nosize(&tmp, "JOB");
     }
     if (PMIX_STORAGE_ACCESSIBILITY_RACK & *src) {
-        pmix_argv_append_nosize(&tmp, "RACK");
+        PMIx_Argv_append_nosize(&tmp, "RACK");
     }
     if (PMIX_STORAGE_ACCESSIBILITY_CLUSTER & *src) {
-        pmix_argv_append_nosize(&tmp, "CLUSTER");
+        PMIx_Argv_append_nosize(&tmp, "CLUSTER");
     }
     if (PMIX_STORAGE_ACCESSIBILITY_REMOTE & *src) {
-        pmix_argv_append_nosize(&tmp, "REMOTE");
+        PMIx_Argv_append_nosize(&tmp, "REMOTE");
     }
-    str = pmix_argv_join(tmp, ':');
-    pmix_argv_free(tmp);
+    str = PMIx_Argv_join(tmp, ':');
+    PMIx_Argv_free(tmp);
 
     ret = asprintf(output, "%sData type: PMIX_STOR_ACCESS\tValue: %s",
                    (NULL == prefix) ? " " : prefix, str);
@@ -2138,29 +2138,29 @@ pmix_status_t pmix_bfrops_base_print_spers(char **output, char *prefix,
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     if (PMIX_STORAGE_PERSISTENCE_TEMPORARY & *src) {
-        pmix_argv_append_nosize(&tmp, "TEMPORARY");
+        PMIx_Argv_append_nosize(&tmp, "TEMPORARY");
     }
     if (PMIX_STORAGE_PERSISTENCE_NODE & *src) {
-        pmix_argv_append_nosize(&tmp, "NODE");
+        PMIx_Argv_append_nosize(&tmp, "NODE");
     }
     if (PMIX_STORAGE_PERSISTENCE_SESSION & *src) {
-        pmix_argv_append_nosize(&tmp, "SESSION");
+        PMIx_Argv_append_nosize(&tmp, "SESSION");
     }
     if (PMIX_STORAGE_PERSISTENCE_JOB & *src) {
-        pmix_argv_append_nosize(&tmp, "JOB");
+        PMIx_Argv_append_nosize(&tmp, "JOB");
     }
     if (PMIX_STORAGE_PERSISTENCE_SCRATCH & *src) {
-        pmix_argv_append_nosize(&tmp, "SCRATCH");
+        PMIx_Argv_append_nosize(&tmp, "SCRATCH");
     }
     if (PMIX_STORAGE_PERSISTENCE_PROJECT & *src) {
-        pmix_argv_append_nosize(&tmp, "PROJECT");
+        PMIx_Argv_append_nosize(&tmp, "PROJECT");
     }
     if (PMIX_STORAGE_PERSISTENCE_ARCHIVE & *src) {
-        pmix_argv_append_nosize(&tmp, "ARCHIVE");
+        PMIx_Argv_append_nosize(&tmp, "ARCHIVE");
     }
 
-    str = pmix_argv_join(tmp, ':');
-    pmix_argv_free(tmp);
+    str = PMIx_Argv_join(tmp, ':');
+    PMIx_Argv_free(tmp);
 
     ret = asprintf(output, "%sData type: PMIX_STOR_PERSIST\tValue: %s",
                    (NULL == prefix) ? " " : prefix, str);
@@ -2183,13 +2183,13 @@ pmix_status_t pmix_bfrops_base_print_satyp(char **output, char *prefix,
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     if (PMIX_STORAGE_ACCESS_RD & *src) {
-        pmix_argv_append_nosize(&tmp, "READ");
+        PMIx_Argv_append_nosize(&tmp, "READ");
     }
     if (PMIX_STORAGE_ACCESS_WR & *src) {
-        pmix_argv_append_nosize(&tmp, "WRITE");
+        PMIx_Argv_append_nosize(&tmp, "WRITE");
     }
-    str = pmix_argv_join(tmp, ':');
-    pmix_argv_free(tmp);
+    str = PMIx_Argv_join(tmp, ':');
+    PMIx_Argv_free(tmp);
 
     ret = asprintf(output, "%sData type: PMIX_STOR_ACCESS_TYPE\tValue: %s",
                    (NULL == prefix) ? " " : prefix, str);

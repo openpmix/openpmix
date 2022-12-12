@@ -809,7 +809,7 @@ pmix_status_t pmix12_bfrop_pack_app(pmix_pointer_array_t *regtypes, pmix_buffer_
             return ret;
         }
         /* argv */
-        argc = pmix_argv_count(app[i].argv);
+        argc = PMIx_Argv_count(app[i].argv);
         if (PMIX_SUCCESS != (ret = pmix12_bfrop_pack_int(regtypes, buffer, &argc, 1, PMIX_INT))) {
             return ret;
         }
@@ -821,7 +821,7 @@ pmix_status_t pmix12_bfrop_pack_app(pmix_pointer_array_t *regtypes, pmix_buffer_
             }
         }
         /* env */
-        nvals = pmix_argv_count(app[i].env);
+        nvals = PMIx_Argv_count(app[i].env);
         if (PMIX_SUCCESS
             != (ret = pmix12_bfrop_pack_int32(regtypes, buffer, &nvals, 1, PMIX_INT32))) {
             return ret;

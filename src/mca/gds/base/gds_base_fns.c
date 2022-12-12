@@ -180,7 +180,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace, pmix_bu
                 PMIX_DESTRUCT(&bkt);
                 goto exit;
             }
-            if (pmix_argv_count(kmap) != (int) kmap_size) {
+            if (PMIx_Argv_count(kmap) != (int) kmap_size) {
                 rc = PMIX_ERR_UNPACK_FAILURE;
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&bkt);
@@ -268,7 +268,7 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace, pmix_bu
         PMIX_ERROR_LOG(rc);
     }
 exit:
-    pmix_argv_free(kmap);
+    PMIx_Argv_free(kmap);
     return rc;
 }
 

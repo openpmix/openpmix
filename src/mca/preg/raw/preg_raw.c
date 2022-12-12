@@ -86,7 +86,7 @@ static pmix_status_t parse_nodes(const char *regexp, char ***names)
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    *names = pmix_argv_split(&regexp[4], ',');
+    *names = PMIx_Argv_split(&regexp[4], ',');
     return PMIX_SUCCESS;
 }
 static pmix_status_t parse_procs(const char *regexp, char ***procs)
@@ -95,7 +95,7 @@ static pmix_status_t parse_procs(const char *regexp, char ***procs)
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
-    *procs = pmix_argv_split(&regexp[4], ';');
+    *procs = PMIx_Argv_split(&regexp[4], ';');
     return PMIX_SUCCESS;
 }
 

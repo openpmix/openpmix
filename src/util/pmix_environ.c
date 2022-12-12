@@ -61,13 +61,13 @@ char **pmix_environ_merge(char **minor, char **major)
         if (NULL == minor) {
             return NULL;
         } else {
-            return pmix_argv_copy(minor);
+            return PMIx_Argv_copy(minor);
         }
     }
 
     /* First, copy major */
 
-    ret = pmix_argv_copy(major);
+    ret = PMIx_Argv_copy(major);
 
     /* Do we have something in minor? */
 
@@ -75,13 +75,13 @@ char **pmix_environ_merge(char **minor, char **major)
         return ret;
     }
 
-    /* Now go through minor and call pmix_setenv(), but with overwrite
+    /* Now go through minor and call PMIx_Setenv(), but with overwrite
        as false */
 
     for (i = 0; NULL != minor[i]; ++i) {
         value = strchr(minor[i], '=');
         if (NULL == value) {
-            pmix_setenv(minor[i], NULL, false, &ret);
+            PMIx_Setenv(minor[i], NULL, false, &ret);
         } else {
 
             /* strdup minor[i] in case it's a constant string */
@@ -89,7 +89,7 @@ char **pmix_environ_merge(char **minor, char **major)
             name = strdup(minor[i]);
             value = name + (value - minor[i]);
             *value = '\0';
-            pmix_setenv(name, value + 1, false, &ret);
+            PMIx_Setenv(name, value + 1, false, &ret);
             free(name);
         }
     }
@@ -118,7 +118,7 @@ pmix_status_t pmix_environ_merge_inplace(char ***orig, char **adders)
         if (NULL == pmix_getenv(adder_string, *orig)) {
             /* note that append_nosize strdup()s the added argument,
                so both orig and adders can later be freed */
-            ret = pmix_argv_append_nosize(orig, adder_string);
+            ret = PMIx_Argv_append_nosize(orig, adder_string);
             if (PMIX_SUCCESS != ret) {
                 return ret;
             }

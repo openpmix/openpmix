@@ -130,13 +130,13 @@ int pmix_net_init(void)
     uint32_t a, b, c, d, bits, addr;
     int i, count, found_bad = 0;
 
-    args = pmix_argv_split(pmix_net_private_ipv4, ';');
+    args = PMIx_Argv_split(pmix_net_private_ipv4, ';');
     if (NULL != args) {
-        count = pmix_argv_count(args);
+        count = PMIx_Argv_count(args);
         private_ipv4 = (private_ipv4_t *) malloc((count + 1) * sizeof(private_ipv4_t));
         if (NULL == private_ipv4) {
             pmix_output(0, "Unable to allocate memory for the private addresses array");
-            pmix_argv_free(args);
+            PMIx_Argv_free(args);
             goto do_local_init;
         }
         for (i = 0; i < count; i++) {
@@ -158,7 +158,7 @@ int pmix_net_init(void)
         }
         private_ipv4[i].addr = 0;
         private_ipv4[i].netmask_bits = 0;
-        pmix_argv_free(args);
+        PMIx_Argv_free(args);
     }
 
 do_local_init:

@@ -45,11 +45,11 @@ pmix_status_t pmix_argv_append(int *argc, char ***argv, const char *arg)
     pmix_status_t rc;
 
     /* add the new element */
-    if (PMIX_SUCCESS != (rc = pmix_argv_append_nosize(argv, arg))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Argv_append_nosize(argv, arg))) {
         return rc;
     }
 
-    *argc = pmix_argv_count(*argv);
+    *argc = PMIx_Argv_count(*argv);
 
     return PMIX_SUCCESS;
 }
@@ -74,10 +74,10 @@ pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *ar
         }
     }
 add:
-    if (PMIX_SUCCESS != (rc = pmix_argv_append_nosize(argv, arg))) {
+    if (PMIX_SUCCESS != (rc = PMIx_Argv_append_nosize(argv, arg))) {
         return rc;
     }
-    *idx = pmix_argv_count(*argv) - 1;
+    *idx = PMIx_Argv_count(*argv) - 1;
 
     return PMIX_SUCCESS;
 }
@@ -96,7 +96,7 @@ char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
 
     /* Bozo case */
 
-    if (NULL == argv || NULL == argv[0] || (int) start >= pmix_argv_count(argv)) {
+    if (NULL == argv || NULL == argv[0] || (int) start >= PMIx_Argv_count(argv)) {
         return strdup("");
     }
 
@@ -194,8 +194,8 @@ char **pmix_argv_copy_strip(char **argv)
             argv[n][len-1] = '\0';
             mod = true;
         }
-        if (PMIX_SUCCESS != pmix_argv_append_nosize(&dupv, start)) {
-            pmix_argv_free(dupv);
+        if (PMIX_SUCCESS != PMIx_Argv_append_nosize(&dupv, start)) {
+            PMIx_Argv_free(dupv);
             if (mod) {
                 argv[n][len-1] = '\"';
             }
@@ -222,7 +222,7 @@ pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, int num_to_de
     if (NULL == argv || NULL == *argv || 0 == num_to_delete) {
         return PMIX_SUCCESS;
     }
-    count = pmix_argv_count(*argv);
+    count = PMIx_Argv_count(*argv);
     if (start > count) {
         return PMIX_SUCCESS;
     } else if (start < 0 || num_to_delete < 0) {
@@ -279,8 +279,8 @@ pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
 
     /* Easy case: appending to the end */
 
-    target_count = pmix_argv_count(*target);
-    source_count = pmix_argv_count(source);
+    target_count = PMIx_Argv_count(*target);
+    source_count = PMIx_Argv_count(source);
     if (start > target_count) {
         for (i = 0; i < source_count; ++i) {
             pmix_argv_append(&target_count, target, source[i]);
@@ -329,7 +329,7 @@ pmix_status_t pmix_argv_insert_element(char ***target, int location, char *sourc
     }
 
     /* Easy case: appending to the end */
-    target_count = pmix_argv_count(*target);
+    target_count = PMIx_Argv_count(*target);
     if (location > target_count) {
         pmix_argv_append(&target_count, target, source);
         return PMIX_SUCCESS;

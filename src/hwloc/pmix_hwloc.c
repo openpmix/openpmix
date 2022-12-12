@@ -932,8 +932,8 @@ pmix_status_t pmix_hwloc_get_relative_locality(const char *locality1,
     /* start with what we know - they share a node */
     locality = PMIX_LOCALITY_SHARE_NODE;
 
-    set1 = pmix_argv_split(loc1, ':');
-    set2 = pmix_argv_split(loc2, ':');
+    set1 = PMIx_Argv_split(loc1, ':');
+    set2 = PMIx_Argv_split(loc2, ':');
     bit1 = hwloc_bitmap_alloc();
     bit2 = hwloc_bitmap_alloc();
 
@@ -973,8 +973,8 @@ pmix_status_t pmix_hwloc_get_relative_locality(const char *locality1,
             }
         }
     }
-    pmix_argv_free(set1);
-    pmix_argv_free(set2);
+    PMIx_Argv_free(set1);
+    PMIx_Argv_free(set2);
     hwloc_bitmap_free(bit1);
     hwloc_bitmap_free(bit2);
     *loc = locality;
@@ -1139,7 +1139,7 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
             if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_TYPE)) {
                 type |= info[n].value.data.devtype;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEVICE_ID)) {
-                pmix_argv_append_nosize(&devids, info[n].value.data.string);
+                PMIx_Argv_append_nosize(&devids, info[n].value.data.string);
             }
         }
     }
