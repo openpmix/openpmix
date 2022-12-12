@@ -172,7 +172,7 @@ static int pdlopen_foreachfile(const char *search_path,
     char **dirs = NULL;
     char **good_files = NULL;
 
-    dirs = pmix_argv_split(search_path, PMIX_ENV_SEP);
+    dirs = PMIx_Argv_split(search_path, PMIX_ENV_SEP);
     for (int i = 0; NULL != dirs && NULL != dirs[i]; ++i) {
 
         dp = opendir(dirs[i]);
@@ -234,7 +234,7 @@ static int pdlopen_foreachfile(const char *search_path,
             }
 
             if (!found) {
-                pmix_argv_append_nosize(&good_files, abs_name);
+                PMIx_Argv_append_nosize(&good_files, abs_name);
             }
             free(abs_name);
         }
@@ -259,10 +259,10 @@ error:
         closedir(dp);
     }
     if (NULL != dirs) {
-        pmix_argv_free(dirs);
+        PMIx_Argv_free(dirs);
     }
     if (NULL != good_files) {
-        pmix_argv_free(good_files);
+        PMIx_Argv_free(good_files);
     }
 
     return ret;

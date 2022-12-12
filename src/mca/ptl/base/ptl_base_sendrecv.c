@@ -94,7 +94,7 @@ static void lost_connection(pmix_peer_t *peer)
             /* check if the process should be participating in this collective */
             flag = false;
             for (n=0; n < trk->npcs; n++) {
-                if (PMIX_CHECK_PROCID(&trk->pcs[n], &peer->info->pname)) {
+                if (PMIX_CHECK_NAMES(&trk->pcs[n], &peer->info->pname)) {
                     flag = true;
                     break;
                 }
@@ -112,7 +112,7 @@ static void lost_connection(pmix_peer_t *peer)
             PMIX_INFO_LOAD(&trk->info[trk->ninfo-1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
             /* see if it already participated in this tracker */
             PMIX_LIST_FOREACH_SAFE (rinfo, rnext, &trk->local_cbs, pmix_server_caddy_t) {
-                if (!PMIX_CHECK_PROCID(&rinfo->peer->info->pname, &peer->info->pname)) {
+                if (!PMIX_CHECK_NAMES(&rinfo->peer->info->pname, &peer->info->pname)) {
                     continue;
                 }
                 /* remove it from the list */

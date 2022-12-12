@@ -85,7 +85,7 @@ static int pdlopen_component_register(void)
         return ret;
     }
     pmix_mca_pdl_pdlopen_component.filename_suffixes
-        = pmix_argv_split(pmix_mca_pdl_pdlopen_component.filename_suffixes_mca_storage, ',');
+        = PMIx_Argv_split(pmix_mca_pdl_pdlopen_component.filename_suffixes_mca_storage, ',');
 
     return PMIX_SUCCESS;
 }
@@ -98,7 +98,7 @@ static int pdlopen_component_open(void)
 static int pdlopen_component_close(void)
 {
     if (NULL != pmix_mca_pdl_pdlopen_component.filename_suffixes) {
-        pmix_argv_free(pmix_mca_pdl_pdlopen_component.filename_suffixes);
+        PMIx_Argv_free(pmix_mca_pdl_pdlopen_component.filename_suffixes);
         pmix_mca_pdl_pdlopen_component.filename_suffixes = NULL;
     }
 

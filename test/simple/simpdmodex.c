@@ -249,19 +249,19 @@ int main(int argc, char **argv)
         goto done;
     }
     /* split the returned string to get the rank of each local peer */
-    peers = pmix_argv_split(val->data.string, ',');
+    peers = PMIx_Argv_split(val->data.string, ',');
     PMIX_VALUE_RELEASE(val);
-    nlocal = pmix_argv_count(peers);
+    nlocal = PMIx_Argv_count(peers);
     if (nprocs == nlocal) {
         all_local = true;
     } else {
         all_local = false;
-        locals = (pmix_rank_t *) malloc(pmix_argv_count(peers) * sizeof(pmix_rank_t));
+        locals = (pmix_rank_t *) malloc(PMIx_Argv_count(peers) * sizeof(pmix_rank_t));
         for (n = 0; NULL != peers[n]; n++) {
             locals[n] = strtoul(peers[n], NULL, 10);
         }
     }
-    pmix_argv_free(peers);
+    PMIx_Argv_free(peers);
 
     /* get the committed data - ask for someone who doesn't exist as well */
     num_gets = 0;

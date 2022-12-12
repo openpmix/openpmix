@@ -696,13 +696,13 @@ void pmix_ifgetaliases(char ***aliases)
             if (0 == strcmp(ipv4, "localhost") || 0 == strcmp(ipv4, "127.0.0.1")) {
                 continue;
             }
-            pmix_argv_append_nosize(aliases, ipv4);
+            PMIx_Argv_append_nosize(aliases, ipv4);
         }
 #    if PMIX_ENABLE_IPV6
         else {
             addr6 = (struct sockaddr_in6 *) &intf->if_addr;
             inet_ntop(AF_INET6, &(addr6->sin6_addr), ipv6, INET6_ADDRSTRLEN);
-            pmix_argv_append_nosize(aliases, ipv6);
+            PMIx_Argv_append_nosize(aliases, ipv6);
         }
 #    endif
     }

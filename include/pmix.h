@@ -1568,7 +1568,59 @@ PMIX_EXPORT bool PMIx_Data_decompress(const uint8_t *inbytes,
 /* load a key */
 PMIX_EXPORT void PMIx_Load_key(pmix_key_t key, const char *src);
 
-/* initialize a coord struct */
+/* check a key */
+PMIX_EXPORT bool PMIx_Check_key(const char *key, const char *str);
+
+/* check to see if a key is a "reserved" key */
+PMIX_EXPORT bool PMIx_Check_reserved_key(const char *key);
+
+/* load a string into a pmix_nspace_t struct */
+PMIX_EXPORT void PMIx_Load_nspace(pmix_nspace_t nspace, const char *str);
+
+/* check two nspace structs for equality */
+PMIX_EXPORT bool PMIx_Check_nspace(const char *key1, const char *key2);
+
+/* check if a namespace is invalid */
+PMIX_EXPORT bool PMIx_Nspace_invalid(const char *nspace);
+
+/* load a process ID struct */
+PMIX_EXPORT void PMIx_Load_procid(pmix_proc_t *p, 
+                                  const char *ns,
+                                  pmix_rank_t rk);
+
+/* transfer a process ID struct (non-destructive) */
+PMIX_EXPORT void PMIx_Xfer_procid(pmix_proc_t *dst,
+                                  const pmix_proc_t *src);
+
+/* check two procIDs for equality */
+PMIX_EXPORT bool PMIx_Check_procid(const pmix_proc_t *a,
+                                   const pmix_proc_t *b);
+
+/* check two ranks for equality */
+PMIX_EXPORT bool PMIx_Check_rank(pmix_rank_t a,
+                                 pmix_rank_t b);
+
+/* check if procID is invalid */
+PMIX_EXPORT bool PMIx_Procid_invalid(const pmix_proc_t *p);
+
+PMIX_EXPORT int PMIx_Argv_count(char **a);
+PMIX_EXPORT pmix_status_t PMIx_Argv_append_nosize(char ***argv, const char *arg);
+PMIX_EXPORT pmix_status_t PMIx_Argv_prepend_nosize(char ***argv, const char *arg);
+PMIX_EXPORT pmix_status_t PMIx_Argv_append_unique_nosize(char ***argv, const char *arg);
+PMIX_EXPORT void PMIx_Argv_free(char **argv);
+PMIX_EXPORT char **PMIx_Argv_split_inter(const char *src_string,
+                                         int delimiter,
+                                         bool include_empty);
+PMIX_EXPORT char **PMIx_Argv_split_with_empty(const char *src_string, int delimiter);
+PMIX_EXPORT char **PMIx_Argv_split(const char *src_string, int delimiter);
+PMIX_EXPORT char *PMIx_Argv_join(char **argv, int delimiter);
+PMIX_EXPORT char **PMIx_Argv_copy(char **argv);
+PMIX_EXPORT pmix_status_t PMIx_Setenv(const char *name,
+                                      const char *value,
+                                      bool overwrite,
+                                      char ***env);
+
+/* initialize a value struct */
 PMIX_EXPORT void PMIx_Value_construct(pmix_value_t *val);
 
 /* free memory stored inside a value struct */
@@ -1617,6 +1669,19 @@ PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
 PMIX_EXPORT void PMIx_Data_array_destruct(pmix_data_array_t *d);
 
 
+/* initialize an info struct */
+PMIX_EXPORT void PMIx_Info_construct(pmix_info_t *p);
+
+/* free memory stored inside an info struct */
+PMIX_EXPORT void PMIx_Info_destruct(pmix_info_t *p);
+
+/* create and initialize an array of info structs */
+PMIX_EXPORT pmix_info_t* PMIx_Info_create(size_t n);
+
+/* free memory stored inside an array of coord structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Info_free(pmix_info_t *p, size_t n);
+
 /* Check the given info struct to determine if it includes
  * a boolean value (includes strings for "true" and "false",
  * including abbreviations such as "t" or "f"), and if so,
@@ -1638,6 +1703,42 @@ PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
  * executed as a COPY operation, so the original data is not altered */
 PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
                                          const pmix_info_t *src);
+
+/* mark the info struct as required */
+PMIX_EXPORT void PMIx_Info_required(pmix_info_t *p);
+
+/* mark the info struct as optional */
+PMIX_EXPORT void PMIx_Info_optional(pmix_info_t *p);
+
+/* check if the info struct is required */
+PMIX_EXPORT bool PMIx_Info_is_required(const pmix_info_t *p);
+
+/* check if the info struct is optional */
+PMIX_EXPORT bool PMIx_Info_is_optional(const pmix_info_t *p);
+
+/* mark the info struct as processed */
+PMIX_EXPORT void PMIx_Info_processed(pmix_info_t *p);
+
+/* check if the info struct has been processed */
+PMIX_EXPORT bool PMIx_Info_was_processed(const pmix_info_t *p);
+
+/* mark the info struct as the end of an array */
+PMIX_EXPORT void PMIx_Info_set_end(pmix_info_t *p);
+
+/* check if the info struct is the end of an array */
+PMIX_EXPORT bool PMIx_Info_is_end(const pmix_info_t *p);
+
+/* mark the info as a qualifier */
+PMIX_EXPORT void PMIx_Info_qualifier(pmix_info_t *p);
+
+/* check if the info struct is a qualifier */
+PMIX_EXPORT bool PMIx_Info_is_qualifier(const pmix_info_t *p);
+
+/* mark the info struct as persistent - do NOT release its contents */
+PMIX_EXPORT void PMIx_Info_persistent(pmix_info_t *p);
+
+/* check if the info struct is persistent */
+PMIX_EXPORT bool PMIx_Info_is_persistent(const pmix_info_t *p);
 
 
 /* initialize a coord struct */

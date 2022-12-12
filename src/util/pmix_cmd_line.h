@@ -163,7 +163,7 @@ static inline int pmix_cmd_line_get_ninsts(pmix_cli_result_t *results,
     if (NULL == opt) {
         return 0;
     }
-    return pmix_argv_count(opt->values);
+    return PMIx_Argv_count(opt->values);
 }
 
 static inline char* pmix_cmd_line_get_nth_instance(pmix_cli_result_t *results,
@@ -176,7 +176,7 @@ static inline char* pmix_cmd_line_get_nth_instance(pmix_cli_result_t *results,
     if (NULL == opt) {
         return NULL;
     }
-    ninst = pmix_argv_count(opt->values);
+    ninst = PMIx_Argv_count(opt->values);
     if (ninst < idx) {
         return NULL;
     }
@@ -203,11 +203,11 @@ static inline bool pmix_check_cli_option(char *a, char *b)
      * that of the target option */
     if (NULL != strchr(b, '-') ||
         NULL != strchr(a, '-')) {
-        asplit = pmix_argv_split(a, '-');
-        bsplit = pmix_argv_split(b, '-');
-        if (pmix_argv_count(asplit) > pmix_argv_count(bsplit)) {
-            pmix_argv_free(asplit);
-            pmix_argv_free(bsplit);
+        asplit = PMIx_Argv_split(a, '-');
+        bsplit = PMIx_Argv_split(b, '-');
+        if (PMIx_Argv_count(asplit) > PMIx_Argv_count(bsplit)) {
+            PMIx_Argv_free(asplit);
+            PMIx_Argv_free(bsplit);
             return false;
         }
         match = 0;
@@ -218,14 +218,14 @@ static inline bool pmix_check_cli_option(char *a, char *b)
             if (0 == strncasecmp(asplit[n], bsplit[n], len)) {
                 ++match;
             } else {
-                pmix_argv_free(asplit);
-                pmix_argv_free(bsplit);
+                PMIx_Argv_free(asplit);
+                PMIx_Argv_free(bsplit);
                 return false;
             }
         }
-        pmix_argv_free(asplit);
-        pmix_argv_free(bsplit);
-        if (match == pmix_argv_count(asplit)) {
+        PMIx_Argv_free(asplit);
+        PMIx_Argv_free(bsplit);
+        if (match == PMIx_Argv_count(asplit)) {
             /* all provided segments match */
             return true;
         }
@@ -249,8 +249,8 @@ static inline bool pmix_check_cli_option(char *a, char *b)
 
 static inline unsigned int pmix_convert_string_to_time(const char *t)
 {
-    char **tmp = pmix_argv_split(t, ':');
-    int sz = pmix_argv_count(tmp);
+    char **tmp = PMIx_Argv_split(t, ':');
+    int sz = PMIx_Argv_count(tmp);
     unsigned int tm;
 
     /* work upwards from the bottom, where the
@@ -266,7 +266,7 @@ static inline unsigned int pmix_convert_string_to_time(const char *t)
     if (0 <= (sz-4) && NULL != tmp[sz-4]) {
         tm += 24 * 60 * 60 * strtoul(tmp[sz-4], NULL, 10);
     }
-    pmix_argv_free(tmp);
+    PMIx_Argv_free(tmp);
     return tm;
 }
 
@@ -287,7 +287,7 @@ do {                                                                    \
             }                                                           \
         }                                                               \
     }                                                                   \
-    _tail = pmix_argv_join((r)->tail, ' ');                             \
+    _tail = PMIx_Argv_join((r)->tail, ' ');                             \
     pmix_output(0, "TAIL: %s", _tail);                                  \
     free(_tail);                                                        \
     pmix_output(0, "\n");                                               \

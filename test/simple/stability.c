@@ -245,7 +245,7 @@ int main(int argc, char **argv)
                 istimeouttest = true;
             }
             for (k = n + 2; NULL != argv[k]; k++) {
-                pmix_argv_append_nosize(&client_argv, argv[k]);
+                PMIx_Argv_append_nosize(&client_argv, argv[k]);
             }
             n += k;
         } else if ((0 == strcmp("-reps", argv[n]) || 0 == strcmp("--reps", argv[n]))
@@ -351,19 +351,19 @@ int main(int argc, char **argv)
         atmp = NULL;
         for (n = 0; n < nprocs; n++) {
             asprintf(&tmp, "%d", n);
-            pmix_argv_append_nosize(&atmp, tmp);
+            PMIx_Argv_append_nosize(&atmp, tmp);
             free(tmp);
         }
-        tmp = pmix_argv_join(atmp, ',');
-        pmix_argv_free(atmp);
+        tmp = PMIx_Argv_join(atmp, ',');
+        PMIx_Argv_free(atmp);
         asprintf(&nspace, "foobar%d", m);
         pmix_strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
         x = PMIX_NEW(myxfer_t);
         set_namespace(nprocs, tmp, nspace, opcbfunc, x);
 
         /* set common argv and env */
-        client_env = pmix_argv_copy(environ);
-        pmix_argv_prepend_nosize(&client_argv, executable);
+        client_env = PMIx_Argv_copy(environ);
+        PMIx_Argv_prepend_nosize(&client_argv, executable);
 
         wakeup = nprocs;
         myuid = getuid();
@@ -411,9 +411,9 @@ int main(int argc, char **argv)
                 exit(0);
             }
         }
-        pmix_argv_free(client_argv);
+        PMIx_Argv_free(client_argv);
         client_argv = NULL;
-        pmix_argv_free(client_env);
+        PMIx_Argv_free(client_env);
         client_env = NULL;
 
         /* hang around until the client(s) finalize */

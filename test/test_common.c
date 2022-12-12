@@ -261,8 +261,8 @@ void parse_cmd(int argc, char **argv, test_params *params)
         char *ranklist = getenv("SLURM_GTIDS");
         char *rankno = getenv("SLURM_LOCALID");
         if (NULL != ranklist && NULL != rankno) {
-            char **myargv = pmix_argv_split(ranklist, ',');
-            int count = pmix_argv_count(myargv);
+            char **myargv = PMIx_Argv_split(ranklist, ',');
+            int count = PMIx_Argv_count(myargv);
             int rankidx = strtoul(rankno, NULL, 10);
             if (rankidx >= count) {
                 fprintf(stderr,
@@ -272,7 +272,7 @@ void parse_cmd(int argc, char **argv, test_params *params)
                 exit(1);
             }
             params->rank = strtoul(myargv[rankidx], NULL, 10);
-            pmix_argv_free(myargv);
+            PMIx_Argv_free(myargv);
         }
     }
 

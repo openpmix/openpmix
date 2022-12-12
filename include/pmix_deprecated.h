@@ -208,6 +208,39 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
  * only included pmix_common.h if they were using macros but not APIs */
 
 PMIX_EXPORT void PMIx_Load_key(pmix_key_t key, const char *src);
+PMIX_EXPORT bool PMIx_Check_key(const char *key, const char *str);
+PMIX_EXPORT bool PMIx_Check_reserved_key(const char *key);
+PMIX_EXPORT void PMIx_Load_nspace(pmix_nspace_t nspace, const char *str);
+PMIX_EXPORT bool PMIx_Check_nspace(const char *key1, const char *key2);
+PMIX_EXPORT bool PMIx_Nspace_invalid(const char *nspace);
+PMIX_EXPORT void PMIx_Load_procid(pmix_proc_t *p, 
+                                  const char *ns,
+                                  pmix_rank_t rk);
+PMIX_EXPORT void PMIx_Xfer_procid(pmix_proc_t *dst,
+                                  const pmix_proc_t *src);
+PMIX_EXPORT bool PMIx_Check_procid(const pmix_proc_t *a,
+                                   const pmix_proc_t *b);
+PMIX_EXPORT bool PMIx_Check_rank(pmix_rank_t a,
+                                 pmix_rank_t b);
+PMIX_EXPORT bool PMIx_Procid_invalid(const pmix_proc_t *p);
+
+PMIX_EXPORT int PMIx_Argv_count(char **a);
+PMIX_EXPORT pmix_status_t PMIx_Argv_append_nosize(char ***argv, const char *arg);
+PMIX_EXPORT pmix_status_t PMIx_Argv_prepend_nosize(char ***argv, const char *arg);
+PMIX_EXPORT pmix_status_t PMIx_Argv_append_unique_nosize(char ***argv, const char *arg);
+PMIX_EXPORT void PMIx_Argv_free(char **argv);
+PMIX_EXPORT char **PMIx_Argv_split_inter(const char *src_string,
+                                         int delimiter,
+                                         bool include_empty);
+PMIX_EXPORT char **PMIx_Argv_split_with_empty(const char *src_string, int delimiter);
+PMIX_EXPORT char **PMIx_Argv_split(const char *src_string, int delimiter);
+PMIX_EXPORT char *PMIx_Argv_join(char **argv, int delimiter);
+PMIX_EXPORT char **PMIx_Argv_copy(char **argv);
+PMIX_EXPORT pmix_status_t PMIx_Setenv(const char *name,
+                                      const char *value,
+                                      bool overwrite,
+                                      char ***env);
+
 
 PMIX_EXPORT void PMIx_Value_construct(pmix_value_t *val);
 PMIX_EXPORT void PMIx_Value_destruct(pmix_value_t *val);
@@ -237,16 +270,20 @@ PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
                                          const char *key,
                                          const void *data,
                                          pmix_data_type_t type);
-PMIX_EXPORT void PMIx_Info_required(pmix_info_t *p);
-PMIX_EXPORT bool PMIx_Info_is_required(pmix_info_t *p);
-PMIX_EXPORT void PMIx_Info_processed(pmix_info_t *p);
-PMIX_EXPORT bool PMIx_Info_was_processed(pmix_info_t *p);
-PMIX_EXPORT void PMIx_Info_set_end(pmix_info_t *p);
-PMIX_EXPORT bool PMIx_Info_is_end(pmix_info_t *p);
-PMIX_EXPORT void PMIx_Info_persistent(pmix_info_t *p);
-PMIX_EXPORT bool PMIx_Info_is_persistent(pmix_info_t *p);
 PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
                                          const pmix_info_t *src);
+PMIX_EXPORT void PMIx_Info_required(pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_optional(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_is_required(const pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_is_optional(const pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_processed(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_was_processed(const pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_set_end(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_is_end(const pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_qualifier(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_is_qualifier(const pmix_info_t *p);
+PMIX_EXPORT void PMIx_Info_persistent(pmix_info_t *p);
+PMIX_EXPORT bool PMIx_Info_is_persistent(const pmix_info_t *p);
 
 PMIX_EXPORT void PMIx_Coord_construct(pmix_coord_t *m);
 PMIX_EXPORT void PMIx_Coord_destruct(pmix_coord_t *m);
@@ -343,7 +380,6 @@ PMIX_EXPORT pmix_node_stats_t* PMIx_Node_stats_create(size_t n);
 PMIX_EXPORT void PMIx_Node_stats_free(pmix_node_stats_t *p, size_t n);
 
 
-
 PMIX_EXPORT void* PMIx_Info_list_start(void);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
@@ -364,6 +400,66 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 
 #define PMIX_LOAD_KEY(a, b) \
     PMIx_Load_key(a, b)
+
+#define PMIX_CHECK_KEY(a, b) \
+    PMIx_Check_key((a)->key, b)
+
+#define PMIX_CHECK_RESERVED_KEY(a) \
+    PMIx_Check_reserved_key(a)
+
+#define PMIX_LOAD_NSPACE(a, b) \
+    PMIx_Load_nspace(a, b)
+
+/* define a convenience macro for checking nspaces */
+#define PMIX_CHECK_NSPACE(a, b) \
+    PMIx_Check_nspace(a, b)
+
+#define PMIX_NSPACE_INVALID(a) \
+    PMIx_Nspace_invalid(a)
+
+#define PMIX_LOAD_PROCID(a, b, c) \
+    PMIx_Load_procid(a, b, c)
+
+#define PMIX_XFER_PROCID(a, b) \
+    PMIx_Xfer_procid(a, b)
+
+#define PMIX_PROCID_XFER(a, b) PMIX_XFER_PROCID(a, b)
+
+#define PMIX_CHECK_PROCID(a, b) \
+    PMIx_Check_procid(a, b)
+
+#define PMIX_CHECK_RANK(a, b) \
+    PMIx_Check_rank(a, b)
+
+#define PMIX_PROCID_INVALID(a)  \
+    PMIx_Procid_invalid(a)
+
+#define PMIX_ARGV_COUNT(r, a) \
+    (r) = PMIx_Argv_count(a)
+
+#define PMIX_ARGV_APPEND(r, a, b) \
+    (r) = PMIx_Argv_append_nosize(&(a), (b))
+
+#define PMIX_ARGV_PREPEND(r, a, b) \
+    (r) = PMIx_Argv_prepend_nosize(&(a), b)
+
+#define PMIX_ARGV_APPEND_UNIQUE(r, a, b) \
+    (r) = PMIx_Argv_append_unique_nosize(a, b)
+
+#define PMIX_ARGV_FREE(a)  \
+    PMIx_Argv_free(a)
+
+#define PMIX_ARGV_SPLIT(a, b, c) \
+    (a) = PMIx_Argv_split(b, c)
+
+#define PMIX_ARGV_JOIN(a, b, c) \
+    (a) = PMIx_Argv_join(b, c)
+
+#define PMIX_ARGV_COPY(a, b) \
+    (a) = PMIx_Argv_copy(b)
+
+#define PMIX_SETENV(r, a, b, c) \
+    (r) = PMIx_Setenv((a), (b), true, (c))
 
 
 #define PMIX_VALUE_CONSTRUCT(m) \
@@ -417,6 +513,42 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 
 #define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
     (r) = PMIx_Value_xfer((v), (s))
+
+#define PMIX_INFO_CONSTRUCT(m) \
+    PMIx_Info_construct(m)
+
+#define PMIX_INFO_CREATE(m, n) \
+    (m) = PMIx_Info_create(n)
+
+#define PMIX_INFO_REQUIRED(m) \
+    PMIx_Info_required(m)
+#define PMIX_INFO_OPTIONAL(m) \
+    PMIx_Info_optional(m)
+
+#define PMIX_INFO_IS_REQUIRED(m) \
+    PMIx_Info_is_required(m)
+#define PMIX_INFO_IS_OPTIONAL(m) \
+    PMIx_Info_is_optional(m)
+
+#define PMIX_INFO_PROCESSED(m)  \
+    PMIx_Info_processed(m)
+#define PMIX_INFO_WAS_PROCESSED(m)  \
+    PMIx_Info_was_processed(m)
+
+#define PMIX_INFO_SET_END(m)    \
+    PMIx_Info_set_end(m)
+#define PMIX_INFO_IS_END(m)         \
+    PMIx_Info_is_end(m)
+
+#define PMIX_INFO_SET_QUALIFIER(i)   \
+    PMIx_Info_qualifier(i)
+#define PMIX_INFO_IS_QUALIFIER(i)    \
+    PMIx_Info_is_qualifier(i)
+
+#define PMIX_INFO_SET_PERSISTENT(ii) \
+    PMIx_Info_persistent(ii)
+#define PMIX_INFO_IS_PERSISTENT(ii)  \
+    PMIx_Info_is_persistent(ii)
 
 #define PMIX_INFO_LOAD(i, k, d, t)  \
     (void) PMIx_Info_load(i, k, d, t)

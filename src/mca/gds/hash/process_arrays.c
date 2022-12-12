@@ -105,7 +105,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
             if (NULL == nd) {
                 nd = PMIX_NEW(pmix_nodeinfo_t);
             }
-            nd->aliases = pmix_argv_split(iptr[j].value.data.string, ',');
+            nd->aliases = PMIx_Argv_split(iptr[j].value.data.string, ',');
             /* need to cache this value as well */
             kp2 = PMIX_NEW(pmix_kval_t);
             kp2->key = strdup(iptr[j].key);
@@ -156,7 +156,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
                 }
                 if (NULL != nd->aliases) {
                     for (n=0; NULL != nd->aliases[n]; n++) {
-                        pmix_argv_append_unique_nosize(&ndptr->aliases, nd->aliases[n]);
+                        PMIx_Argv_append_unique_nosize(&ndptr->aliases, nd->aliases[n]);
                     }
                 }
                 PMIX_RELEASE(nd);
@@ -173,7 +173,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
                 }
                 if (NULL != nd->aliases) {
                     for (n=0; NULL != nd->aliases[n]; n++) {
-                        pmix_argv_append_unique_nosize(&ndptr->aliases, nd->aliases[n]);
+                        PMIx_Argv_append_unique_nosize(&ndptr->aliases, nd->aliases[n]);
                     }
                 }
                 PMIX_RELEASE(nd);

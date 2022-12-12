@@ -71,8 +71,8 @@ int main(int argc, char **argv)
     rc = pmix_preg.parse_nodes(regex, &nodes);
     free(regex);
     if (PMIX_SUCCESS == rc) {
-        regex = pmix_argv_join(nodes, ',');
-        pmix_argv_free(nodes);
+        regex = PMIx_Argv_join(nodes, ',');
+        PMIx_Argv_free(nodes);
         fprintf(stderr, "NODES: %s\n", TEST_NODES);
         fprintf(stderr, "RSULT: %s\n\n\n", regex);
         free(regex);
@@ -87,8 +87,8 @@ int main(int argc, char **argv)
     rc = pmix_preg.parse_procs(regex, &procs);
     free(regex);
     if (PMIX_SUCCESS == rc) {
-        regex = pmix_argv_join(procs, ';');
-        pmix_argv_free(procs);
+        regex = PMIx_Argv_join(procs, ';');
+        PMIx_Argv_free(procs);
         fprintf(stderr, "PROCS: %s\n", TEST_PROCS);
         fprintf(stderr, "RSULT: %s\n", regex);
         free(regex);
@@ -103,8 +103,8 @@ int main(int argc, char **argv)
     rc = pmix_preg.parse_nodes(regex, &nodes);
     free(regex);
     if (PMIX_SUCCESS == rc) {
-        regex = pmix_argv_join(nodes, ',');
-        pmix_argv_free(nodes);
+        regex = PMIx_Argv_join(nodes, ',');
+        PMIx_Argv_free(nodes);
         fprintf(stderr, "NODES: %s\n", TEST_NODES2);
         fprintf(stderr, "RSULT: %s\n\n\n", regex);
         free(regex);

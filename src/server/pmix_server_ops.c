@@ -689,7 +689,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk, pmix_buffer_t *buf)
 
             key_count = PMIX_VALUE_ARRAY_GET_BASE(key_count_array, uint32_t);
 
-            for (i = 0; i < pmix_argv_count(kmap); i++) {
+            for (i = 0; i < PMIx_Argv_count(kmap); i++) {
                 pmix_buffer_t tmp;
                 size_t kname_size;
                 size_t kidx_size;
@@ -799,7 +799,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk, pmix_buffer_t *buf)
             /* pack node part of modex to `bucket` */
             /* pack the key names map for the remote server can
              * use it to match key names by index */
-            kmap_size = pmix_argv_count(kmap);
+            kmap_size = PMIx_Argv_count(kmap);
             if (0 < kmap_size) {
                 PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &kmap_size, 1, PMIX_UINT32);
                 PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, kmap, kmap_size, PMIX_STRING);
@@ -847,7 +847,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk, pmix_buffer_t *buf)
 
 cleanup:
     PMIX_DESTRUCT(&bucket);
-    pmix_argv_free(kmap);
+    PMIx_Argv_free(kmap);
     return rc;
 }
 
@@ -1176,7 +1176,7 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
 
     if (NULL != cd->keys) {
-        pmix_argv_free(cd->keys);
+        PMIx_Argv_free(cd->keys);
     }
     if (NULL != cd->codes) {
         free(cd->codes);
@@ -1269,7 +1269,7 @@ static void lkcbfunc(pmix_status_t status, pmix_pdata_t data[],
 
     /* cleanup the caddy */
     if (NULL != cd->keys) {
-        pmix_argv_free(cd->keys);
+        PMIx_Argv_free(cd->keys);
     }
     if (NULL != cd->info) {
         PMIX_INFO_FREE(cd->info, cd->ninfo);
@@ -1329,7 +1329,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
-        pmix_argv_append_nosize(&cd->keys, sptr);
+        PMIx_Argv_append_nosize(&cd->keys, sptr);
         free(sptr);
     }
     /* unpack the number of info objects */
@@ -1367,7 +1367,7 @@ pmix_status_t pmix_server_lookup(pmix_peer_t *peer, pmix_buffer_t *buf,
 cleanup:
     if (PMIX_SUCCESS != rc) {
         if (NULL != cd->keys) {
-            pmix_argv_free(cd->keys);
+            PMIx_Argv_free(cd->keys);
         }
         if (NULL != cd->info) {
             PMIX_INFO_FREE(cd->info, cd->ninfo);
@@ -1424,7 +1424,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
-        pmix_argv_append_nosize(&cd->keys, sptr);
+        PMIx_Argv_append_nosize(&cd->keys, sptr);
         free(sptr);
     }
     /* unpack the number of info objects */
@@ -1462,7 +1462,7 @@ pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t *buf,
 cleanup:
     if (PMIX_SUCCESS != rc) {
         if (NULL != cd->keys) {
-            pmix_argv_free(cd->keys);
+            PMIx_Argv_free(cd->keys);
         }
         if (NULL != cd->info) {
             PMIX_INFO_FREE(cd->info, cd->ninfo);
@@ -1508,7 +1508,7 @@ void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
             }
             /* never forward back to the source! This can happen if the source
              * is a launcher */
-            if (PMIX_CHECK_PROCID(&iof->source, &req->requestor->info->pname)) {
+            if (PMIX_CHECK_NAMES(&iof->source, &req->requestor->info->pname)) {
                 continue;
             }
             pmix_output_verbose(2, pmix_server_globals.iof_output,
@@ -2141,10 +2141,10 @@ static void _check_cached_events(int sd, short args, void *cbdata)
                 /* if the source of the event is the same peer just registered, then ignore it
                  * as the event notification system will have already locally
                  * processed it */
-                if (PMIX_CHECK_PROCID(&cd->source, &scd->peer->info->pname)) {
+                if (PMIX_CHECK_NAMES(&cd->source, &scd->peer->info->pname)) {
                     continue;
                 }
-                if (PMIX_CHECK_PROCID(&scd->peer->info->pname, &cd->targets[n])) {
+                if (PMIX_CHECK_NAMES(&scd->peer->info->pname, &cd->targets[n])) {
                     matched = true;
                     /* track the number of targets we have left to notify */
                     --cd->nleft;
@@ -4323,7 +4323,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                     if (NULL == pr) {
                         continue;
                     }
-                    if (PMIX_CHECK_PROCID(&grp->members[n], &pr->info->pname)) {
+                    if (PMIX_CHECK_NAMES(&grp->members[n], &pr->info->pname)) {
                         match = true;
                         break;
                     }

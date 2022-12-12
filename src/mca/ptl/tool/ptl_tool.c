@@ -55,14 +55,14 @@ static pmix_status_t setup_listener(pmix_info_t info[], size_t ninfo)
     /* if we are connected, then register any rendezvous files for cleanup */
     if (pmix_globals.connected) {
         if (NULL != pmix_ptl_base.nspace_filename) {
-            pmix_argv_append_nosize(&clnup, pmix_ptl_base.nspace_filename);
+            PMIx_Argv_append_nosize(&clnup, pmix_ptl_base.nspace_filename);
         }
         if (NULL != pmix_ptl_base.session_filename) {
-            pmix_argv_append_nosize(&clnup, pmix_ptl_base.session_filename);
+            PMIx_Argv_append_nosize(&clnup, pmix_ptl_base.session_filename);
         }
         if (NULL != clnup) {
-            cptr = pmix_argv_join(clnup, ',');
-            pmix_argv_free(clnup);
+            cptr = PMIx_Argv_join(clnup, ',');
+            PMIx_Argv_free(clnup);
             PMIX_INFO_LOAD(&dir, PMIX_REGISTER_CLEANUP, cptr, PMIX_STRING);
             free(cptr);
             PMIx_Job_control_nb(&pmix_globals.myid, 1, &dir, 1, NULL, NULL);

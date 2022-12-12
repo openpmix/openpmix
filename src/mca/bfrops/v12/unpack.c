@@ -1044,7 +1044,7 @@ pmix_status_t pmix12_bfrop_unpack_app(pmix_pointer_array_t *regtypes, pmix_buffe
             if (NULL == tmp) {
                 return PMIX_ERROR;
             }
-            pmix_argv_append_nosize(&ptr[i].argv, tmp);
+            PMIx_Argv_append_nosize(&ptr[i].argv, tmp);
             free(tmp);
         }
         /* unpack env */
@@ -1066,7 +1066,7 @@ pmix_status_t pmix12_bfrop_unpack_app(pmix_pointer_array_t *regtypes, pmix_buffe
             if (NULL == tmp) {
                 return PMIX_ERROR;
             }
-            pmix_argv_append_nosize(&ptr[i].env, tmp);
+            PMIx_Argv_append_nosize(&ptr[i].env, tmp);
             free(tmp);
         }
         /* unpack maxprocs */

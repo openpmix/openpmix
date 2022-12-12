@@ -430,7 +430,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
              */
             if (PMIX_ERR_FABRIC_NOT_PARSEABLE == rc) {
                 pmix_show_help("help-ptl-base.txt", "not-parseable", true);
-                pmix_argv_free(interfaces);
+                PMIx_Argv_free(interfaces);
                 return PMIX_ERR_BAD_PARAM;
             }
             /* if we are including, then ignore this if not present */
@@ -472,7 +472,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     }
     /* cleanup */
     if (NULL != interfaces) {
-        pmix_argv_free(interfaces);
+        PMIx_Argv_free(interfaces);
     }
 
     /* if we didn't find anything, that could be a problem */

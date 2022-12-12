@@ -93,12 +93,12 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info
             rc = active->module->harvest_envars(nptr, info, ninfo, ilist, &priors);
             if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* true error */
-                pmix_argv_free(priors);
+                PMIx_Argv_free(priors);
                 return rc;
             }
         }
     }
-    pmix_argv_free(priors);
+    PMIx_Argv_free(priors);
 
     /* add any local PMIx MCA params */
     rc = pmix_util_harvest_envars(params, NULL, ilist);
@@ -222,12 +222,12 @@ pmix_status_t pmix_pmdl_base_setup_fork(const pmix_proc_t *proc, char ***env)
             rc = active->module->setup_fork(proc, env, &priors);
             if (PMIX_SUCCESS != rc && PMIX_ERR_TAKE_NEXT_OPTION != rc) {
                 /* true error */
-                pmix_argv_free(priors);
+                PMIx_Argv_free(priors);
                 return rc;
             }
         }
     }
-    pmix_argv_free(priors);
+    PMIx_Argv_free(priors);
 
     return PMIX_SUCCESS;
 }

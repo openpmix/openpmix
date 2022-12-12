@@ -168,18 +168,18 @@ static void set_namespace(int local_size, int univ_size, int base_rank, char *na
 
     /* assemble the node and proc map info */
     if (1 == params->nservers) {
-        pmix_argv_append_nosize(&nodes, my_server_info->hostname);
+        PMIx_Argv_append_nosize(&nodes, my_server_info->hostname);
     } else {
         char hostname[PMIX_MAXHOSTNAMELEN];
         for (i = 0; i < params->nservers; i++) {
             snprintf(hostname, PMIX_MAXHOSTNAMELEN, "node%d", i);
-            pmix_argv_append_nosize(&nodes, hostname);
+            PMIx_Argv_append_nosize(&nodes, hostname);
         }
     }
 
     if (NULL != nodes) {
-        tmp = pmix_argv_join(nodes, ',');
-        pmix_argv_free(nodes);
+        tmp = PMIx_Argv_join(nodes, ',');
+        PMIx_Argv_free(nodes);
         nodes = NULL;
         if (PMIX_SUCCESS != (rc = PMIx_generate_regex(tmp, &regex))) {
             PMIX_ERROR_LOG(rc);
@@ -193,29 +193,29 @@ static void set_namespace(int local_size, int univ_size, int base_rank, char *na
      * servers, then the procs not on this server must
      * be on the other */
     if (2 == params->nservers) {
-        pmix_argv_append_nosize(&rks, ranks);
+        PMIx_Argv_append_nosize(&rks, ranks);
         free(ranks);
         nodes = NULL;
         if (0 == my_server_id) {
             for (i = base_rank + local_size; i < univ_size; i++) {
                 pmix_asprintf(&ppn, "%d", i);
-                pmix_argv_append_nosize(&nodes, ppn);
+                PMIx_Argv_append_nosize(&nodes, ppn);
                 free(ppn);
             }
-            ppn = pmix_argv_join(nodes, ',');
-            pmix_argv_append_nosize(&rks, ppn);
+            ppn = PMIx_Argv_join(nodes, ',');
+            PMIx_Argv_append_nosize(&rks, ppn);
             free(ppn);
         } else {
             for (i = 0; i < base_rank; i++) {
                 pmix_asprintf(&ppn, "%d", i);
-                pmix_argv_append_nosize(&nodes, ppn);
+                PMIx_Argv_append_nosize(&nodes, ppn);
                 free(ppn);
             }
-            ppn = pmix_argv_join(nodes, ',');
-            pmix_argv_prepend_nosize(&rks, ppn);
+            ppn = PMIx_Argv_join(nodes, ',');
+            PMIx_Argv_prepend_nosize(&rks, ppn);
             free(ppn);
         }
-        ranks = pmix_argv_join(rks, ';');
+        ranks = PMIx_Argv_join(rks, ';');
     }
     PMIx_generate_ppn(ranks, &ppn);
     free(ranks);
@@ -1062,27 +1062,27 @@ int server_launch_clients(int local_size, int univ_size, int base_rank, test_par
         cli_info[cli_counter].rank = proc.rank; // n
         cli_info[cli_counter].ns = strdup(proc.nspace);
 
-        char **client_argv = pmix_argv_copy(*base_argv);
+        char **client_argv = PMIx_Argv_copy(*base_argv);
 
         /* add two last arguments: -r <rank> */
         sprintf(digit, "%d", proc.rank);
-        pmix_argv_append_nosize(&client_argv, "-r");
-        pmix_argv_append_nosize(&client_argv, digit);
+        PMIx_Argv_append_nosize(&client_argv, "-r");
+        PMIx_Argv_append_nosize(&client_argv, digit);
 
-        pmix_argv_append_nosize(&client_argv, "-s");
-        pmix_argv_append_nosize(&client_argv, proc.nspace);
+        PMIx_Argv_append_nosize(&client_argv, "-s");
+        PMIx_Argv_append_nosize(&client_argv, proc.nspace);
 
         sprintf(digit, "%d", univ_size);
-        pmix_argv_append_nosize(&client_argv, "--ns-size");
-        pmix_argv_append_nosize(&client_argv, digit);
+        PMIx_Argv_append_nosize(&client_argv, "--ns-size");
+        PMIx_Argv_append_nosize(&client_argv, digit);
 
         sprintf(digit, "%d", num_ns);
-        pmix_argv_append_nosize(&client_argv, "--ns-id");
-        pmix_argv_append_nosize(&client_argv, digit);
+        PMIx_Argv_append_nosize(&client_argv, "--ns-id");
+        PMIx_Argv_append_nosize(&client_argv, digit);
 
         sprintf(digit, "%d", 0);
-        pmix_argv_append_nosize(&client_argv, "--base-rank");
-        pmix_argv_append_nosize(&client_argv, digit);
+        PMIx_Argv_append_nosize(&client_argv, "--base-rank");
+        PMIx_Argv_append_nosize(&client_argv, digit);
 
         if (cli_info[cli_counter].pid == 0) {
             sigset_t sigs;
@@ -1108,7 +1108,7 @@ int server_launch_clients(int local_size, int univ_size, int base_rank, test_par
         cli_info[cli_counter].alive = true;
         cli_info[cli_counter].state = CLI_FORKED;
 
-        pmix_argv_free(client_argv);
+        PMIx_Argv_free(client_argv);
 
         cli_counter++;
         rank_counter++;

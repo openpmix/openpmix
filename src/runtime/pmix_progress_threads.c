@@ -274,7 +274,7 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
     if (NULL != pmix_progress_thread_cpus) {
         CPU_ZERO(&cpuset);
         // comma-delimited list of cpu ranges
-        ranges = pmix_argv_split(pmix_progress_thread_cpus, ',');
+        ranges = PMIx_Argv_split(pmix_progress_thread_cpus, ',');
         for (n=0; NULL != ranges[n]; n++) {
             // look for '-'
             start = strtoul(ranges[n], &dash, 10);
@@ -296,7 +296,7 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
         } else {
             rc = PMIX_SUCCESS;
         }
-        pmix_argv_free(ranges);
+        PMIx_Argv_free(ranges);
     }
 #endif
     return rc;

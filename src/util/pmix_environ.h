@@ -62,7 +62,7 @@ BEGIN_C_DECLS
  * arrays (i.e., terminated with a NULL pointer).
  *
  * The array that is returned is an unencumbered array that should
- * later be freed with a call to pmix_argv_free().
+ * later be freed with a call to PMIx_Argv_free().
  *
  * Either (or both) of \em major and \em minor can be NULL.  If
  * one of the two is NULL, the other list is simply copied to the
@@ -82,13 +82,13 @@ PMIX_EXPORT char **pmix_environ_merge(char **minor,
  * \em additions is found in \em orig, then the value in orig is not
  * updated (ie, it is an additions-only merge).  The original
  * environment cannot be environ, because pmix_argv_append is used to
- * extend the environment, and pmix_argv_append_nosize() may not be
+ * extend the environment, and PMIx_Argv_append_nosize() may not be
  * safe to call on environ (for the same reason that realloc() may
  * note be safe to call on environ).
  *
  * New strings are allocated when copied, so both \em orig and \em
  * additions individually maintain their ability to be freed with
- * pmix_argv_free().
+ * PMIx_Argv_free().
  *
  * Note that on error, the \em orig array may be partially updated
  * with values from additions, but the array will still be a valid

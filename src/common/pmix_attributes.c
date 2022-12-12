@@ -56,7 +56,7 @@ static void atrkdes(pmix_attribute_trk_t *p)
     if (NULL != p->function) {
         free(p->function);
     }
-    pmix_argv_free(p->attrs);
+    PMIx_Argv_free(p->attrs);
 }
 static PMIX_CLASS_INSTANCE(pmix_attribute_trk_t, pmix_list_item_t, atrkcon, atrkdes);
 
@@ -79,7 +79,7 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
             p->name = strdup(pmix_dictionary[n].name);
             p->string = strdup(pmix_dictionary[n].string);
             p->type = pmix_dictionary[n].type;
-            p->description = pmix_argv_copy(pmix_dictionary[n].description);
+            p->description = PMIx_Argv_copy(pmix_dictionary[n].description);
             pmix_hash_register_key(p->index, p);
         }
         initialized = true;
@@ -117,7 +117,7 @@ static pmix_status_t process_reg(char *level, char *function, char **attrs)
     pmix_list_append(lst, &fnptr->super);
     fnptr->function = strdup(function);
     if (NULL != attrs) {
-        fnptr->attrs = pmix_argv_copy(attrs);
+        fnptr->attrs = PMIx_Argv_copy(attrs);
     }
     return PMIX_SUCCESS;
 }
@@ -549,7 +549,7 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
 
     /* the value in the info is a comma-delimited list of
      * functions whose attributes are being requested */
-    fns = pmix_argv_split(info->value.data.string, ',');
+    fns = PMIx_Argv_split(info->value.data.string, ',');
 
     /* search the list for these functions */
     PMIX_LIST_FOREACH (tptr, attrs, pmix_attribute_trk_t) {
@@ -569,7 +569,7 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
         ip = PMIX_NEW(pmix_infolist_t);
         PMIX_LOAD_KEY(ip->info.key, tptr->function);
         /* create the data array to hold the results */
-        nattr = pmix_argv_count(tptr->attrs);
+        nattr = PMIx_Argv_count(tptr->attrs);
         PMIX_DATA_ARRAY_CREATE(darray, nattr, PMIX_REGATTR);
         ip->info.value.type = PMIX_DATA_ARRAY;
         ip->info.value.data.darray = darray;
@@ -583,11 +583,11 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
                 return;
             }
             regarray[m].type = dptr->type;
-            regarray[m].description = pmix_argv_copy(dptr->description);
+            regarray[m].description = PMIx_Argv_copy(dptr->description);
         }
         pmix_list_append(lst, &ip->super);
     }
-    pmix_argv_free(fns);
+    PMIx_Argv_free(fns);
 }
 
 static void _get_fns(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
@@ -598,14 +598,14 @@ static void _get_fns(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
 
     /* search the list for these functions */
     PMIX_LIST_FOREACH (tptr, attrs, pmix_attribute_trk_t) {
-        pmix_argv_append_nosize(&fns, tptr->function);
+        PMIx_Argv_append_nosize(&fns, tptr->function);
     }
-    if (0 < pmix_argv_count(fns)) {
+    if (0 < PMIx_Argv_count(fns)) {
         ip = PMIX_NEW(pmix_infolist_t);
-        tmp = pmix_argv_join(fns, ',');
+        tmp = PMIx_Argv_join(fns, ',');
         PMIX_INFO_LOAD(&ip->info, info->key, tmp, PMIX_STRING);
         pmix_list_append(lst, &ip->super);
-        pmix_argv_free(fns);
+        PMIx_Argv_free(fns);
     }
 }
 
@@ -896,23 +896,23 @@ PMIX_EXPORT char **pmix_attributes_print_functions(char *level)
 
     /* select title */
     if (0 == strcmp(level, PMIX_CLIENT_FUNCTIONS)) {
-        pmix_argv_append_nosize(&ans, title1);
+        PMIx_Argv_append_nosize(&ans, title1);
         lst = &client_attrs;
     } else if (0 == strcmp(level, PMIX_SERVER_FUNCTIONS)) {
-        pmix_argv_append_nosize(&ans, title2);
+        PMIx_Argv_append_nosize(&ans, title2);
         lst = &server_attrs;
     } else if (0 == strcmp(level, PMIX_HOST_FUNCTIONS)) {
-        pmix_argv_append_nosize(&ans, title3);
+        PMIx_Argv_append_nosize(&ans, title3);
         lst = &host_attrs;
     } else if (0 == strcmp(level, PMIX_TOOL_FUNCTIONS)) {
-        pmix_argv_append_nosize(&ans, title4);
+        PMIx_Argv_append_nosize(&ans, title4);
         lst = &tool_attrs;
     } else {
         return NULL;
     }
 
     PMIX_LIST_FOREACH (fnptr, lst, pmix_attribute_trk_t) {
-        pmix_argv_append_nosize(&ans, fnptr->function);
+        PMIx_Argv_append_nosize(&ans, fnptr->function);
     }
     return ans;
 }
@@ -938,7 +938,7 @@ void pmix_attributes_print_attrs(char ***ans, char *function, pmix_regattr_t *at
     }
     line[m++] = ':';
     line[m] = '\0';
-    pmix_argv_append_nosize(ans, line);
+    PMIx_Argv_append_nosize(ans, line);
 
     for (n = 0; n < nattrs; n++) {
         memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
@@ -968,7 +968,7 @@ void pmix_attributes_print_attrs(char ***ans, char *function, pmix_regattr_t *at
                          + PMIX_PRINT_TYPE_COLUMN_WIDTH + 6],
                    attrs[n].description[m], len);
             line[PMIX_PRINT_ATTR_COLUMN_WIDTH - 1] = '\0'; // ensure NULL termination
-            pmix_argv_append_nosize(ans, line);
+            PMIx_Argv_append_nosize(ans, line);
             memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
             line[PMIX_PRINT_ATTR_COLUMN_WIDTH - 1] = '\0';
         }
@@ -986,13 +986,13 @@ void pmix_attributes_print_headers(char ***ans, char *level)
 
     /* select title */
     if (0 == strcmp(level, PMIX_CLIENT_ATTRIBUTES)) {
-        pmix_argv_append_nosize(ans, title1);
+        PMIx_Argv_append_nosize(ans, title1);
     } else if (0 == strcmp(level, PMIX_SERVER_ATTRIBUTES)) {
-        pmix_argv_append_nosize(ans, title2);
+        PMIx_Argv_append_nosize(ans, title2);
     } else if (0 == strcmp(level, PMIX_HOST_ATTRIBUTES)) {
-        pmix_argv_append_nosize(ans, title3);
+        PMIx_Argv_append_nosize(ans, title3);
     } else if (0 == strcmp(level, PMIX_TOOL_ATTRIBUTES)) {
-        pmix_argv_append_nosize(ans, title4);
+        PMIx_Argv_append_nosize(ans, title4);
     } else {
         return;
     }
@@ -1019,7 +1019,7 @@ void pmix_attributes_print_headers(char ***ans, char *level)
     memcpy(&line[left], "DESCRIPTION", strlen("DESCRIPTION"));
     left += strlen("DESCRIPTION") + 1;
     line[left] = '\0';
-    pmix_argv_append_nosize(ans, line);
+    PMIx_Argv_append_nosize(ans, line);
 
     /* print the dashes under the column headers */
     memset(line, ' ', PMIX_PRINT_ATTR_COLUMN_WIDTH);
@@ -1044,7 +1044,7 @@ void pmix_attributes_print_headers(char ***ans, char *level)
         line[m] = '-';
         ++m;
     }
-    pmix_argv_append_nosize(ans, line);
+    PMIx_Argv_append_nosize(ans, line);
 }
 
 PMIX_EXPORT char **pmix_attributes_print_attr(char *level, char *function)
@@ -1076,36 +1076,36 @@ PMIX_EXPORT char **pmix_attributes_print_attr(char *level, char *function)
     line[1] = '\0';
 
     /* can be comma-delimited list of functions */
-    tmp = pmix_argv_split(function, ',');
+    tmp = PMIx_Argv_split(function, ',');
     for (n = 0; NULL != tmp[n]; n++) {
         PMIX_LIST_FOREACH (fnptr, lst, pmix_attribute_trk_t) {
             if (0 == strcmp(tmp[n], "all") || 0 == strcmp(tmp[n], fnptr->function)) {
                 /* create an array of pmix_regattr_t for this function's attributes */
-                nattr = pmix_argv_count(fnptr->attrs);
+                nattr = PMIx_Argv_count(fnptr->attrs);
                 PMIX_REGATTR_CREATE(rptr, nattr);
                 for (m = 0; m < nattr; m++) {
                     rptr[m].name = strdup(fnptr->attrs[m]);
                     PMIX_LOAD_KEY(rptr[m].string, pmix_attributes_lookup(fnptr->attrs[m]));
                     dptr = pmix_attributes_lookup_term(fnptr->attrs[m]);
                     if (NULL == dptr) {
-                        pmix_argv_free(tmp);
-                        pmix_argv_free(ans);
+                        PMIx_Argv_free(tmp);
+                        PMIx_Argv_free(ans);
                         PMIX_REGATTR_FREE(rptr, nattr);
                         return NULL;
                     }
                     rptr[m].type = dptr->type;
-                    rptr[m].description = pmix_argv_copy(dptr->description);
+                    rptr[m].description = PMIx_Argv_copy(dptr->description);
                 }
                 pmix_attributes_print_attrs(&ans, fnptr->function, rptr, nattr);
                 PMIX_REGATTR_FREE(rptr, nattr);
-                pmix_argv_append_nosize(&ans, line);
+                PMIx_Argv_append_nosize(&ans, line);
                 if (0 == strcmp(tmp[n], fnptr->function)) {
                     break;
                 }
             }
         }
     }
-    pmix_argv_free(tmp);
+    PMIx_Argv_free(tmp);
 
     return ans;
 }

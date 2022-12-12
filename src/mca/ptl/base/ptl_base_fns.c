@@ -220,8 +220,8 @@ pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     PMIX_HIDE_UNUSED_PARAMS(proc);
 
-    pmix_setenv("PMIX_SERVER_TMPDIR", pmix_ptl_base.session_tmpdir, true, env);
-    pmix_setenv("PMIX_SYSTEM_TMPDIR", pmix_ptl_base.system_tmpdir, true, env);
+    PMIx_Setenv("PMIX_SERVER_TMPDIR", pmix_ptl_base.session_tmpdir, true, env);
+    PMIx_Setenv("PMIX_SYSTEM_TMPDIR", pmix_ptl_base.system_tmpdir, true, env);
 
     return PMIX_SUCCESS;
 }
@@ -232,10 +232,10 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace, pmix_rank
     char **uri;
     char *p;
 
-    uri = pmix_argv_split(evar, ';');
-    if (2 != pmix_argv_count(uri)) {
+    uri = PMIx_Argv_split(evar, ';');
+    if (2 != PMIx_Argv_count(uri)) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        pmix_argv_free(uri);
+        PMIx_Argv_free(uri);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -245,7 +245,7 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace, pmix_rank
      * stop on any FQDN or IPv4 separations */
     if (NULL == (p = strrchr(uri[0], '.'))) {
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        pmix_argv_free(uri);
+        PMIx_Argv_free(uri);
         return PMIX_ERR_NOT_SUPPORTED;
     }
     *p = '\0';
@@ -257,7 +257,7 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace, pmix_rank
         *suri = strdup(uri[1]);
     }
 
-    pmix_argv_free(uri);
+    PMIx_Argv_free(uri);
     return PMIX_SUCCESS;
 }
 
@@ -1426,12 +1426,12 @@ char **pmix_ptl_base_split_and_resolve(const char *orig_str,
         return NULL;
     }
 
-    argv = pmix_argv_split(orig_str, ',');
+    argv = PMIx_Argv_split(orig_str, ',');
     interfaces = NULL;
     for (i = 0; NULL != argv[i]; ++i) {
         if (isalpha(argv[i][0])) {
             /* This is an interface name. If not already in the interfaces array, add it */
-            pmix_argv_append_unique_nosize(&interfaces, argv[i]);
+            PMIx_Argv_append_unique_nosize(&interfaces, argv[i]);
             pmix_output_verbose(20,
                                 pmix_ptl_base_framework.framework_output,
                                 "ptl:tool: Using interface: %s ", argv[i]);
@@ -1477,7 +1477,7 @@ char **pmix_ptl_base_split_and_resolve(const char *orig_str,
                    add it. If it's already in the array, treat it as a match */
                 found = true;
                 pmix_ifindextoname(if_index, if_name, sizeof(if_name));
-                pmix_argv_append_unique_nosize(&interfaces, if_name);
+                PMIx_Argv_append_unique_nosize(&interfaces, if_name);
                 pmix_output_verbose(20,
                                     pmix_ptl_base_framework.framework_output,
                                     "ptl:base: Found match: %s (%s)",
@@ -1494,6 +1494,6 @@ char **pmix_ptl_base_split_and_resolve(const char *orig_str,
         }
     }
 
-    pmix_argv_free(argv);
+    PMIx_Argv_free(argv);
     return interfaces;
 }

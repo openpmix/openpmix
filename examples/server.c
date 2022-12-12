@@ -254,7 +254,7 @@ int main(int argc, char **argv)
         } else if (0 == strcmp("-e", argv[n]) && NULL != argv[n + 1]) {
             executable = strdup(argv[n + 1]);
             for (k = n + 2; NULL != argv[k]; k++) {
-                pmix_argv_append_nosize(&client_argv, argv[k]);
+                PMIx_Argv_append_nosize(&client_argv, argv[k]);
             }
             n += k;
         }
@@ -267,18 +267,18 @@ int main(int argc, char **argv)
     atmp = NULL;
     for (n = 0; n < nprocs; n++) {
         asprintf(&tmp, "%d", n);
-        pmix_argv_append_nosize(&atmp, tmp);
+        PMIx_Argv_append_nosize(&atmp, tmp);
         free(tmp);
     }
-    tmp = pmix_argv_join(atmp, ',');
-    pmix_argv_free(atmp);
+    tmp = PMIx_Argv_join(atmp, ',');
+    PMIx_Argv_free(atmp);
     /* register the nspace */
     x = PMIX_NEW(myxfer_t);
     set_namespace(nprocs, tmp, "foobar", opcbfunc, x);
 
     /* set common argv and env */
-    client_env = pmix_argv_copy(environ);
-    pmix_argv_prepend_nosize(&client_argv, executable);
+    client_env = PMIx_Argv_copy(environ);
+    PMIx_Argv_prepend_nosize(&client_argv, executable);
 
     wakeup = nprocs;
     myuid = getuid();
@@ -342,8 +342,8 @@ int main(int argc, char **argv)
         }
     }
     free(executable);
-    pmix_argv_free(client_argv);
-    pmix_argv_free(client_env);
+    PMIx_Argv_free(client_argv);
+    PMIx_Argv_free(client_env);
 
     /* hang around until the client(s) finalize */
     while (0 < wakeup) {

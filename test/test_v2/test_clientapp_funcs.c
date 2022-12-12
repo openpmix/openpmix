@@ -6,7 +6,7 @@
  *                         All rights reserved.
  * Copyright (c) 2020-2021 Triad National Security, LLC
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -197,8 +197,8 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, validation_params *v_params)
         char *rankno = getenv("SLURM_LOCALID");
         // Fix rank if running under SLURM
         if (NULL != ranklist && NULL != rankno) {
-            char **argv = pmix_argv_split(ranklist, ',');
-            int count = pmix_argv_count(argv);
+            char **argv = PMIx_Argv_split(ranklist, ',');
+            int count = PMIx_Argv_count(argv);
             int rankidx = strtoul(rankno, NULL, 10);
             if (rankidx >= count) {
                 TEST_ERROR_EXIT(("It feels like we are running under SLURM:\n\t"
@@ -206,7 +206,7 @@ void pmixt_fix_rank_and_ns(pmix_proc_t *this_proc, validation_params *v_params)
                                  ranklist, rankno));
             }
             v_params->pmix_rank = strtoul(argv[rankidx], NULL, 10);
-            pmix_argv_free(argv);
+            PMIx_Argv_free(argv);
         } else if (NULL == getenv("PMIX_RANK")) { /* we must not be running under SLURM */
             // **Call separate function for your own resource manager here**
             // It should likely be wrapped in condition that checks for existence of an RM env var

@@ -1608,12 +1608,12 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
                 continue;
             }
             /* add to our list of results */
-            pmix_argv_append_nosize(&tmp, prs);
+            PMIx_Argv_append_nosize(&tmp, prs);
             /* split to count the npeers */
-            p = pmix_argv_split(val->data.string, ',');
-            np += pmix_argv_count(p);
+            p = PMIx_Argv_split(val->data.string, ',');
+            np += PMIx_Argv_count(p);
             /* done with this entry */
-            pmix_argv_free(p);
+            PMIx_Argv_free(p);
             free(prs);
             PMIX_VALUE_FREE(val, 1);
         }
@@ -1622,7 +1622,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
             PMIX_PROC_CREATE(pa, np);
             if (NULL == pa) {
                 rc = PMIX_ERR_NOMEM;
-                pmix_argv_free(tmp);
+                PMIx_Argv_free(tmp);
                 goto done;
             }
             *procs = pa;
@@ -1635,7 +1635,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
                 if (NULL == prs) {
                     /* should never happen, but silence a Coverity warning */
                     rc = PMIX_ERR_BAD_PARAM;
-                    pmix_argv_free(tmp);
+                    PMIx_Argv_free(tmp);
                     PMIX_PROC_FREE(pa, np);
                     *procs = NULL;
                     *nprocs = 0;
@@ -1643,15 +1643,15 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
                 }
                 *prs = '\0';
                 ++prs;
-                p = pmix_argv_split(prs, ',');
+                p = PMIx_Argv_split(prs, ',');
                 for (m = 0; NULL != p[m]; m++) {
-                    PMIX_LOAD_NSPACE(&pa[np].nspace, tmp[n]);
+                    PMIX_LOAD_NSPACE(pa[np].nspace, tmp[n]);
                     pa[np].rank = strtoul(p[m], NULL, 10);
                     ++np;
                 }
-                pmix_argv_free(p);
+                PMIx_Argv_free(p);
             }
-            pmix_argv_free(tmp);
+            PMIx_Argv_free(tmp);
             rc = PMIX_SUCCESS;
         }
         goto done;
@@ -1677,23 +1677,23 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     }
 
     /* split the procs to get a list */
-    p = pmix_argv_split(val->data.string, ',');
-    np = pmix_argv_count(p);
+    p = PMIx_Argv_split(val->data.string, ',');
+    np = PMIx_Argv_count(p);
     PMIX_VALUE_FREE(val, 1);
 
     /* allocate the proc array */
     PMIX_PROC_CREATE(pa, np);
     if (NULL == pa) {
         rc = PMIX_ERR_NOMEM;
-        pmix_argv_free(p);
+        PMIx_Argv_free(p);
         goto done;
     }
     /* transfer the results */
     for (n = 0; n < np; n++) {
-        PMIX_LOAD_NSPACE(&pa[n].nspace, nspace);
+        PMIX_LOAD_NSPACE(pa[n].nspace, nspace);
         pa[n].rank = strtoul(p[n], NULL, 10);
     }
-    pmix_argv_free(p);
+    PMIx_Argv_free(p);
     *procs = pa;
     *nprocs = np;
 
@@ -1753,16 +1753,16 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
                 continue;
             }
             /* add to our list of results, ensuring uniqueness */
-            p = pmix_argv_split(val->data.string, ',');
+            p = PMIx_Argv_split(val->data.string, ',');
             for (n = 0; NULL != p[n]; n++) {
-                pmix_argv_append_unique_nosize(&tmp, p[n]);
+                PMIx_Argv_append_unique_nosize(&tmp, p[n]);
             }
-            pmix_argv_free(p);
+            PMIx_Argv_free(p);
             PMIX_VALUE_FREE(val, 1);
         }
-        if (0 < pmix_argv_count(tmp)) {
-            *nodelist = pmix_argv_join(tmp, ',');
-            pmix_argv_free(tmp);
+        if (0 < PMIx_Argv_count(tmp)) {
+            *nodelist = PMIx_Argv_join(tmp, ',');
+            PMIx_Argv_free(tmp);
             rc = PMIX_SUCCESS;
         }
         return rc;

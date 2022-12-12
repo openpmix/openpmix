@@ -281,7 +281,7 @@ int pmix_mca_base_component_repository_init(void)
         initialized = true;
     }
     /* split on semi-colons to find projects */
-    projects = pmix_argv_split(pmix_mca_base_component_path, ';');
+    projects = PMIx_Argv_split(pmix_mca_base_component_path, ';');
     for (n=0; NULL != projects[n]; n++) {
         /* look for the '@' to delimit the project name */
         for (m=0; '@' != projects[n][m]; m++) {
@@ -294,11 +294,11 @@ int pmix_mca_base_component_repository_init(void)
         if (PMIX_SUCCESS != ret) {
             PMIX_DESTRUCT(&pmix_mca_base_component_repository);
             (void) pmix_mca_base_framework_close(&pmix_pdl_base_framework);
-            pmix_argv_free(projects);
+            PMIx_Argv_free(projects);
             return ret;
         }
     }
-    pmix_argv_free(projects);
+    PMIx_Argv_free(projects);
 #endif
 
 

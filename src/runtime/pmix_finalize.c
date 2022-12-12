@@ -143,6 +143,23 @@ void pmix_rte_finalize(void)
     }
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
 
+    for (i=0; i < pmix_globals.keyindex.size; i++) {
+        p = (pmix_regattr_input_t*)pmix_pointer_array_get_item(&pmix_globals.keyindex, i);
+        if (NULL != p) {
+            if (NULL != p->name) {
+                free(p->name);
+            }
+            if (NULL != p->string) {
+                free(p->string);
+            }
+            if (NULL != p->description) {
+                PMIx_Argv_free(p->description);
+            }
+            free(p);
+        }
+    }
+    PMIX_DESTRUCT(&pmix_globals.keyindex);
+
     /* now safe to release the event base */
     (void) pmix_progress_thread_stop(NULL);
     pmix_tsd_keys_destruct();

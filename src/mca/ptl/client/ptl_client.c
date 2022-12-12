@@ -102,7 +102,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, 
             ++suri;
             evar = info[n].value.data.string;
             /* set the peer's module and type */
-            tmp = pmix_argv_split(evar, ':');
+            tmp = PMIx_Argv_split(evar, ':');
             rc = PMIX_ERR_BAD_PARAM;
             for (m = 0; NULL != tmp[m]; m++) {
                 rc = pmix_ptl_base_set_peer(peer, tmp[m]);
@@ -110,7 +110,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, 
                     break;
                 }
             }
-            pmix_argv_free(tmp);
+            PMIx_Argv_free(tmp);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
