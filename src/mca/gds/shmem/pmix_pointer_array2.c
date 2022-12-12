@@ -69,7 +69,7 @@ static void pmix_pointer_array2_construct(pmix_pointer_array2_t *array)
  */
 static void pmix_pointer_array2_destruct(pmix_pointer_array2_t *array)
 {
-    pmix_tma_t *tma = pmix_obj_get_tma(&array->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&array->super);
     /* free table */
     if (NULL != array->free_bits) {
         pmix_tma_free(tma, array->free_bits);
@@ -197,13 +197,14 @@ static void pmix_pointer_array2_validate(pmix_pointer_array2_t *array)
 int pmix_pointer_array2_init(pmix_pointer_array2_t *array, int initial_allocation, int max_size,
                             int block_size)
 {
-    pmix_tma_t *tma = pmix_obj_get_tma(&array->super);
     size_t num_bytes;
 
     /* check for errors */
     if (NULL == array || max_size < block_size) {
         return PMIX_ERR_BAD_PARAM;
     }
+
+    pmix_tma_t *const tma = pmix_obj_get_tma(&array->super);
 
     array->max_size = max_size;
     array->block_size = (0 == block_size ? 8 : block_size);
@@ -415,7 +416,7 @@ int pmix_pointer_array2_set_size(pmix_pointer_array2_t *array, int new_size)
 
 static bool grow_table(pmix_pointer_array2_t *table, int at_least)
 {
-    pmix_tma_t *tma = pmix_obj_get_tma(&table->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&table->super);
     int i, new_size, new_size_int;
     void *p;
 

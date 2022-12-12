@@ -96,7 +96,7 @@ pmix_gds_shmem_check_session(
     bool create
 ) {
     // This is an error: we should always be given a job.
-    if (!job) {
+    if (PMIX_UNLIKELY(!job)) {
         return NULL;
     }
 
@@ -262,28 +262,6 @@ pmix_gds_shmem_has_status(
     pmix_gds_shmem_status_flag_t flag
 ) {
     return (*get_job_shmem_status_flagp(job, shmem_id) & flag);
-}
-
-/**
- * Returns page size.
- */
-static inline size_t
-get_page_size(void)
-{
-    const long i = sysconf(_SC_PAGE_SIZE);
-    if (-1 == i) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return 0;
-    }
-    return i;
-}
-
-size_t
-pmix_gds_shmem_pad_amount_to_page(
-    size_t size
-) {
-    const size_t page_size = get_page_size();
-    return ((~size) + page_size + 1) & (page_size - 1);
 }
 
 /*

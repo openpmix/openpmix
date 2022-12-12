@@ -47,12 +47,12 @@
 /**
  * Key names used to find shared-memory segment info.
  */
-#define PMIX_GDS_SHMEM_SEG_BLOB_KEY "PMIX_GDS_SHMEM_SEG_BLOB"
-#define PMIX_GDS_SHMEM_SEG_NSID_KEY "PMIX_GDS_SHMEM_NSPACEID"
-#define PMIX_GDS_SHMEM_SEG_SMID_KEY "PMIX_GDS_SHMEM_SMSEGID"
-#define PMIX_GDS_SHMEM_SEG_PATH_KEY "PMIX_GDS_SHMEM_SEG_PATH"
-#define PMIX_GDS_SHMEM_SEG_SIZE_KEY "PMIX_GDS_SHMEM_SEG_SIZE"
-#define PMIX_GDS_SHMEM_SEG_ADDR_KEY "PMIX_GDS_SHMEM_SEG_ADDR"
+#define SHMEM_SEG_BLOB_KEY "PMIX_GDS_SHMEM_SEG_BLOB"
+#define SHMEM_SEG_NSID_KEY "PMIX_GDS_SHMEM_NSPACEID"
+#define SHMEM_SEG_SMID_KEY "PMIX_GDS_SHMEM_SMSEGID"
+#define SHMEM_SEG_PATH_KEY "PMIX_GDS_SHMEM_SEG_PATH"
+#define SHMEM_SEG_SIZE_KEY "PMIX_GDS_SHMEM_SEG_SIZE"
+#define SHMEM_SEG_ADDR_KEY "PMIX_GDS_SHMEM_SEG_ADDR"
 
 /**
  * Stores packed job statistics.
@@ -202,10 +202,11 @@ tma_init_function_pointers(
 
 static void
 tma_init(
-    pmix_tma_t *tma
+    pmix_tma_t *tma,
+    void *data_ptr
 ) {
     tma_init_function_pointers(tma);
-    tma->data_ptr = NULL;
+    tma->data_ptr = data_ptr;
 }
 
 static void
@@ -274,7 +275,7 @@ static void
 nodeinfo_destruct(
     pmix_gds_shmem_nodeinfo_t *n
 ) {
-    pmix_tma_t *tma = pmix_obj_get_tma(&n->super.super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&n->super.super);
 
     pmix_tma_free(tma, n->hostname);
     if (n->aliases) {
@@ -348,7 +349,7 @@ static void
 app_construct(
     pmix_gds_shmem_app_t *a
 ) {
-    pmix_tma_t *tma = pmix_obj_get_tma(&a->super.super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&a->super.super);
 
     a->appnum = 0;
     a->appinfo = PMIX_NEW(pmix_list_t, tma);
@@ -379,7 +380,7 @@ static void
 session_construct(
     pmix_gds_shmem_session_t *s
 ) {
-    pmix_tma_t *tma = pmix_obj_get_tma(&s->super.super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&s->super.super);
 
     s->session = UINT32_MAX;
     s->sessioninfo = PMIX_NEW(pmix_list_t, tma);
@@ -419,9 +420,7 @@ job_smdata_construct(
     // Save the starting address for TMA memory allocations.
     job->smdata->current_addr = baseaddr;
     // Setup the TMA.
-    tma_init(&job->smdata->tma);
-    // TODO(skg) We should do this in tma_init
-    job->smdata->tma.data_ptr = &job->smdata->current_addr;
+    tma_init(&job->smdata->tma, &job->smdata->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
     *(job->smdata->tma.data_ptr) = addr_align_8(baseaddr, sizeof(*job->smdata));
@@ -455,9 +454,7 @@ modex_smdata_construct(
     // Save the starting address for TMA memory allocations.
     job->smmodex->current_addr = baseaddr;
     // Setup the TMA.
-    tma_init(&job->smmodex->tma);
-    // TODO(skg) We should do this in tma_init
-    job->smmodex->tma.data_ptr = &job->smmodex->current_addr;
+    tma_init(&job->smmodex->tma, &job->smmodex->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
     *(job->smmodex->tma.data_ptr) = addr_align_8(baseaddr, sizeof(*job->smmodex));
@@ -473,9 +470,34 @@ modex_smdata_construct(
 }
 
 /**
+ * Returns page size.
+ */
+static inline size_t
+get_page_size(void)
+{
+    const long i = sysconf(_SC_PAGE_SIZE);
+    if (-1 == i) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return 0;
+    }
+    return i;
+}
+
+/**
+ * Returns amount needed to pad provided size to page boundary.
+ */
+static inline size_t
+pad_amount_to_page(
+    size_t size
+) {
+    const size_t page_size = get_page_size();
+    return ((~size) + page_size + 1) & (page_size - 1);
+}
+
+/**
  * Returns the base temp directory.
  */
-static const char *
+static inline const char *
 fetch_base_tmpdir(
     pmix_gds_shmem_job_t *job
 ) {
@@ -551,7 +573,7 @@ fetch_base_tmpdir(
 /**
  * Returns a valid path or NULL on error.
  */
-static const char *
+static inline const char *
 get_shmem_backing_path(
     pmix_gds_shmem_job_t *job,
     const char *id
@@ -585,7 +607,7 @@ shmem_attach(
     rc = pmix_gds_shmem_get_job_shmem_by_shmem_id(
         job, shmem_id, &shmem
     );
-    if (rc != PMIX_SUCCESS) {
+    if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -594,12 +616,12 @@ shmem_attach(
     rc = pmix_shmem_segment_attach(
         shmem, (void *)req_addr, &mmap_addr
     );
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
     // Make sure that we mapped to the requested address.
-    if (mmap_addr != req_addr) {
+    if (PMIX_UNLIKELY(mmap_addr != req_addr)) {
         pmix_show_help(
             "help-gds-shmem.txt",
             "shmem-segment-attach:address-mismatch",
@@ -632,23 +654,19 @@ init_client_side_sm_data(
     switch (shmem_id) {
         case PMIX_GDS_SHMEM_JOB_ID:
             job->smdata = job->shmem->base_address;
-            tma_init_function_pointers(&job->smdata->tma);
             pmix_gds_shmem_vout_smdata(job);
             break;
         case PMIX_GDS_SHMEM_MODEX_ID:
             job->smmodex = job->modex_shmem->base_address;
-            tma_init_function_pointers(&job->smmodex->tma);
             pmix_gds_shmem_vout_smmodex(job);
             break;
         case PMIX_GDS_SHMEM_INVALID_ID:
         default:
-            // This is a fatal internal error.
-            assert(false);
+            PMIX_ERROR_LOG(PMIX_ERROR);
             return PMIX_ERROR;
     }
     // Segment is ready for use by the client.
     pmix_gds_shmem_set_status(job, shmem_id, PMIX_GDS_SHMEM_READY_FOR_USE);
-    // FIXME
     // Note: don't update the TMA to point to its local function pointers
     // because clients should only be reading from the shared-memory segment.
     return PMIX_SUCCESS;
@@ -665,7 +683,7 @@ shmem_segment_attach_and_init(
     rc = pmix_gds_shmem_get_job_shmem_by_shmem_id(
         job, seginfo->smid, &shmem
     );
-    if (rc != PMIX_SUCCESS) {
+    if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -677,7 +695,7 @@ shmem_segment_attach_and_init(
 
     const uintptr_t req_addr = (uintptr_t)seginfo->seg_addr;
     rc = shmem_attach(job, seginfo->smid, req_addr);
-    if (rc != PMIX_SUCCESS) {
+    if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -703,13 +721,14 @@ shmem_segment_create_and_attach(
     size_t segment_size
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-
+    // Pad given size to fill remaining space on the last page.
+    const size_t real_segsize = segment_size + pad_amount_to_page(segment_size);
     // Find a hole in virtual memory that meets our size requirements.
     size_t base_addr = 0;
     rc = pmix_vmem_find_hole(
-        VMEM_HOLE_BIGGEST, &base_addr, segment_size
+        VMEM_HOLE_BIGGEST, &base_addr, real_segsize
     );
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
@@ -718,24 +737,24 @@ shmem_segment_create_and_attach(
     );
     // Find a unique path for the shared-memory backing file.
     const char *segment_path = get_shmem_backing_path(job, segment_name);
-    if (!segment_path) {
+    if (PMIX_UNLIKELY(!segment_path)) {
         rc = PMIX_ERROR;
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
         "%s: segment backing file path is %s (size=%zd B)",
-        __func__, segment_path, segment_size
+        __func__, segment_path, real_segsize
     );
     // Get a handle to the appropriate shmem.
     pmix_shmem_t *shmem;
     rc = pmix_gds_shmem_get_job_shmem_by_shmem_id(job, shmem_id, &shmem);
-    if (rc != PMIX_SUCCESS) {
+    if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto out;
     }
     // Create a shared-memory segment backing store at the given path.
-    rc = pmix_shmem_segment_create(shmem, segment_size, segment_path);
-    if (PMIX_SUCCESS != rc) {
+    rc = pmix_shmem_segment_create(shmem, real_segsize, segment_path);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         goto out;
     }
     // Attach to the shared-memory segment.
@@ -749,7 +768,6 @@ out:
     }
     return rc;
 }
-
 
 static pmix_status_t
 module_init(
@@ -862,27 +880,25 @@ prepare_shmem_store_for_local_job_data(
     // Add some extra fluff in case we weren't precise enough.
     // TODO(skg) Consider making fluff an MCA parameter.
     seg_size *= 2.25;
-    // Pad to fill an entire page.
-    seg_size += pmix_gds_shmem_pad_amount_to_page(seg_size);
     // Create and attach to the shared-memory segment associated with this job.
     // This will be the backing store for metadata associated with static,
     // read-only data shared between the server and its clients.
     rc = shmem_segment_create_and_attach(
         job, PMIX_GDS_SHMEM_JOB_ID, "jobdata", seg_size
     );
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
 
     rc = job_smdata_construct(job, htsize);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
     return rc;
 }
 
-static pmix_status_t
+static inline pmix_status_t
 pack_shmem_connection_info(
     pmix_gds_shmem_job_t *job,
     pmix_gds_shmem_job_shmem_id_t shmem_id,
@@ -891,7 +907,7 @@ pack_shmem_connection_info(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
-    PMIX_GDS_SHMEM_VOUT(
+    PMIX_GDS_SHMEM_VVOUT(
         "%s:%s for peer (ID=%d) namespace=%s", __func__,
         PMIX_NAME_PRINT(&pmix_globals.myid),
         peer->info->peerid, job->nspace_id
@@ -901,88 +917,95 @@ pack_shmem_connection_info(
     rc = pmix_gds_shmem_get_job_shmem_by_shmem_id(
         job, shmem_id, &shmem
     );
-    if (rc != PMIX_SUCCESS) {
+    if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    // Pack the namespace name.
+
     pmix_kval_t kv;
-    PMIX_CONSTRUCT(&kv, pmix_kval_t);
-    kv.key = strdup(PMIX_GDS_SHMEM_SEG_NSID_KEY);
-    kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
-    kv.value->type = PMIX_STRING;
-    kv.value->data.string = strdup(job->nspace_id);
-    PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
-    PMIX_DESTRUCT(&kv);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    // Pack the shmem ID as string.
-    PMIX_CONSTRUCT(&kv, pmix_kval_t);
-    kv.key = strdup(PMIX_GDS_SHMEM_SEG_SMID_KEY);
-    kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
-    kv.value->type = PMIX_STRING;
-    int nw = asprintf(&kv.value->data.string, "%zd", (size_t)shmem_id);
-    if (nw == -1) {
+    do {
+        // Pack the namespace name.
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM_SEG_NSID_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value->type = PMIX_STRING;
+        kv.value->data.string = strdup(job->nspace_id);
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         PMIX_DESTRUCT(&kv);
-        return PMIX_ERR_NOMEM;
-    }
-    PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
-    PMIX_DESTRUCT(&kv);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    // Pack the backing file path.
-    PMIX_CONSTRUCT(&kv, pmix_kval_t);
-    kv.key = strdup(PMIX_GDS_SHMEM_SEG_PATH_KEY);
-    kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
-    kv.value->type = PMIX_STRING;
-    kv.value->data.string = strdup(shmem->backing_path);
-    PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
-    PMIX_DESTRUCT(&kv);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    // Pack attach size to shared-memory segment.
-    PMIX_CONSTRUCT(&kv, pmix_kval_t);
-    kv.key = strdup(PMIX_GDS_SHMEM_SEG_SIZE_KEY);
-    kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
-    kv.value->type = PMIX_STRING;
-    nw = asprintf(&kv.value->data.string, "%zx", shmem->size);
-    if (nw == -1) {
+        // Pack the shmem ID as string.
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM_SEG_SMID_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value->type = PMIX_STRING;
+        int nw = asprintf(&kv.value->data.string, "%zd", (size_t)shmem_id);
+        if (PMIX_UNLIKELY(nw == -1)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         PMIX_DESTRUCT(&kv);
-        return PMIX_ERR_NOMEM;
-    }
-    PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
-    PMIX_DESTRUCT(&kv);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    // Pack the base address for attaching to shared-memory segment.
-    PMIX_CONSTRUCT(&kv, pmix_kval_t);
-    kv.key = strdup(PMIX_GDS_SHMEM_SEG_ADDR_KEY);
-    kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
-    kv.value->type = PMIX_STRING;
-    nw = asprintf(
-        &kv.value->data.string, "%zx", (size_t)shmem->base_address
-    );
-    if (nw == -1) {
+        // Pack the backing file path.
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM_SEG_PATH_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value->type = PMIX_STRING;
+        kv.value->data.string = strdup(shmem->backing_path);
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
         PMIX_DESTRUCT(&kv);
-        return PMIX_ERR_NOMEM;
-    }
-    PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        // Pack attach size to shared-memory segment.
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM_SEG_SIZE_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value->type = PMIX_STRING;
+        nw = asprintf(&kv.value->data.string, "%zx", shmem->size);
+        if (PMIX_UNLIKELY(nw == -1)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_DESTRUCT(&kv);
+        // Pack the base address for attaching to shared-memory segment.
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM_SEG_ADDR_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value->type = PMIX_STRING;
+        nw = asprintf(
+            &kv.value->data.string, "%zx", (size_t)shmem->base_address
+        );
+        if (PMIX_UNLIKELY(nw == -1)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+    } while (false);
     PMIX_DESTRUCT(&kv);
+
     return rc;
 }
 
 /**
  * Emits the contents of an pmix_gds_shmem_unpacked_seg_blob_t.
  */
-static void
+static inline void
 vout_unpacked_seg_blob(
     pmix_gds_shmem_unpacked_seg_blob_t *usb,
     const char *called_by
@@ -992,11 +1015,11 @@ vout_unpacked_seg_blob(
 #endif
     PMIX_GDS_SHMEM_VVOUT(
         "%s: "
-        PMIX_GDS_SHMEM_SEG_NSID_KEY "=%s "
-        PMIX_GDS_SHMEM_SEG_SMID_KEY "=%" PRIu8 " "
-        PMIX_GDS_SHMEM_SEG_PATH_KEY "=%s "
-        PMIX_GDS_SHMEM_SEG_SIZE_KEY "=%zd "
-        PMIX_GDS_SHMEM_SEG_ADDR_KEY "=0x%zx",
+        SHMEM_SEG_NSID_KEY "=%s "
+        SHMEM_SEG_SMID_KEY "=%" PRIu8 " "
+        SHMEM_SEG_PATH_KEY "=%s "
+        SHMEM_SEG_SIZE_KEY "=%zd "
+        SHMEM_SEG_ADDR_KEY "=0x%zx",
         called_by, usb->nsid, usb->smid,
         usb->seg_path, usb->seg_size, usb->seg_addr
     );
@@ -1007,7 +1030,7 @@ vout_unpacked_seg_blob(
  * blob and saving the values for the caller. If successful, returns relevant
  * data associated with the unpacked data.
  */
-static pmix_status_t
+static inline pmix_status_t
 unpack_shmem_connection_info(
     pmix_kval_t *kvbo,
     pmix_gds_shmem_unpacked_seg_blob_t *usb
@@ -1044,42 +1067,42 @@ unpack_shmem_connection_info(
             break;
         }
 
-        const char *val = kv.value->data.string;
-        if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_NSID_KEY)) {
+        const char *const val = kv.value->data.string;
+        if (PMIX_CHECK_KEY(&kv, SHMEM_SEG_NSID_KEY)) {
             int nw = asprintf(&usb->nsid, "%s", val);
-            if (nw == -1) {
+            if (PMIX_UNLIKELY(nw == -1)) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
                 break;
             }
         }
-        else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_SMID_KEY)) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_SEG_SMID_KEY)) {
             size_t st_shmem_id;
             rc = strtost(val, 10, &st_shmem_id);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
             usb->smid = (pmix_gds_shmem_job_shmem_id_t)st_shmem_id;
         }
-        else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_PATH_KEY)) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_SEG_PATH_KEY)) {
             int nw = asprintf(&usb->seg_path, "%s", val);
-            if (nw == -1) {
+            if (PMIX_UNLIKELY(nw == -1)) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
                 break;
             }
         }
-        else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_SIZE_KEY)) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_SEG_SIZE_KEY)) {
             rc = strtost(val, 16, &usb->seg_size);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
         }
-        else if (PMIX_CHECK_KEY(&kv, PMIX_GDS_SHMEM_SEG_ADDR_KEY)) {
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_SEG_ADDR_KEY)) {
             rc = strtost(val, 16, &usb->seg_addr);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
@@ -1096,7 +1119,7 @@ unpack_shmem_connection_info(
     PMIX_DESTRUCT(&kv);
     PMIX_DESTRUCT(&buffer);
 
-    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
         rc = PMIX_ERR_UNPACK_FAILURE;
         PMIX_ERROR_LOG(rc);
     }
@@ -1134,7 +1157,7 @@ fetch_local_job_data(
  * just construct a temporary one with the number of expected elements, then
  * query it for its actual capacity.
  */
-static size_t
+static inline size_t
 get_actual_hashtab_capacity(
     size_t num_elements
 ) {
@@ -1148,7 +1171,7 @@ get_actual_hashtab_capacity(
     return result;
 }
 
-static pmix_status_t
+static inline pmix_status_t
 get_local_job_data_stats(
     pmix_peer_t *peer,
     pmix_cb_t *job_cb,
@@ -1178,7 +1201,7 @@ get_local_job_data_stats(
         }
 
         PMIX_BFROPS_PACK(rc, peer, &data, kvi, 1, PMIX_KVAL);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             goto out;
         }
@@ -1190,7 +1213,7 @@ out:
     return rc;
 }
 
-static pmix_status_t
+static inline pmix_status_t
 pack_shmem_seg_blob(
     pmix_gds_shmem_job_t *job,
     pmix_gds_shmem_job_shmem_id_t shmem_id,
@@ -1201,10 +1224,10 @@ pack_shmem_seg_blob(
 
     // Only pack connection info that is ready for use. Otherwise,
     // it's bogus data that we shouldn't be sharing it with our clients.
-    const bool rfu = pmix_gds_shmem_has_status(
+    const bool ready_for_use = pmix_gds_shmem_has_status(
         job, shmem_id, PMIX_GDS_SHMEM_READY_FOR_USE
     );
-    if (!rfu) {
+    if (!ready_for_use) {
         return rc;
     }
 
@@ -1215,7 +1238,7 @@ pack_shmem_seg_blob(
         rc = pack_shmem_connection_info(
             job, shmem_id, peer, &buff
         );
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             break;
         }
@@ -1224,13 +1247,13 @@ pack_shmem_seg_blob(
             .type = PMIX_BYTE_OBJECT
         };
         pmix_kval_t kv = {
-            .key = PMIX_GDS_SHMEM_SEG_BLOB_KEY,
+            .key = SHMEM_SEG_BLOB_KEY,
             .value = &blob
         };
 
         PMIX_UNLOAD_BUFFER(&buff, blob.data.bo.bytes, blob.data.bo.size);
         PMIX_BFROPS_PACK(rc, peer, reply, &kv, 1, PMIX_KVAL);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
         }
         PMIX_VALUE_DESTRUCT(&blob);
@@ -1255,19 +1278,18 @@ publish_shmem_connection_info(
 
     // Start with the namespace name.
     PMIX_BFROPS_PACK(rc, peer, reply, &ns->nspace, 1, PMIX_STRING);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
+    // Pack the shared-memory segment information.
     rc = pack_shmem_seg_blob(
         job, PMIX_GDS_SHMEM_JOB_ID, peer, reply
     );
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
     // If we have more than one local client for this nspace,
     // save this packed object so we don't do this again.
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
@@ -1289,7 +1311,7 @@ server_register_new_job_info(
     // Setup a new job tracker for this peer's nspace.
     pmix_gds_shmem_job_t *job;
     rc = pmix_gds_shmem_get_job_tracker(ns->nspace, true, &job);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1298,7 +1320,7 @@ server_register_new_job_info(
     PMIX_CONSTRUCT(&job_cb, pmix_cb_t);
 
     rc = fetch_local_job_data(ns, &job_cb);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
     }
@@ -1306,25 +1328,25 @@ server_register_new_job_info(
     // large to make the shared-memory segment associated with these data.
     pmix_gds_shmem_local_job_stats_t stats;
     rc = get_local_job_data_stats(peer, &job_cb, &stats);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
     }
     // Get the shared-memory segment ready for job data.
     rc = prepare_shmem_store_for_local_job_data(job, &stats);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
     }
     // Store fetched data into a shared-memory segment.
     rc = pmix_gds_shmem_store_local_job_data_in_shmem(job, &job_cb.kvs);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
     }
     // You guessed it, publish shared-memory connection info.
     rc = publish_shmem_connection_info(job, peer, reply);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
 out:
@@ -1397,22 +1419,23 @@ unpack_shmem_seg_blob_and_attach_if_necessary(
     PMIX_CONSTRUCT(&usb, pmix_gds_shmem_unpacked_seg_blob_t);
     do {
         rc = unpack_shmem_connection_info(kvbo, &usb);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             break;
         }
         // Get the associated job tracker.
         pmix_gds_shmem_job_t *job;
         rc = pmix_gds_shmem_get_job_tracker(usb.nsid, true, &job);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             break;
         }
+        // TODO(skg) Maybe have exp backoff to wait for attach?
         if (usb.smid == PMIX_GDS_SHMEM_MODEX_ID && access(usb.seg_path, F_OK) == -1) {
             rc = pmix_shmem_segment_create(
                 job->modex_shmem, usb.seg_size, usb.seg_path
             );
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
@@ -1423,7 +1446,7 @@ unpack_shmem_seg_blob_and_attach_if_necessary(
         }
         // Looks like we have to attach and initialize it.
         rc = shmem_segment_attach_and_init(job, &usb);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             break;
         }
@@ -1458,9 +1481,9 @@ store_job_info(
             break;
         }
 
-        if (PMIX_CHECK_KEY(&kval, PMIX_GDS_SHMEM_SEG_BLOB_KEY)) {
+        if (PMIX_CHECK_KEY(&kval, SHMEM_SEG_BLOB_KEY)) {
             rc = unpack_shmem_seg_blob_and_attach_if_necessary(&kval);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
@@ -1483,10 +1506,13 @@ store_job_info(
     // Release the leftover kval.
     PMIX_DESTRUCT(&kval);
 
-    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
         rc = PMIX_ERR_UNPACK_FAILURE;
         PMIX_ERROR_LOG(rc);
         return rc;
+    }
+    else {
+        rc = PMIX_SUCCESS;
     }
     // Done. Before this point the server should have populated the
     // shared-memory segment with the relevant data.
@@ -1512,7 +1538,7 @@ server_store_modex(
     rc = pmix_gds_shmem_get_job_tracker(
         ((pmix_namespace_t *)(ns))->nspace, false, &job
     );
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
@@ -1521,16 +1547,16 @@ server_store_modex(
         job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_ATTACHED
     );
     if (!attached) {
+        const size_t npeers = job->nspace->nprocs;
         // TODO(skg) We need to calculate this somehow.
-        const size_t htsize = 256 * job->nspace->nprocs;
+        const size_t htsize = 256 * npeers;
         // Estimated size required to store the unpacked modex data.
         // TODO(skg) Improve estimate.
         // Add some extra fluff in case we weren't precise enough.
         // TODO(skg) Consider making fluff an MCA parameter.
-        size_t seg_size = buff->bytes_used * 1024;
+        size_t seg_size = buff->bytes_used * npeers * 1024;
         seg_size += sizeof(pmix_hash_table2_t);
         seg_size += htsize * pmix_hash_table2_t_sizeof_hash_element();
-        seg_size += pmix_gds_shmem_pad_amount_to_page(seg_size);
         // Create and attach to the shared-memory segment that will back these data.
         rc = shmem_segment_create_and_attach(
             job, PMIX_GDS_SHMEM_MODEX_ID, "modexdata", seg_size
@@ -1608,21 +1634,21 @@ server_mark_modex_complete(
         rc = pmix_gds_shmem_get_job_tracker(
             nsi->ns->nspace, false, &job
         );
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             break;
         }
         rc = pack_shmem_seg_blob(
             job, PMIX_GDS_SHMEM_JOB_ID, peer, reply
         );
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             break;
         }
         rc = pack_shmem_seg_blob(
             job, PMIX_GDS_SHMEM_MODEX_ID, peer, reply
         );
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             break;
         }
@@ -1635,10 +1661,6 @@ client_recv_modex_complete(
     pmix_buffer_t *buff
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-
-    if (PMIX_BUFFER_IS_EMPTY(buff)) {
-        return rc;
-    }
 
     pmix_kval_t kval;
     while (true) {
@@ -1653,9 +1675,9 @@ client_recv_modex_complete(
             break;
         }
 
-        if (PMIX_CHECK_KEY(&kval, PMIX_GDS_SHMEM_SEG_BLOB_KEY)) {
+        if (PMIX_CHECK_KEY(&kval, SHMEM_SEG_BLOB_KEY)) {
             rc = unpack_shmem_seg_blob_and_attach_if_necessary(&kval);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
@@ -1673,7 +1695,7 @@ client_recv_modex_complete(
     // Release the leftover kval.
     PMIX_DESTRUCT(&kval);
 
-    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
         rc = PMIX_ERR_UNPACK_FAILURE;
         PMIX_ERROR_LOG(rc);
     }
