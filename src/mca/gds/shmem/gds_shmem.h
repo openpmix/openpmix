@@ -52,6 +52,11 @@ BEGIN_C_DECLS
 extern pmix_gds_base_module_t pmix_shmem_module;
 
 /**
+ * Stores MCA parameter value for segment_size_multiplier.
+ */
+PMIX_EXPORT extern double pmix_gds_shmem_segment_size_multiplier;
+
+/**
  * IDs for pmix_shmem_ts in pmix_gds_shmem_job_t.
  */
 typedef enum {
