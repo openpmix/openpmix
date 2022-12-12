@@ -31,6 +31,9 @@
 #include "gds_shmem.h"
 
 static int
+gds_shmem_component_register(void);
+
+static int
 component_query(
     pmix_mca_base_module_t **module,
     int *priority
@@ -68,6 +71,8 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
             PMIX_MINOR_VERSION,
             PMIX_RELEASE_VERSION
         ),
+        /** Component register. */
+        .pmix_mca_register_component_params = gds_shmem_component_register,
         /** Component query function. */
         .pmix_mca_query_component = component_query,
         .reserved = {0}
@@ -75,6 +80,28 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
     .jobs = PMIX_LIST_STATIC_INIT,
     .sessions = PMIX_LIST_STATIC_INIT
 };
+
+double pmix_gds_shmem_segment_size_multiplier = 1.0;
+
+static int
+gds_shmem_component_register(void)
+{
+#if (!PMIX_GDS_SHMEM_DISABLE)
+    const int varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem_component.super,
+        "segment_size_multiplier",
+        "Multiplier that influences the ultimate sizes of the shared-memory "
+        "segments used for gds data storage. Values less or greater than 1.0 "
+        "decrease or increase final segment sizes, respectively.",
+        PMIX_MCA_BASE_VAR_TYPE_DOUBLE,
+        &pmix_gds_shmem_segment_size_multiplier
+    );
+    if (varidx < 0) {
+        return PMIX_ERROR;
+    }
+#endif
+    return PMIX_SUCCESS;
+}
 
 /*
  * vim: ft=cpp ts=4 sts=4 sw=4 expandtab

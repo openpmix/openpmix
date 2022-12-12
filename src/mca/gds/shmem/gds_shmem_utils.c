@@ -191,7 +191,7 @@ pmix_gds_shmem_hostnames_eq(
 }
 
 pmix_status_t
-pmix_gds_shmem_get_job_shmem_by_shmem_id(
+pmix_gds_shmem_get_job_shmem_by_id(
     pmix_gds_shmem_job_t *job,
     pmix_gds_shmem_job_shmem_id_t shmem_id,
     pmix_shmem_t **shmem
