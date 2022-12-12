@@ -458,37 +458,34 @@ pmix_gds_shmem_store_qualified(
     pmix_rank_t rank,
     pmix_value_t *value
 ) {
-    // TODO(skg) FIXME need to use TMA functions here.
-    assert(false);
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
-
     // The value contains a pmix_data_array_t whose first position contains the
     // key-value being stored, followed by one or more qualifiers.
     pmix_info_t *const info = (pmix_info_t *)value->data.darray->array;
     const size_t ninfo = value->data.darray->size;
-
     // This does not need to use the TMA since its contents are later copied in
     // hash_store() using a TMA. This is just temporary storage.
     const size_t nquals = ninfo - 1;
     pmix_info_t *quals;
-    PMIX_INFO_CREATE(quals, nquals);
+    // TODO(skg) Depending on how this is handled in store(), maybe we can get
+    // away without using a TMA here.
+    PMIX_GDS_SHMEM_TMA_INFO_CREATE(quals, nquals, tma);
     for (size_t i = 1; i < ninfo; i++) {
         PMIX_INFO_SET_QUALIFIER(&quals[i - 1]);
-        PMIX_INFO_XFER(&quals[i - 1], &info[i]);
+        PMIX_GDS_SHMEM_TMA_INFO_XFER(&quals[i - 1], &info[i], tma);
     }
-
     // Extract the primary value.
     pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
     kv->key = info[0].key;
     kv->value = &info[0].value;
-
     // Store the result.
     rc = pmix_hash2_store(ht, rank, kv, quals, nquals);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
-    PMIX_INFO_FREE(quals, nquals);
+    // TODO(skg) We don't support free, but should keep this call around.
+    //PMIX_INFO_FREE(quals, nquals);
     return rc;
 }
 

@@ -94,7 +94,7 @@ typedef struct {
 
 static void pdcon(pmix_proc_data2_t *p)
 {
-    pmix_tma_t *tma = pmix_obj_get_tma(&p->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&p->super);
     // TODO(skg) Note that we moved to PMIX_NEW. Cannot use PMIX_CONSTRUCT with
     // the TMA we care about.
 #if 0
@@ -117,7 +117,7 @@ static void pddes(pmix_proc_data2_t *p)
     pmix_dstor_t *d;
     pmix_qual_t *q;
     pmix_data_array_t *darray;
-    pmix_tma_t *tma = pmix_obj_get_tma(&p->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&p->super);
 
     for (n=0; n < p->data->size; n++) {
         d = (pmix_dstor_t*)pmix_pointer_array2_get_item(p->data, n);
@@ -164,7 +164,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table2_t *table,
     pmix_data_array_t *darray;
     pmix_qual_t *qarray;
     size_t n, m = 0;
-    pmix_tma_t *tma = pmix_obj_get_tma(&table->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&table->super);
 
     pmix_output_verbose(10, pmix_globals.debug_output,
                         "HASH:STORE:QUAL rank %s key %s",
@@ -511,7 +511,7 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table2_t *table,
     int n;
     char *node;
     pmix_regattr_input_t *p;
-    pmix_tma_t *tma = pmix_obj_get_tma(&table->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&table->super);
 
     if (NULL != key) {
         p = pmix_hash2_lookup_key(UINT32_MAX, key);
@@ -687,7 +687,7 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data2_t *proc_data, uint32_t kid,
 static pmix_proc_data2_t *lookup_proc(pmix_hash_table2_t *jtable, uint32_t id, bool create)
 {
     pmix_proc_data2_t *proc_data = NULL;
-    pmix_tma_t *tma = pmix_obj_get_tma(&jtable->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&jtable->super);
 
     pmix_hash_table2_get_value_uint32(jtable, id, (void **) &proc_data);
     if (NULL == proc_data && create) {
@@ -811,7 +811,7 @@ static void erase_qualifiers(pmix_proc_data2_t *proc,
     pmix_data_array_t *darray;
     pmix_qual_t *qarray;
     size_t n;
-    pmix_tma_t *tma = pmix_obj_get_tma(&proc->super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&proc->super);
 
     darray = (pmix_data_array_t*)pmix_pointer_array2_get_item(proc->quals, index);
     if (NULL == darray || NULL == darray->array) {

@@ -76,14 +76,6 @@ pmix_gds_shmem_get_job_shmem_by_shmem_id(
     pmix_shmem_t **shmem
 );
 
-/**
- * Returns amount needed to pad provided size to page boundary.
- */
-PMIX_EXPORT size_t
-pmix_gds_shmem_pad_amount_to_page(
-    size_t size
-);
-
 PMIX_EXPORT void
 pmix_gds_shmem_set_status(
     pmix_gds_shmem_job_t *job,
