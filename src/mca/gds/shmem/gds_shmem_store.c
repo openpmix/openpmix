@@ -41,7 +41,7 @@ set_host_aliases_from_cds(
     }
 
     // Now, add each element present in the comma-delimited string list.
-    char **tmp = pmix_argv_split(cds, ',');
+    char **tmp = PMIx_Argv_split(cds, ',');
     if (PMIX_UNLIKELY(!tmp)) {
         rc = PMIX_ERR_NOMEM;
         goto out;
@@ -63,7 +63,7 @@ set_host_aliases_from_cds(
         pmix_list_append(list, &alias->super);
     }
 out:
-    pmix_argv_free(tmp);
+    PMIx_Argv_free(tmp);
     return rc;
 }
 

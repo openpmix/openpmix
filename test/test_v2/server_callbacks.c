@@ -218,7 +218,7 @@ pmix_status_t lookup_fn(const pmix_proc_t *proc, char **keys, const pmix_info_t 
     if (NULL == pmix_test_published_list) {
         return PMIX_ERR_NOT_FOUND;
     }
-    ndata = pmix_argv_count(keys);
+    ndata = PMIx_Argv_count(keys);
     PMIX_PDATA_CREATE(pdata, ndata);
     ret = 0;
     for (i = 0; i < ndata; i++) {
@@ -262,7 +262,7 @@ pmix_status_t unpublish_fn(const pmix_proc_t *proc, char **keys, const pmix_info
                 pmix_list_remove_item(pmix_test_published_list, &iptr->super);
                 PMIX_RELEASE(iptr);
             } else {
-                ninfo = pmix_argv_count(keys);
+                ninfo = PMIx_Argv_count(keys);
                 for (i = 0; i < ninfo; i++) {
                     if (!strcmp(iptr->data.key, keys[i])) {
                         pmix_list_remove_item(pmix_test_published_list, &iptr->super);

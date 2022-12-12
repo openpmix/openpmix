@@ -118,7 +118,7 @@ static pmix_status_t setup_path(pmix_app_t *app)
         if (NULL == getcwd(dir, sizeof(dir))) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
-        pmix_setenv("PWD", dir, true, &app->env);
+        PMIx_Setenv("PWD", dir, true, &app->env);
     }
 
     /* ensure the app is pointing to a full path */
@@ -225,10 +225,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                 if (PMIX_CHECK_KEY(&app->info[k], PMIX_FORKEXEC_AGENT)) {
                     /* we were given a fork agent - use it. We have to put its
                      * argv at the beginning of the app argv array */
-                    argv = pmix_argv_split(app->info[k].value.data.string, ' ');
+                    argv = PMIx_Argv_split(app->info[k].value.data.string, ' ');
                     /* add in the argv from the app */
                     for (i = 0; NULL != argv[i]; i++) {
-                        pmix_argv_prepend_nosize(&app->argv, argv[i]);
+                        PMIx_Argv_prepend_nosize(&app->argv, argv[i]);
                     }
                     if (NULL != app->cmd) {
                         free(app->cmd);
@@ -238,10 +238,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                         pmix_show_help("help-pfexec-base.txt", "fork-agent-not-found", true,
                                        pmix_globals.hostname, argv[0]);
                         rc = PMIX_ERR_NOT_FOUND;
-                        pmix_argv_free(argv);
+                        PMIx_Argv_free(argv);
                         goto complete;
                     }
-                    pmix_argv_free(argv);
+                    PMIx_Argv_free(argv);
                 }
             }
         }
@@ -285,7 +285,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             pmix_list_append(&nptr->ranks, &info->super);
 
             /* setup the environment */
-            env = pmix_argv_copy(app->env);
+            env = PMIx_Argv_copy(app->env);
 
             /* we only support the start of tools and servers, not apps,
              * so we don't register this nspace or child. However, we do
@@ -293,24 +293,24 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
              * modules so the forked process can connect back to us */
 
             /* pass the nspace */
-            pmix_setenv("PMIX_NAMESPACE", child->proc.nspace, true, &env);
-            pmix_setenv("PMIX_SERVER_NSPACE", child->proc.nspace, true, &env);
+            PMIx_Setenv("PMIX_NAMESPACE", child->proc.nspace, true, &env);
+            PMIx_Setenv("PMIX_SERVER_NSPACE", child->proc.nspace, true, &env);
 
             /* pass the rank */
             memset(tmp, 0, 2048);
             (void) pmix_snprintf(tmp, 2047, "%u", child->proc.rank);
-            pmix_setenv("PMIX_RANK", tmp, true, &env);
-            pmix_setenv("PMIX_SERVER_RANK", tmp, true, &env);
+            PMIx_Setenv("PMIX_RANK", tmp, true, &env);
+            PMIx_Setenv("PMIX_SERVER_RANK", tmp, true, &env);
 
             /* pass our active security modules */
             security_mode = pmix_psec_base_get_available_modules();
-            pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, &env);
+            PMIx_Setenv("PMIX_SECURITY_MODE", security_mode, true, &env);
             free(security_mode);
             /* pass the type of buffer we are using */
             if (PMIX_BFROP_BUFFER_FULLY_DESC == pmix_globals.mypeer->nptr->compat.type) {
-                pmix_setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_FULLY_DESC", true, &env);
+                PMIx_Setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_FULLY_DESC", true, &env);
             } else {
-                pmix_setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_NON_DESC", true, &env);
+                PMIx_Setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_NON_DESC", true, &env);
             }
             /* get any PTL contribution such as tmpdir settings for session files */
             if (PMIX_SUCCESS != (rc = pmix_ptl.setup_fork(&child->proc, &env))) {
@@ -321,10 +321,10 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             }
 
             /* ensure we agree on our hostname */
-            pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, &env);
+            PMIx_Setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, &env);
 
             /* communicate our version */
-            pmix_setenv("PMIX_VERSION", PMIX_VERSION, true, &env);
+            PMIx_Setenv("PMIX_VERSION", PMIX_VERSION, true, &env);
 
             /* setup a keepalive pipe unless "nohup" was given */
             if (!nohup) {
@@ -336,7 +336,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                     goto complete;
                 }
                 pmix_snprintf(sock, 10, "%d", child->keepalive[1]);
-                pmix_setenv("PMIX_KEEPALIVE_PIPE", sock, true, &env);
+                PMIx_Setenv("PMIX_KEEPALIVE_PIPE", sock, true, &env);
             }
 
             pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
@@ -344,7 +344,7 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
                                 PMIX_NAME_PRINT(&pmix_globals.myid), app->cmd);
 
             rc = fcd->frkfn(app, child, env);
-            pmix_argv_free(env);
+            PMIx_Argv_free(env);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 pmix_list_remove_item(&pmix_pfexec_globals.children, &child->super);
@@ -691,7 +691,7 @@ static pmix_status_t register_nspace(char *nspace, pmix_pfexec_fork_caddy_t *fcd
         if (NULL != fcd->apps[n].cwd) {
             PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_WDIR, fcd->apps[n].cwd, PMIX_STRING);
         }
-        str = pmix_argv_join(fcd->apps[n].argv, ' ');
+        str = PMIx_Argv_join(fcd->apps[n].argv, ' ');
         PMIX_INFO_LIST_ADD(rc, tmpinfo, PMIX_APP_ARGV, str, PMIX_STRING);
         /* convert the list into an array */
         PMIX_INFO_LIST_CONVERT(rc, tmpinfo, &darray);

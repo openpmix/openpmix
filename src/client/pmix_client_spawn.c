@@ -179,7 +179,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                     /* cycle across all the apps and set this envar */
                     for (m = 0; m < napps; m++) {
                         aptr = (pmix_app_t *) &apps[m];
-                        pmix_setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
+                        PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
                                     &aptr->env);
                     }
                 }
@@ -218,7 +218,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             tmp = pmix_basename(aptr->cmd);
             t2 = pmix_basename(aptr->argv[0]);
             if (0 != strcmp(tmp, t2)) {
-                pmix_argv_prepend_nosize(&aptr->argv, tmp);
+                PMIx_Argv_prepend_nosize(&aptr->argv, tmp);
             }
             free(tmp);
             free(t2);
@@ -247,7 +247,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                         return rc;
                     }
                     PMIX_LIST_FOREACH (kv, &ilist, pmix_kval_t) {
-                        pmix_setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
+                        PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true,
                                     &aptr->env);
                     }
                     jobenvars = true;

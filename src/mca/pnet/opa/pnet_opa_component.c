@@ -77,7 +77,7 @@ static pmix_status_t component_register(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_mca_pnet_opa_component.incparms);
     if (NULL != pmix_mca_pnet_opa_component.incparms) {
-        pmix_mca_pnet_opa_component.include = pmix_argv_split(pmix_mca_pnet_opa_component.incparms, ',');
+        pmix_mca_pnet_opa_component.include = PMIx_Argv_split(pmix_mca_pnet_opa_component.incparms, ',');
     }
 
     pmix_mca_pnet_opa_component.excparms = NULL;
@@ -87,7 +87,7 @@ static pmix_status_t component_register(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_mca_pnet_opa_component.excparms);
     if (NULL != pmix_mca_pnet_opa_component.excparms) {
-        pmix_mca_pnet_opa_component.exclude = pmix_argv_split(pmix_mca_pnet_opa_component.excparms, ',');
+        pmix_mca_pnet_opa_component.exclude = PMIx_Argv_split(pmix_mca_pnet_opa_component.excparms, ',');
     }
 
     return PMIX_SUCCESS;

@@ -64,11 +64,11 @@ void pmix_util_parse_range_options(char *inp, char ***output)
     }
 
     /* split on commas */
-    r1 = pmix_argv_split(input, ',');
+    r1 = PMIx_Argv_split(input, ',');
     /* for each resulting element, check for range */
-    for (i = 0; i < pmix_argv_count(r1); i++) {
-        r2 = pmix_argv_split(r1[i], '-');
-        if (1 < pmix_argv_count(r2)) {
+    for (i = 0; i < PMIx_Argv_count(r1); i++) {
+        r2 = PMIx_Argv_split(r1[i], '-');
+        if (1 < PMIx_Argv_count(r2)) {
             /* given range - get start and end */
             start = strtol(r2[0], NULL, 10);
             end = strtol(r2[1], NULL, 10);
@@ -78,10 +78,10 @@ void pmix_util_parse_range_options(char *inp, char ***output)
              */
             vint = strtol(r1[i], NULL, 10);
             if (-1 == vint) {
-                pmix_argv_free(*output);
+                PMIx_Argv_free(*output);
                 *output = NULL;
-                pmix_argv_append_nosize(output, "-1");
-                pmix_argv_free(r2);
+                PMIx_Argv_append_nosize(output, "-1");
+                PMIx_Argv_free(r2);
                 goto cleanup;
             }
             start = strtol(r2[0], NULL, 10);
@@ -89,17 +89,17 @@ void pmix_util_parse_range_options(char *inp, char ***output)
         }
         for (n = start; n <= end; n++) {
             pmix_snprintf(nstr, 32, "%d", n);
-            pmix_argv_append_nosize(output, nstr);
+            PMIx_Argv_append_nosize(output, nstr);
         }
-        pmix_argv_free(r2);
+        PMIx_Argv_free(r2);
     }
 
 cleanup:
     if (bang_option) {
-        pmix_argv_append_nosize(output, "BANG");
+        PMIx_Argv_append_nosize(output, "BANG");
     }
     free(input);
-    pmix_argv_free(r1);
+    PMIx_Argv_free(r1);
 }
 
 void pmix_util_get_ranges(char *inp, char ***startpts, char ***endpts)
@@ -117,27 +117,27 @@ void pmix_util_get_ranges(char *inp, char ***startpts, char ***endpts)
     input = strdup(inp);
 
     /* split on commas */
-    r1 = pmix_argv_split(input, ',');
+    r1 = PMIx_Argv_split(input, ',');
     /* for each resulting element, check for range */
-    for (i = 0; i < pmix_argv_count(r1); i++) {
-        r2 = pmix_argv_split(r1[i], '-');
-        if (2 == pmix_argv_count(r2)) {
+    for (i = 0; i < PMIx_Argv_count(r1); i++) {
+        r2 = PMIx_Argv_split(r1[i], '-');
+        if (2 == PMIx_Argv_count(r2)) {
             /* given range - get start and end */
-            pmix_argv_append_nosize(startpts, r2[0]);
-            pmix_argv_append_nosize(endpts, r2[1]);
-        } else if (1 == pmix_argv_count(r2)) {
+            PMIx_Argv_append_nosize(startpts, r2[0]);
+            PMIx_Argv_append_nosize(endpts, r2[1]);
+        } else if (1 == PMIx_Argv_count(r2)) {
             /* only one value provided, so it is both the start
              * and the end
              */
-            pmix_argv_append_nosize(startpts, r2[0]);
-            pmix_argv_append_nosize(endpts, r2[0]);
+            PMIx_Argv_append_nosize(startpts, r2[0]);
+            PMIx_Argv_append_nosize(endpts, r2[0]);
         } else {
             /* no idea how to parse this */
             pmix_output(0, "Unknown parse error on string: %s(%s)", inp, r1[i]);
         }
-        pmix_argv_free(r2);
+        PMIx_Argv_free(r2);
     }
 
     free(input);
-    pmix_argv_free(r1);
+    PMIx_Argv_free(r1);
 }

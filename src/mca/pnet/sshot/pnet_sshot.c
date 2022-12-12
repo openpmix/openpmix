@@ -221,41 +221,41 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
     } else {
         for (n = 0; n < pmix_mca_pnet_sshot_component.numnodes; n++) {
             pmix_asprintf(&tmp, "nid%06d", n);
-            pmix_argv_append_nosize(&nodes, tmp);
+            PMIx_Argv_append_nosize(&nodes, tmp);
             free(tmp);
 
             for (m = 0; m < pmix_mca_pnet_sshot_component.numnodes; m++) {
                 pmix_asprintf(&tmp, "%02d:%02d:%02d:%02d:%02d:%02d", n % 100, (n + 1) % 100,
                               (n + 2) % 100, (n + 3) % 100, (n + 4) % 100, m);
-                pmix_argv_append_nosize(&targs, tmp);
+                PMIx_Argv_append_nosize(&targs, tmp);
                 free(tmp);
             }
-            tmp = pmix_argv_join(targs, ',');
-            pmix_argv_append_nosize(&macs, tmp);
+            tmp = PMIx_Argv_join(targs, ',');
+            PMIx_Argv_append_nosize(&macs, tmp);
             free(tmp);
-            pmix_argv_free(targs);
+            PMIx_Argv_free(targs);
             targs = NULL;
 
             for (m = 0; m < pmix_mca_pnet_sshot_component.numnodes; m++) {
                 pmix_asprintf(&tmp, "x30000c%1dr%02da%04d", n % 10, n % 100, m);
-                pmix_argv_append_nosize(&targs, tmp);
+                PMIx_Argv_append_nosize(&targs, tmp);
                 free(tmp);
             }
-            tmp = pmix_argv_join(targs, ',');
-            pmix_argv_append_nosize(&xnames, tmp);
+            tmp = PMIx_Argv_join(targs, ',');
+            PMIx_Argv_append_nosize(&xnames, tmp);
             free(tmp);
-            pmix_argv_free(targs);
+            PMIx_Argv_free(targs);
             targs = NULL;
 
             for (m = 0; m < pmix_mca_pnet_sshot_component.numnodes; m++) {
                 pmix_asprintf(&tmp, "eth%1d", m);
-                pmix_argv_append_nosize(&targs, tmp);
+                PMIx_Argv_append_nosize(&targs, tmp);
                 free(tmp);
             }
-            tmp = pmix_argv_join(targs, ',');
-            pmix_argv_append_nosize(&osnames, tmp);
+            tmp = PMIx_Argv_join(targs, ',');
+            PMIx_Argv_append_nosize(&osnames, tmp);
             free(tmp);
-            pmix_argv_free(targs);
+            PMIx_Argv_free(targs);
             targs = NULL;
         }
         /* start timing here */
@@ -283,7 +283,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr,
      */
     if (NULL == macs || NULL == xnames || NULL == osnames) {
         /* cannot proceed */
-        pmix_argv_free(nodes);
+        PMIx_Argv_free(nodes);
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
     /* Get back the following:
@@ -535,7 +535,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                     free(hostname);
                     break;
                 }
-                macs = pmix_argv_split(macstring, ',');
+                macs = PMIx_Argv_split(macstring, ',');
                 free(macstring);
                 /* unpack the xnames of the NICs on this node */
                 cnt = 1;
@@ -544,7 +544,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                     free(hostname);
                     break;
                 }
-                xnames = pmix_argv_split(xnamestring, ',');
+                xnames = PMIx_Argv_split(xnamestring, ',');
                 free(xnamestring);
                 /* unpack the osnames of the NICs on this node */
                 cnt = 1;
@@ -553,11 +553,11 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                     free(hostname);
                     break;
                 }
-                osnames = pmix_argv_split(osnamestring, ',');
+                osnames = PMIx_Argv_split(osnamestring, ',');
                 free(osnamestring);
 
                 /* create the array of geometry objects for this node */
-                ndevs = pmix_argv_count(macs);
+                ndevs = PMIx_Argv_count(macs);
                 PMIX_GEOMETRY_CREATE(geometry, ndevs);
 
                 /* load the objects */
@@ -595,7 +595,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                         prs = NULL;
                         for (m = 0; m < (size_t) pmix_mca_pnet_sshot_component.ppn; m++) {
                             pmix_asprintf(&peers, "%d", (int) rank);
-                            pmix_argv_append_nosize(&prs, peers);
+                            PMIx_Argv_append_nosize(&prs, peers);
                             free(peers);
                             ++rank;
                         }
@@ -627,7 +627,7 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                     }
                     kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
                     if (NULL != kv->value->data.string) {
-                        prs = pmix_argv_split(kv->value->data.string, ',');
+                        prs = PMIx_Argv_split(kv->value->data.string, ',');
                     } else {
                         prs = NULL;
                     }
@@ -660,13 +660,13 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *nptr,
                             goto cleanup;
                         }
                     }
-                    pmix_argv_free(prs);
+                    PMIx_Argv_free(prs);
                 }
 
                 /* cleanup */
-                pmix_argv_free(macs);
-                pmix_argv_free(xnames);
-                pmix_argv_free(osnames);
+                PMIx_Argv_free(macs);
+                PMIx_Argv_free(xnames);
+                PMIx_Argv_free(osnames);
                 free(hostname);
 
                 /* get the next hostname */

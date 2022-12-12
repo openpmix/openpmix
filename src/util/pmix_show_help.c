@@ -332,9 +332,9 @@ pmix_status_t pmix_show_help_init(char *helpdir)
     output_stream = pmix_output_open(&lds);
     PMIX_CONSTRUCT(&abd_tuples, pmix_list_t);
 
-    pmix_argv_append_nosize(&search_dirs, pmix_pinstall_dirs.pmixdatadir);
+    PMIx_Argv_append_nosize(&search_dirs, pmix_pinstall_dirs.pmixdatadir);
     if(NULL != helpdir) {
-        pmix_argv_append_nosize(&search_dirs, helpdir);
+        PMIx_Argv_append_nosize(&search_dirs, helpdir);
     }
 
     return PMIX_SUCCESS;
@@ -347,7 +347,7 @@ pmix_status_t pmix_show_help_finalize(void)
 
     /* destruct the search list */
     if (NULL != search_dirs) {
-        pmix_argv_free(search_dirs);
+        PMIx_Argv_free(search_dirs);
         search_dirs = NULL;
     };
 
@@ -368,7 +368,7 @@ static pmix_status_t array2string(char **outstring, int want_error_header, char 
     /* See how much space we need */
 
     len = want_error_header ? 2 * strlen(dash_line) : 0;
-    count = pmix_argv_count(lines);
+    count = PMIx_Argv_count(lines);
     for (i = 0; i < count; ++i) {
         if (NULL == lines[i]) {
             break;
@@ -579,7 +579,7 @@ static pmix_status_t read_topic(FILE *fp, char ***array)
             return PMIX_SUCCESS;
         }
         /* save the line */
-        rc = pmix_argv_append_nosize(array, line);
+        rc = PMIx_Argv_append_nosize(array, line);
         free(line);
         if (rc != PMIX_SUCCESS) {
             return rc;
@@ -609,7 +609,7 @@ static pmix_status_t load_array(char ***array,
     fclose(fp);
 
     if (PMIX_SUCCESS != ret) {
-        pmix_argv_free(*array);
+        PMIx_Argv_free(*array);
     }
 
     return ret;
@@ -639,7 +639,7 @@ char *pmix_show_help_vstring(const char *filename,
         free(single_string);
     }
 
-    pmix_argv_free(array);
+    PMIx_Argv_free(array);
     return (PMIX_SUCCESS == rc) ? output : NULL;
 }
 
@@ -692,7 +692,7 @@ pmix_status_t pmix_show_help(const char *filename, const char *topic,
 
 pmix_status_t pmix_show_help_add_dir(const char *directory)
 {
-    pmix_argv_append_nosize(&search_dirs, directory);
+    PMIx_Argv_append_nosize(&search_dirs, directory);
     return PMIX_SUCCESS;
 }
 

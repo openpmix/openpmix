@@ -214,7 +214,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata, const 
     /* transfer the pdata keys to the keys argv array */
     for (i = 0; i < ndata; i++) {
         if ('\0' != pdata[i].key[0]) {
-            pmix_argv_append_nosize(&keys, pdata[i].key);
+            PMIx_Argv_append_nosize(&keys, pdata[i].key);
         }
     }
 
@@ -227,7 +227,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata, const 
 
     if (PMIX_SUCCESS != (rc = PMIx_Lookup_nb(keys, info, ninfo, lookup_cbfunc, cb))) {
         PMIX_RELEASE(cb);
-        pmix_argv_free(keys);
+        PMIx_Argv_free(keys);
         return rc;
     }
 
@@ -288,7 +288,7 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
         return rc;
     }
     /* pack the keys */
-    nkeys = pmix_argv_count(keys);
+    nkeys = PMIx_Argv_count(keys);
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nkeys, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
@@ -422,7 +422,7 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
         return rc;
     }
     /* pack the number of keys */
-    i = pmix_argv_count(keys);
+    i = PMIx_Argv_count(keys);
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &i, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);

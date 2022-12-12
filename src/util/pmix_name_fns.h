@@ -41,6 +41,9 @@ typedef struct {
     pmix_rank_t rank;
 } pmix_name_t;
 
+#define PMIX_CHECK_NAMES(a, b) \
+    (PMIX_CHECK_NSPACE((a)->nspace, (b)->nspace) && ((a)->rank == (b)->rank || (PMIX_RANK_WILDCARD == (a)->rank || PMIX_RANK_WILDCARD == (b)->rank)))
+
 /* useful define to print name args in output messages */
 PMIX_EXPORT char *pmix_util_print_name_args(const pmix_proc_t *name);
 #define PMIX_NAME_PRINT(n) pmix_util_print_name_args(n)

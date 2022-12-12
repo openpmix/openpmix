@@ -135,7 +135,7 @@ static void tades(tcp_available_ports_t *p)
         free(p->plane);
     }
     if (NULL != p->ports) {
-        pmix_argv_free(p->ports);
+        PMIx_Argv_free(p->ports);
     }
 }
 static PMIX_CLASS_INSTANCE(tcp_available_ports_t, pmix_list_item_t, tacon, tades);
@@ -166,11 +166,11 @@ static void ttdes(tcp_port_tracker_t *p)
                     }
                 }
             }
-            pmix_argv_free(p->ports);
+            PMIx_Argv_free(p->ports);
         }
         PMIX_RELEASE(p->src); // maintain accounting
     } else if (NULL != p->ports) {
-        pmix_argv_free(p->ports);
+        PMIx_Argv_free(p->ports);
     }
 }
 static PMIX_CLASS_INSTANCE(tcp_port_tracker_t, pmix_list_item_t, ttcon, ttdes);
@@ -203,23 +203,23 @@ static pmix_status_t tcp_init(void)
     }
 
     /* split on semi-colons */
-    grps = pmix_argv_split(pmix_mca_pnet_tcp_component.static_ports, ';');
+    grps = PMIx_Argv_split(pmix_mca_pnet_tcp_component.static_ports, ';');
     for (n = 0; NULL != grps[n]; n++) {
         trk = PMIX_NEW(tcp_available_ports_t);
         if (NULL == trk) {
-            pmix_argv_free(grps);
+            PMIx_Argv_free(grps);
             return PMIX_ERR_NOMEM;
         }
         /* there must be at least one colon */
         if (NULL == (p = strrchr(grps[n], ':'))) {
-            pmix_argv_free(grps);
+            PMIx_Argv_free(grps);
             return PMIX_ERR_BAD_PARAM;
         }
         /* extract the ports */
         *p = '\0';
         ++p;
         pmix_util_parse_range_options(p, &trk->ports);
-        trk->nports = pmix_argv_count(trk->ports);
+        trk->nports = PMIx_Argv_count(trk->ports);
         /* see if they provided a plane */
         if (NULL != (p = strchr(grps[n], ':'))) {
             /* yep - save the plane */
@@ -233,7 +233,7 @@ static pmix_status_t tcp_init(void)
                             trk->type, (NULL == trk->plane) ? "NULL" : trk->plane);
         pmix_list_append(&available, &trk->super);
     }
-    pmix_argv_free(grps);
+    PMIx_Argv_free(grps);
 
     return PMIX_SUCCESS;
 }
@@ -548,7 +548,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                 pmix_output_verbose(2, pmix_pnet_base_framework.framework_output,
                                     "pnet:tcp:allocate allocating default ports %s for nspace %s",
                                     pmix_mca_pnet_tcp_component.default_request, nptr->nspace);
-                reqs = pmix_argv_split(pmix_mca_pnet_tcp_component.default_request, ';');
+                reqs = PMIx_Argv_split(pmix_mca_pnet_tcp_component.default_request, ';');
                 for (n = 0; NULL != reqs[n]; n++) {
                     /* if there is no colon, then it is just
                      * a number of ports to use */
@@ -588,7 +588,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
                     /* setup to track the assignment */
                     trk = PMIX_NEW(tcp_port_tracker_t);
                     if (NULL == trk) {
-                        pmix_argv_free(reqs);
+                        PMIx_Argv_free(reqs);
                         PMIX_LIST_DESTRUCT(&mylist);
                         return PMIX_ERR_NOMEM;
                     }
@@ -988,8 +988,8 @@ static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int po
     plist = NULL;
     for (m = 0; p < ppn && m < avail->nports; m++) {
         if (NULL != avail->ports[m]) {
-            pmix_argv_append_nosize(&trk->ports, avail->ports[m]);
-            pmix_argv_append_nosize(&plist, avail->ports[m]);
+            PMIx_Argv_append_nosize(&trk->ports, avail->ports[m]);
+            PMIx_Argv_append_nosize(&plist, avail->ports[m]);
             free(avail->ports[m]);
             avail->ports[m] = NULL;
             ++p;
@@ -1003,8 +1003,8 @@ static pmix_status_t process_request(pmix_namespace_t *nptr, char *idkey, int po
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     /* pass the value */
-    kv->value->data.string = pmix_argv_join(plist, ',');
-    pmix_argv_free(plist);
+    kv->value->data.string = PMIx_Argv_join(plist, ',');
+    PMIx_Argv_free(plist);
     pmix_list_append(ilist, &kv->super);
 
     /* track where it came from */
@@ -1142,7 +1142,7 @@ static pmix_status_t deliver_inventory(pmix_info_t info[], size_t ninfo, pmix_in
                         PMIX_LIST_FOREACH (prts, &lt->resources, tcp_available_ports_t) {
                             device = NULL;
                             if (NULL != prts->ports) {
-                                device = pmix_argv_join(prts->ports, ',');
+                                device = PMIx_Argv_join(prts->ports, ',');
                             }
                             pmix_output(0, "\tPorts: %s",
                                         (NULL == device) ? "UNSPECIFIED" : device);

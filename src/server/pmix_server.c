@@ -1308,7 +1308,7 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
         PMIX_LIST_FOREACH_SAFE (prev, pnext, &reginfo->peers, pmix_peer_events_info_t) {
             if ((NULL != peer && prev->peer == peer)
                 || (NULL != proc && NULL != prev->peer->info
-                    && PMIX_CHECK_PROCID(proc, &prev->peer->info->pname))) {
+                    && PMIX_CHECK_NAMES(proc, &prev->peer->info->pname))) {
                 pmix_list_remove_item(&reginfo->peers, &prev->super);
                 PMIX_RELEASE(prev);
                 if (0 == pmix_list_get_size(&reginfo->peers)) {
@@ -1338,8 +1338,8 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
             continue;
         }
         if ((NULL != peer && NULL != peer->info
-             && PMIX_CHECK_PROCID(&req->requestor->info->pname, &peer->info->pname))
-            || (NULL != proc && PMIX_CHECK_PROCID(&req->requestor->info->pname, proc))) {
+             && PMIX_CHECK_NAMES(&req->requestor->info->pname, &peer->info->pname))
+            || (NULL != proc && PMIX_CHECK_NAMES(&req->requestor->info->pname, proc))) {
             pmix_pointer_array_set_item(&pmix_globals.iof_requests, i, NULL);
             PMIX_RELEASE(req);
         }
@@ -1348,7 +1348,7 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
     /* see if this proc is involved in any direct modex requests */
     PMIX_LIST_FOREACH_SAFE (dlcd, dnxt, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
         if ((NULL != peer && NULL != peer->info
-             && PMIX_CHECK_PROCID(&peer->info->pname, &dlcd->proc))
+             && PMIX_CHECK_NAMES(&peer->info->pname, &dlcd->proc))
             || (NULL != proc && PMIX_CHECK_PROCID(proc, &dlcd->proc))) {
             /* cleanup this request */
             pmix_list_remove_item(&pmix_server_globals.local_reqs, &dlcd->super);
@@ -1366,7 +1366,7 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
             tgt = NULL;
             for (n = 0; n < ncd->ntargets; n++) {
                 if ((NULL != peer && NULL != peer->info
-                     && PMIX_CHECK_PROCID(&peer->info->pname, &ncd->targets[n]))
+                     && PMIX_CHECK_NAMES(&peer->info->pname, &ncd->targets[n]))
                     || (NULL != proc && PMIX_CHECK_PROCID(proc, &ncd->targets[n]))) {
                     tgt = &ncd->targets[n];
                     break;
@@ -2191,30 +2191,30 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
                         proc->nspace, proc->rank);
 
     /* pass the nspace */
-    pmix_setenv("PMIX_NAMESPACE", proc->nspace, true, env);
+    PMIx_Setenv("PMIX_NAMESPACE", proc->nspace, true, env);
     /* pass the rank */
     (void) pmix_snprintf(rankstr, 127, "%u", proc->rank);
-    pmix_setenv("PMIX_RANK", rankstr, true, env);
+    PMIx_Setenv("PMIX_RANK", rankstr, true, env);
     /* pass our rendezvous info */
     lt = &pmix_ptl_base.listener;
     if (NULL != lt->uri && NULL != lt->varname) {
-        varnames = pmix_argv_split(lt->varname, ':');
+        varnames = PMIx_Argv_split(lt->varname, ':');
         for (n = 0; NULL != varnames[n]; n++) {
-            pmix_setenv(varnames[n], lt->uri, true, env);
+            PMIx_Setenv(varnames[n], lt->uri, true, env);
         }
-        pmix_argv_free(varnames);
+        PMIx_Argv_free(varnames);
     }
 
     /* pass our active security modules */
-    pmix_setenv("PMIX_SECURITY_MODE", security_mode, true, env);
+    PMIx_Setenv("PMIX_SECURITY_MODE", security_mode, true, env);
     /* pass the type of buffer we are using */
     if (PMIX_BFROP_BUFFER_FULLY_DESC == pmix_globals.mypeer->nptr->compat.type) {
-        pmix_setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_FULLY_DESC", true, env);
+        PMIx_Setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_FULLY_DESC", true, env);
     } else {
-        pmix_setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_NON_DESC", true, env);
+        PMIx_Setenv("PMIX_BFROP_BUFFER_TYPE", "PMIX_BFROP_BUFFER_NON_DESC", true, env);
     }
     /* pass our available gds modules */
-    pmix_setenv("PMIX_GDS_MODULE", gds_mode, true, env);
+    PMIx_Setenv("PMIX_GDS_MODULE", gds_mode, true, env);
 
     /* get any PTL contribution such as tmpdir settings for session files */
     if (PMIX_SUCCESS != (rc = pmix_ptl_base_setup_fork(proc, env))) {
@@ -2242,15 +2242,15 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
     }
 
     /* ensure we agree on our hostname */
-    pmix_setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, env);
+    PMIx_Setenv("PMIX_HOSTNAME", pmix_globals.hostname, true, env);
 
     /* communicate our version */
-    pmix_setenv("PMIX_VERSION", PMIX_VERSION, true, env);
+    PMIx_Setenv("PMIX_VERSION", PMIX_VERSION, true, env);
 
     /* pass any global contributions */
     if (NULL != pmix_server_globals.genvars) {
         for (n = 0; NULL != pmix_server_globals.genvars[n]; n++) {
-            pmix_argv_append_nosize(env, pmix_server_globals.genvars[n]);
+            PMIx_Argv_append_nosize(env, pmix_server_globals.genvars[n]);
         }
     }
 
@@ -3604,7 +3604,7 @@ static void _cnct(int sd, short args, void *cbdata)
     /* find the unique nspaces that are participating */
     PMIX_LIST_FOREACH (cd, &tracker->local_cbs, pmix_server_caddy_t) {
         if (NULL == nspaces) {
-            pmix_argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
+            PMIx_Argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
         } else {
             found = false;
             for (i = 0; NULL != nspaces[i]; i++) {
@@ -3614,7 +3614,7 @@ static void _cnct(int sd, short args, void *cbdata)
                 }
             }
             if (!found) {
-                pmix_argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
+                PMIx_Argv_append_nosize(&nspaces, cd->peer->info->pname.nspace);
             }
         }
     }
@@ -3747,7 +3747,7 @@ error:
 
 cleanup:
     if (NULL != nspaces) {
-        pmix_argv_free(nspaces);
+        PMIx_Argv_free(nspaces);
     }
     pmix_list_remove_item(&pmix_server_globals.collectives, &tracker->super);
     PMIX_RELEASE(tracker);

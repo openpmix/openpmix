@@ -250,7 +250,7 @@ static pmix_status_t generate_node_regex(const char *input, char **regexp)
         /* if no ranges, then just add the name */
         if (0 == pmix_list_get_size(&vreg->ranges)) {
             if (NULL != vreg->prefix) {
-                pmix_argv_append_nosize(&regexargs, vreg->prefix);
+                PMIx_Argv_append_nosize(&regexargs, vreg->prefix);
             }
             PMIX_RELEASE(vreg);
             continue;
@@ -291,21 +291,21 @@ static pmix_status_t generate_node_regex(const char *input, char **regexp)
             free(tmp);
             tmp = tmp2;
         }
-        pmix_argv_append_nosize(&regexargs, tmp);
+        PMIx_Argv_append_nosize(&regexargs, tmp);
         free(tmp);
         PMIX_RELEASE(vreg);
     }
 
     /* assemble final result */
     if (NULL != regexargs) {
-        tmp = pmix_argv_join(regexargs, ',');
+        tmp = PMIx_Argv_join(regexargs, ',');
         if (0 > asprintf(regexp, "pmix[%s]", tmp)) {
             return PMIX_ERR_NOMEM;
         }
         free(tmp);
 
         /* cleanup */
-        pmix_argv_free(regexargs);
+        PMIx_Argv_free(regexargs);
         rc = PMIX_SUCCESS;
     } else {
         rc = PMIX_ERR_TAKE_NEXT_OPTION;
@@ -332,7 +332,7 @@ static pmix_status_t generate_ppn(const char *input, char **regexp)
     PMIX_CONSTRUCT(&nodes, pmix_list_t);
 
     /* split the input by node */
-    ppn = pmix_argv_split(input, ';');
+    ppn = PMIx_Argv_split(input, ';');
 
     /* for each node, split the input by comma */
     for (i = 0; NULL != ppn[i]; i++) {
@@ -341,7 +341,7 @@ static pmix_status_t generate_ppn(const char *input, char **regexp)
         vreg = PMIX_NEW(pmix_regex_value_t);
         pmix_list_append(&nodes, &vreg->super);
         /* split the input for this node */
-        npn = pmix_argv_split(ppn[i], ',');
+        npn = PMIx_Argv_split(ppn[i], ',');
         /* look at each element */
         for (j = 0; NULL != npn[j]; j++) {
             /* is this a range? */
@@ -396,9 +396,9 @@ static pmix_status_t generate_ppn(const char *input, char **regexp)
                 }
             }
         }
-        pmix_argv_free(npn);
+        PMIx_Argv_free(npn);
     }
-    pmix_argv_free(ppn);
+    PMIx_Argv_free(ppn);
 
     /* begin constructing the regular expression */
     tmp = strdup("pmix[");
@@ -695,7 +695,7 @@ static pmix_status_t pmix_regex_extract_nodes(char *regexp, char ***names)
             }
         } else {
             /* If we didn't find a range, just add the value */
-            if (PMIX_SUCCESS != (ret = pmix_argv_append_nosize(names, base))) {
+            if (PMIX_SUCCESS != (ret = PMIx_Argv_append_nosize(names, base))) {
                 PMIX_ERROR_LOG(ret);
                 free(orig);
                 return ret;
@@ -861,7 +861,7 @@ static pmix_status_t regex_parse_value_range(char *base, char *range, int num_di
         if (NULL != suffix) {
             strcat(str, suffix);
         }
-        ret = pmix_argv_append_nosize(names, str);
+        ret = PMIx_Argv_append_nosize(names, str);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             free(str);
@@ -880,16 +880,16 @@ static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs)
     int i, j, k, start, end;
 
     /* split on semi-colons for nodes */
-    nds = pmix_argv_split(regexp, ';');
+    nds = PMIx_Argv_split(regexp, ';');
     for (j = 0; NULL != nds[j]; j++) {
         /* for each node, split it by comma */
-        rngs = pmix_argv_split(nds[j], ',');
+        rngs = PMIx_Argv_split(nds[j], ',');
         /* parse each element */
         for (i = 0; NULL != rngs[i]; i++) {
             /* look for a range */
             if (NULL == (t = strchr(rngs[i], '-'))) {
                 /* just one value */
-                pmix_argv_append_nosize(&ps, rngs[i]);
+                PMIx_Argv_append_nosize(&ps, rngs[i]);
             } else {
                 /* handle the range */
                 *t = '\0';
@@ -898,25 +898,25 @@ static pmix_status_t pmix_regex_extract_ppn(char *regexp, char ***procs)
                 end = strtol(t, NULL, 10);
                 for (k = start; k <= end; k++) {
                     if (0 > asprintf(&t, "%d", k)) {
-                        pmix_argv_free(nds);
-                        pmix_argv_free(rngs);
+                        PMIx_Argv_free(nds);
+                        PMIx_Argv_free(rngs);
                         return PMIX_ERR_NOMEM;
                     }
-                    pmix_argv_append_nosize(&ps, t);
+                    PMIx_Argv_append_nosize(&ps, t);
                     free(t);
                 }
             }
         }
-        pmix_argv_free(rngs);
+        PMIx_Argv_free(rngs);
         /* create the node entry */
-        t = pmix_argv_join(ps, ',');
-        pmix_argv_append_nosize(procs, t);
+        t = PMIx_Argv_join(ps, ',');
+        PMIx_Argv_append_nosize(procs, t);
         free(t);
-        pmix_argv_free(ps);
+        PMIx_Argv_free(ps);
         ps = NULL;
     }
 
-    pmix_argv_free(nds);
+    PMIx_Argv_free(nds);
     return PMIX_SUCCESS;
 }
 

@@ -120,14 +120,14 @@ static bool checkus(const pmix_info_t info[], size_t ninfo)
         /* check the attribute */
         if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL)
             || PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
-            tmp = pmix_argv_split(info[n].value.data.string, ',');
+            tmp = PMIx_Argv_split(info[n].value.data.string, ',');
             for (m = 0; NULL != tmp[m]; m++) {
                 if (0 == strcmp(tmp[m], "oshmem")) {
                     takeus = true;
                     break;
                 }
             }
-            pmix_argv_free(tmp);
+            PMIx_Argv_free(tmp);
         }
     }
 
@@ -158,7 +158,7 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
         }
     }
     /* flag that we worked on this */
-    pmix_argv_append_nosize(priors, "oshmem");
+    PMIx_Argv_append_nosize(priors, "oshmem");
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                         "pmdl:oshmem:harvest envars active");
@@ -253,7 +253,7 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv)
 
     /* check the attribute */
     if (PMIX_CHECK_KEY(kv, PMIX_PROGRAMMING_MODEL) || PMIX_CHECK_KEY(kv, PMIX_PERSONALITY)) {
-        tmp = pmix_argv_split(kv->value->data.string, ',');
+        tmp = PMIx_Argv_split(kv->value->data.string, ',');
         for (m = 0; NULL != tmp[m]; m++) {
             if (0 == strcmp(tmp[m], "ompi")) {
                 /* they didn't specify a level, so we will service
@@ -272,7 +272,7 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv)
                 break;
             }
         }
-        pmix_argv_free(tmp);
+        PMIx_Argv_free(tmp);
     }
     if (!takeus) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
@@ -385,15 +385,15 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         }
         kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
         pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
-        pmix_argv_append_nosize(&tmp, ev1);
+        PMIx_Argv_append_nosize(&tmp, ev1);
         free(ev1);
         PMIX_DESTRUCT(&cb);
     }
     PMIX_INFO_DESTRUCT(&info[0]);
 
     if (NULL != tmp) {
-        ev1 = pmix_argv_join(tmp, ' ');
-        pmix_argv_free(tmp);
+        ev1 = PMIx_Argv_join(tmp, ' ');
+        PMIx_Argv_free(tmp);
         PMIX_INFO_LOAD(&info[0], "OMPI_APP_SIZES", ev1, PMIX_STRING);
         free(ev1);
         PMIX_GDS_CACHE_JOB_INFO(rc, pmix_globals.mypeer, nptr, info, 1);
@@ -429,15 +429,15 @@ static pmix_status_t register_nspace(pmix_namespace_t *nptr)
         }
         kv = (pmix_kval_t *) pmix_list_get_first(&cb.kvs);
         pmix_asprintf(&ev1, "%u", kv->value->data.uint32);
-        pmix_argv_append_nosize(&tmp, ev1);
+        PMIx_Argv_append_nosize(&tmp, ev1);
         free(ev1);
         PMIX_DESTRUCT(&cb);
     }
     PMIX_INFO_DESTRUCT(&info[0]);
 
     if (NULL != tmp) {
-        ev1 = pmix_argv_join(tmp, ' ');
-        pmix_argv_free(tmp);
+        ev1 = PMIx_Argv_join(tmp, ' ');
+        PMIx_Argv_free(tmp);
         tmp = NULL;
         PMIX_INFO_LOAD(&info[0], "OMPI_FIRST_RANKS", ev1, PMIX_STRING);
         free(ev1);

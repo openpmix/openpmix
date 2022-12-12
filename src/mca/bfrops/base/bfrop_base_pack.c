@@ -661,7 +661,7 @@ pmix_status_t pmix_bfrops_base_pack_app(pmix_pointer_array_t *regtypes, pmix_buf
             return ret;
         }
         /* argv */
-        nvals = pmix_argv_count(app[i].argv);
+        nvals = PMIx_Argv_count(app[i].argv);
         /* although nvals is technically an int32, we have to pack it
          * as a generic int due to a typo in earlier release series. This
          * preserves the ordering of bytes in the packed buffer as it
@@ -680,7 +680,7 @@ pmix_status_t pmix_bfrops_base_pack_app(pmix_pointer_array_t *regtypes, pmix_buf
             }
         }
         /* env */
-        nvals = pmix_argv_count(app[i].env);
+        nvals = PMIx_Argv_count(app[i].env);
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &nvals, 1, PMIX_INT32, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
@@ -930,7 +930,7 @@ pmix_status_t pmix_bfrops_base_pack_query(pmix_pointer_array_t *regtypes, pmix_b
 
     for (i = 0; i < num_vals; i++) {
         /* pack the number of keys */
-        nkeys = pmix_argv_count(pq[i].keys);
+        nkeys = PMIx_Argv_count(pq[i].keys);
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &nkeys, 1, PMIX_INT32, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
@@ -1116,7 +1116,7 @@ pmix_status_t pmix_bfrops_base_pack_regattr(pmix_pointer_array_t *regtypes, pmix
             return ret;
         }
         /* pack the description */
-        nd = pmix_argv_count(ptr[i].description);
+        nd = PMIx_Argv_count(ptr[i].description);
         PMIX_BFROPS_PACK_TYPE(ret, buffer, &nd, 1, PMIX_INT32, regtypes);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);

@@ -284,8 +284,8 @@ pmix_status_t pmix_bfrops_base_copy_app(pmix_app_t **dest, pmix_app_t *src, pmix
 
     *dest = (pmix_app_t *) malloc(sizeof(pmix_app_t));
     (*dest)->cmd = strdup(src->cmd);
-    (*dest)->argv = pmix_argv_copy(src->argv);
-    (*dest)->env = pmix_argv_copy(src->env);
+    (*dest)->argv = PMIx_Argv_copy(src->argv);
+    (*dest)->env = PMIx_Argv_copy(src->env);
     if (NULL != src->cwd) {
         (*dest)->cwd = strdup(src->cwd);
     }
@@ -628,10 +628,10 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
                 pa[n].cmd = strdup(sa[n].cmd);
             }
             if (NULL != sa[n].argv) {
-                pa[n].argv = pmix_argv_copy(sa[n].argv);
+                pa[n].argv = PMIx_Argv_copy(sa[n].argv);
             }
             if (NULL != sa[n].env) {
-                pa[n].env = pmix_argv_copy(sa[n].env);
+                pa[n].env = PMIx_Argv_copy(sa[n].env);
             }
             if (NULL != sa[n].cwd) {
                 pa[n].cwd = strdup(sa[n].cwd);
@@ -821,7 +821,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
         sq = (pmix_query_t *) src->array;
         for (n = 0; n < src->size; n++) {
             if (NULL != sq[n].keys) {
-                pq[n].keys = pmix_argv_copy(sq[n].keys);
+                pq[n].keys = PMIx_Argv_copy(sq[n].keys);
             }
             if (NULL != sq[n].qualifiers && 0 < sq[n].nqual) {
                 PMIX_INFO_CREATE(pq[n].qualifiers, sq[n].nqual);
@@ -889,7 +889,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
             }
             PMIX_LOAD_KEY(pr[n].string, sr[n].string);
             pr[n].type = sr[n].type;
-            pr[n].description = pmix_argv_copy(sr[n].description);
+            pr[n].description = PMIx_Argv_copy(sr[n].description);
         }
         break;
     case PMIX_PROC_CPUSET:
@@ -997,7 +997,7 @@ pmix_status_t pmix_bfrops_base_copy_darray(pmix_data_array_t **dest, pmix_data_a
         pns = (pmix_nspace_t *) p->array;
         sns = (pmix_nspace_t *) src->array;
         for (n = 0; n < src->size; n++) {
-            PMIX_LOAD_NSPACE(&pns[n], sns[n]);
+            PMIX_LOAD_NSPACE(pns[n], sns[n]);
         }
         break;
     case PMIX_PROC_STATS:
@@ -1066,7 +1066,7 @@ pmix_status_t pmix_bfrops_base_copy_query(pmix_query_t **dest, pmix_query_t *src
 
     *dest = (pmix_query_t *) malloc(sizeof(pmix_query_t));
     if (NULL != src->keys) {
-        (*dest)->keys = pmix_argv_copy(src->keys);
+        (*dest)->keys = PMIx_Argv_copy(src->keys);
     }
     (*dest)->nqual = src->nqual;
     if (NULL != src->qualifiers) {
@@ -1136,7 +1136,7 @@ pmix_status_t pmix_bfrops_base_copy_regattr(pmix_regattr_t **dest, pmix_regattr_
     }
     PMIX_LOAD_KEY((*dest)->string, src->string);
     (*dest)->type = src->type;
-    (*dest)->description = pmix_argv_copy(src->description);
+    (*dest)->description = PMIx_Argv_copy(src->description);
     return PMIX_SUCCESS;
 }
 
@@ -1295,7 +1295,7 @@ pmix_status_t pmix_bfrops_base_copy_nspace(pmix_nspace_t **dest, pmix_nspace_t *
     if (NULL == dst) {
         return PMIX_ERR_NOMEM;
     }
-    PMIX_LOAD_NSPACE(dst, (char *) src);
+    PMIX_LOAD_NSPACE(*dst, (char *) src);
     *dest = dst;
     return PMIX_SUCCESS;
 }

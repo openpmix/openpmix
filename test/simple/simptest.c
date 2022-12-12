@@ -347,7 +347,7 @@ int main(int argc, char **argv)
                 istimeouttest = true;
             }
             for (k = n + 2; NULL != argv[k]; k++) {
-                pmix_argv_append_nosize(&client_argv, argv[k]);
+                PMIx_Argv_append_nosize(&client_argv, argv[k]);
             }
             n += k;
         } else if (0 == strcmp("-h", argv[n])) {
@@ -453,8 +453,8 @@ int main(int argc, char **argv)
     PMIX_RELEASE(x);
 
     /* set common argv and env */
-    client_env = pmix_argv_copy(environ);
-    pmix_argv_prepend_nosize(&client_argv, executable);
+    client_env = PMIx_Argv_copy(environ);
+    PMIx_Argv_prepend_nosize(&client_argv, executable);
 
     wakeup = nprocs;
     myuid = getuid();
@@ -521,8 +521,8 @@ int main(int argc, char **argv)
             pmix_list_append(&children, &child->super);
         }
     }
-    pmix_argv_free(client_argv);
-    pmix_argv_free(client_env);
+    PMIx_Argv_free(client_argv);
+    PMIx_Argv_free(client_env);
 
     /* hang around until the client(s) finalize */
     while (0 < wakeup) {
@@ -621,11 +621,11 @@ static void set_namespace(int nprocs, char *nspace, pmix_op_cbfunc_t cbfunc, myx
     PMIx_generate_regex(pmix_globals.hostname, &regex);
     for (m = 0; m < nprocs; m++) {
         snprintf(tmp, 50, "%d", m);
-        pmix_argv_append_nosize(&agg, tmp);
+        PMIx_Argv_append_nosize(&agg, tmp);
         memset(tmp, 0, 50);
     }
-    rks = pmix_argv_join(agg, ',');
-    pmix_argv_free(agg);
+    rks = PMIx_Argv_join(agg, ',');
+    PMIx_Argv_free(agg);
     PMIx_generate_ppn(rks, &ppn);
     free(rks);
     nnodes = 1;

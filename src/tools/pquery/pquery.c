@@ -359,7 +359,7 @@ int main(int argc, char **argv)
             }
             *endp = '\0';
             /* break into qual=val pairs */
-            qprs = pmix_argv_split(strt, ';');
+            qprs = PMIx_Argv_split(strt, ';');
             for (m = 0; NULL != qprs[m]; m++) {
                 /* break each pair */
                 if (NULL == (kptr = strchr(qprs[m], '='))) {
@@ -387,7 +387,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "Failed to lookup %s\n", qkeys[n]);
             exit(1);
         }
-        pmix_argv_append_nosize(&qry->query.keys, attr);
+        PMIx_Argv_append_nosize(&qry->query.keys, attr);
         /* add in any qualifiers */
         m = pmix_list_get_size(&qlist);
         if (0 < m) {

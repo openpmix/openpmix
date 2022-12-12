@@ -510,7 +510,7 @@ static int enum_value_from_string_flag(pmix_mca_base_var_enum_t *self, const cha
         return ret;
     }
 
-    flags = pmix_argv_split(string_value, ',');
+    flags = PMIx_Argv_split(string_value, ',');
     if (NULL == flags) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -538,12 +538,12 @@ static int enum_value_from_string_flag(pmix_mca_base_var_enum_t *self, const cha
         }
 
         if (!found || conflict) {
-            pmix_argv_free(flags);
+            PMIx_Argv_free(flags);
             return !found ? PMIX_ERR_VALUE_OUT_OF_BOUNDS : PMIX_ERR_BAD_PARAM;
         }
     }
 
-    pmix_argv_free(flags);
+    PMIx_Argv_free(flags);
     *value_out = flag;
 
     return PMIX_SUCCESS;

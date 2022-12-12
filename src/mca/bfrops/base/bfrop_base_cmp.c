@@ -890,8 +890,8 @@ static pmix_value_cmp_t cmp_regattr(pmix_regattr_t *r1,
         return PMIX_VALUE2_GREATER;
     }
     /* both are non-NULL */
-    c1 = pmix_argv_count(r1->description);
-    c2 = pmix_argv_count(r2->description);
+    c1 = PMIx_Argv_count(r1->description);
+    c2 = PMIx_Argv_count(r2->description);
     if (c1 > c2) {
         return PMIX_VALUE1_GREATER;
     } else if (c2 > c1) {

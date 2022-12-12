@@ -59,9 +59,9 @@ int main(int argc, char **argv)
     /* query something */
     nq = 2;
     PMIX_QUERY_CREATE(query, nq);
-    pmix_argv_append_nosize(&query[0].keys, "foobar");
-    pmix_argv_append_nosize(&query[1].keys, "spastic");
-    pmix_argv_append_nosize(&query[1].keys, PMIX_SERVER_URI);
+    PMIx_Argv_append_nosize(&query[0].keys, "foobar");
+    PMIx_Argv_append_nosize(&query[1].keys, "spastic");
+    PMIx_Argv_append_nosize(&query[1].keys, PMIX_SERVER_URI);
     if (PMIX_SUCCESS != (rc = PMIx_Query_info(query, nq, &results, &nresults))) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Query_info failed: %d", myproc.nspace,
                     myproc.rank, rc);

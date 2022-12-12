@@ -188,7 +188,7 @@ int main(int argc, char **argv)
     }
 
     /* determine how many keys were given */
-    count = pmix_argv_count(results.tail);
+    count = PMIx_Argv_count(results.tail);
     if (0 == count) {
         /* must give us at least one key */
         fprintf(stderr, "%s: Must provide at least one key to lookup\n", argv[0]);

@@ -135,7 +135,7 @@ int pmix_mca_base_show_load_errors_init(void)
             // Examine each of the values in the comma-delimited list.
             // Each value can be of the form "framework" or
             // "framework/component".
-            char **values = pmix_argv_split(pmix_mca_base_component_show_load_errors + pos,
+            char **values = PMIx_Argv_split(pmix_mca_base_component_show_load_errors + pos,
                                             ',');
             if (values == NULL) {
                 ret = PMIX_ERROR;
@@ -151,7 +151,7 @@ int pmix_mca_base_show_load_errors_init(void)
             int argc;
             fc_pair_t *fcp;
             for (int i = 0; values[i] != NULL; ++i) {
-                split = pmix_argv_split(values[i], '/');
+                split = PMIx_Argv_split(values[i], '/');
                 if (NULL == split) {
                     ret = PMIX_ERROR;
                     pmix_show_help("help-mca-base.txt",
@@ -162,7 +162,7 @@ int pmix_mca_base_show_load_errors_init(void)
                     return ret;
                 }
 
-                argc = pmix_argv_count(split);
+                argc = PMIx_Argv_count(split);
                 if (0 == argc) {
                     // This should never happen
                     ret = PMIX_ERROR;
@@ -206,7 +206,7 @@ int pmix_mca_base_show_load_errors_init(void)
 
                 pmix_list_append(list, &fcp->li);
             }
-            pmix_argv_free(values);
+            PMIx_Argv_free(values);
         }
     }
 

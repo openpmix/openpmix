@@ -148,7 +148,7 @@ static void switch_con(sshot_switch_t *swtch)
 static void switch_des(sshot_switch_t *swtch)
 {
     if (NULL != swtch->members) {
-	pmix_argv_free(swtch->members);
+	PMIx_Argv_free(swtch->members);
     }
 }
 
@@ -283,7 +283,7 @@ pmix_status_t pmix_pnet_sshot_register_fabric(pmix_fabric_t *fabric, const pmix_
 		pmix_pointer_array_set_item(&grp->switches, swtch->switch_id, swtch);
 	    }
 	    char *full_name = join_names(node_nic_name_size, nname, dev, node_nic_name_format);
-	    pmix_argv_append_nosize(&swtch->members, full_name);
+	    PMIx_Argv_append_nosize(&swtch->members, full_name);
 	}
     }
     // now loop through all group objs, and each switch, and generate the string
@@ -297,7 +297,7 @@ pmix_status_t pmix_pnet_sshot_register_fabric(pmix_fabric_t *fabric, const pmix_
 
 		sshot_switch_t *swtch = (sshot_switch_t*)pmix_pointer_array_get_item(&grp->switches, j);
 		if (swtch) {
-		    char *switch_members2 = pmix_argv_join(swtch->members, ',');
+		    char *switch_members2 = PMIx_Argv_join(swtch->members, ',');
 		    pmix_asprintf(&switch_members, "%d%s%s", swtch->switch_id, switch_delim, switch_members2);
 		    free(switch_members2);
 		} else {
@@ -306,14 +306,14 @@ pmix_status_t pmix_pnet_sshot_register_fabric(pmix_fabric_t *fabric, const pmix_
 	    }
 	    char *group_members2 = NULL;
 	    pmix_asprintf(&group_members2, "%d:%s", grp->group_id, switch_members);
-	    pmix_argv_append_nosize(&group_members, group_members2);
+	    PMIx_Argv_append_nosize(&group_members, group_members2);
 	    free(group_members2);
 	} else {
 	    continue;
 	}
     }
     if (group_members) {
-	all_info = pmix_argv_join(group_members, ';');
+	all_info = PMIx_Argv_join(group_members, ';');
 	PMIX_INFO_CREATE(fabric->info, 1);
 	fabric->ninfo = 1;
 	PMIX_INFO_LOAD(&fabric->info[0], PMIX_FABRIC_GROUPS, all_info, PMIX_STRING);

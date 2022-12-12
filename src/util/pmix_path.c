@@ -209,7 +209,7 @@ char *pmix_path_findv(char *fname, int mode, char **envv, char *wrkdir)
     if (NULL == dirv)
         return NULL;
     fullpath = pmix_path_find(fname, dirv, mode, envv);
-    pmix_argv_free(dirv);
+    PMIx_Argv_free(dirv);
     return fullpath;
 }
 

@@ -247,11 +247,11 @@ int main(int argc, char **argv)
             pmix_output(0, "Device[%d]: %s Osname: %s", (int) m, geos[m].uuid, geos[m].osname);
             for (n = 0; n < geos[m].coordinates[0].dims; n++) {
                 asprintf(&tmp, "%d", geos[m].coordinates[0].coord[n]);
-                pmix_argv_append_nosize(&foo, tmp);
+                PMIx_Argv_append_nosize(&foo, tmp);
                 free(tmp);
             }
-            tmp = pmix_argv_join(foo, ',');
-            pmix_argv_free(foo);
+            tmp = PMIx_Argv_join(foo, ',');
+            PMIx_Argv_free(foo);
             if (PMIX_COORD_LOGICAL_VIEW == geos[m].coordinates[0].view) {
                 view = "LOGICAL";
             } else {

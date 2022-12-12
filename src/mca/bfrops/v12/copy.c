@@ -366,8 +366,8 @@ pmix_status_t pmix12_bfrop_copy_app(pmix_app_t **dest, pmix_app_t *src, pmix_dat
 
    *dest = (pmix_app_t *) malloc(sizeof(pmix_app_t));
     (*dest)->cmd = strdup(src->cmd);
-    (*dest)->argv = pmix_argv_copy(src->argv);
-    (*dest)->env = pmix_argv_copy(src->env);
+    (*dest)->argv = PMIx_Argv_copy(src->argv);
+    (*dest)->env = PMIx_Argv_copy(src->env);
     (*dest)->maxprocs = src->maxprocs;
     (*dest)->ninfo = src->ninfo;
     (*dest)->info = (pmix_info_t *) malloc(src->ninfo * sizeof(pmix_info_t));

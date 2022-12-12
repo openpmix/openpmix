@@ -83,7 +83,7 @@ static pmix_status_t component_register(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_mca_pnet_usnic_component.incparms);
     if (NULL != pmix_mca_pnet_usnic_component.incparms) {
-        pmix_mca_pnet_usnic_component.include = pmix_argv_split(pmix_mca_pnet_usnic_component.incparms, ',');
+        pmix_mca_pnet_usnic_component.include = PMIx_Argv_split(pmix_mca_pnet_usnic_component.incparms, ',');
     }
 
     pmix_mca_pnet_usnic_component.excparms = NULL;
@@ -93,7 +93,7 @@ static pmix_status_t component_register(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING,
         &pmix_mca_pnet_usnic_component.excparms);
     if (NULL != pmix_mca_pnet_usnic_component.excparms) {
-        pmix_mca_pnet_usnic_component.exclude = pmix_argv_split(pmix_mca_pnet_usnic_component.excparms, ',');
+        pmix_mca_pnet_usnic_component.exclude = PMIx_Argv_split(pmix_mca_pnet_usnic_component.excparms, ',');
     }
 
     static_port_string = NULL;
@@ -105,7 +105,7 @@ static pmix_status_t component_register(void)
     if (NULL != static_port_string) {
         pmix_util_parse_range_options(static_port_string, &pmix_mca_pnet_usnic_component.tcp_static_ports);
         if (0 == strcmp(pmix_mca_pnet_usnic_component.tcp_static_ports[0], "-1")) {
-            pmix_argv_free(pmix_mca_pnet_usnic_component.tcp_static_ports);
+            PMIx_Argv_free(pmix_mca_pnet_usnic_component.tcp_static_ports);
             pmix_mca_pnet_usnic_component.tcp_static_ports = NULL;
         }
     } else {
@@ -121,7 +121,7 @@ static pmix_status_t component_register(void)
     if (NULL != static_port_string6) {
         pmix_util_parse_range_options(static_port_string6, &pmix_mca_pnet_usnic_component.tcp6_static_ports);
         if (0 == strcmp(pmix_mca_pnet_usnic_component.tcp6_static_ports[0], "-1")) {
-            pmix_argv_free(pmix_mca_pnet_usnic_component.tcp6_static_ports);
+            PMIx_Argv_free(pmix_mca_pnet_usnic_component.tcp6_static_ports);
             pmix_mca_pnet_usnic_component.tcp6_static_ports = NULL;
         }
     } else {

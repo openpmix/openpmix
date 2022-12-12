@@ -198,9 +198,9 @@ static char *append_filename_to_list(const char *filename)
 {
     int i, count;
 
-    (void) pmix_argv_append_unique_nosize(&pmix_mca_base_var_file_list, filename);
+    (void) PMIx_Argv_append_unique_nosize(&pmix_mca_base_var_file_list, filename);
 
-    count = pmix_argv_count(pmix_mca_base_var_file_list);
+    count = PMIx_Argv_count(pmix_mca_base_var_file_list);
 
     for (i = count - 1; i >= 0; --i) {
         if (0 == strcmp(pmix_mca_base_var_file_list[i], filename)) {
@@ -917,7 +917,7 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
 
 cleanup:
     if (*num_env > 0) {
-        pmix_argv_free(*env);
+        PMIx_Argv_free(*env);
         *num_env = 0;
         *env = NULL;
     }
@@ -955,7 +955,7 @@ int pmix_mca_base_var_finalize(void)
         pmix_mca_base_var_count = 0;
 
         if (NULL != pmix_mca_base_var_file_list) {
-            pmix_argv_free(pmix_mca_base_var_file_list);
+            PMIx_Argv_free(pmix_mca_base_var_file_list);
         }
         pmix_mca_base_var_file_list = NULL;
 
@@ -982,9 +982,9 @@ static int fixup_files(char **file_list, char *path, bool rel_path_search, char 
     int mode = R_OK; /* The file exists, and we can read it */
     int count, i, argc = 0;
 
-    search_path = pmix_argv_split(path, PMIX_ENV_SEP);
-    files = pmix_argv_split(*file_list, sep);
-    count = pmix_argv_count(files);
+    search_path = PMIx_Argv_split(path, PMIX_ENV_SEP);
+    files = PMIx_Argv_split(*file_list, sep);
+    count = PMIx_Argv_count(files);
 
     rel_path = force_agg_path ? force_agg_path : cwd;
 
@@ -1027,21 +1027,21 @@ static int fixup_files(char **file_list, char *path, bool rel_path_search, char 
 
     if (PMIX_SUCCESS == exit_status) {
         free(*file_list);
-        *file_list = pmix_argv_join(argv, sep);
+        *file_list = PMIx_Argv_join(argv, sep);
     }
 
     if (NULL != files) {
-        pmix_argv_free(files);
+        PMIx_Argv_free(files);
         files = NULL;
     }
 
     if (NULL != argv) {
-        pmix_argv_free(argv);
+        PMIx_Argv_free(argv);
         argv = NULL;
     }
 
     if (NULL != search_path) {
-        pmix_argv_free(search_path);
+        PMIx_Argv_free(search_path);
         search_path = NULL;
     }
 
@@ -1050,14 +1050,14 @@ static int fixup_files(char **file_list, char *path, bool rel_path_search, char 
 
 static int read_files(char *file_list, pmix_list_t *file_values, char sep)
 {
-    char **tmp = pmix_argv_split(file_list, sep);
+    char **tmp = PMIx_Argv_split(file_list, sep);
     int i, count;
 
     if (!tmp) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    count = pmix_argv_count(tmp);
+    count = PMIx_Argv_count(tmp);
 
     /* Iterate through all the files passed in -- read them in reverse
        order so that we preserve unix/shell path-like semantics (i.e.,
@@ -1068,7 +1068,7 @@ static int read_files(char *file_list, pmix_list_t *file_values, char sep)
         pmix_mca_base_parse_paramfile(file_name, file_values);
     }
 
-    pmix_argv_free(tmp);
+    PMIx_Argv_free(tmp);
 
     pmix_mca_base_internal_env_store();
 

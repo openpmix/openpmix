@@ -866,7 +866,7 @@ assign_module(
         if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
             char **options = NULL;
             specified = true; // They specified who they want.
-            options = pmix_argv_split(info[n].value.data.string, ',');
+            options = PMIx_Argv_split(info[n].value.data.string, ',');
             for (size_t m = 0; NULL != options[m]; m++) {
                 if (0 == strcmp(options[m], PMIX_GDS_SHMEM_NAME)) {
                     // They specifically asked for us.
@@ -874,7 +874,7 @@ assign_module(
                     break;
                 }
             }
-            pmix_argv_free(options);
+            PMIx_Argv_free(options);
             break;
         }
     }
@@ -1075,11 +1075,11 @@ vout_unpacked_seg_blob(
     PMIX_GDS_SHMEM_VVOUT(
         "%s: "
         SHMEM_SEG_NSID_KEY "=%s "
-        SHMEM_SEG_SMID_KEY "=%" PRIu8 " "
+        SHMEM_SEG_SMID_KEY "=%u "
         SHMEM_SEG_PATH_KEY "=%s "
         SHMEM_SEG_SIZE_KEY "=%zd "
         SHMEM_SEG_ADDR_KEY "=0x%zx",
-        called_by, usb->nsid, usb->smid,
+        called_by, usb->nsid, (unsigned)usb->smid,
         usb->seg_path, usb->seg_size, usb->seg_addr
     );
 }

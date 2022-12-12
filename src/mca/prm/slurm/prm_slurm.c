@@ -68,8 +68,8 @@ static int get_remaining_time(uint32_t *timeleft)
     free(cmd);
     pclose(fp);
     /* the output is returned in a colon-delimited set of fields */
-    res = pmix_argv_split(output, ':');
-    cnt =  pmix_argv_count(res);
+    res = PMIx_Argv_split(output, ':');
+    cnt =  PMIx_Argv_count(res);
     tleft = strtol(res[cnt-1], NULL, 10); // has to be at least one field
     /* the next field would be minutes */
     if (1 < cnt) {
@@ -87,7 +87,7 @@ static int get_remaining_time(uint32_t *timeleft)
     if (4 < cnt) {
         tleft = UINT32_MAX;
     }
-    pmix_argv_free(res);
+    PMIx_Argv_free(res);
 
     *timeleft = tleft;
     return PMIX_SUCCESS;

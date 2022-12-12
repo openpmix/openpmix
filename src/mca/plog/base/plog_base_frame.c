@@ -51,7 +51,7 @@ static int pmix_plog_register(pmix_mca_base_register_flag_t flags)
                                PMIX_MCA_BASE_VAR_TYPE_STRING,
                                &order);
     if (NULL != order) {
-        pmix_plog_globals.channels = pmix_argv_split(order, ',');
+        pmix_plog_globals.channels = PMIx_Argv_split(order, ',');
     }
     return PMIX_SUCCESS;
 }

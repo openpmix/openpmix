@@ -880,7 +880,7 @@ pmix_status_t pmix20_bfrop_pack_app(pmix_pointer_array_t *regtypes, pmix_buffer_
             return ret;
         }
         /* argv */
-        nvals = pmix_argv_count(app[i].argv);
+        nvals = PMIx_Argv_count(app[i].argv);
         if (PMIX_SUCCESS
             != (ret = pmix20_bfrop_pack_int(regtypes, buffer, &nvals, 1, PMIX_INT32))) {
             return ret;
@@ -893,7 +893,7 @@ pmix_status_t pmix20_bfrop_pack_app(pmix_pointer_array_t *regtypes, pmix_buffer_
             }
         }
         /* env */
-        nvals = pmix_argv_count(app[i].env);
+        nvals = PMIx_Argv_count(app[i].env);
         if (PMIX_SUCCESS
             != (ret = pmix20_bfrop_pack_int32(regtypes, buffer, &nvals, 1, PMIX_INT32))) {
             return ret;
@@ -1168,7 +1168,7 @@ pmix_status_t pmix20_bfrop_pack_query(pmix_pointer_array_t *regtypes, pmix_buffe
 
     for (i = 0; i < num_vals; i++) {
         /* pack the number of keys */
-        nkeys = pmix_argv_count(pq[i].keys);
+        nkeys = PMIx_Argv_count(pq[i].keys);
         if (PMIX_SUCCESS
             != (ret = pmix20_bfrop_pack_int32(regtypes, buffer, &nkeys, 1, PMIX_INT32))) {
             return ret;
