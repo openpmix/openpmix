@@ -115,29 +115,29 @@ static void release_cb(pmix_status_t status, void *cbdata)
 void set_client_argv(test_params *l_params, char ***argv, char **ltest_argv)
 {
     int i;
-    pmix_argv_append_nosize(argv, l_params->binary);
+    PMIx_Argv_append_nosize(argv, l_params->binary);
     if( ltest_argv != NULL) {
         for (i = 0; NULL != ltest_argv[i]; i++) {
-            pmix_argv_append_nosize(argv, ltest_argv[i]);
+            PMIx_Argv_append_nosize(argv, ltest_argv[i]);
         }
     }
 
-    pmix_argv_append_nosize(argv, "-n");
+    PMIx_Argv_append_nosize(argv, "-n");
     if (NULL == l_params->np) {
-        pmix_argv_append_nosize(argv, "1");
+        PMIx_Argv_append_nosize(argv, "1");
     } else {
-        pmix_argv_append_nosize(argv, l_params->np);
+        PMIx_Argv_append_nosize(argv, l_params->np);
     }
 
     if (l_params->verbose) {
-        pmix_argv_append_nosize(argv, "-v");
+        PMIx_Argv_append_nosize(argv, "-v");
     }
     if (NULL != l_params->prefix) {
-        pmix_argv_append_nosize(argv, "-o");
-        pmix_argv_append_nosize(argv, l_params->prefix);
+        PMIx_Argv_append_nosize(argv, "-o");
+        PMIx_Argv_append_nosize(argv, l_params->prefix);
     }
     if (l_params->nonblocking) {
-        pmix_argv_append_nosize(argv, "-nb");
+        PMIx_Argv_append_nosize(argv, "-nb");
     }
 
 }
@@ -282,7 +282,7 @@ void parse_cmd_server(int argc, char **argv, test_params *l_params, validation_p
                 i++;
                 if (i < argc) {
                     for (; i < argc; i++) {
-                        pmix_argv_append_nosize(t_argv, argv[i]);
+                        PMIx_Argv_append_nosize(t_argv, argv[i]);
                     }
                     TEST_VERBOSE(("t_argv[0]: %s", *t_argv[0]));
                 }
@@ -379,12 +379,12 @@ static void set_namespace(validation_params *v_params)
 
     /* assemble the node and proc map info */
     for (i = 0; i < v_params->pmix_num_nodes; i++) {
-        pmix_argv_append_nosize(&node_string, nodes[i].pmix_hostname);
+        PMIx_Argv_append_nosize(&node_string, nodes[i].pmix_hostname);
     }
 
     if (NULL != node_string) {
-        tmp = pmix_argv_join(node_string, ',');
-        pmix_argv_free(node_string);
+        tmp = PMIx_Argv_join(node_string, ',');
+        PMIx_Argv_free(node_string);
         node_string = NULL;
         if (PMIX_SUCCESS != (rc = PMIx_generate_regex(tmp, &regex))) {
             PMIX_ERROR_LOG(rc);
@@ -404,20 +404,20 @@ static void set_namespace(validation_params *v_params)
                 if ( -1 == asprintf(&ppn, "%d", nodes[j].pmix_rank[i]) ){
                     TEST_ERROR_EXIT(("Error in asprintf call. Out of memory?"));
                 }
-                pmix_argv_append_nosize(&node_string, ppn);
+                PMIx_Argv_append_nosize(&node_string, ppn);
                 TEST_VERBOSE(("multiserver, server id: %d, ppn: %s, node_string: %s", my_server_id,
                               ppn, node_string[i]));
                 free(ppn);
             }
-            ppn = pmix_argv_join(node_string, ',');
-            pmix_argv_append_nosize(&rks, ppn);
+            ppn = PMIx_Argv_join(node_string, ',');
+            PMIx_Argv_append_nosize(&rks, ppn);
             TEST_VERBOSE(("my_server id: %d, remote server: %d, remote's local ranks: %s",
                           my_server_id, j, ppn));
             free(ppn);
-            pmix_argv_free(node_string);
+            PMIx_Argv_free(node_string);
             node_string = NULL;
         }
-        ranks = pmix_argv_join(rks, ';');
+        ranks = PMIx_Argv_join(rks, ';');
     }
     TEST_VERBOSE(("server ID: %d ranks array: %s", my_server_id, ranks));
     PMIx_generate_ppn(ranks, &ppn);
@@ -1587,7 +1587,7 @@ int server_launch_clients(test_params *l_params, validation_params *v_params, ch
         cli_info[cli_counter].rank = proc.rank;
         cli_info[cli_counter].ns = strdup(proc.nspace);
 
-        char **client_argv = pmix_argv_copy(*base_argv);
+        char **client_argv = PMIx_Argv_copy(*base_argv);
 
         if (v_params->validate_params) {
             // bring in previously set globally applicable validation params
@@ -1604,23 +1604,23 @@ int server_launch_clients(test_params *l_params, validation_params *v_params, ch
             vptr = (char *) &local_v_params;
             char *v_params_ascii = pmixt_encode(vptr, sizeof(local_v_params));
             /* provide the validation data to the client */
-            pmix_argv_append_nosize(&client_argv, "--validate-params");
-            pmix_argv_append_nosize(&client_argv, v_params_ascii);
+            PMIx_Argv_append_nosize(&client_argv, "--validate-params");
+            PMIx_Argv_append_nosize(&client_argv, v_params_ascii);
             free(v_params_ascii);
         }
 
         sprintf(digit, "%d", univ_size);
-        pmix_argv_append_nosize(&client_argv, "--ns-size");
-        pmix_argv_append_nosize(&client_argv, digit);
+        PMIx_Argv_append_nosize(&client_argv, "--ns-size");
+        PMIx_Argv_append_nosize(&client_argv, digit);
 
         sprintf(digit, "%d", num_ns);
-        pmix_argv_append_nosize(&client_argv, "--ns-id");
-        pmix_argv_append_nosize(&client_argv, digit);
+        PMIx_Argv_append_nosize(&client_argv, "--ns-id");
+        PMIx_Argv_append_nosize(&client_argv, digit);
 
         /*
         sprintf(digit, "%d", 0);
-        pmix_argv_append_nosize(&client_argv, "--base-rank");
-        pmix_argv_append_nosize(&client_argv, digit);
+        PMIx_Argv_append_nosize(&client_argv, "--base-rank");
+        PMIx_Argv_append_nosize(&client_argv, digit);
         */
 
         // child case
@@ -1648,7 +1648,7 @@ int server_launch_clients(test_params *l_params, validation_params *v_params, ch
         cli_info[cli_counter].alive = true;
         cli_info[cli_counter].state = CLI_FORKED;
 
-        pmix_argv_free(client_argv);
+        PMIx_Argv_free(client_argv);
 
         cli_counter++;
         rank_counter++;

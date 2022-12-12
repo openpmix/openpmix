@@ -121,10 +121,10 @@ int pmix_gds_base_select(pmix_info_t info[], size_t ninfo)
 
     /* setup the list of all module names */
     PMIX_LIST_FOREACH (mod, &pmix_gds_globals.actives, pmix_gds_base_active_module_t) {
-        pmix_argv_append_nosize(&mods, mod->module->name);
+        PMIx_Argv_append_nosize(&mods, mod->module->name);
     }
-    pmix_gds_globals.all_mods = pmix_argv_join(mods, ',');
-    pmix_argv_free(mods);
+    pmix_gds_globals.all_mods = PMIx_Argv_join(mods, ',');
+    PMIx_Argv_free(mods);
 
     if (4 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output)) {
         pmix_output(0, "Final gds priorities");

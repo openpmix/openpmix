@@ -157,7 +157,7 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t in
         }
     }
     /* flag that we worked on this */
-    pmix_argv_append_nosize(priors, "mpich");
+    PMIx_Argv_append_nosize(priors, "mpich");
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                         "pmdl:mpich:harvest envars active");
@@ -252,14 +252,14 @@ static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv)
     /* check the attribute */
     if (PMIX_CHECK_KEY(kv, PMIX_PROGRAMMING_MODEL) ||
         PMIX_CHECK_KEY(kv, PMIX_PERSONALITY)) {
-        tmp = pmix_argv_split(kv->value->data.string, ',');
+        tmp = PMIx_Argv_split(kv->value->data.string, ',');
         for (m = 0; NULL != tmp[m]; m++) {
             if (0 == strcmp(tmp[m], "mpich")) {
                 takeus = true;
                 break;
             }
         }
-        pmix_argv_free(tmp);
+        PMIx_Argv_free(tmp);
     }
     if (!takeus) {
         return PMIX_ERR_TAKE_NEXT_OPTION;
@@ -433,7 +433,7 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
         }
     }
     /* flag that we worked on this */
-    pmix_argv_append_nosize(priors, "mpich");
+    PMIx_Argv_append_nosize(priors, "mpich");
 
     /* see if we already have this nspace */
     ns = NULL;
@@ -453,21 +453,21 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     if (0 > asprintf(&param, "%u", proc->rank)) {
         return PMIX_ERR_NOMEM;
     }
-    pmix_setenv("PMI_RANK", param, true, env);
+    PMIx_Setenv("PMI_RANK", param, true, env);
     free(param);
 
     /* pass the job size */
     if (0 > asprintf(&param, "%u", ns->job_size)) {
         return PMIX_ERR_NOMEM;
     }
-    pmix_setenv("PMI_SIZE", param, true, env);
+    PMIx_Setenv("PMI_SIZE", param, true, env);
     free(param);
 
     /* pass the local size */
     if (0 > asprintf(&param, "%u", ns->local_size)) {
         return PMIX_ERR_NOMEM;
     }
-    pmix_setenv("MPI_LOCALNRANKS", param, true, env);
+    PMIx_Setenv("MPI_LOCALNRANKS", param, true, env);
     free(param);
 
     /* pass the local rank */
@@ -494,11 +494,11 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     if (0 > asprintf(&param, "%lu", (unsigned long) u16)) {
         return PMIX_ERR_NOMEM;
     }
-    pmix_setenv("MPI_LOCALNRANKID", param, true, env);
+    PMIx_Setenv("MPI_LOCALNRANKID", param, true, env);
     free(param);
 
     /* pass the hostname */
-    pmix_setenv("MPIR_CVAR_CH3_INTERFACE_HOSTNAME", pmix_globals.hostname, true, env);
+    PMIx_Setenv("MPIR_CVAR_CH3_INTERFACE_HOSTNAME", pmix_globals.hostname, true, env);
 
     return PMIX_SUCCESS;
 }

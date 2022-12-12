@@ -410,7 +410,7 @@ void pmix_info_do_params(bool want_all_in)
          */
         if (NULL != opt) {
             /* split the arguments at the colon */
-            args = pmix_argv_split(opt->values[0], ':');
+            args = PMIx_Argv_split(opt->values[0], ':');
             if (0 == strcmp(args[0], "all")) {
                 want_all = true;
             }
@@ -429,7 +429,7 @@ void pmix_info_do_params(bool want_all_in)
         if (NULL != opt && NULL != args) {
             type = args[0];
             if (NULL != args[1]) {
-                tmp = pmix_argv_split(args[1], ',');
+                tmp = PMIx_Argv_split(args[1], ',');
 
                 for (j=0; NULL != tmp[j]; j++) {
                     for (found = false, i = 0; i < mca_types.size; ++i) {
@@ -450,14 +450,14 @@ void pmix_info_do_params(bool want_all_in)
 
                     pmix_info_show_mca_params(type, tmp[j]);
                 }
-                pmix_argv_free(tmp);
+                PMIx_Argv_free(tmp);
             } else {
                 pmix_info_show_mca_params(type, "*");
             }
         }
     }
     if (NULL != args) {
-        pmix_argv_free(args);
+        PMIx_Argv_free(args);
     }
 }
 
@@ -501,7 +501,7 @@ void pmix_info_do_type(void)
     if (NULL == opt) {
         return;
     }
-    count = pmix_argv_count(opt->values);
+    count = PMIx_Argv_count(opt->values);
     len = pmix_mca_base_var_get_count();
 
     for (k = 0; k < count; ++k) {
@@ -576,7 +576,7 @@ static void pmix_info_show_mca_group_params(const pmix_mca_base_var_group_t *gro
                     }
                 }
 
-                pmix_argv_free(requested_components);
+                PMIx_Argv_free(requested_components);
             }
         }
     }

@@ -137,7 +137,7 @@ static pmix_status_t hash_assign_module(pmix_info_t *info, size_t ninfo, int *pr
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {
-                options = pmix_argv_split(info[n].value.data.string, ',');
+                options = PMIx_Argv_split(info[n].value.data.string, ',');
                 for (m = 0; NULL != options[m]; m++) {
                     if (0 == strcmp(options[m], "hash")) {
                         /* they specifically asked for us */
@@ -145,7 +145,7 @@ static pmix_status_t hash_assign_module(pmix_info_t *info, size_t ninfo, int *pr
                         break;
                     }
                 }
-                pmix_argv_free(options);
+                PMIx_Argv_free(options);
                 break;
             }
         }
@@ -499,10 +499,10 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
 
 release:
     if (NULL != nodes) {
-        pmix_argv_free(nodes);
+        PMIx_Argv_free(nodes);
     }
     if (NULL != procs) {
-        pmix_argv_free(procs);
+        PMIx_Argv_free(procs);
     }
     return rc;
 }
@@ -896,7 +896,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                     return rc;
                 }
                 /* track the nodes in this nspace */
-                pmix_argv_append_nosize(&nodelist, kv.key);
+                PMIx_Argv_append_nosize(&nodelist, kv.key);
                 /* check and see if we already have this node */
                 nd = pmix_gds_hash_check_nodename(&trk->nodeinfo, kv.key);
                 if (NULL == nd) {
@@ -930,7 +930,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 pmix_list_append(&nd->info, &kp3->super);
                 /* split the list of procs so we can store their
                  * individual location data */
-                procs = pmix_argv_split(kv.value->data.string, ',');
+                procs = PMIx_Argv_split(kv.value->data.string, ',');
                 kv2.value = &val;
                 val.type = PMIX_STRING;
                 for (j = 0; NULL != procs[j]; j++) {
@@ -950,11 +950,11 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                         PMIX_DESTRUCT(&kptr);
                         PMIX_DESTRUCT(&kv);
                         PMIX_DESTRUCT(&buf2);
-                        pmix_argv_free(procs);
+                        PMIx_Argv_free(procs);
                         return rc;
                     }
                 }
-                pmix_argv_free(procs);
+                PMIx_Argv_free(procs);
                 PMIX_DESTRUCT(&kv);
             }
             if (NULL != nodelist) {
@@ -963,8 +963,8 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 kv2.key = PMIX_NODE_LIST;
                 kv2.value = &val;
                 val.type = PMIX_STRING;
-                val.data.string = pmix_argv_join(nodelist, ',');
-                pmix_argv_free(nodelist);
+                val.data.string = PMIx_Argv_join(nodelist, ',');
+                PMIx_Argv_free(nodelist);
                 rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kv2, NULL, 0);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);

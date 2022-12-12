@@ -120,11 +120,11 @@ static pmix_status_t query(pmix_query_t queries[], size_t nqueries, pmix_list_t 
     /* just put something here so that Travis will pass its tests
      * because it treats warnings as errors, and wants to warn about
      * unused variables */
-    sid = pmix_argv_split("foo,bar", ',');
-    pmix_argv_free(sid);
+    sid = PMIx_Argv_split("foo,bar", ',');
+    PMIx_Argv_free(sid);
     sid = NULL;
-    mountpt = pmix_argv_split("foo,bar", ',');
-    pmix_argv_free(mountpt);
+    mountpt = PMIx_Argv_split("foo,bar", ',');
+    PMIx_Argv_free(mountpt);
     mountpt = NULL;
     if (availsys[0].cap != 123456) {
         return PMIX_ERROR;

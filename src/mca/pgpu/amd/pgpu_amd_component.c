@@ -77,7 +77,7 @@ static pmix_status_t component_register(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
         &pmix_mca_pgpu_amd_component.incparms);
     if (NULL != pmix_mca_pgpu_amd_component.incparms) {
-        pmix_mca_pgpu_amd_component.include = pmix_argv_split(pmix_mca_pgpu_amd_component.incparms, ',');
+        pmix_mca_pgpu_amd_component.include = PMIx_Argv_split(pmix_mca_pgpu_amd_component.incparms, ',');
     }
 
     pmix_mca_pgpu_amd_component.excparms = NULL;
@@ -87,7 +87,7 @@ static pmix_status_t component_register(void)
         PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0, PMIX_INFO_LVL_2, PMIX_MCA_BASE_VAR_SCOPE_LOCAL,
         &pmix_mca_pgpu_amd_component.excparms);
     if (NULL != pmix_mca_pgpu_amd_component.excparms) {
-        pmix_mca_pgpu_amd_component.exclude = pmix_argv_split(pmix_mca_pgpu_amd_component.excparms, ',');
+        pmix_mca_pgpu_amd_component.exclude = PMIx_Argv_split(pmix_mca_pgpu_amd_component.excparms, ',');
     }
 
     return PMIX_SUCCESS;

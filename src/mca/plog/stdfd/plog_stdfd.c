@@ -57,13 +57,13 @@ static int init(void)
 {
     char *mychannels = "stdout,stderr";
 
-    pmix_plog_stdfd_module.channels = pmix_argv_split(mychannels, ',');
+    pmix_plog_stdfd_module.channels = PMIx_Argv_split(mychannels, ',');
     return PMIX_SUCCESS;
 }
 
 static void finalize(void)
 {
-    pmix_argv_free(pmix_plog_stdfd_module.channels);
+    PMIx_Argv_free(pmix_plog_stdfd_module.channels);
 }
 
 typedef struct{

@@ -79,7 +79,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
     /* didn't work, so now have to build our way down the tree */
     /* Split the requested path up into its individual parts */
 
-    parts = pmix_argv_split(path, path_sep[0]);
+    parts = PMIx_Argv_split(path, path_sep[0]);
 
     /* Ensure to allocate enough space for tmp: the strlen of the
        incoming path + 1 (for \0) */
@@ -91,7 +91,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
        building up a directory name.  Check to see if that dirname
        exists.  If it doesn't, create it. */
 
-    len = pmix_argv_count(parts);
+    len = PMIx_Argv_count(parts);
     for (i = 0; i < len; ++i) {
         if (i == 0) {
             /* If in POSIX-land, ensure that we never end a directory
@@ -120,7 +120,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         if (0 != stat(tmp, &buf)) {
             pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
                            tmp, strerror(ret));
-            pmix_argv_free(parts);
+            PMIx_Argv_free(parts);
             free(tmp);
             return PMIX_ERR_SILENT;
         } else if (i == (len - 1) &&
@@ -128,7 +128,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
                    (0 > chmod(tmp, (buf.st_mode | mode)))) {
             pmix_show_help("help-pmix-util.txt", "dir-mode", true,
                            tmp, mode, strerror(errno));
-            pmix_argv_free(parts);
+            PMIx_Argv_free(parts);
             free(tmp);
             return (PMIX_ERR_SILENT); /* can't set correct mode */
         }
@@ -136,7 +136,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
 
     /* All done */
 
-    pmix_argv_free(parts);
+    PMIx_Argv_free(parts);
     free(tmp);
     return PMIX_SUCCESS;
 }

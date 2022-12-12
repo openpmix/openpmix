@@ -69,10 +69,10 @@ int main(int argc, char **argv)
     TEST_VERBOSE(("Start PMIx_lite smoke test (timeout is %d)", params.timeout));
 
     /* set common argv and env */
-    client_env = pmix_argv_copy(environ);
+    client_env = PMIx_Argv_copy(environ);
     set_client_argv(&params, &client_argv);
 
-    tmp = pmix_argv_join(client_argv, ' ');
+    tmp = PMIx_Argv_join(client_argv, ' ');
     TEST_VERBOSE(("Executing test: %s", tmp));
     free(tmp);
 
@@ -191,8 +191,8 @@ done:
 
     TEST_VERBOSE(("srv #%d: exit sequence!", my_server_id));
     FREE_TEST_PARAMS(params);
-    pmix_argv_free(client_argv);
-    pmix_argv_free(client_env);
+    PMIx_Argv_free(client_argv);
+    PMIx_Argv_free(client_env);
 
     if (0 == test_fail) {
         TEST_OUTPUT(("Test SUCCEEDED!"));

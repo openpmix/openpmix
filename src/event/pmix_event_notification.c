@@ -1097,11 +1097,11 @@ static void _notify_client_event(int sd, short args, void *cbdata)
                     /* if this client was the source of the event, then
                      * don't send it back as they will have processed it
                      * when they generated it */
-                    if (PMIX_CHECK_PROCID(&cd->source, &pr->peer->info->pname)) {
+                    if (PMIX_CHECK_NAMES(&cd->source, &pr->peer->info->pname)) {
                         continue;
                     }
                     /* don't notify ourselves - we handle this internally */
-                    if (PMIX_CHECK_PROCID(&pmix_globals.myid, &pr->peer->info->pname)) {
+                    if (PMIX_CHECK_NAMES(&pmix_globals.myid, &pr->peer->info->pname)) {
                         continue;
                     }
                     /* if we have already notified this client, then don't do it again */

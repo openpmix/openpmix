@@ -93,10 +93,10 @@ int main(int argc, char **argv)
         PMIX_APP_CREATE(app, 1);
         app->cmd = strdup("./simpclient");
         app->maxprocs = 2;
-        pmix_argv_append_nosize(&app->argv, "simpclient");
-        pmix_argv_append_nosize(&app->argv, "-n");
-        pmix_argv_append_nosize(&app->argv, "2");
-        pmix_setenv("PMIX_ENV_VALUE", "3", true, &app->env);
+        PMIx_Argv_append_nosize(&app->argv, "simpclient");
+        PMIx_Argv_append_nosize(&app->argv, "-n");
+        PMIx_Argv_append_nosize(&app->argv, "2");
+        PMIx_Setenv("PMIX_ENV_VALUE", "3", true, &app->env);
 
         pmix_output(0, "Client ns %s rank %d: calling PMIx_Spawn", myproc.nspace, myproc.rank);
         if (PMIX_SUCCESS != (rc = PMIx_Spawn(NULL, 0, app, 1, nsp2))) {

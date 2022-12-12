@@ -79,7 +79,7 @@ pmix_status_t pmix_preg_base_parse_nodes(const char *regexp, char ***names)
     }
 
     /* nobody could parse it, so just process it here */
-    *names = pmix_argv_split(regexp, ',');
+    *names = PMIx_Argv_split(regexp, ',');
     return PMIX_SUCCESS;
 }
 
@@ -96,7 +96,7 @@ pmix_status_t pmix_preg_base_parse_procs(const char *regexp, char ***procs)
     }
 
     /* nobody could parse it, so just process it here */
-    *procs = pmix_argv_split(regexp, ';');
+    *procs = PMIx_Argv_split(regexp, ';');
     return PMIX_SUCCESS;
 }
 

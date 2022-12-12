@@ -171,7 +171,7 @@ static int send_email(char *msg)
     pmix_plog_smtp_component_t *c = &pmix_mca_plog_smtp_component;
 
     if (NULL == c->to_argv) {
-        c->to_argv = pmix_argv_split(c->to, ',');
+        c->to_argv = PMIx_Argv_split(c->to, ',');
         if (NULL == c->to_argv || NULL == c->to_argv[0]) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }

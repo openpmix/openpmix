@@ -163,23 +163,23 @@ PMIX_EXPORT char *PMIx_Info_directives_string(pmix_info_directives_t directives)
     char *ret;
 
     if (PMIX_INFO_QUALIFIER & directives) {
-        pmix_argv_append_nosize(&tmp, "QUALIFIER");
+        PMIx_Argv_append_nosize(&tmp, "QUALIFIER");
     } else {
         if (PMIX_INFO_REQD & directives) {
-            pmix_argv_append_nosize(&tmp, "REQUIRED");
+            PMIx_Argv_append_nosize(&tmp, "REQUIRED");
         } else {
-            pmix_argv_append_nosize(&tmp, "OPTIONAL");
+            PMIx_Argv_append_nosize(&tmp, "OPTIONAL");
         }
         if (PMIX_INFO_REQD_PROCESSED & directives) {
-            pmix_argv_append_nosize(&tmp, "PROCESSED");
+            PMIx_Argv_append_nosize(&tmp, "PROCESSED");
         }
         if (PMIX_INFO_ARRAY_END & directives) {
-            pmix_argv_append_nosize(&tmp, "END");
+            PMIx_Argv_append_nosize(&tmp, "END");
         }
     }
     if (NULL != tmp) {
-        ret = pmix_argv_join(tmp, ':');
-        pmix_argv_free(tmp);
+        ret = PMIx_Argv_join(tmp, ':');
+        PMIx_Argv_free(tmp);
     } else {
         ret = strdup("UNSPECIFIED");
     }
@@ -404,62 +404,62 @@ char* PMIx_App_string(const pmix_app_t *app)
 
     /* add the command */
     pmix_asprintf(&tmp, "CMD: %s", app->cmd);
-    pmix_argv_append_nosize(&ans, tmp);
+    PMIx_Argv_append_nosize(&ans, tmp);
     free(tmp);
 
     /* add the argv */
-    pmix_argv_append_nosize(&ans, "    ARGV:");
+    PMIx_Argv_append_nosize(&ans, "    ARGV:");
     if (NULL == app->argv) {
-        pmix_argv_append_nosize(&ans, "        NONE");
+        PMIx_Argv_append_nosize(&ans, "        NONE");
     } else {
         for (n=0; NULL != app->argv[n]; n++) {
             pmix_asprintf(&tmp, "        ARGV[%d]: %s", (int)n, app->argv[n]);
-            pmix_argv_append_nosize(&ans, tmp);
+            PMIx_Argv_append_nosize(&ans, tmp);
             free(tmp);
         }
     }
 
     /* add the env */
-    pmix_argv_append_nosize(&ans, "    ENV:");
+    PMIx_Argv_append_nosize(&ans, "    ENV:");
     if (NULL == app->env) {
-        pmix_argv_append_nosize(&ans, "        NONE");
+        PMIx_Argv_append_nosize(&ans, "        NONE");
     } else {
         for (n=0; NULL != app->env[n]; n++) {
             pmix_asprintf(&tmp, "        ENV[%d]: %s", (int)n, app->env[n]);
-            pmix_argv_append_nosize(&ans, tmp);
+            PMIx_Argv_append_nosize(&ans, tmp);
             free(tmp);
         }
     }
 
     /* add the cwd */
     if (NULL == app->cwd) {
-        pmix_argv_append_nosize(&ans, "    CWD: NULL");
+        PMIx_Argv_append_nosize(&ans, "    CWD: NULL");
     } else {
         pmix_asprintf(&tmp, "    CWD: %s", app->cwd);
-        pmix_argv_append_nosize(&ans, tmp);
+        PMIx_Argv_append_nosize(&ans, tmp);
         free(tmp);
     }
 
     /* add the maxprocs */
     pmix_asprintf(&tmp, "    MAXPROCS: %d", app->maxprocs);
-    pmix_argv_append_nosize(&ans, tmp);
+    PMIx_Argv_append_nosize(&ans, tmp);
     free(tmp);
 
     /* add any info */
     if (NULL == app->info) {
-        pmix_argv_append_nosize(&ans, "    INFO: NONE");
+        PMIx_Argv_append_nosize(&ans, "    INFO: NONE");
     } else {
-        pmix_argv_append_nosize(&ans, "    INFO:");
+        PMIx_Argv_append_nosize(&ans, "    INFO:");
         for (n=0; n < app->ninfo; n++) {
             str = PMIx_Info_string(&app->info[n]);
             pmix_asprintf(&tmp, "        INFO[%d]: %s", (int)n, str);
-            pmix_argv_append_nosize(&ans, tmp);
+            PMIx_Argv_append_nosize(&ans, tmp);
             free(tmp);
             free(str);
         }
     }
 
-    tmp = pmix_argv_join(ans, '\n');
-    pmix_argv_free(ans);
+    tmp = PMIx_Argv_join(ans, '\n');
+    PMIx_Argv_free(ans);
     return tmp;
 }

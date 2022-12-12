@@ -64,7 +64,7 @@ static pmix_status_t init(void)
     int opts;
     char *mychannels = "lsys,gsys,syslog,local_syslog,global_syslog";
 
-    pmix_plog_syslog_module.channels = pmix_argv_split(mychannels, ',');
+    pmix_plog_syslog_module.channels = PMIx_Argv_split(mychannels, ',');
 
     opts = LOG_CONS | LOG_PID;
     openlog("PMIx Log Report:", opts, LOG_USER);
@@ -75,7 +75,7 @@ static pmix_status_t init(void)
 static void finalize(void)
 {
     closelog();
-    pmix_argv_free(pmix_plog_syslog_module.channels);
+    PMIx_Argv_free(pmix_plog_syslog_module.channels);
 }
 
 static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp, int severity,

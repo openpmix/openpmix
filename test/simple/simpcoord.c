@@ -102,10 +102,10 @@ int main(int argc, char **argv)
     {
         char **foo = NULL;
         for (n = 0; n < ninfo; n++) {
-            pmix_argv_append_nosize(&foo, bptr[0].bytes);
+            PMIx_Argv_append_nosize(&foo, bptr[0].bytes);
         }
-        tmp = pmix_argv_join(foo, ',');
-        pmix_argv_free(foo);
+        tmp = PMIx_Argv_join(foo, ',');
+        PMIx_Argv_free(foo);
         pmix_output(0, "Rank %u[%s]: ASSIGNED ENDPTS: %s", myproc.rank, hostname, tmp);
         free(tmp);
     }
@@ -128,11 +128,11 @@ nextstep:
             char *view;
             for (n = 0; n < coords[m].dims; n++) {
                 asprintf(&tmp, "%d", coords[m].coord[n]);
-                pmix_argv_append_nosize(&foo, tmp);
+                PMIx_Argv_append_nosize(&foo, tmp);
                 free(tmp);
             }
-            tmp = pmix_argv_join(foo, ',');
-            pmix_argv_free(foo);
+            tmp = PMIx_Argv_join(foo, ',');
+            PMIx_Argv_free(foo);
             if (PMIX_COORD_LOGICAL_VIEW == coords[m].view) {
                 view = "LOGICAL";
             } else {
@@ -147,11 +147,11 @@ nextstep:
         char *view;
         for (n = 0; n < val->data.coord->dims; n++) {
             asprintf(&tmp, "%d", val->data.coord->coord[n]);
-            pmix_argv_append_nosize(&foo, tmp);
+            PMIx_Argv_append_nosize(&foo, tmp);
             free(tmp);
         }
-        tmp = pmix_argv_join(foo, ',');
-        pmix_argv_free(foo);
+        tmp = PMIx_Argv_join(foo, ',');
+        PMIx_Argv_free(foo);
         if (PMIX_COORD_LOGICAL_VIEW == val->data.coord->view) {
             view = "LOGICAL";
         } else {

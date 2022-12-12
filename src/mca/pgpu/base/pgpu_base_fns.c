@@ -108,7 +108,7 @@ pmix_status_t pmix_pgpu_base_setup_local(char *nspace, pmix_info_t info[], size_
     /* find this proc's nspace object */
     ns = NULL;
     PMIX_LIST_FOREACH (ns2, &pmix_pgpu_globals.nspaces, pmix_nspace_env_cache_t) {
-        if PMIX_CHECK_NSPACE(ns2->ns->nspace, nspace) {
+        if (PMIX_CHECK_NSPACE(ns2->ns->nspace, nspace)) {
             ns = ns2;
             break;
         }
@@ -173,7 +173,7 @@ pmix_status_t pmix_pgpu_base_setup_fork(const pmix_proc_t *proc, char ***env)
     }
     if (NULL != ns) {
         PMIX_LIST_FOREACH (ev, &ns->envars, pmix_envar_list_item_t) {
-            pmix_setenv(ev->envar.envar, ev->envar.value, true, env);
+            PMIx_Setenv(ev->envar.envar, ev->envar.value, true, env);
         }
     }
 
@@ -247,7 +247,7 @@ void pmix_pgpu_base_deregister_nspace(char *nspace)
     /* find this nspace object */
     ns = NULL;
     PMIX_LIST_FOREACH (ns2, &pmix_pgpu_globals.nspaces, pmix_nspace_env_cache_t) {
-        if PMIX_CHECK_NSPACE(ns2->ns->nspace, nspace) {
+        if (PMIX_CHECK_NSPACE(ns2->ns->nspace, nspace)) {
             ns = ns2;
             pmix_list_remove_item(&pmix_pgpu_globals.nspaces, &ns->super);
             break;

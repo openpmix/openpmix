@@ -152,7 +152,7 @@ static void ndinfodes(pmix_nodeinfo_t *p)
         free(p->hostname);
     }
     if (NULL != p->aliases) {
-        pmix_argv_free(p->aliases);
+        PMIx_Argv_free(p->aliases);
     }
     PMIX_LIST_DESTRUCT(&p->info);
 }

@@ -96,13 +96,13 @@ int pmix_mca_base_open(const char *add_path)
 
     /* define the system and user default paths */
     pmix_mca_base_system_default_path = strdup(pmix_pinstall_dirs.pmixlibdir);
-    pmix_argv_append_nosize(&paths, pmix_mca_base_system_default_path);
+    PMIx_Argv_append_nosize(&paths, pmix_mca_base_system_default_path);
 #if PMIX_WANT_HOME_CONFIG_FILES
     value = (char *) pmix_home_directory(geteuid());
     pmix_asprintf(&pmix_mca_base_user_default_path,
                   "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "components", value);
     if (PMIX_SUCCESS == pmix_os_dirpath_access(pmix_mca_base_user_default_path, 0)) {
-        pmix_argv_append_nosize(&paths, pmix_mca_base_user_default_path);
+        PMIx_Argv_append_nosize(&paths, pmix_mca_base_user_default_path);
     }
 #endif
 
@@ -113,10 +113,10 @@ int pmix_mca_base_open(const char *add_path)
     (void) pmix_mca_base_var_register_synonym(var_id, "pmix", "mca", NULL, "component_path",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     if (NULL != path_from_param) {
-        pmix_argv_append_nosize(&paths, path_from_param);
+        PMIx_Argv_append_nosize(&paths, path_from_param);
     }
-    cptr = pmix_argv_join(paths, PMIX_ENV_SEP);
-    pmix_argv_free(paths);
+    cptr = PMIx_Argv_join(paths, PMIX_ENV_SEP);
+    PMIx_Argv_free(paths);
     if (NULL != add_path) {
         pmix_asprintf(&pmix_mca_base_component_path, "%s;pmix@%s", add_path, cptr);
     } else {

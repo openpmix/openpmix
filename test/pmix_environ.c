@@ -33,24 +33,24 @@ int main(int argc, char *argv[])
      */
 
     /* first test: does overwrite work? */
-    ret = pmix_setenv("pmix_environ_test_string_3", "three", true, &environ);
+    ret = PMIx_Setenv("pmix_environ_test_string_3", "three", true, &environ);
     if (ret != PMIX_SUCCESS) {
-        printf("pmix_setenv returned %d\n", ret);
+        printf("PMIx_Setenv returned %d\n", ret);
         return 1;
     }
-    ret = pmix_setenv("pmix_environ_test_string_3", "four", false, &environ);
+    ret = PMIx_Setenv("pmix_environ_test_string_3", "four", false, &environ);
     if (ret != PMIX_SUCCESS) {
-        printf("pmix_setenv returned %d\n", ret);
+        printf("PMIx_Setenv returned %d\n", ret);
         return 1;
     }
     if (strcmp(getenv("pmix_environ_test_string_3"), "three") != 0) {
-        printf("pmix_setenv overwrote.  Found %s expected %s\n",
+        printf("PMIx_Setenv overwrote.  Found %s expected %s\n",
                getenv("pmix_environ_test_string_3"), "three");
         return 1;
     }
-    ret = pmix_setenv("pmix_environ_test_string_3", "four", true, &environ);
+    ret = PMIx_Setenv("pmix_environ_test_string_3", "four", true, &environ);
     if (ret != PMIX_SUCCESS) {
-        printf("pmix_setenv returned %d\n", ret);
+        printf("PMIx_Setenv returned %d\n", ret);
         return 1;
     }
     tmp = getenv("pmix_environ_test_string_3");
@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
         return 1;
     }
     if (strcmp(tmp, "four") != 0) {
-        printf("pmix_setenv overwrote.  Found %s expected %s\n",
+        printf("PMIx_Setenv overwrote.  Found %s expected %s\n",
                tmp, "four");
         return 1;
     }
@@ -75,9 +75,9 @@ int main(int argc, char *argv[])
         printf("setenv() returned %d\n", ret_int);
         return 1;
     }
-    ret = pmix_setenv("pmix_environ_test_string_3", "three", true, &environ);
+    ret = PMIx_Setenv("pmix_environ_test_string_3", "three", true, &environ);
     if (ret != PMIX_SUCCESS) {
-        printf("pmix_setenv returned %d\n", ret);
+        printf("PMIx_Setenv returned %d\n", ret);
         return 1;
     }
     ret = pmix_unsetenv("pmix_environ_test_string_1", &environ);
@@ -111,9 +111,9 @@ int main(int argc, char *argv[])
         printf("setenv() returned %d\n", ret_int);
         return 1;
     }
-    ret = pmix_setenv("pmix_environ_test_string_3", "three", true, &environ);
+    ret = PMIx_Setenv("pmix_environ_test_string_3", "three", true, &environ);
     if (ret != PMIX_SUCCESS) {
-        printf("pmix_setenv returned %d\n", ret);
+        printf("PMIx_Setenv returned %d\n", ret);
         return 1;
     }
     test_array = NULL;
@@ -122,18 +122,18 @@ int main(int argc, char *argv[])
         printf("pmix_environ_merge returned %d\n", ret);
         return 1;
     }
-    pmix_argv_free(test_array);
+    PMIx_Argv_free(test_array);
 
     /* fourth test: make sure environ_merge_inplace does. */
     test_array = NULL;
-    pmix_argv_append_nosize(&test_array, "pmix_environ_test_string_1=old_one");
-    pmix_argv_append_nosize(&test_array, "pmix_environ_test_string_2=old_two");
-    pmix_argv_append_nosize(&test_array, "pmix_environ_test_string_3=old_three");
-    pmix_argv_append_nosize(&test_array, "pmix_environ_test_string_4=old_four");
+    PMIx_Argv_append_nosize(&test_array, "pmix_environ_test_string_1=old_one");
+    PMIx_Argv_append_nosize(&test_array, "pmix_environ_test_string_2=old_two");
+    PMIx_Argv_append_nosize(&test_array, "pmix_environ_test_string_3=old_three");
+    PMIx_Argv_append_nosize(&test_array, "pmix_environ_test_string_4=old_four");
 
     new_array = NULL;
-    pmix_argv_append_nosize(&new_array, "pmix_environ_test_string_1=new_one");
-    pmix_argv_append_nosize(&new_array, "pmix_environ_test_string_5=new_five");
+    PMIx_Argv_append_nosize(&new_array, "pmix_environ_test_string_1=new_one");
+    PMIx_Argv_append_nosize(&new_array, "pmix_environ_test_string_5=new_five");
 
     ret = pmix_environ_merge_inplace(&test_array, new_array);
     if (ret != PMIX_SUCCESS) {
@@ -213,13 +213,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    if (5 != pmix_argv_count(test_array)) {
+    if (5 != PMIx_Argv_count(test_array)) {
         printf("test array has wrong length.  found %d, expected %d\n",
-               pmix_argv_count(test_array), 5);
+               PMIx_Argv_count(test_array), 5);
         return 1;
     }
 
-    pmix_argv_free(test_array);
+    PMIx_Argv_free(test_array);
 
     return 0;
 }

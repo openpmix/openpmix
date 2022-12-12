@@ -152,7 +152,7 @@ void pmix_rte_finalize(void)
                 free(p->string);
             }
             if (NULL != p->description) {
-                pmix_argv_free(p->description);
+                PMIx_Argv_free(p->description);
             }
             free(p);
         }

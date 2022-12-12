@@ -190,11 +190,11 @@ char *pmix_bfrops_base_get_available_modules(void)
     }
 
     PMIX_LIST_FOREACH (active, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
-        pmix_argv_append_nosize(&tmp, active->component->base.pmix_mca_component_name);
+        PMIx_Argv_append_nosize(&tmp, active->component->base.pmix_mca_component_name);
     }
     if (NULL != tmp) {
-        reply = pmix_argv_join(tmp, ',');
-        pmix_argv_free(tmp);
+        reply = PMIx_Argv_join(tmp, ',');
+        PMIx_Argv_free(tmp);
     }
     return reply;
 }
@@ -210,7 +210,7 @@ pmix_bfrops_module_t *pmix_bfrops_base_assign_module(const char *version)
     }
 
     if (NULL != version) {
-        tmp = pmix_argv_split(version, ',');
+        tmp = PMIx_Argv_split(version, ',');
     }
 
     PMIX_LIST_FOREACH (active, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
@@ -222,7 +222,7 @@ pmix_bfrops_module_t *pmix_bfrops_base_assign_module(const char *version)
             for (i = 0; NULL != tmp[i]; i++) {
                 if (0 == strcmp(tmp[i], active->component->base.pmix_mca_component_name)) {
                     if (NULL != (mod = active->component->assign_module())) {
-                        pmix_argv_free(tmp);
+                        PMIx_Argv_free(tmp);
                         return mod;
                     }
                 }
@@ -232,7 +232,7 @@ pmix_bfrops_module_t *pmix_bfrops_base_assign_module(const char *version)
 
     /* we only get here if nothing was found */
     if (NULL != tmp) {
-        pmix_argv_free(tmp);
+        PMIx_Argv_free(tmp);
     }
     return NULL;
 }

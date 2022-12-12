@@ -501,7 +501,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
         /* check the effective uid/gid of the file and ensure it
          * matches that of the peer - we do this to provide at least
          * some minimum level of protection */
-        tmp = pmix_argv_split(cf->path, ',');
+        tmp = PMIx_Argv_split(cf->path, ',');
         for (n = 0; NULL != tmp[n]; n++) {
             /* coverity[TOCTOU] */
             rc = stat(tmp[n], &statbuf);
@@ -524,7 +524,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
                                     tmp[n], rc);
             }
         }
-        pmix_argv_free(tmp);
+        PMIx_Argv_free(tmp);
         pmix_list_remove_item(&epi->cleanup_files, &cf->super);
         PMIX_RELEASE(cf);
     }
@@ -534,7 +534,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
         /* check the effective uid/gid of the file and ensure it
          * matches that of the peer - we do this to provide at least
          * some minimum level of protection */
-        tmp = pmix_argv_split(cd->path, ',');
+        tmp = PMIx_Argv_split(cd->path, ',');
         for (n = 0; NULL != tmp[n]; n++) {
             /* coverity[TOCTOU] */
             rc = stat(tmp[n], &statbuf);
@@ -558,7 +558,7 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
                                     tmp[n]);
             }
         }
-        pmix_argv_free(tmp);
+        PMIx_Argv_free(tmp);
         pmix_list_remove_item(&epi->cleanup_dirs, &cd->super);
         PMIX_RELEASE(cd);
     }
