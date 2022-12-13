@@ -246,7 +246,7 @@ static void
 host_alias_destruct(
     pmix_gds_shmem_host_alias_t *a
 ) {
-    pmix_tma_t *tma = pmix_obj_get_tma(&a->super.super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&a->super.super);
     if (a->name) {
         pmix_tma_free(tma, a->name);
     }
@@ -263,7 +263,7 @@ static void
 nodeinfo_construct(
     pmix_gds_shmem_nodeinfo_t *n
 ) {
-    pmix_tma_t *tma = pmix_obj_get_tma(&n->super.super);
+    pmix_tma_t *const tma = pmix_obj_get_tma(&n->super.super);
 
     n->nodeid = UINT32_MAX;
     n->hostname = NULL;
@@ -374,16 +374,6 @@ job_destruct(
     }
     for (int i = 0; shmem_ids[i] != PMIX_GDS_SHMEM_INVALID_ID; ++i) {
         const pmix_gds_shmem_job_shmem_id_t sid = shmem_ids[i];
-        // Releases memory for the structures located in shared-memory.
-        if (pmix_gds_shmem_has_status(job, sid, PMIX_GDS_SHMEM_RELEASE)) {
-            // Emit usage status before we destroy the segment.
-            emit_shmem_usage_stats(job, sid);
-            if (job->shmem) {
-                PMIX_RELEASE(job->shmem);
-            }
-        }
-        // Invalidate the shmem flags.
-        pmix_gds_shmem_clearall_status(job, sid);
 
         pmix_shmem_t *shmem;
         rc = pmix_gds_shmem_get_job_shmem_by_id(job, sid, &shmem);
@@ -391,7 +381,14 @@ job_destruct(
             PMIX_ERROR_LOG(rc);
             return;
         }
-        shmem = NULL;
+        if (pmix_gds_shmem_has_status(job, sid, PMIX_GDS_SHMEM_RELEASE)) {
+            // Emit usage status before we destroy the segment.
+            emit_shmem_usage_stats(job, sid);
+        }
+        // Invalidate the shmem flags.
+        pmix_gds_shmem_clearall_status(job, sid);
+        // Releases memory for the structures located in shared-memory.
+        PMIX_RELEASE(shmem);
     }
 }
 

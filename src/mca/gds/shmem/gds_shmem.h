@@ -25,7 +25,6 @@
 #ifdef HAVE_STDINT_h
 #include <stdint.h>
 #endif
-#include <inttypes.h>
 
 /**
  * The name of this module.
@@ -35,7 +34,7 @@
 /**
  * Set to 1 to completely disable this component.
  */
-#define PMIX_GDS_SHMEM_DISABLE 1
+#define PMIX_GDS_SHMEM_DISABLE 0
 
 /**
  * Default component/module priority.
