@@ -1965,6 +1965,27 @@ PMIX_EXPORT pmix_net_stats_t* PMIx_Net_stats_create(size_t n);
 PMIX_EXPORT void PMIx_Net_stats_free(pmix_net_stats_t *p, size_t n);
 
 
+/* initialize a pdata struct */
+PMIX_EXPORT void PMIx_Pdata_construct(pmix_pdata_t *p);
+
+/* clear memory inside a pdata struct */
+PMIX_EXPORT void PMIx_Pdata_destruct(pmix_pdata_t *p);
+
+/* create and initialize an array of pdata structs */
+PMIX_EXPORT pmix_pdata_t* PMIx_Pdata_create(size_t n);
+
+/* free memory stored inside an array of pdata structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Pdata_free(pmix_pdata_t *p, size_t n);
+
+
+PMIX_EXPORT void PMIx_App_construct(pmix_app_t *p);
+PMIX_EXPORT void PMIx_App_destruct(pmix_app_t *p);
+PMIX_EXPORT pmix_app_t* PMIx_App_create(size_t n);
+PMIX_EXPORT void PMIx_App_info_create(pmix_app_t *p, size_t n);
+PMIX_EXPORT void PMIx_App_free(pmix_app_t *p, size_t n);
+PMIX_EXPORT void PMIx_App_release(pmix_app_t *p);
+
 /* Constructing arrays of pmix_info_t for passing to an API can
  * be tedious since the pmix_info_t itself is not a "list object".
  * Since this is a very frequent operation, a set of APIs has been
