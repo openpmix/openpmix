@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2022      Nanook Consulting. All rights reserved
+
 from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Build import cythonize
@@ -48,33 +52,52 @@ def getVersion():
         version = ".".join(vers)
         return version
 
-setup(
-    name = 'pypmix',
-    version = getVersion(),
-    url = 'https://pmix.org',
-    license = '3-clause BSD',
-    author = 'Ralph H. Castain',
-    author_email = 'rhc@pmix.org',
-    description = 'Python bindings for PMIx',
-    classifiers = [
-            'Development Status :: 5 - Production/Stable',
-            'Intended Audience :: Developers',
-            'Topic :: HPC :: Parallel Programming :: System Management',
-            'License :: OSI Approved :: BSD License',
-            'Programming Language :: Python :: 3.4',
-            'Programming Language :: Python :: 3.5',
-            'Programming Language :: Python :: 3.6',
-            'Programming Language :: Python :: 3.7',
-            'Programming Language :: Python :: 3.8',
-            'Programming Language :: Python :: 3.9',
-            'Programming Language :: Python :: 3.10',
-            'Programming Language :: Python :: 3.11',
-            'Programming Language :: Python :: 3.12'],
-    keywords = 'PMI PMIx HPC MPI SHMEM',
-    platforms = 'any',
-    ext_modules = cythonize([Extension("pmix",
-                                       [os.environ['PMIX_BINDINGS_TOP_SRCDIR']+"/bindings/python/pmix.pyx"],
-                                       libraries=["pmix"]) ],
-                            compiler_directives={'language_level': 3}),
-    include_dirs = get_include()
-)
+def package_setup(package_name, package_vers):
+    '''
+    Package setup routine.
+    '''
+    setup(
+        name = 'pypmix',
+        version = getVersion(),
+        url = 'https://pmix.org',
+        license = '3-clause BSD',
+        author = 'Ralph H. Castain',
+        author_email = 'rhc@pmix.org',
+        description = 'Python bindings for PMIx',
+        classifiers = [
+                'Development Status :: 5 - Production/Stable',
+                'Intended Audience :: Developers',
+                'Topic :: HPC :: Parallel Programming :: System Management',
+                'License :: OSI Approved :: BSD License',
+                'Programming Language :: Python :: 3.4',
+                'Programming Language :: Python :: 3.5',
+                'Programming Language :: Python :: 3.6',
+                'Programming Language :: Python :: 3.7',
+                'Programming Language :: Python :: 3.8',
+                'Programming Language :: Python :: 3.9',
+                'Programming Language :: Python :: 3.10',
+                'Programming Language :: Python :: 3.11',
+                'Programming Language :: Python :: 3.12'],
+        keywords = 'PMI PMIx HPC MPI SHMEM',
+        platforms = 'any',
+        ext_modules = cythonize([Extension("pmix",
+                                           [os.environ['PMIX_BINDINGS_TOP_SRCDIR']+"/bindings/python/pmix.pyx"],
+                                           libraries=["pmix"]) ],
+                                compiler_directives={'language_level': 3}),
+        include_dirs = get_include()
+    )
+
+def main():
+    '''
+    The main entry point for this program.
+    '''
+    package_name = 'pypmix'
+    package_vers = getVersion()
+
+    package_setup(package_name, package_vers)
+
+    return os.EX_OK
+
+
+if __name__ == '__main__':
+    sys.exit(main())

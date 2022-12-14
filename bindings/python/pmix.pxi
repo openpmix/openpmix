@@ -1,3 +1,8 @@
+#file: pmix.pxi
+#
+# Copyright (c) 2022      Nanook Consulting. All rights reserved
+#
+
 from libc.string cimport memset, strncpy, strcpy, strlen, strdup
 from libc.stdlib cimport malloc, realloc, free
 from libc.string cimport memcpy
