@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+#
+# Copyright (c) 2022      Nanook Consulting. All rights reserved
 
 import os, os.path, sys, shutil, signal
 from optparse import OptionParser, OptionGroup
