@@ -203,6 +203,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
                                                                     //        its namespace in the event
 
 
+/* DUPLICATES */
+
 /* Bring some function definitions across from pmix.h for now-deprecated
  * macros that utilize them. We have to do this as there are people who
  * only included pmix_common.h if they were using macros but not APIs */
