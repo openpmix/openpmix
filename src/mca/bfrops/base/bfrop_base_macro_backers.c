@@ -609,6 +609,7 @@ pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
 PMIX_EXPORT void PMIx_Info_construct(pmix_info_t *p)
 {
     PMIx_Load_key(p->key, NULL);
+    p->flags = ~PMIX_INFO_PERSISTENT;  // default to non-persistent for historical reasons
     PMIx_Value_construct(&p->value);
 }
 
@@ -1910,9 +1911,6 @@ void PMIx_Data_array_construct(pmix_data_array_t *p,
 
         } else if (PMIX_GEOMETRY == type) {
             p->array = PMIx_Geometry_create(num);
-
-        } else if (PMIX_REGATTR == type) {
-            p->array = PMIx_Regattr_create(num);
 
         } else if (PMIX_PROC_CPUSET == type) {
             p->array = PMIx_Cpuset_create(num);
