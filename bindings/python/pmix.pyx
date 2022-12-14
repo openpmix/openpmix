@@ -1,4 +1,6 @@
 #file: pmix.pyx
+#
+# Copyright (c) 2022      Nanook Consulting. All rights reserved
 
 from libc.string cimport memset, strncpy, strcpy, strlen, strdup
 
