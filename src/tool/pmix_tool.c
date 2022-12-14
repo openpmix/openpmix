@@ -860,8 +860,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
              * filedescriptor is not a tty, don't worry about it
              * and always stay connected.
              */
-            pmix_event_signal_set(pmix_globals.evbase, &stdinsig, SIGCONT, pmix_iof_stdin_cb,
-                                  &stdinev);
+            pmix_event_signal_set(pmix_globals.evauxbase, &stdinsig, SIGCONT,
+                                  pmix_iof_stdin_cb, &stdinev);
 
             /* setup a read event to read stdin, but don't activate it yet. The
              * dst_name indicates who should receive the stdin. If that recipient

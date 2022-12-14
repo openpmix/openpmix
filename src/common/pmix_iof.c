@@ -608,7 +608,7 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_b
                              * filedescriptor is not a tty, don't worry about it
                              * and always stay connected.
                              */
-                            pmix_event_signal_set(pmix_globals.evbase, &stdinsig_ev, SIGCONT,
+                            pmix_event_signal_set(pmix_globals.evauxbase, &stdinsig_ev, SIGCONT,
                                                   pmix_iof_stdin_cb, NULL);
 
                             /* setup a read event to read stdin, but don't activate it yet. The
