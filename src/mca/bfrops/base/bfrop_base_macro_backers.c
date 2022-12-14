@@ -39,15 +39,15 @@ void PMIx_Load_nspace(pmix_nspace_t nspace, const char *str)
     }
 }
 
-bool PMIx_Check_nspace(const char *key1, const char *key2)
+bool PMIx_Check_nspace(const char *nspace1, const char *nspace2)
 {
-    if (PMIx_Nspace_invalid(key1)) {
+    if (PMIx_Nspace_invalid(nspace1)) {
         return true;
     }
-    if (PMIx_Nspace_invalid(key2)) {
+    if (PMIx_Nspace_invalid(nspace2)) {
         return true;
     }
-    if (PMIx_Check_key(key1, key2)) {
+    if (0 == strncmp(nspace1, nspace2, PMIX_MAX_NSLEN)) {
         return true;
     }
     return false;

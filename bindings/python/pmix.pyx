@@ -2486,9 +2486,6 @@ cdef int spawn(const pmix_proc_t *proc,
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
 
-    cdef pmix_nspace_t ns
-    pmix_copy_nspace(ns, nspace)
-
     # we cannot execute a callback function here as
     # that would cause PMIx to lockup. Likewise, the
     # Python function we called can't do it as it
@@ -2500,7 +2497,7 @@ cdef int spawn(const pmix_proc_t *proc,
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("spawn")
         mycaddy.status = rc
-        mycaddy.nspace = ns
+        pmix_copy_nspace(mycaddy.nspace, nspace)
         mycaddy.spawn  = cbfunc
         mycaddy.cbdata = cbdata
         cb = PyCapsule_New(mycaddy, NULL, NULL)
