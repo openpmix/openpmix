@@ -37,8 +37,14 @@ install-exec-local: $(helpers)
 	$(PYTHON) $(top_srcdir)/bindings/python/construct.py --src="$(top_builddir)/include" --include-dir="$(top_srcdir)/include"
 	PMIX_BINDINGS_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_BINDINGS_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
 		$(PYTHON) $(top_srcdir)/bindings/python/setup.py build_ext --library-dirs="$(DESTDIR)$(libdir)" --user
+		if [ $(PMIX_TOP_SRCDIR) != $(PMIX_TOP_BUILDDIR) ]; then \
+			pushd $(PMIX_TOP_BUILDDIR)/bindings/python; \
+			rm -f setup.py; \
+			cp $(PMIX_TOP_SRCDIR)/bindings/python/setup.py .; \
+			popd; \
+		fi
 	PMIX_BINDINGS_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_BINDINGS_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
-		$(PYTHON) $(top_srcdir)/bindings/python/setup.py install --prefix="$(DESTDIR)$(prefix)"
+		$(PYTHON) -m pip install --prefix="$(DESTDIR)$(prefix)" --editable $(top_builddir)/bindings/python
 
 uninstall-hook:
 	rm -f $(pythondir)/pmix*.so
