@@ -91,6 +91,7 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .sessionid = UINT32_MAX,
     .pindex = 0,
     .evbase = NULL,
+    .evauxbase = NULL,
     .debug_output = -1,
     .events = PMIX_EVENTS_STATIC_INIT,
     .connected = false,
@@ -262,6 +263,8 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_PROGRESS)) {
                 pmix_globals.external_progress = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_AUX_EVENT_BASE)) {
+                pmix_globals.evauxbase = (pmix_event_base_t*)info[n].value.data.ptr;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
                 keepfqdn = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_BIND_PROGRESS_THREAD)) {
@@ -284,6 +287,10 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
         error = "progress thread";
         ret = PMIX_ERROR;
         goto return_error;
+    }
+    /* if we were not given an aux event base, set it to our internal one */
+    if (NULL == pmix_globals.evauxbase) {
+        pmix_globals.evauxbase = pmix_globals.evbase;
     }
 
     /* setup the globals structure */

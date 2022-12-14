@@ -667,6 +667,7 @@ typedef struct {
     uint32_t sessionid;
     int pindex;
     pmix_event_base_t *evbase;
+    pmix_event_base_t *evauxbase;
     int debug_output;
     pmix_events_t events; // my event handler registrations.
     bool connected;
