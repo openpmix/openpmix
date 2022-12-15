@@ -1274,7 +1274,7 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
         AC_MSG_CHECKING([Cython version])
         cython_version=`python -c "from Cython.Compiler.Version import version; print(version)"`
         AC_MSG_RESULT([$cython_version])
-        PMIX_SUMMARY_ADD([Bindings], [Cython], [], [yes ($cython_version)])
+        PMIX_SUMMARY_ADD([Required Packages], [Cython], [], [yes ($cython_version)])
     else
         AC_MSG_RESULT([no])
         # Cython doesn't have any include or lib files - it is just a binary
