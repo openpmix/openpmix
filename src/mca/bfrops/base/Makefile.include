@@ -14,6 +14,7 @@
 # Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -25,7 +26,8 @@
 # src/Makefile.am
 
 headers += \
-         base/base.h
+         base/base.h \
+         base/bfrop_base_tma.h
 
 sources += \
         base/bfrop_base_frame.c \
