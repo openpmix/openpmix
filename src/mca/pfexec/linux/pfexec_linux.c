@@ -570,6 +570,62 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
     return do_parent(app, child, p[0]);
 }
 
+/* callback from the event library whenever a SIGCHLD is received */
+static void wait_signal_callback(int fd, short event, void *arg)
+{
+    (void) fd;
+    (void) event;
+    pmix_event_t *signal = (pmix_event_t *) arg;
+    int status;
+    pid_t pid;
+    pmix_pfexec_child_t *child;
+
+    PMIX_ACQUIRE_OBJECT(signal);
+
+    if (SIGCHLD != PMIX_EVENT_SIGNAL(signal)) {
+        return;
+    }
+    /* if we haven't spawned anyone, then ignore this */
+    if (0 == pmix_list_get_size(&pmix_pfexec_globals.children)) {
+        return;
+    }
+
+    /* reap all queued waitpids until we
+     * don't get anything valid back */
+    while (1) {
+        pid = waitpid(-1, &status, WNOHANG);
+        if (-1 == pid && EINTR == errno) {
+            /* try it again */
+            continue;
+        }
+        /* if we got garbage, then nothing we can do */
+        if (pid <= 0) {
+            return;
+        }
+
+        /* we are already in an event, so it is safe to access globals */
+        PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+            if (pid == child->pid) {
+                /* record the exit status */
+                if (WIFEXITED(status)) {
+                    child->exitcode = WEXITSTATUS(status);
+                } else {
+                    if (WIFSIGNALED(status)) {
+                        child->exitcode = WTERMSIG(status) + 128;
+                    }
+                }
+                /* mark the child as complete */
+                child->completed = true;
+                if ((NULL == child->stdoutev || !child->stdoutev->active)
+                    && (NULL == child->stderrev || !child->stderrev->active)) {
+                    PMIX_PFEXEC_CHK_COMPLETE(child);
+                }
+                break;
+            }
+        }
+    }
+}
+
 /**
  * Launch all processes allocated to the current node.
  */
@@ -577,8 +633,31 @@ static int fork_proc(pmix_app_t *app, pmix_pfexec_child_t *child, char **env)
 static pmix_status_t spawn_job(const pmix_info_t job_info[], size_t ninfo, const pmix_app_t apps[],
                                size_t napps, pmix_spawn_cbfunc_t cbfunc, void *cbdata)
 {
-    pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
+     sigset_t unblock;
+
+     pmix_output_verbose(5, pmix_pfexec_base_framework.framework_output,
                         "%s pfexec:linux spawning child job", PMIX_NAME_PRINT(&pmix_globals.myid));
+
+    if (NULL == pmix_pfexec_globals.handler) {
+        /* ensure that SIGCHLD is unblocked as we need to capture it */
+        if (0 != sigemptyset(&unblock)) {
+            return PMIX_ERROR;
+        }
+        if (0 != sigaddset(&unblock, SIGCHLD)) {
+            return PMIX_ERROR;
+        }
+        if (0 != sigprocmask(SIG_UNBLOCK, &unblock, NULL)) {
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+
+        /* set to catch SIGCHLD events */
+        pmix_pfexec_globals.handler = (pmix_event_t *) malloc(sizeof(pmix_event_t));
+        pmix_event_set(pmix_globals.evauxbase, pmix_pfexec_globals.handler, SIGCHLD,
+                       PMIX_EV_SIGNAL | PMIX_EV_PERSIST, wait_signal_callback,
+                       pmix_pfexec_globals.handler);
+        pmix_pfexec_globals.active = true;
+        pmix_event_add(pmix_pfexec_globals.handler, NULL);
+    }
 
     PMIX_PFEXEC_SPAWN(job_info, ninfo, apps, napps, fork_proc, cbfunc, cbdata);
 
