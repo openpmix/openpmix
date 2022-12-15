@@ -86,62 +86,6 @@ static int pmix_pfexec_base_close(void)
     return pmix_mca_base_framework_components_close(&pmix_pfexec_base_framework, NULL);
 }
 
-/* callback from the event library whenever a SIGCHLD is received */
-static void wait_signal_callback(int fd, short event, void *arg)
-{
-    (void) fd;
-    (void) event;
-    pmix_event_t *signal = (pmix_event_t *) arg;
-    int status;
-    pid_t pid;
-    pmix_pfexec_child_t *child;
-
-    PMIX_ACQUIRE_OBJECT(signal);
-
-    if (SIGCHLD != PMIX_EVENT_SIGNAL(signal)) {
-        return;
-    }
-    /* if we haven't spawned anyone, then ignore this */
-    if (0 == pmix_list_get_size(&pmix_pfexec_globals.children)) {
-        return;
-    }
-
-    /* reap all queued waitpids until we
-     * don't get anything valid back */
-    while (1) {
-        pid = waitpid(-1, &status, WNOHANG);
-        if (-1 == pid && EINTR == errno) {
-            /* try it again */
-            continue;
-        }
-        /* if we got garbage, then nothing we can do */
-        if (pid <= 0) {
-            return;
-        }
-
-        /* we are already in an event, so it is safe to access globals */
-        PMIX_LIST_FOREACH (child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
-            if (pid == child->pid) {
-                /* record the exit status */
-                if (WIFEXITED(status)) {
-                    child->exitcode = WEXITSTATUS(status);
-                } else {
-                    if (WIFSIGNALED(status)) {
-                        child->exitcode = WTERMSIG(status) + 128;
-                    }
-                }
-                /* mark the child as complete */
-                child->completed = true;
-                if ((NULL == child->stdoutev || !child->stdoutev->active)
-                    && (NULL == child->stderrev || !child->stderrev->active)) {
-                    PMIX_PFEXEC_CHK_COMPLETE(child);
-                }
-                break;
-            }
-        }
-    }
-}
-
 void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
 {
     (void) sd;
@@ -192,32 +136,11 @@ static int pmix_pfexec_register(pmix_mca_base_register_flag_t flags)
  */
 static int pmix_pfexec_base_open(pmix_mca_base_open_flag_t flags)
 {
-    sigset_t unblock;
-
     memset(&pmix_pfexec_globals, 0, sizeof(pmix_pfexec_globals_t));
 
     /* setup the list of children */
     PMIX_CONSTRUCT(&pmix_pfexec_globals.children, pmix_list_t);
     pmix_pfexec_globals.nextid = 1;
-
-    /* ensure that SIGCHLD is unblocked as we need to capture it */
-    if (0 != sigemptyset(&unblock)) {
-        return PMIX_ERROR;
-    }
-    if (0 != sigaddset(&unblock, SIGCHLD)) {
-        return PMIX_ERROR;
-    }
-    if (0 != sigprocmask(SIG_UNBLOCK, &unblock, NULL)) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
-
-    /* set to catch SIGCHLD events */
-    pmix_pfexec_globals.handler = (pmix_event_t *) malloc(sizeof(pmix_event_t));
-    pmix_event_set(pmix_globals.evbase, pmix_pfexec_globals.handler, SIGCHLD,
-                   PMIX_EV_SIGNAL | PMIX_EV_PERSIST, wait_signal_callback,
-                   pmix_pfexec_globals.handler);
-    pmix_pfexec_globals.active = true;
-    pmix_event_add(pmix_pfexec_globals.handler, NULL);
 
     /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_pfexec_base_framework, flags);
