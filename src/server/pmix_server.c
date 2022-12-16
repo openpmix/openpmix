@@ -91,6 +91,7 @@ pmix_server_globals_t pmix_server_globals = {
     .genvars = NULL,
     .events = PMIX_LIST_STATIC_INIT,
     .groups = PMIX_LIST_STATIC_INIT,
+    .failedgrps = NULL,
     .iof = PMIX_LIST_STATIC_INIT,
     .iof_residuals = PMIX_LIST_STATIC_INIT,
     .psets = PMIX_LIST_STATIC_INIT,
@@ -114,7 +115,9 @@ pmix_server_globals_t pmix_server_globals = {
     .iof_output = -1,
     .iof_verbose = 0,
     .base_output = -1,
-    .base_verbose = 0
+    .base_verbose = 0,
+    .group_output = -1,
+    .group_verbose = 0
 };
 
 // local variables
@@ -436,7 +439,8 @@ pmix_status_t pmix_server_initialize(void)
     if (0 < pmix_server_globals.pub_verbose) {
         /* set default output */
         pmix_server_globals.pub_output = pmix_output_open(NULL);
-        pmix_output_set_verbosity(pmix_server_globals.pub_output, pmix_server_globals.pub_verbose);
+        pmix_output_set_verbosity(pmix_server_globals.pub_output, \
+                                  pmix_server_globals.pub_verbose);
     }
     if (0 < pmix_server_globals.spawn_verbose) {
         /* set default output */
@@ -453,7 +457,8 @@ pmix_status_t pmix_server_initialize(void)
     if (0 < pmix_server_globals.iof_verbose) {
         /* set default output */
         pmix_server_globals.iof_output = pmix_output_open(NULL);
-        pmix_output_set_verbosity(pmix_server_globals.iof_output, pmix_server_globals.iof_verbose);
+        pmix_output_set_verbosity(pmix_server_globals.iof_output,
+                                  pmix_server_globals.iof_verbose);
     }
     /* setup the base verbosity */
     if (0 < pmix_server_globals.base_verbose) {
@@ -461,6 +466,12 @@ pmix_status_t pmix_server_initialize(void)
         pmix_server_globals.base_output = pmix_output_open(NULL);
         pmix_output_set_verbosity(pmix_server_globals.base_output,
                                   pmix_server_globals.base_verbose);
+    }
+    if (0 < pmix_server_globals.group_verbose) {
+        /* set default output */
+        pmix_server_globals.group_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_server_globals.group_output,
+                                  pmix_server_globals.group_verbose);
     }
 
     /* get our available security modules */
@@ -1013,6 +1024,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
         pmix_execute_epilog(&ns->epilog);
     }
     PMIX_LIST_DESTRUCT(&pmix_server_globals.groups);
+    if (NULL != pmix_server_globals.failedgrps) {
+        PMIx_Argv_free(pmix_server_globals.failedgrps);
+    }
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.psets);
