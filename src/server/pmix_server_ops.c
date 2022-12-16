@@ -3760,42 +3760,6 @@ error:
     return rc;
 }
 
-static void grp_timeout(int sd, short args, void *cbdata)
-{
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
-    pmix_buffer_t *reply;
-    pmix_status_t ret, rc = PMIX_ERR_TIMEOUT;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    pmix_output_verbose(2, pmix_server_globals.fence_output, "ALERT: grp construct timeout fired");
-
-    /* send this requestor the reply */
-    reply = PMIX_NEW(pmix_buffer_t);
-    if (NULL == reply) {
-        goto error;
-    }
-    /* setup the reply, starting with the returned status */
-    PMIX_BFROPS_PACK(ret, cd->peer, reply, &rc, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != ret) {
-        PMIX_ERROR_LOG(ret);
-        PMIX_RELEASE(reply);
-        goto error;
-    }
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "server:grp_timeout reply being sent to %s:%u",
-                        cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
-    PMIX_SERVER_QUEUE_REPLY(ret, cd->peer, cd->hdr.tag, reply);
-    if (PMIX_SUCCESS != ret) {
-        PMIX_RELEASE(reply);
-    }
-
-error:
-    cd->event_active = false;
-    /* remove it from the list */
-    pmix_list_remove_item(&cd->trk->local_cbs, &cd->super);
-    PMIX_RELEASE(cd);
-}
-
 static void _grpcbfunc(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *) cbdata;
@@ -3836,10 +3800,6 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                         "server:grpcbfunc processing WITH %d MEMBERS",
                         (int) pmix_list_get_size(&trk->local_cbs));
 
-    /* if the timer is active, clear it */
-    if (trk->event_active) {
-        pmix_event_del(&trk->ev);
-    }
     grp = (pmix_group_t *) trk->cbdata;
 
     /* the tracker's "hybrid" field is used to indicate construct
@@ -4066,7 +4026,7 @@ release:
 
     /* remove the tracker from the list */
     pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
-  //  PMIX_RELEASE(trk);
+    PMIX_RELEASE(trk);
 
     /* we are done */
     if (NULL != scd->cbfunc.relfn) {
@@ -4093,7 +4053,6 @@ static void grpcbfunc(pmix_status_t status,
         }
         return;
     }
-
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
@@ -4126,7 +4085,6 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     pmix_info_t *info = NULL, *iptr = NULL, *grpinfoptr = NULL;
     size_t n, ninfo, ninf, nprocs, n2, ngrpinfo = 0;
     pmix_server_trkr_t *trk;
-    struct timeval tv = {0, 0};
     bool need_cxtid = false;
     bool match, force_local = false;
     bool embed_barrier = false;
@@ -4139,11 +4097,6 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "recvd grpconstruct cmd");
-
-    /* check if our host supports group operations */
-    if (NULL == pmix_host_server.group) {
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
 
     /* unpack the group ID */
     cnt = 1;
@@ -4237,9 +4190,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     }
     /* check directives */
     for (n = 0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-            tv.tv_sec = info[n].value.data.uint32;
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ASSIGN_CONTEXT_ID)) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ASSIGN_CONTEXT_ID)) {
             need_cxtid = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_LOCAL_ONLY)) {
             force_local = PMIX_INFO_TRUE(&info[n]);
@@ -4355,12 +4306,6 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
      * notified when we are done */
     pmix_list_append(&trk->local_cbs, &cd->super);
 
-    /* if a timeout was specified, set it */
-    if (0 < tv.tv_sec) {
-        PMIX_THREADSHIFT_DELAY(trk, grp_timeout, tv.tv_sec);
-        trk->event_active = true;
-    }
-
     /* if all local contributions have been received,
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the barrier
@@ -4370,11 +4315,59 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                             "local group op complete with %d procs", (int) trk->npcs);
 
         if (trk->local) {
-            /* nothing further needs to be done - we have
-             * created the local group. let the grpcbfunc
-             * threadshift the result */
-            grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
-            return PMIX_SUCCESS;
+            /* we have created the local group, so we technically
+             * are done. However, we want to give the host a chance
+             * to know about the group to support further operations.
+             * For example, a tool might want to query the host to get
+             * the IDs of existing groups. So if the host supports
+             * group operations, pass this one up to it but indicate
+             * it is strictly local */
+            if (NULL != pmix_host_server.group) {
+                /* we only need to pass the group ID, members, and
+                 * an info indicating that this is strictly a local
+                 * operation */
+                if (!force_local) {
+                    /* add the local op flag to the info array */
+                    ninfo = trk->ninfo + 1;
+                    PMIX_INFO_CREATE(info, ninfo);
+                    for (n=0; n < trk->ninfo; n++) {
+                        PMIX_INFO_XFER(&info[n], &trk->info[n]);
+                    }
+                    PMIX_INFO_LOAD(&info[trk->ninfo], PMIX_GROUP_LOCAL_ONLY, NULL, PMIX_BOOL);
+                    PMIX_INFO_FREE(trk->info, trk->ninfo);
+                    trk->info = info;
+                    trk->ninfo = ninfo;
+                    info = NULL;
+                    ninfo = 0;
+                }
+                rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grp->grpid, trk->pcs, trk->npcs,
+                                            trk->info, trk->ninfo, grpcbfunc, trk);
+                if (PMIX_SUCCESS != rc) {
+                    if (PMIX_OPERATION_SUCCEEDED == rc) {
+                        /* let the grpcbfunc threadshift the result */
+                        grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+                        return PMIX_SUCCESS;
+                    }
+                    /* remove the tracker from the list */
+                    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+                    PMIX_RELEASE(trk);
+                    return rc;
+                }
+                /* we will take care of the rest of the process when the
+                 * host returns our call */
+            } else {
+                /* let the grpcbfunc threadshift the result */
+                grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+                return PMIX_SUCCESS;
+            }
+        }
+
+        /* check if our host supports group operations */
+        if (NULL == pmix_host_server.group) {
+            /* cannot support it */
+            pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+            PMIX_RELEASE(trk);
+            return PMIX_ERR_NOT_SUPPORTED;
         }
 
         /* if they direct us to not embed a barrier, then we won't gather
@@ -4386,9 +4379,6 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
             rc = _collect_data(trk, &bucket);
             if (PMIX_SUCCESS != rc) {
-                if (trk->event_active) {
-                    pmix_event_del(&trk->ev);
-                }
                 /* remove the tracker from the list */
                 pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
                 PMIX_RELEASE(trk);
@@ -4465,9 +4455,6 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grp->grpid, trk->pcs, trk->npcs,
                                     trk->info, trk->ninfo, grpcbfunc, trk);
         if (PMIX_SUCCESS != rc) {
-            if (trk->event_active) {
-                pmix_event_del(&trk->ev);
-            }
             if (PMIX_OPERATION_SUCCEEDED == rc) {
                 /* let the grpcbfunc threadshift the result */
                 grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
@@ -4497,22 +4484,19 @@ error:
 pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *buf)
 {
     pmix_peer_t *peer = (pmix_peer_t *) cd->peer;
-    int32_t cnt;
+    int32_t cnt, m;
     pmix_status_t rc;
     char *grpid;
     pmix_info_t *info = NULL;
     size_t n, ninfo, ninf;
     pmix_server_trkr_t *trk;
     pmix_group_t *grp, *pgrp;
-    struct timeval tv = {0, 0};
+    bool force_local = false;
+    bool match;
+    pmix_peer_t *pr;
 
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "recvd grpdestruct cmd");
-
-    if (NULL == pmix_host_server.group) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
 
     /* unpack the group ID */
     cnt = 1;
@@ -4558,20 +4542,21 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
             PMIX_ERROR_LOG(rc);
             goto error;
         }
-        /* see if we are to enforce a timeout - we don't internally care
-         * about any other directives */
-        for (n = 0; n < ninf; n++) {
-            if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-                tv.tv_sec = info[n].value.data.uint32;
-                break;
-            }
+    }
+
+    /* check directives */
+    for (n = 0; n < ninfo; n++) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_LOCAL_ONLY)) {
+            force_local = PMIX_INFO_TRUE(&info[n]);
         }
     }
 
     /* find/create the local tracker for this operation */
-    if (NULL == (trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD))) {
+    trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD);
+    if (NULL == trk) {
         /* If no tracker was found - create and initialize it once */
-        if (NULL == (trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD))) {
+        trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD);
+        if (NULL == trk) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
             rc = PMIX_ERROR;
@@ -4582,6 +4567,33 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
         trk->hybrid = true;
         /* pass along the group object */
         trk->cbdata = grp;
+        /* see if this destructor only references local processes */
+        trk->local = true;
+        for (n = 0; n < grp->nmbrs; n++) {
+            /* if this entry references the local procs, then
+             * we can skip it */
+            if (PMIX_RANK_LOCAL_PEERS == grp->members[n].rank ||
+                PMIX_RANK_LOCAL_NODE == grp->members[n].rank) {
+                continue;
+            }
+            /* see if it references a specific local proc */
+            match = false;
+            for (m = 0; m < pmix_server_globals.clients.size; m++) {
+                pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, m);
+                if (NULL == pr) {
+                    continue;
+                }
+                if (PMIX_CHECK_NAMES(&grp->members[n], &pr->info->pname)) {
+                    match = true;
+                    break;
+                }
+            }
+            if (!match) {
+                /* this requires a non_local operation */
+                trk->local = false;
+                break;
+            }
+        }
     }
 
     /* we only save the info structs from the first caller
@@ -4600,12 +4612,6 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
      * notified when we are done */
     pmix_list_append(&trk->local_cbs, &cd->super);
 
-    /* if a timeout was specified, set it */
-    if (0 < tv.tv_sec) {
-        PMIX_THREADSHIFT_DELAY(trk, grp_timeout, tv.tv_sec);
-        trk->event_active = true;
-    }
-
     /* if all local contributions have been received,
      * let the local host's server know that we are at the
      * "fence" point - they will callback once the barrier
@@ -4614,13 +4620,69 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
         pmix_output_verbose(2, pmix_server_globals.connect_output,
                             "local group op complete %d",
                             (int) trk->nlocal);
+        if (trk->local) {
+            /* we have removed the local group, so we technically
+             * are done. However, we want to give the host a chance
+             * to know remove the group to support further operations.
+             * For example, a tool might want to query the host to get
+             * the IDs of existing groups. So if the host supports
+             * group operations, pass this one up to it but indicate
+             * it is strictly local */
+            if (NULL != pmix_host_server.group) {
+                /* we only need to pass the group ID, members, and
+                 * an info indicating that this is strictly a local
+                 * operation */
+                if (!force_local) {
+                    /* add the local op flag to the info array */
+                    ninfo = trk->ninfo + 1;
+                    PMIX_INFO_CREATE(info, ninfo);
+                    for (n=0; n < trk->ninfo; n++) {
+                        PMIX_INFO_XFER(&info[n], &trk->info[n]);
+                    }
+                    PMIX_INFO_LOAD(&info[trk->ninfo], PMIX_GROUP_LOCAL_ONLY, NULL, PMIX_BOOL);
+                    PMIX_INFO_FREE(trk->info, trk->ninfo);
+                    trk->info = info;
+                    trk->ninfo = ninfo;
+                    info = NULL;
+                    ninfo = 0;
+                }
+                rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT, grp->grpid,
+                                            grp->members, grp->nmbrs,
+                                            trk->info, trk->ninfo, grpcbfunc, trk);
+                if (PMIX_SUCCESS != rc) {
+                    if (PMIX_OPERATION_SUCCEEDED == rc) {
+                        /* let the grpcbfunc threadshift the result */
+                        grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+                        return PMIX_SUCCESS;
+                    }
+                    /* remove the tracker from the list */
+                    pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+                    PMIX_RELEASE(trk);
+                    return rc;
+                }
+                /* we will take care of the rest of the process when the
+                 * host returns our call */
+            } else {
+                /* let the grpcbfunc threadshift the result and remove
+                 * the group from our list */
+                grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+                return PMIX_SUCCESS;
+            }
+        }
 
-        rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT, grp->grpid, grp->members, grp->nmbrs,
+        /* this operation requires global support, so check if our host
+         * supports group operations */
+        if (NULL == pmix_host_server.group) {
+            /* cannot support it */
+            pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
+            PMIX_RELEASE(trk);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+
+        rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT, grp->grpid,
+                                    grp->members, grp->nmbrs,
                                     trk->info, trk->ninfo, grpcbfunc, trk);
         if (PMIX_SUCCESS != rc) {
-            if (trk->event_active) {
-                pmix_event_del(&trk->ev);
-            }
             if (PMIX_OPERATION_SUCCEEDED == rc) {
                 /* let the grpcbfunc threadshift the result */
                 grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
