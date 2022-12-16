@@ -189,6 +189,7 @@ typedef struct {
     char **genvars;     // argv array of envars given to me for passing to all clients
     pmix_list_t events; // list of pmix_regevents_info_t registered events
     pmix_list_t groups; // list of pmix_group_t group memberships
+    char **failedgrps;    // group IDs that failed to construct
     pmix_list_t iof;    // IO to be forwarded to clients
     pmix_list_t iof_residuals;  // leftover bytes waiting for newline
     pmix_list_t psets;  // list of known psets and memberships
@@ -221,6 +222,9 @@ typedef struct {
     // verbosity for basic server functions
     int base_output;
     int base_verbose;
+    // verbosity for server group operations
+    int group_output;
+    int group_verbose;
 } pmix_server_globals_t;
 
 #define PMIX_GDS_CADDY(c, p, t)              \

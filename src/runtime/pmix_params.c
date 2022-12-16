@@ -196,6 +196,11 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_server_globals.base_verbose);
 
+    (void) pmix_mca_base_var_register("pmix", "pmix", "server", "group_verbose",
+                                      "Verbosity for server group operations",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_server_globals.group_verbose);
+
     pmix_server_globals.fence_localonly_opt = true;
     (void) pmix_mca_base_var_register("pmix", "pmix", "server", "fence_localonly_opt",
                                       "Optimize local-only fence opteration by eliminating the upcall to the RM (default: true)",
