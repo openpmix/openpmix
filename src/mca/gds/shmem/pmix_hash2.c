@@ -52,6 +52,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_hash_string.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/bfrops/base/bfrop_base_tma.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
@@ -290,7 +291,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table2_t *table,
 #if 0
     PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, (void **)&hv->value, kin->value, PMIX_VALUE);
 #else
-    PMIX_GDS_SHMEM_TMA_BFROPS_COPY_TMA(rc, &hv->value, kin->value, PMIX_VALUE, tma);
+    rc = pmix_bfrops_base_tma_copy_value(&hv->value, kin->value, PMIX_VALUE, tma);
 #endif
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);

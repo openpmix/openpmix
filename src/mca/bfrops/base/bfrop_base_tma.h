@@ -497,11 +497,10 @@ pmix_bfrops_base_tma_value_create(
         return NULL;
     }
     pmix_value_t *v = (pmix_value_t *)pmix_tma_malloc(tma, n * sizeof(pmix_value_t));
-    if (PMIX_UNLIKELY(NULL == v)) {
-        return NULL;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_value_construct(&v[m], tma);
+    if (PMIX_LIKELY(NULL != v)) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_value_construct(&v[m], tma);
+        }
     }
     return v;
 }
@@ -749,7 +748,7 @@ pmix_bfrops_base_tma_info_xfer(
 ) {
     pmix_status_t rc;
 
-    if (NULL == dest || NULL == src) {
+    if (PMIX_UNLIKELY(NULL == dest || NULL == src)) {
         return PMIX_ERR_BAD_PARAM;
     }
     pmix_bfrops_base_tma_load_key(dest->key, src->key, tma);
@@ -3070,6 +3069,27 @@ pmix_bfrops_base_tma_value_xfer(
         return PMIX_ERROR;
     }
     return PMIX_SUCCESS;
+}
+
+static inline pmix_status_t
+pmix_bfrops_base_tma_copy_value(
+    pmix_value_t **dest,
+    pmix_value_t *src,
+    pmix_data_type_t type,
+    pmix_tma_t *tma
+) {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    *dest = (pmix_value_t *)pmix_tma_malloc(tma, sizeof(pmix_value_t));
+    if (PMIX_UNLIKELY(NULL == *dest)) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
+    pmix_value_t *p = *dest;
+    /* copy the type */
+    p->type = src->type;
+    /* copy the data */
+    return pmix_bfrops_base_tma_value_xfer(p, src, tma);
 }
 
 static inline void
