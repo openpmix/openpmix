@@ -377,12 +377,12 @@ pmix_status_t pmix_bfrops_base_copy_pdata(pmix_pdata_t **dest, pmix_pdata_t *src
 pmix_status_t pmix_bfrops_base_copy_pinfo(pmix_proc_info_t **dest, pmix_proc_info_t *src,
                                           pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_pinfo_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_pinfo(dest, src, type, NULL);
 }
 
 static pmix_status_t fill_coord(pmix_coord_t *dst, pmix_coord_t *src)
 {
-    return pmix_bfrops_base_fill_coord_tma(dst, src, NULL);
+    return pmix_bfrops_base_tma_fill_coord(dst, src, NULL);
 }
 
 /* the pmix_data_array_t is a little different in that it
@@ -1075,13 +1075,13 @@ pmix_status_t pmix_bfrops_base_copy_envar(pmix_envar_t **dest, pmix_envar_t *src
 pmix_status_t pmix_bfrops_base_copy_coord(pmix_coord_t **dest, pmix_coord_t *src,
                                           pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_coord_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_coord(dest, src, type, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_regattr(pmix_regattr_t **dest, pmix_regattr_t *src,
                                             pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_regattr_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_regattr(dest, src, type, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_regex(char **dest, char *src, pmix_data_type_t type)
@@ -1096,13 +1096,13 @@ pmix_status_t pmix_bfrops_base_copy_regex(char **dest, char *src, pmix_data_type
 pmix_status_t pmix_bfrops_base_copy_cpuset(pmix_cpuset_t **dest, pmix_cpuset_t *src,
                                            pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_cpuset_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_cpuset(dest, src, type, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_geometry(pmix_geometry_t **dest, pmix_geometry_t *src,
                                              pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_geometry_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_geometry(dest, src, type, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
@@ -1134,67 +1134,67 @@ pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
 pmix_status_t pmix_bfrops_base_copy_endpoint(pmix_endpoint_t **dest, pmix_endpoint_t *src,
                                              pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_endpoint_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_endpoint(dest, src, type, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_topology(pmix_topology_t **dest, pmix_topology_t *src,
                                              pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_topology_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_topology(dest, src, type, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_nspace(pmix_nspace_t **dest, pmix_nspace_t *src,
                                            pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_nspace_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_nspace(dest, src, type, NULL);
 }
 
 static void _populate_pstats(pmix_proc_stats_t *p, pmix_proc_stats_t *src)
 {
-    pmix_bfrops_base_populate_pstats_tma(p, src, NULL);
+    pmix_bfrops_base_tma_populate_pstats(p, src, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_pstats(pmix_proc_stats_t **dest, pmix_proc_stats_t *src,
                                            pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_pstats_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_pstats(dest, src, type, NULL);
 }
 
 static void _populate_dkstats(pmix_disk_stats_t *p, pmix_disk_stats_t *src)
 {
-    pmix_bfrops_base_populate_dkstats_tma(p, src, NULL);
+    pmix_bfrops_base_tma_populate_dkstats(p, src, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_dkstats(pmix_disk_stats_t **dest, pmix_disk_stats_t *src,
                                             pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_dkstats_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_dkstats(dest, src, type, NULL);
 }
 
 static void _populate_netstats(pmix_net_stats_t *p, pmix_net_stats_t *src)
 {
-    pmix_bfrops_base_populate_netstats_tma(p, src, NULL);
+    pmix_bfrops_base_tma_populate_netstats(p, src, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_netstats(pmix_net_stats_t **dest, pmix_net_stats_t *src,
                                              pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_netstats_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_netstats(dest, src, type, NULL);
 }
 
 static void _populate_ndstats(pmix_node_stats_t *p, pmix_node_stats_t *src)
 {
-    pmix_bfrops_base_populate_ndstats_tma(p, src, NULL);
+    pmix_bfrops_base_tma_populate_ndstats(p, src, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_ndstats(pmix_node_stats_t **dest, pmix_node_stats_t *src,
                                             pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_ndstats_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_ndstats(dest, src, type, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_dbuf(pmix_data_buffer_t **dest, pmix_data_buffer_t *src,
                                          pmix_data_type_t type)
 {
-    return pmix_bfrops_base_copy_dbuf_tma(dest, src, type, NULL);
+    return pmix_bfrops_base_tma_copy_dbuf(dest, src, type, NULL);
 }
