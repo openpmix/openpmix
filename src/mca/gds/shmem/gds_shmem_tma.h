@@ -14,78 +14,7 @@
 
 #include "src/mca/bfrops/base/bfrop_base_tma.h"
 
-/**
- * This modifies PMIX_VALUE_XFER() for our needs.
- */
-#define PMIX_GDS_SHMEM_TMA_VALUE_XFER(r, v, s, tma)                            \
-do {                                                                           \
-    if (NULL == (v)) {                                                         \
-        (v) = (pmix_value_t *)pmix_tma_malloc((tma), sizeof(pmix_value_t));    \
-        if (NULL == (v)) {                                                     \
-            (r) = PMIX_ERR_NOMEM;                                              \
-        }                                                                      \
-        else {                                                                 \
-            (r) = pmix_bfrops_base_tma_value_xfer((v), (s), (tma));            \
-        }                                                                      \
-    } else {                                                                   \
-        (r) = pmix_bfrops_base_tma_value_xfer((v), (s), (tma));                \
-    }                                                                          \
-} while(0)
-
-/**
- * This modifies PMIX_BFROPS_COPY() for our needs.
- */
-#define PMIX_GDS_SHMEM_TMA_BFROPS_COPY_TMA(r, d, s, t, tma)                    \
-(r) = pmix_gds_shmem_bfrops_base_copy_value(d, s, t, tma)
-
-// TODO(skg) This shouldn't live here. Figure out a way to get this in an
-// appropriate place. This modifies PMIX_INFO_CREATE() for our needs.
-#define PMIX_GDS_SHMEM_TMA_INFO_CREATE(m, n, tma)                              \
-do {                                                                           \
-    pmix_info_t *i;                                                            \
-    (m) = (pmix_info_t *)pmix_tma_calloc((tma), (n), sizeof(pmix_info_t));     \
-    if (NULL != (m)) {                                                         \
-        i = (pmix_info_t *)(m);                                                \
-        i[(n) - 1].flags = PMIX_INFO_ARRAY_END;                                \
-    }                                                                          \
-} while (0)
-
-// TODO(skg) This shouldn't live here. Figure out a way to get this in an
-// appropriate place. This modifies PMIX_INFO_XFER() for our needs.
-#define PMIX_GDS_SHMEM_TMA_INFO_XFER(d, s, tma)                                \
-    (void)pmix_gds_shmem_info_xfer(d, s, tma)
-
-// TODO(skg) This shouldn't live here. Figure out a way to get this in an
-// appropriate place. This modifies PMIX_PROC_CREATE() for our needs.
-#define PMIX_GDS_SHMEM_TMA_PROC_CREATE(m, n, tma)                              \
-do {                                                                           \
-    (m) = (pmix_proc_t *)pmix_tma_calloc((tma), (n), sizeof(pmix_proc_t));     \
-} while (0)
-
 BEGIN_C_DECLS
-
-static inline pmix_status_t
-pmix_gds_shmem_copy_darray(
-    pmix_data_array_t **dest,
-    pmix_data_array_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-);
-
-// TODO(skg) This shouldn't live here. Figure out a way to get this in an
-// appropriate place. This modifies PMIX_INFO_XFER() for our needs.
-static inline pmix_status_t
-pmix_gds_shmem_info_xfer(
-    pmix_info_t *dest,
-    const pmix_info_t *src,
-    pmix_tma_t *tma
-) {
-    if (NULL == dest || NULL == src) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-    PMIX_LOAD_KEY(dest->key, src->key);
-    return pmix_bfrops_base_tma_value_xfer(&dest->value, &src->value, tma);
-}
 
 // TODO(skg) This shouldn't live here. Figure out a way to get this in an
 // appropriate place. This modifies pmix_bfrops_base_copy_darray() for our needs.
@@ -252,7 +181,7 @@ pmix_gds_shmem_copy_darray(
             memcpy(p->array, src->array, src->size * sizeof(pmix_status_t));
             break;
         case PMIX_PROC:
-            PMIX_GDS_SHMEM_TMA_PROC_CREATE(p->array, src->size, tma);
+            p->array = pmix_bfrops_base_tma_proc_create(src->size, tma);
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -271,7 +200,7 @@ pmix_gds_shmem_copy_darray(
             break;
         case PMIX_INFO: {
             pmix_info_t *p1, *s1;
-            PMIX_GDS_SHMEM_TMA_INFO_CREATE(p->array, src->size, tma);
+            p->array = pmix_bfrops_base_tma_info_create(src->size, tma);
             if (NULL == p->array) {
                 rc = PMIX_ERR_NOMEM;
                 goto out;
@@ -279,7 +208,7 @@ pmix_gds_shmem_copy_darray(
             p1 = (pmix_info_t *)p->array;
             s1 = (pmix_info_t *)src->array;
             for (size_t n = 0; n < src->size; n++) {
-                PMIX_GDS_SHMEM_TMA_INFO_XFER(&p1[n], &s1[n], tma);
+                (void)pmix_bfrops_base_tma_info_xfer(&p1[n], &s1[n], tma);
             }
             break;
         }
@@ -399,32 +328,6 @@ out:
     }
     *dest = p;
     return rc;
-}
-
-// TODO(skg) This shouldn't live here. Figure out a way to get this in an
-// appropriate place. This modifies pmix_bfrops_base_copy_value() for our needs.
-static inline pmix_status_t
-pmix_gds_shmem_bfrops_base_copy_value(
-    pmix_value_t **dest,
-    pmix_value_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
-    pmix_value_t *p;
-
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* create the new object */
-    *dest = (pmix_value_t *)pmix_tma_malloc(tma, sizeof(pmix_value_t));
-    if (NULL == *dest) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    p = *dest;
-
-    /* copy the type */
-    p->type = src->type;
-    /* copy the data */
-    return pmix_bfrops_base_tma_value_xfer(p, src, tma);
 }
 
 END_C_DECLS

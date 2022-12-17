@@ -239,21 +239,7 @@ pmix_status_t pmix_bfrops_base_copy_string(char **dest, char *src, pmix_data_typ
 pmix_status_t pmix_bfrops_base_copy_value(pmix_value_t **dest, pmix_value_t *src,
                                           pmix_data_type_t type)
 {
-    pmix_value_t *p;
-
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* create the new object */
-    *dest = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-    if (NULL == *dest) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    p = *dest;
-
-    /* copy the type */
-    p->type = src->type;
-    /* copy the data */
-    return pmix_bfrops_base_value_xfer(p, src);
+    return pmix_bfrops_base_tma_copy_value(dest, src, type, NULL);
 }
 
 pmix_status_t pmix_bfrops_base_copy_info(pmix_info_t **dest, pmix_info_t *src,

@@ -122,7 +122,8 @@ cache_node_info(
             // Need to cache this value as well.
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
-            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
+            kv->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            rc = pmix_bfrops_base_tma_value_xfer(kv->value, &info[j].value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
@@ -133,7 +134,8 @@ cache_node_info(
         else {
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
-            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
+            kv->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            rc = pmix_bfrops_base_tma_value_xfer(kv->value, &info[j].value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
@@ -271,7 +273,8 @@ store_app_array(
         else {
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, info[j].key);
-            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, &info[j].value, tma);
+            kv->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            rc = pmix_bfrops_base_tma_value_xfer(kv->value, &info[j].value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
@@ -433,7 +436,8 @@ store_session_array(
         else {
             pmix_kval_t *kval = PMIX_NEW(pmix_kval_t, tma);
             kval->key = pmix_tma_strdup(tma, info[j].key);
-            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kval->value, &info[j].value, tma);
+            kval->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            rc = pmix_bfrops_base_tma_value_xfer(kval->value, &info[j].value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kval);
@@ -470,10 +474,15 @@ pmix_gds_shmem_store_qualified(
     pmix_info_t *quals;
     // TODO(skg) Depending on how this is handled in store(), maybe we can get
     // away without using a TMA here.
-    PMIX_GDS_SHMEM_TMA_INFO_CREATE(quals, nquals, tma);
+    quals = pmix_bfrops_base_tma_info_create(nquals, tma);
     for (size_t i = 1; i < ninfo; i++) {
         PMIX_INFO_SET_QUALIFIER(&quals[i - 1]);
-        PMIX_GDS_SHMEM_TMA_INFO_XFER(&quals[i - 1], &info[i], tma);
+        rc = pmix_bfrops_base_tma_info_xfer(&quals[i - 1], &info[i], tma);
+        // TODO(skg) Cleanup error paths.
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
     // Extract the primary value.
     pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
@@ -545,7 +554,8 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
         else {
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
             kv->key = pmix_tma_strdup(tma, kvi->key);
-            PMIX_GDS_SHMEM_TMA_VALUE_XFER(rc, kv->value, kvi->value, tma);
+            kv->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            rc = pmix_bfrops_base_tma_value_xfer(kv->value, kvi->value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_RELEASE(kv);
                 PMIX_ERROR_LOG(rc);
