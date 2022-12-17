@@ -1716,6 +1716,23 @@ pmix_bfrops_base_tma_pdata_create(
 }
 
 static inline void
+pmix_bfrops_base_tma_pdata_xfer(
+    pmix_pdata_t *dest,
+    const pmix_pdata_t *src,
+    pmix_tma_t *tma
+) {
+    if (NULL != dest) {
+        memset(dest, 0, sizeof(*dest));
+        pmix_bfrops_base_tma_load_nspace(
+            dest->proc.nspace, src->proc.nspace, tma
+        );
+        dest->proc.rank = src->proc.rank;
+        pmix_bfrops_base_tma_load_key(dest->key, src->key, tma);
+        pmix_bfrops_base_tma_value_xfer(&dest->value, &src->value, tma);
+    }
+}
+
+static inline void
 pmix_bfrops_base_tma_pdata_free(
     pmix_pdata_t *p,
     size_t n,
@@ -2863,6 +2880,668 @@ pmix_bfrops_base_tma_value_compare(
     PMIX_HIDE_UNUSED_PARAMS(tma);
     // TODO(skg)
     return pmix_bfrops_base_value_cmp(v1, v2);
+}
+
+/*
+ * The pmix_data_array_t is a little different in that it is an array of values,
+ * and so we cannot just copy one value at a time. So handle all value types
+ * here.
+ */
+static inline pmix_status_t
+pmix_bfrops_base_tma_copy_darray(
+    pmix_data_array_t **dest,
+    pmix_data_array_t *src,
+    pmix_data_type_t type,
+    pmix_tma_t *tma
+) {
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    pmix_status_t rc = PMIX_SUCCESS;
+    *dest = NULL;
+
+    pmix_data_array_t *p = (pmix_data_array_t *)pmix_tma_calloc(tma, 1, sizeof(pmix_data_array_t));
+    if (PMIX_UNLIKELY(NULL == p)) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    p->type = src->type;
+    p->size = src->size;
+    if (0 == p->size || NULL == src->array) {
+        *dest = p;
+        return PMIX_SUCCESS;
+    }
+
+    /* process based on type of array element */
+    switch (src->type) {
+    case PMIX_UINT8:
+    case PMIX_INT8:
+    case PMIX_BYTE:
+        p->array = pmix_tma_malloc(tma, src->size);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size);
+        break;
+    case PMIX_UINT16:
+    case PMIX_INT16:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(uint16_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(uint16_t));
+        break;
+    case PMIX_UINT32:
+    case PMIX_INT32:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(uint32_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(uint32_t));
+        break;
+    case PMIX_UINT64:
+    case PMIX_INT64:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(uint64_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(uint64_t));
+        break;
+    case PMIX_BOOL:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(bool));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(bool));
+        break;
+    case PMIX_SIZE:
+        p->array = (char *)pmix_tma_malloc(tma, src->size * sizeof(size_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(size_t));
+        break;
+    case PMIX_PID:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pid_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pid_t));
+        break;
+    case PMIX_STRING: {
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(char *));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        char **prarray = (char **)p->array;
+        char **strarray = (char **)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != strarray[n]) {
+                prarray[n] = pmix_tma_strdup(tma, strarray[n]);
+            }
+        }
+        break;
+    }
+    case PMIX_INT:
+    case PMIX_UINT:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(int));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(int));
+        break;
+    case PMIX_FLOAT:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(float));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(float));
+        break;
+    case PMIX_DOUBLE:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(double));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(double));
+        break;
+    case PMIX_TIMEVAL:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(struct timeval));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(struct timeval));
+        break;
+    case PMIX_TIME:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(time_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(time_t));
+        break;
+    case PMIX_STATUS:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_status_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pmix_status_t));
+        break;
+    case PMIX_VALUE: {
+        p->array = pmix_bfrops_base_tma_value_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_value_t *pv = (pmix_value_t *)p->array;
+        pmix_value_t *sv = (pmix_value_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (PMIX_SUCCESS != (rc = pmix_bfrops_base_value_xfer(&pv[n], &sv[n]))) {
+                pmix_bfrops_base_tma_value_free(pv, src->size, tma);
+                break;
+            }
+        }
+        break;
+    }
+    case PMIX_PROC:
+        p->array = pmix_bfrops_base_tma_proc_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pmix_proc_t));
+        break;
+    case PMIX_PROC_RANK:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_rank_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pmix_rank_t));
+        break;
+    case PMIX_APP: {
+        p->array = pmix_bfrops_base_tma_app_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_app_t *const pa = (pmix_app_t *)p->array;
+        pmix_app_t *const sa = (pmix_app_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != sa[n].cmd) {
+                pa[n].cmd = pmix_tma_strdup(tma, sa[n].cmd);
+            }
+            if (NULL != sa[n].argv) {
+                pa[n].argv = pmix_bfrops_base_tma_argv_copy(sa[n].argv, tma);
+            }
+            if (NULL != sa[n].env) {
+                pa[n].env = pmix_bfrops_base_tma_argv_copy(sa[n].env, tma);
+            }
+            if (NULL != sa[n].cwd) {
+                pa[n].cwd = pmix_tma_strdup(tma, sa[n].cwd);
+            }
+            pa[n].maxprocs = sa[n].maxprocs;
+            if (0 < sa[n].ninfo && NULL != sa[n].info) {
+                pa[n].info = pmix_bfrops_base_tma_info_create(sa[n].ninfo, tma);
+                if (PMIX_UNLIKELY(NULL == pa[n].info)) {
+                    pmix_bfrops_base_tma_app_free(pa, p->size, tma);
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
+                pa[n].ninfo = sa[n].ninfo;
+                for (size_t m = 0; m < pa[n].ninfo; m++) {
+                    pmix_bfrops_base_tma_info_xfer(
+                        &pa[n].info[m], &sa[n].info[m], tma
+                    );
+                }
+            }
+        }
+        break;
+    }
+    case PMIX_INFO: {
+        p->array = pmix_bfrops_base_tma_info_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_info_t *const p1 = (pmix_info_t *)p->array;
+        pmix_info_t *const s1 = (pmix_info_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pmix_bfrops_base_tma_info_xfer(&p1[n], &s1[n], tma);
+        }
+        break;
+    }
+    case PMIX_PDATA: {
+        p->array = pmix_bfrops_base_tma_pdata_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_pdata_t *const pd = (pmix_pdata_t *)p->array;
+        pmix_pdata_t *const sd = (pmix_pdata_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pmix_bfrops_base_tma_pdata_xfer(&pd[n], &sd[n], tma);
+        }
+        break;
+    }
+    case PMIX_BUFFER: {
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_buffer_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_buffer_t *const pb = (pmix_buffer_t *)p->array;
+        pmix_buffer_t *const sb = (pmix_buffer_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            PMIX_CONSTRUCT(&pb[n], pmix_buffer_t, tma);
+            // TODO(skg)
+            pmix_bfrops_base_copy_payload(&pb[n], &sb[n]);
+        }
+        break;
+    }
+    case PMIX_BYTE_OBJECT:
+    case PMIX_COMPRESSED_STRING: {
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_byte_object_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_byte_object_t *const pbo = (pmix_byte_object_t *)p->array;
+        pmix_byte_object_t *const sbo = (pmix_byte_object_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != sbo[n].bytes && 0 < sbo[n].size) {
+                pbo[n].size = sbo[n].size;
+                pbo[n].bytes = (char *)pmix_tma_malloc(tma, pbo[n].size);
+                memcpy(pbo[n].bytes, sbo[n].bytes, pbo[n].size);
+            } else {
+                pbo[n].bytes = NULL;
+                pbo[n].size = 0;
+            }
+        }
+        break;
+    }
+    case PMIX_KVAL: {
+        p->array = pmix_tma_calloc(tma, src->size, sizeof(pmix_kval_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_kval_t *const pk = (pmix_kval_t *)p->array;
+        pmix_kval_t *const sk = (pmix_kval_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != sk[n].key) {
+                pk[n].key = pmix_tma_strdup(tma, sk[n].key);
+            }
+            if (NULL != sk[n].value) {
+                pk[n].value = pmix_bfrops_base_tma_value_create(1, tma);
+                if (PMIX_UNLIKELY(NULL == pk[n].value)) {
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
+                rc = pmix_bfrops_base_tma_value_xfer(pk[n].value, sk[n].value, tma);
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                    pmix_bfrops_base_tma_value_free(pk[n].value, 1, tma);
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
+            }
+        }
+        break;
+    }
+    case PMIX_PERSIST:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_persistence_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pmix_persistence_t));
+        break;
+    case PMIX_POINTER: {
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(char *));
+        char **prarray = (char **)p->array;
+        char **strarray = (char **)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            prarray[n] = strarray[n];
+        }
+        break;
+    }
+    case PMIX_SCOPE:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_scope_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pmix_scope_t));
+        break;
+    case PMIX_DATA_RANGE:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_data_range_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pmix_data_range_t));
+        break;
+    case PMIX_COMMAND:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_cmd_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pmix_cmd_t));
+        break;
+    case PMIX_INFO_DIRECTIVES:
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_info_directives_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        memcpy(p->array, src->array, src->size * sizeof(pmix_info_directives_t));
+        break;
+    case PMIX_PROC_INFO: {
+        p->array = pmix_bfrops_base_tma_proc_info_create( src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_proc_info_t *const pi = (pmix_proc_info_t *)p->array;
+        pmix_proc_info_t *const si = (pmix_proc_info_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            memcpy(&pi[n].proc, &si[n].proc, sizeof(pmix_proc_t));
+            if (NULL != si[n].hostname) {
+                pi[n].hostname = pmix_tma_strdup(tma, si[n].hostname);
+            } else {
+                pi[n].hostname = NULL;
+            }
+            if (NULL != si[n].executable_name) {
+                pi[n].executable_name = pmix_tma_strdup(tma, si[n].executable_name);
+            } else {
+                pi[n].executable_name = NULL;
+            }
+            pi[n].pid = si[n].pid;
+            pi[n].exit_code = si[n].exit_code;
+            pi[n].state = si[n].state;
+        }
+        break;
+    }
+    case PMIX_DATA_ARRAY:
+        rc = PMIX_ERR_NOT_SUPPORTED; // don't support iterative arrays
+        break;
+    case PMIX_QUERY: {
+        p->array = pmix_bfrops_base_tma_query_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_query_t *const pq = (pmix_query_t *)p->array;
+        pmix_query_t *const sq = (pmix_query_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != sq[n].keys) {
+                pq[n].keys = pmix_bfrops_base_tma_argv_copy(sq[n].keys, tma);
+            }
+            if (NULL != sq[n].qualifiers && 0 < sq[n].nqual) {
+                pq[n].qualifiers = pmix_bfrops_base_tma_info_create(sq[n].nqual, tma);
+                if (NULL == pq[n].qualifiers) {
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
+                for (size_t m = 0; m < sq[n].nqual; m++) {
+                    pmix_bfrops_base_tma_info_xfer(
+                        &pq[n].qualifiers[m], &sq[n].qualifiers[m], tma
+                    );
+                }
+                pq[n].nqual = sq[n].nqual;
+            }
+            else {
+                pq[n].qualifiers = NULL;
+                pq[n].nqual = 0;
+            }
+        }
+        break;
+    }
+    case PMIX_ENVAR: {
+        p->array = pmix_bfrops_base_tma_envar_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_envar_t *const pe = (pmix_envar_t *)p->array;
+        pmix_envar_t *const se = (pmix_envar_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != se[n].envar) {
+                pe[n].envar = pmix_tma_strdup(tma, se[n].envar);
+            }
+            if (NULL != se[n].value) {
+                pe[n].value = pmix_tma_strdup(tma, se[n].value);
+            }
+            pe[n].separator = se[n].separator;
+        }
+        break;
+    }
+    case PMIX_COORD: {
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_coord_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_coord_t *const pc = (pmix_coord_t *)p->array;
+        pmix_coord_t *const sc = (pmix_coord_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            rc = pmix_bfrops_base_tma_fill_coord(&pc[n], &sc[n], tma);
+            if (PMIX_SUCCESS != rc) {
+                pmix_bfrops_base_tma_coord_free(pc, src->size, tma);
+                break;
+            }
+        }
+        break;
+    }
+    case PMIX_REGATTR: {
+        p->array = pmix_bfrops_base_tma_regattr_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_regattr_t *const pr = (pmix_regattr_t *)p->array;
+        pmix_regattr_t *const sr = (pmix_regattr_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != sr[n].name) {
+                pr[n].name = pmix_tma_strdup(tma, sr[n].name);
+            }
+            pmix_bfrops_base_tma_load_key(pr[n].string, sr[n].string, tma);
+            pr[n].type = sr[n].type;
+            pr[n].description = pmix_bfrops_base_tma_argv_copy(sr[n].description, tma);
+        }
+        break;
+    }
+    case PMIX_PROC_CPUSET: {
+        p->array = pmix_bfrops_base_tma_cpuset_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_cpuset_t *const pcpuset = (pmix_cpuset_t *)p->array;
+        pmix_cpuset_t *const scpuset = (pmix_cpuset_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            // TODO(skg)
+            rc = pmix_hwloc_copy_cpuset(&pcpuset[n], &scpuset[n]);
+            if (PMIX_SUCCESS != rc) {
+                // TODO(skg)
+                pmix_hwloc_release_cpuset(pcpuset, src->size);
+                pmix_tma_free(tma, p->array);
+                break;
+            }
+        }
+        break;
+    }
+    case PMIX_GEOMETRY: {
+        p->array = pmix_bfrops_base_tma_geometry_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_geometry_t *const pgeoset = (pmix_geometry_t *)p->array;
+        pmix_geometry_t *const sgeoset = (pmix_geometry_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pgeoset[n].fabric = sgeoset[n].fabric;
+            if (NULL != sgeoset[n].uuid) {
+                pgeoset[n].uuid = pmix_tma_strdup(tma, sgeoset[n].uuid);
+            }
+            if (NULL != sgeoset[n].osname) {
+                pgeoset[n].osname = pmix_tma_strdup(tma, sgeoset[n].osname);
+            }
+            if (NULL != sgeoset[n].coordinates) {
+                pgeoset[n].ncoords = sgeoset[n].ncoords;
+                pgeoset[n].coordinates = (pmix_coord_t *)pmix_tma_malloc(tma, pgeoset[n].ncoords * sizeof(pmix_coord_t));
+                if (PMIX_UNLIKELY(NULL == pgeoset[n].coordinates)) {
+                    rc = PMIX_ERR_NOMEM;
+                    break;
+                }
+                for (size_t m = 0; m < pgeoset[n].ncoords; m++) {
+                    rc = pmix_bfrops_base_tma_fill_coord(
+                        &pgeoset[n].coordinates[m], &sgeoset[n].coordinates[m], tma
+                    );
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                        pmix_bfrops_base_tma_geometry_free(pgeoset, src->size, tma);
+                        break;
+                    }
+                }
+            }
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                break;
+            }
+        }
+        break;
+    }
+    case PMIX_DEVICE_DIST: {
+        p->array = pmix_bfrops_base_tma_device_distance_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_device_distance_t *const pdevdist = (pmix_device_distance_t *)p->array;
+        pmix_device_distance_t *const sdevdist = (pmix_device_distance_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != sdevdist[n].uuid) {
+                pdevdist[n].uuid = pmix_tma_strdup(tma, sdevdist[n].uuid);
+            }
+            if (NULL != sdevdist[n].osname) {
+                pdevdist[n].osname = pmix_tma_strdup(tma, sdevdist[n].osname);
+            }
+            pdevdist[n].type = sdevdist[n].type;
+            pdevdist[n].mindist = sdevdist[n].mindist;
+            pdevdist[n].maxdist = sdevdist[n].maxdist;
+        }
+        break;
+    }
+    case PMIX_ENDPOINT: {
+        p->array = pmix_bfrops_base_tma_endpoint_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_endpoint_t *const pendpt = (pmix_endpoint_t *)p->array;
+        pmix_endpoint_t *const sendpt = (pmix_endpoint_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != sendpt[n].uuid) {
+                pendpt[n].uuid = pmix_tma_strdup(tma, sendpt[n].uuid);
+            }
+            if (NULL != sendpt[n].osname) {
+                pendpt[n].osname = pmix_tma_strdup(tma, sendpt[n].osname);
+            }
+            if (NULL != sendpt[n].endpt.bytes) {
+                pendpt[n].endpt.bytes = (char *)pmix_tma_malloc(tma, sendpt[n].endpt.size);
+                memcpy(pendpt[n].endpt.bytes, sendpt[n].endpt.bytes, sendpt[n].endpt.size);
+                pendpt[n].endpt.size = sendpt[n].endpt.size;
+            }
+        }
+        break;
+    }
+    case PMIX_PROC_NSPACE: {
+        p->array = pmix_tma_malloc(tma, src->size * sizeof(pmix_nspace_t));
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        p->size = src->size;
+        pmix_nspace_t *const pns = (pmix_nspace_t *)p->array;
+        pmix_nspace_t *const sns = (pmix_nspace_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pmix_bfrops_base_tma_load_nspace(pns[n], sns[n], tma);
+        }
+        break;
+    }
+    case PMIX_PROC_STATS: {
+        p->array = pmix_bfrops_base_tma_proc_stats_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_proc_stats_t *const pstats = (pmix_proc_stats_t *)p->array;
+        pmix_proc_stats_t *const sstats = (pmix_proc_stats_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pmix_bfrops_base_tma_populate_pstats(&pstats[n], &sstats[n], tma);
+        }
+        break;
+    }
+    case PMIX_DISK_STATS: {
+        p->array = pmix_bfrops_base_tma_disk_stats_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_disk_stats_t *const dkdest = (pmix_disk_stats_t *)p->array;
+        pmix_disk_stats_t *const dksrc = (pmix_disk_stats_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pmix_bfrops_base_tma_populate_dkstats(&dkdest[n], &dksrc[n], tma);
+        }
+        break;
+    }
+    case PMIX_NET_STATS: {
+        p->array = pmix_bfrops_base_tma_net_stats_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_net_stats_t *const ntdest = (pmix_net_stats_t *)p->array;
+        pmix_net_stats_t *const ntsrc = (pmix_net_stats_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pmix_bfrops_base_tma_populate_netstats(&ntdest[n], &ntsrc[n], tma);
+        }
+        break;
+    }
+    case PMIX_NODE_STATS: {
+        p->array = pmix_bfrops_base_tma_node_stats_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_node_stats_t *const nddest = (pmix_node_stats_t *)p->array;
+        pmix_node_stats_t *const ndsrc = (pmix_node_stats_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            pmix_bfrops_base_tma_populate_ndstats(&nddest[n], &ndsrc[n], tma);
+        }
+        break;
+    }
+    default:
+        rc = PMIX_ERR_UNKNOWN_DATA_TYPE;
+    }
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        pmix_tma_free(tma, p);
+        p = NULL;
+    }
+    *dest = p;
+    return rc;
 }
 
 static inline pmix_status_t

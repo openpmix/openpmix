@@ -15,10 +15,11 @@
  */
 
 #include "gds_shmem_store.h"
-#include "gds_shmem_tma.h"
 #include "gds_shmem_utils.h"
 // TODO(skg) This will eventually go away.
 #include "pmix_hash2.h"
+
+#include "src/mca/bfrops/base/bfrop_base_tma.h"
 
 /**
  * Populates the provided with the elements present in the given comma-delimited

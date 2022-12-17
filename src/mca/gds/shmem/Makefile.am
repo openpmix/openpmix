@@ -36,7 +36,6 @@ headers = \
         pmix_hash_table2.h \
         pmix_hash2.h \
         gds_shmem.h \
-        gds_shmem_tma.h \
         gds_shmem_utils.h \
         gds_shmem_store.h \
         gds_shmem_fetch.h
