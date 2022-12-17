@@ -25,10 +25,10 @@ do {                                                                           \
             (r) = PMIX_ERR_NOMEM;                                              \
         }                                                                      \
         else {                                                                 \
-            (r) = pmix_bfrops_base_value_xfer_tma((v), (s), (tma));            \
+            (r) = pmix_bfrops_base_tma_value_xfer((v), (s), (tma));            \
         }                                                                      \
     } else {                                                                   \
-        (r) = pmix_bfrops_base_value_xfer_tma((v), (s), (tma));                \
+        (r) = pmix_bfrops_base_tma_value_xfer((v), (s), (tma));                \
     }                                                                          \
 } while(0)
 
@@ -84,7 +84,7 @@ pmix_gds_shmem_info_xfer(
         return PMIX_ERR_BAD_PARAM;
     }
     PMIX_LOAD_KEY(dest->key, src->key);
-    return pmix_bfrops_base_value_xfer_tma(&dest->value, &src->value, tma);
+    return pmix_bfrops_base_tma_value_xfer(&dest->value, &src->value, tma);
 }
 
 // TODO(skg) This shouldn't live here. Figure out a way to get this in an
@@ -424,7 +424,7 @@ pmix_gds_shmem_bfrops_base_copy_value(
     /* copy the type */
     p->type = src->type;
     /* copy the data */
-    return pmix_bfrops_base_value_xfer_tma(p, src, tma);
+    return pmix_bfrops_base_tma_value_xfer(p, src, tma);
 }
 
 END_C_DECLS

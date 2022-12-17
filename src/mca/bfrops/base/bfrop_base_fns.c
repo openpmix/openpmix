@@ -810,13 +810,13 @@ void pmix_bfrops_base_darray_destruct(pmix_data_array_t *d)
 
 void pmix_bfrops_base_value_destruct(pmix_value_t *v)
 {
-    pmix_bfrops_base_value_destruct_tma(v, NULL);
+    pmix_bfrops_base_tma_value_destruct(v, NULL);
 }
 
 /* Xfer FUNCTIONS FOR GENERIC PMIX TYPES */
 pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p, const pmix_value_t *src)
 {
-    return pmix_bfrops_base_value_xfer_tma(p, src, NULL);
+    return pmix_bfrops_base_tma_value_xfer(p, src, NULL);
 }
 
 /**

@@ -39,26 +39,26 @@
 #include "src/mca/bfrops/base/base.h"
 
 static inline void
-pmix_bfrops_base_value_destruct_tma(
+pmix_bfrops_base_tma_value_destruct(
     pmix_value_t *v,
     pmix_tma_t *tma
 );
 
 static inline pmix_boolean_t
-pmix_bfrops_base_value_true_tma(
+pmix_bfrops_base_tma_value_true(
     const pmix_value_t *value,
     pmix_tma_t *tma
 );
 
 static inline pmix_status_t
-pmix_bfrops_base_value_xfer_tma(
+pmix_bfrops_base_tma_value_xfer(
     pmix_value_t *p,
     const pmix_value_t *src,
     pmix_tma_t *tma
 );
 
 static inline pmix_status_t
-pmix_bfrops_base_value_load_tma(
+pmix_bfrops_base_tma_value_load(
     pmix_value_t *v,
     const void *data,
     pmix_data_type_t type,
@@ -66,7 +66,7 @@ pmix_bfrops_base_value_load_tma(
 );
 
 static inline void
-pmix_bfrops_base_data_array_construct_tma(
+pmix_bfrops_base_tma_data_array_construct(
     pmix_data_array_t *p,
     size_t num,
     pmix_data_type_t type,
@@ -74,47 +74,47 @@ pmix_bfrops_base_data_array_construct_tma(
 );
 
 static inline void
-pmix_bfrops_base_data_buffer_release_tma(
+pmix_bfrops_base_tma_data_buffer_release(
     pmix_data_buffer_t *b,
     pmix_tma_t *tma
 );
 
 static inline void
-pmix_bfrops_base_proc_stats_free_tma(
+pmix_bfrops_base_tma_proc_stats_free(
     pmix_proc_stats_t *p,
     size_t n,
     pmix_tma_t *tma
 );
 
 static inline void
-pmix_bfrops_base_disk_stats_free_tma(
+pmix_bfrops_base_tma_disk_stats_free(
     pmix_disk_stats_t *p,
     size_t n,
     pmix_tma_t *tma
 );
 
 static inline void
-pmix_bfrops_base_node_stats_free_tma(
+pmix_bfrops_base_tma_node_stats_free(
     pmix_node_stats_t *p,
     size_t n,
     pmix_tma_t *tma
 );
 
 static inline void
-pmix_bfrops_base_net_stats_free_tma(
+pmix_bfrops_base_tma_net_stats_free(
     pmix_net_stats_t *p,
     size_t n,
     pmix_tma_t *tma
 );
 
 static inline bool
-pmix_bfrops_base_info_is_persistent_tma(
+pmix_bfrops_base_tma_info_is_persistent(
     const pmix_info_t *p,
     pmix_tma_t *tma
 );
 
 static inline void
-pmix_bfrops_base_load_key_tma(
+pmix_bfrops_base_tma_load_key(
     pmix_key_t key,
     const char *src,
     pmix_tma_t *tma
@@ -128,7 +128,7 @@ pmix_bfrops_base_load_key_tma(
 }
 
 static inline bool
-pmix_bfrops_base_check_key_tma(
+pmix_bfrops_base_tma_check_key(
     const char *key,
     const char *str,
     pmix_tma_t *tma
@@ -139,7 +139,7 @@ pmix_bfrops_base_check_key_tma(
 }
 
 static inline bool
-pmix_bfrops_base_nspace_invalid_tma(
+pmix_bfrops_base_tma_nspace_invalid(
     const char *nspace,
     pmix_tma_t *tma
 ) {
@@ -152,22 +152,22 @@ pmix_bfrops_base_nspace_invalid_tma(
 }
 
 static inline bool
-pmix_bfrops_base_check_nspace_tma(
+pmix_bfrops_base_tma_check_nspace(
     const char *nspace1,
     const char *nspace2,
     pmix_tma_t *tma
 ) {
-    if (pmix_bfrops_base_nspace_invalid_tma(nspace1, tma)) {
+    if (pmix_bfrops_base_tma_nspace_invalid(nspace1, tma)) {
         return true;
     }
-    if (pmix_bfrops_base_nspace_invalid_tma(nspace2, tma)) {
+    if (pmix_bfrops_base_tma_nspace_invalid(nspace2, tma)) {
         return true;
     }
     return (0 == strncmp(nspace1, nspace2, PMIX_MAX_NSLEN));
 }
 
 static inline bool
-pmix_bfrops_base_check_reserved_key_tma(
+pmix_bfrops_base_tma_check_reserved_key(
     const char *key,
     pmix_tma_t *tma
 ) {
@@ -177,7 +177,7 @@ pmix_bfrops_base_check_reserved_key_tma(
 }
 
 static inline void
-pmix_bfrops_base_xfer_procid_tma(
+pmix_bfrops_base_tma_xfer_procid(
     pmix_proc_t *dst,
     const pmix_proc_t *src,
     pmix_tma_t *tma
@@ -188,7 +188,7 @@ pmix_bfrops_base_xfer_procid_tma(
 }
 
 static inline bool
-pmix_bfrops_base_check_rank_tma(
+pmix_bfrops_base_tma_check_rank(
     pmix_rank_t a,
     pmix_rank_t b,
     pmix_tma_t *tma
@@ -206,23 +206,23 @@ pmix_bfrops_base_check_rank_tma(
 }
 
 static inline bool
-pmix_bfrops_base_check_procid_tma(
+pmix_bfrops_base_tma_check_procid(
     const pmix_proc_t *a,
     const pmix_proc_t *b,
     pmix_tma_t *tma
 ) {
-    if (!pmix_bfrops_base_check_nspace_tma(a->nspace, b->nspace, tma)) {
+    if (!pmix_bfrops_base_tma_check_nspace(a->nspace, b->nspace, tma)) {
         return false;
     }
-    return pmix_bfrops_base_check_rank_tma(a->rank, b->rank, tma);
+    return pmix_bfrops_base_tma_check_rank(a->rank, b->rank, tma);
 }
 
 static inline bool
-pmix_bfrops_base_procid_invalid_tma(
+pmix_bfrops_base_tma_procid_invalid(
     const pmix_proc_t *p,
     pmix_tma_t *tma
 ) {
-    if (pmix_bfrops_base_nspace_invalid_tma(p->nspace, tma)) {
+    if (pmix_bfrops_base_tma_nspace_invalid(p->nspace, tma)) {
         return true;
     }
     if (PMIX_RANK_INVALID == p->rank) {
@@ -232,7 +232,7 @@ pmix_bfrops_base_procid_invalid_tma(
 }
 
 static inline void
-pmix_bfrops_base_load_nspace_tma(
+pmix_bfrops_base_tma_load_nspace(
     pmix_nspace_t nspace,
     const char *str,
     pmix_tma_t *tma
@@ -246,18 +246,18 @@ pmix_bfrops_base_load_nspace_tma(
 }
 
 static inline void
-pmix_bfrops_base_load_procid_tma(
+pmix_bfrops_base_tma_load_procid(
     pmix_proc_t *p,
     const char *ns,
     pmix_rank_t rk,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_load_nspace_tma(p->nspace, ns, tma);
+    pmix_bfrops_base_tma_load_nspace(p->nspace, ns, tma);
     p->rank = rk;
 }
 
 static inline void
-pmix_bfrops_base_data_buffer_load_tma(
+pmix_bfrops_base_tma_data_buffer_load(
     pmix_data_buffer_t *b,
     char *bytes,
     size_t sz,
@@ -274,7 +274,7 @@ pmix_bfrops_base_data_buffer_load_tma(
 }
 
 static inline void
-pmix_bfrops_base_data_buffer_unload_tma(
+pmix_bfrops_base_tma_data_buffer_unload(
     pmix_data_buffer_t *b,
     char **bytes,
     size_t *sz,
@@ -297,7 +297,7 @@ pmix_bfrops_base_data_buffer_unload_tma(
 }
 
 static inline void
-pmix_bfrops_base_proc_construct_tma(
+pmix_bfrops_base_tma_proc_construct(
     pmix_proc_t *p,
     pmix_tma_t *tma
 ) {
@@ -308,27 +308,27 @@ pmix_bfrops_base_proc_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_proc_destruct_tma(
+pmix_bfrops_base_tma_proc_destruct(
     pmix_proc_t *p,
     pmix_tma_t *tma
 ) {
     // TODO(skg) Is this correct?
-    pmix_bfrops_base_proc_construct_tma(p, tma);
+    pmix_bfrops_base_tma_proc_construct(p, tma);
 }
 
 static inline void
-pmix_bfrops_base_proc_load_tma(
+pmix_bfrops_base_tma_proc_load(
     pmix_proc_t *p,
     char *nspace,
     pmix_rank_t rank,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_proc_construct_tma(p, tma);
-    pmix_bfrops_base_load_procid_tma(p, nspace, rank, tma);
+    pmix_bfrops_base_tma_proc_construct(p, tma);
+    pmix_bfrops_base_tma_load_procid(p, nspace, rank, tma);
 }
 
 static inline pmix_proc_t *
-pmix_bfrops_base_proc_create_tma(
+pmix_bfrops_base_tma_proc_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -338,14 +338,14 @@ pmix_bfrops_base_proc_create_tma(
     pmix_proc_t *p = (pmix_proc_t*)pmix_tma_malloc(tma, n * sizeof(pmix_proc_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_proc_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_proc_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_proc_free_tma(
+pmix_bfrops_base_tma_proc_free(
     pmix_proc_t *p,
     size_t n,
     pmix_tma_t *tma
@@ -355,18 +355,18 @@ pmix_bfrops_base_proc_free_tma(
     }
     for (size_t m = 0; m < n; m++) {
         // TODO(skg) Is this correct?
-        pmix_bfrops_base_proc_destruct_tma(&p[m], tma);
+        pmix_bfrops_base_tma_proc_destruct(&p[m], tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_multicluster_nspace_construct_tma(
+pmix_bfrops_base_tma_multicluster_nspace_construct(
     pmix_nspace_t target,
     pmix_nspace_t cluster,
     pmix_nspace_t nspace,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_load_nspace_tma(target, NULL, tma);
+    pmix_bfrops_base_tma_load_nspace(target, NULL, tma);
     size_t len = pmix_nslen(cluster);
     if ((len + pmix_nslen(nspace)) < PMIX_MAX_NSLEN) {
         pmix_strncpy((char*)target, cluster, PMIX_MAX_NSLEN);
@@ -376,7 +376,7 @@ pmix_bfrops_base_multicluster_nspace_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_multicluster_nspace_parse_tma(
+pmix_bfrops_base_tma_multicluster_nspace_parse(
     pmix_nspace_t target,
     pmix_nspace_t cluster,
     pmix_nspace_t nspace,
@@ -384,7 +384,7 @@ pmix_bfrops_base_multicluster_nspace_parse_tma(
 ) {
     size_t n, j;
 
-    pmix_bfrops_base_load_nspace_tma(cluster, NULL, tma);
+    pmix_bfrops_base_tma_load_nspace(cluster, NULL, tma);
     for (n=0; '\0' != target[n] && ':' != target[n] && n < PMIX_MAX_NSLEN; n++) {
         cluster[n] = target[n];
     }
@@ -395,7 +395,7 @@ pmix_bfrops_base_multicluster_nspace_parse_tma(
 }
 
 static inline void
-pmix_bfrops_base_proc_info_construct_tma(
+pmix_bfrops_base_tma_proc_info_construct(
     pmix_proc_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -406,7 +406,7 @@ pmix_bfrops_base_proc_info_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_proc_info_destruct_tma(
+pmix_bfrops_base_tma_proc_info_destruct(
     pmix_proc_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -416,11 +416,11 @@ pmix_bfrops_base_proc_info_destruct_tma(
     if (NULL != p->executable_name) {
         pmix_tma_free(tma, p->executable_name);
     }
-    pmix_bfrops_base_proc_info_construct_tma(p, tma);
+    pmix_bfrops_base_tma_proc_info_construct(p, tma);
 }
 
 static inline void
-pmix_bfrops_base_proc_info_free_tma(
+pmix_bfrops_base_tma_proc_info_free(
     pmix_proc_info_t *p,
     size_t n,
     pmix_tma_t *tma
@@ -429,12 +429,12 @@ pmix_bfrops_base_proc_info_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_proc_info_destruct_tma(&p[m], tma);
+        pmix_bfrops_base_tma_proc_info_destruct(&p[m], tma);
     }
 }
 
 static inline pmix_proc_info_t *
-pmix_bfrops_base_proc_info_create_tma(
+pmix_bfrops_base_tma_proc_info_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -444,14 +444,14 @@ pmix_bfrops_base_proc_info_create_tma(
     pmix_proc_info_t *p = (pmix_proc_info_t *)pmix_tma_malloc(tma, n * sizeof(pmix_proc_info_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_proc_info_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_proc_info_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_pinfo_tma(
+pmix_bfrops_base_tma_copy_pinfo(
     pmix_proc_info_t **dest,
     pmix_proc_info_t *src,
     pmix_data_type_t type,
@@ -459,7 +459,7 @@ pmix_bfrops_base_copy_pinfo_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    pmix_proc_info_t *p = pmix_bfrops_base_proc_info_create_tma(1, tma);
+    pmix_proc_info_t *p = pmix_bfrops_base_tma_proc_info_create(1, tma);
     if (PMIX_UNLIKELY(NULL == p)) {
         return PMIX_ERR_NOMEM;
     }
@@ -478,7 +478,7 @@ pmix_bfrops_base_copy_pinfo_tma(
 }
 
 static inline void
-pmix_bfrops_base_value_construct_tma(
+pmix_bfrops_base_tma_value_construct(
     pmix_value_t *val,
     pmix_tma_t *tma
 ) {
@@ -489,7 +489,7 @@ pmix_bfrops_base_value_construct_tma(
 }
 
 static inline pmix_value_t *
-pmix_bfrops_base_value_create_tma(
+pmix_bfrops_base_tma_value_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -501,23 +501,23 @@ pmix_bfrops_base_value_create_tma(
         return NULL;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_value_construct_tma(&v[m], tma);
+        pmix_bfrops_base_tma_value_construct(&v[m], tma);
     }
     return v;
 }
 
 static inline void
-pmix_bfrops_base_info_destruct_tma(
+pmix_bfrops_base_tma_info_destruct(
     pmix_info_t *p,
     pmix_tma_t *tma
 ) {
-    if (!pmix_bfrops_base_info_is_persistent_tma(p, tma)) {
-        pmix_bfrops_base_value_destruct_tma(&p->value, tma);
+    if (!pmix_bfrops_base_tma_info_is_persistent(p, tma)) {
+        pmix_bfrops_base_tma_value_destruct(&p->value, tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_info_free_tma(
+pmix_bfrops_base_tma_info_free(
     pmix_info_t *p,
     size_t n,
     pmix_tma_t *tma
@@ -526,22 +526,22 @@ pmix_bfrops_base_info_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_info_destruct_tma(&p[m], tma);
+        pmix_bfrops_base_tma_info_destruct(&p[m], tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_info_construct_tma(
+pmix_bfrops_base_tma_info_construct(
     pmix_info_t *p,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_load_key_tma(p->key, NULL, tma);
+    pmix_bfrops_base_tma_load_key(p->key, NULL, tma);
     p->flags = ~PMIX_INFO_PERSISTENT;  // default to non-persistent for historical reasons
-    pmix_bfrops_base_value_construct_tma(&p->value, tma);
+    pmix_bfrops_base_tma_value_construct(&p->value, tma);
 }
 
 static inline pmix_info_t *
-pmix_bfrops_base_info_create_tma(
+pmix_bfrops_base_tma_info_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -553,13 +553,13 @@ pmix_bfrops_base_info_create_tma(
         return NULL;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_info_construct_tma(&i[m], tma);
+        pmix_bfrops_base_tma_info_construct(&i[m], tma);
     }
     return i;
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_info_load_tma(
+pmix_bfrops_base_tma_info_load(
     pmix_info_t *info,
     const char *key,
     const void *data,
@@ -569,21 +569,21 @@ pmix_bfrops_base_info_load_tma(
     if (NULL == key) {
         return PMIX_ERR_BAD_PARAM;
     }
-    pmix_bfrops_base_load_key_tma(info->key, key, tma);
+    pmix_bfrops_base_tma_load_key(info->key, key, tma);
     info->flags = 0;
-    return pmix_bfrops_base_value_load_tma(&info->value, data, type, tma);
+    return pmix_bfrops_base_tma_value_load(&info->value, data, type, tma);
 }
 
 static inline pmix_boolean_t
-pmix_bfrops_base_info_true_tma(
+pmix_bfrops_base_tma_info_true(
     const pmix_info_t *p,
     pmix_tma_t *tma
 ) {
-    return pmix_bfrops_base_value_true_tma(&p->value, tma);
+    return pmix_bfrops_base_tma_value_true(&p->value, tma);
 }
 
 static inline  pmix_status_t
-pmix_bfrops_base_fill_coord_tma(
+pmix_bfrops_base_tma_fill_coord(
     pmix_coord_t *dst,
     pmix_coord_t *src,
     pmix_tma_t *tma
@@ -601,7 +601,7 @@ pmix_bfrops_base_fill_coord_tma(
 }
 
 static inline void
-pmix_bfrops_base_coord_destruct_tma(
+pmix_bfrops_base_tma_coord_destruct(
     pmix_coord_t *m,
     pmix_tma_t *tma
 ) {
@@ -617,7 +617,7 @@ pmix_bfrops_base_coord_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_coord_free_tma(
+pmix_bfrops_base_tma_coord_free(
     pmix_coord_t *m,
     size_t number,
     pmix_tma_t *tma
@@ -626,13 +626,13 @@ pmix_bfrops_base_coord_free_tma(
         return;
     }
     for (size_t n = 0; n < number; n++) {
-        // TODO(skg) Done differently in pmix_bfrops_base_copy_coord_tma().
-        pmix_bfrops_base_coord_destruct_tma(&m[n], tma);
+        // TODO(skg) Done differently in pmix_bfrops_base_tma_copy_coord().
+        pmix_bfrops_base_tma_coord_destruct(&m[n], tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_info_required_tma(
+pmix_bfrops_base_tma_info_required(
     pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -642,7 +642,7 @@ pmix_bfrops_base_info_required_tma(
 }
 
 static inline bool
-pmix_bfrops_base_info_is_required(
+pmix_bfrops_base_tma_info_is_required(
     const pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -652,7 +652,7 @@ pmix_bfrops_base_info_is_required(
 }
 
 static inline void
-pmix_bfrops_base_info_optional_tma(
+pmix_bfrops_base_tma_info_optional(
     pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -662,7 +662,7 @@ pmix_bfrops_base_info_optional_tma(
 }
 
 static inline bool
-pmix_bfrops_base_info_is_optional_tma(
+pmix_bfrops_base_tma_info_is_optional(
     const pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -672,7 +672,7 @@ pmix_bfrops_base_info_is_optional_tma(
 }
 
 static inline bool
-pmix_bfrops_base_info_was_processed_tma(
+pmix_bfrops_base_tma_info_was_processed(
     const pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -682,7 +682,7 @@ pmix_bfrops_base_info_was_processed_tma(
 }
 
 static inline void
-pmix_bfrops_base_info_set_end_tma(
+pmix_bfrops_base_tma_info_set_end(
     pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -692,7 +692,7 @@ pmix_bfrops_base_info_set_end_tma(
 }
 
 static inline bool
-pmix_bfrops_base_info_is_end_tma(
+pmix_bfrops_base_tma_info_is_end(
     const pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -702,7 +702,7 @@ pmix_bfrops_base_info_is_end_tma(
 }
 
 static inline void
-pmix_bfrops_base_info_qualifier_tma(
+pmix_bfrops_base_tma_info_qualifier(
     pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -712,7 +712,7 @@ pmix_bfrops_base_info_qualifier_tma(
 }
 
 static inline bool
-pmix_bfrops_base_info_is_qualifier_tma(
+pmix_bfrops_base_tma_info_is_qualifier(
     const pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -722,7 +722,7 @@ pmix_bfrops_base_info_is_qualifier_tma(
 }
 
 static inline void
-pmix_bfrops_base_info_persistent_tma(
+pmix_bfrops_base_tma_info_persistent(
     pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -732,7 +732,7 @@ pmix_bfrops_base_info_persistent_tma(
 }
 
 static inline bool
-pmix_bfrops_base_info_is_persistent_tma(
+pmix_bfrops_base_tma_info_is_persistent(
     const pmix_info_t *p,
     pmix_tma_t *tma
 ) {
@@ -742,7 +742,7 @@ pmix_bfrops_base_info_is_persistent_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_info_xfer_tma(
+pmix_bfrops_base_tma_info_xfer(
     pmix_info_t *dest,
     const pmix_info_t *src,
     pmix_tma_t *tma
@@ -752,19 +752,19 @@ pmix_bfrops_base_info_xfer_tma(
     if (NULL == dest || NULL == src) {
         return PMIX_ERR_BAD_PARAM;
     }
-    pmix_bfrops_base_load_key_tma(dest->key, src->key, tma);
+    pmix_bfrops_base_tma_load_key(dest->key, src->key, tma);
     dest->flags = src->flags;
-    if (pmix_bfrops_base_info_is_persistent_tma(src, tma)) {
+    if (pmix_bfrops_base_tma_info_is_persistent(src, tma)) {
         memcpy(&dest->value, &src->value, sizeof(pmix_value_t));
         rc = PMIX_SUCCESS;
     } else {
-        rc = pmix_bfrops_base_value_xfer_tma(&dest->value, &src->value, tma);
+        rc = pmix_bfrops_base_tma_value_xfer(&dest->value, &src->value, tma);
     }
     return rc;
 }
 
 static inline void
-pmix_bfrops_base_coord_construct_tma(
+pmix_bfrops_base_tma_coord_construct(
     pmix_coord_t *m,
     pmix_tma_t *tma
 ) {
@@ -779,7 +779,7 @@ pmix_bfrops_base_coord_construct_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_coord_tma(
+pmix_bfrops_base_tma_copy_coord(
     pmix_coord_t **dest,
     pmix_coord_t *src,
     pmix_data_type_t type,
@@ -791,10 +791,10 @@ pmix_bfrops_base_copy_coord_tma(
     if (PMIX_UNLIKELY(NULL == d)) {
         return PMIX_ERR_NOMEM;
     }
-    pmix_bfrops_base_coord_construct_tma(d, tma);
-    pmix_status_t rc = pmix_bfrops_base_fill_coord_tma(d, src, tma);
+    pmix_bfrops_base_tma_coord_construct(d, tma);
+    pmix_status_t rc = pmix_bfrops_base_tma_fill_coord(d, src, tma);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        pmix_bfrops_base_coord_destruct_tma(d, tma);
+        pmix_bfrops_base_tma_coord_destruct(d, tma);
         pmix_tma_free(tma, d);
     }
     else {
@@ -804,7 +804,7 @@ pmix_bfrops_base_copy_coord_tma(
 }
 
 static inline void
-pmix_bfrops_base_topology_construct_tma(
+pmix_bfrops_base_tma_topology_construct(
     pmix_topology_t *t,
     pmix_tma_t *tma
 ) {
@@ -814,7 +814,7 @@ pmix_bfrops_base_topology_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_topology_destruct_tma(
+pmix_bfrops_base_tma_topology_destruct(
     pmix_topology_t *t,
     pmix_tma_t *tma
 ) {
@@ -824,7 +824,7 @@ pmix_bfrops_base_topology_destruct_tma(
 }
 
 static inline pmix_topology_t *
-pmix_bfrops_base_topology_create_tma(
+pmix_bfrops_base_tma_topology_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -834,14 +834,14 @@ pmix_bfrops_base_topology_create_tma(
     pmix_topology_t *t = (pmix_topology_t *)pmix_tma_malloc(tma, n * sizeof(pmix_topology_t));
     if (PMIX_LIKELY(NULL != t)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_topology_construct_tma(&t[m], tma);
+            pmix_bfrops_base_tma_topology_construct(&t[m], tma);
         }
     }
     return t;
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_topology_tma(
+pmix_bfrops_base_tma_copy_topology(
     pmix_topology_t **dest,
     pmix_topology_t *src,
     pmix_data_type_t type,
@@ -849,7 +849,7 @@ pmix_bfrops_base_copy_topology_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    pmix_topology_t *dst = pmix_bfrops_base_topology_create_tma(1, tma);
+    pmix_topology_t *dst = pmix_bfrops_base_tma_topology_create(1, tma);
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
@@ -865,7 +865,7 @@ pmix_bfrops_base_copy_topology_tma(
 }
 
 static inline void
-pmix_bfrops_base_topology_free_tma(
+pmix_bfrops_base_tma_topology_free(
     pmix_topology_t *t,
     size_t n,
     pmix_tma_t *tma
@@ -874,12 +874,12 @@ pmix_bfrops_base_topology_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_topology_destruct_tma(&t[m], tma);
+        pmix_bfrops_base_tma_topology_destruct(&t[m], tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_cpuset_construct_tma(
+pmix_bfrops_base_tma_cpuset_construct(
     pmix_cpuset_t *c,
     pmix_tma_t *tma
 ) {
@@ -889,7 +889,7 @@ pmix_bfrops_base_cpuset_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_cpuset_destruct_tma(
+pmix_bfrops_base_tma_cpuset_destruct(
     pmix_cpuset_t *c,
     pmix_tma_t *tma
 ) {
@@ -899,7 +899,7 @@ pmix_bfrops_base_cpuset_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_cpuset_free_tma(
+pmix_bfrops_base_tma_cpuset_free(
     pmix_cpuset_t *c,
     size_t n,
     pmix_tma_t *tma
@@ -908,12 +908,12 @@ pmix_bfrops_base_cpuset_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_cpuset_destruct_tma(&c[m], tma);
+        pmix_bfrops_base_tma_cpuset_destruct(&c[m], tma);
     }
 }
 
 static inline pmix_cpuset_t *
-pmix_bfrops_base_cpuset_create_tma(
+pmix_bfrops_base_tma_cpuset_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -926,13 +926,13 @@ pmix_bfrops_base_cpuset_create_tma(
         return NULL;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_cpuset_construct_tma(&c[m], tma);
+        pmix_bfrops_base_tma_cpuset_construct(&c[m], tma);
     }
     return c;
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_cpuset_tma(
+pmix_bfrops_base_tma_copy_cpuset(
     pmix_cpuset_t **dest,
     pmix_cpuset_t *src,
     pmix_data_type_t type,
@@ -940,7 +940,7 @@ pmix_bfrops_base_copy_cpuset_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    pmix_cpuset_t *dst = pmix_bfrops_base_cpuset_create_tma(1, tma);
+    pmix_cpuset_t *dst = pmix_bfrops_base_tma_cpuset_create(1, tma);
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
@@ -956,7 +956,7 @@ pmix_bfrops_base_copy_cpuset_tma(
 }
 
 static inline void
-pmix_bfrops_base_geometry_construct_tma(
+pmix_bfrops_base_tma_geometry_construct(
     pmix_geometry_t *g,
     pmix_tma_t *tma
 ) {
@@ -966,7 +966,7 @@ pmix_bfrops_base_geometry_construct_tma(
 }
 
 static inline pmix_geometry_t *
-pmix_bfrops_base_geometry_create_tma(
+pmix_bfrops_base_tma_geometry_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -976,14 +976,14 @@ pmix_bfrops_base_geometry_create_tma(
     pmix_geometry_t *g = (pmix_geometry_t *)pmix_tma_malloc(tma, n * sizeof(pmix_geometry_t));
     if (PMIX_LIKELY(NULL != g)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_geometry_construct_tma(&g[m], tma);
+            pmix_bfrops_base_tma_geometry_construct(&g[m], tma);
         }
     }
     return g;
 }
 
 static inline pmix_coord_t *
-pmix_bfrops_base_coord_create_tma(
+pmix_bfrops_base_tma_coord_create(
     size_t dims,
     size_t number,
     pmix_tma_t *tma
@@ -1009,7 +1009,7 @@ pmix_bfrops_base_coord_create_tma(
 }
 
 static inline void
-pmix_bfrops_base_geometry_destruct_tma(
+pmix_bfrops_base_tma_geometry_destruct(
     pmix_geometry_t *g,
     pmix_tma_t *tma
 ) {
@@ -1022,12 +1022,12 @@ pmix_bfrops_base_geometry_destruct_tma(
         g->osname = NULL;
     }
     if (NULL != g->coordinates) {
-        pmix_bfrops_base_coord_free_tma(g->coordinates, g->ncoords, tma);
+        pmix_bfrops_base_tma_coord_free(g->coordinates, g->ncoords, tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_geometry_free_tma(
+pmix_bfrops_base_tma_geometry_free(
     pmix_geometry_t *g,
     size_t n,
     pmix_tma_t *tma
@@ -1036,12 +1036,12 @@ pmix_bfrops_base_geometry_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_geometry_destruct_tma(&g[m], tma);
+        pmix_bfrops_base_tma_geometry_destruct(&g[m], tma);
     }
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_geometry_tma(
+pmix_bfrops_base_tma_copy_geometry(
     pmix_geometry_t **dest,
     pmix_geometry_t *src,
     pmix_data_type_t type,
@@ -1049,7 +1049,7 @@ pmix_bfrops_base_copy_geometry_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    pmix_geometry_t *dst = pmix_bfrops_base_geometry_create_tma(1, tma);
+    pmix_geometry_t *dst = pmix_bfrops_base_tma_geometry_create(1, tma);
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
@@ -1065,7 +1065,7 @@ pmix_bfrops_base_copy_geometry_tma(
         dst->ncoords = src->ncoords;
         dst->coordinates = (pmix_coord_t *)pmix_tma_calloc(tma, dst->ncoords, sizeof(pmix_coord_t));
         for (size_t n = 0; n < dst->ncoords; n++) {
-            pmix_status_t rc = pmix_bfrops_base_fill_coord_tma(&dst->coordinates[n], &src->coordinates[n], tma);
+            pmix_status_t rc = pmix_bfrops_base_tma_fill_coord(&dst->coordinates[n], &src->coordinates[n], tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_GEOMETRY_FREE(dst, 1);
                 return rc;
@@ -1078,7 +1078,7 @@ pmix_bfrops_base_copy_geometry_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_nspace_tma(
+pmix_bfrops_base_tma_copy_nspace(
     pmix_nspace_t **dest,
     pmix_nspace_t *src,
     pmix_data_type_t type,
@@ -1090,13 +1090,13 @@ pmix_bfrops_base_copy_nspace_tma(
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
-    pmix_bfrops_base_load_nspace_tma(*dst, (char *)src, tma);
+    pmix_bfrops_base_tma_load_nspace(*dst, (char *)src, tma);
     *dest = dst;
     return PMIX_SUCCESS;
 }
 
 static inline void
-pmix_bfrops_base_device_distance_destruct_tma(
+pmix_bfrops_base_tma_device_distance_destruct(
     pmix_device_distance_t *d,
     pmix_tma_t *tma
 ) {
@@ -1109,7 +1109,7 @@ pmix_bfrops_base_device_distance_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_device_distance_free_tma(
+pmix_bfrops_base_tma_device_distance_free(
     pmix_device_distance_t *d,
     size_t n,
     pmix_tma_t *tma
@@ -1118,12 +1118,12 @@ pmix_bfrops_base_device_distance_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_device_distance_destruct_tma(&d[m], tma);
+        pmix_bfrops_base_tma_device_distance_destruct(&d[m], tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_device_distance_construct_tma(
+pmix_bfrops_base_tma_device_distance_construct(
     pmix_device_distance_t *d,
     pmix_tma_t *tma
 ) {
@@ -1136,7 +1136,7 @@ pmix_bfrops_base_device_distance_construct_tma(
 }
 
 static inline pmix_device_distance_t *
-pmix_bfrops_base_device_distance_create_tma(
+pmix_bfrops_base_tma_device_distance_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -1146,14 +1146,14 @@ pmix_bfrops_base_device_distance_create_tma(
     pmix_device_distance_t *d = (pmix_device_distance_t *)pmix_tma_malloc(tma, n * sizeof(pmix_device_distance_t));
     if (PMIX_LIKELY(NULL != d)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_device_distance_construct_tma(&d[m], tma);
+            pmix_bfrops_base_tma_device_distance_construct(&d[m], tma);
         }
     }
     return d;
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_devdist_tma(
+pmix_bfrops_base_tma_copy_devdist(
     pmix_device_distance_t **dest,
     pmix_device_distance_t *src,
     pmix_data_type_t type,
@@ -1161,7 +1161,7 @@ pmix_bfrops_base_copy_devdist_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    pmix_device_distance_t *dst = pmix_bfrops_base_device_distance_create_tma(1, tma);
+    pmix_device_distance_t *dst = pmix_bfrops_base_tma_device_distance_create(1, tma);
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
@@ -1181,7 +1181,7 @@ pmix_bfrops_base_copy_devdist_tma(
 }
 
 static inline void
-pmix_bfrops_base_byte_object_construct_tma(
+pmix_bfrops_base_tma_byte_object_construct(
     pmix_byte_object_t *b,
     pmix_tma_t *tma
 ) {
@@ -1192,7 +1192,7 @@ pmix_bfrops_base_byte_object_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_byte_object_destruct_tma(
+pmix_bfrops_base_tma_byte_object_destruct(
     pmix_byte_object_t *b,
     pmix_tma_t *tma
 ) {
@@ -1204,7 +1204,7 @@ pmix_bfrops_base_byte_object_destruct_tma(
 }
 
 static inline pmix_byte_object_t *
-pmix_bfrops_base_byte_object_create_tma(
+pmix_bfrops_base_tma_byte_object_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -1214,14 +1214,14 @@ pmix_bfrops_base_byte_object_create_tma(
     pmix_byte_object_t *b = (pmix_byte_object_t *)pmix_tma_malloc(tma, n * sizeof(pmix_byte_object_t));
     if (PMIX_LIKELY(NULL != b)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_byte_object_construct_tma(&b[m], tma);
+            pmix_bfrops_base_tma_byte_object_construct(&b[m], tma);
         }
     }
     return b;
 }
 
 static inline void
-pmix_bfrops_base_byte_object_free_tma(
+pmix_bfrops_base_tma_byte_object_free(
     pmix_byte_object_t *b,
     size_t n,
     pmix_tma_t *tma
@@ -1230,12 +1230,12 @@ pmix_bfrops_base_byte_object_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_byte_object_destruct_tma(&b[m], tma);
+        pmix_bfrops_base_tma_byte_object_destruct(&b[m], tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_endpoint_construct_tma(
+pmix_bfrops_base_tma_endpoint_construct(
     pmix_endpoint_t *e,
     pmix_tma_t *tma
 ) {
@@ -1245,7 +1245,7 @@ pmix_bfrops_base_endpoint_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_endpoint_destruct_tma(
+pmix_bfrops_base_tma_endpoint_destruct(
     pmix_endpoint_t *e,
     pmix_tma_t *tma
 ) {
@@ -1261,7 +1261,7 @@ pmix_bfrops_base_endpoint_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_endpoint_free_tma(
+pmix_bfrops_base_tma_endpoint_free(
     pmix_endpoint_t *e,
     size_t n,
     pmix_tma_t *tma
@@ -1270,12 +1270,12 @@ pmix_bfrops_base_endpoint_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_endpoint_destruct_tma(&e[m], tma);
+        pmix_bfrops_base_tma_endpoint_destruct(&e[m], tma);
     }
 }
 
 static inline pmix_endpoint_t *
-pmix_bfrops_base_endpoint_create_tma(
+pmix_bfrops_base_tma_endpoint_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -1286,14 +1286,14 @@ pmix_bfrops_base_endpoint_create_tma(
     pmix_endpoint_t *e = (pmix_endpoint_t *)pmix_tma_malloc(tma, n * sizeof(pmix_endpoint_t));
     if (PMIX_LIKELY(NULL != e)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_endpoint_construct_tma(&e[m], tma);
+            pmix_bfrops_base_tma_endpoint_construct(&e[m], tma);
         }
     }
     return e;
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_endpoint_tma(
+pmix_bfrops_base_tma_copy_endpoint(
     pmix_endpoint_t **dest,
     pmix_endpoint_t *src,
     pmix_data_type_t type,
@@ -1301,7 +1301,7 @@ pmix_bfrops_base_copy_endpoint_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    pmix_endpoint_t *dst = pmix_bfrops_base_endpoint_create_tma(1, tma);
+    pmix_endpoint_t *dst = pmix_bfrops_base_tma_endpoint_create(1, tma);
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
@@ -1323,7 +1323,7 @@ pmix_bfrops_base_copy_endpoint_tma(
 }
 
 static inline int
-pmix_bfrops_base_argv_count_tma(
+pmix_bfrops_base_tma_argv_count(
     char **argv,
     pmix_tma_t *tma
 ) {
@@ -1342,7 +1342,7 @@ pmix_bfrops_base_argv_count_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_argv_append_nosize_tma(
+pmix_bfrops_base_tma_argv_append_nosize(
     char ***argv,
     const char *arg,
     pmix_tma_t *tma
@@ -1364,7 +1364,7 @@ pmix_bfrops_base_argv_append_nosize_tma(
     /* Extend existing argv. */
     else {
         /* count how many entries currently exist */
-        argc = pmix_bfrops_base_argv_count_tma(*argv, tma);
+        argc = pmix_bfrops_base_tma_argv_count(*argv, tma);
 
         *argv = (char **)pmix_tma_realloc(tma, *argv, (argc + 2) * sizeof(char *));
         if (NULL == *argv) {
@@ -1386,7 +1386,7 @@ pmix_bfrops_base_argv_append_nosize_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_argv_prepend_nosize_tma(
+pmix_bfrops_base_tma_argv_prepend_nosize(
     char ***argv,
     const char *arg,
     pmix_tma_t *tma
@@ -1405,7 +1405,7 @@ pmix_bfrops_base_argv_prepend_nosize_tma(
         (*argv)[1] = NULL;
     } else {
         /* count how many entries currently exist */
-        argc = pmix_bfrops_base_argv_count_tma(*argv, tma);
+        argc = pmix_bfrops_base_tma_argv_count(*argv, tma);
 
         *argv = (char **)pmix_tma_realloc(tma, *argv, (argc + 2) * sizeof(char *));
         if (NULL == *argv) {
@@ -1424,7 +1424,7 @@ pmix_bfrops_base_argv_prepend_nosize_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_argv_append_unique_nosize_tma(
+pmix_bfrops_base_tma_argv_append_unique_nosize(
     char ***argv,
     const char *arg,
     pmix_tma_t *tma
@@ -1435,7 +1435,7 @@ pmix_bfrops_base_argv_append_unique_nosize_tma(
      * so just go ahead and append
      */
     if (NULL == *argv) {
-        return pmix_bfrops_base_argv_append_nosize_tma(argv, arg, tma);
+        return pmix_bfrops_base_tma_argv_append_nosize(argv, arg, tma);
     }
 
     /* see if this arg is already present in the array */
@@ -1447,11 +1447,11 @@ pmix_bfrops_base_argv_append_unique_nosize_tma(
     }
 
     /* we get here if the arg is not in the array - so add it */
-    return pmix_bfrops_base_argv_append_nosize_tma(argv, arg, tma);
+    return pmix_bfrops_base_tma_argv_append_nosize(argv, arg, tma);
 }
 
 static inline void
-pmix_bfrops_base_argv_free_tma(
+pmix_bfrops_base_tma_argv_free(
     char **argv,
     pmix_tma_t *tma
 ) {
@@ -1465,7 +1465,7 @@ pmix_bfrops_base_argv_free_tma(
 }
 
 static inline char **
-pmix_bfrops_base_argv_split_inter_tma(
+pmix_bfrops_base_tma_argv_split_inter(
     const char *src_string,
     int delimiter,
     bool include_empty,
@@ -1491,7 +1491,7 @@ pmix_bfrops_base_argv_split_inter_tma(
         if (src_string == p) {
             if (include_empty) {
                 arg[0] = '\0';
-                if (PMIX_SUCCESS != pmix_bfrops_base_argv_append_nosize_tma(&argv, arg, NULL)) {
+                if (PMIX_SUCCESS != pmix_bfrops_base_tma_argv_append_nosize(&argv, arg, NULL)) {
                     return NULL;
                 }
             }
@@ -1502,7 +1502,7 @@ pmix_bfrops_base_argv_split_inter_tma(
         /* tail argument, add straight from the original string */
 
         else if ('\0' == *p) {
-            if (PMIX_SUCCESS != pmix_bfrops_base_argv_append_nosize_tma(&argv, src_string, tma)) {
+            if (PMIX_SUCCESS != pmix_bfrops_base_tma_argv_append_nosize(&argv, src_string, tma)) {
                 return NULL;
             }
             src_string = p;
@@ -1519,7 +1519,7 @@ pmix_bfrops_base_argv_split_inter_tma(
             pmix_strncpy(argtemp, src_string, arglen);
             argtemp[arglen] = '\0';
 
-            if (PMIX_SUCCESS != pmix_bfrops_base_argv_append_nosize_tma(&argv, argtemp, tma)) {
+            if (PMIX_SUCCESS != pmix_bfrops_base_tma_argv_append_nosize(&argv, argtemp, tma)) {
                 free(argtemp);
                 return NULL;
             }
@@ -1533,7 +1533,7 @@ pmix_bfrops_base_argv_split_inter_tma(
             pmix_strncpy(arg, src_string, arglen);
             arg[arglen] = '\0';
 
-            if (PMIX_SUCCESS != pmix_bfrops_base_argv_append_nosize_tma(&argv, arg, tma)) {
+            if (PMIX_SUCCESS != pmix_bfrops_base_tma_argv_append_nosize(&argv, arg, tma)) {
                 return NULL;
             }
         }
@@ -1547,25 +1547,25 @@ pmix_bfrops_base_argv_split_inter_tma(
 }
 
 static inline char **
-pmix_bfrops_base_argv_split_with_empty_tma(
+pmix_bfrops_base_tma_argv_split_with_empty(
     const char *src_string,
     int delimiter,
     pmix_tma_t *tma
 ) {
-    return pmix_bfrops_base_argv_split_inter_tma(src_string, delimiter, true, tma);
+    return pmix_bfrops_base_tma_argv_split_inter(src_string, delimiter, true, tma);
 }
 
 static inline char **
-pmix_bfrops_base_argv_split_tma(
+pmix_bfrops_base_tma_argv_split(
     const char *src_string,
     int delimiter,
     pmix_tma_t *tma
 ) {
-    return pmix_bfrops_base_argv_split_inter_tma(src_string, delimiter, false, tma);
+    return pmix_bfrops_base_tma_argv_split_inter(src_string, delimiter, false, tma);
 }
 
 static inline char *
-pmix_bfrops_base_argv_join_tma(
+pmix_bfrops_base_tma_argv_join(
     char **argv,
     int delimiter,
     pmix_tma_t *tma
@@ -1620,7 +1620,7 @@ pmix_bfrops_base_argv_join_tma(
 }
 
 static inline char **
-pmix_bfrops_base_argv_copy_tma(
+pmix_bfrops_base_tma_argv_copy(
     char **argv,
     pmix_tma_t *tma
 ) {
@@ -1633,8 +1633,8 @@ pmix_bfrops_base_argv_copy_tma(
     dupv[0] = NULL;
 
     while (NULL != *argv) {
-        if (PMIX_SUCCESS != pmix_bfrops_base_argv_append_nosize_tma(&dupv, *argv, tma)) {
-            pmix_bfrops_base_argv_free_tma(dupv, tma);
+        if (PMIX_SUCCESS != pmix_bfrops_base_tma_argv_append_nosize(&dupv, *argv, tma)) {
+            pmix_bfrops_base_tma_argv_free(dupv, tma);
             return NULL;
         }
         ++argv;
@@ -1644,15 +1644,15 @@ pmix_bfrops_base_argv_copy_tma(
 }
 
 static inline void
-pmix_bfrops_base_query_destruct_tma(
+pmix_bfrops_base_tma_query_destruct(
     pmix_query_t *p,
     pmix_tma_t *tma
 ) {
     if (NULL != p->keys) {
-        pmix_bfrops_base_argv_free_tma(p->keys, tma);
+        pmix_bfrops_base_tma_argv_free(p->keys, tma);
     }
     if (NULL != p->qualifiers) {
-        pmix_bfrops_base_info_free_tma(p->qualifiers, p->nqual, tma);
+        pmix_bfrops_base_tma_info_free(p->qualifiers, p->nqual, tma);
         pmix_tma_free(tma, p->qualifiers);
         p->qualifiers = NULL;
         p->nqual = 0;
@@ -1660,28 +1660,28 @@ pmix_bfrops_base_query_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_query_free_tma(
+pmix_bfrops_base_tma_query_free(
     pmix_query_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_query_destruct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_query_destruct(&p[m], tma);
         }
     }
 }
 
 static inline void
-pmix_bfrops_base_query_release_tma(
+pmix_bfrops_base_tma_query_release(
     pmix_query_t *p,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_query_free_tma(p, 1, tma);
+    pmix_bfrops_base_tma_query_free(p, 1, tma);
 }
 
 static inline void
-pmix_bfrops_base_pdata_construct_tma(
+pmix_bfrops_base_tma_pdata_construct(
     pmix_pdata_t *p,
     pmix_tma_t *tma
 ) {
@@ -1692,15 +1692,15 @@ pmix_bfrops_base_pdata_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_pdata_destruct_tma(
+pmix_bfrops_base_tma_pdata_destruct(
     pmix_pdata_t *p,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_value_destruct_tma(&p->value, tma);
+    pmix_bfrops_base_tma_value_destruct(&p->value, tma);
 }
 
 static inline pmix_pdata_t *
-pmix_bfrops_base_pdata_create_tma(
+pmix_bfrops_base_tma_pdata_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -1710,27 +1710,27 @@ pmix_bfrops_base_pdata_create_tma(
     pmix_pdata_t *p = (pmix_pdata_t *)pmix_tma_malloc(tma, n * sizeof(pmix_pdata_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_pdata_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_pdata_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_pdata_free_tma(
+pmix_bfrops_base_tma_pdata_free(
     pmix_pdata_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_pdata_destruct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_pdata_destruct(&p[m], tma);
         }
     }
 }
 
 static inline void
-pmix_bfrops_base_app_destruct_tma(
+pmix_bfrops_base_tma_app_destruct(
     pmix_app_t *p,
     pmix_tma_t *tma
 ) {
@@ -1739,11 +1739,11 @@ pmix_bfrops_base_app_destruct_tma(
         p->cmd = NULL;
     }
     if (NULL != p->argv) {
-        pmix_bfrops_base_argv_free_tma(p->argv, tma);
+        pmix_bfrops_base_tma_argv_free(p->argv, tma);
         p->argv = NULL;
     }
     if (NULL != p->env) {
-        pmix_bfrops_base_argv_free_tma(p->env, tma);
+        pmix_bfrops_base_tma_argv_free(p->env, tma);
         p->env = NULL;
     }
     if (NULL != p->cwd) {
@@ -1751,14 +1751,14 @@ pmix_bfrops_base_app_destruct_tma(
         p->cwd = NULL;
     }
     if (NULL != p->info) {
-        pmix_bfrops_base_info_free_tma(p->info, p->ninfo, tma);
+        pmix_bfrops_base_tma_info_free(p->info, p->ninfo, tma);
         p->info = NULL;
         p->ninfo = 0;
     }
 }
 
 static inline void
-pmix_bfrops_base_app_construct_tma(
+pmix_bfrops_base_tma_app_construct(
     pmix_app_t *p,
     pmix_tma_t *tma
 ) {
@@ -1768,7 +1768,7 @@ pmix_bfrops_base_app_construct_tma(
 }
 
 static inline pmix_app_t *
-pmix_bfrops_base_app_create_tma(
+pmix_bfrops_base_tma_app_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -1778,45 +1778,45 @@ pmix_bfrops_base_app_create_tma(
     pmix_app_t *p = (pmix_app_t *)pmix_tma_malloc(tma, n * sizeof(pmix_app_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_app_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_app_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_app_info_create_tma(
+pmix_bfrops_base_tma_app_info_create(
     pmix_app_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     p->ninfo = n;
-    p->info = pmix_bfrops_base_info_create_tma(n, tma);
+    p->info = pmix_bfrops_base_tma_info_create(n, tma);
 }
 
 static inline void
-pmix_bfrops_base_app_free_tma(
+pmix_bfrops_base_tma_app_free(
     pmix_app_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_app_destruct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_app_destruct(&p[m], tma);
         }
     }
 }
 
 static inline void
-pmix_bfrops_base_app_release_tma(
+pmix_bfrops_base_tma_app_release(
     pmix_app_t *p,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_app_free_tma(p, 1, tma);
+    pmix_bfrops_base_tma_app_free(p, 1, tma);
 }
 
 static inline void
-pmix_bfrops_base_query_construct_tma(
+pmix_bfrops_base_tma_query_construct(
     pmix_query_t *p,
     pmix_tma_t *tma
 ) {
@@ -1826,7 +1826,7 @@ pmix_bfrops_base_query_construct_tma(
 }
 
 static inline pmix_query_t *
-pmix_bfrops_base_query_create_tma(
+pmix_bfrops_base_tma_query_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -1836,24 +1836,24 @@ pmix_bfrops_base_query_create_tma(
     pmix_query_t *p = (pmix_query_t *)pmix_tma_malloc(tma, n * sizeof(pmix_query_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_query_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_query_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_query_qualifiers_create_tma(
+pmix_bfrops_base_tma_query_qualifiers_create(
     pmix_query_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     p->nqual = n;
-    p->qualifiers = pmix_bfrops_base_info_create_tma(n, tma);
+    p->qualifiers = pmix_bfrops_base_tma_info_create(n, tma);
 }
 
 static inline void
-pmix_bfrops_base_regattr_destruct_tma(
+pmix_bfrops_base_tma_regattr_destruct(
     pmix_regattr_t *p,
     pmix_tma_t *tma
 ) {
@@ -1862,37 +1862,37 @@ pmix_bfrops_base_regattr_destruct_tma(
             pmix_tma_free(tma, p->name);
         }
         if (NULL != p->description) {
-            pmix_bfrops_base_argv_free_tma(p->description, tma);
+            pmix_bfrops_base_tma_argv_free(p->description, tma);
         }
     }
 }
 
 static inline void
-pmix_bfrops_base_regattr_free_tma(
+pmix_bfrops_base_tma_regattr_free(
     pmix_regattr_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_regattr_destruct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_regattr_destruct(&p[m], tma);
         }
     }
 }
 
 static inline void
-pmix_bfrops_base_regattr_construct_tma(
+pmix_bfrops_base_tma_regattr_construct(
     pmix_regattr_t *p,
     pmix_tma_t *tma
 ) {
     p->name = NULL;
-    pmix_bfrops_base_load_key_tma(p->string, NULL, tma);
+    pmix_bfrops_base_tma_load_key(p->string, NULL, tma);
     p->type = PMIX_UNDEF;
     p->description = NULL;
 }
 
 static inline pmix_regattr_t *
-pmix_bfrops_base_regattr_create_tma(
+pmix_bfrops_base_tma_regattr_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -1903,14 +1903,14 @@ pmix_bfrops_base_regattr_create_tma(
     pmix_regattr_t *p = (pmix_regattr_t*)pmix_tma_malloc(tma, n * sizeof(pmix_regattr_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_regattr_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_regattr_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_regattr_load_tma(
+pmix_bfrops_base_tma_regattr_load(
     pmix_regattr_t *p,
     const char *name,
     const char *key,
@@ -1922,33 +1922,33 @@ pmix_bfrops_base_regattr_load_tma(
         p->name = pmix_tma_strdup(tma, name);
     }
     if (NULL != key) {
-        pmix_bfrops_base_load_key_tma(p->string, key, tma);
+        pmix_bfrops_base_tma_load_key(p->string, key, tma);
     }
     p->type = type;
     if (NULL != description) {
-        pmix_bfrops_base_argv_append_nosize_tma(&p->description, description, tma);
+        pmix_bfrops_base_tma_argv_append_nosize(&p->description, description, tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_regattr_xfer_tma(
+pmix_bfrops_base_tma_regattr_xfer(
     pmix_regattr_t *dest,
     const pmix_regattr_t *src,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_regattr_construct_tma(dest, tma);
+    pmix_bfrops_base_tma_regattr_construct(dest, tma);
     if (NULL != (src->name)) {
         dest->name = pmix_tma_strdup(tma, src->name);
     }
-    pmix_bfrops_base_load_key_tma(dest->string, src->string, tma);
+    pmix_bfrops_base_tma_load_key(dest->string, src->string, tma);
     dest->type = src->type;
     if (NULL != src->description) {
-        dest->description = pmix_bfrops_base_argv_copy_tma(src->description, tma);
+        dest->description = pmix_bfrops_base_tma_argv_copy(src->description, tma);
     }
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_setenv_tma(
+pmix_bfrops_base_tma_setenv(
     const char *name,
     const char *value,
     bool overwrite,
@@ -1999,7 +1999,7 @@ pmix_bfrops_base_setenv_tma(
     }
 
     if (NULL == *env) {
-        pmix_bfrops_base_argv_append_nosize_tma(env, newvalue, tma);
+        pmix_bfrops_base_tma_argv_append_nosize(env, newvalue, tma);
         return PMIX_SUCCESS;
     }
 
@@ -2024,14 +2024,14 @@ pmix_bfrops_base_setenv_tma(
 
     /* If we found no match, append this value */
 
-    pmix_bfrops_base_argv_append_nosize_tma(env, newvalue, tma);
+    pmix_bfrops_base_tma_argv_append_nosize(env, newvalue, tma);
 
     /* All done */
     return PMIX_SUCCESS;
 }
 
 static inline void
-pmix_bfrops_base_data_array_init_tma(
+pmix_bfrops_base_tma_data_array_init(
     pmix_data_array_t *p,
     pmix_data_type_t type,
     pmix_tma_t *tma
@@ -2044,7 +2044,7 @@ pmix_bfrops_base_data_array_init_tma(
 }
 
 static inline void
-pmix_bfrops_base_data_array_destruct_tma(
+pmix_bfrops_base_tma_data_array_destruct(
     pmix_data_array_t *d,
     pmix_tma_t *tma
 ) {
@@ -2054,17 +2054,17 @@ pmix_bfrops_base_data_array_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_data_array_free_tma(
+pmix_bfrops_base_tma_data_array_free(
     pmix_data_array_t *p,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
-        pmix_bfrops_base_data_array_destruct_tma(p, tma);
+        pmix_bfrops_base_tma_data_array_destruct(p, tma);
     }
 }
 
 static inline pmix_data_array_t *
-pmix_bfrops_base_data_array_create_tma(
+pmix_bfrops_base_tma_data_array_create(
     size_t n,
     pmix_data_type_t type,
     pmix_tma_t *tma
@@ -2074,13 +2074,13 @@ pmix_bfrops_base_data_array_create_tma(
     }
     pmix_data_array_t *p = (pmix_data_array_t *)pmix_tma_malloc(tma, sizeof(pmix_data_array_t));
     if (PMIX_LIKELY(NULL != p)) {
-        pmix_bfrops_base_data_array_construct_tma(p, n, type, tma);
+        pmix_bfrops_base_tma_data_array_construct(p, n, type, tma);
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_value_destruct_tma(
+pmix_bfrops_base_tma_value_destruct(
     pmix_value_t *v,
     pmix_tma_t *tma
 ) {
@@ -2092,7 +2092,7 @@ pmix_bfrops_base_value_destruct_tma(
             break;
         case PMIX_PROC:
             if (NULL != v->data.proc) {
-                pmix_bfrops_base_proc_free_tma(v->data.proc, 1, tma);
+                pmix_bfrops_base_tma_proc_free(v->data.proc, 1, tma);
             }
             break;
         case PMIX_BYTE_OBJECT:
@@ -2104,12 +2104,12 @@ pmix_bfrops_base_value_destruct_tma(
             break;
         case PMIX_PROC_INFO:
             if (NULL != v->data.pinfo) {
-                pmix_bfrops_base_proc_info_free_tma(v->data.pinfo, 1, tma);
+                pmix_bfrops_base_tma_proc_info_free(v->data.pinfo, 1, tma);
             }
             break;
         case PMIX_DATA_ARRAY:
             if (NULL != v->data.darray) {
-                pmix_bfrops_base_data_array_free_tma(v->data.darray, tma);
+                pmix_bfrops_base_tma_data_array_free(v->data.darray, tma);
             }
             break;
         case PMIX_ENVAR:
@@ -2122,7 +2122,7 @@ pmix_bfrops_base_value_destruct_tma(
             break;
         case PMIX_COORD:
             if (NULL != v->data.coord) {
-                pmix_bfrops_base_coord_free_tma(v->data.coord, 1, tma);
+                pmix_bfrops_base_tma_coord_free(v->data.coord, 1, tma);
             }
             break;
         case PMIX_TOPO:
@@ -2139,22 +2139,22 @@ pmix_bfrops_base_value_destruct_tma(
             break;
         case PMIX_GEOMETRY:
             if (NULL != v->data.geometry) {
-                pmix_bfrops_base_geometry_free_tma(v->data.geometry, 1, tma);
+                pmix_bfrops_base_tma_geometry_free(v->data.geometry, 1, tma);
             }
             break;
         case PMIX_DEVICE_DIST:
             if (NULL != v->data.devdist) {
-                pmix_bfrops_base_device_distance_free_tma(v->data.devdist, 1, tma);
+                pmix_bfrops_base_tma_device_distance_free(v->data.devdist, 1, tma);
             }
             break;
         case PMIX_ENDPOINT:
             if (NULL != v->data.endpoint) {
-                pmix_bfrops_base_endpoint_free_tma(v->data.endpoint, 1, tma);
+                pmix_bfrops_base_tma_endpoint_free(v->data.endpoint, 1, tma);
             }
             break;
         case PMIX_REGATTR:
             if (NULL != v->data.ptr) {
-                pmix_bfrops_base_regattr_free_tma(v->data.ptr, 1, tma);
+                pmix_bfrops_base_tma_regattr_free(v->data.ptr, 1, tma);
             }
             break;
         case PMIX_REGEX:
@@ -2165,33 +2165,33 @@ pmix_bfrops_base_value_destruct_tma(
             break;
         case PMIX_DATA_BUFFER:
             if (NULL != v->data.dbuf) {
-                pmix_bfrops_base_data_buffer_release_tma(v->data.dbuf, tma);
+                pmix_bfrops_base_tma_data_buffer_release(v->data.dbuf, tma);
             }
             break;
         case PMIX_PROC_STATS:
             if (NULL != v->data.pstats) {
-                pmix_bfrops_base_proc_stats_free_tma(v->data.pstats, 1, tma);
+                pmix_bfrops_base_tma_proc_stats_free(v->data.pstats, 1, tma);
                 pmix_tma_free(tma, v->data.pstats);
                 v->data.pstats = NULL;
             }
             break;
         case PMIX_DISK_STATS:
             if (NULL != v->data.dkstats) {
-                pmix_bfrops_base_disk_stats_free_tma(v->data.dkstats, 1, tma);
+                pmix_bfrops_base_tma_disk_stats_free(v->data.dkstats, 1, tma);
                 pmix_tma_free(tma, v->data.dkstats);
                 v->data.dkstats = NULL;
             }
             break;
         case PMIX_NET_STATS:
             if (NULL != v->data.netstats) {
-                pmix_bfrops_base_net_stats_free_tma(v->data.netstats, 1, tma);
+                pmix_bfrops_base_tma_net_stats_free(v->data.netstats, 1, tma);
                 pmix_tma_free(tma, v->data.netstats);
                 v->data.netstats = NULL;
             }
             break;
         case PMIX_NODE_STATS:
             if (NULL != v->data.ndstats) {
-                pmix_bfrops_base_node_stats_free_tma(v->data.ndstats, 1, tma);
+                pmix_bfrops_base_tma_node_stats_free(v->data.ndstats, 1, tma);
                 pmix_tma_free(tma, v->data.ndstats);
                 v->data.ndstats = NULL;
             }
@@ -2208,7 +2208,7 @@ pmix_bfrops_base_value_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_value_free_tma(
+pmix_bfrops_base_tma_value_free(
     pmix_value_t *v,
     size_t n,
     pmix_tma_t *tma
@@ -2217,12 +2217,12 @@ pmix_bfrops_base_value_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_value_destruct_tma(&v[m], tma);
+        pmix_bfrops_base_tma_value_destruct(&v[m], tma);
     }
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_value_load_tma(
+pmix_bfrops_base_tma_value_load(
     pmix_value_t *v,
     const void *data,
     pmix_data_type_t type,
@@ -2235,7 +2235,7 @@ pmix_bfrops_base_value_load_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_value_unload_tma(
+pmix_bfrops_base_tma_value_unload(
     pmix_value_t *kv,
     void **data,
     size_t *sz,
@@ -2247,7 +2247,7 @@ pmix_bfrops_base_value_unload_tma(
 }
 
 static inline pmix_boolean_t
-pmix_bfrops_base_value_true_tma(
+pmix_bfrops_base_tma_value_true(
     const pmix_value_t *value,
     pmix_tma_t *tma
 ) {
@@ -2296,7 +2296,7 @@ pmix_bfrops_base_value_true_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_regattr_tma(
+pmix_bfrops_base_tma_copy_regattr(
     pmix_regattr_t **dest,
     pmix_regattr_t *src,
     pmix_data_type_t type,
@@ -2304,21 +2304,21 @@ pmix_bfrops_base_copy_regattr_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    *dest = pmix_bfrops_base_regattr_create_tma(1, tma);
+    *dest = pmix_bfrops_base_tma_regattr_create(1, tma);
     if (PMIX_UNLIKELY(NULL == (*dest))) {
         return PMIX_ERR_NOMEM;
     }
     if (NULL != src->name) {
         (*dest)->name = pmix_tma_strdup(tma, src->name);
     }
-    pmix_bfrops_base_load_key_tma((*dest)->string, src->string, tma);
+    pmix_bfrops_base_tma_load_key((*dest)->string, src->string, tma);
     (*dest)->type = src->type;
-    (*dest)->description = pmix_bfrops_base_argv_copy_tma(src->description, tma);
+    (*dest)->description = pmix_bfrops_base_tma_argv_copy(src->description, tma);
     return PMIX_SUCCESS;
 }
 
 static inline void
-pmix_bfrops_base_data_buffer_destruct_tma(
+pmix_bfrops_base_tma_data_buffer_destruct(
     pmix_data_buffer_t *b,
     pmix_tma_t *tma
 ) {
@@ -2333,7 +2333,7 @@ pmix_bfrops_base_data_buffer_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_envar_construct_tma(
+pmix_bfrops_base_tma_envar_construct(
     pmix_envar_t *e,
     pmix_tma_t *tma
 ) {
@@ -2345,7 +2345,7 @@ pmix_bfrops_base_envar_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_envar_destruct_tma(
+pmix_bfrops_base_tma_envar_destruct(
     pmix_envar_t *e,
     pmix_tma_t *tma
 ) {
@@ -2360,7 +2360,7 @@ pmix_bfrops_base_envar_destruct_tma(
 }
 
 static inline pmix_envar_t *
-pmix_bfrops_base_envar_create_tma(
+pmix_bfrops_base_tma_envar_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -2370,14 +2370,14 @@ pmix_bfrops_base_envar_create_tma(
     pmix_envar_t *e = (pmix_envar_t *)pmix_tma_malloc(tma, n * sizeof(pmix_envar_t));
     if (PMIX_LIKELY(NULL != e)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_envar_construct_tma(&e[m], tma);
+            pmix_bfrops_base_tma_envar_construct(&e[m], tma);
         }
     }
     return e;
 }
 
 static inline void
-pmix_bfrops_base_envar_free_tma(
+pmix_bfrops_base_tma_envar_free(
     pmix_envar_t *e,
     size_t n,
     pmix_tma_t *tma
@@ -2386,12 +2386,12 @@ pmix_bfrops_base_envar_free_tma(
         return;
     }
     for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_envar_destruct_tma(&e[m], tma);
+        pmix_bfrops_base_tma_envar_destruct(&e[m], tma);
     }
 }
 
 static inline void
-pmix_bfrops_base_envar_load_tma(
+pmix_bfrops_base_tma_envar_load(
     pmix_envar_t *e,
     char *var,
     char *value,
@@ -2408,7 +2408,7 @@ pmix_bfrops_base_envar_load_tma(
 }
 
 static inline void
-pmix_bfrops_base_data_buffer_construct_tma(
+pmix_bfrops_base_tma_data_buffer_construct(
     pmix_data_buffer_t *b,
     pmix_tma_t *tma
 ) {
@@ -2418,29 +2418,29 @@ pmix_bfrops_base_data_buffer_construct_tma(
 }
 
 static inline pmix_data_buffer_t *
-pmix_bfrops_base_data_buffer_create_tma(
+pmix_bfrops_base_tma_data_buffer_create(
     pmix_tma_t *tma
 ) {
     pmix_data_buffer_t *b = (pmix_data_buffer_t *)pmix_tma_malloc(tma, sizeof(pmix_data_buffer_t));
     if (PMIX_LIKELY(NULL != b)) {
-        pmix_bfrops_base_data_buffer_construct_tma(b, tma);
+        pmix_bfrops_base_tma_data_buffer_construct(b, tma);
     }
     return b;
 }
 
 static inline void
-pmix_bfrops_base_data_buffer_release_tma(
+pmix_bfrops_base_tma_data_buffer_release(
     pmix_data_buffer_t *b,
     pmix_tma_t *tma
 ) {
     if (NULL == b) {
         return;
     }
-    pmix_bfrops_base_data_buffer_destruct_tma(b, tma);
+    pmix_bfrops_base_tma_data_buffer_destruct(b, tma);
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_dbuf_tma(
+pmix_bfrops_base_tma_copy_dbuf(
     pmix_data_buffer_t **dest,
     pmix_data_buffer_t *src,
     pmix_data_type_t type,
@@ -2449,7 +2449,7 @@ pmix_bfrops_base_copy_dbuf_tma(
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* create the new object */
-    pmix_data_buffer_t *p = pmix_bfrops_base_data_buffer_create_tma(tma);
+    pmix_data_buffer_t *p = pmix_bfrops_base_tma_data_buffer_create(tma);
     if (PMIX_UNLIKELY(NULL == p)) {
         return PMIX_ERR_NOMEM;
     }
@@ -2460,7 +2460,7 @@ pmix_bfrops_base_copy_dbuf_tma(
 }
 
 static inline void
-pmix_bfrops_base_proc_stats_construct_tma(
+pmix_bfrops_base_tma_proc_stats_construct(
     pmix_proc_stats_t *p,
     pmix_tma_t *tma
 ) {
@@ -2470,7 +2470,7 @@ pmix_bfrops_base_proc_stats_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_proc_stats_destruct_tma(
+pmix_bfrops_base_tma_proc_stats_destruct(
     pmix_proc_stats_t *p,
     pmix_tma_t *tma
 ) {
@@ -2485,7 +2485,7 @@ pmix_bfrops_base_proc_stats_destruct_tma(
 }
 
 static inline pmix_proc_stats_t *
-pmix_bfrops_base_proc_stats_create_tma(
+pmix_bfrops_base_tma_proc_stats_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -2495,27 +2495,27 @@ pmix_bfrops_base_proc_stats_create_tma(
     pmix_proc_stats_t *p = (pmix_proc_stats_t*)pmix_tma_malloc(tma, n * sizeof(pmix_proc_stats_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_proc_stats_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_proc_stats_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_proc_stats_free_tma(
+pmix_bfrops_base_tma_proc_stats_free(
     pmix_proc_stats_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_proc_stats_destruct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_proc_stats_destruct(&p[m], tma);
         }
     }
 }
 
 static inline void
-pmix_bfrops_base_populate_pstats_tma(
+pmix_bfrops_base_tma_populate_pstats(
     pmix_proc_stats_t *p,
     pmix_proc_stats_t *src,
     pmix_tma_t *tma
@@ -2543,7 +2543,7 @@ pmix_bfrops_base_populate_pstats_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_pstats_tma(
+pmix_bfrops_base_tma_copy_pstats(
     pmix_proc_stats_t **dest,
     pmix_proc_stats_t *src,
     pmix_data_type_t type,
@@ -2551,17 +2551,17 @@ pmix_bfrops_base_copy_pstats_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
     /* create the new object */
-    pmix_proc_stats_t *p = pmix_bfrops_base_proc_stats_create_tma(1, tma);
+    pmix_proc_stats_t *p = pmix_bfrops_base_tma_proc_stats_create(1, tma);
     if (PMIX_UNLIKELY(NULL == p)) {
         return PMIX_ERR_NOMEM;
     }
     *dest = p;
-    pmix_bfrops_base_populate_pstats_tma(p, src, tma);
+    pmix_bfrops_base_tma_populate_pstats(p, src, tma);
     return PMIX_SUCCESS;
 }
 
 static inline void
-pmix_bfrops_base_disk_stats_construct_tma(
+pmix_bfrops_base_tma_disk_stats_construct(
     pmix_disk_stats_t *p,
     pmix_tma_t *tma
 ) {
@@ -2571,7 +2571,7 @@ pmix_bfrops_base_disk_stats_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_disk_stats_destruct_tma(
+pmix_bfrops_base_tma_disk_stats_destruct(
     pmix_disk_stats_t *p,
     pmix_tma_t *tma
 ) {
@@ -2582,7 +2582,7 @@ pmix_bfrops_base_disk_stats_destruct_tma(
 }
 
 static inline pmix_disk_stats_t *
-pmix_bfrops_base_disk_stats_create_tma(
+pmix_bfrops_base_tma_disk_stats_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -2592,27 +2592,27 @@ pmix_bfrops_base_disk_stats_create_tma(
     pmix_disk_stats_t *p = (pmix_disk_stats_t *)pmix_tma_malloc(tma, n * sizeof(pmix_disk_stats_t));
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_disk_stats_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_disk_stats_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_disk_stats_free_tma(
+pmix_bfrops_base_tma_disk_stats_free(
     pmix_disk_stats_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_disk_stats_destruct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_disk_stats_destruct(&p[m], tma);
         }
     }
 }
 
 static inline void
-pmix_bfrops_base_populate_dkstats_tma(
+pmix_bfrops_base_tma_populate_dkstats(
     pmix_disk_stats_t *p,
     pmix_disk_stats_t *src,
     pmix_tma_t *tma
@@ -2634,7 +2634,7 @@ pmix_bfrops_base_populate_dkstats_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_dkstats_tma(
+pmix_bfrops_base_tma_copy_dkstats(
     pmix_disk_stats_t **dest,
     pmix_disk_stats_t *src,
     pmix_data_type_t type,
@@ -2642,17 +2642,17 @@ pmix_bfrops_base_copy_dkstats_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
     /* create the new object */
-    pmix_disk_stats_t *p = pmix_bfrops_base_disk_stats_create_tma(1, tma);
+    pmix_disk_stats_t *p = pmix_bfrops_base_tma_disk_stats_create(1, tma);
     if (PMIX_UNLIKELY(NULL == p)) {
         return PMIX_ERR_NOMEM;
     }
     *dest = p;
-    pmix_bfrops_base_populate_dkstats_tma(p, src, tma);
+    pmix_bfrops_base_tma_populate_dkstats(p, src, tma);
     return PMIX_SUCCESS;
 }
 
 static inline void
-pmix_bfrops_base_net_stats_construct_tma(
+pmix_bfrops_base_tma_net_stats_construct(
     pmix_net_stats_t *p,
     pmix_tma_t *tma
 ) {
@@ -2662,7 +2662,7 @@ pmix_bfrops_base_net_stats_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_net_stats_destruct_tma(
+pmix_bfrops_base_tma_net_stats_destruct(
     pmix_net_stats_t *p,
     pmix_tma_t *tma
 ) {
@@ -2673,20 +2673,20 @@ pmix_bfrops_base_net_stats_destruct_tma(
 }
 
 static inline void
-pmix_bfrops_base_net_stats_free_tma(
+pmix_bfrops_base_tma_net_stats_free(
     pmix_net_stats_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_net_stats_destruct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_net_stats_destruct(&p[m], tma);
         }
     }
 }
 
 static inline pmix_net_stats_t *
-pmix_bfrops_base_net_stats_create_tma(
+pmix_bfrops_base_tma_net_stats_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -2696,14 +2696,14 @@ pmix_bfrops_base_net_stats_create_tma(
     pmix_net_stats_t *p = (pmix_net_stats_t*)pmix_tma_malloc(tma, n * sizeof(pmix_net_stats_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_net_stats_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_net_stats_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_populate_netstats_tma(
+pmix_bfrops_base_tma_populate_netstats(
     pmix_net_stats_t *p,
     pmix_net_stats_t *src,
     pmix_tma_t *tma
@@ -2720,7 +2720,7 @@ pmix_bfrops_base_populate_netstats_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_netstats_tma(
+pmix_bfrops_base_tma_copy_netstats(
     pmix_net_stats_t **dest,
     pmix_net_stats_t *src,
     pmix_data_type_t type,
@@ -2728,17 +2728,17 @@ pmix_bfrops_base_copy_netstats_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
     /* create the new object */
-    pmix_net_stats_t *p = pmix_bfrops_base_net_stats_create_tma(1, tma);
+    pmix_net_stats_t *p = pmix_bfrops_base_tma_net_stats_create(1, tma);
     if (PMIX_UNLIKELY(NULL == p)) {
         return PMIX_ERR_NOMEM;
     }
     *dest = p;
-    pmix_bfrops_base_populate_netstats_tma(p, src, tma);
+    pmix_bfrops_base_tma_populate_netstats(p, src, tma);
     return PMIX_SUCCESS;
 }
 
 static inline void
-pmix_bfrops_base_node_stats_construct_tma(
+pmix_bfrops_base_tma_node_stats_construct(
     pmix_node_stats_t *p,
     pmix_tma_t *tma
 ) {
@@ -2748,7 +2748,7 @@ pmix_bfrops_base_node_stats_construct_tma(
 }
 
 static inline void
-pmix_bfrops_base_node_stats_destruct_tma(
+pmix_bfrops_base_tma_node_stats_destruct(
     pmix_node_stats_t *p,
     pmix_tma_t *tma
 ) {
@@ -2757,15 +2757,15 @@ pmix_bfrops_base_node_stats_destruct_tma(
         p->node = NULL;
     }
     if (NULL != p->diskstats) {
-        pmix_bfrops_base_disk_stats_free_tma(p->diskstats, p->ndiskstats, tma);
+        pmix_bfrops_base_tma_disk_stats_free(p->diskstats, p->ndiskstats, tma);
     }
     if (NULL != p->netstats) {
-        pmix_bfrops_base_net_stats_free_tma(p->netstats, p->nnetstats, tma);
+        pmix_bfrops_base_tma_net_stats_free(p->netstats, p->nnetstats, tma);
     }
 }
 
 static inline pmix_node_stats_t *
-pmix_bfrops_base_node_stats_create_tma(
+pmix_bfrops_base_tma_node_stats_create(
     size_t n,
     pmix_tma_t *tma
 ) {
@@ -2775,27 +2775,27 @@ pmix_bfrops_base_node_stats_create_tma(
     pmix_node_stats_t *p = (pmix_node_stats_t *)pmix_tma_malloc(tma, n * sizeof(pmix_node_stats_t));
     if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_node_stats_construct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_node_stats_construct(&p[m], tma);
         }
     }
     return p;
 }
 
 static inline void
-pmix_bfrops_base_node_stats_free_tma(
+pmix_bfrops_base_tma_node_stats_free(
     pmix_node_stats_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_node_stats_destruct_tma(&p[m], tma);
+            pmix_bfrops_base_tma_node_stats_destruct(&p[m], tma);
         }
     }
 }
 
 static inline void
-pmix_bfrops_base_populate_ndstats_tma(
+pmix_bfrops_base_tma_populate_ndstats(
     pmix_node_stats_t *p,
     pmix_node_stats_t *src,
     pmix_tma_t *tma
@@ -2819,18 +2819,18 @@ pmix_bfrops_base_populate_ndstats_tma(
     p->sample_time.tv_usec = src->sample_time.tv_usec;
     p->ndiskstats = src->ndiskstats;
     if (0 < p->ndiskstats) {
-        p->diskstats = pmix_bfrops_base_disk_stats_create_tma(p->ndiskstats, tma);
+        p->diskstats = pmix_bfrops_base_tma_disk_stats_create(p->ndiskstats, tma);
         for (size_t n = 0; n < p->ndiskstats; n++) {
-            pmix_bfrops_base_populate_dkstats_tma(
+            pmix_bfrops_base_tma_populate_dkstats(
                 &p->diskstats[n], &src->diskstats[n], tma
             );
         }
     }
     p->nnetstats = src->nnetstats;
     if (0 < p->nnetstats) {
-        p->netstats = pmix_bfrops_base_net_stats_create_tma(p->nnetstats, tma);
+        p->netstats = pmix_bfrops_base_tma_net_stats_create(p->nnetstats, tma);
         for (size_t n = 0; n < p->nnetstats; n++) {
-            pmix_bfrops_base_populate_netstats_tma(
+            pmix_bfrops_base_tma_populate_netstats(
                 &p->netstats[n], &src->netstats[n], tma
             );
         }
@@ -2838,7 +2838,7 @@ pmix_bfrops_base_populate_ndstats_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_copy_ndstats_tma(
+pmix_bfrops_base_tma_copy_ndstats(
     pmix_node_stats_t **dest,
     pmix_node_stats_t *src,
     pmix_data_type_t type,
@@ -2846,17 +2846,17 @@ pmix_bfrops_base_copy_ndstats_tma(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(type);
     /* create the new object */
-    pmix_node_stats_t *p = pmix_bfrops_base_node_stats_create_tma(1, tma);
+    pmix_node_stats_t *p = pmix_bfrops_base_tma_node_stats_create(1, tma);
     if (PMIX_UNLIKELY(NULL == p)) {
         return PMIX_ERR_NOMEM;
     }
     *dest = p;
-    pmix_bfrops_base_populate_ndstats_tma(p, src, tma);
+    pmix_bfrops_base_tma_populate_ndstats(p, src, tma);
     return PMIX_SUCCESS;
 }
 
 static inline pmix_value_cmp_t
-pmix_bfrops_base_value_compare_tma(
+pmix_bfrops_base_tma_value_compare(
     pmix_value_t *v1,
     pmix_value_t *v2,
     pmix_tma_t *tma
@@ -2867,7 +2867,7 @@ pmix_bfrops_base_value_compare_tma(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_value_xfer_tma(
+pmix_bfrops_base_tma_value_xfer(
     pmix_value_t *p,
     const pmix_value_t *src,
     pmix_tma_t *tma
@@ -2959,9 +2959,9 @@ pmix_bfrops_base_value_xfer_tma(
         memcpy(&p->data.rank, &src->data.rank, sizeof(pmix_rank_t));
         break;
     case PMIX_PROC_NSPACE:
-        return pmix_bfrops_base_copy_nspace_tma(&p->data.nspace, src->data.nspace, PMIX_PROC_NSPACE, tma);
+        return pmix_bfrops_base_tma_copy_nspace(&p->data.nspace, src->data.nspace, PMIX_PROC_NSPACE, tma);
     case PMIX_PROC:
-        p->data.proc = pmix_bfrops_base_proc_create_tma(1, tma);
+        p->data.proc = pmix_bfrops_base_tma_proc_create(1, tma);
         if (PMIX_UNLIKELY(NULL == p->data.proc)) {
             return PMIX_ERR_NOMEM;
         }
@@ -2994,7 +2994,7 @@ pmix_bfrops_base_value_xfer_tma(
         memcpy(&p->data.state, &src->data.state, sizeof(pmix_proc_state_t));
         break;
     case PMIX_PROC_INFO:
-        return pmix_bfrops_base_copy_pinfo_tma(&p->data.pinfo, src->data.pinfo, PMIX_PROC_INFO, tma);
+        return pmix_bfrops_base_tma_copy_pinfo(&p->data.pinfo, src->data.pinfo, PMIX_PROC_INFO, tma);
     case PMIX_DATA_ARRAY:
         // TODO(skg)
         return pmix_bfrops_base_copy_darray(&p->data.darray, src->data.darray, PMIX_DATA_ARRAY);
@@ -3005,7 +3005,7 @@ pmix_bfrops_base_value_xfer_tma(
         memcpy(&p->data.adir, &src->data.adir, sizeof(pmix_alloc_directive_t));
         break;
     case PMIX_ENVAR:
-        pmix_bfrops_base_envar_construct_tma(&p->data.envar, tma);
+        pmix_bfrops_base_tma_envar_construct(&p->data.envar, tma);
 
         if (NULL != src->data.envar.envar) {
             p->data.envar.envar = pmix_tma_strdup(tma, src->data.envar.envar);
@@ -3016,7 +3016,7 @@ pmix_bfrops_base_value_xfer_tma(
         p->data.envar.separator = src->data.envar.separator;
         break;
     case PMIX_COORD:
-        return pmix_bfrops_base_copy_coord_tma(&p->data.coord, src->data.coord, PMIX_COORD, tma);
+        return pmix_bfrops_base_tma_copy_coord(&p->data.coord, src->data.coord, PMIX_COORD, tma);
     case PMIX_LINK_STATE:
         memcpy(&p->data.linkstate, &src->data.linkstate, sizeof(pmix_link_state_t));
         break;
@@ -3024,7 +3024,7 @@ pmix_bfrops_base_value_xfer_tma(
         memcpy(&p->data.jstate, &src->data.jstate, sizeof(pmix_job_state_t));
         break;
     case PMIX_TOPO:
-        rc = pmix_bfrops_base_copy_topology_tma(&p->data.topo, src->data.topo, PMIX_TOPO, tma);
+        rc = pmix_bfrops_base_tma_copy_topology(&p->data.topo, src->data.topo, PMIX_TOPO, tma);
         if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
             /* we are being asked to do this before init, so
              * just copy the pointer across */
@@ -3032,7 +3032,7 @@ pmix_bfrops_base_value_xfer_tma(
         }
         break;
     case PMIX_PROC_CPUSET:
-        rc = pmix_bfrops_base_copy_cpuset_tma(&p->data.cpuset, src->data.cpuset, PMIX_PROC_CPUSET, tma);
+        rc = pmix_bfrops_base_tma_copy_cpuset(&p->data.cpuset, src->data.cpuset, PMIX_PROC_CPUSET, tma);
         if (PMIX_ERR_INIT == rc || PMIX_ERR_NOT_SUPPORTED == rc) {
             /* we are being asked to do this before init, so
              * just copy the pointer across */
@@ -3043,28 +3043,28 @@ pmix_bfrops_base_value_xfer_tma(
         memcpy(&p->data.locality, &src->data.locality, sizeof(pmix_locality_t));
         break;
     case PMIX_GEOMETRY:
-        return pmix_bfrops_base_copy_geometry_tma(&p->data.geometry, src->data.geometry, PMIX_GEOMETRY, tma);
+        return pmix_bfrops_base_tma_copy_geometry(&p->data.geometry, src->data.geometry, PMIX_GEOMETRY, tma);
     case PMIX_DEVTYPE:
         memcpy(&p->data.devtype, &src->data.devtype, sizeof(pmix_device_type_t));
         break;
     case PMIX_DEVICE_DIST:
-        return pmix_bfrops_base_copy_devdist_tma(&p->data.devdist, src->data.devdist, PMIX_DEVICE_DIST, tma);
+        return pmix_bfrops_base_tma_copy_devdist(&p->data.devdist, src->data.devdist, PMIX_DEVICE_DIST, tma);
     case PMIX_ENDPOINT:
-        return pmix_bfrops_base_copy_endpoint_tma(&p->data.endpoint, src->data.endpoint, PMIX_ENDPOINT, tma);
+        return pmix_bfrops_base_tma_copy_endpoint(&p->data.endpoint, src->data.endpoint, PMIX_ENDPOINT, tma);
     case PMIX_REGATTR:
-        return pmix_bfrops_base_copy_regattr_tma((pmix_regattr_t **) &p->data.ptr, src->data.ptr,
+        return pmix_bfrops_base_tma_copy_regattr((pmix_regattr_t **) &p->data.ptr, src->data.ptr,
                                                  PMIX_REGATTR, tma);
     case PMIX_DATA_BUFFER:
-        return pmix_bfrops_base_copy_dbuf_tma(&p->data.dbuf, src->data.dbuf, PMIX_DATA_BUFFER, tma);
+        return pmix_bfrops_base_tma_copy_dbuf(&p->data.dbuf, src->data.dbuf, PMIX_DATA_BUFFER, tma);
     case PMIX_PROC_STATS:
-        return pmix_bfrops_base_copy_pstats_tma(&p->data.pstats, src->data.pstats, PMIX_PROC_STATS, tma);
+        return pmix_bfrops_base_tma_copy_pstats(&p->data.pstats, src->data.pstats, PMIX_PROC_STATS, tma);
     case PMIX_DISK_STATS:
-        return pmix_bfrops_base_copy_dkstats_tma(&p->data.dkstats, src->data.dkstats, PMIX_DISK_STATS, tma);
+        return pmix_bfrops_base_tma_copy_dkstats(&p->data.dkstats, src->data.dkstats, PMIX_DISK_STATS, tma);
     case PMIX_NET_STATS:
-        return pmix_bfrops_base_copy_netstats_tma(&p->data.netstats, src->data.netstats,
+        return pmix_bfrops_base_tma_copy_netstats(&p->data.netstats, src->data.netstats,
                                                   PMIX_NET_STATS, tma);
     case PMIX_NODE_STATS:
-        return pmix_bfrops_base_copy_ndstats_tma(&p->data.ndstats, src->data.ndstats, PMIX_NODE_STATS, tma);
+        return pmix_bfrops_base_tma_copy_ndstats(&p->data.ndstats, src->data.ndstats, PMIX_NODE_STATS, tma);
     default:
         pmix_output(0, "PMIX-XFER-VALUE: UNSUPPORTED TYPE %d", (int) src->type);
         return PMIX_ERROR;
@@ -3073,7 +3073,7 @@ pmix_bfrops_base_value_xfer_tma(
 }
 
 static inline void
-pmix_bfrops_base_data_array_construct_tma(
+pmix_bfrops_base_tma_data_array_construct(
     pmix_data_array_t *p,
     size_t num,
     pmix_data_type_t type,
@@ -3083,32 +3083,32 @@ pmix_bfrops_base_data_array_construct_tma(
     p->size = num;
     if (0 < num) {
         if (PMIX_INFO == type) {
-            p->array = pmix_bfrops_base_info_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_info_create(num, tma);
 
         } else if (PMIX_PROC == type) {
-            p->array = pmix_bfrops_base_proc_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_proc_create(num, tma);
 
         } else if (PMIX_PROC_INFO == type) {
-            p->array = pmix_bfrops_base_proc_info_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_proc_info_create(num, tma);
 
         } else if (PMIX_ENVAR == type) {
-            p->array = pmix_bfrops_base_envar_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_envar_create(num, tma);
 
         } else if (PMIX_VALUE == type) {
-            p->array = pmix_bfrops_base_value_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_value_create(num, tma);
 
         } else if (PMIX_PDATA == type) {
-            p->array = pmix_bfrops_base_pdata_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_pdata_create(num, tma);
 
         } else if (PMIX_QUERY == type) {
-            p->array = pmix_bfrops_base_query_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_query_create(num, tma);
 
         } else if (PMIX_APP == type) {
-            p->array = pmix_bfrops_base_app_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_app_create(num, tma);
 
         } else if (PMIX_BYTE_OBJECT == type ||
                    PMIX_COMPRESSED_STRING == type) {
-            p->array = pmix_bfrops_base_byte_object_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_byte_object_create(num, tma);
 
         } else if (PMIX_ALLOC_DIRECTIVE == type ||
                    PMIX_PROC_STATE == type ||
@@ -3176,7 +3176,7 @@ pmix_bfrops_base_data_array_construct_tma(
             memset(p->array, 0, num * sizeof(time_t));
 
         } else if (PMIX_REGATTR == type) {
-            p->array = pmix_bfrops_base_regattr_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_regattr_create(num, tma);
 
         } else if (PMIX_BOOL == type) {
             p->array = pmix_tma_malloc(tma, num * sizeof(bool));
@@ -3193,32 +3193,32 @@ pmix_bfrops_base_data_array_construct_tma(
             memset(p->array, 0, num * sizeof(pmix_link_state_t));
 
         } else if (PMIX_ENDPOINT == type) {
-            p->array = pmix_bfrops_base_endpoint_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_endpoint_create(num, tma);
 
         } else if (PMIX_PROC_NSPACE == type) {
             p->array = pmix_tma_malloc(tma, num * sizeof(pmix_nspace_t));
             memset(p->array, 0, num * sizeof(pmix_nspace_t));
 
         } else if (PMIX_PROC_STATS == type) {
-            p->array = pmix_bfrops_base_proc_stats_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_proc_stats_create(num, tma);
 
         } else if (PMIX_DISK_STATS == type) {
-            p->array = pmix_bfrops_base_disk_stats_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_disk_stats_create(num, tma);
 
         } else if (PMIX_NET_STATS == type) {
-            p->array = pmix_bfrops_base_net_stats_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_net_stats_create(num, tma);
 
         } else if (PMIX_NODE_STATS == type) {
-            p->array = pmix_bfrops_base_node_stats_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_node_stats_create(num, tma);
 
         } else if (PMIX_DEVICE_DIST == type) {
-            p->array = pmix_bfrops_base_device_distance_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_device_distance_create(num, tma);
 
         } else if (PMIX_GEOMETRY == type) {
-            p->array = pmix_bfrops_base_geometry_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_geometry_create(num, tma);
 
         } else if (PMIX_PROC_CPUSET == type) {
-            p->array = pmix_bfrops_base_cpuset_create_tma(num, tma);
+            p->array = pmix_bfrops_base_tma_cpuset_create(num, tma);
 
         } else {
             p->array = NULL;
