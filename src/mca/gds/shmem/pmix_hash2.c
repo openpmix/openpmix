@@ -56,9 +56,6 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
-// TODO(skg) This shouldn't be here. For XFER now.
-#include "gds_shmem_tma.h"
-
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif

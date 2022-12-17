@@ -15,7 +15,6 @@
  */
 
 #include "gds_shmem.h"
-#include "gds_shmem_tma.h"
 #include "gds_shmem_utils.h"
 #include "gds_shmem_store.h"
 #include "gds_shmem_fetch.h"
