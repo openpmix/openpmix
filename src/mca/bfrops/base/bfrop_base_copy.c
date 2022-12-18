@@ -55,35 +55,7 @@ pmix_status_t pmix_bfrops_base_copy(pmix_pointer_array_t *regtypes, void **dest,
 
 pmix_status_t pmix_bfrops_base_copy_payload(pmix_buffer_t *dest, pmix_buffer_t *src)
 {
-    size_t to_copy = 0;
-    char *ptr;
-
-    /* deal with buffer type */
-    if (NULL == dest->base_ptr) {
-        /* destination buffer is empty - derive src buffer type */
-        dest->type = src->type;
-    } else if (dest->type != src->type) {
-        /* buffer types mismatch */
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
-    }
-
-    /* if the src buffer is empty, then there is
-     * nothing to do */
-    if (PMIX_BUFFER_IS_EMPTY(src)) {
-        return PMIX_SUCCESS;
-    }
-
-    /* extend the dest if necessary */
-    to_copy = src->pack_ptr - src->unpack_ptr;
-    if (NULL == (ptr = pmix_bfrop_buffer_extend(dest, to_copy))) {
-        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    memcpy(ptr, src->unpack_ptr, to_copy);
-    dest->bytes_used += to_copy;
-    dest->pack_ptr += to_copy;
-    return PMIX_SUCCESS;
+    return pmix_bfrops_base_tma_copy_payload(dest, src, NULL);
 }
 
 /*

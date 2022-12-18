@@ -637,7 +637,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
 
 void pmix_bfrops_base_darray_destruct(pmix_data_array_t *d)
 {
-    pmix_bfrops_base_tma_darray_destruct(d, NULL);
+    pmix_bfrops_base_tma_data_array_destruct(d, NULL);
 }
 
 void pmix_bfrops_base_value_destruct(pmix_value_t *v)
@@ -657,55 +657,7 @@ pmix_status_t pmix_bfrops_base_value_xfer(pmix_value_t *p, const pmix_value_t *s
  */
 char *pmix_bfrop_buffer_extend(pmix_buffer_t *buffer, size_t bytes_to_add)
 {
-    size_t required, to_alloc;
-    size_t pack_offset, unpack_offset;
-
-    /* Check to see if we have enough space already */
-    if (0 == bytes_to_add) {
-        return buffer->pack_ptr;
-    }
-
-    if ((buffer->bytes_allocated - buffer->bytes_used) >= bytes_to_add) {
-        return buffer->pack_ptr;
-    }
-
-    required = buffer->bytes_used + bytes_to_add;
-    if (required >= pmix_bfrops_globals.threshold_size) {
-        to_alloc = ((required + pmix_bfrops_globals.threshold_size - 1)
-                    / pmix_bfrops_globals.threshold_size)
-                   * pmix_bfrops_globals.threshold_size;
-    } else {
-        to_alloc = buffer->bytes_allocated;
-        if (0 == to_alloc) {
-            to_alloc = pmix_bfrops_globals.initial_size;
-        }
-        while (to_alloc < required) {
-            to_alloc <<= 1;
-        }
-    }
-
-    if (NULL != buffer->base_ptr) {
-        pack_offset = ((char *) buffer->pack_ptr) - ((char *) buffer->base_ptr);
-        unpack_offset = ((char *) buffer->unpack_ptr) - ((char *) buffer->base_ptr);
-        buffer->base_ptr = (char *) realloc(buffer->base_ptr, to_alloc);
-        memset(buffer->base_ptr + pack_offset, 0, to_alloc - buffer->bytes_allocated);
-    } else {
-        pack_offset = 0;
-        unpack_offset = 0;
-        buffer->bytes_used = 0;
-        buffer->base_ptr = (char *) malloc(to_alloc);
-        memset(buffer->base_ptr, 0, to_alloc);
-    }
-
-    if (NULL == buffer->base_ptr) {
-        return NULL;
-    }
-    buffer->pack_ptr = ((char *) buffer->base_ptr) + pack_offset;
-    buffer->unpack_ptr = ((char *) buffer->base_ptr) + unpack_offset;
-    buffer->bytes_allocated = to_alloc;
-
-    /* All done */
-    return buffer->pack_ptr;
+    return pmix_bfrops_base_tma_buffer_extend(buffer, bytes_to_add, NULL);
 }
 
 /*
