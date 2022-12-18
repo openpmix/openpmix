@@ -44,12 +44,6 @@ pmix_bfrops_base_tma_value_destruct(
     pmix_tma_t *tma
 );
 
-static inline pmix_boolean_t
-pmix_bfrops_base_tma_value_true(
-    const pmix_value_t *value,
-    pmix_tma_t *tma
-);
-
 static inline pmix_status_t
 pmix_bfrops_base_tma_value_xfer(
     pmix_value_t *p,
@@ -57,67 +51,99 @@ pmix_bfrops_base_tma_value_xfer(
     pmix_tma_t *tma
 );
 
+static inline char *
+pmix_bfrops_base_tma_buffer_extend(
+    pmix_buffer_t *buffer,
+    size_t bytes_to_add,
+    pmix_tma_t *tma
+) {
+    size_t required, to_alloc;
+    size_t pack_offset, unpack_offset;
+
+    /* Check to see if we have enough space already */
+    if (0 == bytes_to_add) {
+        return buffer->pack_ptr;
+    }
+
+    if ((buffer->bytes_allocated - buffer->bytes_used) >= bytes_to_add) {
+        return buffer->pack_ptr;
+    }
+
+    required = buffer->bytes_used + bytes_to_add;
+    if (required >= pmix_bfrops_globals.threshold_size) {
+        to_alloc = ((required + pmix_bfrops_globals.threshold_size - 1)
+                    / pmix_bfrops_globals.threshold_size)
+                   * pmix_bfrops_globals.threshold_size;
+    } else {
+        to_alloc = buffer->bytes_allocated;
+        if (0 == to_alloc) {
+            to_alloc = pmix_bfrops_globals.initial_size;
+        }
+        while (to_alloc < required) {
+            to_alloc <<= 1;
+        }
+    }
+
+    if (NULL != buffer->base_ptr) {
+        pack_offset = ((char *) buffer->pack_ptr) - ((char *) buffer->base_ptr);
+        unpack_offset = ((char *) buffer->unpack_ptr) - ((char *) buffer->base_ptr);
+        buffer->base_ptr = (char *) pmix_tma_realloc(tma, buffer->base_ptr, to_alloc);
+        memset(buffer->base_ptr + pack_offset, 0, to_alloc - buffer->bytes_allocated);
+    } else {
+        pack_offset = 0;
+        unpack_offset = 0;
+        buffer->bytes_used = 0;
+        buffer->base_ptr = (char *)pmix_tma_malloc(tma, to_alloc);
+        memset(buffer->base_ptr, 0, to_alloc);
+    }
+
+    if (NULL == buffer->base_ptr) {
+        return NULL;
+    }
+    buffer->pack_ptr = ((char *) buffer->base_ptr) + pack_offset;
+    buffer->unpack_ptr = ((char *) buffer->base_ptr) + unpack_offset;
+    buffer->bytes_allocated = to_alloc;
+
+    /* All done */
+    return buffer->pack_ptr;
+}
+
 static inline pmix_status_t
-pmix_bfrops_base_tma_value_load(
-    pmix_value_t *v,
-    const void *data,
-    pmix_data_type_t type,
+pmix_bfrops_base_tma_copy_payload(
+    pmix_buffer_t *dest,
+    pmix_buffer_t *src,
     pmix_tma_t *tma
-);
+) {
+    size_t to_copy = 0;
+    char *ptr;
 
-static inline void
-pmix_bfrops_base_tma_data_array_construct(
-    pmix_data_array_t *p,
-    size_t num,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-);
+    /* deal with buffer type */
+    if (NULL == dest->base_ptr) {
+        /* destination buffer is empty - derive src buffer type */
+        dest->type = src->type;
+    } else if (PMIX_UNLIKELY(dest->type != src->type)) {
+        /* buffer types mismatch */
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
 
-static inline void
-pmix_bfrops_base_tma_data_buffer_release(
-    pmix_data_buffer_t *b,
-    pmix_tma_t *tma
-);
+    /* if the src buffer is empty, then there is
+     * nothing to do */
+    if (PMIX_BUFFER_IS_EMPTY(src)) {
+        return PMIX_SUCCESS;
+    }
 
-static inline void
-pmix_bfrops_base_tma_proc_stats_free(
-    pmix_proc_stats_t *p,
-    size_t n,
-    pmix_tma_t *tma
-);
-
-static inline void
-pmix_bfrops_base_tma_disk_stats_free(
-    pmix_disk_stats_t *p,
-    size_t n,
-    pmix_tma_t *tma
-);
-
-static inline void
-pmix_bfrops_base_tma_node_stats_free(
-    pmix_node_stats_t *p,
-    size_t n,
-    pmix_tma_t *tma
-);
-
-static inline void
-pmix_bfrops_base_tma_net_stats_free(
-    pmix_net_stats_t *p,
-    size_t n,
-    pmix_tma_t *tma
-);
-
-static inline bool
-pmix_bfrops_base_tma_info_is_persistent(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-);
-
-static inline void
-pmix_bfrops_base_tma_darray_destruct(
-    pmix_data_array_t *d,
-    pmix_tma_t *tma
-);
+    /* extend the dest if necessary */
+    to_copy = src->pack_ptr - src->unpack_ptr;
+    if (NULL == (ptr = pmix_bfrops_base_tma_buffer_extend(dest, to_copy, tma))) {
+        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    memcpy(ptr, src->unpack_ptr, to_copy);
+    dest->bytes_used += to_copy;
+    dest->pack_ptr += to_copy;
+    return PMIX_SUCCESS;
+}
 
 static inline void
 pmix_bfrops_base_tma_load_key(
@@ -511,6 +537,78 @@ pmix_bfrops_base_tma_value_create(
     return v;
 }
 
+static inline pmix_status_t
+pmix_bfrops_base_tma_value_load(
+    pmix_value_t *v,
+    const void *data,
+    pmix_data_type_t type,
+    pmix_tma_t *tma
+) {
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+    // TODO(skg)
+    pmix_bfrops_base_value_load(v, data, type);
+    return PMIX_SUCCESS;
+}
+
+static inline pmix_boolean_t
+pmix_bfrops_base_tma_value_true(
+    const pmix_value_t *value,
+    pmix_tma_t *tma
+) {
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    char *ptr;
+
+    if (PMIX_UNDEF == value->type) {
+        return PMIX_BOOL_TRUE; // default to true
+    }
+    if (PMIX_BOOL == value->type) {
+        if (value->data.flag) {
+            return PMIX_BOOL_TRUE;
+        } else {
+            return PMIX_BOOL_FALSE;
+        }
+    }
+    if (PMIX_STRING == value->type) {
+        if (NULL == value->data.string) {
+            return PMIX_BOOL_TRUE;
+        }
+        ptr = value->data.string;
+        /* Trim leading whitespace */
+        while (isspace(*ptr)) {
+            ++ptr;
+        }
+        if ('\0' == *ptr) {
+            return PMIX_BOOL_TRUE;
+        }
+        if (isdigit(*ptr)) {
+            if (0 == atoi(ptr)) {
+                return PMIX_BOOL_FALSE;
+            } else {
+                return PMIX_BOOL_TRUE;
+            }
+        } else if (0 == strncasecmp(ptr, "yes", 3) ||
+                   0 == strncasecmp(ptr, "true", 4)) {
+            return PMIX_BOOL_TRUE;
+        } else if (0 == strncasecmp(ptr, "no", 2) ||
+                   0 == strncasecmp(ptr, "false", 5)) {
+            return PMIX_BOOL_FALSE;
+        }
+    }
+
+    return PMIX_NON_BOOL;
+}
+
+static inline bool
+pmix_bfrops_base_tma_info_is_persistent(
+    const pmix_info_t *p,
+    pmix_tma_t *tma
+) {
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    return (p->flags & PMIX_INFO_PERSISTENT);
+}
+
 static inline void
 pmix_bfrops_base_tma_info_destruct(
     pmix_info_t *p,
@@ -736,16 +834,6 @@ pmix_bfrops_base_tma_info_persistent(
     p->flags |= PMIX_INFO_PERSISTENT;
 }
 
-static inline bool
-pmix_bfrops_base_tma_info_is_persistent(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-) {
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-
-    return (p->flags & PMIX_INFO_PERSISTENT);
-}
-
 static inline pmix_status_t
 pmix_bfrops_base_tma_info_xfer(
     pmix_info_t *dest,
@@ -762,7 +850,8 @@ pmix_bfrops_base_tma_info_xfer(
     if (pmix_bfrops_base_tma_info_is_persistent(src, tma)) {
         memcpy(&dest->value, &src->value, sizeof(pmix_value_t));
         rc = PMIX_SUCCESS;
-    } else {
+    }
+    else {
         rc = pmix_bfrops_base_tma_value_xfer(&dest->value, &src->value, tma);
     }
     return rc;
@@ -925,13 +1014,11 @@ pmix_bfrops_base_tma_cpuset_create(
     if (0 == n) {
         return NULL;
     }
-
     pmix_cpuset_t *c = (pmix_cpuset_t *)pmix_tma_malloc(tma, n * sizeof(pmix_cpuset_t));
-    if (PMIX_UNLIKELY(NULL == c)) {
-        return NULL;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_cpuset_construct(&c[m], tma);
+    if (PMIX_LIKELY(NULL != c)) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_cpuset_construct(&c[m], tma);
+        }
     }
     return c;
 }
@@ -1004,9 +1091,10 @@ pmix_bfrops_base_tma_coord_create(
     m->dims = dims;
     if (0 == dims) {
         m->coord = NULL;
-    } else {
+    }
+    else {
         m->coord = (uint32_t *)pmix_tma_malloc(tma, dims * sizeof(uint32_t));
-        if (NULL != m->coord) {
+        if (PMIX_LIKELY(NULL != m->coord)) {
             memset(m->coord, 0, dims * sizeof(uint32_t));
         }
     }
@@ -1077,7 +1165,6 @@ pmix_bfrops_base_tma_copy_geometry(
             }
         }
     }
-
     *dest = dst;
     return PMIX_SUCCESS;
 }
@@ -1525,7 +1612,7 @@ pmix_bfrops_base_tma_argv_split_inter(
             argtemp[arglen] = '\0';
 
             if (PMIX_SUCCESS != pmix_bfrops_base_tma_argv_append_nosize(&argv, argtemp, tma)) {
-                free(argtemp);
+                pmix_tma_free(tma, argtemp);
                 return NULL;
             }
 
@@ -2066,165 +2153,68 @@ pmix_bfrops_base_tma_data_array_init(
 }
 
 static inline void
-pmix_bfrops_base_tma_data_array_destruct(
-    pmix_data_array_t *d,
+pmix_bfrops_base_tma_data_buffer_construct(
+    pmix_data_buffer_t *b,
     pmix_tma_t *tma
 ) {
-    pmix_bfrops_base_tma_darray_destruct(d, tma);
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    memset(b, 0, sizeof(pmix_data_buffer_t));
+}
+
+static inline pmix_data_buffer_t *
+pmix_bfrops_base_tma_data_buffer_create(
+    pmix_tma_t *tma
+) {
+    pmix_data_buffer_t *b = (pmix_data_buffer_t *)pmix_tma_malloc(tma, sizeof(pmix_data_buffer_t));
+    if (PMIX_LIKELY(NULL != b)) {
+        pmix_bfrops_base_tma_data_buffer_construct(b, tma);
+    }
+    return b;
 }
 
 static inline void
-pmix_bfrops_base_tma_data_array_free(
-    pmix_data_array_t *p,
+pmix_bfrops_base_tma_data_buffer_destruct(
+    pmix_data_buffer_t *b,
     pmix_tma_t *tma
 ) {
-    if (NULL != p) {
-        pmix_bfrops_base_tma_data_array_destruct(p, tma);
+    if (NULL != b->base_ptr) {
+        pmix_tma_free(tma, b->base_ptr);
+        b->base_ptr = NULL;
     }
+    b->pack_ptr = NULL;
+    b->unpack_ptr = NULL;
+    b->bytes_allocated = 0;
+    b->bytes_used = 0;
 }
 
-static inline pmix_data_array_t *
-pmix_bfrops_base_tma_data_array_create(
-    size_t n,
+static inline void
+pmix_bfrops_base_tma_data_buffer_release(
+    pmix_data_buffer_t *b,
+    pmix_tma_t *tma
+) {
+    if (NULL == b) {
+        return;
+    }
+    pmix_bfrops_base_tma_data_buffer_destruct(b, tma);
+}
+
+static inline pmix_status_t
+pmix_bfrops_base_tma_copy_dbuf(
+    pmix_data_buffer_t **dest,
+    pmix_data_buffer_t *src,
     pmix_data_type_t type,
     pmix_tma_t *tma
 ) {
-    if (0 == n) {
-        return NULL;
-    }
-    pmix_data_array_t *p = (pmix_data_array_t *)pmix_tma_malloc(tma, sizeof(pmix_data_array_t));
-    if (PMIX_LIKELY(NULL != p)) {
-        pmix_bfrops_base_tma_data_array_construct(p, n, type, tma);
-    }
-    return p;
-}
+    PMIX_HIDE_UNUSED_PARAMS(type);
 
-static inline void
-pmix_bfrops_base_tma_value_destruct(
-    pmix_value_t *v,
-    pmix_tma_t *tma
-) {
-    switch (v->type) {
-        case PMIX_STRING:
-            if (NULL != v->data.string) {
-                pmix_tma_free(tma, v->data.string);
-            }
-            break;
-        case PMIX_PROC:
-            if (NULL != v->data.proc) {
-                pmix_bfrops_base_tma_proc_free(v->data.proc, 1, tma);
-            }
-            break;
-        case PMIX_BYTE_OBJECT:
-        case PMIX_COMPRESSED_STRING:
-        case PMIX_COMPRESSED_BYTE_OBJECT:
-            if (NULL != v->data.bo.bytes) {
-                pmix_tma_free(tma, v->data.bo.bytes);
-            }
-            break;
-        case PMIX_PROC_INFO:
-            if (NULL != v->data.pinfo) {
-                pmix_bfrops_base_tma_proc_info_free(v->data.pinfo, 1, tma);
-            }
-            break;
-        case PMIX_DATA_ARRAY:
-            if (NULL != v->data.darray) {
-                pmix_bfrops_base_tma_data_array_free(v->data.darray, tma);
-            }
-            break;
-        case PMIX_ENVAR:
-            if (NULL != v->data.envar.envar) {
-                pmix_tma_free(tma, v->data.envar.envar);
-            }
-            if (NULL != v->data.envar.value) {
-                pmix_tma_free(tma, v->data.envar.value);
-            }
-            break;
-        case PMIX_COORD:
-            if (NULL != v->data.coord) {
-                pmix_bfrops_base_tma_coord_free(v->data.coord, 1, tma);
-            }
-            break;
-        case PMIX_TOPO:
-            if (NULL != v->data.topo) {
-                // TODO(skg)
-                pmix_hwloc_release_topology(v->data.topo, 1);
-            }
-            break;
-        case PMIX_PROC_CPUSET:
-            if (NULL != v->data.cpuset) {
-                // TODO(skg)
-                pmix_hwloc_release_cpuset(v->data.cpuset, 1);
-            }
-            break;
-        case PMIX_GEOMETRY:
-            if (NULL != v->data.geometry) {
-                pmix_bfrops_base_tma_geometry_free(v->data.geometry, 1, tma);
-            }
-            break;
-        case PMIX_DEVICE_DIST:
-            if (NULL != v->data.devdist) {
-                pmix_bfrops_base_tma_device_distance_free(v->data.devdist, 1, tma);
-            }
-            break;
-        case PMIX_ENDPOINT:
-            if (NULL != v->data.endpoint) {
-                pmix_bfrops_base_tma_endpoint_free(v->data.endpoint, 1, tma);
-            }
-            break;
-        case PMIX_REGATTR:
-            if (NULL != v->data.ptr) {
-                pmix_bfrops_base_tma_regattr_free(v->data.ptr, 1, tma);
-            }
-            break;
-        case PMIX_REGEX:
-            if (NULL != v->data.bo.bytes) {
-                // TODO(skg)
-                pmix_preg.release(v->data.bo.bytes);
-            }
-            break;
-        case PMIX_DATA_BUFFER:
-            if (NULL != v->data.dbuf) {
-                pmix_bfrops_base_tma_data_buffer_release(v->data.dbuf, tma);
-            }
-            break;
-        case PMIX_PROC_STATS:
-            if (NULL != v->data.pstats) {
-                pmix_bfrops_base_tma_proc_stats_free(v->data.pstats, 1, tma);
-                pmix_tma_free(tma, v->data.pstats);
-                v->data.pstats = NULL;
-            }
-            break;
-        case PMIX_DISK_STATS:
-            if (NULL != v->data.dkstats) {
-                pmix_bfrops_base_tma_disk_stats_free(v->data.dkstats, 1, tma);
-                pmix_tma_free(tma, v->data.dkstats);
-                v->data.dkstats = NULL;
-            }
-            break;
-        case PMIX_NET_STATS:
-            if (NULL != v->data.netstats) {
-                pmix_bfrops_base_tma_net_stats_free(v->data.netstats, 1, tma);
-                pmix_tma_free(tma, v->data.netstats);
-                v->data.netstats = NULL;
-            }
-            break;
-        case PMIX_NODE_STATS:
-            if (NULL != v->data.ndstats) {
-                pmix_bfrops_base_tma_node_stats_free(v->data.ndstats, 1, tma);
-                pmix_tma_free(tma, v->data.ndstats);
-                v->data.ndstats = NULL;
-            }
-            break;
-
-        default:
-            /* silence warnings */
-            break;
+    pmix_data_buffer_t *p = pmix_bfrops_base_tma_data_buffer_create(tma);
+    if (PMIX_UNLIKELY(NULL == p)) {
+        return PMIX_ERR_NOMEM;
     }
-    // mark the value as no longer defined
-    memset(v, 0, sizeof(pmix_value_t));
-    v->type = PMIX_UNDEF;
-    return;
+    *dest = p;
+    // TODO(skg)
+    return PMIx_Data_copy_payload(p, src);
 }
 
 static inline void
@@ -2242,19 +2232,6 @@ pmix_bfrops_base_tma_value_free(
 }
 
 static inline pmix_status_t
-pmix_bfrops_base_tma_value_load(
-    pmix_value_t *v,
-    const void *data,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-    // TODO(skg)
-    pmix_bfrops_base_value_load(v, data, type);
-    return PMIX_SUCCESS;
-}
-
-static inline pmix_status_t
 pmix_bfrops_base_tma_value_unload(
     pmix_value_t *kv,
     void **data,
@@ -2264,55 +2241,6 @@ pmix_bfrops_base_tma_value_unload(
     PMIX_HIDE_UNUSED_PARAMS(tma);
     // TODO(skg)
     return pmix_bfrops_base_value_unload(kv, data, sz);
-}
-
-static inline pmix_boolean_t
-pmix_bfrops_base_tma_value_true(
-    const pmix_value_t *value,
-    pmix_tma_t *tma
-) {
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-
-    char *ptr;
-
-    if (PMIX_UNDEF == value->type) {
-        return PMIX_BOOL_TRUE; // default to true
-    }
-    if (PMIX_BOOL == value->type) {
-        if (value->data.flag) {
-            return PMIX_BOOL_TRUE;
-        } else {
-            return PMIX_BOOL_FALSE;
-        }
-    }
-    if (PMIX_STRING == value->type) {
-        if (NULL == value->data.string) {
-            return PMIX_BOOL_TRUE;
-        }
-        ptr = value->data.string;
-        /* Trim leading whitespace */
-        while (isspace(*ptr)) {
-            ++ptr;
-        }
-        if ('\0' == *ptr) {
-            return PMIX_BOOL_TRUE;
-        }
-        if (isdigit(*ptr)) {
-            if (0 == atoi(ptr)) {
-                return PMIX_BOOL_FALSE;
-            } else {
-                return PMIX_BOOL_TRUE;
-            }
-        } else if (0 == strncasecmp(ptr, "yes", 3) ||
-                   0 == strncasecmp(ptr, "true", 4)) {
-            return PMIX_BOOL_TRUE;
-        } else if (0 == strncasecmp(ptr, "no", 2) ||
-                   0 == strncasecmp(ptr, "false", 5)) {
-            return PMIX_BOOL_FALSE;
-        }
-    }
-
-    return PMIX_NON_BOOL;
 }
 
 static inline pmix_status_t
@@ -2335,21 +2263,6 @@ pmix_bfrops_base_tma_copy_regattr(
     (*dest)->type = src->type;
     (*dest)->description = pmix_bfrops_base_tma_argv_copy(src->description, tma);
     return PMIX_SUCCESS;
-}
-
-static inline void
-pmix_bfrops_base_tma_data_buffer_destruct(
-    pmix_data_buffer_t *b,
-    pmix_tma_t *tma
-) {
-    if (NULL != b->base_ptr) {
-        pmix_tma_free(tma, b->base_ptr);
-        b->base_ptr = NULL;
-    }
-    b->pack_ptr = NULL;
-    b->unpack_ptr = NULL;
-    b->bytes_allocated = 0;
-    b->bytes_used = 0;
 }
 
 static inline void
@@ -2425,58 +2338,6 @@ pmix_bfrops_base_tma_envar_load(
         e->value = pmix_tma_strdup(tma, value);
     }
     e->separator = separator;
-}
-
-static inline void
-pmix_bfrops_base_tma_data_buffer_construct(
-    pmix_data_buffer_t *b,
-    pmix_tma_t *tma
-) {
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-
-    memset(b, 0, sizeof(pmix_data_buffer_t));
-}
-
-static inline pmix_data_buffer_t *
-pmix_bfrops_base_tma_data_buffer_create(
-    pmix_tma_t *tma
-) {
-    pmix_data_buffer_t *b = (pmix_data_buffer_t *)pmix_tma_malloc(tma, sizeof(pmix_data_buffer_t));
-    if (PMIX_LIKELY(NULL != b)) {
-        pmix_bfrops_base_tma_data_buffer_construct(b, tma);
-    }
-    return b;
-}
-
-static inline void
-pmix_bfrops_base_tma_data_buffer_release(
-    pmix_data_buffer_t *b,
-    pmix_tma_t *tma
-) {
-    if (NULL == b) {
-        return;
-    }
-    pmix_bfrops_base_tma_data_buffer_destruct(b, tma);
-}
-
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_dbuf(
-    pmix_data_buffer_t **dest,
-    pmix_data_buffer_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* create the new object */
-    pmix_data_buffer_t *p = pmix_bfrops_base_tma_data_buffer_create(tma);
-    if (PMIX_UNLIKELY(NULL == p)) {
-        return PMIX_ERR_NOMEM;
-    }
-    *dest = p;
-
-    // TODO(skg)
-    return PMIx_Data_copy_payload(p, src);
 }
 
 static inline void
@@ -2610,7 +2471,7 @@ pmix_bfrops_base_tma_disk_stats_create(
         return NULL;
     }
     pmix_disk_stats_t *p = (pmix_disk_stats_t *)pmix_tma_malloc(tma, n * sizeof(pmix_disk_stats_t));
-    if (NULL != p) {
+    if (PMIX_LIKELY(NULL != p)) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_disk_stats_construct(&p[m], tma);
         }
@@ -2882,160 +2743,8 @@ pmix_bfrops_base_tma_value_compare(
     pmix_tma_t *tma
 ) {
     PMIX_HIDE_UNUSED_PARAMS(tma);
-    // TODO(skg)
+    // Note: No need for TMA here because no heap management, just comparisons.
     return pmix_bfrops_base_value_cmp(v1, v2);
-}
-
-static inline void
-pmix_bfrops_base_tma_darray_destruct(
-    pmix_data_array_t *d,
-    pmix_tma_t *tma
-) {
-    switch (d->type) {
-        case PMIX_STRING: {
-            char **s = (char**)d->array;
-            for (size_t n = 0; n < d->size; n++) {
-                if (NULL != s[n]) {
-                    pmix_tma_free(tma, s[n]);
-                }
-            }
-            pmix_tma_free(tma, d->array);
-            break;
-        }
-        case PMIX_VALUE:
-            pmix_bfrops_base_tma_value_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_APP:
-            pmix_bfrops_base_tma_app_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_INFO:
-            pmix_bfrops_base_tma_info_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_PDATA:
-            pmix_bfrops_base_tma_pdata_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_BUFFER: {
-            pmix_buffer_t *const pb = (pmix_buffer_t *)d->array;
-            for (size_t n = 0; n < d->size; n++) {
-                PMIX_DESTRUCT(&pb[n]);
-            }
-            pmix_tma_free(tma, d->array);
-            break;
-        }
-        case PMIX_BYTE_OBJECT:
-        case PMIX_COMPRESSED_STRING:
-        case PMIX_COMPRESSED_BYTE_OBJECT: {
-        pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
-            for (size_t n = 0; n < d->size; n++) {
-                if (NULL != bo[n].bytes) {
-                    pmix_tma_free(tma, bo[n].bytes);
-                }
-            }
-            pmix_tma_free(tma, d->array);
-            break;
-        }
-        case PMIX_KVAL: {
-            pmix_kval_t *const kv = (pmix_kval_t *)d->array;
-            for (size_t n = 0; n < d->size; n++) {
-                if (NULL != kv[n].key) {
-                    pmix_tma_free(tma, kv[n].key);
-                }
-                if (NULL != kv[n].value) {
-                    pmix_bfrops_base_tma_value_free(kv[n].value, 1, tma);
-                }
-            }
-            pmix_tma_free(tma, d->array);
-            break;
-        }
-        case PMIX_PROC_INFO:
-            pmix_bfrops_base_tma_proc_info_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_DATA_ARRAY:
-            pmix_bfrops_base_tma_darray_destruct(d->array, tma);
-            break;
-        case PMIX_QUERY:
-            pmix_bfrops_base_tma_query_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_ENVAR:
-            pmix_bfrops_base_tma_envar_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_COORD:
-            pmix_bfrops_base_tma_coord_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_REGATTR:
-            pmix_bfrops_base_tma_regattr_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_PROC_CPUSET:
-            // TODO(skg)
-            pmix_hwloc_release_cpuset(d->array, d->size);
-            break;
-        case PMIX_TOPO:
-            // TODO(skg)
-            pmix_hwloc_release_topology(d->array, d->size);
-            break;
-        case PMIX_GEOMETRY:
-            pmix_bfrops_base_tma_geometry_free(d->array, d->size, tma);
-            break;
-        case PMIX_DEVICE_DIST:
-            pmix_bfrops_base_tma_device_distance_free(d->array, d->size, tma);
-            break;
-        case PMIX_ENDPOINT:
-            pmix_bfrops_base_tma_endpoint_free(d->array, d->size, tma);
-            break;
-        case PMIX_REGEX: {
-            pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
-            for (size_t n = 0; n < d->size; n++) {
-                if (NULL != bo[n].bytes) {
-                    // TODO(skg)
-                    pmix_preg.release(bo[n].bytes);
-                }
-            }
-            pmix_tma_free(tma, d->array);
-            break;
-        }
-        case PMIX_DATA_BUFFER: {
-            pmix_data_buffer_t *const db = (pmix_data_buffer_t *)d->array;
-            for (size_t n = 0; n < d->size; n++) {
-                pmix_bfrops_base_tma_data_buffer_destruct(&db[n], tma);
-            }
-            pmix_tma_free(tma, d->array);
-            break;
-        }
-        case PMIX_PROC_STATS:
-            pmix_bfrops_base_tma_proc_stats_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_DISK_STATS:
-            pmix_bfrops_base_tma_disk_stats_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_NET_STATS:
-            pmix_bfrops_base_tma_net_stats_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-        case PMIX_NODE_STATS:
-            pmix_bfrops_base_tma_node_stats_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
-            break;
-
-        default:
-            if (NULL != d->array) {
-                pmix_tma_free(tma, d->array);
-            }
-            break;
-    }
-    d->array = NULL;
-    d->type = PMIX_UNDEF;
-    d->size = 0;
 }
 
 /*
@@ -3301,8 +3010,7 @@ pmix_bfrops_base_tma_copy_darray(
         pmix_buffer_t *const sb = (pmix_buffer_t *)src->array;
         for (size_t n = 0; n < src->size; n++) {
             PMIX_CONSTRUCT(&pb[n], pmix_buffer_t, tma);
-            // TODO(skg)
-            pmix_bfrops_base_copy_payload(&pb[n], &sb[n]);
+            pmix_bfrops_base_tma_copy_payload(&pb[n], &sb[n], tma);
         }
         break;
     }
@@ -3927,6 +3635,167 @@ pmix_bfrops_base_tma_copy_value(
 }
 
 static inline void
+pmix_bfrops_base_tma_data_array_destruct(
+    pmix_data_array_t *d,
+    pmix_tma_t *tma
+) {
+    switch (d->type) {
+        case PMIX_STRING: {
+            char **s = (char**)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                if (NULL != s[n]) {
+                    pmix_tma_free(tma, s[n]);
+                }
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_VALUE:
+            pmix_bfrops_base_tma_value_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_APP:
+            pmix_bfrops_base_tma_app_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_INFO:
+            pmix_bfrops_base_tma_info_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_PDATA:
+            pmix_bfrops_base_tma_pdata_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_BUFFER: {
+            pmix_buffer_t *const pb = (pmix_buffer_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                PMIX_DESTRUCT(&pb[n]);
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_BYTE_OBJECT:
+        case PMIX_COMPRESSED_STRING:
+        case PMIX_COMPRESSED_BYTE_OBJECT: {
+        pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                if (NULL != bo[n].bytes) {
+                    pmix_tma_free(tma, bo[n].bytes);
+                }
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_KVAL: {
+            pmix_kval_t *const kv = (pmix_kval_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                if (NULL != kv[n].key) {
+                    pmix_tma_free(tma, kv[n].key);
+                }
+                if (NULL != kv[n].value) {
+                    pmix_bfrops_base_tma_value_free(kv[n].value, 1, tma);
+                }
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_PROC_INFO:
+            pmix_bfrops_base_tma_proc_info_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_DATA_ARRAY:
+            pmix_bfrops_base_tma_data_array_destruct(d->array, tma);
+            break;
+        case PMIX_QUERY:
+            pmix_bfrops_base_tma_query_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_ENVAR:
+            pmix_bfrops_base_tma_envar_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_COORD:
+            pmix_bfrops_base_tma_coord_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_REGATTR:
+            pmix_bfrops_base_tma_regattr_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_PROC_CPUSET:
+            // TODO(skg)
+            pmix_hwloc_release_cpuset(d->array, d->size);
+            break;
+        case PMIX_TOPO:
+            // TODO(skg)
+            pmix_hwloc_release_topology(d->array, d->size);
+            break;
+        case PMIX_GEOMETRY:
+            pmix_bfrops_base_tma_geometry_free(d->array, d->size, tma);
+            break;
+        case PMIX_DEVICE_DIST:
+            pmix_bfrops_base_tma_device_distance_free(d->array, d->size, tma);
+            break;
+        case PMIX_ENDPOINT:
+            pmix_bfrops_base_tma_endpoint_free(d->array, d->size, tma);
+            break;
+        case PMIX_REGEX: {
+            pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                if (NULL != bo[n].bytes) {
+                    // TODO(skg)
+                    pmix_preg.release(bo[n].bytes);
+                }
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_DATA_BUFFER: {
+            pmix_data_buffer_t *const db = (pmix_data_buffer_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                pmix_bfrops_base_tma_data_buffer_destruct(&db[n], tma);
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_PROC_STATS:
+            pmix_bfrops_base_tma_proc_stats_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_DISK_STATS:
+            pmix_bfrops_base_tma_disk_stats_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_NET_STATS:
+            pmix_bfrops_base_tma_net_stats_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_NODE_STATS:
+            pmix_bfrops_base_tma_node_stats_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        default:
+            if (NULL != d->array) {
+                pmix_tma_free(tma, d->array);
+            }
+            break;
+    }
+    d->array = NULL;
+    d->type = PMIX_UNDEF;
+    d->size = 0;
+}
+
+static inline void
+pmix_bfrops_base_tma_data_array_free(
+    pmix_data_array_t *p,
+    pmix_tma_t *tma
+) {
+    if (NULL != p) {
+        pmix_bfrops_base_tma_data_array_destruct(p, tma);
+    }
+}
+
+static inline void
 pmix_bfrops_base_tma_data_array_construct(
     pmix_data_array_t *p,
     size_t num,
@@ -4081,6 +3950,150 @@ pmix_bfrops_base_tma_data_array_construct(
     } else {
         p->array = NULL;
     }
+}
+
+static inline pmix_data_array_t *
+pmix_bfrops_base_tma_data_array_create(
+    size_t n,
+    pmix_data_type_t type,
+    pmix_tma_t *tma
+) {
+    if (0 == n) {
+        return NULL;
+    }
+    pmix_data_array_t *p = (pmix_data_array_t *)pmix_tma_malloc(tma, sizeof(pmix_data_array_t));
+    if (PMIX_LIKELY(NULL != p)) {
+        pmix_bfrops_base_tma_data_array_construct(p, n, type, tma);
+    }
+    return p;
+}
+
+static inline void
+pmix_bfrops_base_tma_value_destruct(
+    pmix_value_t *v,
+    pmix_tma_t *tma
+) {
+    switch (v->type) {
+        case PMIX_STRING:
+            if (NULL != v->data.string) {
+                pmix_tma_free(tma, v->data.string);
+            }
+            break;
+        case PMIX_PROC:
+            if (NULL != v->data.proc) {
+                pmix_bfrops_base_tma_proc_free(v->data.proc, 1, tma);
+            }
+            break;
+        case PMIX_BYTE_OBJECT:
+        case PMIX_COMPRESSED_STRING:
+        case PMIX_COMPRESSED_BYTE_OBJECT:
+            if (NULL != v->data.bo.bytes) {
+                pmix_tma_free(tma, v->data.bo.bytes);
+            }
+            break;
+        case PMIX_PROC_INFO:
+            if (NULL != v->data.pinfo) {
+                pmix_bfrops_base_tma_proc_info_free(v->data.pinfo, 1, tma);
+            }
+            break;
+        case PMIX_DATA_ARRAY:
+            if (NULL != v->data.darray) {
+                pmix_bfrops_base_tma_data_array_free(v->data.darray, tma);
+            }
+            break;
+        case PMIX_ENVAR:
+            if (NULL != v->data.envar.envar) {
+                pmix_tma_free(tma, v->data.envar.envar);
+            }
+            if (NULL != v->data.envar.value) {
+                pmix_tma_free(tma, v->data.envar.value);
+            }
+            break;
+        case PMIX_COORD:
+            if (NULL != v->data.coord) {
+                pmix_bfrops_base_tma_coord_free(v->data.coord, 1, tma);
+            }
+            break;
+        case PMIX_TOPO:
+            if (NULL != v->data.topo) {
+                // TODO(skg)
+                pmix_hwloc_release_topology(v->data.topo, 1);
+            }
+            break;
+        case PMIX_PROC_CPUSET:
+            if (NULL != v->data.cpuset) {
+                // TODO(skg)
+                pmix_hwloc_release_cpuset(v->data.cpuset, 1);
+            }
+            break;
+        case PMIX_GEOMETRY:
+            if (NULL != v->data.geometry) {
+                pmix_bfrops_base_tma_geometry_free(v->data.geometry, 1, tma);
+            }
+            break;
+        case PMIX_DEVICE_DIST:
+            if (NULL != v->data.devdist) {
+                pmix_bfrops_base_tma_device_distance_free(v->data.devdist, 1, tma);
+            }
+            break;
+        case PMIX_ENDPOINT:
+            if (NULL != v->data.endpoint) {
+                pmix_bfrops_base_tma_endpoint_free(v->data.endpoint, 1, tma);
+            }
+            break;
+        case PMIX_REGATTR:
+            if (NULL != v->data.ptr) {
+                pmix_bfrops_base_tma_regattr_free(v->data.ptr, 1, tma);
+            }
+            break;
+        case PMIX_REGEX:
+            if (NULL != v->data.bo.bytes) {
+                // TODO(skg)
+                pmix_preg.release(v->data.bo.bytes);
+            }
+            break;
+        case PMIX_DATA_BUFFER:
+            if (NULL != v->data.dbuf) {
+                pmix_bfrops_base_tma_data_buffer_release(v->data.dbuf, tma);
+            }
+            break;
+        case PMIX_PROC_STATS:
+            if (NULL != v->data.pstats) {
+                pmix_bfrops_base_tma_proc_stats_free(v->data.pstats, 1, tma);
+                pmix_tma_free(tma, v->data.pstats);
+                v->data.pstats = NULL;
+            }
+            break;
+        case PMIX_DISK_STATS:
+            if (NULL != v->data.dkstats) {
+                pmix_bfrops_base_tma_disk_stats_free(v->data.dkstats, 1, tma);
+                pmix_tma_free(tma, v->data.dkstats);
+                v->data.dkstats = NULL;
+            }
+            break;
+        case PMIX_NET_STATS:
+            if (NULL != v->data.netstats) {
+                pmix_bfrops_base_tma_net_stats_free(v->data.netstats, 1, tma);
+                pmix_tma_free(tma, v->data.netstats);
+                v->data.netstats = NULL;
+            }
+            break;
+        case PMIX_NODE_STATS:
+            if (NULL != v->data.ndstats) {
+                pmix_bfrops_base_tma_node_stats_free(v->data.ndstats, 1, tma);
+                pmix_tma_free(tma, v->data.ndstats);
+                v->data.ndstats = NULL;
+            }
+            break;
+
+        default:
+            /* silence warnings */
+            break;
+    }
+    // mark the value as no longer defined
+    memset(v, 0, sizeof(pmix_value_t));
+    v->type = PMIX_UNDEF;
+    return;
 }
 
 #endif
