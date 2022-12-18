@@ -174,6 +174,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_LAUNCHER);
         } else if (PMIX_SCHEDULER_WITH_ID == pnd->flag) {
             PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_SCHEDULER);
+        } else {
+            PMIX_SET_PROC_TYPE(&pnd->proc_type, PMIX_PROC_CLIENT);
         }
         /* get their uid/gid */
         PMIX_PTL_GET_U32(pnd->uid);
@@ -248,6 +250,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         }
         if (NULL != blob) {
             free(blob);
+            blob = NULL;
         }
         free(msg);
         return;
@@ -432,6 +435,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     _check_cached_events(peer);
     if (NULL != blob) {
         free(blob);
+        blob = NULL;
     }
 
     return;
@@ -772,13 +776,12 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     if (0 < cnt) {
         int32_t foo;
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-        PMIX_LOAD_BUFFER(peer, &buf, mg, cnt);
+        PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, mg, cnt); // allocates no memory
         foo = 1;
         PMIX_BFROPS_UNPACK(rc, peer, &buf, &pnd->ninfo, &foo, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(peer);
-            PMIX_DESTRUCT(&buf);
             return rc;
         }
         foo = (int32_t) pnd->ninfo;
@@ -793,7 +796,6 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(peer);
-            PMIX_DESTRUCT(&buf);
             return rc;
         }
         n = foo;
