@@ -460,6 +460,9 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 
 /* Macros that have been converted to functions */
 
+// XXX it's odd that some _FREE macros call X_free and then call pmix_free
+// after. Whey not just call pmix_free inside of X_free?
+
 #define PMIX_LOAD_KEY(a, b) \
     PMIx_Load_key(a, b)
 

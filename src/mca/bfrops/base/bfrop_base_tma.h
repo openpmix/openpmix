@@ -114,6 +114,12 @@ pmix_bfrops_base_tma_info_is_persistent(
 );
 
 static inline void
+pmix_bfrops_base_tma_darray_destruct(
+    pmix_data_array_t *d,
+    pmix_tma_t *tma
+);
+
+static inline void
 pmix_bfrops_base_tma_load_key(
     pmix_key_t key,
     const char *src,
@@ -2064,9 +2070,7 @@ pmix_bfrops_base_tma_data_array_destruct(
     pmix_data_array_t *d,
     pmix_tma_t *tma
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-    // TODO(skg)
-    pmix_bfrops_base_darray_destruct(d);
+    pmix_bfrops_base_tma_darray_destruct(d, tma);
 }
 
 static inline void
@@ -2882,6 +2886,158 @@ pmix_bfrops_base_tma_value_compare(
     return pmix_bfrops_base_value_cmp(v1, v2);
 }
 
+static inline void
+pmix_bfrops_base_tma_darray_destruct(
+    pmix_data_array_t *d,
+    pmix_tma_t *tma
+) {
+    switch (d->type) {
+        case PMIX_STRING: {
+            char **s = (char**)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                if (NULL != s[n]) {
+                    pmix_tma_free(tma, s[n]);
+                }
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_VALUE:
+            pmix_bfrops_base_tma_value_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_APP:
+            pmix_bfrops_base_tma_app_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_INFO:
+            pmix_bfrops_base_tma_info_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_PDATA:
+            pmix_bfrops_base_tma_pdata_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_BUFFER: {
+            pmix_buffer_t *const pb = (pmix_buffer_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                PMIX_DESTRUCT(&pb[n]);
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_BYTE_OBJECT:
+        case PMIX_COMPRESSED_STRING:
+        case PMIX_COMPRESSED_BYTE_OBJECT: {
+        pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                if (NULL != bo[n].bytes) {
+                    pmix_tma_free(tma, bo[n].bytes);
+                }
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_KVAL: {
+            pmix_kval_t *const kv = (pmix_kval_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                if (NULL != kv[n].key) {
+                    pmix_tma_free(tma, kv[n].key);
+                }
+                if (NULL != kv[n].value) {
+                    pmix_bfrops_base_tma_value_free(kv[n].value, 1, tma);
+                }
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_PROC_INFO:
+            pmix_bfrops_base_tma_proc_info_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_DATA_ARRAY:
+            pmix_bfrops_base_tma_darray_destruct(d->array, tma);
+            break;
+        case PMIX_QUERY:
+            pmix_bfrops_base_tma_query_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_ENVAR:
+            pmix_bfrops_base_tma_envar_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_COORD:
+            pmix_bfrops_base_tma_coord_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_REGATTR:
+            pmix_bfrops_base_tma_regattr_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_PROC_CPUSET:
+            // TODO(skg)
+            pmix_hwloc_release_cpuset(d->array, d->size);
+            break;
+        case PMIX_TOPO:
+            // TODO(skg)
+            pmix_hwloc_release_topology(d->array, d->size);
+            break;
+        case PMIX_GEOMETRY:
+            pmix_bfrops_base_tma_geometry_free(d->array, d->size, tma);
+            break;
+        case PMIX_DEVICE_DIST:
+            pmix_bfrops_base_tma_device_distance_free(d->array, d->size, tma);
+            break;
+        case PMIX_ENDPOINT:
+            pmix_bfrops_base_tma_endpoint_free(d->array, d->size, tma);
+            break;
+        case PMIX_REGEX: {
+            pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                if (NULL != bo[n].bytes) {
+                    // TODO(skg)
+                    pmix_preg.release(bo[n].bytes);
+                }
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_DATA_BUFFER: {
+            pmix_data_buffer_t *const db = (pmix_data_buffer_t *)d->array;
+            for (size_t n = 0; n < d->size; n++) {
+                pmix_bfrops_base_tma_data_buffer_destruct(&db[n], tma);
+            }
+            pmix_tma_free(tma, d->array);
+            break;
+        }
+        case PMIX_PROC_STATS:
+            pmix_bfrops_base_tma_proc_stats_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_DISK_STATS:
+            pmix_bfrops_base_tma_disk_stats_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_NET_STATS:
+            pmix_bfrops_base_tma_net_stats_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+        case PMIX_NODE_STATS:
+            pmix_bfrops_base_tma_node_stats_free(d->array, d->size, tma);
+            pmix_tma_free(tma, d->array);
+            break;
+
+        default:
+            if (NULL != d->array) {
+                pmix_tma_free(tma, d->array);
+            }
+            break;
+    }
+    d->array = NULL;
+    d->type = PMIX_UNDEF;
+    d->size = 0;
+}
+
 /*
  * The pmix_data_array_t is a little different in that it is an array of values,
  * and so we cannot just copy one value at a time. So handle all value types
@@ -3044,8 +3200,8 @@ pmix_bfrops_base_tma_copy_darray(
             rc = PMIX_ERR_NOMEM;
             break;
         }
-        pmix_value_t *pv = (pmix_value_t *)p->array;
-        pmix_value_t *sv = (pmix_value_t *)src->array;
+        pmix_value_t *const pv = (pmix_value_t *)p->array;
+        pmix_value_t *const sv = (pmix_value_t *)src->array;
         for (size_t n = 0; n < src->size; n++) {
             if (PMIX_SUCCESS != (rc = pmix_bfrops_base_value_xfer(&pv[n], &sv[n]))) {
                 pmix_bfrops_base_tma_value_free(pv, src->size, tma);
@@ -3674,8 +3830,7 @@ pmix_bfrops_base_tma_value_xfer(
     case PMIX_PROC_INFO:
         return pmix_bfrops_base_tma_copy_pinfo(&p->data.pinfo, src->data.pinfo, PMIX_PROC_INFO, tma);
     case PMIX_DATA_ARRAY:
-        // TODO(skg)
-        return pmix_bfrops_base_copy_darray(&p->data.darray, src->data.darray, PMIX_DATA_ARRAY);
+        return pmix_bfrops_base_tma_copy_darray(&p->data.darray, src->data.darray, PMIX_DATA_ARRAY, tma);
     case PMIX_POINTER:
         p->data.ptr = src->data.ptr;
         break;
