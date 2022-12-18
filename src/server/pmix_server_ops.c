@@ -4075,7 +4075,7 @@ static void grp_timeout(int sd, short args, void *cbdata)
 {
     pmix_server_trkr_t *trk = (pmix_server_trkr_t *) cbdata;
     pmix_group_t *grp = (pmix_group_t*)trk->cbdata;
-    pmix_group_t *pgrp;
+    pmix_group_t *pgrp, *psav;
     pmix_server_caddy_t *cd;
     pmix_buffer_t *reply;
     pmix_status_t ret, rc = PMIX_ERR_TIMEOUT;
@@ -4109,15 +4109,19 @@ static void grp_timeout(int sd, short args, void *cbdata)
 
     trk->event_active = false;
     /* remove this group from our list */
+    psav = NULL;
     PMIX_LIST_FOREACH (pgrp, &pmix_server_globals.groups, pmix_group_t) {
         if (0 == strcmp(grp->grpid, pgrp->grpid)) {
             pmix_list_remove_item(&pmix_server_globals.groups, &pgrp->super);
+            psav = pgrp;
             break;
         }
     }
     /* record this group as failed */
     PMIx_Argv_append_nosize(&pmix_server_globals.failedgrps, grp->grpid);
-    PMIX_RELEASE(pgrp);
+    if (NULL != psav) {
+        PMIX_RELEASE(psav);
+    }
     /* remove the tracker from the list */
     pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
     PMIX_RELEASE(trk);

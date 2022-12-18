@@ -768,9 +768,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     }
 
     /* open the psensor framework */
-    if (PMIX_SUCCESS
-        != (rc = pmix_mca_base_framework_open(&pmix_psensor_base_framework,
-                                              PMIX_MCA_BASE_OPEN_DEFAULT))) {
+    rc = pmix_mca_base_framework_open(&pmix_psensor_base_framework,
+                                      PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
