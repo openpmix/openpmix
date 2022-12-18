@@ -194,7 +194,8 @@ pmix_status_t pmix_ptl_base_recv_blocking(int sd, char *data, size_t size)
 
 #define PMIX_MAX_RETRIES 10
 
-pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr, pmix_socklen_t addrlen, int *fd)
+pmix_status_t pmix_ptl_base_connect(struct sockaddr_storage *addr,
+                                    pmix_socklen_t addrlen, int *fd)
 {
     int sd = -1, sd2;
     int retries = -1;

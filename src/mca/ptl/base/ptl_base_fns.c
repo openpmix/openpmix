@@ -526,9 +526,6 @@ static pmix_status_t send_connect_ack(pmix_peer_t *peer,
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "pmix:ptl SEND CONNECT ACK");
 
-    /* allow space for a marker indicating client vs tool */
-    sdsize = 1;
-
     /* set our ID flag and compute the required handshake size */
     peer->proc_type.flag = pmix_ptl_base_set_flag(&sdsize);
 
@@ -602,8 +599,8 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri, pmix_info_t *iptr,
-                                            size_t niptr)
+pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
+                                            pmix_info_t *iptr, size_t niptr)
 {
     struct sockaddr_storage myconnection;
     pmix_status_t rc;
@@ -942,8 +939,8 @@ pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, char **msgout, 
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save, pmix_socklen_t *sz,
-                                        bool *sockopt)
+pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
+                                        pmix_socklen_t *sz, bool *sockopt)
 {
     struct timeval tv;
 
