@@ -101,7 +101,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     /* the getopt_long parser reorders the input argv array, so
      * we have to protect it here - remove all leading/trailing
      * quotes to ensure we are looking at simple options/values */
-    argv = pmix_argv_copy_strip(pargv);
+    argv = PMIx_Argv_copy_strip(pargv);
     argc = PMIx_Argv_count(argv);
     // assign a default store_fn if one isn't provided
     if (NULL == storefn) {

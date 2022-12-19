@@ -74,7 +74,7 @@ BEGIN_C_DECLS
  * value into the argv array; there is no need to keep the original
  * string (i.e., the arg parameter) after invoking this function.
  */
-PMIX_EXPORT pmix_status_t pmix_argv_append(int *argc, char ***argv, const char *arg)
+PMIX_EXPORT pmix_status_t PMIx_Argv_append(int *argc, char ***argv, const char *arg)
     __pmix_attribute_nonnull__(1) __pmix_attribute_nonnull__(3);
 
 /**
@@ -92,9 +92,9 @@ PMIX_EXPORT pmix_status_t pmix_argv_append(int *argc, char ***argv, const char *
  * This function is identical to the PMIx_Argv_append_unique_nosize() function
  * but it has an extra argument defining the index of the item in the array.
  */
-PMIX_EXPORT pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *arg);
+PMIX_EXPORT pmix_status_t PMIx_Argv_append_unique_idx(int *idx, char ***argv, const char *arg);
 
-PMIX_EXPORT char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
+PMIX_EXPORT char *PMIx_Argv_join_range(char **argv, size_t start, size_t end, int delimiter)
     __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
 /**
@@ -106,7 +106,7 @@ PMIX_EXPORT char *pmix_argv_join_range(char **argv, size_t start, size_t end, in
  * array.  This includes the number of bytes used by each of the
  * strings as well as the pointers used in the argv array.
  */
-PMIX_EXPORT size_t pmix_argv_len(char **argv);
+PMIX_EXPORT size_t PMIx_Argv_len(char **argv);
 
 /**
  * Delete one or more tokens from the middle of an argv.
@@ -133,7 +133,7 @@ PMIX_EXPORT size_t pmix_argv_len(char **argv);
  * free()ed (it is assumed that the argv "owns" the memory that
  * the pointer points to).
  */
-PMIX_EXPORT pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, int num_to_delete);
+PMIX_EXPORT pmix_status_t PMIx_Argv_delete(int *argc, char ***argv, int start, int num_to_delete);
 
 /**
  * Insert one argv array into the middle of another
@@ -148,7 +148,7 @@ PMIX_EXPORT pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, i
  * This function takes one arg and inserts it in the middle of
  * another.  The first token in source will be inserted at index
  * start in the target argv; all other tokens will follow it.
- * Similar to pmix_argv_append(), the target may be realloc()'ed
+ * Similar to PMIx_Argv_append(), the target may be realloc()'ed
  * to accommodate the new storage requirements.
  *
  * The source array is left unaffected -- its contents are copied
@@ -156,7 +156,7 @@ PMIX_EXPORT pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, i
  * source points to are strdup'ed into the new locations in
  * target).
  */
-PMIX_EXPORT pmix_status_t pmix_argv_insert(char ***target, int start, char **source);
+PMIX_EXPORT pmix_status_t PMIx_Argv_insert(char ***target, int start, char **source);
 
 /**
  * Insert one argv element in front of a specific position in an array
@@ -171,7 +171,7 @@ PMIX_EXPORT pmix_status_t pmix_argv_insert(char ***target, int start, char **sou
  * This function takes one arg and inserts it in the middle of
  * another.  The token will be inserted at the specified index
  * in the target argv; all other tokens will be shifted down.
- * Similar to pmix_argv_append(), the target may be realloc()'ed
+ * Similar to PMIx_Argv_append(), the target may be realloc()'ed
  * to accommodate the new storage requirements.
  *
  * The source token is left unaffected -- its contents are copied
@@ -179,10 +179,10 @@ PMIX_EXPORT pmix_status_t pmix_argv_insert(char ***target, int start, char **sou
  * source points to is strdup'ed into the new location in
  * target).
  */
-PMIX_EXPORT pmix_status_t pmix_argv_insert_element(char ***target, int location, char *source);
+PMIX_EXPORT pmix_status_t PMIx_Argv_insert_element(char ***target, int location, char *source);
 
 PMIX_EXPORT
-char **pmix_argv_copy_strip(char **argv) __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
+char **PMIx_Argv_copy_strip(char **argv) __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
 
 
 END_C_DECLS

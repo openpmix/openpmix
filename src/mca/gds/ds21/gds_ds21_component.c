@@ -45,7 +45,6 @@ static pmix_status_t component_query(pmix_mca_base_module_t **module, int *prior
  * and pointers to our public functions in it
  */
 pmix_gds_base_component_t pmix_mca_gds_ds21_component = {
-    .base = {
         PMIX_GDS_BASE_VERSION_1_0_0,
 
         /* Component name and version */
@@ -59,12 +58,6 @@ pmix_gds_base_component_t pmix_mca_gds_ds21_component = {
         .pmix_mca_open_component = component_open,
         .pmix_mca_close_component = component_close,
         .pmix_mca_query_component = component_query,
-    },
-    .data = {
-        /* The component is checkpoint ready */
-        PMIX_MCA_BASE_METADATA_PARAM_CHECKPOINT,
-        .reserved = {0}
-    }
 };
 
 
