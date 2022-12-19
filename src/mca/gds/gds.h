@@ -286,7 +286,9 @@ typedef pmix_status_t (*pmix_gds_base_module_mark_modex_complete_fn_t)(struct pm
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS MARK MODEX COMPLETE WITH %s",      \
                             __FILE__, __LINE__, _g->name);                  \
-        (r) = _g->mark_modex_complete(p, l, b);                             \
+        if (NULL != _g->mark_modex_complete) {                              \
+            (r) = _g->mark_modex_complete(p, l, b);                         \
+        }                                                                   \
     } while (0)
 
 typedef pmix_status_t (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buffer_t *buff);
@@ -296,7 +298,9 @@ typedef pmix_status_t (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buff
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS RECV MODEX COMPLETE WITH %s",      \
                             __FILE__, __LINE__, _g->name);                  \
-        (r) = _g->recv_modex_complete(b);                                   \
+        if (NULL != _g->recv_modex_complete) {                              \
+            (r) = _g->recv_modex_complete(b);                               \
+        }                                                                   \
     } while (0)
 
 /**

@@ -670,7 +670,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk, pmix_buffer_t *buf)
                 if (PMIX_SUCCESS == rc) {
                     int key_idx;
                     PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
-                        rc = PMIx_Argv_append_unique_idx(&key_idx, &kmap, kv->key);
+                        rc = pmix_argv_append_unique_idx(&key_idx, &kmap, kv->key);
                         if (pmix_value_array_get_size(key_count_array) < (size_t)(key_idx + 1)) {
                             size_t new_size;
                             size_t old_size = pmix_value_array_get_size(key_count_array);

@@ -879,7 +879,7 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
             goto cleanup;
         }
 
-        PMIx_Argv_append(num_env, env, str);
+        pmix_argv_append(num_env, env, str);
         free(str);
 
         ret = PMIX_SUCCESS;
@@ -902,7 +902,7 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
         }
 
         if (NULL != str) {
-            PMIx_Argv_append(num_env, env, str);
+            pmix_argv_append(num_env, env, str);
             free(str);
         }
     }
@@ -1019,7 +1019,7 @@ static int fixup_files(char **file_list, char *path, bool rel_path_search, char 
             break;
         }
 
-        PMIx_Argv_append(&argc, &argv, tmp_file);
+        pmix_argv_append(&argc, &argv, tmp_file);
 
         free(tmp_file);
         tmp_file = NULL;
