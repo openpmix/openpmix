@@ -81,7 +81,7 @@ PMIX_EXPORT char **pmix_environ_merge(char **minor,
  * Merge the contents of \em additions into \em orig. If a key from
  * \em additions is found in \em orig, then the value in orig is not
  * updated (ie, it is an additions-only merge).  The original
- * environment cannot be environ, because pmix_argv_append is used to
+ * environment cannot be environ, because PMIx_Argv_append is used to
  * extend the environment, and PMIx_Argv_append_nosize() may not be
  * safe to call on environ (for the same reason that realloc() may
  * note be safe to call on environ).

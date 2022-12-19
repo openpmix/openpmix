@@ -260,7 +260,7 @@ static void options_data_expand(const char *value)
        Otherwise, it's the default case... */
     if (NULL != value && 0 != strcmp(value, "")) {
         char **values = PMIx_Argv_split(value, ';');
-        pmix_argv_insert(&(options_data[parse_options_idx].compiler_args),
+        PMIx_Argv_insert(&(options_data[parse_options_idx].compiler_args),
                          PMIx_Argv_count(options_data[parse_options_idx].compiler_args), values);
         PMIx_Argv_free(values);
     } else {
@@ -339,7 +339,7 @@ static void filter_flags(char*** argvp)
 
         while (filtered_args[j] != NULL) {
             if (0 == strcmp(arg, filtered_args[j])) {
-                pmix_argv_delete(&argc, argvp, idx, 1);
+                PMIx_Argv_delete(&argc, argvp, idx, 1);
                 found = true;
                 break;
             }
@@ -384,47 +384,47 @@ static void data_callback(const char *file, int lineno,
             options_data[parse_options_idx].version = strdup(value);
     } else if (0 == strcmp(key, "preprocessor_flags")) {
         char **values = PMIx_Argv_split(value, ' ');
-        pmix_argv_insert(&options_data[parse_options_idx].preproc_flags,
+        PMIx_Argv_insert(&options_data[parse_options_idx].preproc_flags,
                          PMIx_Argv_count(options_data[parse_options_idx].preproc_flags), values);
         expand_flags(options_data[parse_options_idx].preproc_flags);
         filter_flags(&options_data[parse_options_idx].preproc_flags);
         PMIx_Argv_free(values);
     } else if (0 == strcmp(key, "compiler_flags")) {
         char **values = PMIx_Argv_split(value, ' ');
-        pmix_argv_insert(&options_data[parse_options_idx].comp_flags,
+        PMIx_Argv_insert(&options_data[parse_options_idx].comp_flags,
                          PMIx_Argv_count(options_data[parse_options_idx].comp_flags), values);
         expand_flags(options_data[parse_options_idx].comp_flags);
         filter_flags(&options_data[parse_options_idx].comp_flags);
         PMIx_Argv_free(values);
     } else if (0 == strcmp(key, "compiler_flags_prefix")) {
         char **values = PMIx_Argv_split(value, ' ');
-        pmix_argv_insert(&options_data[parse_options_idx].comp_flags_prefix,
+        PMIx_Argv_insert(&options_data[parse_options_idx].comp_flags_prefix,
                          PMIx_Argv_count(options_data[parse_options_idx].comp_flags_prefix),
                          values);
         expand_flags(options_data[parse_options_idx].comp_flags_prefix);
         PMIx_Argv_free(values);
     } else if (0 == strcmp(key, "linker_flags")) {
         char **values = PMIx_Argv_split(value, ' ');
-        pmix_argv_insert(&options_data[parse_options_idx].link_flags,
+        PMIx_Argv_insert(&options_data[parse_options_idx].link_flags,
                          PMIx_Argv_count(options_data[parse_options_idx].link_flags), values);
         expand_flags(options_data[parse_options_idx].link_flags);
         filter_flags(&options_data[parse_options_idx].link_flags);
         PMIx_Argv_free(values);
     } else if (0 == strcmp(key, "linker_flags_static")) {
         char **values = PMIx_Argv_split(value, ' ');
-        pmix_argv_insert(&options_data[parse_options_idx].link_flags_static,
+        PMIx_Argv_insert(&options_data[parse_options_idx].link_flags_static,
                          PMIx_Argv_count(options_data[parse_options_idx].link_flags_static), values);
         expand_flags(options_data[parse_options_idx].link_flags_static);
         filter_flags(&options_data[parse_options_idx].link_flags_static);
         PMIx_Argv_free(values);
     } else if (0 == strcmp(key, "libs")) {
         char **values = PMIx_Argv_split(value, ' ');
-        pmix_argv_insert(&options_data[parse_options_idx].libs,
+        PMIx_Argv_insert(&options_data[parse_options_idx].libs,
                          PMIx_Argv_count(options_data[parse_options_idx].libs), values);
         PMIx_Argv_free(values);
     } else if (0 == strcmp(key, "libs_static")) {
         char **values = PMIx_Argv_split(value, ' ');
-        pmix_argv_insert(&options_data[parse_options_idx].libs_static,
+        PMIx_Argv_insert(&options_data[parse_options_idx].libs_static,
                          PMIx_Argv_count(options_data[parse_options_idx].libs_static), values);
         PMIx_Argv_free(values);
     } else if (0 == strcmp(key, "dyn_lib_file")) {
@@ -748,7 +748,7 @@ int main(int argc, char *argv[])
 
                 all_args = PMIx_Argv_copy(options_data[user_data_idx].link_flags);
                 args_count = PMIx_Argv_count(all_args);
-                pmix_argv_insert(&all_args, args_count, options_data[user_data_idx].link_flags_static);
+                PMIx_Argv_insert(&all_args, args_count, options_data[user_data_idx].link_flags_static);
                 print_flags(all_args, PMIX_LIBDIR_FLAG);
                 PMIx_Argv_free(all_args);
                 goto cleanup;
@@ -765,7 +765,7 @@ int main(int argc, char *argv[])
 
                 all_args = PMIx_Argv_copy(options_data[user_data_idx].libs);
                 args_count = PMIx_Argv_count(all_args);
-                pmix_argv_insert(&all_args, args_count, options_data[user_data_idx].libs_static);
+                PMIx_Argv_insert(&all_args, args_count, options_data[user_data_idx].libs_static);
                 print_flags(all_args, "-l");
                 PMIx_Argv_free(all_args);
                 goto cleanup;
@@ -809,7 +809,7 @@ int main(int argc, char *argv[])
 
             flags |= (COMP_DRY_RUN | COMP_SHOW_ERROR);
             /* remove element from user_argv */
-            pmix_argv_delete(&user_argc, &user_argv, i, 1);
+            PMIx_Argv_delete(&user_argc, &user_argv, i, 1);
             --i;
 
             if (done_now) {
@@ -894,24 +894,24 @@ int main(int argc, char *argv[])
     }
 
     if (flags & COMP_WANT_COMPILE) {
-        pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].comp_flags_prefix);
+        PMIx_Argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].comp_flags_prefix);
         exec_argc = PMIx_Argv_count(exec_argv);
     }
 
     /* Per https://svn.open-mpi.org/trac/ompi/ticket/2201, add all the
        user arguments before anything else. */
-    pmix_argv_insert(&exec_argv, exec_argc, user_argv);
+    PMIx_Argv_insert(&exec_argv, exec_argc, user_argv);
     exec_argc = PMIx_Argv_count(exec_argv);
 
     /* preproc flags */
     if (flags & COMP_WANT_PREPROC) {
-        pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].preproc_flags);
+        PMIx_Argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].preproc_flags);
         exec_argc = PMIx_Argv_count(exec_argv);
     }
 
     /* compiler flags */
     if (flags & COMP_WANT_COMPILE) {
-        pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].comp_flags);
+        PMIx_Argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].comp_flags);
         exec_argc = PMIx_Argv_count(exec_argv);
     }
 
@@ -923,16 +923,16 @@ int main(int argc, char *argv[])
            pmix_setup_wrappers.m4).  The wrapper will always add libs
            and link_flags in a link situation, and should add the
            _static variants if -static was seen. */
-        pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].link_flags);
+        PMIx_Argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].link_flags);
         exec_argc = PMIx_Argv_count(exec_argv);
         if (flags & COMP_WANT_STATIC) {
-            pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].link_flags_static);
+            PMIx_Argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].link_flags_static);
             exec_argc = PMIx_Argv_count(exec_argv);
         }
-        pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs);
+        PMIx_Argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs);
         exec_argc = PMIx_Argv_count(exec_argv);
         if (flags & COMP_WANT_STATIC) {
-            pmix_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs_static);
+            PMIx_Argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs_static);
             exec_argc = PMIx_Argv_count(exec_argv);
         }
     }

@@ -2425,7 +2425,7 @@ PMIX_EXPORT pmix_status_t pmix_common_dstor_setup_fork(pmix_common_dstore_ctx_t 
         return rc;
     }
 
-    if(PMIX_SUCCESS != (rc = pmix_setenv(base_path_env,
+    if(PMIX_SUCCESS != (rc = PMIx_Setenv(base_path_env,
                                         _ESH_SESSION_path(ds_ctx->session_array, ns_map->tbl_idx),
                                          true, env))){
         PMIX_ERROR_LOG(rc);
@@ -2792,7 +2792,7 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                 } else if (PMIX_CHECK_KEY(&info[i], PMIX_NODEID)) {
                     nodeid = info[i].value.data.uint32;
                 } else if (PMIX_CHECK_KEY(&info[i], PMIX_HOSTNAME_ALIASES)) {
-                    aliases = pmix_argv_split(info[i].value.data.string, ',');
+                    aliases = PMIx_Argv_split(info[i].value.data.string, ',');
                 }
             }
             if (NULL == hostname && UINT32_MAX == nodeid && NULL == aliases) {
@@ -2812,7 +2812,7 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                         break;
                     }
                 }
-                pmix_argv_free(aliases);
+                PMIx_Argv_free(aliases);
             }
             if (match) {
                 /* if this host is us, then store each value as its own key */

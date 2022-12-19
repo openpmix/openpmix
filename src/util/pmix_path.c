@@ -203,7 +203,7 @@ char *pmix_path_findv(char *fname, int mode, char **envv, char *wrkdir)
        the wrkdir to the end of the path */
 
     if (!found_dot && NULL != wrkdir) {
-        pmix_argv_append(&dirc, &dirv, wrkdir);
+        PMIx_Argv_append(&dirc, &dirv, wrkdir);
     }
 
     if (NULL == dirv)
@@ -322,7 +322,7 @@ static void path_env_load(char *path, int *pargc, char ***pargv)
         if (p != path) {
             saved = *p;
             *p = '\0';
-            pmix_argv_append(pargc, pargv, path);
+            PMIx_Argv_append(pargc, pargv, path);
             *p = saved;
             path = p;
         }

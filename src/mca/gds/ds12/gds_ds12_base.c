@@ -62,7 +62,7 @@ static pmix_status_t ds12_assign_module(pmix_info_t *info, size_t ninfo,
     if (NULL != info) {
         for (n=0; n < ninfo; n++) {
             if (0 == strncmp(info[n].key, PMIX_GDS_MODULE, PMIX_MAX_KEYLEN)) {
-                options = pmix_argv_split(info[n].value.data.string, ',');
+                options = PMIx_Argv_split(info[n].value.data.string, ',');
                 for (m=0; NULL != options[m]; m++) {
                     if (0 == strcmp(options[m], "ds12")) {
                         /* they specifically asked for us */
@@ -77,7 +77,7 @@ static pmix_status_t ds12_assign_module(pmix_info_t *info, size_t ninfo,
                         break;
                     }
                 }
-                pmix_argv_free(options);
+                PMIx_Argv_free(options);
                 break;
             }
         }

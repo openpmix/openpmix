@@ -62,6 +62,7 @@ void pmix_rte_finalize(void)
     int i;
     pmix_notify_caddy_t *cd;
     pmix_iof_req_t *req;
+    pmix_regattr_input_t *p;
 
     if (!pmix_init_called) {
         return;
