@@ -40,7 +40,7 @@
 /*
  * Append a string to the end of a new or existing argv array.
  */
-pmix_status_t PMIx_Argv_append(int *argc, char ***argv, const char *arg)
+pmix_status_t pmix_argv_append(int *argc, char ***argv, const char *arg)
 {
     pmix_status_t rc;
 
@@ -54,7 +54,7 @@ pmix_status_t PMIx_Argv_append(int *argc, char ***argv, const char *arg)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_Argv_append_unique_idx(int *idx, char ***argv, const char *arg)
+pmix_status_t pmix_argv_append_unique_idx(int *idx, char ***argv, const char *arg)
 {
     int i;
     pmix_status_t rc;
@@ -86,7 +86,7 @@ add:
  * Join all the elements of an argv array from within a
  * specified range into a single newly-allocated string.
  */
-char *PMIx_Argv_join_range(char **argv, size_t start, size_t end, int delimiter)
+char *pmix_argv_join_range(char **argv, size_t start, size_t end, int delimiter)
 {
     char **p;
     char *pp;
@@ -145,7 +145,7 @@ char *PMIx_Argv_join_range(char **argv, size_t start, size_t end, int delimiter)
 /*
  * Return the number of bytes consumed by an argv array.
  */
-size_t PMIx_Argv_len(char **argv)
+size_t pmix_argv_len(char **argv)
 {
     char **p;
     size_t length;
@@ -166,7 +166,7 @@ size_t PMIx_Argv_len(char **argv)
  * Copy a NULL-terminated argv array, stripping any leading/trailing
  * quotes from each element
  */
-char **PMIx_Argv_copy_strip(char **argv)
+char **pmix_argv_copy_strip(char **argv)
 {
     char **dupv = NULL;
     int n;
@@ -211,7 +211,7 @@ char **PMIx_Argv_copy_strip(char **argv)
     return dupv;
 }
 
-pmix_status_t PMIx_Argv_delete(int *argc, char ***argv, int start, int num_to_delete)
+pmix_status_t pmix_argv_delete(int *argc, char ***argv, int start, int num_to_delete)
 {
     int i;
     int count;
@@ -264,7 +264,7 @@ pmix_status_t PMIx_Argv_delete(int *argc, char ***argv, int start, int num_to_de
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_Argv_insert(char ***target, int start, char **source)
+pmix_status_t pmix_argv_insert(char ***target, int start, char **source)
 {
     int i, source_count, target_count;
     int suffix_count;
@@ -283,7 +283,7 @@ pmix_status_t PMIx_Argv_insert(char ***target, int start, char **source)
     source_count = PMIx_Argv_count(source);
     if (start > target_count) {
         for (i = 0; i < source_count; ++i) {
-            PMIx_Argv_append(&target_count, target, source[i]);
+            pmix_argv_append(&target_count, target, source[i]);
         }
     }
 
@@ -315,7 +315,7 @@ pmix_status_t PMIx_Argv_insert(char ***target, int start, char **source)
     return PMIX_SUCCESS;
 }
 
-pmix_status_t PMIx_Argv_insert_element(char ***target, int location, char *source)
+pmix_status_t pmix_argv_insert_element(char ***target, int location, char *source)
 {
     int i, target_count;
     int suffix_count;
@@ -331,7 +331,7 @@ pmix_status_t PMIx_Argv_insert_element(char ***target, int location, char *sourc
     /* Easy case: appending to the end */
     target_count = PMIx_Argv_count(*target);
     if (location > target_count) {
-        PMIx_Argv_append(&target_count, target, source);
+        pmix_argv_append(&target_count, target, source);
         return PMIX_SUCCESS;
     }
 
