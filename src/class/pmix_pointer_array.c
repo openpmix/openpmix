@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,13 +56,14 @@ static void pmix_pointer_array_construct(pmix_pointer_array_t *array)
  */
 static void pmix_pointer_array_destruct(pmix_pointer_array_t *array)
 {
+    pmix_tma_t *const tma = pmix_obj_get_tma(&array->super);
     /* free table */
     if (NULL != array->free_bits) {
-        free(array->free_bits);
+        pmix_tma_free(tma, array->free_bits);
         array->free_bits = NULL;
     }
     if (NULL != array->addr) {
-        free(array->addr);
+        pmix_tma_free(tma, array->addr);
         array->addr = NULL;
     }
 
@@ -189,6 +191,8 @@ int pmix_pointer_array_init(pmix_pointer_array_t *array, int initial_allocation,
         return PMIX_ERR_BAD_PARAM;
     }
 
+    pmix_tma_t *const tma = pmix_obj_get_tma(&array->super);
+
     array->max_size = max_size;
     array->block_size = (0 == block_size ? 8 : block_size);
     array->lowest_free = 0;
@@ -196,13 +200,13 @@ int pmix_pointer_array_init(pmix_pointer_array_t *array, int initial_allocation,
     num_bytes = (0 < initial_allocation ? initial_allocation : block_size);
 
     /* Allocate and set the array to NULL */
-    array->addr = (void **) calloc(num_bytes, sizeof(void *));
+    array->addr = (void **) pmix_tma_calloc(tma, num_bytes, sizeof(void *));
     if (NULL == array->addr) { /* out of memory */
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
-    array->free_bits = (uint64_t *) calloc(TYPE_ELEM_COUNT(uint64_t, num_bytes), sizeof(uint64_t));
+    array->free_bits = (uint64_t *) pmix_tma_calloc(tma, TYPE_ELEM_COUNT(uint64_t, num_bytes), sizeof(uint64_t));
     if (NULL == array->free_bits) { /* out of memory */
-        free(array->addr);
+        pmix_tma_free(tma, array->addr);
         array->addr = NULL;
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -399,6 +403,7 @@ int pmix_pointer_array_set_size(pmix_pointer_array_t *array, int new_size)
 
 static bool grow_table(pmix_pointer_array_t *table, int at_least)
 {
+    pmix_tma_t *const tma = pmix_obj_get_tma(&table->super);
     int i, new_size, new_size_int;
     void *p;
 
@@ -410,7 +415,7 @@ static bool grow_table(pmix_pointer_array_t *table, int at_least)
         }
     }
 
-    p = (void **) realloc(table->addr, new_size * sizeof(void *));
+    p = (void **) pmix_tma_realloc(tma, table->addr, new_size * sizeof(void *));
     if (NULL == p) {
         return false;
     }
@@ -422,7 +427,7 @@ static bool grow_table(pmix_pointer_array_t *table, int at_least)
     }
     new_size_int = TYPE_ELEM_COUNT(uint64_t, new_size);
     if ((int) (TYPE_ELEM_COUNT(uint64_t, table->size)) != new_size_int) {
-        p = (uint64_t *) realloc(table->free_bits, new_size_int * sizeof(uint64_t));
+        p = (uint64_t *) pmix_tma_realloc(tma, table->free_bits, new_size_int * sizeof(uint64_t));
         if (NULL == p) {
             return false;
         }
