@@ -29,10 +29,8 @@ dist_pmixdata_DATA = help-gds-shmem.txt
 
 # TODO(skg) Eventually reincorporate pmix_hash2.
 # TODO(skg) Eventually reincorporate pmix_hash_table2.
-# TODO(skg) Eventually reincorporate pmix_pointer_array2.
 
 headers = \
-        pmix_pointer_array2.h \
         pmix_hash_table2.h \
         pmix_hash2.h \
         gds_shmem.h \
@@ -41,7 +39,6 @@ headers = \
         gds_shmem_fetch.h
 
 sources = \
-        pmix_pointer_array2.c \
         pmix_hash_table2.c \
         pmix_hash2.c \
         gds_shmem_component.c \
