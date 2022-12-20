@@ -23,6 +23,66 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
+4.2.3 -- TBD
+----------------------
+ - PR #2882 Multiple commits
+    - Minor compatibility touchup
+    - Cleanup
+    - Fix singleton support
+    - Re-implement the timeout support for purely local grp ops
+    - Fix local group operations
+    - Correctly identify Cython as a required package
+    - Move SIGCHLD capture to aux event base
+    - Silence a warning during Python binding install
+    - Fix a typo in the macro backers and add a "stop" pt in deprecated.h
+    - Silence a few Coverity complaints
+    - Add an attribute for passing an auxiliary event base
+    - Complete the macro-to-function conversion
+    - Continue macro converstion to functions
+    - Checkpoint work on macro conversion to functions
+    - Extend handling of bool MCA params
+    - Fix a couple of bugs in the modex/get path
+    - Convert macros to functions
+    - Always allow the GDS to use the namespace list
+    - Ensure the ptl connection handler includes the provided info
+    - Change function signature of mark_modex_complete().
+    - Add some scheduler integration support
+    - Add hooks for GDS components to handshake modex complete
+    - Include deprecated definitions in Python bindings
+    - Add attribute to report index of topology in storage array
+    - Add attribute to query allocation info
+    - Add an API to pretty-print pmix_app_t structures
+    - Try both peer and server storage for connect info
+    - Remove debug print statements
+    - Allow gds function fallback to hash take II.
+    - Add support for scheduler connections
+    - Cleanup a couple of warnings in Python bindings
+    - Add an API and attribute
+    - Avoid infinite loop in fabric registration
+    - Roll version to 4.2.3
+ - PR #2829: Multiple commits
+    - Minor correction to check_os_flavors
+    - Allow Python tool to set server module functions
+    - Some repairs to the Python bindings
+    - Fix the Python tests
+ - PR #2828: Remove chatty error log output
+ - PR #2823: Some cleanup of the Python bindings build system
+ - PR #2821: Correct return codes for two APIs
+ - PR #2817: Modify the pmix_output system
+ - PR #2813: Fix bashism in oac_check_package.m4
+ - PR #2811: Multiple commits
+    - build: fix bashisms in configure
+    - build: fix -Wstrict-prototypes
+ - PR #2808: pmix_list: fix a bug in pmix_list_insert()
+ - PR #2806: Multiple commits
+    - Have python bindings properly setup the env
+    -  The PMIx_IOF_Push() function can take a NULL option for its
+       buffer object. Update Python bindings so it can use this.
+ - PR #2803: oneapi (and probably llvm): patch to allow
+             pmix tests to compile using icx, icpx, etc.
+ - PR #2801: intel oneapi: fix a munge code error
+
+
 4.2.2 -- 25 Oct 2022
 ----------------------
 **** NOTE: This is the minimum version required to support PRRTE v3.0.
