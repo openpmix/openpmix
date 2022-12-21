@@ -489,7 +489,9 @@ void pmix_hwloc_destruct_topology(pmix_topology_t *src)
         0 != strncasecmp(src->source, "hwloc", 5)) {
         return;
     }
-    hwloc_topology_destroy(src->topology);
+    if (NULL != src->topology) {
+        hwloc_topology_destroy(src->topology);
+    }
     free(src->source);
 }
 
