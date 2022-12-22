@@ -39,6 +39,7 @@ typedef struct {
     volatile bool active;
     pmix_status_t status;
     int count;
+    char *answer;
     size_t evhandler_ref;
 } mylock_t;
 
@@ -49,6 +50,7 @@ typedef struct {
         (l)->active = true;                    \
         (l)->status = PMIX_SUCCESS;            \
         (l)->count = 0;                        \
+        (l)->answer = NULL;                    \
         (l)->evhandler_ref = 0;                \
     } while (0)
 
@@ -56,6 +58,9 @@ typedef struct {
     do {                                    \
         pthread_mutex_destroy(&(l)->mutex); \
         pthread_cond_destroy(&(l)->cond);   \
+        if (NULL != (l)->answer) {          \
+            free((l)->answer);              \
+        }                                   \
     } while (0)
 
 #define DEBUG_WAIT_THREAD(lck)                              \
