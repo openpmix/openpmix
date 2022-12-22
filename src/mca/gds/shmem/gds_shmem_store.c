@@ -352,7 +352,7 @@ store_proc_data(
         return rc;
     }
 
-    pmix_hash_table2_t *const ht = job->smdata->local_hashtab;
+    pmix_hash_table_t *const ht = job->smdata->local_hashtab;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
     const pmix_rank_t rank = info[0].value.data.rank;
@@ -459,7 +459,7 @@ out:
 
 pmix_status_t
 pmix_gds_shmem_store_qualified(
-    pmix_hash_table2_t *ht,
+    pmix_hash_table_t *ht,
     pmix_rank_t rank,
     pmix_value_t *value
 ) {
@@ -505,7 +505,7 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
     pmix_list_t *job_data
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_hash_table2_t *const local_ht = job->smdata->local_hashtab;
+    pmix_hash_table_t *const local_ht = job->smdata->local_hashtab;
     pmix_tma_t *const tma = pmix_obj_get_tma(&local_ht->super);
 
     pmix_kval_t *kvi;
@@ -606,7 +606,7 @@ pmix_gds_shmem_store_modex_in_shmem(
         return rc;
     }
 
-    pmix_hash_table2_t *const ht = job->smmodex->hashtab;
+    pmix_hash_table_t *const ht = job->smmodex->hashtab;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
     // This is data returned via the PMIx_Fence call when data collection was

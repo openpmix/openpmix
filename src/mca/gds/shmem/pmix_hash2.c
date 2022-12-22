@@ -38,11 +38,6 @@
 #include "src/include/pmix_hash_string.h"
 #include "src/include/pmix_stdint.h"
 
-#if 0 // TODO(skg)
-#include "src/class/pmix_hash_table.h"
-#else
-#include "pmix_hash_table2.h"
-#endif
 #include "src/class/pmix_pointer_array.h"
 #include "src/include/pmix_dictionary.h"
 #include "src/include/pmix_globals.h"
@@ -77,7 +72,7 @@ typedef struct {
      * Array of pmix_dstor_t structures containing all data
      * received from this process.
      */
-#if 0 
+#if 0
     pmix_pointer_array_t data;
     pmix_pointer_array_t quals;
 #else
@@ -141,12 +136,12 @@ static PMIX_CLASS_INSTANCE(pmix_proc_data2_t, pmix_object_t, pdcon, pddes);
 
 static pmix_dstor_t *lookup_keyval(pmix_proc_data2_t *proc, uint32_t kid,
                                    pmix_info_t *qualifiers, size_t nquals);
-static pmix_proc_data2_t *lookup_proc(pmix_hash_table2_t *jtable, uint32_t id, bool create);
+static pmix_proc_data2_t *lookup_proc(pmix_hash_table_t *jtable, uint32_t id, bool create);
 static void erase_qualifiers(pmix_proc_data2_t *proc,
                              uint32_t index);
 
 
-pmix_status_t pmix_hash2_store(pmix_hash_table2_t *table,
+pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
                               pmix_rank_t rank, pmix_kval_t *kin,
                               pmix_info_t *qualifiers, size_t nquals)
 {
@@ -305,7 +300,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table2_t *table,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_hash2_fetch(pmix_hash_table2_t *table,
+pmix_status_t pmix_hash2_fetch(pmix_hash_table_t *table,
                               pmix_rank_t rank,
                               const char *key,
                               pmix_info_t *qualifiers, size_t nquals,
@@ -347,7 +342,7 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table2_t *table,
      *     PMIX_ERR_NOT_FOUND | PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
      * special logic is basing on these statuses on a client and a server */
     if (PMIX_RANK_UNDEF == rank) {
-        rc = pmix_hash_table2_get_first_key_uint32(table, &id, (void **) &proc_data,
+        rc = pmix_hash_table_get_first_key_uint32(table, &id, (void **) &proc_data,
                                                   (void **) &node);
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(10, pmix_globals.debug_output,
@@ -482,7 +477,7 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table2_t *table,
             }
         }
 
-        rc = pmix_hash_table2_get_next_key_uint32(table, &id, (void **) &proc_data, node,
+        rc = pmix_hash_table_get_next_key_uint32(table, &id, (void **) &proc_data, node,
                                                  (void **) &node);
         if (PMIX_SUCCESS != rc) {
             pmix_output_verbose(10, pmix_globals.debug_output,
@@ -495,7 +490,7 @@ pmix_status_t pmix_hash2_fetch(pmix_hash_table2_t *table,
     return rc;
 }
 
-pmix_status_t pmix_hash2_remove_data(pmix_hash_table2_t *table,
+pmix_status_t pmix_hash2_remove_data(pmix_hash_table_t *table,
                                     pmix_rank_t rank, const char *key)
 {
     pmix_status_t rc = PMIX_SUCCESS;
@@ -519,7 +514,7 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table2_t *table,
     /* if the rank is wildcard, we want to apply this to
      * all rank entries */
     if (PMIX_RANK_WILDCARD == rank) {
-        rc = pmix_hash_table2_get_first_key_uint32(table, &id, (void **) &proc_data,
+        rc = pmix_hash_table_get_first_key_uint32(table, &id, (void **) &proc_data,
                                                   (void **) &node);
         while (PMIX_SUCCESS == rc) {
             if (NULL != proc_data) {
@@ -542,7 +537,7 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table2_t *table,
                     }
                 }
             }
-            rc = pmix_hash_table2_get_next_key_uint32(table, &id, (void **) &proc_data, node,
+            rc = pmix_hash_table_get_next_key_uint32(table, &id, (void **) &proc_data, node,
                                                      (void **) &node);
         }
         return PMIX_SUCCESS;
@@ -570,7 +565,7 @@ pmix_status_t pmix_hash2_remove_data(pmix_hash_table2_t *table,
             }
         }
         /* remove the proc_data object itself from the jtable */
-        pmix_hash_table2_remove_value_uint32(table, rank);
+        pmix_hash_table_remove_value_uint32(table, rank);
         /* cleanup */
         PMIX_RELEASE(proc_data);
         return PMIX_SUCCESS;
@@ -678,19 +673,19 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data2_t *proc_data, uint32_t kid,
  * Find proc_data_t container associated with given
  * pmix_identifier_t.
  */
-static pmix_proc_data2_t *lookup_proc(pmix_hash_table2_t *jtable, uint32_t id, bool create)
+static pmix_proc_data2_t *lookup_proc(pmix_hash_table_t *jtable, uint32_t id, bool create)
 {
     pmix_proc_data2_t *proc_data = NULL;
     pmix_tma_t *const tma = pmix_obj_get_tma(&jtable->super);
 
-    pmix_hash_table2_get_value_uint32(jtable, id, (void **) &proc_data);
+    pmix_hash_table_get_value_uint32(jtable, id, (void **) &proc_data);
     if (NULL == proc_data && create) {
         /* The proc clearly exists, so create a data structure for it */
         proc_data = PMIX_NEW(pmix_proc_data2_t, tma);
         if (NULL == proc_data) {
             return NULL;
         }
-        pmix_hash_table2_set_value_uint32(jtable, id, proc_data);
+        pmix_hash_table_set_value_uint32(jtable, id, proc_data);
     }
 
     return proc_data;

@@ -28,10 +28,8 @@ AM_CPPFLAGS = $(gds_shmem_CPPFLAGS)
 dist_pmixdata_DATA = help-gds-shmem.txt
 
 # TODO(skg) Eventually reincorporate pmix_hash2.
-# TODO(skg) Eventually reincorporate pmix_hash_table2.
 
 headers = \
-        pmix_hash_table2.h \
         pmix_hash2.h \
         gds_shmem.h \
         gds_shmem_utils.h \
@@ -39,7 +37,6 @@ headers = \
         gds_shmem_fetch.h
 
 sources = \
-        pmix_hash_table2.c \
         pmix_hash2.c \
         gds_shmem_component.c \
         gds_shmem.c \

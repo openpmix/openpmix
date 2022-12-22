@@ -14,6 +14,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  *
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
@@ -349,6 +350,14 @@ PMIX_EXPORT int pmix_hash_table_get_first_key_ptr(pmix_hash_table_t *table, void
 PMIX_EXPORT int pmix_hash_table_get_next_key_ptr(pmix_hash_table_t *table, void **key,
                                                  size_t *key_size, void **value, void *in_node,
                                                  void **out_node);
+
+/**
+ * Returns the size of the opaque pmix_hash_element_t structure. Note that this
+ * only returns the size of the structure itself and does not capture the size
+ * of data that are stored within an element.
+ */
+PMIX_EXPORT size_t
+pmix_hash_table_sizeof_hash_element(void);
 
 /**
  * @brief Returns next power-of-two of the given value.

@@ -23,7 +23,7 @@ BEGIN_C_DECLS
 
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_store_qualified(
-    pmix_hash_table2_t *ht,
+    pmix_hash_table_t *ht,
     pmix_rank_t rank,
     pmix_value_t *value
 );
