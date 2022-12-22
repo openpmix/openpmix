@@ -3046,8 +3046,8 @@ static void psetdef(int sd, short args, void *cbdata)
     ptr = (pmix_proc_t *) darray->array;
     memcpy(ptr, cd->procs, cd->nprocs * sizeof(pmix_proc_t));
 
-    PMIx_Notify_event(PMIX_PROCESS_SET_DEFINE, &pmix_globals.myid, PMIX_RANGE_LOCAL, mydat->info,
-                      mydat->ninfo, release_info, (void *) mydat);
+    PMIx_Notify_event(PMIX_PROCESS_SET_DEFINE, &pmix_globals.myid, PMIX_RANGE_LOCAL,
+                      mydat->info,  mydat->ninfo, release_info, (void *) mydat);
 
     /* now record the process set */
     ps = PMIX_NEW(pmix_pset_t);
