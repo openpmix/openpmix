@@ -168,6 +168,7 @@ pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_
     pmix_cb_t *cb;
     pmix_event_chain_t *chain = NULL;
     size_t n;
+    bool holdcd;
     pmix_notify_caddy_t *cd;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
@@ -176,6 +177,19 @@ pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_
                         pmix_client_globals.myserver->info->pname.nspace,
                         pmix_client_globals.myserver->info->pname.rank, PMIx_Error_string(status),
                         PMIx_Data_range_string(range));
+
+    holdcd = true;
+    if (0 < ninfo) {
+        /* check for caching instructions */
+        for (n = 0; n < ninfo; n++) {
+            if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_DO_NOT_CACHE)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    holdcd = false;
+                }
+                break;
+            }
+        }
+    }
 
     if (PMIX_RANGE_PROC_LOCAL != range) {
         /* create the msg object */
@@ -234,44 +248,45 @@ pmix_status_t pmix_notify_server_of_event(pmix_status_t status, const pmix_proc_
         /* prep the chain for processing */
         pmix_prep_event_chain(chain, info, ninfo, true);
 
-        /* we need to cache this event so we can pass it into
-         * ourselves should someone later register for it */
-        cd = PMIX_NEW(pmix_notify_caddy_t);
-        cd->status = status;
-        PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
-        cd->range = chain->range;
-        if (0 < chain->ninfo) {
-            cd->ninfo = chain->ninfo;
-            PMIX_INFO_CREATE(cd->info, cd->ninfo);
-            cd->nondefault = chain->nondefault;
-            /* need to copy the info */
-            for (n = 0; n < cd->ninfo; n++) {
-                PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
+        if (PMIX_RANGE_PROC_LOCAL == range && holdcd) {
+            /* we need to cache this event so we can pass it into
+             * ourselves should someone later register for it */
+            cd = PMIX_NEW(pmix_notify_caddy_t);
+            cd->status = status;
+            PMIX_LOAD_PROCID(&cd->source, chain->source.nspace, chain->source.rank);
+            cd->range = chain->range;
+            if (0 < chain->ninfo) {
+                cd->ninfo = chain->ninfo;
+                PMIX_INFO_CREATE(cd->info, cd->ninfo);
+                cd->nondefault = chain->nondefault;
+                /* need to copy the info */
+                for (n = 0; n < cd->ninfo; n++) {
+                    PMIX_INFO_XFER(&cd->info[n], &chain->info[n]);
+                }
             }
-        }
-        if (NULL != chain->targets) {
-            cd->ntargets = chain->ntargets;
-            PMIX_PROC_CREATE(cd->targets, cd->ntargets);
-            memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
-        }
-        if (NULL != chain->affected) {
-            cd->naffected = chain->naffected;
-            PMIX_PROC_CREATE(cd->affected, cd->naffected);
-            if (NULL == cd->affected) {
-                cd->naffected = 0;
-                rc = PMIX_ERR_NOMEM;
+            if (NULL != chain->targets) {
+                cd->ntargets = chain->ntargets;
+                PMIX_PROC_CREATE(cd->targets, cd->ntargets);
+                memcpy(cd->targets, chain->targets, cd->ntargets * sizeof(pmix_proc_t));
+            }
+            if (NULL != chain->affected) {
+                cd->naffected = chain->naffected;
+                PMIX_PROC_CREATE(cd->affected, cd->naffected);
+                if (NULL == cd->affected) {
+                    cd->naffected = 0;
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
+                }
+                memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+            }
+            rc = pmix_notify_event_cache(cd);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(cd);
                 goto cleanup;
             }
-            memcpy(cd->affected, chain->affected, cd->naffected * sizeof(pmix_proc_t));
+            chain->cached = true;
         }
-        /* cache it */
-        rc = pmix_notify_event_cache(cd);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(cd);
-            goto cleanup;
-        }
-        chain->cached = true;
     }
 
     if (PMIX_RANGE_PROC_LOCAL != range && NULL != msg) {

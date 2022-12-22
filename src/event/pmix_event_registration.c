@@ -417,11 +417,9 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
             /* need to copy the info */
             for (n = 0; n < ncd->ninfo; n++) {
                 PMIX_INFO_XFER(&chain->info[n], &ncd->info[n]);
-                if (0 == strncmp(ncd->info[n].key, PMIX_EVENT_NON_DEFAULT, PMIX_MAX_KEYLEN)) {
+                if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_NON_DEFAULT)) {
                     chain->nondefault = true;
-                } else if (0
-                           == strncmp(ncd->info[n].key, PMIX_EVENT_AFFECTED_PROC,
-                                      PMIX_MAX_KEYLEN)) {
+                } else if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_AFFECTED_PROC)) {
                     PMIX_PROC_CREATE(chain->affected, 1);
                     if (NULL == chain->affected) {
                         PMIX_RELEASE(chain);
@@ -429,9 +427,7 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
                     }
                     chain->naffected = 1;
                     memcpy(chain->affected, ncd->info[n].value.data.proc, sizeof(pmix_proc_t));
-                } else if (0
-                           == strncmp(ncd->info[n].key, PMIX_EVENT_AFFECTED_PROCS,
-                                      PMIX_MAX_KEYLEN)) {
+                } else if (PMIX_CHECK_KEY(&ncd->info[n], PMIX_EVENT_AFFECTED_PROCS)) {
                     chain->naffected = ncd->info[n].value.data.darray->size;
                     PMIX_PROC_CREATE(chain->affected, chain->naffected);
                     if (NULL == chain->affected) {
