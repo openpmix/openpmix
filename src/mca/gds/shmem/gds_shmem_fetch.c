@@ -568,14 +568,14 @@ pmix_gds_shmem_fetch(
         return rc;
     }
 
-    pmix_hash_table2_t *const local_ht = job->smdata->local_hashtab;
+    pmix_hash_table_t *const local_ht = job->smdata->local_hashtab;
 
     // Modex data ready for use?
     const bool mdrfu = pmix_gds_shmem_has_status(
         job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_READY_FOR_USE
     );
     // Modex data are stored in PMIX_REMOTE.
-    pmix_hash_table2_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;
+    pmix_hash_table_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
     // complete copy of the job-level info for this nspace, so retrieve it.
@@ -720,7 +720,7 @@ pmix_gds_shmem_fetch(
     // Fetch from the corresponding hash table.
     // TODO(skg) I'm guessing this is one spot where we can decide if a copy is
     // appropriate.
-    pmix_hash_table2_t *ht = job->smdata->local_hashtab;
+    pmix_hash_table_t *ht = job->smdata->local_hashtab;
     if (PMIX_INTERNAL == scope ||
         PMIX_LOCAL == scope ||
         PMIX_GLOBAL == scope ||

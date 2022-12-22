@@ -19,8 +19,6 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_shmem.h"
 #include "src/mca/gds/base/base.h"
-// TODO(skg) Remove
-#include "pmix_hash_table2.h"
 
 #ifdef HAVE_STDINT_h
 #include <stdint.h>
@@ -142,7 +140,7 @@ typedef struct {
     /** List of applications in this job. */
     pmix_list_t *appinfo;
     /** Stores static local (node) job data. */
-    pmix_hash_table2_t *local_hashtab;
+    pmix_hash_table_t *local_hashtab;
 } pmix_gds_shmem_shared_job_data_t;
 
 typedef struct {
@@ -151,7 +149,7 @@ typedef struct {
     /** Holds the current address of the shared-memory allocator. */
     void *current_addr;
     /** Stores static modex data. */
-    pmix_hash_table2_t *hashtab;
+    pmix_hash_table_t *hashtab;
 } pmix_gds_shmem_shared_modex_data_t;
 
 typedef struct {

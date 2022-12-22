@@ -13,6 +13,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,6 +52,7 @@ struct pmix_hash_element_t {
             size_t key_size;
         } ptr;
     } key;
+    pmix_tma_t *tma; /* The heap memory manager used for this element. */
     void *value; /* the value */
 };
 typedef struct pmix_hash_element_t pmix_hash_element_t;
@@ -84,8 +86,9 @@ static void pmix_hash_table_construct(pmix_hash_table_t *ht)
 
 static void pmix_hash_table_destruct(pmix_hash_table_t *ht)
 {
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
     pmix_hash_table_remove_all(ht);
-    free(ht->ht_table);
+    pmix_tma_free(tma, ht->ht_table);
 }
 
 /*
@@ -104,10 +107,11 @@ int /* PMIX_ return code */
 pmix_hash_table_init2(pmix_hash_table_t *ht, size_t estimated_max_size, int density_numer,
                       int density_denom, int growth_numer, int growth_denom)
 {
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
     size_t est_capacity = estimated_max_size * density_denom / density_numer;
     size_t capacity = pmix_hash_round_capacity_up(est_capacity);
-    ht->ht_table = (pmix_hash_element_t *) calloc(capacity, sizeof(pmix_hash_element_t));
-    if (NULL == ht->ht_table) {
+    ht->ht_table = (pmix_hash_element_t *)pmix_tma_calloc(tma, capacity, sizeof(pmix_hash_element_t));
+    if (PMIX_UNLIKELY(NULL == ht->ht_table)) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
     ht->ht_capacity = capacity;
@@ -149,6 +153,7 @@ pmix_hash_table_remove_all(pmix_hash_table_t *ht)
 static int /* PMIX_ return code */
 pmix_hash_grow(pmix_hash_table_t *ht)
 {
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
     size_t jj, ii;
     pmix_hash_element_t *old_table;
     pmix_hash_element_t *new_table;
@@ -161,8 +166,8 @@ pmix_hash_grow(pmix_hash_table_t *ht)
     new_capacity = old_capacity * ht->ht_growth_numer / ht->ht_growth_denom;
     new_capacity = pmix_hash_round_capacity_up(new_capacity);
 
-    new_table = (pmix_hash_element_t *) calloc(new_capacity, sizeof(new_table[0]));
-    if (NULL == new_table) {
+    new_table = (pmix_hash_element_t *)pmix_tma_calloc(tma, new_capacity, sizeof(new_table[0]));
+    if (PMIX_UNLIKELY(NULL == new_table)) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
@@ -195,7 +200,7 @@ pmix_hash_grow(pmix_hash_table_t *ht)
     ht->ht_table = new_table;
     ht->ht_capacity = new_capacity;
     ht->ht_growth_trigger = new_capacity * ht->ht_density_numer / ht->ht_density_denom;
-    free(old_table);
+    pmix_tma_free(tma, old_table);
     return PMIX_SUCCESS;
 }
 
@@ -284,7 +289,12 @@ pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **val
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -314,6 +324,7 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *valu
     int rc;
     size_t ii, capacity = ht->ht_capacity;
     pmix_hash_element_t *elt;
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
@@ -321,7 +332,12 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *valu
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_uint32:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -339,6 +355,7 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *valu
             elt->key.u32 = key;
             elt->value = value;
             elt->valid = 1;
+            elt->tma = tma;
             ht->ht_size += 1;
             if (ht->ht_size >= ht->ht_growth_trigger) {
                 if (PMIX_SUCCESS != (rc = pmix_hash_grow(ht))) {
@@ -366,7 +383,12 @@ int pmix_hash_table_remove_value_uint32(pmix_hash_table_t *ht, uint32_t key)
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_uint32:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -412,7 +434,12 @@ pmix_hash_table_get_value_uint64(pmix_hash_table_t *ht, uint64_t key, void **val
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -442,6 +469,7 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *valu
     int rc;
     size_t ii, capacity = ht->ht_capacity;
     pmix_hash_element_t *elt;
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
@@ -449,7 +477,12 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *valu
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_uint64:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -467,6 +500,7 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *valu
             elt->key.u64 = key;
             elt->value = value;
             elt->valid = 1;
+            elt->tma = tma;
             ht->ht_size += 1;
             if (ht->ht_size >= ht->ht_growth_trigger) {
                 if (PMIX_SUCCESS != (rc = pmix_hash_grow(ht))) {
@@ -494,7 +528,12 @@ pmix_hash_table_remove_value_uint64(pmix_hash_table_t *ht, uint64_t key)
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_uint64:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -543,7 +582,7 @@ static void pmix_hash_destruct_elt_ptr(pmix_hash_element_t *elt)
     void *key = (void *) elt->key.ptr.key; /* cast away const so we can free it */
     if (NULL != key) {
         elt->key.ptr.key = NULL;
-        free(key);
+        pmix_tma_free(elt->tma, key);
     }
 }
 
@@ -567,7 +606,12 @@ pmix_hash_table_get_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -598,6 +642,7 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
     int rc;
     size_t ii, capacity = ht->ht_capacity;
     pmix_hash_element_t *elt;
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
@@ -605,7 +650,12 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERR_BAD_PARAM;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_ptr:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -620,12 +670,13 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
         elt = &ht->ht_table[ii];
         if (!elt->valid) {
             /* new entry */
-            void *key_local = malloc(key_size);
+            void *key_local = pmix_tma_malloc(tma, key_size);
             memcpy(key_local, key, key_size);
             elt->key.ptr.key = key_local;
             elt->key.ptr.key_size = key_size;
             elt->value = value;
             elt->valid = 1;
+            elt->tma = tma;
             ht->ht_size += 1;
             if (ht->ht_size >= ht->ht_growth_trigger) {
                 if (PMIX_SUCCESS != (rc = pmix_hash_grow(ht))) {
@@ -655,7 +706,12 @@ pmix_hash_table_remove_value_ptr(pmix_hash_table_t *ht, const void *key, size_t 
                        "pmix_hash_table_init() has not been called");
         return PMIX_ERROR;
     }
-    if (NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
+    // First check if the hash table is using a non-standard heap manager. Skip
+    // this debug check because use of a shared-memory TMA may trigger an error
+    // since some processes may have not yet updated their function pointers
+    // (done below).
+    if (NULL == pmix_obj_get_tma(&ht->super) &&
+        NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_ptr:"
                        "hash table is for a different key type");
         return PMIX_ERROR;
@@ -763,6 +819,12 @@ pmix_hash_table_get_next_key_uint64(pmix_hash_table_t *ht, uint64_t *key, void *
         return PMIX_SUCCESS;
     }
     return PMIX_ERROR;
+}
+
+size_t
+pmix_hash_table_sizeof_hash_element(void)
+{
+    return sizeof(pmix_hash_element_t);
 }
 
 /* there was/is no traversal for the ptr case; it would go here */

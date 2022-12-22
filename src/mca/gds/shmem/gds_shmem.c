@@ -485,8 +485,8 @@ job_smdata_construct(
     job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
     job->smdata->appinfo = PMIX_NEW(pmix_list_t, tma);
     // Will always have local data, so set it up.
-    job->smdata->local_hashtab = PMIX_NEW(pmix_hash_table2_t, tma);
-    pmix_hash_table2_init(job->smdata->local_hashtab, htsize);
+    job->smdata->local_hashtab = PMIX_NEW(pmix_hash_table_t, tma);
+    pmix_hash_table_init(job->smdata->local_hashtab, htsize);
 
     pmix_gds_shmem_vout_smdata(job);
 
@@ -514,8 +514,8 @@ modex_smdata_construct(
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->smmodex->tma;
     // Now that we know the TMA, initialize smdata structures using it.
-    job->smmodex->hashtab = PMIX_NEW(pmix_hash_table2_t, tma);
-    pmix_hash_table2_init(job->smmodex->hashtab, htsize);
+    job->smmodex->hashtab = PMIX_NEW(pmix_hash_table_t, tma);
+    pmix_hash_table_init(job->smmodex->hashtab, htsize);
 
     pmix_gds_shmem_vout_smmodex(job);
 
@@ -924,8 +924,8 @@ prepare_shmem_store_for_local_job_data(
                       sizeof(*job->smdata->local_hashtab);
     // We need to store a hash table in the shared-memory segment, so calculate
     // a rough estimate on the memory required for its storage.
-    seg_size += sizeof(pmix_hash_table2_t);
-    seg_size += htsize * pmix_hash_table2_t_sizeof_hash_element();
+    seg_size += sizeof(pmix_hash_table_t);
+    seg_size += htsize * pmix_hash_table_sizeof_hash_element();
     // Add a little extra to compensate for the value storage requirements. Here
     // we add an additional storage space for each entry.
     seg_size += htsize * kvsize;
@@ -1216,9 +1216,9 @@ static inline size_t
 get_actual_hashtab_capacity(
     size_t num_elements
 ) {
-    pmix_hash_table2_t tmp;
-    PMIX_CONSTRUCT(&tmp, pmix_hash_table2_t);
-    pmix_hash_table2_init(&tmp, num_elements);
+    pmix_hash_table_t tmp;
+    PMIX_CONSTRUCT(&tmp, pmix_hash_table_t);
+    pmix_hash_table_init(&tmp, num_elements);
     // Grab the actual capacity.
     const size_t result = tmp.ht_capacity;
     PMIX_DESTRUCT(&tmp);
@@ -1599,8 +1599,8 @@ server_store_modex(
         const size_t htsize = 256 * npeers;
         // Estimated size required to store the unpacked modex data.
         size_t seg_size = buff->bytes_used * npeers;
-        seg_size += sizeof(pmix_hash_table2_t);
-        seg_size += htsize * pmix_hash_table2_t_sizeof_hash_element();
+        seg_size += sizeof(pmix_hash_table_t);
+        seg_size += htsize * pmix_hash_table_sizeof_hash_element();
         // Include some extra fluff that empirically seems reasonable.
         seg_size *= fluff;
         // Adjust (increase or decrease) segment size by the given parameter size.
