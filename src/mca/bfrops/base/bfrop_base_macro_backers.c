@@ -509,7 +509,7 @@ void PMIx_Proc_free(pmix_proc_t *p, size_t n)
 }
 
 void PMIx_Proc_load(pmix_proc_t *p,
-                    char *nspace, pmix_rank_t rank)
+                    const char *nspace, pmix_rank_t rank)
 {
     pmix_bfrops_base_tma_proc_load(p, nspace, rank, NULL);
 }
