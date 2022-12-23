@@ -356,7 +356,7 @@ PMIX_EXPORT void PMIx_Proc_destruct(pmix_proc_t *p);
 PMIX_EXPORT pmix_proc_t* PMIx_Proc_create(size_t n);
 PMIX_EXPORT void PMIx_Proc_free(pmix_proc_t *p, size_t n);
 PMIX_EXPORT void PMIx_Proc_load(pmix_proc_t *p,
-                                char *nspace, pmix_rank_t rank);
+                                const char *nspace, pmix_rank_t rank);
 PMIX_EXPORT void PMIx_Multicluster_nspace_construct(pmix_nspace_t target,
                                                     pmix_nspace_t cluster,
                                                     pmix_nspace_t nspace);

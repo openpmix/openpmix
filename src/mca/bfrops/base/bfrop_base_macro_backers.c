@@ -1259,7 +1259,7 @@ void PMIx_Proc_free(pmix_proc_t *p, size_t n)
 }
 
 void PMIx_Proc_load(pmix_proc_t *p,
-                    char *nspace, pmix_rank_t rank)
+                    const char *nspace, pmix_rank_t rank)
 {
     PMIx_Proc_construct(p);
     PMIX_LOAD_PROCID(p, nspace, rank);
