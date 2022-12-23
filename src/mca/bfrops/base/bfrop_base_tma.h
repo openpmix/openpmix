@@ -351,7 +351,7 @@ pmix_bfrops_base_tma_proc_destruct(
 static inline void
 pmix_bfrops_base_tma_proc_load(
     pmix_proc_t *p,
-    char *nspace,
+    const char *nspace,
     pmix_rank_t rank,
     pmix_tma_t *tma
 ) {
