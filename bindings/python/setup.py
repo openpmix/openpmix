@@ -2,24 +2,31 @@
 #
 # Copyright (c) 2022      Nanook Consulting. All rights reserved
 
-from distutils.core import setup
-from distutils.extension import Extension
-from Cython.Build import cythonize
-from sys import platform, maxsize, version_info
+# Note: as of Dec 2022, we still use setup.py with the Python
+# setuptools package, even though setuptools docs now recommend
+# upgrading to the setup.cfg or pyproject.toml methods.  Perhaps
+# someday we'll migrate to the newer methods, but until then, setup.py
+# seems to be working.
+
 import os, sys
-from Cython.Compiler.Main import default_options, CompilationOptions
+import warnings
+import setuptools
+
+from setuptools import Extension, setup
+from Cython.Build import cythonize
+
+from Cython.Compiler.Main import default_options
 default_options['emit_linenums'] = True
-from subprocess import check_output, CalledProcessError
 
 def get_include():
     dirs = []
-    try:
-        dirs.append(os.environ['PMIX_BINDINGS_TOP_BUILDDIR'] + "/include")
-        dirs.append(os.environ['PMIX_BINDINGS_TOP_SRCDIR'] + "/include")
-    except:
-        return dirs
+    for key in ['BUILDDIR', 'SRCDIR']:
+        name = f'PMIX_BINDINGS_TOP_{key}'
+        if name in os.environ:
+            dirs.append(f'{os.environ[name]}/include')
+
     return dirs
-    
+
 def getVersion():
     dir = os.path.dirname(__file__)
 
@@ -56,6 +63,28 @@ def package_setup(package_name, package_vers):
     '''
     Package setup routine.
     '''
+
+    # Find the Cython source file.  Note that we always look in the
+    # build tree.  The Makefile.am will ensure to always set this env
+    # variable, but if someone invokes this script without setting
+    # that env variable, just assume that pmix.pyx is in the same
+    # directory as this script.
+    key = 'PMIX_BINDINGS_TOP_BUILDDIR'
+    if key in os.environ:
+        dir = os.environ[key]
+        src_filename = os.path.join(dir, "bindings", "python", "pmix.pyx")
+    else:
+        dir = os.path.dirname(sys.argv[0])
+        src_filename = os.path.join(dir, "pmix.pyx")
+
+    # Per comment at the top of this file, we know that setup.py is
+    # deprecated/discouraged.  Until we switch away from it, remove
+    # the setuptools "deprecated" warnings that are emitted to stderr
+    # so that we do not scare the users.
+    if hasattr(setuptools, "SetuptoolsDeprecationWarning"):
+        warnings.filterwarnings("ignore",
+                                category=setuptools.SetuptoolsDeprecationWarning)
+
     setup(
         name = 'pypmix',
         version = getVersion(),
@@ -78,11 +107,14 @@ def package_setup(package_name, package_vers):
                 'Programming Language :: Python :: 3.10',
                 'Programming Language :: Python :: 3.11',
                 'Programming Language :: Python :: 3.12'],
-        keywords = 'PMI PMIx HPC MPI SHMEM',
+        keywords = ['PMI', 'PMIx', 'HPC', 'MPI', 'SHMEM' ],
         platforms = 'any',
+        install_requires = ["cython"],
+        zip_safe = False,
         ext_modules = cythonize([Extension("pmix",
-                                           [os.environ['PMIX_BINDINGS_TOP_SRCDIR']+"/bindings/python/pmix.pyx"],
-                                           libraries=["pmix"]) ],
+                                           [src_filename],
+                                           libraries=["pmix"],
+                                           depends=[], )],
                                 compiler_directives={'language_level': 3}),
         include_dirs = get_include()
     )
