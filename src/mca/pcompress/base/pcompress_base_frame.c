@@ -69,10 +69,13 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
     return false;
 }
 
-pmix_compress_base_module_t pmix_compress = {.compress = compress_block,
-                                             .decompress = decompress_block,
-                                             .compress_string = compress_string,
-                                             .decompress_string = decompress_string};
+pmix_compress_base_module_t pmix_compress = {
+    .compress = compress_block,
+    .decompress = decompress_block,
+    .compress_string = compress_string,
+    .decompress_string = decompress_string
+};
+
 pmix_compress_base_t pmix_compress_base = {
     .compress_limit = 0,
     .selected = false,
