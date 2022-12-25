@@ -120,6 +120,8 @@ PMIX_EXPORT void pmix_hwloc_destruct_cpuset(pmix_cpuset_t *cpuset);
 
 PMIX_EXPORT void pmix_hwloc_release_cpuset(pmix_cpuset_t *ptr, size_t sz);
 
+PMIX_EXPORT pmix_status_t pmix_hwloc_get_cpuset_size(pmix_cpuset_t *ptr, size_t *sz);
+
 /* topology pack/unpack/copy/print functions */
 PMIX_EXPORT pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
                                                    pmix_pointer_array_t *regtypes);
@@ -134,6 +136,8 @@ PMIX_EXPORT char *pmix_hwloc_print_topology(pmix_topology_t *src);
 PMIX_EXPORT void pmix_hwloc_destruct_topology(pmix_topology_t *ptr);
 
 PMIX_EXPORT void pmix_hwloc_release_topology(pmix_topology_t *ptr, size_t sz);
+
+PMIX_EXPORT pmix_status_t pmix_hwloc_get_topology_size(pmix_topology_t *ptr, size_t *sz);
 
 /****  PRESERVE ABI  ****/
 PMIX_EXPORT void pmix_ploc_base_destruct_cpuset(pmix_cpuset_t *cpuset);

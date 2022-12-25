@@ -1118,6 +1118,15 @@ PMIX_EXPORT void PMIx_Progress(void);
  * - pmix_iof_channel_t  (PMIX_IOF_CHANNEL)
  * - pmix_job_state_t  (PMIX_JOB_STATE)
  * - pmix_proc_state_t  (PMIX_PROC_STATE)
+ * - attribute string value of provided name
+ * - attribute name corresponding to provided string
+ * - pmix_list_state_t (PMIX_LINK_STATE)
+ * - pmix_device_type_t (PMIX_DEVTYPE)
+ * - pmix_value_cmp_t (enum)
+ * - pmix_info_t (PMIX_INFO)
+ * - pmix_value_t (PMIX_VALUE)
+ * - pmix_info_directives_t (PMIX_INFO_DIRECTIVES)
+ * - pmix_app_t (PMIX_APP)
  */
 PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t status);
 PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state);
@@ -1150,6 +1159,29 @@ PMIX_EXPORT const char* PMIx_Get_version(void);
  * never be "pushed" externally */
 PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc,
                                               const char key[], pmix_value_t *val);
+
+
+/* Compute and return the size (in bytes) of the data
+ * payload in a pmix_value_t structure. Returns:
+ *
+ * - PMIX_SUCCESS if the value could be computed
+ *
+ * - an appropriate error value (e.g., PMIX_ERR_UNKNOWN_DATA_TYPE
+ *   if the data type is unknown) if the value could not be computed.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Value_get_size(const pmix_value_t *val,
+                                              size_t *size);
+
+/* Compute and return the size (in bytes) of the data
+ * payload in a pmix_info_t structure. Returns:
+ *
+ * - PMIX_SUCCESS if the value could be computed
+ *
+ * - an appropriate error value (e.g., PMIX_ERR_UNKNOWN_DATA_TYPE
+ *   if the data type is unknown) if the value could not be computed.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Info_get_size(const pmix_info_t *val,
+                                             size_t *size);
 
 
 /******    DATA BUFFER PACK/UNPACK SUPPORT    ******/
@@ -2005,6 +2037,11 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
                                              const void *value,
                                              pmix_data_type_t type);
 
+PMIX_EXPORT pmix_status_t PMIx_Info_list_prepend(void *ptr,
+                                                 const char *key,
+                                                 const void *value,
+                                                 pmix_data_type_t type);
+
 PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
 
 /* Transfer the data in an existing pmix_info_t struct to a list. This
@@ -2021,6 +2058,12 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *p
 
 /* Release all data on the list and destruct all internal tracking */
 PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
+
+/* retrieve the next info on the list - passing a NULL
+ * to the "prev" parameter will return the first pmix_info_t
+ * on the list. A return of NULL indicates the end of the list
+ */
+PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next);
 
 #endif
 
