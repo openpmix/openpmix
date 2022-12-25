@@ -17,6 +17,9 @@
 #include "src/include/pmix_config.h"
 
 #include <hwloc.h>
+#if HWLOC_API_VERSION >= 0x20000
+#include <hwloc/shmem.h>
+#endif
 
 #include "pmix_common.h"
 #include "src/mca/bfrops/base/base.h"
@@ -159,6 +162,18 @@ void pmix_ploc_base_release_cpuset(pmix_cpuset_t *cpuset, size_t n)
 {
     pmix_hwloc_release_cpuset(cpuset, n);
     return;
+}
+
+pmix_status_t pmix_hwloc_get_cpuset_size(pmix_cpuset_t *ptr, size_t *sz)
+{
+    hwloc_bitmap_t test;
+    PMIX_HIDE_UNUSED_PARAMS(ptr);
+
+    test = hwloc_bitmap_alloc();
+    hwloc_bitmap_fill(test);
+    *sz = (size_t)hwloc_bitmap_weight(test);
+    hwloc_bitmap_free(test);
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_hwloc_pack_topology(pmix_buffer_t *buf, pmix_topology_t *src,
@@ -520,4 +535,22 @@ void pmix_ploc_base_release_topology(pmix_topology_t *topo, size_t n)
 {
     pmix_hwloc_release_topology(topo, n);
     return;
+}
+
+pmix_status_t pmix_hwloc_get_topology_size(pmix_topology_t *ptr, size_t *sz)
+{
+#if HWLOC_API_VERSION < 0x20000
+    PMIX_HIDE_UNUSED_PARAMS(ptr);
+    *sz = 0;
+    return PMIX_ERR_NOT_SUPPORTED;
+#else
+    int err;
+
+    err = hwloc_shmem_topology_get_length(ptr->topology, sz, 0);
+    if (0 != err) {
+        *sz = 0;
+        return PMIX_ERROR;
+    }
+    return PMIX_SUCCESS;
+#endif
 }
