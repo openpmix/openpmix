@@ -449,6 +449,11 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
                                              const void *value,
                                              pmix_data_type_t type);
 
+PMIX_EXPORT pmix_status_t PMIx_Info_list_prepend(void *ptr,
+                                                 const char *key,
+                                                 const void *value,
+                                                 pmix_data_type_t type);
+
 PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
@@ -457,6 +462,8 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
 PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
 
 PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
+
+PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next);
 
 /* Macros that have been converted to functions */
 
@@ -660,6 +667,9 @@ PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
 
 #define PMIX_INFO_LIST_ADD(r, p, a, v, t)     \
     (r) = PMIx_Info_list_add((p), (a), (v), (t))
+
+#define PMIX_INFO_LIST_PREPEND(r, p, a, v, t)     \
+    (r) = PMIx_Info_list_prepend((p), (a), (v), (t))
 
 #define PMIX_INFO_LIST_INSERT(r, p, i)     \
     (r) = PMIx_Info_list_insert((p), (i))
