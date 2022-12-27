@@ -26,6 +26,7 @@ typedef struct {
     bool singleton;               // no server
     pmix_list_t pending_requests; // list of pmix_cb_t pending data requests
     pmix_pointer_array_t peers;   // array of pmix_peer_t cached for data ops
+    pmix_list_t groups;           // list of groups this client is part of
     // verbosity for client get operations
     int get_output;
     int get_verbose;

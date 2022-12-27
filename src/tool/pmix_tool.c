@@ -645,6 +645,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_globals.iof_flags.local_output = outputio;
 
     /* setup the globals */
+    PMIX_CONSTRUCT(&pmix_client_globals.groups, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
