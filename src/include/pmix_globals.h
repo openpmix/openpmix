@@ -462,6 +462,14 @@ PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
+    char *grpid;
+    pmix_proc_t *members;
+    size_t nmbrs;
+} pmix_group_t;
+PMIX_CLASS_DECLARATION(pmix_group_t);
+
+typedef struct {
+    pmix_list_item_t super;
     pmix_proc_t proc;
     pmix_byte_object_t blob;  // packed blob of info provided by this proc
 } pmix_grpinfo_t;

@@ -5403,23 +5403,6 @@ static void ildes(pmix_inventory_rollup_t *p)
 }
 PMIX_CLASS_INSTANCE(pmix_inventory_rollup_t, pmix_object_t, ilcon, ildes);
 
-static void grcon(pmix_group_t *p)
-{
-    p->grpid = NULL;
-    p->members = NULL;
-    p->nmbrs = 0;
-}
-static void grdes(pmix_group_t *p)
-{
-    if (NULL != p->grpid) {
-        free(p->grpid);
-    }
-    if (NULL != p->members) {
-        PMIX_PROC_FREE(p->members, p->nmbrs);
-    }
-}
-PMIX_CLASS_INSTANCE(pmix_group_t, pmix_list_item_t, grcon, grdes);
-
 PMIX_CLASS_INSTANCE(pmix_group_caddy_t, pmix_list_item_t, NULL, NULL);
 
 static void iocon(pmix_iof_cache_t *p)
