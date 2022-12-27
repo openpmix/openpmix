@@ -64,6 +64,7 @@ typedef struct {
     pmix_status_t status;
     size_t ref;
     size_t accepted;
+    char *grpid;
     pmix_proc_t *members;
     size_t nmembers;
     pmix_info_t *info;
@@ -81,6 +82,7 @@ static void gtcon(pmix_group_tracker_t *p)
     p->status = PMIX_SUCCESS;
     p->ref = 0;
     p->accepted = 0;
+    p->grpid = NULL;
     p->members = NULL;
     p->nmembers = 0;
     p->info = NULL;
@@ -99,6 +101,11 @@ static void gtdes(pmix_group_tracker_t *p)
     }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (NULL != p->grpid)
+    {
+        free(p->grpid);
+        p->grpid = NULL;
     }
 }
 PMIX_CLASS_INSTANCE(pmix_group_tracker_t, pmix_object_t, gtcon, gtdes);
@@ -244,6 +251,13 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     cb = PMIX_NEW(pmix_group_tracker_t);
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
+
+    /* save the participating procs in order to create a local
+     * view of the group for get operations */
+    PMIX_PROC_CREATE(cb->members, nprocs);
+    cb->nmembers = nprocs;
+    memcpy(cb->members, procs, nprocs * sizeof(pmix_proc_t));
+    cb->grpid = strdup(grp);
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, grp_cbfunc, (void *) cb);
@@ -1030,6 +1044,7 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
     int32_t cnt;
     size_t ctxid, ninfo = 0;
     pmix_info_t info, *iptr = NULL;
+    pmix_group_t *grp = NULL;
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -1067,6 +1082,19 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
         PMIX_INFO_LOAD(&info, PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
         iptr = &info;
         ninfo = 1;
+        /* since the group construction has finished, we can add
+         * the group to out list of groups. Always sort the 
+         * the array to maintain the same view across participants.*/
+        if (0 < cb->nmembers)
+        { 
+            grp = PMIX_NEW(pmix_group_t);
+            PMIX_PROC_CREATE(grp->members, cb->nmembers);
+            memcpy(grp->members, cb->members, cb->nmembers * sizeof(pmix_proc_t));
+            qsort(grp->members, cb->nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+            grp->nmbrs = cb->nmembers;
+            grp->grpid = strdup(cb->grpid);
+            pmix_list_append(&pmix_client_globals.groups, &grp->super);
+        }
     }
 
 report:

@@ -81,6 +81,10 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     pmix_status_t rc;
     pmix_value_t *ival;
     size_t n;
+    pmix_group_t *grp;
+    pmix_cb_t cb2;
+    uint32_t running_size = 0, jsize = 0;
+    pmix_kval_t *kv;
 
     /* if the proc is NULL, then the caller is assuming
      * that the key is universally unique within the caller's
@@ -253,6 +257,76 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         return PMIX_OPERATION_SUCCEEDED;
     }
 
+    /* if they passed a group in the nspace of proc, 
+     * replace with the translated proc. */
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        proc != NULL && 0 != strlen(proc->nspace))
+    {
+        PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
+            if (0 == strcmp(grp->grpid, proc->nspace))
+            {
+                if (PMIX_RANK_WILDCARD == proc->rank)
+                {
+                    /* we don't support wildcard queries
+                     * for groups yet.*/
+                    return PMIX_ERR_BAD_PARAM;
+                }
+                else
+                {
+                    /* find the translation to actual proc */
+                    for(size_t i = 0; i < grp->nmbrs; i++)
+                    {
+                        jsize = 0;
+                        if (PMIX_RANK_WILDCARD == grp->members[i].rank) {
+                            /* must get the number of procs in this nspace */
+                            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+                            cb2.proc = (pmix_proc_t*)&grp->members[i];
+                            cb2.key = PMIX_JOB_SIZE;
+                            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                            if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                                kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                                PMIX_DESTRUCT(&cb2);
+                                if (NULL != kv) {  // should never be NULL
+                                    PMIX_VALUE_GET_NUMBER(rc, kv->value, jsize, uint32_t);
+                                    PMIX_RELEASE(kv);
+                                    if (PMIX_SUCCESS != rc) {
+                                        PMIX_DESTRUCT(&cb2);
+                                        return PMIX_ERR_BAD_PARAM;
+                                    }
+                                    if (running_size + jsize > proc->rank)
+                                    {
+                                        PMIX_LOAD_NSPACE(lg->p.nspace, grp->members[i].nspace);
+                                        lg->p.rank = proc->rank - running_size;
+                                        running_size += jsize;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                PMIX_DESTRUCT(&cb2);
+                                return PMIX_ERR_BAD_PARAM;
+                            }
+                        } else {
+                            jsize = 1;
+                            if (running_size + jsize > proc->rank)
+                            {
+                                PMIX_LOAD_NSPACE(lg->p.nspace, grp->members[i].nspace);
+                                lg->p.rank = grp->members[i].rank;
+                                running_size += jsize;
+                                break;
+                            }
+                        }
+                        running_size += jsize;
+                    }
+                }
+                if (proc->rank >= running_size)
+                {
+                    /* the rank is invalid */
+                    return PMIX_ERR_BAD_PARAM;
+                }
+                break;
+            }
+        }
+    }
     /* indicate that everything was okay */
     return PMIX_SUCCESS;
 }
