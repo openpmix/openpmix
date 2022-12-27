@@ -146,14 +146,6 @@ PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
 
 typedef struct {
     pmix_list_item_t super;
-    char *grpid;
-    pmix_proc_t *members;
-    size_t nmbrs;
-} pmix_group_t;
-PMIX_CLASS_DECLARATION(pmix_group_t);
-
-typedef struct {
-    pmix_list_item_t super;
     pmix_group_t *grp;
     pmix_rank_t rank;
     size_t idx;

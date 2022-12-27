@@ -517,6 +517,23 @@ pmix_dstor_release_tma(
     pmix_tma_free(tma, d);
 }
 
+static void grcon(pmix_group_t *p)
+{
+    p->grpid = NULL;
+    p->members = NULL;
+    p->nmbrs = 0;
+}
+static void grdes(pmix_group_t *p)
+{
+    if (NULL != p->grpid) {
+        free(p->grpid);
+    }
+    if (NULL != p->members) {
+        PMIX_PROC_FREE(p->members, p->nmbrs);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_group_t, pmix_list_item_t, grcon, grdes);
+
 void pmix_execute_epilog(pmix_epilog_t *epi)
 {
     pmix_cleanup_file_t *cf, *cfnext;
