@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -1408,8 +1408,9 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(void*);
             str = (char**)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != str[n]) {
-                    *sz += strlen(str[n]) + 1;
+                    *sz += strlen(str[n]);
                 }
             }
             break;
@@ -1511,11 +1512,13 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_proc_info_t);
             pi = (pmix_proc_info_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != pi[n].hostname) {
-                    *sz += strlen(pi[n].hostname) + 1;
+                    *sz += strlen(pi[n].hostname);
                 }
+                *sz += 1;
                 if (NULL != pi[n].executable_name) {
-                    *sz += strlen(pi[n].executable_name) + 1;
+                    *sz += strlen(pi[n].executable_name);
                 }
             }
             break;
@@ -1532,11 +1535,13 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_envar_t);
             en = (pmix_envar_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != en[n].envar) {
-                    *sz += strlen(en[n].envar) + 1;
+                    *sz += strlen(en[n].envar);
                 }
+                *sz += 1;
                 if (NULL != en[n].value) {
-                    *sz += strlen(en[n].value) + 1;
+                    *sz += strlen(en[n].value);
                 }
             }
             break;
@@ -1586,11 +1591,13 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_geometry_t);
             geo = (pmix_geometry_t*)array->array;
             for (m=0; m < array->size; m++) {
+                *sz += 1;
                 if (NULL != geo[m].uuid) {
-                    *sz += strlen(geo[m].uuid) + 1;
+                    *sz += strlen(geo[m].uuid);
                 }
+                *sz += 1;
                 if (NULL != geo[m].osname) {
-                    *sz += strlen(geo[m].osname) + 1;
+                    *sz += strlen(geo[m].osname);
                 }
                 for (n=0; n < geo[m].ncoords; n++) {
                     *sz += sizeof(pmix_coord_t);
@@ -1607,11 +1614,13 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_device_distance_t);
             dd = (pmix_device_distance_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != dd[n].uuid) {
-                    *sz += strlen(dd[n].uuid) + 1;
+                    *sz += strlen(dd[n].uuid);
                 }
+                *sz += 1;
                 if (NULL != dd[n].osname) {
-                    *sz += strlen(dd[n].osname) + 1;
+                    *sz += strlen(dd[n].osname);
                 }
             }
             break;
@@ -1619,11 +1628,13 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_endpoint_t);
             endpt = (pmix_endpoint_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != endpt[n].uuid) {
-                    *sz += strlen(endpt[n].uuid) + 1;
+                    *sz += strlen(endpt[n].uuid);
                 }
+                *sz += 1;
                 if (NULL != endpt[n].osname) {
-                    *sz += strlen(endpt[n].osname) + 1;
+                    *sz += strlen(endpt[n].osname);
                 }
                 *sz += endpt[n].endpt.size;
             }
@@ -1632,12 +1643,14 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_regattr_t);
             rg = (pmix_regattr_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != rg[n].name) {
-                    *sz += strlen(rg[n].name) + 1;
+                    *sz += strlen(rg[n].name);
                 }
                 if (NULL != rg[n].description) {
                     for (m=0; NULL != rg[n].description[m]; m++) {
-                        *sz += strlen(rg[n].description[m]) + 1;
+                        *sz += 1;
+                        *sz += strlen(rg[n].description[m]);
                     }
                 }
             }
@@ -1660,11 +1673,13 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_proc_stats_t);
             ps = (pmix_proc_stats_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != ps[n].node) {
-                    *sz += strlen(ps[n].node) + 1;
+                    *sz += strlen(ps[n].node);
                 }
+                *sz += 1;
                 if (NULL != ps[n].cmd) {
-                    *sz += strlen(ps[n].cmd) + 1;
+                    *sz += strlen(ps[n].cmd);
                 }
             }
             break;
@@ -1672,8 +1687,9 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_disk_stats_t);
             ds = (pmix_disk_stats_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != ds[n].disk) {
-                    *sz += strlen(ds[n].disk) + 1;
+                    *sz += strlen(ds[n].disk);
                 }
             }
             break;
@@ -1681,8 +1697,9 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_net_stats_t);
             nts = (pmix_net_stats_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != nts[n].net_interface) {
-                    *sz += strlen(nts[n].net_interface) + 1;
+                    *sz += strlen(nts[n].net_interface);
                 }
             }
             break;
@@ -1690,19 +1707,22 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             *sz = array->size * sizeof(pmix_node_stats_t);
             nds = (pmix_node_stats_t*)array->array;
             for (n=0; n < array->size; n++) {
+                *sz += 1;
                 if (NULL != nds[n].node) {
-                    *sz += strlen(nds[n].node) + 1;
+                    *sz += strlen(nds[n].node);
                 }
                 for (m=0; m < nds[n].ndiskstats; m++) {
                     *sz += sizeof(pmix_disk_stats_t);
+                    *sz += 1;
                     if (NULL != nds[n].diskstats[m].disk) {
-                        *sz += strlen(nds[n].diskstats[m].disk) + 1;
+                        *sz += strlen(nds[n].diskstats[m].disk);
                     }
                 }
                 for (m=0; m < nds[n].nnetstats; m++) {
                     *sz += sizeof(pmix_net_stats_t);
+                    *sz += 1;
                     if (NULL != nds[n].netstats[m].net_interface) {
-                        *sz += strlen(nds[n].netstats[m].net_interface) + 1;
+                        *sz += strlen(nds[n].netstats[m].net_interface);
                     }
                 }
             }
@@ -1733,7 +1753,10 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             *sz = 1;
             break;
         case PMIX_STRING:
-            *sz = strlen(v->data.string) + 1;
+            *sz = 1;
+            if (NULL != v->data.string) {
+                *sz += strlen(v->data.string);
+            }
             break;
         case PMIX_SIZE:
             *sz = sizeof(size_t);
@@ -1811,11 +1834,13 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             break;
         case PMIX_PROC_INFO:
             *sz = sizeof(pmix_proc_info_t);
+            *sz += 1;
             if (NULL != v->data.pinfo->hostname) {
-                *sz += strlen(v->data.pinfo->hostname) + 1;
+                *sz += strlen(v->data.pinfo->hostname);
             }
+            *sz += 1;
             if (NULL != v->data.pinfo->executable_name) {
-                *sz += strlen(v->data.pinfo->executable_name) + 1;
+                *sz += strlen(v->data.pinfo->executable_name);
             }
             break;
         case PMIX_DATA_ARRAY:
@@ -1832,11 +1857,13 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             break;
         case PMIX_ENVAR:
             *sz = sizeof(pmix_envar_t);
+            *sz += 1;
             if (NULL != v->data.envar.envar) {
-                *sz += strlen(v->data.envar.envar) + 1;
+                *sz += strlen(v->data.envar.envar);
             }
+            *sz += 1;
             if (NULL != v->data.envar.value) {
-                *sz += strlen(v->data.envar.value) + 1;
+                *sz += strlen(v->data.envar.value);
             }
             break;
         case PMIX_COORD:
@@ -1868,11 +1895,13 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             break;
         case PMIX_GEOMETRY:
             *sz = sizeof(pmix_geometry_t);
+            *sz += 1;
             if (NULL != v->data.geometry->uuid) {
-                *sz += strlen(v->data.geometry->uuid) + 1;
+                *sz += strlen(v->data.geometry->uuid);
             }
+            *sz += 1;
             if (NULL != v->data.geometry->osname) {
-                *sz += strlen(v->data.geometry->osname) + 1;
+                *sz += strlen(v->data.geometry->osname);
             }
             for (n=0; n < v->data.geometry->ncoords; n++) {
                 *sz += sizeof(pmix_coord_t);
@@ -1886,32 +1915,38 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             break;
         case PMIX_DEVICE_DIST:
             *sz = sizeof(pmix_device_distance_t);
+            *sz += 1;
             if (NULL != v->data.devdist->uuid) {
-                *sz += strlen(v->data.devdist->uuid) + 1;
+                *sz += strlen(v->data.devdist->uuid);
             }
+            *sz += 1;
             if (NULL != v->data.devdist->osname) {
-                *sz += strlen(v->data.devdist->osname) + 1;
+                *sz += strlen(v->data.devdist->osname);
             }
             break;
         case PMIX_ENDPOINT:
             *sz = sizeof(pmix_endpoint_t);
+            *sz += 1;
             if (NULL != v->data.endpoint->uuid) {
-                *sz += strlen(v->data.endpoint->uuid) + 1;
+                *sz += strlen(v->data.endpoint->uuid);
             }
+            *sz += 1;
             if (NULL != v->data.endpoint->osname) {
-                *sz += strlen(v->data.endpoint->osname) + 1;
+                *sz += strlen(v->data.endpoint->osname);
             }
             *sz += v->data.endpoint->endpt.size;
             break;
         case PMIX_REGATTR:
             *sz = sizeof(pmix_regattr_t);
             regattr = (pmix_regattr_t *)v->data.ptr;
+            *sz += 1;
             if (NULL != regattr->name) {
-                *sz += strlen(regattr->name) + 1;
+                *sz += strlen(regattr->name);
             }
             if (NULL != regattr->description) {
                 for (n=0; NULL != regattr->description[n]; n++) {
-                    *sz += strlen(regattr->description[n]) + 1;
+                    *sz += 1;
+                    *sz += strlen(regattr->description[n]);
                 }
             }
             break;
@@ -1925,40 +1960,47 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             break;
         case PMIX_PROC_STATS:
             *sz = sizeof(pmix_proc_stats_t);
+            *sz += 1;
             if (NULL != v->data.pstats->node) {
-                *sz += strlen(v->data.pstats->node) + 1;
+                *sz += strlen(v->data.pstats->node);
             }
+            *sz += 1;
             if (NULL != v->data.pstats->cmd) {
-                *sz += strlen(v->data.pstats->cmd) + 1;
+                *sz += strlen(v->data.pstats->cmd);
             }
             break;
         case PMIX_DISK_STATS:
             *sz = sizeof(pmix_disk_stats_t);
+            *sz += 1;
             if (NULL != v->data.dkstats->disk) {
-                *sz += strlen(v->data.dkstats->disk) + 1;
+                *sz += strlen(v->data.dkstats->disk);
             }
             break;
         case PMIX_NET_STATS:
             *sz = sizeof(pmix_net_stats_t);
+            *sz += 1;
             if (NULL != v->data.netstats->net_interface) {
-                *sz += strlen(v->data.netstats->net_interface) + 1;
+                *sz += strlen(v->data.netstats->net_interface);
             }
             break;
         case PMIX_NODE_STATS:
             *sz = sizeof(pmix_node_stats_t);
+            *sz += 1;
             if (NULL != v->data.ndstats->node) {
-                *sz += strlen(v->data.ndstats->node) + 1;
+                *sz += strlen(v->data.ndstats->node);
             }
             for (n=0; n < v->data.ndstats->ndiskstats; n++) {
                 *sz += sizeof(pmix_disk_stats_t);
+                *sz += 1;
                 if (NULL != v->data.ndstats->diskstats[n].disk) {
-                    *sz += strlen(v->data.ndstats->diskstats[n].disk) + 1;
+                    *sz += strlen(v->data.ndstats->diskstats[n].disk);
                 }
             }
             for (n=0; n < v->data.ndstats->nnetstats; n++) {
                 *sz += sizeof(pmix_net_stats_t);
+                *sz += 1;
                 if (NULL != v->data.ndstats->netstats[n].net_interface) {
-                    *sz += strlen(v->data.ndstats->netstats[n].net_interface) + 1;
+                    *sz += strlen(v->data.ndstats->netstats[n].net_interface);
                 }
             }
             break;
