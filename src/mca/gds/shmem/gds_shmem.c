@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1753,6 +1753,12 @@ client_recv_modex_complete(
     return rc;
 }
 
+static void set_size(struct pmix_namespace_t *ns, size_t memsize)
+{
+    PMIX_HIDE_UNUSED_PARAMS(ns, memsize);
+    return;
+}
+
 pmix_gds_base_module_t pmix_shmem_module = {
     .name = PMIX_GDS_SHMEM_NAME,
     .is_tsafe = false,
@@ -1771,7 +1777,8 @@ pmix_gds_base_module_t pmix_shmem_module = {
     .assemb_kvs_req = NULL,
     .accept_kvs_resp = NULL,
     .mark_modex_complete = server_mark_modex_complete,
-    .recv_modex_complete = client_recv_modex_complete
+    .recv_modex_complete = client_recv_modex_complete,
+    .set_size = set_size
 };
 
 /*

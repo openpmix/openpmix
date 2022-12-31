@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -77,6 +77,20 @@ typedef pmix_status_t (*pmix_gds_base_assign_module_fn_t)(pmix_info_t *info, siz
 #define PMIX_GDS_CHECK_COMPONENT(p, s) (0 == strcmp((p)->nptr->compat.gds->name, (s)))
 #define PMIX_GDS_CHECK_PEER_COMPONENT(p1, p2) \
     (0 == strcmp((p1)->nptr->compat.gds->name, (p2)->nptr->compat.gds->name))
+
+/* set the memory size in anticipation of storing a payload (e.g., registration
+ * data for modex info). */
+typedef void (*pmix_gds_base_module_set_size_fn_t)(struct pmix_namespace_t *ns,
+                                                   size_t memsize);
+
+#define PMIX_GDS_SET_SIZE(n, m) \
+    do {                                                                \
+        pmix_output_verbose(1, pmix_gds_base_output,                    \
+                            "[%s:%d] GDS SET SIZE WITH %s", __FILE__,   \
+                            __LINE__, (n)->compat.gds->name);           \
+        (n)->compat.gds->set_size((struct pmix_namespace_t *) n, m);    \
+    } while (0)
+
 
 /* SERVER FN: assemble the keys buffer for server answer */
 typedef pmix_status_t (*pmix_gds_base_module_assemb_kvs_req_fn_t)(const pmix_proc_t *proc,
@@ -471,6 +485,7 @@ typedef struct {
     pmix_gds_base_module_fetch_array_fn_t           fetch_arrays;
     pmix_gds_base_module_mark_modex_complete_fn_t   mark_modex_complete;
     pmix_gds_base_module_recv_modex_complete_fn_t   recv_modex_complete;
+    pmix_gds_base_module_set_size_fn_t              set_size;
 } pmix_gds_base_module_t;
 
 /* NOTE: there is no public GDS interface structure - all access is
