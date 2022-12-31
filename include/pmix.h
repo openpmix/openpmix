@@ -1422,7 +1422,7 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest,
  * @note This is a destructive operation. While the payload is
  * undisturbed, the function will clear the buffer's pointers to the
  * payload. Thus, the buffer and the payload are completely separated,
- * leaving the caller free to the buffer.
+ * leaving the caller free to release the buffer.
  *
  * @param buffer A pointer to the buffer whose payload is to be
  * unloaded.
