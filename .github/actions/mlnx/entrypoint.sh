@@ -166,6 +166,14 @@ if [ "$jenkins_test_src_rpm" = "yes" ]; then
     if [ -x /usr/bin/dpkg-buildpackage ]; then
         echo "Do not support PMIX on debian"
     else
+        # Install Sphinx so that we can "make dist"
+        virtualenv --python=python3 venv
+        . ./venv/bin/activate
+        # This job runs in a CentOS 7 docker container, which does not
+        # understand the "--use-feature" pip CLI argument.
+        grep -v use-feature docs/requirements.txt > docs/r2.txt
+        pip install -r docs/r2.txt
+
         echo ./configure --prefix=$pmix_dir $configure_args | bash -xeE || exit 11
         echo "Building PMIX src.rpm"
         rm -rf $tarball_dir
