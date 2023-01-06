@@ -294,7 +294,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
         /* they are asking for the job-level info for (or at least a
          * reserved key from) this nspace */
-        rc = get_job_data(nptr->nspace, cd, key, &pbkt);
+        rc = get_job_data(nptr->nspace, cd, NULL, &pbkt);
         if (PMIX_SUCCESS != rc) {
             PMIX_DESTRUCT(&pbkt);
             return rc;
