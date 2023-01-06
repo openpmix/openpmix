@@ -974,8 +974,8 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         gcd = (pmix_group_caddy_t *) pmix_list_remove_first(&expand);
         n = 0;
         idx = 0;
-        while (n < nmbrs) {
-            if (idx != gcd->idx) {
+        while (n < nmbrs && idx < nprocs) {
+            if (gcd == NULL || idx != gcd->idx) {
                 memcpy(&newprocs[n], &procs[idx], sizeof(pmix_proc_t));
                 ++n;
             } else {
@@ -983,7 +983,9 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                 memcpy(&newprocs[n], gcd->grp->members, gcd->grp->nmbrs * sizeof(pmix_proc_t));
                 n += gcd->grp->nmbrs;
                 PMIX_RELEASE(gcd);
-                gcd = (pmix_group_caddy_t *) pmix_list_remove_first(&expand);
+                if (0 < pmix_list_get_size(&expand)) {
+                    gcd = (pmix_group_caddy_t *) pmix_list_remove_first(&expand);
+                }
             }
             ++idx;
         }
