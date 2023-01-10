@@ -54,4 +54,5 @@ Table of contents
    developers/index
    contributing
    license
+   security
    man/index
