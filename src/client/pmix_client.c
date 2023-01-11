@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -67,6 +67,7 @@ static pmix_status_t pmix_init_result = PMIX_ERR_INIT;
 #include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
 #include "src/event/pmix_event.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
@@ -822,6 +823,16 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
     // enable show_help subsystem
     pmix_show_help_enabled = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    /* retrieve our topology as a number of APIs utilize it */
+    if (!pmix_globals.external_topology &&
+        NULL == pmix_globals.topology.topology) {
+        rc = pmix_hwloc_setup_topology(NULL, 0);
+        if (PMIX_SUCCESS != rc) {
+            pmix_init_result = rc;
+            return rc;
+        }
+    }
 
     /* look for a debugger attach key */
     pmix_strncpy(wildcard.nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN);
