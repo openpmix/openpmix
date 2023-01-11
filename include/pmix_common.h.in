@@ -464,6 +464,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_DISPLAY_ALLOCATION             "pmix.dispalloc"        // (bool) display the resource allocation
 #define PMIX_DISPLAY_TOPOLOGY               "pmix.disptopo"         // (char*) comma-delimited list of hosts whose topology is
                                                                     //         to be displayed
+#define PMIX_DISPLAY_PROCESSORS             "pmix.dispcpus"         // (char*) comma-delimited list of hosts whose available
+                                                                    //         CPUs are to be displayed
 #define PMIX_PPR                            "pmix.ppr"              // (char*) #procs to spawn on each identified resource
 #define PMIX_MAPBY                          "pmix.mapby"            // (char*) mapping policy
 #define PMIX_RANKBY                         "pmix.rankby"           // (char*) ranking policy
