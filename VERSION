@@ -106,9 +106,12 @@ date="Unreleased developer copy"
 # All changes in these version numbers are dictated by the PMIx
 # release managers (not individual developers).  Notes:
 
-# 1. Since these version numbers are associated with *releases*, the
-# version numbers maintained on the PMIx Github trunk (and developer
-# branches) is always 0:0:0 for all libraries.
+# 1. Since the PMIx master branch is maintained to always be compatible
+#    with all prior releases (i.e., we never remove an interface), the
+#    libtool 'c', 'r', and 'a' values are maintained equal to the highest
+#    values found on any given release branch. This ensure that the .so
+#    value remains the same as on the release branches, thereby indicating
+#    compatibility.
 
 # 2. The version number of libpmix refers to the public pmix interfaces.
 # It does not refer to any internal interfaces.
@@ -116,7 +119,7 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=0:0:0
+libpmix_so_version=9:0:7
 
 # "Common" components install standalone libraries that are run-time
 # # linked by one or more components.  So they need to be versioned as
