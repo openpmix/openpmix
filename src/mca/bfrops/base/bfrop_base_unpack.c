@@ -1099,6 +1099,9 @@ pmix_status_t pmix_bfrops_base_unpack_bo(pmix_pointer_array_t *regtypes, pmix_bu
         }
         if (0 < ptr[i].size) {
             ptr[i].bytes = (char *) malloc(ptr[i].size * sizeof(char));
+            if (NULL == ptr[i].bytes) {
+                return PMIX_ERR_NOMEM;
+            }
             m = ptr[i].size;
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, ptr[i].bytes, &m, PMIX_BYTE, regtypes);
             if (PMIX_SUCCESS != ret) {
