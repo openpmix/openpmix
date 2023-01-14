@@ -8,7 +8,7 @@ The PMIx community takes security associated with use of its library seriously, 
 
 PMIx does not have formal, contractual relationships with its users. Instead, we have informal relationships with downstream packagers (e.g., Debian, Fedora, SUSE), resource managers (e.g., Slurm, PBS, PALS), and libraries (e.g., Open MPI, MPICH, OpenSHMEM, PGAS). This quite frequently takes the form of individuals as opposed to organizational contacts. Thus, it isn't possible for the PMIx community to offer any guarantees as to the breadth or immediacy of notification for security issues. We can only do our best to alert the people we know about, and hope that they spread the word as required.
 
-Our vulnerability disclosure process reflects this situation. While we prefer strongly encourage discoverers to report potential security issues to us and follow our process, we will respect their wishes and work with them in cases where their preferred process may vary.
+Our vulnerability disclosure process reflects this situation. While we strongly encourage discoverers to report potential security issues to us and follow our process, we will respect their wishes and work with them in cases where their preferred process may vary.
 
 
 NOTE: any potential security issue should be reported immediately to us at security@pmix.org
