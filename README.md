@@ -21,3 +21,9 @@ HTML documentation and man pages by default; it must be built.
 Instructions for how to build the OpenPMIx documentation can be found
 here:
 https://docs.openpmix.org/en/master/developers/prerequisites.html#sphinx.
+
+## Security policy
+
+The OpenPMIx security policy can be viewed online at https://docs.openpmix.org/en/latest/security.html.
+
+NOTE: any potential security issue should be reported immediately to us at security@pmix.org
