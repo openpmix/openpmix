@@ -37,7 +37,7 @@ The PMIx Vulnerability Disclosure Process consists of several distinct, but poss
 
 Software Authenticity and Integrity
 -----------------------------------
-Authenticity and integrity of PMIx software should always be confirmed by computing the checksum of the archive and comparing it with the value listed on the GitHub release page. Assuming you downloaded the file pmix-4.2.2.tar.bz2, you can run the sha1sum command like this:
+Authenticity and integrity of PMIx software should always be confirmed by computing the checksum of the archive and comparing it with the value listed on the GitHub release page. Assuming you downloaded the file pmix-4.2.2.tar.bz2, you can run the ``sha1sum`` command like this:
 
 .. code-block:: sh
 
