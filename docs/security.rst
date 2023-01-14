@@ -49,7 +49,7 @@ Check that the output matches what is printed in the release announcement, which
 
     b4e1cb79dfd94c1b9db8eaba02f725c07ef9df2b  pmix-4.2.2.tar.bz2
 
-To avoid having to manual compare the string, you may use the sha1sum -c parameter, as follows:
+To avoid having to manually compare the string, you may use the ``sha1sum -c parameter`` as follows:
 
 .. code-block:: sh
 
