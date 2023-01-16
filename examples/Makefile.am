@@ -12,7 +12,7 @@
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      IBM Corporation. All rights reserved.
 # $COPYRIGHT$
 #
@@ -119,14 +119,6 @@ abi_with_init_LDADD =  $(top_builddir)/src/libpmix.la
 group_lcl_cid_SOURCES = group_lcl_cid.c
 group_lcl_cid_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 group_lcl_cid_LDADD =  $(top_builddir)/src/libpmix.la
-
-nodeinfo_SOURCES = nodeinfo.c examples.h
-nodeinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-nodeinfo_LDADD =  $(top_builddir)/src/libpmix.la
-
-nodeinfo_SOURCES = nodeinfo.c examples.h
-nodeinfo_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
-nodeinfo_LDADD =  $(top_builddir)/src/libpmix.la
 
 pset_SOURCES = pset.c examples.h
 pset_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
