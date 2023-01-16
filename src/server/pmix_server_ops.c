@@ -683,7 +683,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
                 cb.copy = true;
                 PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
                 if (PMIX_SUCCESS == rc) {
-                    int key_idx;
                     PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
                         rc = pmix_argv_append_unique_idx(&key_idx, &kmap, kv->key);
                         if (pmix_value_array_get_size(key_count_array) < (size_t)(key_idx + 1)) {
@@ -773,7 +772,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
                 PMIX_RELEASE(pbkt);
                 goto cleanup;
             }
-            data_added = false;
             PMIX_CONSTRUCT(&cb, pmix_cb_t);
             cb.proc = &pcs;
             cb.scope = PMIX_REMOTE;
