@@ -381,12 +381,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
             if (NULL != hv) {
                 /* create the copy */
                 PMIX_KVAL_NEW(kv, key);
-                PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, (void **)&kv->value, hv->value, PMIX_VALUE);
-                if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_RELEASE(kv);
-                    return rc;
-                }
+                PMIx_Value_xfer(kv->value, hv->value);
                 pmix_list_append(kvals, &kv->super);
                 break;
             } else if (!fullsearch) {
