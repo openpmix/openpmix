@@ -4621,7 +4621,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
          * we also have to send back any session/node/app-level
          * info so it can be stored locally in their hash */
         if (0 != strcmp("hash", peer->nptr->compat.gds->name)) {
-            PMIX_GDS_FETCH_INFO_ARRAYS(rc, peer, reply);
+            PMIX_GDS_FETCH_INFO_ARRAYS(rc, pmix_globals.mypeer, reply);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(reply);
