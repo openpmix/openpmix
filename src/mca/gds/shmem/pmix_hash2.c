@@ -22,15 +22,6 @@
  *
  */
 
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-// Please note that structures here potentially use a custom memory allocator.
-// This means that memory management calls should go through calls like
-// pmix_tma_calloc(), not calloc().
-// See src/class/pmix_object.h for more information about TMA.
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-
 #include "src/include/pmix_config.h"
 
 #include "pmix_hash2.h"
@@ -50,17 +41,6 @@
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif
-
-// TODO(skg) This doesn't belong here.
-#define PMIX_DSTOR_NEW_TMA(d, k, tma)                                  \
-do {                                                                   \
-    (d) = (pmix_dstor_t*)pmix_tma_malloc((tma), sizeof(pmix_dstor_t)); \
-    if (NULL != (d)) {                                                 \
-        (d)->index = k;                                                \
-        (d)->qualindex = UINT32_MAX;                                   \
-        (d)->value = NULL;                                             \
-    }                                                                  \
-} while(0)
 
 /**
  * Data for a particular pmix process The name association is maintained in the
@@ -228,7 +208,7 @@ pmix_status_t pmix_hash2_store(pmix_hash_table_t *table,
     }
 
     /* we don't already have it, so create it */
-    PMIX_DSTOR_NEW_TMA(hv, kid, tma);
+    hv = pmix_dstor_new_tma(kid, tma);
     if (NULL == hv) {
         return PMIX_ERR_NOMEM;
     }

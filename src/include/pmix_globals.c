@@ -9,6 +9,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,6 +52,7 @@
 #include "src/class/pmix_hash_table.h"
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops_types.h"
+#include "src/mca/bfrops/base/bfrop_base_tma.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_os_path.h"
@@ -486,6 +488,32 @@ static void ndes(pmix_notify_caddy_t *p)
     }
 }
 PMIX_CLASS_INSTANCE(pmix_notify_caddy_t, pmix_object_t, ncon, ndes);
+
+pmix_dstor_t *
+pmix_dstor_new_tma(
+    uint32_t index,
+    pmix_tma_t *tma
+) {
+    pmix_dstor_t *d = (pmix_dstor_t *)pmix_tma_malloc(tma, sizeof(pmix_dstor_t));
+    if (PMIX_LIKELY(NULL != d)) {
+        d->index = index;
+        d->qualindex = UINT32_MAX;
+        d->value = NULL;
+    }
+    return d;
+}
+
+void
+pmix_dstor_release_tma(
+    pmix_dstor_t *d,
+    pmix_tma_t *tma
+) {
+    if (NULL != d->value) {
+        pmix_bfrops_base_tma_value_destruct(d->value, tma);
+        pmix_tma_free(tma, d->value);
+    }
+    pmix_tma_free(tma, d);
+}
 
 void pmix_execute_epilog(pmix_epilog_t *epi)
 {
