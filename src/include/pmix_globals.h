@@ -16,6 +16,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -113,21 +114,27 @@ typedef struct {
     uint32_t qualindex;
     pmix_value_t *value;
 } pmix_dstor_t;
+
+PMIX_EXPORT pmix_dstor_t *
+pmix_dstor_new_tma(
+    uint32_t index,
+    pmix_tma_t *tma
+);
+
+PMIX_EXPORT void
+pmix_dstor_release_tma(
+    pmix_dstor_t *d,
+    pmix_tma_t *tma
+);
+
 #define PMIX_DSTOR_NEW(d, k)                                \
 do {                                                        \
-    (d) = (pmix_dstor_t*)pmix_malloc(sizeof(pmix_dstor_t)); \
-    if (NULL != (d)) {                                      \
-        (d)->index = k;                                     \
-        (d)->qualindex = UINT32_MAX;                        \
-        (d)->value = NULL;                                  \
-    }                                                       \
+    (d) = pmix_dstor_new_tma((k), NULL);                    \
 } while(0)
+
 #define PMIX_DSTOR_RELEASE(d)           \
 do {                                    \
-    if (NULL != (d)->value) {           \
-        PMIX_VALUE_RELEASE((d)->value); \
-    }                                   \
-    free(d);                            \
+    pmix_dstor_release_tma((d), NULL);  \
 } while(0)
 
 /* define a struct for passing topology objects */
