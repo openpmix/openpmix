@@ -16,7 +16,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -110,14 +110,19 @@ static int process_repository_item(const char *filename, void *data)
 
     /* check if the plugin has the appropriate prefix */
     pmix_asprintf(&prefix, "%s_mca_", project);
-    if (0 != strncmp(base, prefix, strlen(prefix))) {
+    pmix_asprintf(&type, "lib%s_mca_", project);
+    if (0 != strncmp(base, prefix, strlen(prefix)) &&
+        0 != strncmp(base, type, strlen(type))) {
         if (pmix_mca_base_show_load_errors(NULL, NULL)) {
-            pmix_output(0, "mca:base:process_repository_item filename %s has bad prefix - expected %s", filename, prefix);
+            pmix_output(0, "mca:base:process_repository_item filename %s has bad prefix - expected:\n\t%s\nor\n\t%s",
+                        filename, prefix, type);
         }
         free(base);
         free(prefix);
+        free(type);
         return PMIX_SUCCESS;
     }
+    free(type);
 
     /* read framework and component names. framework names may not include an _
      * but component names may */
