@@ -17,7 +17,7 @@
  * Copyright (c) 2014-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -315,9 +315,8 @@ static int component_find_check(pmix_mca_base_framework_t *framework,
         bool found = false;
 
         PMIX_LIST_FOREACH (cli, components, pmix_mca_base_component_list_item_t) {
-            if (0
-                == strcmp(requested_component_names[i],
-                          cli->cli_component->pmix_mca_component_name)) {
+            if (0 == strcmp(requested_component_names[i],
+                            cli->cli_component->pmix_mca_component_name)) {
                 found = true;
                 break;
             }
