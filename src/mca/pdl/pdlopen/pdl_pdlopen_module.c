@@ -5,7 +5,7 @@
  *                         reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -216,6 +216,12 @@ static int pdlopen_foreachfile(const char *search_path,
 
                 /* Skip libtool files */
                 if (strcmp(ptr, ".la") == 0 || strcmp(ptr, ".lo") == 0) {
+                    free(abs_name);
+                    continue;
+                }
+
+                /* Skip .o files */
+                if (strcmp(ptr, ".o") == 0) {
                     free(abs_name);
                     continue;
                 }
