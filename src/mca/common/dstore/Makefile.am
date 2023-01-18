@@ -4,7 +4,7 @@
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
 #
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -32,17 +32,17 @@ lib_LTLIBRARIES =
 noinst_LTLIBRARIES =
 
 if MCA_BUILD_pmix_common_dstore_DSO
-lib_LTLIBRARIES += libmca_common_dstore.la
+lib_LTLIBRARIES += libpmix_mca_common_dstore.la
 else
-noinst_LTLIBRARIES += libmca_common_dstore.la
+noinst_LTLIBRARIES += libpmix_mca_common_dstore.la
 endif
 
-libmca_common_dstore_la_SOURCES = $(headers) $(sources)
-libmca_common_dstore_la_LDFLAGS =
+libpmix_mca_common_dstore_la_SOURCES = $(headers) $(sources)
+libpmix_mca_common_dstore_la_LDFLAGS =
 if MCA_BUILD_pmix_common_dstore_DSO
-libmca_common_dstore_la_LDFLAGS += -version-info $(libmca_common_dstore_so_version)
+libpmix_mca_common_dstore_la_LDFLAGS += -version-info $(libmca_common_dstore_so_version)
 endif
-libmca_common_dstore_la_LIBADD =
+libpmix_mca_common_dstore_la_LIBADD =
 
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)

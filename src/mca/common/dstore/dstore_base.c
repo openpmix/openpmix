@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -2746,6 +2746,8 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     uint32_t nodeid;
     uint32_t session;
     bool match;
+    pmix_info_t *info;
+    size_t size, i;
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
@@ -2758,7 +2760,7 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
     cb.copy = false;
 
     PMIX_OUTPUT_VERBOSE((8, pmix_gds_base_framework.framework_output,
-                        "STORE JOB INFO FOR PROC %s",
+                        "DS21: STORE JOB INFO FOR PROC %s",
                         PMIX_NAME_PRINT(proc)));
 
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
@@ -2777,8 +2779,6 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
              * info. We cannot fully resolve the problem, but we
              * can mitigate it by at least storing the info for
              * the local node and this proc's session and app number */
-            pmix_info_t *info;
-            size_t size, i;
             /* if it is our local node, then we are going to pass
              * all info */
             info = kv->value->data.darray->array;
@@ -2846,8 +2846,23 @@ static pmix_status_t _store_job_info(pmix_common_dstore_ctx_t *ds_ctx, ns_map_da
                     continue;
                 }
             }
+        } else if (PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
+            info = kv->value->data.darray->array;
+            size = kv->value->data.darray->size;
+            for (i = 0; i < size; i++) {
+                /* store each value as its own key */
+                PMIX_OUTPUT_VERBOSE((8, pmix_gds_base_framework.framework_output,
+                                    "STORE %s FOR SESSION",
+                                    info[i].key));
+                kv2.key = info[i].key;
+                kv2.value = &info[i].value;
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &buf, &kv2, 1, PMIX_KVAL);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    continue;
+                }
+            }
         } else if (PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY) ||
-                   PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY) ||
                    PMIX_CHECK_KEY(kv, PMIX_JOB_INFO_ARRAY)) {
             continue;
         } else {
