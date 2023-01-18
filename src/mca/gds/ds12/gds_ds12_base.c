@@ -6,7 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -152,6 +152,34 @@ static pmix_status_t ds12_del_nspace(const char* nspace)
     return pmix_common_dstor_del_nspace(ds12_ctx, nspace);
 }
 
+static pmix_status_t ds12_fetch_arrays(struct pmix_peer_t *pr,
+                                       pmix_buffer_t *reply)
+{
+    PMIX_HIDE_UNUSED_PARAMS(pr, reply);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+static pmix_status_t ds12_mark_modex_complete(struct pmix_peer_t *peer,
+                                              pmix_list_t *nslist,
+                                              pmix_buffer_t *buff)
+{
+    PMIX_HIDE_UNUSED_PARAMS(peer, nslist, buff);
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t ds12_recv_modex_complete(pmix_buffer_t *buff)
+{
+    PMIX_HIDE_UNUSED_PARAMS(buff);
+    return PMIX_SUCCESS;
+}
+
+static void ds12_set_size(struct pmix_namespace_t *ns,
+                          size_t memsize)
+{
+    PMIX_HIDE_UNUSED_PARAMS(ns, memsize);
+    return;
+}
+
 pmix_gds_base_module_t pmix_ds12_module = {
     .name = "ds12",
     .is_tsafe = false,
@@ -167,5 +195,9 @@ pmix_gds_base_module_t pmix_ds12_module = {
     .setup_fork = ds12_setup_fork,
     .add_nspace = ds12_add_nspace,
     .del_nspace = ds12_del_nspace,
+    .fetch_arrays = ds12_fetch_arrays,
+    .mark_modex_complete = ds12_mark_modex_complete,
+    .recv_modex_complete = ds12_recv_modex_complete,
+    .set_size = ds12_set_size
 };
 

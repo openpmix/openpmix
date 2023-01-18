@@ -6,7 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -158,6 +158,35 @@ static pmix_status_t ds21_del_nspace(const char* nspace)
     return pmix_common_dstor_del_nspace(ds21_ctx, nspace);
 }
 
+static pmix_status_t ds21_fetch_arrays(struct pmix_peer_t *pr,
+                                       pmix_buffer_t *reply)
+{
+    PMIX_HIDE_UNUSED_PARAMS(pr, reply);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+static pmix_status_t ds21_mark_modex_complete(struct pmix_peer_t *peer,
+                                              pmix_list_t *nslist,
+                                              pmix_buffer_t *buff)
+{
+    PMIX_HIDE_UNUSED_PARAMS(peer, nslist, buff);
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t ds21_recv_modex_complete(pmix_buffer_t *buff)
+{
+    PMIX_HIDE_UNUSED_PARAMS(buff);
+    return PMIX_SUCCESS;
+}
+
+static void ds21_set_size(struct pmix_namespace_t *ns,
+                          size_t memsize)
+{
+    PMIX_HIDE_UNUSED_PARAMS(ns, memsize);
+    return;
+}
+
+
 pmix_gds_base_module_t pmix_ds21_module = {
     .name = "ds21",
     .is_tsafe = true,
@@ -173,5 +202,9 @@ pmix_gds_base_module_t pmix_ds21_module = {
     .setup_fork = ds21_setup_fork,
     .add_nspace = ds21_add_nspace,
     .del_nspace = ds21_del_nspace,
+    .fetch_arrays = ds21_fetch_arrays,
+    .mark_modex_complete = ds21_mark_modex_complete,
+    .recv_modex_complete = ds21_recv_modex_complete,
+    .set_size = ds21_set_size
 };
 
