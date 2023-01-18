@@ -16,7 +16,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2017-2018 Mellanox Technologies, Inc.
 #                         All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -58,7 +58,7 @@ mcacomponentdir = $(pmixlibdir)
 mcacomponent_LTLIBRARIES = $(component)
 pmix_mca_gds_ds21_la_SOURCES = $(component_sources)
 pmix_mca_gds_ds21_la_LDFLAGS = -module -avoid-version \
-    $(PMIX_TOP_BUILDDIR)/src/mca/common/dstore/libmca_common_dstore.la
+    $(PMIX_TOP_BUILDDIR)/src/mca/common/dstore/libpmix_mca_common_dstore.la
 if NEED_LIBPMIX
 pmix_mca_gds_ds21_la_LIBADD = $(top_builddir)/src/libpmix.la
 endif
