@@ -14,6 +14,7 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -72,18 +73,27 @@ typedef struct {
 } pmix_kval_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_kval_t);
 
+static inline pmix_kval_t *
+pmix_bfrop_tma_kval_new(
+    const char *key,
+    pmix_tma_t *tma
+) {
+    pmix_kval_t *k = PMIX_NEW(pmix_kval_t, tma);
+    if (PMIX_LIKELY(NULL != k)) {
+        k->key = pmix_tma_strdup(tma, key);
+        k->value = (pmix_value_t *)pmix_tma_malloc(tma, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(NULL == k->value)) {
+            PMIX_RELEASE(k);
+            k = NULL;
+        }
+    }
+    return k;
+}
+
 /* helpful macro extension of the usual PMIX_NEW */
 #define PMIX_KVAL_NEW(k, s)                                             \
     do {                                                                \
-        (k) = PMIX_NEW(pmix_kval_t);                                    \
-        if (NULL != (k)) {                                              \
-            (k)->key = strdup((s));                                     \
-            (k)->value = (pmix_value_t *) malloc(sizeof(pmix_value_t)); \
-            if (NULL == (k)->value) {                                   \
-                PMIX_RELEASE((k));                                      \
-                (k) = NULL;                                             \
-            }                                                           \
-        }                                                               \
+        (k) = pmix_bfrop_tma_kval_new((s), NULL);                       \
     } while (0)
 
 /**

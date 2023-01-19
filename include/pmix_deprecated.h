@@ -1093,6 +1093,7 @@ do {                            \
 #define PMIX_DATA_ARRAY_CREATE(m, n, t) \
     (m) = PMIx_Data_array_create(n, t)
 
+// TODO(skg) Can we just call free in pmix_bfrops_base_tma_data_array_free?
 #define PMIX_DATA_ARRAY_FREE(m)     \
     do {                            \
         PMIx_Data_array_free(m);    \

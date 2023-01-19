@@ -14,7 +14,7 @@
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -3966,6 +3966,17 @@ pmix_bfrops_base_tma_data_array_create(
         pmix_bfrops_base_tma_data_array_construct(p, n, type, tma);
     }
     return p;
+}
+
+// Note **v to maintain sematics of PMIX_VALUE_RELEASE().
+static inline void
+pmix_bfrops_base_tma_value_release(
+    pmix_value_t **v,
+    pmix_tma_t *tma
+) {
+    pmix_bfrops_base_tma_value_destruct(*v, tma);
+    pmix_tma_free(tma, *v);
+    *v = NULL;
 }
 
 static inline void

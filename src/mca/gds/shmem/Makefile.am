@@ -15,7 +15,7 @@
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2022      Nanook Consulting.  All rights reserved.
-# Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+# Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -27,17 +27,13 @@ AM_CPPFLAGS = $(gds_shmem_CPPFLAGS)
 
 dist_pmixdata_DATA = help-gds-shmem.txt
 
-# TODO(skg) Eventually reincorporate pmix_hash2.
-
 headers = \
-        pmix_hash2.h \
         gds_shmem.h \
         gds_shmem_utils.h \
         gds_shmem_store.h \
         gds_shmem_fetch.h
 
 sources = \
-        pmix_hash2.c \
         gds_shmem_component.c \
         gds_shmem.c \
         gds_shmem_utils.c \

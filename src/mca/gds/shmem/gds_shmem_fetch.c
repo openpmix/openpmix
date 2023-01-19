@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,11 +16,8 @@
 
 #include "gds_shmem_fetch.h"
 #include "gds_shmem_utils.h"
-#if 0 // TODO(skg)
+
 #include "src/util/pmix_hash.h"
-#else
-#include "pmix_hash2.h"
-#endif
 
 // TODO(skg) Avoid copies where appropriate.
 
@@ -581,7 +578,7 @@ pmix_gds_shmem_fetch(
     // complete copy of the job-level info for this nspace, so retrieve it.
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
         // Fetch all values from the hash table tied to rank=wildcard.
-        rc = pmix_hash2_fetch(
+        rc = pmix_hash_fetch(
             local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
         );
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
@@ -624,7 +621,7 @@ pmix_gds_shmem_fetch(
             pmix_list_t rkvs;
             PMIX_CONSTRUCT(&rkvs, pmix_list_t);
 
-            rc = pmix_hash2_fetch(
+            rc = pmix_hash_fetch(
                 local_ht, rank, NULL, NULL, 0, &rkvs
             );
             if (PMIX_ERR_NOMEM == rc) {
@@ -743,7 +740,7 @@ doover:
     // be the source.
     if (PMIX_RANK_UNDEF == proc->rank && ht) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
-            rc = pmix_hash2_fetch(ht, rnk, key, qualifiers, nqual, kvs);
+            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
@@ -772,7 +769,7 @@ doover:
         if (NULL == key) {
             // And need to add all job info just in case
             // that was passed via a different GDS component.
-            rc = pmix_hash2_fetch(
+            rc = pmix_hash_fetch(
                 local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
             );
         }
@@ -782,7 +779,7 @@ doover:
     }
     else {
         if (ht) {
-            rc = pmix_hash2_fetch(
+            rc = pmix_hash_fetch(
                 ht, proc->rank, key, qualifiers, nqual, kvs
             );
         }

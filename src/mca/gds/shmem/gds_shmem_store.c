@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,8 +16,8 @@
 
 #include "gds_shmem_store.h"
 #include "gds_shmem_utils.h"
-// TODO(skg) This will eventually go away.
-#include "pmix_hash2.h"
+
+#include "src/util/pmix_hash.h"
 
 #include "src/mca/bfrops/base/bfrop_base_tma.h"
 
@@ -368,7 +368,7 @@ store_proc_data(
             job->nspace_id, rank, kv->key
         );
         // Store it in the hash_table.
-        rc = pmix_hash2_store(ht, rank, kv, NULL, 0);
+        rc = pmix_hash_store(ht, rank, kv, NULL, 0);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             return rc;
@@ -490,7 +490,7 @@ pmix_gds_shmem_store_qualified(
     kv->key = info[0].key;
     kv->value = &info[0].value;
     // Store the result.
-    rc = pmix_hash2_store(ht, rank, kv, quals, nquals);
+    rc = pmix_hash_store(ht, rank, kv, quals, nquals);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
@@ -562,7 +562,7 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
                 PMIX_ERROR_LOG(rc);
                 break;
             }
-            rc = pmix_hash2_store(
+            rc = pmix_hash_store(
                 local_ht, PMIX_RANK_WILDCARD, kv, NULL, 0
             );
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -631,7 +631,7 @@ pmix_gds_shmem_store_modex_in_shmem(
                 rc = pmix_gds_shmem_store_qualified(ht, 0, kv->value);
             }
             else {
-                rc = pmix_hash2_store(ht, 0, kv, NULL, 0);
+                rc = pmix_hash_store(ht, 0, kv, NULL, 0);
             }
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
@@ -644,7 +644,7 @@ pmix_gds_shmem_store_modex_in_shmem(
                 rc = pmix_gds_shmem_store_qualified(ht, proc->rank, kv->value);
             }
             else {
-                rc = pmix_hash2_store(ht, proc->rank, kv, NULL, 0);
+                rc = pmix_hash_store(ht, proc->rank, kv, NULL, 0);
             }
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
