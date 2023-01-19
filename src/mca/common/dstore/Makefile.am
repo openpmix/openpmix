@@ -40,7 +40,7 @@ endif
 libpmix_mca_common_dstore_la_SOURCES = $(headers) $(sources)
 libpmix_mca_common_dstore_la_LDFLAGS =
 if MCA_BUILD_pmix_common_dstore_DSO
-libpmix_mca_common_dstore_la_LDFLAGS += -version-info $(libmca_common_dstore_so_version)
+libpmix_mca_common_dstore_la_LDFLAGS += -version-info $(libpmix_mca_common_dstore_so_version)
 endif
 libpmix_mca_common_dstore_la_LIBADD =
 
