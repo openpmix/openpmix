@@ -567,12 +567,17 @@ pmix_gds_shmem_fetch(
 
     pmix_hash_table_t *const local_ht = job->smdata->local_hashtab;
 
+    // TODO(skg) Enable when modex data ready flags are reliable.
+#if 0
     // Modex data ready for use?
     const bool mdrfu = pmix_gds_shmem_has_status(
         job, PMIX_GDS_SHMEM_MODEX_ID, PMIX_GDS_SHMEM_READY_FOR_USE
     );
     // Modex data are stored in PMIX_REMOTE.
     pmix_hash_table_t *const remote_ht = mdrfu ? job->smmodex->hashtab : NULL;
+#else
+    pmix_hash_table_t *const remote_ht = NULL;
+#endif
 
     // If the rank is wildcard and key is NULL, then the caller is asking for a
     // complete copy of the job-level info for this nspace, so retrieve it.
@@ -635,7 +640,7 @@ pmix_gds_shmem_fetch(
                 continue;
             }
             // Setup to return the result.
-            // TODO(skg)
+            // TODO(skg) Maybe place to help with zero-copy?
             pmix_kval_t *kv;
             PMIX_KVAL_NEW(kv, PMIX_PROC_DATA);
             kv->value->type = PMIX_DATA_ARRAY;

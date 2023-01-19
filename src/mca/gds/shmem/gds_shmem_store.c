@@ -472,21 +472,20 @@ pmix_gds_shmem_store_qualified(
     // This does not need to use the TMA since its contents are later copied in
     // hash_store() using a TMA. This is just temporary storage.
     const size_t nquals = ninfo - 1;
-    pmix_info_t *quals;
     // TODO(skg) Depending on how this is handled in store(), maybe we can get
     // away without using a TMA here.
-    quals = pmix_bfrops_base_tma_info_create(nquals, tma);
+    pmix_info_t *quals = pmix_bfrops_base_tma_info_create(nquals, tma);
     for (size_t i = 1; i < ninfo; i++) {
         PMIX_INFO_SET_QUALIFIER(&quals[i - 1]);
         rc = pmix_bfrops_base_tma_info_xfer(&quals[i - 1], &info[i], tma);
-        // TODO(skg) Cleanup error paths.
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
-            return rc;
+            goto out;
         }
     }
     // Extract the primary value.
-    pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
+    pmix_kval_t *kv;
+    kv = PMIX_NEW(pmix_kval_t, tma);
     kv->key = info[0].key;
     kv->value = &info[0].value;
     // Store the result.
@@ -494,8 +493,11 @@ pmix_gds_shmem_store_qualified(
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
-    // TODO(skg) We don't support free, but should keep this call around.
-    //PMIX_INFO_FREE(quals, nquals);
+out:
+    // TODO(skg) Would be nice if pmix_bfrops_base_tma_info_free
+    // acted more like PMIX_INFO_FREE.
+    pmix_bfrops_base_tma_info_free(quals, nquals, tma);
+    pmix_tma_free(tma, quals);
     return rc;
 }
 
