@@ -12,7 +12,7 @@ dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl $COPYRIGHT$
@@ -678,7 +678,7 @@ AC_DEFUN([MCA_PROCESS_COMPONENT],[
             # Static libraries in "common" frameworks are installed, and
             # therefore must obey the $FRAMEWORK_LIB_PREFIX that was
             # set.
-            $6="mca/$1/$2/lib${m4_translit([pmix], [a-z], [A-Z])_LIB_PREFIX}mca_$1_$2.la $$6"
+            $6="mca/$1/$2/lib${m4_translit([pmix], [a-z], [A-Z])_LIB_PREFIX}pmix_mca_$1_$2.la $$6"
         else
             # Other frameworks do not have to obey the
             # $FRAMEWORK_LIB_PREFIX prefix.
