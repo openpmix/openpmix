@@ -51,6 +51,7 @@ int pmix_mca_base_opened = 0;
 char *pmix_mca_base_system_default_path = NULL;
 char *pmix_mca_base_user_default_path = NULL;
 char *pmix_mca_base_component_show_load_errors = NULL;
+bool pmix_mca_base_component_abort_on_load_error = false;
 bool pmix_mca_base_component_track_load_errors = false;
 bool pmix_mca_base_component_disable_dlopen = false;
 
@@ -145,6 +146,14 @@ int pmix_mca_base_open(const char *add_path)
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
+
+    pmix_mca_base_component_abort_on_load_error = false;
+    var_id = pmix_mca_base_var_register(
+        "pmix", "mca", "base", "abort_on_load_error",
+        "Whether to abort when a specified component isn't found or cannot be loaded",
+        PMIX_MCA_BASE_VAR_TYPE_BOOL,
+        &pmix_mca_base_component_abort_on_load_error);
+
 
     pmix_mca_base_component_track_load_errors = false;
     var_id = pmix_mca_base_var_register(
