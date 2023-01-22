@@ -1,6 +1,6 @@
 Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2020 IBM Corporation.  All rights reserved.
-Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
 Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
                         All Rights reserved.
 $COPYRIGHT$
@@ -25,6 +25,41 @@ multiple release branches.
 
 4.2.3 -- TBD
 ----------------------
+ - PR #2927 Add option to abort on component find failure
+ = PR #2923 configure: abort in 32-bit environments
+ - PR #2922 Fix memory leak in pmix_hash_fetch
+ - PR #2920 ptl/base: retry recv() when it encounter EAGAIN or EWOULDBLOCK
+ - PR #2913 Multiple commits
+    - Fix some backport issues
+    - Fix component name declarations
+    - Silence unnecessary repository item warnings
+    - Silence unnecessary warnings
+    - Correct libpmix_mca_common_dstore versioning
+    - Fix the static build 
+ - PR #2911 Multiple commits
+    - Avoid double-caching of events
+    - Add const qualifier to nspace strings
+    - Provide support for estimating the size of value objects
+    - Enable size estimates for modex-like operations
+    - Fix segfault in fence operation with groups
+    - Add an attribute to request display of available cpus
+    - Initialize client topology
+    - Add attribute to stipulate parseable output for display info
+    - Add malloc return check in bfrops for byte object unpack
+    - Add a draft security policy
+    - Update docs/security.rst
+    - Provide pointer to online security policy in README.md
+    - Missing cleanups
+ - PR #2902 Multiple commits
+    - First cut of Sphinx / ReadTheDocs docs
+    - Update Github actions to use submodules
+    - build: Update to use OAC_C_COMPILER_VENDOR
+    - Update OAC submodule pointer
+    - First cut of Sphinx / ReadTheDocs docs
+    - mlnx Github action: install Sphinx
+    - docs: put restrictions on Sphinx versions
+ - PR #2895 python: updates for Python bindings
+ - PR #2885 Protect against NULL topology when destructing pmix_topology_t 
  - PR #2882 Multiple commits
     - Minor compatibility touchup
     - Cleanup
