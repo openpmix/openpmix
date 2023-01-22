@@ -13,6 +13,7 @@ Makefile.in
 *.dSYM
 *.trs
 static-components.h
+docs-env/
 
 # http://www.gnu.org/software/autoconf
 
