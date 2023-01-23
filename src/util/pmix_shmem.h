@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -15,13 +15,30 @@
 #include "include/pmix_common.h"
 #include "src/class/pmix_object.h"
 
+/**
+ * Bitmap container for pmix_shmem flags.
+ */
+typedef uint8_t pmix_shmem_flags_t;
+
+typedef enum {
+    /**
+     * Indicates that during attach the requested address
+     * must match the address returned by memory mapping.
+     */
+    PMIX_SHMEM_MUST_MAP_AT_RADDR = 0x01
+} pmix_shmem_flag_t;
+
 typedef struct pmix_shmem_t {
     /** Parent class. */
     pmix_object_t super;
+    /** Flag indicating if attached to segment. */
+    bool attached;
     /** Size of shared-memory segment. */
     size_t size;
-    /** Base address of shared memory segment. */
-    void *base_address;
+    /** Address of shared memory segment header. */
+    void *hdr_address;
+    /** Base data address of shared memory segment. */
+    void *data_address;
     /** Buffer holding path to backing store. */
     char backing_path[PMIX_PATH_MAX];
 } pmix_shmem_t;
@@ -37,8 +54,8 @@ pmix_shmem_segment_create(
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_attach(
     pmix_shmem_t *shmem,
-    void *requested_base_address,
-    uintptr_t *actual_base_address
+    uintptr_t desired_base_address,
+    pmix_shmem_flags_t flags
 );
 
 PMIX_EXPORT pmix_status_t
@@ -49,6 +66,14 @@ pmix_shmem_segment_detach(
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_unlink(
     pmix_shmem_t *shmem
+);
+
+/**
+ * Returns size padded to page boundary.
+ */
+PMIX_EXPORT size_t
+pmix_shmem_utils_pad_to_page(
+    size_t size
 );
 
 #endif
