@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,7 +51,7 @@
 #define SHMEM_SEG_SMID_KEY "PMIX_GDS_SHMEM_SMSEGID"
 #define SHMEM_SEG_PATH_KEY "PMIX_GDS_SHMEM_SEG_PATH"
 #define SHMEM_SEG_SIZE_KEY "PMIX_GDS_SHMEM_SEG_SIZE"
-#define SHMEM_SEG_ADDR_KEY "PMIX_GDS_SHMEM_SEG_ADDR"
+#define SHMEM_SEG_HADR_KEY "PMIX_GDS_SHMEM_SEG_HADR"
 
 /**
  * Stores packed job statistics.
@@ -70,7 +70,7 @@ typedef struct {
     pmix_gds_shmem_job_shmem_id_t smid;
     char *seg_path;
     size_t seg_size;
-    size_t seg_addr;
+    size_t seg_hadr;
 } pmix_gds_shmem_unpacked_seg_blob_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_unpacked_seg_blob_t);
 
@@ -216,7 +216,7 @@ unpacked_seg_blob_construct(
     ub->smid = PMIX_GDS_SHMEM_INVALID_ID;
     ub->seg_path = NULL;
     ub->seg_size = 0;
-    ub->seg_addr = 0;
+    ub->seg_hadr = 0;
 }
 
 static void
@@ -343,7 +343,7 @@ emit_shmem_usage_stats(
 
     const size_t shmem_size = shmem->size;
     const size_t bytes_used = (size_t)((uintptr_t)*(tma->data_ptr)
-                            - (uintptr_t)shmem->base_address);
+                            - (uintptr_t)shmem->data_address);
     const float utilization = (bytes_used / (float)shmem_size) * 100.0;
 
     PMIX_GDS_SHMEM_VOUT(
@@ -467,7 +467,7 @@ job_smdata_construct(
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // job know about its data located at the base of the segment.
-    void *const baseaddr = job->shmem->base_address;
+    void *const baseaddr = job->shmem->data_address;
     job->smdata = baseaddr;
     memset(job->smdata, 0, sizeof(*job->smdata));
     // Save the starting address for TMA memory allocations.
@@ -501,7 +501,7 @@ modex_smdata_construct(
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // job know about its data located at the base of the segment.
-    void *const baseaddr = job->modex_shmem->base_address;
+    void *const baseaddr = job->modex_shmem->data_address;
     job->smmodex = baseaddr;
     memset(job->smmodex, 0, sizeof(*job->smmodex));
     // Save the starting address for TMA memory allocations.
@@ -520,31 +520,6 @@ modex_smdata_construct(
     pmix_gds_shmem_vout_smmodex(job);
 
     return PMIX_SUCCESS;
-}
-
-/**
- * Returns page size.
- */
-static inline size_t
-get_page_size(void)
-{
-    const long i = sysconf(_SC_PAGE_SIZE);
-    if (-1 == i) {
-        PMIX_ERROR_LOG(PMIX_ERROR);
-        return 0;
-    }
-    return i;
-}
-
-/**
- * Returns amount needed to pad provided size to page boundary.
- */
-static inline size_t
-pad_amount_to_page(
-    size_t size
-) {
-    const size_t page_size = get_page_size();
-    return ((~size) + page_size + 1) & (page_size - 1);
 }
 
 /**
@@ -665,27 +640,25 @@ shmem_attach(
         return rc;
     }
 
-    uintptr_t mmap_addr = 0;
     rc = pmix_shmem_segment_attach(
-        shmem, (void *)req_addr, &mmap_addr
+        shmem, req_addr, PMIX_SHMEM_MUST_MAP_AT_RADDR
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    // Make sure that we mapped to the requested address.
-    if (PMIX_UNLIKELY(mmap_addr != req_addr)) {
-        pmix_show_help(
-            "help-gds-shmem.txt",
-            "shmem-segment-attach:address-mismatch",
-            true, (size_t)req_addr, (size_t)mmap_addr
-        );
-        rc = PMIX_ERROR;
+        // This type of error occurs when we
+        // didn't map to the requested address.
+        if (PMIX_ERR_NOT_AVAILABLE == rc) {
+            pmix_show_help(
+                "help-gds-shmem.txt",
+                "shmem-segment-attach:address-mismatch",
+                true, (size_t)req_addr, (size_t)shmem->hdr_address
+            );
+            rc = PMIX_ERROR;
+        }
         PMIX_ERROR_LOG(rc);
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
-        "%s: mmapd at address=0x%zx", __func__, (size_t)mmap_addr
+        "%s: mmapd at address=0x%zx", __func__, (size_t)shmem->hdr_address
     );
 out:
     if (PMIX_SUCCESS != rc) {
@@ -706,11 +679,11 @@ init_client_side_sm_data(
 ) {
     switch (shmem_id) {
         case PMIX_GDS_SHMEM_JOB_ID:
-            job->smdata = job->shmem->base_address;
+            job->smdata = job->shmem->data_address;
             pmix_gds_shmem_vout_smdata(job);
             break;
         case PMIX_GDS_SHMEM_MODEX_ID:
-            job->smmodex = job->modex_shmem->base_address;
+            job->smmodex = job->modex_shmem->data_address;
             pmix_gds_shmem_vout_smmodex(job);
             break;
         case PMIX_GDS_SHMEM_INVALID_ID:
@@ -746,7 +719,7 @@ shmem_segment_attach_and_init(
     // Initialize the segment size.
     shmem->size = seginfo->seg_size;
 
-    const uintptr_t req_addr = (uintptr_t)seginfo->seg_addr;
+    const uintptr_t req_addr = (uintptr_t)seginfo->seg_hadr;
     rc = shmem_attach(job, seginfo->smid, req_addr);
     if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
         PMIX_ERROR_LOG(rc);
@@ -757,7 +730,7 @@ shmem_segment_attach_and_init(
 #if 0
     // Protect memory: clients can only read from here.
     mprotect(
-        shmem->base_address, shmem->size, PROT_READ
+        shmem->data_address, shmem->size, PROT_READ
     );
 #endif
     return rc;
@@ -775,7 +748,7 @@ shmem_segment_create_and_attach(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     // Pad given size to fill remaining space on the last page.
-    const size_t real_segsize = segment_size + pad_amount_to_page(segment_size);
+    const size_t real_segsize = pmix_shmem_utils_pad_to_page(segment_size);
     // Find a hole in virtual memory that meets our size requirements.
     size_t base_addr = 0;
     rc = pmix_vmem_find_hole(
@@ -806,7 +779,9 @@ shmem_segment_create_and_attach(
         goto out;
     }
     // Create a shared-memory segment backing store at the given path.
-    rc = pmix_shmem_segment_create(shmem, real_segsize, segment_path);
+    rc = pmix_shmem_segment_create(
+        shmem, real_segsize, segment_path
+    );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         goto out;
     }
@@ -1037,13 +1012,13 @@ pack_shmem_connection_info(
             break;
         }
         PMIX_DESTRUCT(&kv);
-        // Pack the base address for attaching to shared-memory segment.
+        // Pack the addresses used to attach to the shared-memory segment.
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
-        kv.key = strdup(SHMEM_SEG_ADDR_KEY);
+        kv.key = strdup(SHMEM_SEG_HADR_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
         kv.value->type = PMIX_STRING;
         nw = asprintf(
-            &kv.value->data.string, "%zx", (size_t)shmem->base_address
+            &kv.value->data.string, "%zx", (size_t)shmem->hdr_address
         );
         if (PMIX_UNLIKELY(nw == -1)) {
             rc = PMIX_ERR_NOMEM;
@@ -1051,6 +1026,10 @@ pack_shmem_connection_info(
             break;
         }
         PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
     } while (false);
     PMIX_DESTRUCT(&kv);
 
@@ -1074,9 +1053,9 @@ vout_unpacked_seg_blob(
         SHMEM_SEG_SMID_KEY "=%u "
         SHMEM_SEG_PATH_KEY "=%s "
         SHMEM_SEG_SIZE_KEY "=%zd "
-        SHMEM_SEG_ADDR_KEY "=0x%zx",
+        SHMEM_SEG_HADR_KEY "=0x%zx",
         called_by, usb->nsid, (unsigned)usb->smid,
-        usb->seg_path, usb->seg_size, usb->seg_addr
+        usb->seg_path, usb->seg_size, usb->seg_hadr
     );
 }
 
@@ -1155,8 +1134,8 @@ unpack_shmem_connection_info(
                 break;
             }
         }
-        else if (PMIX_CHECK_KEY(&kv, SHMEM_SEG_ADDR_KEY)) {
-            rc = strtost(val, 16, &usb->seg_addr);
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_SEG_HADR_KEY)) {
+            rc = strtost(val, 16, &usb->seg_hadr);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
