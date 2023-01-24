@@ -387,7 +387,7 @@ job_destruct(
         // Invalidate the shmem flags.
         pmix_gds_shmem_clearall_status(job, sid);
         // Releases memory for the structures located in shared-memory.
-        PMIX_RELEASE(shmem);
+        //PMIX_RELEASE(shmem);
     }
 }
 
