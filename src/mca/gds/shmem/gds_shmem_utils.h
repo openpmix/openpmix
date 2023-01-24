@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -115,14 +115,16 @@ pmix_gds_shmem_vout_smdata(
     pmix_gds_shmem_job_t *job
 ) {
     PMIX_GDS_SHMEM_VOUT(
-        "shmem@%p, "
+        "shmem_hdr@%p, "
+        "shmem_data@%p, "
         "smdata tma@%p, "
         "smdata tma data_ptr=%p, "
         "jobinfo@%p, "
         "appinfo@%p, "
         "nodeinfo@%p, "
         "local_hashtab@%p",
-        (void *)job->shmem->base_address,
+        (void *)job->shmem->hdr_address,
+        (void *)job->shmem->data_address,
         (void *)&job->smdata->tma,
         (void *)job->smdata->tma.data_ptr,
         (void *)job->smdata->jobinfo,
@@ -141,7 +143,7 @@ pmix_gds_shmem_vout_smmodex(
         "smmodex tma@%p, "
         "smmodex tma data_ptr=%p, "
         "hashtab@%p",
-        (void *)job->modex_shmem->base_address,
+        (void *)job->modex_shmem->data_address,
         (void *)&job->smmodex->tma,
         (void *)job->smmodex->tma.data_ptr,
         (void *)job->smmodex->hashtab

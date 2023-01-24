@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -8,25 +8,14 @@
  * $HEADER$
  */
 
-#include "src/include/pmix_config.h"
 #include "src/util/pmix_shmem.h"
 
+#include "pmix_common.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_string_copy.h"
+#include <stddef.h>
 
-#ifdef HAVE_ERRNO_H
-#include "errno.h"
-#endif
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
@@ -35,29 +24,135 @@
 #endif
 #include <sys/mman.h>
 
-static void
-shmem_construct(
-    pmix_shmem_t *s
+typedef struct pmix_shmem_header_t {
+    /** Header lock. */
+    pthread_mutex_t lock;
+    /** Reference count. */
+    int32_t ref_count;
+} pmix_shmem_header_t;
+
+static void *
+data_addr_from_base(
+    void *base_addr
 ) {
-    s->size = 0;
-    s->base_address = 0;
-    memset(s->backing_path, 0, PMIX_PATH_MAX);
+    const size_t header_offset = pmix_shmem_utils_pad_to_page(
+        sizeof(pmix_shmem_header_t)
+    );
+    return (void *)((uintptr_t)base_addr + header_offset);
 }
 
-static void
-shmem_destruct(
-    pmix_shmem_t *t
+static inline int32_t
+update_ref_count(
+    pmix_shmem_header_t *header,
+    int32_t inc
 ) {
-    (void)pmix_shmem_segment_detach(t);
-    (void)pmix_shmem_segment_unlink(t);
+    const int rc = pthread_mutex_lock(&header->lock);
+    if (EDEADLK == rc) {
+        errno = rc;
+        perror("pthread_mutex_lock()");
+        abort();
+    }
+    const int32_t ref_count = header->ref_count += inc;
+    pthread_mutex_unlock(&header->lock);
+    return ref_count;
 }
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(
-    pmix_shmem_t,
-    pmix_object_t,
-    shmem_construct,
-    shmem_destruct
-);
+static pmix_status_t
+segment_detach(
+    pmix_shmem_t *shmem
+) {
+    int rc = 0;
+
+    if (shmem->attached) {
+        rc = munmap(shmem->hdr_address, shmem->size);
+    }
+    shmem->attached = false;
+    shmem->hdr_address = NULL;
+    shmem->data_address = NULL;
+
+    return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
+}
+
+static pmix_status_t
+segment_unlink(
+    pmix_shmem_t *shmem
+) {
+    const int rc = unlink(shmem->backing_path);
+    memset(shmem->backing_path, 0, PMIX_PATH_MAX);
+
+    return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
+}
+
+static pmix_status_t
+segment_attach(
+    pmix_shmem_t *shmem,
+    uintptr_t desired_base_address,
+    pmix_shmem_flags_t flags
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    void *mmap_addr = MAP_FAILED;
+
+    const int fd = open(shmem->backing_path, O_RDWR);
+    if (fd == -1) {
+        rc = PMIX_ERR_FILE_OPEN_FAILURE;
+        goto out;
+    }
+
+    mmap_addr = mmap(
+        (void *)desired_base_address, shmem->size,
+        PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0
+    );
+    if (MAP_FAILED == mmap_addr) {
+        rc = PMIX_ERR_NOMEM;
+        goto out;
+    }
+    // Check flags.
+    // The caller wants memory mapped at their requested address.
+    if ((flags & PMIX_SHMEM_MUST_MAP_AT_RADDR) &&
+         desired_base_address != (uintptr_t)NULL) {
+        if (desired_base_address != (uintptr_t)mmap_addr) {
+            rc = PMIX_ERR_NOT_AVAILABLE;
+            goto out;
+        }
+    }
+out:
+    if (-1 != fd) {
+        (void)close(fd);
+    }
+    if (PMIX_SUCCESS != rc) {
+        (void)segment_detach(shmem);
+        PMIX_ERROR_LOG(rc);
+    }
+    else {
+        shmem->attached = true;
+    }
+    // Always set base addresses. On error it is useful for reporting.
+    shmem->hdr_address = mmap_addr;
+    shmem->data_address = data_addr_from_base(mmap_addr);
+    return rc;
+}
+
+static pmix_status_t
+add_internal_segment_header(
+    pmix_shmem_t *shmem
+) {
+    int rc = PMIX_SUCCESS;
+    // The base address here is inconsequential because this is a temporary,
+    // internal attachment site that should not be exposed to the caller.
+    rc = segment_attach(shmem, (uintptr_t)NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Add the header.
+    pmix_shmem_header_t shmem_header = {
+        .lock = PTHREAD_MUTEX_INITIALIZER,
+        .ref_count = 0
+    };
+    memmove(shmem->hdr_address, &shmem_header, sizeof(shmem_header));
+    // Done with internal mapping, so detach.
+    return segment_detach(shmem);
+}
 
 // TODO(skg) Add network FS warning?
 pmix_status_t
@@ -67,19 +162,26 @@ pmix_shmem_segment_create(
     const char *backing_path
 ) {
     int rc = PMIX_SUCCESS;
+    // Real size of the segment: add header plus extra to pad to page boundary.
+    const size_t real_size = pmix_shmem_utils_pad_to_page(
+        size + sizeof(pmix_shmem_header_t)
+    );
 
-    int fd = open(backing_path, O_CREAT | O_RDWR, 0600);
+    const int fd = open(backing_path, O_CREAT | O_RDWR, 0600);
     if (fd == -1) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
         goto out;
     }
     // Size backing file.
-    if (0 != ftruncate(fd, size)) {
+    if (0 != ftruncate(fd, real_size)) {
         rc = PMIX_ERROR;
         goto out;
     }
-    shmem->size = size;
+    // Update segment properties.
+    shmem->size = real_size;
     pmix_string_copy(shmem->backing_path, backing_path, PMIX_PATH_MAX);
+    // Add internal segment header.
+    rc = add_internal_segment_header(shmem);
 out:
     if (-1 != fd) {
         (void)close(fd);
@@ -93,32 +195,15 @@ out:
 pmix_status_t
 pmix_shmem_segment_attach(
     pmix_shmem_t *shmem,
-    void *requested_base_address,
-    uintptr_t *actual_base_address
+    uintptr_t desired_base_address,
+    pmix_shmem_flags_t flags
 ) {
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    int fd = open(shmem->backing_path, O_RDWR);
-    if (fd == -1) {
-        rc = PMIX_ERR_FILE_OPEN_FAILURE;
-        goto out;
-    }
-
-    shmem->base_address = mmap(
-        requested_base_address, shmem->size,
-        PROT_READ | PROT_WRITE, MAP_SHARED,
-        fd, 0
+    const pmix_status_t rc = segment_attach(
+        shmem, desired_base_address, flags
     );
-    if (MAP_FAILED == shmem->base_address) {
-        rc = PMIX_ERR_NOMEM;
-    }
-    *actual_base_address = (uintptr_t)shmem->base_address;
-out:
-    if (-1 != fd) {
-        (void)close(fd);
-    }
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
+
+    if (PMIX_SUCCESS == rc) {
+        (void)update_ref_count(shmem->hdr_address, 1);
     }
     return rc;
 }
@@ -127,8 +212,14 @@ pmix_status_t
 pmix_shmem_segment_detach(
     pmix_shmem_t *shmem
 ) {
-    if (0 != munmap(shmem->base_address, shmem->size)) {
-        return PMIX_ERROR;
+    if (shmem->attached) {
+        // Set to false here to avoid multiple
+        // reference updates in shmem_destruct().
+        shmem->attached = false;
+        const int32_t refc = update_ref_count(shmem->hdr_address, -1);
+        if (0 == refc) {
+            return segment_detach(shmem);
+        }
     }
     return PMIX_SUCCESS;
 }
@@ -137,8 +228,62 @@ pmix_status_t
 pmix_shmem_segment_unlink(
     pmix_shmem_t *shmem
 ) {
-    if (-1 == unlink(shmem->backing_path)) {
-        return PMIX_ERROR;
-    }
-    return PMIX_SUCCESS;
+    return segment_unlink(shmem);
 }
+
+/**
+ * Returns page size.
+ */
+static size_t
+get_page_size(void)
+{
+    const long i = sysconf(_SC_PAGE_SIZE);
+    if (-1 == i) {
+        PMIX_ERROR_LOG(PMIX_ERROR);
+        return 0;
+    }
+    return i;
+}
+
+size_t
+pmix_shmem_utils_pad_to_page(
+    size_t size
+) {
+    const size_t page_size = get_page_size();
+    const size_t pad = ((~size) + page_size + 1) & (page_size - 1);
+    return size + pad;
+}
+
+static void
+shmem_construct(
+    pmix_shmem_t *s
+) {
+    s->attached = false;
+    s->size = 0;
+    s->hdr_address = NULL;
+    s->data_address = NULL;
+    memset(s->backing_path, 0, PMIX_PATH_MAX);
+}
+
+static void
+shmem_destruct(
+    pmix_shmem_t *s
+) {
+    // We don't have access to a reference count, so bail.
+    if (!s->attached) {
+        return;
+    }
+
+    const int32_t refc = update_ref_count(s->hdr_address, -1);
+    if (0 == refc) {
+        (void)segment_detach(s);
+        (void)segment_unlink(s);
+    }
+}
+
+PMIX_EXPORT PMIX_CLASS_INSTANCE(
+    pmix_shmem_t,
+    pmix_object_t,
+    shmem_construct,
+    shmem_destruct
+);
