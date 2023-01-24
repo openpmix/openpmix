@@ -1,8 +1,12 @@
 Exceptions to the PMIx Standard
 ===============================
 
-Exceptions to the base PMIx Standard are listed here for each OpenPMIx
-release. These exceptions are not indicative of any intent to stray
+.. |br| raw:: html
+
+    <br/>
+
+Exceptions to the base PMIx Standard are listed here. These exceptions
+are not indicative of any intent to stray
 from the Standard, but instead represent the difference between the
 pace of development of the library versus the normal Standard's
 process. Accordingly, it is expected that the exceptions listed below
@@ -14,14 +18,15 @@ Extensions
 ----------
 
 OpenPMIx |opmix_ver| is based on the PMIx |std_ver| Standard. In
-addition to the *Extensions*, this release includes the conversion of
+addition to *Extensions* to the Standard, this release includes the conversion of
 all support macros to PMIx function APIs |mdash| e.g., the
 ``PMIX_LOAD_PROCID`` macro is now the ``PMIx_Load_procid()``
-function. The macro versions have been retained as deprecated (without
+function |mdash| in accordance with planned changes to the Standard.
+The macro versions have been retained as deprecated (without
 warnings) for backward compatibility.
 
-APIs
-^^^^
+Utility APIs
+------------
 
 * Load a key:
 
@@ -41,7 +46,7 @@ APIs
 
      bool PMIx_Check_reserved_key(const char *key);
 
-* Load a string into a pmix_nspace_t struct:
+* Load a string into a ``pmix_nspace_t`` struct:
 
   .. code-block:: c
 
@@ -94,22 +99,90 @@ APIs
 
      bool PMIx_Procid_invalid(const pmix_proc_t *p);
 
-* Argv handling:
+* Check if the tool is connected to a PMIx server:
 
   .. code-block:: c
 
-     int PMIx_Argv_count(char **a);
-     pmix_status_t PMIx_Argv_append_nosize(char ***argv, const char *arg);
-     pmix_status_t PMIx_Argv_prepend_nosize(char ***argv, const char *arg);
-     pmix_status_t PMIx_Argv_append_unique_nosize(char ***argv, const char *arg);
-     void PMIx_Argv_free(char **argv);
+     bool PMIx_tool_is_connected(void);
+
+
+Argv Handling
+-------------
+Functions for handling of argv arrays (``NULL``-terminated array of strings)
+
+* Count the number of entries
+
+.. code-block:: c
+
+    int PMIx_Argv_count(char **a);
+
+* Append a string to the array
+
+.. code-block:: c
+
+    pmix_status_t PMIx_Argv_append_nosize(char ***argv, const char *arg);
+
+* Prepend a string to the array
+
+.. code-block:: c
+
+    pmix_status_t PMIx_Argv_prepend_nosize(char ***argv, const char *arg);
+
+* Append a string to the array, but only if it doesn't already
+  appear on the array (ignore if it does)
+
+.. code-block:: c
+
+    pmix_status_t PMIx_Argv_append_unique_nosize(char ***argv, const char *arg);
+
+* Free an array, including each string on the array
+
+.. code-block:: c
+
+    void PMIx_Argv_free(char **argv);
+
+* Split a string into an argv array, dividing the string on each occurrence
+  of the specified delimiter character. Retain empty entries in the array
+  when more than one copy of the delimiter character appears in a sequence.
+
+.. code-block:: c
+
      char **PMIx_Argv_split_inter(const char *src_string,
                                   int delimiter,
                                   bool include_empty);
-     char **PMIx_Argv_split_with_empty(const char *src_string, int delimiter);
-     char **PMIx_Argv_split(const char *src_string, int delimiter);
-     char *PMIx_Argv_join(char **argv, int delimiter);
-     char **PMIx_Argv_copy(char **argv);
+
+* Split a string into an argv array, dividing the string on each occurrence
+  of the specified delimiter character. Retain empty entries in the array
+  when more than one copy of the delimiter character appears in a sequence.
+  Acts as a wrapper to ``PMIx_Argv_split_inter`` with ``include_empty`` set
+  to ``true``
+
+.. code-block:: c
+
+    char **PMIx_Argv_split_with_empty(const char *src_string, int delimiter);
+
+* Split a string into an argv array, dividing the string on each occurrence
+  of the specified delimiter character. Discard empty entries in the array
+  when more than one copy of the delimiter character appears in a sequence.
+  Acts as a wrapper to ``PMIx_Argv_split_inter`` with ``include_empty`` set
+  to ``false``
+
+.. code-block:: c
+
+    char **PMIx_Argv_split(const char *src_string, int delimiter);
+
+* Join all the elements of an argv array into a single newly-allocated string,
+  with the specified delimiter character at the join points.
+
+.. code-block:: c
+
+    char *PMIx_Argv_join(char **argv, int delimiter);
+
+* Copy a ``NULL``-terminated argv array.
+
+.. code-block:: c
+
+    char **PMIx_Argv_copy(char **argv);
 
 * Set environment variable:
 
@@ -120,6 +193,8 @@ APIs
                                bool overwrite,
                                char ***env);
 
+Value Struct Functions
+----------------------
 * Initialize a value struct:
 
   .. code-block:: c
@@ -154,33 +229,6 @@ APIs
 
      pmix_boolean_t PMIx_Value_true(const pmix_value_t *v);
 
-* Load data into a ``pmix_value_t`` structure. The data can be of any
-  PMIx data type |mdash| which means the load can be somewhat complex
-  to implement (e.g., in the case of a ``pmix_data_array_t``). The
-  data is *copied* into the value struct:
-
-  .. code-block:: c
-
-     pmix_status_t PMIx_Value_load(pmix_value_t *val,
-                                   const void *data,
-                                   pmix_data_type_t type);
-
-* Unload data from a ``pmix_value_t`` structure:
-
-  .. code-block:: c
-
-     pmix_status_t PMIx_Value_unload(pmix_value_t *val,
-                                     void **data,
-                                     size_t *sz);
-
-* Transfer data from one ``pmix_value_t`` to another.  This is actually
-  executed as a *copy* operation, so the original data is not altered:
-
-  .. code-block:: c
-
-     pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
-                                   const pmix_value_t *src);
-
 * Compare the contents of two ``pmix_value_t`` structures:
 
   .. code-block:: c
@@ -188,13 +236,57 @@ APIs
      pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
                                          pmix_value_t *v2);
 
-* Destroy a data array object:
+* Get the size of the contents of a ``pmix_value_t`` structure:
+
+  .. code-block:: c
+
+     pmix_status_t PMIx_Value_get_size(const pmix_value_t *val,
+                                       size_t *size);
+
+Data Array Functions
+--------------------
+* Construct a data array object, allocating the memory for the indicated
+  number of the specified data type. Memory for the provided data array
+  object must have previously been allocated or statically declared:
+
+  .. code-block:: c
+
+     void PMIx_Data_array_construct(pmix_data_array_t *p,
+                                    size_t num, pmix_data_type_t type);
+
+* Initialize the fields of a data array object without allocating any
+  memory for the included array:
+
+  .. code-block:: c
+
+     void PMIx_Data_array_init(pmix_data_array_t *p,
+                               pmix_data_type_t type);
+
+* Destroy a data array object, releasing all memory included in it:
 
   .. code-block:: c
 
      void PMIx_Data_array_destruct(pmix_data_array_t *d);
 
-* Initialize an info struct:
+* Create and initialize a ``pmix_data_array_t`` structure, allocating the
+  memory for the indicated number of the specified data type as well as
+  the ``pmix_data_array_t`` object itself:
+
+  .. code-block:: c
+
+     pmix_data_array_t* PMIx_Data_array_create(size_t n, pmix_data_type_t type);
+
+* Free memory stored inside a ``pmix_data_array_t`` structure (does not free
+  the provided ``pmix_data_array_t`` object itself):
+
+  .. code-block:: c
+
+     void PMIx_Data_array_free(pmix_data_array_t *p);
+
+Info Struct Functions
+---------------------
+* Initialize an info struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -229,26 +321,6 @@ APIs
   .. code-block:: c
 
      pmix_boolean_t PMIx_Info_true(const pmix_info_t *p);
-
-* Load key/value data into a ``pmix_info_t`` struct. Note that this
-  effectively is a ``PMIX_LOAD_KEY`` operation to copy the key,
-  followed by a ``PMIx_Value_load`` to *copy* the data into the
-  ``pmix_value_t`` in the provided info struct:
-
-  .. code-block:: c
-
-     pmix_status_t PMIx_Info_load(pmix_info_t *info,
-                                  const char *key,
-                                  const void *data,
-                                  pmix_data_type_t type);
-
-* Transfer data from one ``pmix_info_t`` to another.  This is actually
-  executed as a *copy* operation, so the original data is not altered:
-
-  .. code-block:: c
-
-     pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
-                                  const pmix_info_t *src);
 
 * Mark the info struct as required:
 
@@ -322,8 +394,17 @@ APIs
 
      bool PMIx_Info_is_persistent(const pmix_info_t *p);
 
+* Get the size of a ``pmix_info_t`` structure:
 
-* Initialize a coord struct:
+  .. code-block:: c
+
+      pmix_status_t PMIx_Info_get_size(const pmix_info_t *val,
+                                       size_t *size);
+
+Coordinate Struct Functions
+---------------------------
+* Initialize a coord struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -349,17 +430,14 @@ APIs
 
      void PMIx_Coord_free(pmix_coord_t *m, size_t number);
 
-* Initialize a topology struct:
+Topology Functions
+------------------
+* Initialize a topology struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
      void PMIx_Topology_construct(pmix_topology_t *t);
-
-* Free memory stored inside a topology struct:
-
-  .. code-block:: c
-
-     void PMIx_Topology_destruct(pmix_topology_t *topo);
 
 * Create and initialize an array of topology structs:
 
@@ -374,7 +452,10 @@ APIs
 
      void PMIx_Topology_free(pmix_topology_t *t, size_t n);
 
-* Initialize a cpuset struct:
+Cpuset Functions
+----------------
+* Initialize a cpuset struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -399,7 +480,10 @@ APIs
 
      void PMIx_Cpuset_free(pmix_cpuset_t *c, size_t n);
 
-* Initialize a geometry struct:
+Geometry Functions
+------------------
+* Initialize a geometry struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -424,7 +508,10 @@ APIs
 
      void PMIx_Geometry_free(pmix_geometry_t *g, size_t n);
 
-* Initialize a device distance struct:
+Device Distance Functions
+-------------------------
+* Initialize a device distance struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -449,7 +536,10 @@ APIs
 
      void PMIx_Device_distance_free(pmix_device_distance_t *d, size_t n);
 
-* Initialize a byte object struct:
+Byte Object Functions
+---------------------
+* Initialize a byte object struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -481,7 +571,10 @@ APIs
      void PMIx_Byte_object_load(pmix_byte_object_t *b,
                                 char *d, size_t sz);
 
-* Initialize an endpoint struct:
+Endpoint Functions
+------------------
+* Initialize an endpoint struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -506,7 +599,10 @@ APIs
 
      void PMIx_Endpoint_free(pmix_endpoint_t *e, size_t n);
 
-* Initialize an envar struct:
+Envar Functions
+---------------
+* Initialize an envar struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -540,7 +636,10 @@ APIs
                           char *value,
                           char separator);
 
-* Initialize a data buffer struct:
+Data Buffer Functions
+---------------------
+* Initialize a data buffer struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -578,8 +677,10 @@ APIs
      void PMIx_Data_buffer_unload(pmix_data_buffer_t *b,
                                   char **bytes, size_t *sz);
 
-
-* Initialize a proc struct:
+Proc Struct Functions
+---------------------
+* Initialize a proc struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -629,8 +730,10 @@ APIs
                                          pmix_nspace_t cluster,
                                          pmix_nspace_t nspace);
 
-
-* Initialize a proc info struct:
+Proc Info Functions
+-------------------
+* Initialize a proc info struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -655,7 +758,10 @@ APIs
 
      void PMIx_Proc_info_free(pmix_proc_info_t *p, size_t n);
 
-* Initialize a proc stats struct:
+Proc Stats Functions
+--------------------
+* Initialize a proc stats struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -680,7 +786,10 @@ APIs
 
      void PMIx_Proc_stats_free(pmix_proc_stats_t *p, size_t n);
 
-* Initialize a disk stats struct:
+Disk Stats Functions
+--------------------
+* Initialize a disk stats struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -705,7 +814,10 @@ APIs
 
      void PMIx_Disk_stats_free(pmix_disk_stats_t *p, size_t n);
 
-* Initialize a net stats struct:
+Net Stats Functions
+-------------------
+* Initialize a net stats struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -730,7 +842,10 @@ APIs
 
      void PMIx_Net_stats_free(pmix_net_stats_t *p, size_t n);
 
-* Initialize a pdata struct:
+Process Data Functions
+----------------------
+* Initialize a pdata struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
@@ -755,102 +870,105 @@ APIs
 
      void PMIx_Pdata_free(pmix_pdata_t *p, size_t n);
 
-* App operations:
+App Struct Functions
+--------------------
+* Initialize a ``pmix_app_t`` struct. Memory for the provided
+  object must have previously been allocated or statically declared:
 
   .. code-block:: c
 
      void PMIx_App_construct(pmix_app_t *p);
+
+* Clear memory inside an app struct:
+
+  .. code-block:: c
+
      void PMIx_App_destruct(pmix_app_t *p);
+
+* Create and initialize an array of app structs:
+
+  .. code-block:: c
+
      pmix_app_t* PMIx_App_create(size_t n);
+
+* Create and initialize an array of ``pmix_info_t`` structs
+  in the provided ``pmix_app_t`` object:
+
+  .. code-block:: c
+
      void PMIx_App_info_create(pmix_app_t *p, size_t n);
+
+* Free memory stored inside an array of app structs (does
+  not free the struct memory itself):
+
+  .. code-block:: c
+
      void PMIx_App_free(pmix_app_t *p, size_t n);
+
+* Free memory stored inside a ``pmix_app_t`` object
+
+  .. code-block:: c
+
      void PMIx_App_release(pmix_app_t *p);
 
-* Constructing arrays of ``pmix_info_t`` for passing to an API can
-  be tedious since the ``pmix_info_t`` itself is not a "list object".
-  Since this is a very frequent operation, a set of APIs has been
-  provided that opaquely manipulates internal PMIx list structures
-  for this purpose. The user only need provide a ``void*`` pointer to
-  act as the caddy for the internal list object.
+PMIx Info List Functions
+------------------------
+Constructing arrays of ``pmix_info_t`` for passing to an API can
+be tedious since the ``pmix_info_t`` itself is not a "list object".
+Since this is a very frequent operation, a set of APIs has been
+provided that opaquely manipulates internal PMIx list structures
+for this purpose. The user only need provide a ``void*`` pointer to
+act as the caddy for the internal list object. The base functions
+for these operations are in the Standard, but the following functions
+have been added here:
 
-* Initialize a list of ``pmix_info_t`` structures:
+* Retrieve the next ``pmix_info_t`` from the provided list, given
+  the current pointer. Passing a ``NULL`` to the ``prev`` parameter
+  will return the first object on the list. A ``NULL`` is returned
+  upon reaching the end of the list:
 
-  .. code-block:: c
+    .. code-block:: c
 
-     void* PMIx_Info_list_start(void);
+       pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next);
 
-* Add data to a list of ``pmix_info_t`` structs. The ``ptr`` passed
-  here is the pointer returned by ``PMIx_Info_list_start``:
+* Insert a `pmix_info_t`` struct into the provided list. This directly
+  copies the contents of the provided ``pmix_info_t`` struct, preserving
+  any included pointers. The object on the list is subsequently marked
+  as ``persistent`` to avoid free'ing any objects pointed to in the struct:
 
-  .. code-block:: c
+    .. code-block:: c
 
-     pmix_status_t PMIx_Info_list_add(void *ptr,
-                                      const char *key,
-                                      const void *value,
-                                      pmix_data_type_t type);
-     pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
+       pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
 
-* Transfer the data in an existing ``pmix_info_t`` struct to a list. This
-  is executed as a *copy* operation, so the original data is not altered.
-  The ``ptr`` passed here is the pointer returned by ``PMIx_Info_list_start``:
+* Prepend a value onto the provided list:
 
-  .. code-block:: c
+    .. code-block:: c
 
-     pmix_status_t PMIx_Info_list_xfer(void *ptr, const pmix_info_t *info);
+       pmix_status_t PMIx_Info_list_prepend(void *ptr,
+                                            const char *key,
+                                            const void *value,
+                                            pmix_data_type_t type);
 
-* Convert the constructed list of ``pmix_info_t`` structs to a
-  ``pmix_data_array_t`` of ``pmix_info_t``. Data on the list is
-  *copied* to the array elements:
 
-  .. code-block:: c
+Pretty-Print Functions
+-----------------------
+The following pretty-print support APIs have been added:
 
-     pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
-
-* Release all data on the list and destruct all internal tracking:
-
-  .. code-block:: c
-
-     void PMIx_Info_list_release(void *ptr);
-
-* Check if the tool is connected to a PMIx server:
-
-  .. code-block:: c
-
-     bool PMIx_tool_is_connected(void);
-
-* Request a session control action. The sessionID identifies the
-  session to which the specified control action is to be applied. A
-  ``UINT32_MAX`` value can be used to indicate all sessions under the
-  caller's control.
-
-  The directives are provided as ``pmix_info_t`` structs in the
-  directives array. The callback function provides a status to
-  indicate whether or not the request was granted, and to provide some
-  information as to the reason for any denial in the
-  ``pmix_info_cbfunc_t`` array of ``pmix_info_t`` structures. If
-  non-NULL, then the specified release_fn must be called when the
-  callback function completes |mdash| this will be used to release any
-  provided ``pmix_info_t`` array.
-
-  Passing NULL as the ``cbfunc`` to this call indicates that it shall
-  be treated as a blocking operation, with the return status
-  indicative of the overall operation's completion.
-
-  .. code-block:: c
-
-     pmix_status_t PMIx_Session_control(uint32_t sessionID,
-                                        const pmix_info_t directives[], size_t ndirs,
-                                        pmix_info_cbfunc_t cbfunc, void *cbdata);
-
-* The following pretty-print support APIs have been added:
+* Print a ``pmix_value_cmp_t`` value
 
   .. code-block:: c
 
      const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp);
-     char* PMIx_App_string(const pmix_app_t *app);
 
-* The following pretty-print support APIs have been slightly modified
-  to add a ``const`` qualifier to their input parameter:
+* Print the contents of a ``pmix_app_t`` struct. Note that the returned
+  string must be free'd by the caller:
+
+   .. code-block:: c
+
+    char* PMIx_App_string(const pmix_app_t *app);
+
+The following pretty-print support APIs have been slightly modified
+to add a ``const`` qualifier to their input parameter:
 
   .. code-block:: c
 
@@ -861,8 +979,9 @@ APIs
 
   This is not expected to cause any issues for users.
 
+
 Constants
-^^^^^^^^^
+---------
 
 * ``PMIX_DATA_BUFFER``: data type for packing/unpacking of
   ``pmix_data_buffer_t`` objects
@@ -893,210 +1012,230 @@ Constants
   exceeding a sensor boundary
 * ``PMIX_ERR_EXIT_NONZERO_TERM``: process exited normally, but with a
   non-zero status
+* ``PMIX_INFO_QUALIFIER``  (value: 0x00000008): Info is a qualifier to the primary value
+* ``PMIX_INFO_PERSISTENT`` (value: 0x00000010): Do not release included value
 
+
+.. note:: OpenPMIx version |opmix_ver| renamed the  ``PMIX_DEBUG_WAIT_FOR_NOTIFY``
+          to ``PMIX_READY_FOR_DEBUG``. The prior name is retained as deprecated
+          for backward compatibility.
 
 Attributes
-^^^^^^^^^^
+----------
 
 .. list-table::
    :header-rows: 1
 
    * - Attribute
-     - Name
      - Type
      - Description
 
-   * - ``PMIX_EXTERNAL_AUX_EVENT_BASE``
-     - ``pmix.evaux``
+   * - ``PMIX_EXTERNAL_AUX_EVENT_BASE`` |br| ``"pmix.evaux"``
      - ``(void*)``
-     - event base to be used for auxiliary
-       functions (e.g., capturing signals) that would
-       otherwise interfere with the host
+     - event base to be used for auxiliary |br|
+       functions (e.g., capturing signals) that |br| would
+       otherwise interfere with the |br|
+       host
        
-   * - ``PMIX_CONNECT_TO_SCHEDULER``
-     - ``pmix.cnct.sched``
+   * - ``PMIX_CONNECT_TO_SCHEDULER`` |br| ``"pmix.cnct.sched"``
      - ``(bool)``
      - Connect to the system scheduler
        
-   * - ``PMIX_BIND_PROGRESS_THREAD``
-     - ``pmix.bind.pt``
+   * - ``PMIX_BIND_PROGRESS_THREAD`` |br| ``"pmix.bind.pt"``
      - ``(char*)``
-     - Comma-delimited ranges of CPUs that the internal PMIx progress
+     - Comma-delimited ranges of CPUs |br|
+       that the internal PMIx progress |br|
        thread shall be bound to
          
-   * - ``PMIX_BIND_REQUIRED``
-     - ``pmix.bind.reqd``
+   * - ``PMIX_BIND_REQUIRED`` |br| ``"pmix.bind.reqd"``
      - ``(bool)``
-     - Return error if the internal PMIx progress thread cannot be
-       bound
+     - Return error if the internal PMIx |br|
+       progress thread cannot be bound
            
-   * - ``PMIX_COLOCATE_PROCS``
-     - ``pmix.colproc``
+   * - ``PMIX_COLOCATE_PROCS`` |br| ``"pmix.colproc"``
      - ``(pmix_data_array_t*)``
-     - Array of ``pmix_proc_t`` identifying the procs with which the
-       new job's procs are to be colocated
+     - Array of ``pmix_proc_t`` identifying the |br|
+       procs with which the new job's procs |br|
+       are to be colocated
        
-   * - ``PMIX_COLOCATE_NPERPROC``
-     - ``pmix.colnum.proc``
+   * - ``PMIX_COLOCATE_NPERPROC`` |br| ``"pmix.colnum.proc"``
      - ``(uint16_t)``
-     - Number of procs to colocate with each identified proc
+     - Number of procs to colocate with |br|
+       each identified proc
        
-   * - ``PMIX_COLOCATE_NPERNODE``
-     - ``pmix.colnum.node``
+   * - ``PMIX_COLOCATE_NPERNODE`` |br| ``"pmix.colnum.node"``
      - ``(uint16_t)``
-     - Number of procs to colocate on the node of each identified proc
+     - Number of procs to colocate on the |br|
+       node of each identified proc
        
-   * - ``PMIX_EVENT_ONESHOT``
-     - ``pmix.evone``
+   * - ``PMIX_EVENT_ONESHOT`` |br| ``pmix.evone``
      - ``(bool)``
-     - when registering, indicate that this event handler is to be
-       deleted after being invoked
+     - when registering, indicate that this |br|
+       event handler is to be deleted after |br|
+       being invoked
 
-   * - ``PMIX_GROUP_ADD_MEMBERS``
-     - ``pmix.grp.add``
+   * - ``PMIX_GROUP_ADD_MEMBERS`` |br| ``pmix.grp.add``
      - ``(pmix_data_array_t*)``
-     - Array of ``pmix_proc_t`` identifying procs that are not
-       included in the membership specified in the procs array passed
-       to the ``PMIx_Group_construct[_nb]()`` call, but are to be
-       included in the final group. The identified procs will be sent
-       an invitation to join the group during the construction
-       procedure. This is used when some members of the proposed group
-       do not know the full membership and therefore cannot include
-       all members in the call to construct.
+     - Array of ``pmix_proc_t`` identifying |br|
+       procs that are not included in the |br|
+       membership specified in the procs |br|
+       array passed to the |br|
+       ``PMIx_Group_construct[_nb]()`` call, |br|
+       but are to be included in the final |br|
+       group. The identified procs will be |br|
+       sent an invitation to join the group |br|
+       during the construction procedure. |br|
+       This is used when some members of |br|
+       the proposed group do not know the |br|
+       full membership and therefore cannot |br|
+       include all members in the call to |br|
+       construct.
        
-   * - ``PMIX_GROUP_LOCAL_CID``
-     - ``pmix.grp.lclid``
+   * - ``PMIX_GROUP_LOCAL_CID`` |br| ``pmix.grp.lclid``
      - ``(size_t)``
-     - local context ID for the specified process member of a group
+     - Local context ID for the specified |br|
+       process member of a group
        
-   * - ``PMIX_IOF_TAG_DETAILED_OUTPUT``
-     - ``pmix.iof.tagdet``
+   * - ``PMIX_GROUP_INFO`` |br| ``pmix.grp.info``
+     - ``pmix_data_array_t``
+     - Array of pmix_info_t containing data |br|
+       that is to be shared across all |br|
+       members of a group during group |br|
+       construction
+
+   * - ``PMIX_IOF_TAG_DETAILED_OUTPUT`` |br| ``pmix.iof.tagdet``
      - ``(bool)``
-     - Tag output with the [local jobid,rank][hostname:pid] and
-       channel it comes from
+     - Tag output with the |br|
+       [local jobid,rank][hostname:pid] |br|
+       and channel it comes from
        
-   * - ``PMIX_IOF_TAG_FULLNAME_OUTPUT``
-     - ``pmix.iof.tagfull``
+   * - ``PMIX_IOF_TAG_FULLNAME_OUTPUT`` |br| ``pmix.iof.tagfull``
      - ``(bool)``
-     - Tag output with the [nspace,rank] and channel it comes from
+     - Tag output with the [nspace,rank] |br|
+       and channel it comes from
        
-   * - ``PMIX_LOG_AGG``
-     - ``pmix.log.agg``
+   * - ``PMIX_LOG_AGG`` |br| ``pmix.log.agg``
      - ``(bool)``
-     - Whether to aggregate and prevent duplicate logging messages
-         based on key value pairs.
+     - Whether to aggregate and prevent |br|
+       duplicate logging messages based |br|
+       on key value pairs.
          
-   * - ``PMIX_LOG_KEY``
-     - ``pmix.log.key``
+   * - ``PMIX_LOG_KEY`` |br| ``pmix.log.key``
      - ``(char*)``
      - key to a logging message
          
-   * - ``PMIX_LOG_VAL``
-     - ``pmix.log.val``
+   * - ``PMIX_LOG_VAL`` |br| ``pmix.log.val``
      - ``(char*)``
      - value to a logging message
          
-   * - ``PMIX_MYSERVER_URI``
-     - ``pmix.mysrvr.uri``
+   * - ``PMIX_MYSERVER_URI`` |br| ``pmix.mysrvr.uri``
      - ``(char*)``
      - URI of this proc's listener socket
          
-   * - ``PMIX_QUALIFIED_VALUE``
-     - ``pmix.qual.val``
+   * - ``PMIX_QUALIFIED_VALUE`` |br| ``pmix.qual.val``
      - ``(pmix_data_array_t*)``
-     - Value being provided consists of the primary
-       key-value pair in first position, followed by one or more
-       key-value qualifiers to be used when subsequently retrieving
-       the primary value
+     - Value being provided consists of the |br|
+       primary key-value pair in first position, |br|
+       followed by one or more key-value |br|
+       qualifiers to be used when |br|
+       subsequently retrieving the primary |br|
+       value
          
-   * - ``PMIX_WDIR_USER_SPECIFIED``
-     - ``pmix.wdir.user``
+   * - ``PMIX_WDIR_USER_SPECIFIED`` |br| ``pmix.wdir.user``
      - ``(bool)``
      - User specified the working directory
          
-   * - ``PMIX_RUNTIME_OPTIONS``
-     - ``pmix.runopt``
+   * - ``PMIX_RUNTIME_OPTIONS`` |br| ``pmix.runopt``
      - ``(char*)``
-     - Environment-specific runtime directives that control job
-       behavior
+     - Environment-specific runtime |br|
+       directives that control job behavior
          
-   * - ``PMIX_ABORT_NON_ZERO_TERM``
-     - ``pmix.abnz``
+   * - ``PMIX_ABORT_NON_ZERO_TERM`` |br| ``pmix.abnz``
      - ``(bool)``
-     - Abort the spawned job if any process terminates with non-zero
-       status
+     - Abort the spawned job if any process |br|
+       terminates with non-zero status
          
-   * - ``PMIX_DO_NOT_LAUNCH``
-     - ``pmix.dnl``
+   * - ``PMIX_DO_NOT_LAUNCH`` |br| ``pmix.dnl``
      - ``(bool)``
-     - Execute all procedures to prepare the requested job for
-       launch, but do not launch it. Typically combined with the
-       PMIX_DISPLAY_MAP or PMIX_DISPLAY_MAP_DETAILED for debugging
-       purposes.
+     - Execute all procedures to prepare the |br|
+       requested job for launch, but do not |br|
+       launch it. Typically combined with the |br|
+       PMIX_DISPLAY_MAP or |br|
+       PMIX_DISPLAY_MAP_DETAILED for |br|
+       debugging purposes.
          
-   * - ``PMIX_SHOW_LAUNCH_PROGRESS``
-     - ``pmix.showprog``
+   * - ``PMIX_SHOW_LAUNCH_PROGRESS`` |br| ``pmix.showprog``
      - ``(bool)``
-     - Provide periodic progress reports on job launch procedure (e.g., after
-       every 100 processes have been spawned)
+     - Provide periodic progress reports on |br|
+       job launch procedure (e.g., after |br|
+       every 100 processes have been |br|
+       spawned)
          
-   * - ``PMIX_AGGREGATE_HELP``
-     - ``pmix.agg.help``
+   * - ``PMIX_AGGREGATE_HELP`` |br| ``pmix.agg.help``
      - ``(bool)``
-     - Aggregate help messages, reporting each unique help message once
-       accompanied by the number of processes that reported it
+     - Aggregate help messages, reporting |br|
+       each unique help message once |br|
+       accompanied by the number of |br|
+       processes that reported it
          
-   * - ``PMIX_REPORT_CHILD_SEP``
-     - ``pmix.rptchildsep``
+   * - ``PMIX_REPORT_CHILD_SEP`` |br| ``pmix.rptchildsep``
      - ``(bool)``
-     - Report the exit status of any child jobs spawned by the
-       primary job separately. If false, then the final exit status
-       reported will be zero if the primary job and all spawned jobs
-       exit normally, or the first non-zero status returned by
-       either primary or child jobs.
+     - Report the exit status of any child |br|
+       jobs spawned by the primary job |br|
+       separately. If false, then the final |br|
+       exit status reported will be zero if the |br|
+       primary job and all spawned jobs exit |br|
+       normally, or the first non-zero status |br|
+       returned by either primary or child |br|
+       jobs.
          
-   * - ``PMIX_DISPLAY_MAP_DETAILED``
-     - ``pmix.dispmapdet``
+   * - ``PMIX_DISPLAY_MAP_DETAILED`` |br| ``pmix.dispmapdet``
      - ``(bool)``
-     - display a highly detailed placement map upon spawn
+     - display a highly detailed placement |br|
+       map upon spawn
        
-   * - ``PMIX_DISPLAY_ALLOCATION``
-     - ``pmix.dispalloc``
+   * - ``PMIX_DISPLAY_ALLOCATION`` |br| ``pmix.dispalloc``
      - ``(bool)``
      - display the resource allocation
          
-   * - ``PMIX_DISPLAY_TOPOLOGY``
-     - ``pmix.disptopo``
+   * - ``PMIX_DISPLAY_TOPOLOGY`` |br| ``pmix.disptopo``
      - ``(char*)``
-     - comma-delimited list of hosts whose topology is
-       to be displayed
+     - comma-delimited list of hosts whose |br|
+       topology is to be displayed
          
-   * - ``PMIX_SORTED_PROC_ARRAY``
-     - ``pmix.sorted.parr``
+   * - ``PMIX_DISPLAY_PROCESSORS`` |br| ``pmix.dispcpus``
+     - ``(char*)``
+     - comma-delimited list of hosts whose |br|
+       available CPUs are to be displayed
+
+   * - ``PMIX_DISPLAY_PARSEABLE_OUTPUT`` |br| ``pmix.dispparse``
      - ``(bool)``
-     - Proc array being passed has been sorted
-         
-   * - ``PMIX_QUERY_ALLOCATION``
-     - ``pmix.query.allc``
-     - ``(pmix_data_array_t*)``
-     - returns an array of ``pmix_info_t`` describing the nodes known to
-       the server. Each array element will consist of the
-       ``PMIX_NODE_INFO`` key containing a ``pmix_data_array_t`` of
-       ``pmix_info_t`` |mdash| the first element of the array must be
-       the hostname of that node, with additional info on the node in
-       subsequent entries.  SUPPORTED_QUALIFIER: a ``PMIX_ALLOC_ID``
-       qualifier indicating the specific allocation of interest
-        
-   * - ``PMIX_TOPOLOGY_INDEX``
-     - ``pmix.topo.index``
-     - ``(int)``
-     - index of a topology in a storage array
-         
-   * - ``PMIX_ALLOC_PREEMPTIBLE``
-     - ``pmix.alloc.preempt``
+     - display requested info in a format |br|
+       more amenable to machine parsing
+
+   * - ``PMIX_SORTED_PROC_ARRAY`` |br| ``pmix.sorted.parr``
      - ``(bool)``
-     - by default, all jobs in the resulting allocation are to be
-       considered preemptible (overridable at per-job level)
+     - Proc array being passed has been |br|
+       sorted
+         
+   * - ``PMIX_QUERY_PROVISIONAL_ABI_VERSION`` |br| ``pmix.qry.prabiver``
+     - ``(char*)``
+     - The PMIx Standard Provisional ABI |br|
+       version(s) supported, returned in the |br|
+       form of a comma separated list of |br|
+       "MAJOR.MINOR" pairs
+
+   * - ``PMIX_QUERY_STABLE_ABI_VERSION`` |br| ``pmix.qry.stabiver``
+     - ``(char*)``
+     - The PMIx Standard Stable ABI |br|
+       version(s) supported, returned in the |br|
+       form of a comma separated list of |br|
+       "MAJOR.MINOR" pairs
+
+   * - ``PMIX_SIZE_ESTIMATE`` |br| ``pmix.size.est``
+     - ``(size_t)``
+     - Number of bytes in the enclosed |br|
+       payload
 
 .. note:: The attribute ``PMIX_DEBUG_STOP_IN_APP`` has been modified
           to only support a ``PMIX_BOOL`` value instead of an optional
@@ -1104,143 +1243,12 @@ Attributes
           for stopping a subset of a job's processes while allowing
           others to run "free".
 
-Session control attributes
-
-.. list-table::
-   :header-rows: 1
-
-   * - Attribute
-     - Name
-     - Type
-     - Description
-
-   * - ``PMIX_SESSION_CTRL_ID``
-     - ``pmix.ssnctrl.id``
-     - ``(char*)``
-     - provide a string identifier for this request
-
-Session instantiation attributes |mdash| called by scheduler.
-Schedulers calling to create a session are required to provide:
-
-* the effective userID and groupID that the session should have
-  when instantiated.
-  
-* description of the resources that are to be included in the session
-  
-* if applicable, the image that should be provisioned on nodes
-  included in the session
-  
-* an array of applications (if any) that are to be started in the
-  session once instantiated
-
-.. list-table::
-   :header-rows: 1
-
-   * - Attribute
-     - Name
-     - Type
-     - Description
-
-   * - ``PMIX_SESSION_APP``
-     - ``pmix.ssn.app``
-     - ``(pmix_data_array_t*)``
-     - Array of ``pmix_app_t`` to be executed in the assigned
-       session upon session instantiation
-
-   * - ``PMIX_SESSION_PROVISION``
-     - ``pmix.ssn.pvn``
-     - ``(pmix_data_array_t*)``
-     - description of nodes to be provisioned with
-       specified image
-       
-   * - ``PMIX_SESSION_PROVISION_NODES``
-     - ``pmix.ssn.pvnnds``
-     - ``(char*)``
-     - regex identifying nodes that are to be provisioned
-       
-   * - ``PMIX_SESSION_PROVISION_IMAGE``
-     - ``pmix.ssn.pvnimg``
-     - ``(char*)``
-     - name of the image that is to be provisioned
-
-Session operational attributes.
-
-.. list-table::
-   :header-rows: 1
-
-   * - Attribute
-     - Name
-     - Type
-     - Description
-
-   * - ``PMIX_SESSION_PAUSE``
-     - ``pmix.ssn.pause``
-     - ``(bool)``
-     - pause all jobs in the specified session
-       
-   * - ``PMIX_SESSION_RESUME``
-     - ``pmix.ssn.resume``
-     - ``(bool)``
-     - "un-pause" all jobs in the specified session
-       
-   * - ``PMIX_SESSION_TERMINATE``
-     - ``pmix.ssn.terminate``
-     - ``(bool)``
-     - terminate all jobs in the specified session and recover all
-       resources included in the session.
-       
-   * - ``PMIX_SESSION_PREEMPT``
-     - ``pmix.ssn.preempt``
-     - ``(bool)``
-     - preempt indicated jobs (given in accompanying ``pmix_info_t`` via
-       the ``PMIX_NSPACE`` attribute) in the specified session and recover
-       all their resources. If no ``PMIX_NSPACE`` is specified, then preempt
-       all jobs in the session.
-       
-   * - ``PMIX_SESSION_RESTORE``
-     - ``pmix.ssn.restore``
-     - ``(bool)``
-     - restore indicated jobs (given in accompanying ``pmix_info_t`` via
-       the ``PMIX_NSPACE`` attribute) in the specified session, including
-       all their resources. If no ``PMIX_NSPACE`` is specified, then restore
-       all jobs in the session.
-       
-   * - ``PMIX_SESSION_SIGNAL``
-     - ``pmix.ssn.sig``
-     - ``(int)``
-     - send given signal to all processes of every job in the session
-
-Session operational attributes |mdash| called by RTE.
-
-.. list-table::
-   :header-rows: 1
-
-   * - Attribute
-     - Name
-     - Type
-     - Description
-
-   * - ``PMIX_SESSION_COMPLETE``
-     - ``pmix.ssn.complete``
-     - ``(bool)``
-     - specified session has completed, all resources have been
-       recovered and are available for scheduling. Must include
-       ``pmix_info_t`` indicating ID and returned status of any jobs
-       executing in the session.
-       
-
-Allocation directive values
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-* ``PMIX_ALLOC_REQ_CANCEL`` (value: 5): Cancel the indicated allocation request
-
-       
 Datatypes
-^^^^^^^^^
+---------
 
 * ``pmix_value_cmp_t``: an enum indicating the relative value of
   two ``pmix_value_t objects``. Values include:
-  
+
   * ``PMIX_EQUAL``
   * ``PMIX_VALUE1_GREATER``
   * ``PMIX_VALUE2_GREATER``
@@ -1248,26 +1256,38 @@ Datatypes
   * ``PMIX_VALUE_INCOMPATIBLE_OBJECTS``
   * ``PMIX_VALUE_COMPARISON_NOT_AVAIL``
 
+* ``pmix_boolean_t``: an enum indicating boolean state of a
+  ``pmix_value_t`` (possibly contained in a ``pmix_info_t`` object):
+
+  * ``PMIX_BOOL_TRUE``
+  * ``PMIX_BOOL_FALSE``
+  * ``PMIX_NON_BOOL``
+
 * ``pmix_disk_stats_t``: contains statistics on disk read/write operations
 * ``pmix_net_stats_t``: contains statistics on network activity
 * ``pmix_node_stats_t``: contains statistics on node resource usage
 * ``pmix_proc_stats_t``: contains statistics on process resource usage
 
-  
+
 Datatype static initializers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Static initializers were added for each complex data type (i.e., a data type
-defined as a struct):
+defined as a struct). Most are contained in the Standard, but the following
+extensions have been provided:
 
 * ``PMIX_PROC_STATS_STATIC_INIT``
 * ``PMIX_DISK_STATS_STATIC_INIT``
 * ``PMIX_NET_STATS_STATIC_INIT``
 * ``PMIX_NODE_STATS_STATIC_INIT``
 
-  
+
 Macros
-^^^^^^
+------
+Although the convenience macros have been deprecated, several were
+added (in deprecated form) that previously were missing. These
+are added for symmetry to support those who continue to use
+the macros, and include:
 
 * ``PMIX_XFER_PROCID``: transfer a ``pmix_proc_t`` to another one
   (non-destructive copy)
@@ -1285,7 +1305,7 @@ Macros
   string as well as traditional boolean values)
 * ``PMIX_CHECK_BOOL``: check if a ``pmix_value_t`` is a boolean value (supports
   string as well as traditional boolean values)
-  
+
 
 Macros supporting ``pmix_disk_stats_t`` objects:
 
@@ -1319,9 +1339,256 @@ Macros supporting ``pmix_proc_stats_t`` objects:
 * ``PMIX_PROC_STATS_RELEASE``
 
 
-Renamed Constants
------------------
+Scheduler Integration
+---------------------
+OpenPMIx has taken some initial steps towards supporting the
+integration of schedulers to runtime environments (RTEs) using
+PMIx as the middleware. Supporting definitions will continue
+to be added going forward. This section describes the current
+state of those definitions.
 
-OpenPMIx version |opmix_ver| renamed the following constants:
+Session Control Function
+^^^^^^^^^^^^^^^^^^^^^^^^
+Used by the scheduler to request a session control action by the RTE - e.g.,
+setup a session (allocate the specified nodes to the new session,
+provision the nodes with the specified image,
+setup a user-level DVM across those nodes, and startup the given
+application under control of that DVM). In addition to setting
+up a new session, the function can be called to direct that a
+currently executing session be preempted or terminated.
+The sessionID identifies the
+session to which the specified control action is to be applied. A
+``UINT32_MAX`` value can be used to indicate all sessions under the
+caller's control.
 
-* ``PMIX_DEBUG_WAIT_FOR_NOTIFY``: renamed to ``PMIX_READY_FOR_DEBUG``
+Also used by the RTE to report a change in session state - e.g.,
+that the session has completed
+The directives are provided as ``pmix_info_t`` structs in the
+directives array. The callback function provides a status to
+indicate whether or not the request was granted, and to provide some
+information as to the reason for any denial in the
+``pmix_info_cbfunc_t`` array of ``pmix_info_t`` structures. If
+non-``NULL``, then the specified release_fn must be called when the
+callback function completes |mdash| this will be used to release any
+provided ``pmix_info_t`` array.
+
+Passing ``NULL`` as the ``cbfunc`` to this call indicates that it shall
+be treated as a blocking operation, with the return status
+indicative of the overall operation's completion.
+
+  .. code-block:: c
+
+     pmix_status_t PMIx_Session_control(uint32_t sessionID,
+                                        const pmix_info_t directives[], size_t ndirs,
+                                        pmix_info_cbfunc_t cbfunc, void *cbdata);
+
+Session Control Attributes
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+Schedulers calling to create a session are required to provide:
+
+* the effective userID and groupID that the session should have
+  when instantiated.
+
+* description of the resources that are to be included in the session
+
+* if applicable, the image that should be provisioned on nodes
+  included in the session
+
+* an array of applications (if any) that are to be started in the
+  session once instantiated
+
+Attributes supported by this API when called by the scheduler include:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Attribute
+     - Type
+     - Description
+
+   * - ``PMIX_SESSION_APP`` |br| ``pmix.ssn.app``
+     - ``(pmix_data_array_t*)``
+     - Array of ``pmix_app_t`` to be executed |br|
+       in the assigned session upon session |br|
+       instantiation
+
+   * - ``PMIX_SESSION_PROVISION`` |br| ``pmix.ssn.pvn``
+     - ``(pmix_data_array_t*)``
+     - description of nodes to be |br|
+       provisioned with specified image
+
+   * - ``PMIX_SESSION_PROVISION_NODES`` |br| ``pmix.ssn.pvnnds``
+     - ``(char*)``
+     - regex identifying nodes that are to be |br|
+       provisioned
+
+   * - ``PMIX_SESSION_PROVISION_IMAGE`` |br| ``pmix.ssn.pvnimg``
+     - ``(char*)``
+     - name of the image that is to be |br|
+       provisioned
+
+   * - ``PMIX_SESSION_PAUSE`` |br| ``pmix.ssn.pause``
+     - ``(bool)``
+     - pause all jobs in the specified session
+
+   * - ``PMIX_SESSION_RESUME`` |br| ``pmix.ssn.resume``
+     - ``(bool)``
+     - "un-pause" all jobs in the specified session
+
+   * - ``PMIX_SESSION_TERMINATE`` |br| ``pmix.ssn.terminate``
+     - ``(bool)``
+     - terminate all jobs in the specified |br|
+       session and recover all resources |br|
+       included in the session.
+
+   * - ``PMIX_SESSION_PREEMPT`` |br| ``pmix.ssn.preempt``
+     - ``(bool)``
+     - preempt indicated jobs (given in |br|
+       accompanying ``pmix_info_t`` via the |br|
+       ``PMIX_NSPACE`` attribute) in the specified |br|
+       session and recover all their resources. If |br|
+       no ``PMIX_NSPACE`` is specified, then preempt |br|
+       all jobs in the session.
+
+   * - ``PMIX_SESSION_RESTORE`` |br| ``pmix.ssn.restore``
+     - ``(bool)``
+     - restore indicated jobs (given in |br|
+       accompanying ``pmix_info_t`` via the |br|
+       ``PMIX_NSPACE`` attribute) in the specified |br|
+       session, including all their resources. If |br|
+       no ``PMIX_NSPACE`` is specified, then restore |br|
+       all jobs in the session.
+
+   * - ``PMIX_SESSION_SIGNAL`` |br| ``pmix.ssn.sig``
+     - ``(int)``
+     - send given signal to all processes of every |br|
+       job in the session
+
+
+Attributes supported by this API when called by the RTE include:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Attribute
+     - Type
+     - Description
+
+   * - ``PMIX_SESSION_COMPLETE`` |br| ``pmix.ssn.complete``
+     - ``(bool)``
+     - specified session has completed, all resources have been |br|
+       recovered and are available for scheduling. Must include |br|
+       ``pmix_info_t`` indicating ID and returned status of any jobs |br|
+       executing in the session.
+
+
+Server module function pointers
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The PMIx server module was extended to include the following interface
+that is used by the PMIx server to pass control requests received
+by the RTE from the scheduler. These include requests to establish
+a newly allocated session, preempt jobs, etc. A ``UINT32_MAX`` value
+for the sessionID indicates that the specified action shall be
+applied to all currently existing sessions.
+
+
+* Provide a session control operation request
+
+  .. code-block:: c
+
+    typedef pmix_status_t (*pmix_server_session_control_fn_t)(
+                                  const pmix_proc_t *requestor,
+                                  uint32_t sessionID,
+                                  const pmix_info_t directives[], size_t ndirs,
+                                  pmix_info_cbfunc_t cbfunc, void *cbdata);
+
+
+Server module attributes
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+A number of allocation related attributes have already been defined
+in the Standard. These can be used to describe the request (e.g., the
+resources to be included in the session). The following
+attribute has been added to that list:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Attribute
+     - Type
+     - Description
+
+   * - ``PMIX_SESSION_CTRL_ID`` |br| ``pmix.ssnctrl.id``
+     - ``(char*)``
+     - provide a string identifier for this request. |br|
+       This identifier shall be included |br|
+       in all subsequent interactions relating to |br|
+       the request.
+
+
+Scheduler query attributes
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+The scheduler typically discovers its available resources
+by querying the RTE for a list of them. The following
+attributes augment those already in the Standard to support
+the query:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Attribute
+     - Type
+     - Description
+
+   * - ``PMIX_QUERY_ALLOCATION`` |br| ``pmix.query.allc``
+     - ``(pmix_data_array_t*)``
+     - returns an array of ``pmix_info_t`` |br|
+       describing the nodes known to the |br|
+       server. Each array element will consist |br|
+       of the ``PMIX_NODE_INFO`` key containing |br|
+       a ``pmix_data_array_t`` of ``pmix_info_t``. |br|
+       The first element of the array must be |br|
+       the hostname of that node, with |br|
+       additional info on the node in |br|
+       subsequent entries. |br|
+       SUPPORTED_QUALIFIER: a |br|
+       ``PMIX_ALLOC_ID`` qualifier indicating |br|
+       the specific allocation of interest
+
+   * - ``PMIX_TOPOLOGY_INDEX`` |br| ``pmix.topo.index``
+     - ``(int)``
+     - index of a topology in a storage array. Used |br|
+       when returning an allocation to avoid duplicate |br|
+       topology information - the RTE can return an array |br|
+       of topologies and then indicate the index |br|
+       to the topology as part of each node entry.
+
+
+Allocation attributes
+^^^^^^^^^^^^^^^^^^^^^
+A number of allocation related attributes have already been defined
+in the Standard. These can be used to describe the request (e.g., the
+number and type of resources being requested). The following
+attribute has been added to that list:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Attribute
+     - Type
+     - Description
+
+   * - ``PMIX_ALLOC_PREEMPTIBLE`` |br| ``pmix.alloc.preempt``
+     - ``(bool)``
+     - by default, all jobs in the resulting |br|
+       allocation are to be considered |br|
+       preemptible (can be overridden at |br|
+       per-job level)
+
+
+Allocation directive values
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The ``PMIx_Allocation_request`` API includes a ``directive`` parameter to
+specify the operation being requested. These values were extended to include:
+
+* ``PMIX_ALLOC_REQ_CANCEL`` (value: 5): Cancel the indicated allocation request
