@@ -4,7 +4,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -101,7 +101,6 @@ static int if_solaris_ipv6_open(void)
     int i;
     int sd;
     int error;
-    uint16_t kindex;
     struct lifnum lifnum;
     struct lifconf lifconf;
     struct lifreq *lifreq, lifquery;
@@ -142,7 +141,7 @@ static int if_solaris_ipv6_open(void)
         pmix_output(0, "pmix_ifinit: IPv6 SIOCGLIFCONF failed with errno=%d\n", errno);
     }
 
-    for (i = 0; i + sizeof(struct lifreq) <= lifconf.lifc_len; i += sizeof(*lifreq)) {
+    for (i = 0; i + sizeof(struct lifreq) <= (size_t)lifconf.lifc_len; i += sizeof(*lifreq)) {
 
         lifreq = (struct lifreq *) ((caddr_t) lifconf.lifc_buf + i);
         pmix_strncpy(lifquery.lifr_name, lifreq->lifr_name, sizeof(lifquery.lifr_name) - 1);
@@ -153,7 +152,6 @@ static int if_solaris_ipv6_open(void)
             pmix_output(0, "pmix_ifinit: SIOCGLIFINDEX failed with errno=%d\n", errno);
             return PMIX_ERROR;
         }
-        kindex = lifquery.lifr_index;
 
         /* lookup interface flags */
         error = ioctl(sd, SIOCGLIFFLAGS, &lifquery);
@@ -179,7 +177,7 @@ static int if_solaris_ipv6_open(void)
 
                 intf = PMIX_NEW(pmix_pif_t);
                 if (NULL == intf) {
-                    pmix_output(0, "pmix_ifinit: unable to allocate %d bytes\n",
+                    pmix_output(0, "pmix_ifinit: unable to allocate %zu bytes\n",
                                 sizeof(pmix_pif_t));
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
