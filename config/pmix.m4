@@ -23,7 +23,7 @@ dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
 dnl
-dnl Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2018-2022 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
@@ -1047,6 +1047,11 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
            AC_MSG_RESULT([yes])])
     AC_DEFINE_UNQUOTED(PMIX_ENABLE_DLOPEN_SUPPORT, $PMIX_ENABLE_DLOPEN_SUPPORT,
                       [Whether we want to enable dlopen support])
+
+#
+# Check the OS flavor here
+#
+PMIX_CHECK_OS_FLAVORS
 
 #
 # Developer picky compiler options

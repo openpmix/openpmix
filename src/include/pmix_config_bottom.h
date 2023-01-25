@@ -15,7 +15,7 @@
  *                         All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -296,7 +296,11 @@
 #endif
 
 #if PMIX_HAVE_ATTRIBUTE_SENTINEL
-#    define __pmix_attribute_sentinel__ __attribute__((__sentinel__))
+    #if PMIX_HAVE_SOLARIS
+    #    define __pmix_attribute_sentinel__
+    #else
+    #    define __pmix_attribute_sentinel__ __attribute__((__sentinel__))
+    #endif
 #else
 #    define __pmix_attribute_sentinel__
 #endif
