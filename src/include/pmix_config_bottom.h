@@ -187,7 +187,11 @@
 #endif
 
 #if PMIX_HAVE_ATTRIBUTE_FORMAT
-#    define __pmix_attribute_format__(a, b, c) __attribute__((__format__(a, b, c)))
+    #if PMIX_HAVE_SOLARIS
+    #    define __pmix_attribute_format__(a, b, c)
+    #else
+    #    define __pmix_attribute_format__(a, b, c) __attribute__((__format__(a, b, c)))
+    #endif
 #else
 #    define __pmix_attribute_format__(a, b, c)
 #endif
