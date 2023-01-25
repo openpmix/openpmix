@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -79,6 +79,7 @@ pmix_status_t pmix_util_getid(int sd, uid_t *uid, gid_t *gid)
         return PMIX_ERR_INVALID_CRED;
     }
 #else
+    PMIX_HIDE_UNUSED_PARAMS(sd, uid, gid);
     return PMIX_ERR_NOT_SUPPORTED;
 #endif
 
