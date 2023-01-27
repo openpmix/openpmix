@@ -95,14 +95,12 @@ pmix_gds_shmem_get_session_tracker(
     uint32_t sid,
     bool create
 ) {
-    // TODO(skg) Update tma.
-    // TODO(skg) We need to update these retain, release.
     // This is an error: we should always be given a job.
     if (PMIX_UNLIKELY(!job)) {
         return NULL;
     }
 
-    pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
+    pmix_tma_t *const tma = pmix_gds_shmem_get_session_tma(job);
     pmix_gds_shmem_component_t *const comp = &pmix_mca_gds_shmem_component;
 
     if (NULL == job->session) {

@@ -411,7 +411,6 @@ store_session_array(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    // TODO(skg) Change param to session.
     pmix_tma_t *const tma = pmix_gds_shmem_get_session_tma(job);
     pmix_list_t *ncache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!ncache)) {
