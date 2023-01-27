@@ -1308,7 +1308,6 @@ get_local_job_data_info(
     pmix_status_t rc = PMIX_SUCCESS;
     size_t nhtentries = 0;
     uint32_t sid = UINT32_MAX;
-    bool have_sid = false;
 
     pmix_buffer_t data;
     PMIX_CONSTRUCT(&data, pmix_buffer_t);
@@ -1330,7 +1329,6 @@ get_local_job_data_info(
                     PMIX_ERROR_LOG(rc);
                     goto out;
                 }
-                have_sid = true;
             }
         }
         // Just a key/value pair, so they will likely go into the hash table.
@@ -1344,17 +1342,9 @@ get_local_job_data_info(
             goto out;
         }
     }
-    // Make sure that we were given a session ID.
-    // If not, this is an internal error.
-    if (!have_sid) {
-        rc = PMIX_ERROR;
-        PMIX_ERROR_LOG(rc);
-    }
-    else {
-        pji->session_id = sid;
-        pji->packed_size = data.bytes_used;
-        pji->hash_table_size = get_actual_hashtab_capacity(nhtentries);
-    }
+    pji->session_id = sid;
+    pji->packed_size = data.bytes_used;
+    pji->hash_table_size = get_actual_hashtab_capacity(nhtentries);
 out:
     PMIX_DESTRUCT(&data);
     return rc;
