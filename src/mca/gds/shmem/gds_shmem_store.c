@@ -209,7 +209,7 @@ store_app_array(
     pmix_gds_shmem_job_t *job,
     pmix_value_t *val
 ) {
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    PMIX_GDS_SHMEM_VVOUT_HERE();
 
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_gds_shmem_app_t *app = NULL;
@@ -405,14 +405,14 @@ store_session_array(
     }
 
     pmix_gds_shmem_session_t *sesh;
-    sesh = pmix_gds_shmem_check_session(job, sid, true);
+    sesh = pmix_gds_shmem_get_session_tracker(job, sid, false);
     if (PMIX_UNLIKELY(!sesh)) {
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
-    pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
+    // TODO(skg) Change param to session.
+    pmix_tma_t *const tma = pmix_gds_shmem_get_session_tma(job);
     pmix_list_t *ncache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!ncache)) {
         rc = PMIX_ERR_NOMEM;
@@ -444,13 +444,13 @@ store_session_array(
                 PMIX_RELEASE(kval);
                 goto out;
             }
-            pmix_list_append(sesh->sessioninfo, &kval->super);
+            pmix_list_append(sesh->smdata->sessioninfo, &kval->super);
         }
     }
 
     pmix_gds_shmem_nodeinfo_t *ni;
     while ((ni = (pmix_gds_shmem_nodeinfo_t *)pmix_list_remove_first(ncache))) {
-        pmix_list_append(sesh->nodeinfo, &ni->super);
+        pmix_list_append(sesh->smdata->nodeinfo, &ni->super);
     }
 out:
     PMIX_LIST_DESTRUCT(ncache);
@@ -575,9 +575,12 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
         }
     }
     if (PMIX_SUCCESS == rc) {
-        // Segment is ready for use.
+        // Segments are ready for use.
         pmix_gds_shmem_set_status(
             job, PMIX_GDS_SHMEM_JOB_ID, PMIX_GDS_SHMEM_READY_FOR_USE
+        );
+        pmix_gds_shmem_set_status(
+            job, PMIX_GDS_SHMEM_SESSION_ID, PMIX_GDS_SHMEM_READY_FOR_USE
         );
     }
     return rc;

@@ -58,6 +58,7 @@ PMIX_EXPORT extern double pmix_gds_shmem_segment_size_multiplier;
  */
 typedef enum {
     PMIX_GDS_SHMEM_JOB_ID = 0,
+    PMIX_GDS_SHMEM_SESSION_ID,
     PMIX_GDS_SHMEM_MODEX_ID,
     PMIX_GDS_SHMEM_INVALID_ID
 } pmix_gds_shmem_job_shmem_id_t;
@@ -108,13 +109,26 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_nodeinfo_t);
 
 typedef struct {
-    pmix_list_item_t super;
+    /** Shared-memory allocator for data this structure. */
+    pmix_tma_t tma;
+    /** Holds the current address of the shared-memory allocator. */
+    void *current_addr;
     /** Session ID. */
-    uint32_t session;
+    uint32_t id;
     /** Session information. */
     pmix_list_t *sessioninfo;
     /** Node information. */
     pmix_list_t *nodeinfo;
+} pmix_gds_shmem_shared_session_data_t;
+
+typedef struct {
+    pmix_list_item_t super;
+    /** Shared-memory object that maintains backing store for session data. */
+    pmix_shmem_t *shmem;
+    /** Stores status for shmem. */
+    pmix_gds_shmem_status_t shmem_status;
+    /** Session data stored in shared-memory. */
+    pmix_gds_shmem_shared_session_data_t *smdata;
 } pmix_gds_shmem_session_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
 
@@ -131,8 +145,6 @@ typedef struct {
     pmix_tma_t tma;
     /** Holds the current address of the shared-memory allocator. */
     void *current_addr;
-    /** Points to this job's session information. */
-    pmix_gds_shmem_session_t *session;
     /** List containing job information. */
     pmix_list_t *jobinfo;
     /** List containing this job's node information. */
@@ -158,13 +170,15 @@ typedef struct {
     char *nspace_id;
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
+    /** Pointer to this job's session information. */
+    pmix_gds_shmem_session_t *session;
     /** Stores status for shmem. */
     pmix_gds_shmem_status_t shmem_status;
-    /** Shared-memory object that maintains information for smdata data. */
+    /** Shared-memory object that maintains backing store for smdata data. */
     pmix_shmem_t *shmem;
     /** Stores status for modex_shmem. */
     pmix_gds_shmem_status_t modex_shmem_status;
-    /** Shared-memory object that maintains information for smmodex data. */
+    /** Shared-memory object that maintains backing store for smmodex data. */
     pmix_shmem_t *modex_shmem;
     /** Points to shared job data located in a shared-memory segment. */
     pmix_gds_shmem_shared_job_data_t *smdata;
@@ -175,10 +189,13 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
 
 typedef struct {
     pmix_list_item_t super;
+    /** Application number. */
     uint32_t appnum;
+    /** Application info. */
     pmix_list_t *appinfo;
     /** Node information. */
     pmix_list_t *nodeinfo;
+    /* Application job info. */
     pmix_gds_shmem_job_t *job;
 } pmix_gds_shmem_app_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_app_t);

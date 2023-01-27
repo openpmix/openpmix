@@ -41,8 +41,8 @@ do {                                                                           \
 do { } while (0)
 #endif
 
-#define PMIX_GDS_SHMEM_VOUT_HERE()                                             \
-PMIX_GDS_SHMEM_VVOUT(":%s called at line %d", __func__, __LINE__)
+#define PMIX_GDS_SHMEM_VVOUT_HERE()                                            \
+PMIX_GDS_SHMEM_VVOUT("HERE AT %s,%d", __func__, __LINE__)
 
 BEGIN_C_DECLS
 
@@ -54,7 +54,7 @@ pmix_gds_shmem_get_job_tracker(
 );
 
 PMIX_EXPORT pmix_gds_shmem_session_t *
-pmix_gds_shmem_check_session(
+pmix_gds_shmem_get_session_tracker(
     pmix_gds_shmem_job_t *job,
     uint32_t sid,
     bool create
@@ -110,6 +110,17 @@ pmix_gds_shmem_get_job_tma(
     return &job->smdata->tma;
 }
 
+static inline pmix_tma_t *
+pmix_gds_shmem_get_session_tma(
+    pmix_gds_shmem_job_t *job
+) {
+    assert(job->session);
+    if (!job->session) {
+        return NULL;
+    }
+    return &job->session->smdata->tma;
+}
+
 static inline void
 pmix_gds_shmem_vout_smdata(
     pmix_gds_shmem_job_t *job
@@ -147,6 +158,26 @@ pmix_gds_shmem_vout_smmodex(
         (void *)&job->smmodex->tma,
         (void *)job->smmodex->tma.data_ptr,
         (void *)job->smmodex->hashtab
+    );
+}
+
+static inline void
+pmix_gds_shmem_vout_smsession(
+    pmix_gds_shmem_session_t *sesh
+) {
+    PMIX_GDS_SHMEM_VOUT(
+        "shmem_hdr@%p, "
+        "shmem_data@%p, "
+        "smdata tma@%p, "
+        "smdata tma data_ptr=%p, "
+        "sessioninfo@%p, "
+        "nodeinfo@%p",
+        (void *)sesh->shmem->hdr_address,
+        (void *)sesh->shmem->data_address,
+        (void *)&sesh->smdata->tma,
+        (void *)sesh->smdata->tma.data_ptr,
+        (void *)sesh->smdata->sessioninfo,
+        (void *)sesh->smdata->nodeinfo
     );
 }
 
