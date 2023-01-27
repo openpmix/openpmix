@@ -390,7 +390,7 @@ job_destruct(
     if (job->nspace) {
         PMIX_RELEASE(job->nspace);
     }
-    // TODO(skg) Deal with session.
+
     for (int i = 0; shmem_ids[i] != PMIX_GDS_SHMEM_INVALID_ID; ++i) {
         const pmix_gds_shmem_job_shmem_id_t sid = shmem_ids[i];
 
@@ -408,6 +408,10 @@ job_destruct(
         pmix_gds_shmem_clearall_status(job, sid);
         // Releases memory for the structures located in shared-memory.
         PMIX_RELEASE(shmem);
+    }
+
+    if (NULL != job->session) {
+        PMIX_RELEASE(job->session);
     }
 }
 
@@ -480,20 +484,21 @@ session_smdata_construct(
     pmix_gds_shmem_job_t *job,
     uint32_t sid
 ) {
-    // TODO(skg) Cleanup.
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // session know about its data located at the base of the segment.
+    const size_t smdata_size = sizeof(*job->session->smdata);
     void *const baseaddr = job->session->shmem->data_address;
+
     job->session->smdata = baseaddr;
-    memset(job->session->smdata, 0, sizeof(*job->session->smdata));
+    memset(job->session->smdata, 0, smdata_size);
     // Save the starting address for TMA memory allocations.
     job->session->smdata->current_addr = baseaddr;
     // Setup the TMA.
     tma_init(&job->session->smdata->tma, &job->session->smdata->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
-    *(job->session->smdata->tma.data_ptr) = addr_align(baseaddr, sizeof(*job->session->smdata));
+    *(job->session->smdata->tma.data_ptr) = addr_align(baseaddr, smdata_size);
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->session->smdata->tma;
     // Now that we know the TMA, initialize smdata structures using it.
@@ -514,16 +519,18 @@ job_smdata_construct(
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // job know about its data located at the base of the segment.
+    const size_t smdata_size = sizeof(*job->smdata);
     void *const baseaddr = job->shmem->data_address;
+
     job->smdata = baseaddr;
-    memset(job->smdata, 0, sizeof(*job->smdata));
+    memset(job->smdata, 0, smdata_size);
     // Save the starting address for TMA memory allocations.
     job->smdata->current_addr = baseaddr;
     // Setup the TMA.
     tma_init(&job->smdata->tma, &job->smdata->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
-    *(job->smdata->tma.data_ptr) = addr_align(baseaddr, sizeof(*job->smdata));
+    *(job->smdata->tma.data_ptr) = addr_align(baseaddr, smdata_size);
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->smdata->tma;
     // Now that we know the TMA, initialize smdata structures using it.
@@ -547,16 +554,18 @@ modex_smdata_construct(
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // job know about its data located at the base of the segment.
+    const size_t smmodex_size = sizeof(*job->smmodex);
     void *const baseaddr = job->modex_shmem->data_address;
+
     job->smmodex = baseaddr;
-    memset(job->smmodex, 0, sizeof(*job->smmodex));
+    memset(job->smmodex, 0, smmodex_size);
     // Save the starting address for TMA memory allocations.
     job->smmodex->current_addr = baseaddr;
     // Setup the TMA.
     tma_init(&job->smmodex->tma, &job->smmodex->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
-    *(job->smmodex->tma.data_ptr) = addr_align(baseaddr, sizeof(*job->smmodex));
+    *(job->smmodex->tma.data_ptr) = addr_align(baseaddr, smmodex_size);
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->smmodex->tma;
     // Now that we know the TMA, initialize smdata structures using it.
@@ -664,6 +673,24 @@ get_shmem_backing_path(
         return NULL;
     }
     return path;
+}
+
+/**
+ * Returns a valid shared-memory session name or NULL on error.
+ */
+static inline const char *
+get_shmem_session_name(
+    uint32_t session_id
+) {
+    static char name[64] = {'\0'};
+    // Now that we have the base path, append unique name.
+    size_t nw = snprintf(
+        name, sizeof(name), "session.%zx", (size_t)session_id
+    );
+    if (nw >= sizeof(name)) {
+        return NULL;
+    }
+    return name;
 }
 
 /**
@@ -967,15 +994,21 @@ prepare_shmem_stores_for_local_job_data(
     // Do the same for the job's session information. Note that we recycle the
     // segment size calculated above because we know that it will be at least as
     // big as we need for this session information.
-    // TODO(skg) Add proper name.
+    const char *session_name = get_shmem_session_name(pji->session_id);
+    if (PMIX_UNLIKELY(!session_name)) {
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
     rc = shmem_segment_create_and_attach(
-        job, PMIX_GDS_SHMEM_SESSION_ID, "seshdata", seg_size
+        job, PMIX_GDS_SHMEM_SESSION_ID, session_name, seg_size
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
+    // Construct shared-memory data structures for job and session.
     rc = job_smdata_construct(job, htsize);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -986,7 +1019,6 @@ prepare_shmem_stores_for_local_job_data(
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
-
     return rc;
 }
 
