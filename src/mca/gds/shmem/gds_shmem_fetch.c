@@ -432,8 +432,8 @@ xfer_sessioninfo(
     pmix_list_t *kvs
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_list_t *const sessionlist = sesh->sessioninfo;
-    const uint32_t sid = sesh->session;
+    pmix_list_t *const sessionlist = sesh->smdata->sessioninfo;
+    const uint32_t sid = sesh->smdata->id;
 
     if (NULL == key) {
         if (job->nspace->version.major < 4 ||
@@ -493,7 +493,6 @@ xfer_sessioninfo(
             return PMIX_SUCCESS;
         }
     }
-
     return PMIX_ERR_NOT_FOUND;
 }
 
@@ -522,8 +521,8 @@ fetch_sessioninfo(
     }
 
     pmix_gds_shmem_session_t *sesh;
-    sesh = pmix_gds_shmem_check_session(job, sid, false);
-    if (NULL == sesh) {
+    sesh = pmix_gds_shmem_get_session_tracker(job, sid, false);
+    if (PMIX_UNLIKELY(NULL == sesh)) {
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -541,6 +540,8 @@ pmix_gds_shmem_fetch(
     size_t nqual,
     pmix_list_t *kvs
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+
     pmix_status_t rc = PMIX_SUCCESS;
     bool sessioninfo = false;
     bool nodeinfo = false;

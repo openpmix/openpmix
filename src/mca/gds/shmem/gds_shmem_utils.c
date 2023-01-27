@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,29 +25,29 @@ pmix_gds_shmem_get_job_tracker(
     pmix_status_t rc = PMIX_SUCCESS;
 
     // Try to find the tracker for this job.
-    pmix_gds_shmem_job_t *ti = NULL, *target_tracker = NULL;
+    pmix_gds_shmem_job_t *ti = NULL, *ijob = NULL;
     pmix_gds_shmem_component_t *const component = &pmix_mca_gds_shmem_component;
     PMIX_LIST_FOREACH (ti, &component->jobs, pmix_gds_shmem_job_t) {
         if (0 == strcmp(nspace, ti->nspace_id)) {
-            target_tracker = ti;
+            ijob = ti;
             break;
         }
     }
     // If we didn't find the requested target and we aren't asked
     // to create a new one, then the request cannot be fulfilled.
-    if (!target_tracker && !create) {
+    if (!ijob && !create) {
         rc = PMIX_ERR_NOT_FOUND;
         goto out;
     }
     // Create one if not found and asked to create one.
-    if (!target_tracker && create) {
-        target_tracker = PMIX_NEW(pmix_gds_shmem_job_t);
-        if (PMIX_UNLIKELY(!target_tracker)) {
+    if (!ijob && create) {
+        ijob = PMIX_NEW(pmix_gds_shmem_job_t);
+        if (PMIX_UNLIKELY(!ijob)) {
             rc = PMIX_ERR_NOMEM;
             goto out;
         }
-        target_tracker->nspace_id = strdup(nspace);
-        if (PMIX_UNLIKELY(!target_tracker->nspace_id)) {
+        ijob->nspace_id = strdup(nspace);
+        if (PMIX_UNLIKELY(!ijob->nspace_id)) {
             rc = PMIX_ERR_NOMEM;
             goto out;
         }
@@ -74,27 +74,29 @@ pmix_gds_shmem_get_job_tracker(
             pmix_list_append(&pmix_globals.nspaces, &inspace->super);
         }
         PMIX_RETAIN(inspace);
-        target_tracker->nspace = inspace;
+        ijob->nspace = inspace;
         // Add it to the list of jobs I'm supporting.
-        pmix_list_append(&component->jobs, &target_tracker->super);
+        pmix_list_append(&component->jobs, &ijob->super);
     }
 out:
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        if (target_tracker) {
-            PMIX_RELEASE(target_tracker);
-            target_tracker = NULL;
+        if (ijob) {
+            PMIX_RELEASE(ijob);
+            ijob = NULL;
         }
     }
-    *job = target_tracker;
+    *job = ijob;
     return rc;
 }
 
 pmix_gds_shmem_session_t *
-pmix_gds_shmem_check_session(
+pmix_gds_shmem_get_session_tracker(
     pmix_gds_shmem_job_t *job,
     uint32_t sid,
     bool create
 ) {
+    // TODO(skg) Update tma.
+    // TODO(skg) We need to update these retain, release.
     // This is an error: we should always be given a job.
     if (PMIX_UNLIKELY(!job)) {
         return NULL;
@@ -103,29 +105,24 @@ pmix_gds_shmem_check_session(
     pmix_tma_t *const tma = pmix_gds_shmem_get_job_tma(job);
     pmix_gds_shmem_component_t *const comp = &pmix_mca_gds_shmem_component;
 
-    if (NULL == job->smdata->session) {
-        bool found = false;
+    if (NULL == job->session) {
         // No session has been assigned to this job. See
         // if the given ID has already been registered.
         pmix_gds_shmem_session_t *si;
         PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem_session_t) {
-            if (si->session == sid) {
-                found = true;
-                break;
+            if (si->smdata->id == sid) {
+                // Found it. Point the job tracker at this session.
+                PMIX_RETAIN(si);
+                job->session = si;
+                return si;
             }
-        }
-        if (found) {
-            // Point the job tracker at this session.
-            PMIX_RETAIN(si);
-            job->smdata->session = si;
-            return si;
         }
         // If it wasn't found, then create it if permitted.
         if (create) {
             si = PMIX_NEW(pmix_gds_shmem_session_t, tma);
-            si->session = sid;
+            si->smdata->id = sid;
             PMIX_RETAIN(si);
-            job->smdata->session = si;
+            job->session = si;
             pmix_list_append(&comp->sessions, &si->super);
             return si;
         }
@@ -135,51 +132,46 @@ pmix_gds_shmem_check_session(
     }
     // If the current session object is pointing to the default global session
     // and we were given a specific session ID, then update it.
-    if (UINT32_MAX == job->smdata->session->session) {
+    if (UINT32_MAX == job->session->smdata->id) {
         if (UINT32_MAX == sid) {
             // If the given SID is also UINT32_MAX, then we just add to it.
-            return job->smdata->session;
+            return job->session;
         }
         // See if the given ID has already been registered.
-        bool found = false;
         pmix_gds_shmem_session_t *si;
         PMIX_LIST_FOREACH(si, &comp->sessions, pmix_gds_shmem_session_t) {
-            if (si->session == sid) {
-                found = true;
-                break;
+            if (si->smdata->id == sid) {
+                // Found it. Update the refcount on the current session object.
+                PMIX_RELEASE(job->session);
+                // Point the job tracker at the new place.
+                PMIX_RETAIN(si);
+                job->session = si;
+                return si;
             }
         }
-        if (found) {
-            // Update the refcount on the current session object.
-            PMIX_RELEASE(job->smdata->session);
-            // Point the job tracker at the new place.
-            PMIX_RETAIN(si);
-            job->smdata->session = si;
-            return si;
-        }
-        // If it wasn't found, then create it.
+        // If it wasn't found, then create it if permitted.
         if (create) {
             si = PMIX_NEW(pmix_gds_shmem_session_t, tma);
-            si->session = sid;
+            si->smdata->id = sid;
             PMIX_RETAIN(si);
-            job->smdata->session = si;
+            job->session = si;
             pmix_list_append(&comp->sessions, &si->super);
             return si;
         }
     }
     else if (UINT32_MAX == sid) {
         // It's a wildcard request, so return the job-tracker session.
-        return job->smdata->session;
+        return job->session;
     }
     // The job tracker already was assigned a session ID.
     // Check if the new one matches.
-    if (job->smdata->session->session != sid) {
+    if (PMIX_UNLIKELY(job->session->smdata->id != sid)) {
         // This is an error: you cannot assign a given job to multiple sessions.
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return NULL;
     }
     // The two must match, so return it.
-    return job->smdata->session;
+    return job->session;
 }
 
 bool
@@ -200,6 +192,9 @@ pmix_gds_shmem_get_job_shmem_by_id(
         case PMIX_GDS_SHMEM_JOB_ID:
             *shmem = job->shmem;
             break;
+        case PMIX_GDS_SHMEM_SESSION_ID:
+            *shmem = job->session->shmem;
+            break;
         case PMIX_GDS_SHMEM_MODEX_ID:
             *shmem = job->modex_shmem;
             break;
@@ -219,6 +214,8 @@ get_job_shmem_status_flagp(
     switch (shmem_id) {
         case PMIX_GDS_SHMEM_JOB_ID:
             return &job->shmem_status;
+        case PMIX_GDS_SHMEM_SESSION_ID:
+            return &job->session->shmem_status;
         case PMIX_GDS_SHMEM_MODEX_ID:
             return &job->modex_shmem_status;
         case PMIX_GDS_SHMEM_INVALID_ID:

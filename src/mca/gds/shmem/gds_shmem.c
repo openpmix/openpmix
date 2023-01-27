@@ -19,11 +19,6 @@
 #include "gds_shmem_store.h"
 #include "gds_shmem_fetch.h"
 
-#include "src/util/pmix_argv.h"
-#include "src/util/pmix_environ.h"
-#include "src/util/pmix_error.h"
-#include "src/util/pmix_name_fns.h"
-#include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_string_copy.h"
 #include "src/util/pmix_vmem.h"
@@ -54,12 +49,35 @@
 #define SHMEM_SEG_HADR_KEY "PMIX_GDS_SHMEM_SEG_HADR"
 
 /**
- * Stores packed job statistics.
+ * Stores packed job information.
  */
 typedef struct {
+    pmix_object_t super;
+    /** Session ID associated with this job. */
+    uint32_t session_id;
+    /** Size of packed data. */
     size_t packed_size;
+    /** Number of hash elements found. */
     size_t hash_table_size;
-} pmix_gds_shmem_local_job_stats_t;
+} pmix_gds_shmem_packed_local_job_info_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem_packed_local_job_info_t);
+
+static void
+packed_job_info_construct(
+    pmix_gds_shmem_packed_local_job_info_t *pji
+) {
+    pji->session_id = UINT32_MAX;
+    pji->packed_size = 0;
+    pji->hash_table_size = 0;
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem_packed_local_job_info_t,
+    pmix_object_t,
+    packed_job_info_construct,
+    // Destruct is the same as above because we just invalidate the data.
+    packed_job_info_construct
+);
 
 /**
  * Store unpacked shared-memory segment information.
@@ -73,6 +91,32 @@ typedef struct {
     size_t seg_hadr;
 } pmix_gds_shmem_unpacked_seg_blob_t;
 PMIX_CLASS_DECLARATION(pmix_gds_shmem_unpacked_seg_blob_t);
+
+static void
+unpacked_seg_blob_construct(
+    pmix_gds_shmem_unpacked_seg_blob_t *ub
+) {
+    ub->nsid = NULL;
+    ub->smid = PMIX_GDS_SHMEM_INVALID_ID;
+    ub->seg_path = NULL;
+    ub->seg_size = 0;
+    ub->seg_hadr = 0;
+}
+
+static void
+unpacked_seg_blob_destruct(
+    pmix_gds_shmem_unpacked_seg_blob_t *ub
+) {
+    free(ub->nsid);
+    free(ub->seg_path);
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem_unpacked_seg_blob_t,
+    pmix_object_t,
+    unpacked_seg_blob_construct,
+    unpacked_seg_blob_destruct
+);
 
 /**
  * String to size_t.
@@ -209,32 +253,6 @@ tma_init(
 }
 
 static void
-unpacked_seg_blob_construct(
-    pmix_gds_shmem_unpacked_seg_blob_t *ub
-) {
-    ub->nsid = NULL;
-    ub->smid = PMIX_GDS_SHMEM_INVALID_ID;
-    ub->seg_path = NULL;
-    ub->seg_size = 0;
-    ub->seg_hadr = 0;
-}
-
-static void
-unpacked_seg_blob_destruct(
-    pmix_gds_shmem_unpacked_seg_blob_t *ub
-) {
-    free(ub->nsid);
-    free(ub->seg_path);
-}
-
-PMIX_CLASS_INSTANCE(
-    pmix_gds_shmem_unpacked_seg_blob_t,
-    pmix_object_t,
-    unpacked_seg_blob_construct,
-    unpacked_seg_blob_destruct
-);
-
-static void
 host_alias_construct(
     pmix_gds_shmem_host_alias_t *a
 ) {
@@ -298,6 +316,7 @@ job_construct(
 ) {
     job->nspace_id = NULL;
     job->nspace = NULL;
+    job->session = PMIX_NEW(pmix_gds_shmem_session_t);
     // Job
     job->shmem_status = 0;
     job->shmem = PMIX_NEW(pmix_shmem_t);
@@ -371,6 +390,7 @@ job_destruct(
     if (job->nspace) {
         PMIX_RELEASE(job->nspace);
     }
+    // TODO(skg) Deal with session.
     for (int i = 0; shmem_ids[i] != PMIX_GDS_SHMEM_INVALID_ID; ++i) {
         const pmix_gds_shmem_job_shmem_id_t sid = shmem_ids[i];
 
@@ -433,23 +453,19 @@ static void
 session_construct(
     pmix_gds_shmem_session_t *s
 ) {
-    pmix_tma_t *const tma = pmix_obj_get_tma(&s->super.super);
-
-    s->session = UINT32_MAX;
-    s->sessioninfo = PMIX_NEW(pmix_list_t, tma);
-    s->nodeinfo = PMIX_NEW(pmix_list_t, tma);
+    s->shmem = PMIX_NEW(pmix_shmem_t);
+    s->shmem_status = 0;
+    s->smdata = NULL;
 }
 
 static void
 session_destruct(
     pmix_gds_shmem_session_t *s
 ) {
-    if (s->sessioninfo) {
-        PMIX_LIST_DESTRUCT(s->sessioninfo);
-    }
-    if (s->nodeinfo) {
-        PMIX_LIST_DESTRUCT(s->nodeinfo);
-    }
+    // Invalidate the shmem flags.
+    s->shmem_status = 0;
+    // Releases memory for the structures located in shared-memory.
+    PMIX_RELEASE(s->shmem);
 }
 
 PMIX_CLASS_INSTANCE(
@@ -458,6 +474,37 @@ PMIX_CLASS_INSTANCE(
     session_construct,
     session_destruct
 );
+
+static pmix_status_t
+session_smdata_construct(
+    pmix_gds_shmem_job_t *job,
+    uint32_t sid
+) {
+    // TODO(skg) Cleanup.
+    // Setup the shared information structure. It will be at the base address of
+    // the shared-memory segment. The memory is already allocated, so let the
+    // session know about its data located at the base of the segment.
+    void *const baseaddr = job->session->shmem->data_address;
+    job->session->smdata = baseaddr;
+    memset(job->session->smdata, 0, sizeof(*job->session->smdata));
+    // Save the starting address for TMA memory allocations.
+    job->session->smdata->current_addr = baseaddr;
+    // Setup the TMA.
+    tma_init(&job->session->smdata->tma, &job->session->smdata->current_addr);
+    // Now we need to update the TMA's pointer to account for our using up some
+    // space for its header.
+    *(job->session->smdata->tma.data_ptr) = addr_align(baseaddr, sizeof(*job->session->smdata));
+    // We can now safely get our TMA.
+    pmix_tma_t *const tma = &job->session->smdata->tma;
+    // Now that we know the TMA, initialize smdata structures using it.
+    job->session->smdata->id = sid;
+    job->session->smdata->sessioninfo = PMIX_NEW(pmix_list_t, tma);
+    job->session->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
+
+    pmix_gds_shmem_vout_smsession(job->session);
+
+    return PMIX_SUCCESS;
+}
 
 static pmix_status_t
 job_smdata_construct(
@@ -480,7 +527,6 @@ job_smdata_construct(
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->smdata->tma;
     // Now that we know the TMA, initialize smdata structures using it.
-    job->smdata->session = NULL;
     job->smdata->jobinfo = PMIX_NEW(pmix_list_t, tma);
     job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
     job->smdata->appinfo = PMIX_NEW(pmix_list_t, tma);
@@ -682,6 +728,10 @@ init_client_side_sm_data(
             job->smdata = job->shmem->data_address;
             pmix_gds_shmem_vout_smdata(job);
             break;
+        case PMIX_GDS_SHMEM_SESSION_ID:
+            job->session->smdata = job->session->shmem->data_address;
+            pmix_gds_shmem_vout_smsession(job->session);
+            break;
         case PMIX_GDS_SHMEM_MODEX_ID:
             job->smmodex = job->modex_shmem->data_address;
             pmix_gds_shmem_vout_smmodex(job);
@@ -804,7 +854,7 @@ module_init(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
 
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.jobs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.sessions, pmix_list_t);
     return PMIX_SUCCESS;
@@ -813,7 +863,7 @@ module_init(
 static void
 module_finalize(void)
 {
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.jobs);
     // Note to developers: the contents of pmix_mca_gds_shmem_component.sessions
     // point to elements in shared-memory, so no need to destruct here since
@@ -826,7 +876,7 @@ assign_module(
     size_t ninfo,
     int *priority
 ) {
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    PMIX_GDS_SHMEM_VVOUT_HERE();
 
     static const int max_priority = 100;
     *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
@@ -869,7 +919,7 @@ server_cache_job_info(
     size_t ninfo
 ) {
     PMIX_HIDE_UNUSED_PARAMS(ns, info, ninfo);
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     // We don't support this operation.
     return PMIX_ERR_NOT_SUPPORTED;
 }
@@ -878,25 +928,19 @@ server_cache_job_info(
  *
  */
 static pmix_status_t
-prepare_shmem_store_for_local_job_data(
+prepare_shmem_stores_for_local_job_data(
     pmix_gds_shmem_job_t *job,
-    pmix_gds_shmem_local_job_stats_t *stats
+    pmix_gds_shmem_packed_local_job_info_t *pji
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     static const float fluff = 2.5;
     const size_t kvsize = (sizeof(pmix_kval_t) + sizeof(pmix_value_t));
     // Initial hash table size.
-    const size_t htsize = stats->hash_table_size;
+    const size_t htsize = pji->hash_table_size;
     // Calculate a rough estimate on the amount of storage required to store the
     // values associated with the pmix_gds_shmem_shared_job_data_t. Err on the
     // side of overestimation.
-    size_t seg_size = sizeof(*job->smdata) +
-                      sizeof(job->smdata->tma) +
-                      sizeof(*job->smdata->session) +
-                      sizeof(*job->smdata->jobinfo) +
-                      sizeof(*job->smdata->nodeinfo) +
-                      sizeof(*job->smdata->appinfo) +
-                      sizeof(*job->smdata->local_hashtab);
+    size_t seg_size = sizeof(*job->smdata);
     // We need to store a hash table in the shared-memory segment, so calculate
     // a rough estimate on the memory required for its storage.
     seg_size += sizeof(pmix_hash_table_t);
@@ -905,16 +949,27 @@ prepare_shmem_store_for_local_job_data(
     // we add an additional storage space for each entry.
     seg_size += htsize * kvsize;
     // Finally add the data size contribution, plus a little extra.
-    seg_size += stats->packed_size;
+    seg_size += pji->packed_size;
     // Include some extra fluff that empirically seems reasonable.
     seg_size *= fluff;
     // Adjust (increase or decrease) segment size by the given parameter size.
     seg_size *= pmix_gds_shmem_segment_size_multiplier;
     // Create and attach to the shared-memory segment associated with this job.
-    // This will be the backing store for metadata associated with static,
-    // read-only data shared between the server and its clients.
+    // This will be the backing store for data associated with static, read-only
+    // data shared between the server and its clients.
     rc = shmem_segment_create_and_attach(
         job, PMIX_GDS_SHMEM_JOB_ID, "jobdata", seg_size
+    );
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Do the same for the job's session information. Note that we recycle the
+    // segment size calculated above because we know that it will be at least as
+    // big as we need for this session information.
+    // TODO(skg) Add proper name.
+    rc = shmem_segment_create_and_attach(
+        job, PMIX_GDS_SHMEM_SESSION_ID, "seshdata", seg_size
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -924,7 +979,14 @@ prepare_shmem_store_for_local_job_data(
     rc = job_smdata_construct(job, htsize);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
+        return rc;
     }
+
+    rc = session_smdata_construct(job, pji->session_id);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+    }
+
     return rc;
 }
 
@@ -1206,15 +1268,15 @@ get_actual_hashtab_capacity(
 }
 
 static inline pmix_status_t
-get_local_job_data_stats(
+get_local_job_data_info(
     pmix_peer_t *peer,
     pmix_cb_t *job_cb,
-    pmix_gds_shmem_local_job_stats_t *stats
+    pmix_gds_shmem_packed_local_job_info_t *pji
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
     size_t nhtentries = 0;
-
-    memset(stats, 0, sizeof(*stats));
+    uint32_t sid = UINT32_MAX;
+    bool have_sid = false;
 
     pmix_buffer_t data;
     PMIX_CONSTRUCT(&data, pmix_buffer_t);
@@ -1228,6 +1290,16 @@ get_local_job_data_stats(
             if (PMIX_CHECK_KEY(kvi, PMIX_PROC_DATA)) {
                 nhtentries += kvi->value->data.darray->size;
             }
+            // See if this is the job's session ID. If so, capture it.
+            pmix_info_t *info = (pmix_info_t *)kvi->value->data.darray->array;
+            if (PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID)) {
+                PMIX_VALUE_GET_NUMBER(rc, &info[0].value, sid, uint32_t);
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                    PMIX_ERROR_LOG(rc);
+                    goto out;
+                }
+                have_sid = true;
+            }
         }
         // Just a key/value pair, so they will likely go into the hash table.
         else {
@@ -1240,8 +1312,17 @@ get_local_job_data_stats(
             goto out;
         }
     }
-    stats->packed_size = data.bytes_used;
-    stats->hash_table_size = get_actual_hashtab_capacity(nhtentries);
+    // Make sure that we were given a session ID.
+    // If not, this is an internal error.
+    if (!have_sid) {
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+    }
+    else {
+        pji->session_id = sid;
+        pji->packed_size = data.bytes_used;
+        pji->hash_table_size = get_actual_hashtab_capacity(nhtentries);
+    }
 out:
     PMIX_DESTRUCT(&data);
     return rc;
@@ -1255,7 +1336,6 @@ pack_shmem_seg_blob(
     pmix_buffer_t *reply
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-
     // Only pack connection info that is ready for use. Otherwise,
     // it's bogus data that we shouldn't be sharing it with our clients.
     const bool ready_for_use = pmix_gds_shmem_has_status(
@@ -1298,13 +1378,13 @@ pack_shmem_seg_blob(
 }
 
 static pmix_status_t
-publish_shmem_connection_info(
+publish_connection_info_for_job_shmem(
     pmix_gds_shmem_job_t *job,
     pmix_peer_t *peer,
     pmix_buffer_t *reply
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_namespace_t *ns = peer->nptr;
+    pmix_namespace_t *const ns = peer->nptr;
 
     // Pack the payload for delivery. Note that the message we are going to send
     // is simply the shared memory connection information that is shared among
@@ -1317,8 +1397,17 @@ publish_shmem_connection_info(
         return rc;
     }
     // Pack the shared-memory segment information.
+    // First for the job.
     rc = pack_shmem_seg_blob(
         job, PMIX_GDS_SHMEM_JOB_ID, peer, reply
+    );
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Then for the session info.
+    rc = pack_shmem_seg_blob(
+        job, PMIX_GDS_SHMEM_SESSION_ID, peer, reply
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -1359,15 +1448,16 @@ server_register_new_job_info(
         goto out;
     }
     // Pack the data so we can see how large it is. This will help inform how
-    // large to make the shared-memory segment associated with these data.
-    pmix_gds_shmem_local_job_stats_t stats;
-    rc = get_local_job_data_stats(peer, &job_cb, &stats);
+    // large to make the shared-memory segments associated with these data.
+    pmix_gds_shmem_packed_local_job_info_t pji;
+    PMIX_CONSTRUCT(&pji, pmix_gds_shmem_packed_local_job_info_t);
+    rc = get_local_job_data_info(peer, &job_cb, &pji);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
     }
-    // Get the shared-memory segment ready for job data.
-    rc = prepare_shmem_store_for_local_job_data(job, &stats);
+    // Get the shared-memory segments ready for job data.
+    rc = prepare_shmem_stores_for_local_job_data(job, &pji);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
@@ -1379,12 +1469,13 @@ server_register_new_job_info(
         goto out;
     }
     // You guessed it, publish shared-memory connection info.
-    rc = publish_shmem_connection_info(job, peer, reply);
+    rc = publish_connection_info_for_job_shmem(job, peer, reply);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
 out:
     PMIX_DESTRUCT(&job_cb);
+    PMIX_DESTRUCT(&pji);
     return rc;
 }
 
@@ -1396,6 +1487,8 @@ server_register_job_info(
     struct pmix_peer_t *peer_struct,
     pmix_buffer_t *reply
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_peer_t *const peer = (pmix_peer_t *)peer_struct;
     pmix_namespace_t *const ns = peer->nptr;
@@ -1485,6 +1578,8 @@ store_job_info(
     const char *nspace,
     pmix_buffer_t *buff
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+
     pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_GDS_SHMEM_VOUT(
@@ -1554,9 +1649,9 @@ server_store_modex(
     pmix_buffer_t *buff,
     void *cbdata
 ) {
-    pmix_status_t rc = PMIX_SUCCESS;
+    PMIX_GDS_SHMEM_VVOUT_HERE();
 
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    pmix_status_t rc = PMIX_SUCCESS;
 
     pmix_gds_shmem_job_t *job;
     rc = pmix_gds_shmem_get_job_tracker(
@@ -1610,7 +1705,7 @@ server_setup_fork(
     char ***env
 ) {
     PMIX_HIDE_UNUSED_PARAMS(peer, env);
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     // Nothing to do here.
     return PMIX_SUCCESS;
 }
@@ -1623,7 +1718,7 @@ server_add_nspace(
     size_t ninfo
 ) {
     PMIX_HIDE_UNUSED_PARAMS(nspace, nlocalprocs, info, ninfo);
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     // Nothing to do here.
     return PMIX_SUCCESS;
 }
@@ -1632,7 +1727,7 @@ static pmix_status_t
 del_nspace(
     const char *nspace
 ) {
-    PMIX_GDS_SHMEM_VOUT_HERE();
+    PMIX_GDS_SHMEM_VVOUT_HERE();
 
     pmix_gds_shmem_job_t *ji;
     pmix_gds_shmem_component_t *const component = &pmix_mca_gds_shmem_component;
@@ -1652,6 +1747,8 @@ server_mark_modex_complete(
     pmix_list_t *nslist,
     pmix_buffer_t *reply
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+
     pmix_status_t rc = PMIX_SUCCESS;
     // Pack connection info for each ns in nslist.
     pmix_nspace_caddy_t *nsi;
@@ -1687,6 +1784,8 @@ static pmix_status_t
 client_recv_modex_complete(
     pmix_buffer_t *buff
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+
     pmix_status_t rc = PMIX_SUCCESS;
 
     pmix_kval_t kval;
@@ -1732,10 +1831,13 @@ client_recv_modex_complete(
     return rc;
 }
 
-static void set_size(struct pmix_namespace_t *ns, size_t memsize)
-{
+static void
+set_size(
+    struct pmix_namespace_t *ns,
+    size_t memsize
+) {
     PMIX_HIDE_UNUSED_PARAMS(ns, memsize);
-    return;
+    PMIX_GDS_SHMEM_VVOUT_HERE();
 }
 
 pmix_gds_base_module_t pmix_shmem_module = {

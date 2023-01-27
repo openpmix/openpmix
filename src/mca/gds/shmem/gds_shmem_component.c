@@ -14,7 +14,7 @@
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -91,8 +91,9 @@ gds_shmem_component_register(void)
         &pmix_mca_gds_shmem_component.super,
         "segment_size_multiplier",
         "Multiplier that influences the ultimate sizes of the shared-memory "
-        "segments used for gds data storage. Values less or greater than 1.0 "
-        "decrease or increase final segment sizes, respectively.",
+        "segments used for gds data storage. As a percentage, values less or "
+        "greater than 1.0 decrease or increase the final segment sizes, "
+        "respectively.",
         PMIX_MCA_BASE_VAR_TYPE_DOUBLE,
         &pmix_gds_shmem_segment_size_multiplier
     );
