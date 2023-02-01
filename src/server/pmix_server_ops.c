@@ -672,7 +672,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
             uint32_t *key_count = NULL;
 
             pmix_value_array_init(key_count_array, sizeof(uint32_t));
-            *size = 0;
 
             PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
                 pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -897,7 +896,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     bool collect_data = false;
     pmix_server_trkr_t *trk;
     char *data = NULL;
-    size_t sz = 0, size;
+    size_t sz = 0, size = 0;
     pmix_buffer_t bucket;
     pmix_info_t *info = NULL, *iptr;
     size_t ninfo = 0, ninf, n, nmbrs, idx;
