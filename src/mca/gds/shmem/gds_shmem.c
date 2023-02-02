@@ -1911,6 +1911,15 @@ server_mark_modex_complete(
             PMIX_ERROR_LOG(rc);
             break;
         }
+
+        rc = pack_shmem_seg_blob(
+            job, PMIX_GDS_SHMEM_JOB_ID, peer, reply
+        );
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+
         rc = pack_shmem_seg_blob(
             job, PMIX_GDS_SHMEM_MODEX_ID, peer, reply
         );
