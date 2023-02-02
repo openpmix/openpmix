@@ -264,6 +264,17 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CHECK_TYPES(uintptr_t)
     AC_CHECK_TYPES(ptrdiff_t)
 
+    # check for sockaddr_in (a good sign we have TCP)
+    # results used in the pif framework
+    AC_CHECK_HEADERS([netdb.h netinet/in.h netinet/tcp.h])
+    AC_CHECK_TYPES([struct sockaddr_in],
+                   [pmix_found_sockaddr=yes],
+                   [pmix_found_sockaddr=no],
+                   [AC_INCLUDES_DEFAULT
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif])
+
     #
     # Check for type sizes
     #
@@ -1051,7 +1062,7 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
 #
 # Check the OS flavor here
 #
-PMIX_CHECK_OS_FLAVORS
+OAC_CHECK_OS_FLAVORS
 
 #
 # Developer picky compiler options

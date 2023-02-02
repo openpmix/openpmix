@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,7 +42,7 @@
 #ifdef HAVE_DIRENT_H
 #    include <dirent.h>
 #endif
-#if PMIX_HAVE_APPLE && defined(HAVE_SYS_SYSCTL_H)
+#if OAC_HAVE_APPLE && defined(HAVE_SYS_SYSCTL_H)
 #    include <sys/sysctl.h>
 #endif
 
@@ -251,7 +251,7 @@ char *pmix_ptl_base_get_cmd_line(void)
 {
     char *p = NULL;
 
-#if PMIX_HAVE_APPLE
+#if OAC_HAVE_APPLE
     int mib[3], argmax, nargs, num;
     size_t size;
     char *procargs = NULL, *cp, *cptr;

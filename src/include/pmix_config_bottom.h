@@ -54,7 +54,7 @@
  **********************************************************************/
 
 /* Do we have posix or solaris thread lib */
-#define PMIX_HAVE_THREADS (PMIX_HAVE_POSIX_THREADS || PMIX_HAVE_SOLARIS_THREADS)
+#define PMIX_HAVE_THREADS (PMIX_HAVE_POSIX_THREADS || OAC_HAVE_SOLARIS_THREADS)
 
 /*
  * BEGIN_C_DECLS should be used at the beginning of your declarations,
@@ -187,7 +187,7 @@
 #endif
 
 #if PMIX_HAVE_ATTRIBUTE_FORMAT
-    #if PMIX_HAVE_SOLARIS
+    #if OAC_HAVE_SOLARIS
     #    define __pmix_attribute_format__(a, b, c)
     #else
     #    define __pmix_attribute_format__(a, b, c) __attribute__((__format__(a, b, c)))
@@ -300,7 +300,7 @@
 #endif
 
 #if PMIX_HAVE_ATTRIBUTE_SENTINEL
-    #if PMIX_HAVE_SOLARIS
+    #if OAC_HAVE_SOLARIS
     #    define __pmix_attribute_sentinel__
     #else
     #    define __pmix_attribute_sentinel__ __attribute__((__sentinel__))

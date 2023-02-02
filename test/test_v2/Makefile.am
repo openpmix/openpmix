@@ -16,7 +16,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2021      Triad National Security, LLC
 #                         All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -61,7 +61,7 @@ TC7FILES = test_fence_partial.c $(TCCOMMONFILES)
 # Note the use of -no-install in LDFLAGS to force rpath
 # into binaries and prevent libtool from creating the usual scripts.
 # This simplifies testing and debugging.
-if PMIX_HAVE_APPLE
+if OAC_HAVE_APPLE
 INSTALLFLAG=-no-fast-install
 else
 INSTALLFLAG=-no-install
