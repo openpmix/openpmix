@@ -4,6 +4,7 @@
 # Copyright (c) 2015      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2016      Intel, Inc.  All rights reserved.
+# Copyright (c) 2023      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,7 +24,7 @@ AC_DEFUN([MCA_pmix_pif_bsdx_ipv4_COMPILE_MODE], [
 AC_DEFUN([MCA_pmix_pif_bsdx_ipv4_CONFIG], [
     AC_CONFIG_FILES([src/mca/pif/bsdx_ipv4/Makefile])
 
-    AC_REQUIRE([PMIX_CHECK_OS_FLAVORS])
+    AC_REQUIRE([OAC_CHECK_OS_FLAVORS])
 
     # If we found struct sockaddr and we're on any of the BSDs, we're
     # happy.  I.e., this:
@@ -32,11 +33,12 @@ AC_DEFUN([MCA_pmix_pif_bsdx_ipv4_CONFIG], [
     AC_MSG_CHECKING([struct sockaddr])
     AS_IF([test "$pmix_found_sockaddr" = "yes"],
           [AC_MSG_RESULT([yes (cached)])
-           AC_MSG_CHECKING([NetBSD, FreeBSD, OpenBSD, or DragonFly])
-           AS_IF([test "$pmix_found_netbsd" = "yes" || \
-                  test "$pmix_found_freebsd" = "yes" || \
-                  test "$pmix_found_openbsd" = "yes" || \
-                  test "$pmix_found_dragonfly" = "yes"],
+           AC_MSG_CHECKING([NetBSD, FreeBSD, OpenBSD, Apple, or DragonFly])
+           AS_IF([test "$oac_found_netbsd" = "yes" || \
+                  test "$oac_found_freebsd" = "yes" || \
+                  test "$oac_found_openbsd" = "yes" || \
+                  test "$oac_found_dragonfly" = "yes" ||
+                  test "$oac_found_apple" = "yes"],
                  [AC_MSG_RESULT([yes])
                   $1],
                  [AC_MSG_RESULT([no])

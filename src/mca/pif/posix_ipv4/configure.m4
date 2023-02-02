@@ -4,6 +4,7 @@
 # Copyright (c) 2015      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2016      Intel, Inc.  All rights reserved.
+# Copyright (c) 2023      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -26,7 +27,7 @@ AC_DEFUN([MCA_pmix_pif_posix_ipv4_CONFIG], [
     PMIX_VAR_SCOPE_PUSH([pmix_pif_posix_ipv4_happy])
     pmix_pif_posix_ipv4_happy=no
 
-    AC_REQUIRE([PMIX_CHECK_OS_FLAVORS])
+    AC_REQUIRE([OAC_CHECK_OS_FLAVORS])
 
     # If we found struct sockaddr and we're NOT on most of the BSDs,
     # we're happy.  I.e., if posix but not:
@@ -35,8 +36,8 @@ AC_DEFUN([MCA_pmix_pif_posix_ipv4_CONFIG], [
     AC_MSG_CHECKING([struct sockaddr])
     AS_IF([test "$pmix_found_sockaddr" = "yes"],
           [AC_MSG_RESULT([yes (cached)])
-           AC_MSG_CHECKING([not NetBSD, FreeBSD, OpenBSD, or DragonFly])
-           AS_IF([test "$pmix_found_netbsd" = "no" && test "$pmix_found_freebsd" = "no" && test "$pmix_found_openbsd" = "no" && test "$pmix_found_dragonfly" = "no"],
+           AC_MSG_CHECKING([not NetBSD, FreeBSD, OpenBSD, Apple, or DragonFly])
+           AS_IF([test "$oac_found_netbsd" = "no" && test "$oac_found_freebsd" = "no" && test "$oac_found_openbsd" = "no" && test "$oac_found_dragonfly" = "no" && test "$oac_found_apple" = "no"],
                  [AC_MSG_RESULT([yes])
                   pmix_pif_posix_ipv4_happy=yes],
                  [AC_MSG_RESULT([no])]
