@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,15 +32,6 @@ PMIX_EXPORT pmix_status_t
 pmix_gds_shmem_store_local_job_data_in_shmem(
     pmix_gds_shmem_job_t *job,
     pmix_list_t *job_data
-);
-
-PMIX_EXPORT pmix_status_t
-pmix_gds_shmem_store_modex_in_shmem(
-    pmix_gds_base_ctx_t ctx,
-    pmix_proc_t *proc,
-    pmix_gds_modex_key_fmt_t key_fmt,
-    char **kmap,
-    pmix_buffer_t *pbkt
 );
 
 END_C_DECLS
