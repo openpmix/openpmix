@@ -32,7 +32,7 @@
 /**
  * Set to 1 to completely disable this component.
  */
-#define PMIX_GDS_SHMEM_DISABLE 0
+#define PMIX_GDS_SHMEM_DISABLE 1
 
 /**
  * Default component/module priority.
