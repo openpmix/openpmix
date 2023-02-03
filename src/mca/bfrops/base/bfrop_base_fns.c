@@ -1490,7 +1490,10 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
         default:
             /* silence warnings */
             break;
-        }
+    }
+
+    /* account for the size of the pmix_value_t itself */
+    *sz += sizeof(pmix_value_t);
 
     return rc;
 }

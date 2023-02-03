@@ -415,6 +415,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //         reported to host by server library
 #define PMIX_SORTED_PROC_ARRAY              "pmix.sorted.parr"      // (bool) Proc array being passed has been sorted
 #define PMIX_SIZE_ESTIMATE                  "pmix.size.est"         // (size_t) Number of bytes in the enclosed payload
+#define PMIX_NUM_KEYS                       "pmix.nkeys"            // (size_t) Number of keys in the enclosed payload
 
 
 /* event handler registration and notification info keys */
