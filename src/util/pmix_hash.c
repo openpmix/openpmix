@@ -12,8 +12,8 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -35,6 +35,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_hash_string.h"
 #include "src/mca/bfrops/bfrops.h"
+#include "src/mca/gds/base/base.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 
@@ -113,7 +114,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     pmix_qual_t *qarray;
     size_t n, m = 0;
 
-    pmix_output_verbose(10, pmix_globals.debug_output,
+    pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                         "HASH:STORE:QUAL rank %s key %s",
                         PMIX_RANK_PRINT(rank),
                         (NULL == kin) ? "NULL KVAL" : kin->key);
@@ -129,7 +130,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     p = pmix_hash_lookup_key(UINT32_MAX, kin->key);
     if (NULL == p) {
         /* we don't know this key */
-        pmix_output_verbose(10, pmix_globals.debug_output,
+        pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                             "%s UNKNOWN KEY: %s",
                             PMIX_NAME_PRINT(&pmix_globals.myid),
                             kin->key);
@@ -146,7 +147,9 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     /* see if we already have this key-value */
     hv = lookup_keyval(proc_data, kid, qualifiers, nquals);
     if (NULL != hv) {
-        if (9 < pmix_output_get_verbosity(pmix_globals.debug_output)) {
+        if (PMIX_UNLIKELY(9 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output))) {
+            // Note that this doesn't have to use a TMA because it is just a
+            // temporary value.
             char *tmp;
             tmp = PMIx_Value_string(hv->value);
             pmix_output(0, "%s PREEXISTING ENTRY FOR PROC %s KEY %s: %s",
@@ -157,11 +160,13 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
         /* yes we do - so just replace the current value if it changed */
         if (NULL != hv->value) {
             if (PMIX_EQUAL == PMIx_Value_compare(hv->value, kin->value)) {
-                pmix_output_verbose(10, pmix_globals.debug_output,
+                pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                                     "EQUAL VALUE - IGNORING");
                 return PMIX_SUCCESS;
             }
-            if (9 < pmix_output_get_verbosity(pmix_globals.debug_output)) {
+            if (PMIX_UNLIKELY(9 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output))) {
+                // Note that this doesn't have to use a TMA because it is just a
+                // temporary value.
                 char *tmp;
                 tmp = PMIx_Value_string(kin->value);
                 pmix_output(0, "%s VALUE UPDATING TO: %s",
@@ -202,7 +207,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                     p = pmix_hash_lookup_key(UINT32_MAX, qualifiers[n].key);
                     if (NULL == p) {
                         /* we don't know this key */
-                        pmix_output_verbose(10, pmix_globals.debug_output,
+                        pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                                             "%s UNKNOWN KEY: %s",
                                             PMIX_NAME_PRINT(&pmix_globals.myid),
                                             kin->key);
@@ -235,7 +240,9 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
         PMIX_DSTOR_RELEASE(hv);
         return rc;
     }
-    if (9 < pmix_output_get_verbosity(pmix_globals.debug_output)) {
+    if (PMIX_UNLIKELY(9 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output))) {
+        // Note that this doesn't have to use a TMA because it is just a
+        // temporary value.
         char *v = PMIx_Value_string(kin->value);
         pmix_output(0, "%s ADDING KEY %s VALUE %s FOR RANK %s WITH %u QUALS TO TABLE %s",
                     PMIX_NAME_PRINT(&pmix_globals.myid),
@@ -268,7 +275,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     pmix_data_array_t *darray;
     pmix_qual_t *quals;
 
-    pmix_output_verbose(10, pmix_globals.debug_output,
+    pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                         "%s HASH:FETCH id %s key %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
                         PMIX_RANK_PRINT(rank),
@@ -283,7 +290,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
         rc = pmix_hash_table_get_first_key_uint32(table, &id, (void **) &proc_data,
                                                   (void **) &node);
         if (PMIX_SUCCESS != rc) {
-            pmix_output_verbose(10, pmix_globals.debug_output,
+            pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                                 "HASH:FETCH[%s:%d] proc data for rank %s not found",
                                 __func__, __LINE__, PMIX_RANK_PRINT(rank));
             return PMIX_ERR_NOT_FOUND;
@@ -310,7 +317,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     while (PMIX_SUCCESS == rc) {
         proc_data = lookup_proc(table, id, false);
         if (NULL == proc_data) {
-            pmix_output_verbose(10, pmix_globals.debug_output,
+            pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                         "HASH:FETCH[%s:%d] proc data for rank %s not found - key %s",
                         __func__, __LINE__,
                         PMIX_RANK_PRINT(rank), key);
@@ -328,7 +335,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                     if (NULL == p) {
                         return PMIX_ERR_NOT_FOUND;
                     }
-                    pmix_output_verbose(10, pmix_globals.debug_output,
+                    pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                                         "%s FETCH NULL LOOKING AT %s",
                                         PMIX_NAME_PRINT(&pmix_globals.myid), p->name);
                     /* if the rank is UNDEF, we ignore reserved keys */
@@ -337,7 +344,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                         continue;
                     }
                     if (UINT32_MAX != hv->qualindex) {
-                        pmix_output_verbose(10, pmix_globals.debug_output,
+                        pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                                             "%s INCLUDE %s VALUE %u FROM TABLE %s FOR RANK %s",
                                             PMIX_NAME_PRINT(&pmix_globals.myid), p->name,
                                             (unsigned)hv->value->data.size, table->ht_label, PMIX_RANK_PRINT(rank));
@@ -385,7 +392,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                 pmix_list_append(kvals, &kv->super);
                 break;
             } else if (!fullsearch) {
-                pmix_output_verbose(10, pmix_globals.debug_output,
+                pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                                     "HASH:FETCH data for key %s not found", key);
                 return PMIX_ERR_NOT_FOUND;
             }
@@ -394,7 +401,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
         rc = pmix_hash_table_get_next_key_uint32(table, &id, (void **) &proc_data, node,
                                                  (void **) &node);
         if (PMIX_SUCCESS != rc) {
-            pmix_output_verbose(10, pmix_globals.debug_output,
+            pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                                 "%s:%d HASH:FETCH data for key %s not found",
                                 __func__, __LINE__, key);
             return PMIX_ERR_NOT_FOUND;
