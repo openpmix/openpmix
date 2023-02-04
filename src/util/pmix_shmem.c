@@ -11,14 +11,11 @@
 #include "src/util/pmix_shmem.h"
 
 #include "pmix_common.h"
+#include "pmix_output.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_string_copy.h"
-#include <stddef.h>
 
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
@@ -213,13 +210,12 @@ pmix_shmem_segment_detach(
     pmix_shmem_t *shmem
 ) {
     if (shmem->attached) {
+        (void)update_ref_count(shmem->hdr_address, -1);
+        pmix_status_t rc = segment_detach(shmem);
         // Set to false here to avoid multiple
         // reference updates in shmem_destruct().
         shmem->attached = false;
-        const int32_t refc = update_ref_count(shmem->hdr_address, -1);
-        if (0 == refc) {
-            return segment_detach(shmem);
-        }
+        return rc;
     }
     return PMIX_SUCCESS;
 }

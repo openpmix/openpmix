@@ -33,7 +33,7 @@ do {                                                                           \
 #if PMIX_ENABLE_DEBUG
 #define PMIX_GDS_SHMEM_VVOUT(...)                                              \
 do {                                                                           \
-    pmix_output_verbose(12, pmix_gds_base_framework.framework_output,          \
+    pmix_output_verbose(9, pmix_gds_base_framework.framework_output,           \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 #else

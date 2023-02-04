@@ -78,7 +78,6 @@ typedef struct {
     size_t nprocs;
 } pmix_gds_shmem_modex_ctx_t;
 
-
 static void
 packed_job_info_construct(
     pmix_gds_shmem_packed_local_job_info_t *pji
@@ -214,6 +213,7 @@ tma_realloc(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(tma, ptr, size);
     // We don't support realloc.
+    PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
     assert(false);
     return NULL;
 }
@@ -331,6 +331,8 @@ static void
 job_construct(
     pmix_gds_shmem_job_t *job
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+
     job->nspace_id = NULL;
     job->nspace = NULL;
     // Session
@@ -343,6 +345,8 @@ job_construct(
     job->modex_shmem_status = 0;
     job->modex_shmem = PMIX_NEW(pmix_shmem_t);
     job->smmodex = NULL;
+    // Connection info
+    job->conni = NULL;
 }
 
 static void
@@ -372,9 +376,15 @@ emit_shmem_usage_stats(
             tma = &job->smmodex->tma;
             smname = "smmodex";
             break;
+        case PMIX_GDS_SHMEM_SESSION_ID:
+            tma = &job->session->smdata->tma;
+            smname = "smsession";
+            break;
         case PMIX_GDS_SHMEM_INVALID_ID:
         default:
-            PMIX_ERROR_LOG(rc);
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            // This is an internal error.
+            assert(false);
             return;
     }
 
@@ -394,13 +404,8 @@ static void
 job_destruct(
     pmix_gds_shmem_job_t *job
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     pmix_status_t rc = PMIX_SUCCESS;
-
-    static const pmix_gds_shmem_job_shmem_id_t shmem_ids[] = {
-        PMIX_GDS_SHMEM_JOB_ID,
-        PMIX_GDS_SHMEM_MODEX_ID,
-        PMIX_GDS_SHMEM_INVALID_ID
-    };
 
     if (job->nspace_id) {
         free(job->nspace_id);
@@ -409,6 +414,16 @@ job_destruct(
         PMIX_RELEASE(job->nspace);
     }
 
+    if (NULL != job->conni) {
+        PMIX_RELEASE(job->conni);
+    }
+
+    static const pmix_gds_shmem_job_shmem_id_t shmem_ids[] = {
+        PMIX_GDS_SHMEM_JOB_ID,
+        PMIX_GDS_SHMEM_MODEX_ID,
+        PMIX_GDS_SHMEM_SESSION_ID,
+        PMIX_GDS_SHMEM_INVALID_ID
+    };
     for (int i = 0; shmem_ids[i] != PMIX_GDS_SHMEM_INVALID_ID; ++i) {
         const pmix_gds_shmem_job_shmem_id_t sid = shmem_ids[i];
 
@@ -421,15 +436,14 @@ job_destruct(
         if (pmix_gds_shmem_has_status(job, sid, PMIX_GDS_SHMEM_RELEASE)) {
             // Emit usage status before we destroy the segment.
             emit_shmem_usage_stats(job, sid);
+            // Releases memory for the structures located in shared-memory.
+            PMIX_RELEASE(shmem);
+        }
+        else {
+            pmix_shmem_segment_detach(shmem);
         }
         // Invalidate the shmem flags.
         pmix_gds_shmem_clearall_status(job, sid);
-        // Releases memory for the structures located in shared-memory.
-        PMIX_RELEASE(shmem);
-    }
-
-    if (NULL != job->session) {
-        PMIX_RELEASE(job->session);
     }
 }
 
@@ -853,7 +867,7 @@ shmem_segment_create_and_attach(
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
-        "%s:%s found vmhole at address=0x%zx",
+        "%s: %s found vmhole at address=0x%zx",
         __func__, segment_name, base_addr
     );
     // Find a unique path for the shared-memory backing file.
@@ -898,8 +912,8 @@ module_init(
     size_t ninfo
 ) {
     PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
-
     PMIX_GDS_SHMEM_VVOUT_HERE();
+
     PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.jobs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_mca_gds_shmem_component.sessions, pmix_list_t);
     return PMIX_SUCCESS;
@@ -921,8 +935,6 @@ assign_module(
     size_t ninfo,
     int *priority
 ) {
-    PMIX_GDS_SHMEM_VVOUT_HERE();
-
     static const int max_priority = 100;
     *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
     // The incoming info always overrides anything in the
@@ -1281,13 +1293,13 @@ unpack_shmem_connection_info(
  */
 static pmix_status_t
 fetch_local_job_data(
-    pmix_namespace_t *ns,
+    const char *nspace,
     pmix_cb_t *job_cb
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
     pmix_proc_t wildcard;
-    PMIX_LOAD_PROCID(&wildcard, ns->nspace, PMIX_RANK_WILDCARD);
+    PMIX_LOAD_PROCID(&wildcard, nspace, PMIX_RANK_WILDCARD);
 
     job_cb->key = NULL;
     job_cb->proc = &wildcard;
@@ -1319,7 +1331,6 @@ get_actual_hashtab_capacity(
 
 static inline pmix_status_t
 get_local_job_data_info(
-    pmix_peer_t *peer,
     pmix_cb_t *job_cb,
     pmix_gds_shmem_packed_local_job_info_t *pji
 ) {
@@ -1354,7 +1365,7 @@ get_local_job_data_info(
             nhtentries += 1;
         }
 
-        PMIX_BFROPS_PACK(rc, peer, &data, kvi, 1, PMIX_KVAL);
+        PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &data, kvi, 1, PMIX_KVAL);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             goto out;
@@ -1418,71 +1429,66 @@ pack_shmem_seg_blob(
 }
 
 static pmix_status_t
-publish_connection_info_for_job_shmem(
-    pmix_gds_shmem_job_t *job,
-    pmix_peer_t *peer,
-    pmix_buffer_t *reply
+cache_connection_info_for_job_shmem(
+    pmix_gds_shmem_job_t *job
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_namespace_t *const ns = peer->nptr;
+    pmix_peer_t *const me = pmix_globals.mypeer;
+
+    // Create a new buffer that will store the
+    // job's shared-memory connection info.
+    job->conni = PMIX_NEW(pmix_buffer_t);
+    if (PMIX_UNLIKELY(!job->conni)) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
 
     // Pack the payload for delivery. Note that the message we are going to send
     // is simply the shared memory connection information that is shared among
     // clients on a single node.
 
     // Start with the namespace name.
-    PMIX_BFROPS_PACK(rc, peer, reply, &ns->nspace, 1, PMIX_STRING);
+    PMIX_BFROPS_PACK(rc, me, job->conni, &job->nspace_id, 1, PMIX_STRING);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto out;
     }
     // Pack the shared-memory segment information.
     // First for the job.
     rc = pack_shmem_seg_blob(
-        job, PMIX_GDS_SHMEM_JOB_ID, peer, reply
+        job, PMIX_GDS_SHMEM_JOB_ID, me, job->conni
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
-        return rc;
+        goto out;
     }
     // Then for the session info.
     rc = pack_shmem_seg_blob(
-        job, PMIX_GDS_SHMEM_SESSION_ID, peer, reply
+        job, PMIX_GDS_SHMEM_SESSION_ID, me, job->conni
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
-        return rc;
     }
-    // If we have more than one local client for this nspace,
-    // save this packed object so we don't do this again.
-    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
-        ns->nlocalprocs > 1) {
-        PMIX_RETAIN(reply);
-        ns->jobbkt = reply;
+out:
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(job->conni);
     }
     return rc;
 }
 
 static pmix_status_t
 server_register_new_job_info(
-    pmix_peer_t *peer,
-    pmix_buffer_t *reply
+    pmix_gds_shmem_job_t *job
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_namespace_t *const ns = peer->nptr;
 
-    // Setup a new job tracker for this peer's nspace.
-    pmix_gds_shmem_job_t *job;
-    rc = pmix_gds_shmem_get_job_tracker(ns->nspace, true, &job);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
     // Ask for a complete copy of the job-level information.
     pmix_cb_t job_cb;
     PMIX_CONSTRUCT(&job_cb, pmix_cb_t);
 
-    rc = fetch_local_job_data(ns, &job_cb);
+    rc = fetch_local_job_data(job->nspace_id, &job_cb);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
@@ -1491,7 +1497,7 @@ server_register_new_job_info(
     // large to make the shared-memory segments associated with these data.
     pmix_gds_shmem_packed_local_job_info_t pji;
     PMIX_CONSTRUCT(&pji, pmix_gds_shmem_packed_local_job_info_t);
-    rc = get_local_job_data_info(peer, &job_cb, &pji);
+    rc = get_local_job_data_info(&job_cb, &pji);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         goto out;
@@ -1504,12 +1510,6 @@ server_register_new_job_info(
     }
     // Store fetched data into a shared-memory segment.
     rc = pmix_gds_shmem_store_local_job_data_in_shmem(job, &job_cb.kvs);
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
-        goto out;
-    }
-    // You guessed it, publish shared-memory connection info.
-    rc = publish_connection_info_for_job_shmem(job, peer, reply);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
@@ -1528,10 +1528,8 @@ server_register_job_info(
     pmix_buffer_t *reply
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
-
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_peer_t *const peer = (pmix_peer_t *)peer_struct;
-    pmix_namespace_t *const ns = peer->nptr;
 
     if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
@@ -1540,46 +1538,49 @@ server_register_job_info(
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    PMIX_GDS_SHMEM_VOUT(
-        "%s: %s for peer %s", __func__,
-        PMIX_NAME_PRINT(&pmix_globals.myid),
-        PMIX_PEER_PRINT(peer)
-    );
-    // First see if we already have processed this data for another
-    // peer in this nspace so we don't waste time doing it again.
-    if (NULL != ns->jobbkt) {
-        PMIX_GDS_SHMEM_VOUT(
-            "[%s:%d] copying prepacked payload",
-            pmix_globals.myid.nspace,
-            pmix_globals.myid.rank
-        );
-        // We have packed this before, so we can just deliver it.
-        PMIX_BFROPS_COPY_PAYLOAD(rc, peer, reply, ns->jobbkt);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-        // Now see if we have delivered it to
-        // all our local clients for this nspace.
-        if (!PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
-            ns->ndelivered == ns->nlocalprocs) {
-            // We have, so let's get rid of the packed copy of the data.
-            PMIX_RELEASE(ns->jobbkt);
-            ns->jobbkt = NULL;
-        }
+    // Create the job tracker for this peer's nspace.
+    pmix_gds_shmem_job_t *job;
+    rc = pmix_gds_shmem_get_job_tracker(peer->nptr->nspace, true, &job);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
         return rc;
     }
-    // Else we need to actually store and register the job info.
-    PMIX_GDS_SHMEM_VOUT(
-        "[%s:%d] no cached payload. Registering a new one.",
-        pmix_globals.myid.nspace, pmix_globals.myid.rank
-    );
-    return server_register_new_job_info(peer, reply);
+
+    do {
+        // First see if we already have processed this
+        // data so we don't waste time doing it again.
+        if (job->conni) {
+            break;
+        }
+        // We don't, so register the new job info.
+        PMIX_GDS_SHMEM_VVOUT(
+            "%s: %s registering new job info for namespace=%s", __func__,
+            PMIX_NAME_PRINT(&pmix_globals.myid), job->nspace_id
+        );
+
+        rc = server_register_new_job_info(job);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
+
+        rc = cache_connection_info_for_job_shmem(job);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
+    } while (false);
+    // Copy reply over to send to the connection info to the given peer.
+    PMIX_BFROPS_COPY_PAYLOAD(rc, peer, reply, job->conni);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
 }
 
 static pmix_status_t
 unpack_shmem_seg_blob_and_attach_if_necessary(
     pmix_kval_t *kvbo
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     pmix_status_t rc = PMIX_SUCCESS;
 
     pmix_gds_shmem_unpacked_seg_blob_t usb;
@@ -1619,7 +1620,6 @@ store_job_info(
     pmix_buffer_t *buff
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
-
     pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_GDS_SHMEM_VOUT(
@@ -1646,11 +1646,6 @@ store_job_info(
                 PMIX_ERROR_LOG(rc);
                 break;
             }
-        }
-        else if (PMIX_CHECK_KEY(&kval, PMIX_SESSION_INFO_ARRAY) ||
-                 PMIX_CHECK_KEY(&kval, PMIX_NODE_INFO_ARRAY) ||
-                 PMIX_CHECK_KEY(&kval, PMIX_APP_INFO_ARRAY)) {
-            PMIX_GDS_SHMEM_VVOUT("%s:skipping type=%s", __func__, kval.key);
         }
         else {
             PMIX_GDS_SHMEM_VOUT(
@@ -1829,6 +1824,7 @@ server_store_modex(
     pmix_buffer_t *buff,
     void *cbdata
 ) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
     pmix_namespace_t *const namespace = (pmix_namespace_t *)ns;
 
     PMIX_GDS_SHMEM_VOUT(
@@ -1868,7 +1864,6 @@ server_add_nspace(
 ) {
     PMIX_HIDE_UNUSED_PARAMS(nspace, nlocalprocs, info, ninfo);
     PMIX_GDS_SHMEM_VVOUT_HERE();
-    // Nothing to do here.
     return PMIX_SUCCESS;
 }
 
@@ -1877,6 +1872,11 @@ del_nspace(
     const char *nspace
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
+
+    PMIX_GDS_SHMEM_VOUT(
+        "%s: %s for namespace=%s", __func__,
+        PMIX_NAME_PRINT(&pmix_globals.myid), nspace
+    );
 
     pmix_gds_shmem_job_t *ji;
     pmix_gds_shmem_component_t *const component = &pmix_mca_gds_shmem_component;
@@ -1897,8 +1897,8 @@ server_mark_modex_complete(
     pmix_buffer_t *reply
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
-
     pmix_status_t rc = PMIX_SUCCESS;
+
     // Pack connection info for each ns in nslist.
     pmix_nspace_caddy_t *nsi;
     PMIX_LIST_FOREACH (nsi, nslist, pmix_nspace_caddy_t) {
@@ -1936,7 +1936,6 @@ client_recv_modex_complete(
     pmix_buffer_t *buff
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
-
     pmix_status_t rc = PMIX_SUCCESS;
 
     pmix_kval_t kval;
@@ -1996,6 +1995,7 @@ server_get_modex_size(
     size_t size
 ) {
     PMIX_HIDE_UNUSED_PARAMS(ns, size);
+    PMIX_GDS_SHMEM_VVOUT_HERE();
 }
 
 pmix_gds_base_module_t pmix_shmem_module = {

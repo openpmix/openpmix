@@ -184,6 +184,8 @@ typedef struct {
     pmix_gds_shmem_shared_job_data_t *smdata;
     /** Points to shared modex data located in a shared-memory segment. */
     pmix_gds_shmem_shared_modex_data_t *smmodex;
+    /** Packed connection information to this segment. */
+    pmix_buffer_t *conni;
 } pmix_gds_shmem_job_t;
 PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
 
