@@ -28,7 +28,7 @@ get_nodeinfo_by_nodename(
 ) {
     bool aliases_exist = false;
 
-    if (NULL == hostname) {
+    if (PMIX_UNLIKELY(NULL == hostname)) {
         return NULL;
     }
     // First, just check all the node names as this is the most likely match.
@@ -154,7 +154,7 @@ fetch_all_node_info_from_list(
             key = strdup(PMIX_NODE_INFO_ARRAY);
         }
         rc = fetch_all_node_info(key, ni, kvs);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             free(key);
             break;
         }
@@ -274,7 +274,7 @@ fetch_nodeinfo(
         kv->key = strdup(kvi->key);
         kv->value = NULL;
         PMIX_VALUE_XFER(rc, kv->value, kvi->value);
-        if (PMIX_SUCCESS != rc) {
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(kv);
             return rc;
@@ -562,7 +562,7 @@ pmix_gds_shmem_fetch(
     // that's why we pass false in pmix_gds_shmem_get_job_tracker().
     pmix_gds_shmem_job_t *job;
     rc = pmix_gds_shmem_get_job_tracker(proc->nspace, false, &job);
-    if (PMIX_SUCCESS != rc) {
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         return rc;
     }
 
@@ -592,7 +592,7 @@ pmix_gds_shmem_fetch(
             pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
             kv->key = strdup(kvi->key);
             PMIX_VALUE_XFER(rc, kv->value, kvi->value);
-            if (PMIX_SUCCESS != rc) {
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_RELEASE(kv);
                 return rc;
             }
@@ -625,7 +625,7 @@ pmix_gds_shmem_fetch(
             rc = pmix_hash_fetch(
                 local_ht, rank, NULL, NULL, 0, &rkvs
             );
-            if (PMIX_ERR_NOMEM == rc) {
+            if (PMIX_UNLIKELY(PMIX_ERR_NOMEM == rc)) {
                 PMIX_LIST_DESTRUCT(&rkvs);
                 return rc;
             }
@@ -813,7 +813,6 @@ doover:
         // valid, then let hash deal with it.
         rc = PMIX_ERR_NOT_FOUND;
     }
-
     return rc;
 }
 

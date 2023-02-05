@@ -414,7 +414,7 @@ job_destruct(
         PMIX_RELEASE(job->nspace);
     }
 
-    if (NULL != job->conni) {
+    if (job->conni) {
         PMIX_RELEASE(job->conni);
     }
 
@@ -436,14 +436,20 @@ job_destruct(
         if (pmix_gds_shmem_has_status(job, sid, PMIX_GDS_SHMEM_RELEASE)) {
             // Emit usage status before we destroy the segment.
             emit_shmem_usage_stats(job, sid);
-            // Releases memory for the structures located in shared-memory.
-            PMIX_RELEASE(shmem);
         }
         else {
+            // If we didn't create it, explicitly detach in case we need to
+            // later remap something in the address space covered by this.
             pmix_shmem_segment_detach(shmem);
         }
+        // Releases memory for the structures located in shared-memory.
+        PMIX_RELEASE(shmem);
         // Invalidate the shmem flags.
         pmix_gds_shmem_clearall_status(job, sid);
+    }
+
+    if (job->session) {
+        PMIX_RELEASE(job->session);
     }
 }
 
@@ -500,8 +506,7 @@ session_destruct(
 ) {
     // Invalidate the shmem flags.
     s->shmem_status = 0;
-    // Releases memory for the structures located in shared-memory.
-    PMIX_RELEASE(s->shmem);
+    // job_destruct took care of our shmem.
 }
 
 PMIX_CLASS_INSTANCE(

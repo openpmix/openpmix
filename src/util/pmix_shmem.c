@@ -25,7 +25,7 @@ typedef struct pmix_shmem_header_t {
     /** Header lock. */
     pthread_mutex_t lock;
     /** Reference count. */
-    int32_t ref_count;
+    volatile int32_t ref_count;
 } pmix_shmem_header_t;
 
 static void *
