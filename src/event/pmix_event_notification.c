@@ -6,6 +6,7 @@
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
  *
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -382,7 +383,7 @@ static void cycle_events(int sd, short args, void *cbdata)
     }
 
     /* save this handler's returned status */
-    if (NULL != chain->evhdlr->name) {
+    if (NULL != chain->evhdlr && NULL != chain->evhdlr->name) {
         pmix_strncpy(newinfo[cnt].key, chain->evhdlr->name, PMIX_MAX_KEYLEN);
     } else {
         pmix_strncpy(newinfo[cnt].key, "UNKNOWN", PMIX_MAX_KEYLEN);
