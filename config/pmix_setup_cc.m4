@@ -17,7 +17,7 @@ dnl                         reserved.
 dnl Copyright (c) 2015-2019 Research Organization for Information Science
 dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2020      Triad National Security, LLC. All rights
+dnl Copyright (c) 2020-2023 Triad National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
 dnl
@@ -313,12 +313,12 @@ AC_DEFUN([PMIX_SETUP_CC],[
     # see if the C compiler supports __builtin_expect
     AC_CACHE_CHECK([if $CC supports __builtin_expect],
         [pmix_cv_cc_supports___builtin_expect],
-        [AC_LINK_IFELSE([AC_LANG_PROGRAM([,
-          [void *ptr = (void*) 0;
+        [AC_LINK_IFELSE([AC_LANG_PROGRAM([[ ]],
+          [[void *ptr = (void*) 0;
            if (__builtin_expect (ptr != (void*) 0, 1)) return 0;
-          ]],
+          ]])],
           [pmix_cv_cc_supports___builtin_expect="yes"],
-          [pmix_cv_cc_supports___builtin_expect="no"])])])
+          [pmix_cv_cc_supports___builtin_expect="no"])])
     if test "$pmix_cv_cc_supports___builtin_expect" = "yes" ; then
         have_cc_builtin_expect=1
     else
