@@ -15,7 +15,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
- * Copyright (c) 2021-2022 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -233,6 +233,8 @@ typedef struct pmix_tma {
     void *(*tma_memmove)(struct pmix_tma *tma, const void *src, size_t n);
     /** Pointer to the TMA's free() function. */
     void (*tma_free)(struct pmix_tma *, void *);
+    /** Points to a user-defined TMA context. */
+    void *data_context;
     /**
      * Points to generic data used by a TMA. An example includes a pointer to a
      * value that maintains the next available address.
@@ -326,6 +328,7 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
                 .tma_strdup = NULL,                 \
                 .tma_memmove = NULL,                \
                 .tma_free = NULL,                   \
+                .data_context = NULL,               \
                 .data_ptr = NULL                    \
             },                                      \
             .cls_init_file_name = __FILE__,         \
@@ -344,6 +347,7 @@ PMIX_EXPORT extern int pmix_class_init_epoch;
                 .tma_strdup = NULL,                 \
                 .tma_memmove = NULL,                \
                 .tma_free = NULL,                   \
+                .data_context = NULL,               \
                 .data_ptr = NULL                    \
             }                                       \
         }
@@ -424,9 +428,11 @@ static inline pmix_object_t *pmix_obj_new_debug_tma(pmix_class_t *type, pmix_tma
                                                     const char *file, int line)
 {
     pmix_object_t *object = pmix_obj_new_tma(type, tma);
-    object->obj_magic_id = PMIX_OBJ_MAGIC_ID;
-    object->cls_init_file_name = file;
-    object->cls_init_lineno = line;
+    if (NULL != object) {
+        object->obj_magic_id = PMIX_OBJ_MAGIC_ID;
+        object->cls_init_file_name = file;
+        object->cls_init_lineno = line;
+    }
     return object;
 }
 
@@ -549,6 +555,7 @@ static inline void pmix_obj_construct_tma(pmix_object_t *obj, pmix_tma_t *tma)
         obj->obj_tma.tma_strdup = NULL;
         obj->obj_tma.tma_memmove = NULL;
         obj->obj_tma.tma_free = NULL;
+        obj->obj_tma.data_context = NULL;
         obj->obj_tma.data_ptr = NULL;
     } else {
         obj->obj_tma = *tma;
@@ -724,6 +731,7 @@ static inline pmix_object_t *pmix_obj_new_tma(pmix_class_t *cls, pmix_tma_t *tma
             object->obj_tma.tma_realloc = NULL;
             object->obj_tma.tma_strdup = NULL;
             object->obj_tma.tma_free = NULL;
+            object->obj_tma.data_context = NULL;
             object->obj_tma.data_ptr = NULL;
         } else {
             object->obj_tma = *tma;
