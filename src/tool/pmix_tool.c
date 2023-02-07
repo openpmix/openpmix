@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1512,7 +1512,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
 
-    PMIX_RELEASE(pmix_client_globals.myserver);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (n = 0; n < pmix_client_globals.peers.size; n++) {
         if (NULL
@@ -1549,6 +1548,9 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {
         PMIX_RELEASE(pmix_globals.mypeer);
+    }
+    if (NULL != pmix_client_globals.myserver) {
+        PMIX_RELEASE(pmix_client_globals.myserver);
     }
 
     /* finalize the class/object system */
