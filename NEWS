@@ -23,10 +23,15 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.2.3 -- TBD
+4.2.3 -- 8 Feb 2023
 ----------------------
+ - PR #2937 Multiple commits
+    - Update exceptions doc
+    - Disable the "sentinel" attribute in Solaris
+    - Handle some Solaris errors/warnings
+    - Hide unused params
+    - Turn off the "format" attribute on Solaris
  - PR #2927 Add option to abort on component find failure
- = PR #2923 configure: abort in 32-bit environments
  - PR #2922 Fix memory leak in pmix_hash_fetch
  - PR #2920 ptl/base: retry recv() when it encounter EAGAIN or EWOULDBLOCK
  - PR #2913 Multiple commits
