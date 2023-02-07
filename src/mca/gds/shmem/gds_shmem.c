@@ -179,12 +179,32 @@ addr_align(
     return res;
 }
 
+static inline bool
+tma_alloc_request_will_overflow(
+    pmix_tma_t *tma,
+    size_t alloc_size
+) {
+    const pmix_shmem_t *const backing_store = (pmix_shmem_t *)tma->data_context;
+    const uintptr_t hdr_baseptr = (uintptr_t)backing_store->hdr_address;
+    const uintptr_t data_baseptr = (uintptr_t)backing_store->data_address;
+    const uintptr_t data_ptr_pos = (uintptr_t)*(tma->data_ptr);
+    // Size of 'lost capacity` because of segment header.
+    const size_t lost_capacity = (size_t)(data_baseptr - hdr_baseptr);
+    const size_t bytes_used = (size_t)(data_ptr_pos - data_baseptr);
+
+    return (bytes_used + alloc_size) > (backing_store->size - lost_capacity);
+}
+
 static inline void *
 tma_malloc(
     pmix_tma_t *tma,
     size_t size
 ) {
     void *const current = *(tma->data_ptr);
+
+    if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size))) {
+        return NULL;
+    }
 #if PMIX_ENABLE_DEBUG
     memset(current, 0, size);
 #endif
@@ -200,6 +220,10 @@ tma_calloc(
 ) {
     const size_t real_size = nmemb * size;
     void *const current = *(tma->data_ptr);
+
+    if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, real_size))) {
+        return NULL;
+    }
     memset(current, 0, real_size);
     *(tma->data_ptr) = addr_align(current, real_size);
     return current;
@@ -225,6 +249,10 @@ tma_strdup(
 ) {
     void *const current = *(tma->data_ptr);
     const size_t size = strlen(s) + 1;
+
+    if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size))) {
+        return NULL;
+    }
     *(tma->data_ptr) = addr_align(current, size);
     return (char *)memmove(current, s, size);
 }
@@ -262,10 +290,12 @@ tma_init_function_pointers(
 
 static void
 tma_init(
+    pmix_shmem_t *shmem_backing_store,
     pmix_tma_t *tma,
     void *data_ptr
 ) {
     tma_init_function_pointers(tma);
+    tma->data_context = (void *)shmem_backing_store;
     tma->data_ptr = data_ptr;
 }
 
@@ -532,7 +562,11 @@ session_smdata_construct(
     // Save the starting address for TMA memory allocations.
     job->session->smdata->current_addr = baseaddr;
     // Setup the TMA.
-    tma_init(&job->session->smdata->tma, &job->session->smdata->current_addr);
+    tma_init(
+        job->session->shmem,
+        &job->session->smdata->tma,
+        &job->session->smdata->current_addr
+    );
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
     *(job->session->smdata->tma.data_ptr) = addr_align(baseaddr, smdata_size);
@@ -564,7 +598,7 @@ job_smdata_construct(
     // Save the starting address for TMA memory allocations.
     job->smdata->current_addr = baseaddr;
     // Setup the TMA.
-    tma_init(&job->smdata->tma, &job->smdata->current_addr);
+    tma_init(job->shmem, &job->smdata->tma, &job->smdata->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
     *(job->smdata->tma.data_ptr) = addr_align(baseaddr, smdata_size);
@@ -599,7 +633,7 @@ modex_smdata_construct(
     // Save the starting address for TMA memory allocations.
     job->smmodex->current_addr = baseaddr;
     // Setup the TMA.
-    tma_init(&job->smmodex->tma, &job->smmodex->current_addr);
+    tma_init(job->modex_shmem, &job->smmodex->tma, &job->smmodex->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
     *(job->smmodex->tma.data_ptr) = addr_align(baseaddr, smmodex_size);
