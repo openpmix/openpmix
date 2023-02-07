@@ -23,8 +23,9 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.2.3 -- 8 Feb 2023
+4.2.3 -- 7 Feb 2023
 ----------------------
+ - PR #2959 Move release of pmix_client_globals.myserver to later
  - PR #2937 Multiple commits
     - Update exceptions doc
     - Disable the "sentinel" attribute in Solaris
