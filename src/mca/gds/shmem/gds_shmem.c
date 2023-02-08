@@ -2020,23 +2020,6 @@ client_recv_modex_complete(
     return rc;
 }
 
-/**
- * This gets called for each namespace involved in the modex, and before modex
- * data is sent to us via server_store_modex. The purpose of this call is to
- * help inform us on the global data size required to store modex information.
- * Not all infrastructure will call this, so we must then take other steps to
- * estimate modex data storage requirements. See server_store_modex for more
- * information.
- */
-static void
-server_get_modex_size(
-    struct pmix_namespace_t *ns,
-    size_t size
-) {
-    PMIX_HIDE_UNUSED_PARAMS(ns, size);
-    PMIX_GDS_SHMEM_VVOUT_HERE();
-}
-
 pmix_gds_base_module_t pmix_shmem_module = {
     .name = PMIX_GDS_SHMEM_NAME,
     .is_tsafe = false,
@@ -2055,8 +2038,7 @@ pmix_gds_base_module_t pmix_shmem_module = {
     .assemb_kvs_req = NULL,
     .accept_kvs_resp = NULL,
     .mark_modex_complete = server_mark_modex_complete,
-    .recv_modex_complete = client_recv_modex_complete,
-    .set_size = server_get_modex_size
+    .recv_modex_complete = client_recv_modex_complete
 };
 
 /*
