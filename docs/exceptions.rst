@@ -1232,11 +1232,6 @@ Attributes
        form of a comma separated list of |br|
        "MAJOR.MINOR" pairs
 
-   * - ``PMIX_SIZE_ESTIMATE`` |br| ``pmix.size.est``
-     - ``(size_t)``
-     - Number of bytes in the enclosed |br|
-       payload
-
 .. note:: The attribute ``PMIX_DEBUG_STOP_IN_APP`` has been modified
           to only support a ``PMIX_BOOL`` value instead of an optional
           array of ranks due to questions over the use-case calling
