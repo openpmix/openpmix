@@ -52,6 +52,10 @@
 #endif
 #include <event.h>
 
+#ifndef MAX
+#    define MAX(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
 #include "src/class/pmix_hotel.h"
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
@@ -629,8 +633,7 @@ static void fence_timeout(int sd, short args, void *cbdata)
 }
 
 static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
-                                   pmix_buffer_t *buf,
-                                   size_t *size, size_t *nkeys)
+                                   pmix_buffer_t *buf)
 {
     pmix_buffer_t bucket, *pbkt = NULL;
     pmix_cb_t cb;
@@ -646,7 +649,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
     rank_blob_t *blob;
     uint32_t kmap_size;
     int key_idx;
-    size_t sz;
 
     /* key names map, the position of the key name
      * in the array determines the unique key index */
@@ -777,23 +779,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
             if (PMIX_SUCCESS == rc) {
                 /* pack the returned kval's */
                 PMIX_LIST_FOREACH (kv, &cb.kvs, pmix_kval_t) {
-                    *nkeys += 1;
-                    rc = PMIx_Value_get_size(kv->value, &sz);
-                    if (rc != PMIX_SUCCESS) {
-                        PMIX_ERROR_LOG(rc);
-                        PMIX_DESTRUCT(&cb);
-                        PMIX_LIST_DESTRUCT(&rank_blobs);
-                        PMIX_RELEASE(pbkt);
-                        goto cleanup;
-                    }
-                    *size += sz;
-                    // account for the key
-                    sz = strnlen(kv->key, PMIX_MAX_KEYLEN);
-                    if (PMIX_MAX_KEYLEN == sz) {
-                        *size += PMIX_MAX_KEYLEN;
-                    } else {
-                        *size += sz + 1;
-                    }
                     rc = pmix_gds_base_modex_pack_kval(kmap_type, pbkt, &kmap, kv);
                     if (rc != PMIX_SUCCESS) {
                         PMIX_ERROR_LOG(rc);
@@ -805,9 +790,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
                 }
                 data_added = true;
             }
-            /* account for the size of the hash elements */
-            *size += (*nkeys) * pmix_hash_table_sizeof_hash_element();
-
             if (data_added) {
                 /* add part of the process modex to the list */
                 blob = PMIX_NEW(rank_blob_t);
@@ -900,9 +882,9 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     bool collect_data = false;
     pmix_server_trkr_t *trk;
     char *data = NULL;
-    size_t sz = 0, size = 0, nkeys = 0;
+    size_t sz = 0;
     pmix_buffer_t bucket;
-    pmix_info_t *info = NULL, *iptr;
+    pmix_info_t *info = NULL;
     size_t ninfo = 0, ninf, n, nmbrs, idx;
     struct timeval tv = {0, 0};
     pmix_list_t expand;
@@ -1158,7 +1140,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
          * or global distribution */
 
         PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
-        if (PMIX_SUCCESS != (rc = _collect_data(trk, &bucket, &size, &nkeys))) {
+        if (PMIX_SUCCESS != (rc = _collect_data(trk, &bucket))) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&bucket);
             /* clear the caddy from this tracker so it can be
@@ -1179,19 +1161,6 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         PMIX_UNLOAD_BUFFER(&bucket, data, sz);
         PMIX_DESTRUCT(&bucket);
         trk->host_called = true;
-        /* add the size and #keys to the info array */
-        ninf = trk->ninfo + 2;
-        PMIX_INFO_CREATE(iptr, ninf);
-        for (n=0; n < trk->ninfo; n++) {
-            PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
-        }
-        PMIX_INFO_LOAD(&iptr[ninf-1], PMIX_SIZE_ESTIMATE, &size, PMIX_SIZE);
-        PMIX_INFO_LOAD(&iptr[ninf-2], PMIX_NUM_KEYS, &nkeys, PMIX_SIZE);
-        if (NULL != trk->info) {
-            PMIX_INFO_FREE(trk->info, trk->ninfo);
-        }
-        trk->info = iptr;
-        trk->ninfo = ninf;
         rc = pmix_host_server.fence_nb(trk->pcs, trk->npcs, trk->info, trk->ninfo, data, sz,
                                        trk->modexcbfunc, trk);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
@@ -3845,7 +3814,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
         return;
     }
 
-    pmix_output_verbose(2, pmix_server_globals.connect_output,
+    pmix_output_verbose(2, pmix_server_globals.group_output,
                         "server:grpcbfunc processing WITH %d MEMBERS",
                         (int) pmix_list_get_size(&trk->local_cbs));
 
@@ -4064,7 +4033,7 @@ release:
                 break;
             }
         }
-        pmix_output_verbose(2, pmix_server_globals.connect_output,
+        pmix_output_verbose(2, pmix_server_globals.group_output,
                             "server:grp_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
         PMIX_SERVER_QUEUE_REPLY(ret, cd->peer, cd->hdr.tag, reply);
@@ -4091,7 +4060,7 @@ static void grpcbfunc(pmix_status_t status,
     pmix_server_trkr_t *tracker = (pmix_server_trkr_t *) cbdata;
     pmix_shift_caddy_t *scd;
 
-    pmix_output_verbose(2, pmix_server_globals.connect_output,
+    pmix_output_verbose(2, pmix_server_globals.group_output,
                         "server:grpcbfunc called with %d info", (int) ninfo);
 
     if (NULL == tracker) {
@@ -4188,7 +4157,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     pmix_proc_t *procs;
     pmix_group_t *grp, *pgrp;
     pmix_info_t *info = NULL, *iptr = NULL, *grpinfoptr = NULL;
-    size_t n, ninfo, ninf, nprocs, n2, ngrpinfo = 0, size = 0, nkeys = 0;
+    size_t n, ninfo, ninf, nprocs, n2, ngrpinfo = 0;
     pmix_server_trkr_t *trk;
     bool need_cxtid = false;
     bool match, force_local = false;
@@ -4203,7 +4172,8 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     struct timeval tv = {0, 0};
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
-                        "recvd grpconstruct cmd");
+                        "recvd grpconstruct cmd from %s",
+                        PMIX_PEER_PRINT(cd->peer));
 
     /* unpack the group ID */
     cnt = 1;
@@ -4253,6 +4223,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         goto error;
     }
     if (0 == nprocs) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         return PMIX_ERR_BAD_PARAM;
     }
     PMIX_PROC_CREATE(procs, nprocs);
@@ -4536,7 +4507,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         0 < pmix_list_get_size(&trk->grpinfo)) {
         /* collect any remote contributions provided by group members */
         PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
-        rc = _collect_data(trk, &bucket, &size, &nkeys);
+        rc = _collect_data(trk, &bucket);
         if (PMIX_SUCCESS != rc) {
             /* remove the tracker from the list */
             pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
@@ -4551,7 +4522,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
          * fence operation */
         if (0 < bo.size ||
             0 < pmix_list_get_size(&trk->grpinfo)) {
-            n2 = trk->ninfo + 3; // include space for endpt data, size estimate, and nkeys
+            n2 = trk->ninfo + 1; // include space for endpt data
             PMIX_INFO_CREATE(iptr, n2);
             for (n = 0; n < trk->ninfo; n++) {
                 PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
@@ -4604,8 +4575,6 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             PMIX_UNLOAD_BUFFER(&bucket, bo.bytes, bo.size);
             PMIX_INFO_LOAD(&iptr[n2-1], PMIX_GROUP_ENDPT_DATA, &bo, PMIX_BYTE_OBJECT);
             PMIX_BYTE_OBJECT_DESTRUCT(&bo);
-            PMIX_INFO_LOAD(&iptr[n2-2], PMIX_SIZE_ESTIMATE, &size, PMIX_SIZE);
-            PMIX_INFO_LOAD(&iptr[n2-3], PMIX_NUM_KEYS, &nkeys, PMIX_SIZE);
             /* replace the tracker's info array */
             PMIX_INFO_FREE(trk->info, trk->ninfo);
             trk->info = iptr;
