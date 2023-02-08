@@ -3368,11 +3368,6 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
     pmix_nspace_caddy_t *nptr;
     pmix_list_t nslist;
     bool found;
-    int32_t cnt;
-    pmix_info_t info;
-    size_t memsize = 0;
-    char *payload = NULL;
-    size_t sz;
 
     PMIX_ACQUIRE_OBJECT(scd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -3436,52 +3431,9 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
         goto finish_collective;
     }
 
-    /* see if the host provided any controls directives (e.g., an estimate
-     * of the stored data size requirements for this payload) - they would
-     * be given as pmix_info_t at the beginning of the payload */
-    PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(ret, pmix_globals.mypeer, &xfer, &info, &cnt, PMIX_INFO);
-    while (PMIX_SUCCESS == ret) {
-        if (PMIX_CHECK_KEY(&info, PMIX_SIZE_ESTIMATE)) {
-            PMIX_VALUE_GET_NUMBER(ret, &info.value, memsize, size_t);
-            if (PMIX_SUCCESS != ret) {
-                PMIX_ERROR_LOG(ret);
-                break;
-            }
-        }
-        /* save where we are */
-        payload = xfer.unpack_ptr;
-        /* cleanup */
-        PMIX_INFO_DESTRUCT(&info);
-        /* get the next object */
-        cnt = 1;
-        PMIX_BFROPS_UNPACK(ret, pmix_globals.mypeer, &xfer, &info, &cnt, PMIX_INFO);
-    }
-    if (0 < memsize) {
-        /* set the memory size for each of the participating namespaces.
-         * Note: this will be an overestimate as the value represents the
-         * total across ALL participating namespaces, not an estimate for
-         * each namespace
-         */
-        PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
-            PMIX_GDS_SET_SIZE(nptr->ns, memsize);
-        }
-    }
-
-    /* do NOT destruct the xfer buffer as that would release the payload! We do,
-     * however, need to exclude any controls directives from the next step, so
-     * let's define a pointer to the place in the payload where we stopped unpacking */
-    if (NULL == payload) {
-        payload = (char*)scd->data;
-        sz = scd->ndata;
-    } else {
-        sz = xfer.base_ptr + xfer.bytes_used - payload;
-    }
-
     PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
         /* pass the blobs being returned */
-        PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, payload, sz);
+        PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
         PMIX_GDS_STORE_MODEX(rc, nptr->ns, &xfer, tracker);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
