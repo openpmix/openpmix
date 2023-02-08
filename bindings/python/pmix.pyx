@@ -87,12 +87,6 @@ def pyevhdlr(stop):
                                                 shifter[0].cbdata)
                 if 0 < shifter[0].ndata:
                     pmix_free_info(shifter[0].info, shifter[0].ndata)
-            elif "sessioncontrol" == op:
-                shifter[0].sessioncontrol(shifter[0].status, shifter[0].info, shifter[0].ndata,
-                                          shifter[0].cbdata, shifter[0].release_fn,
-                                          shifter[0].notification_cbdata)
-                if 0 < shifter[0].ndata:
-                    pmix_free_info(shifter[0].info, shifter[0].ndata)
             else:
                 print("UNSUPPORTED OP", op)
         # don't beat on the cpu
@@ -1641,7 +1635,7 @@ def setmodulefn(k, f):
                  'deregisterevents', 'listener', 'notify_event', 'query',
                  'toolconnected', 'log', 'allocate', 'jobcontrol',
                  'monitor', 'getcredential', 'validatecredential',
-                 'iofpull', 'pushstdin', 'group', 'fabric', 'sessioncontrol']
+                 'iofpull', 'pushstdin', 'group', 'fabric']
     if k not in permitted:
         return PMIX_ERR_BAD_PARAM
     if not k in pmixservermodule:
@@ -1687,8 +1681,6 @@ cdef class PMIxServer(PMIxClient):
         # v4.x interfaces
         self.myserver.group = <pmix_server_grp_fn_t>group
         self.myserver.fabric = <pmix_server_fabric_fn_t>fabric
-        # v5.x interfaces
-        self.myserver.session_control = <pmix_server_session_control_fn_t>sessioncontrol
 
     # Initialize the PMIx server library
     #
@@ -2137,25 +2129,6 @@ cdef class PMIxServer(PMIxClient):
         pyset = name.encode('ascii')
         # delete the set
         rc = PMIx_server_delete_process_set(pyset)
-        return rc
-
-    def session_control(sessionID:int, ilist:list):
-        cdef pmix_info_t *info
-        cdef pmix_info_t **info_ptr
-        cdef size_t sz
-
-        # allocate and load pmix info structs from python list of dictionaries
-        info_ptr = &info
-        rc = pmix_alloc_info(info_ptr, &sz, ilist)
-        if PMIX_SUCCESS != rc:
-            return rc
-
-         # call the API
-        if 0 < sz:
-            rc = PMIx_Session_control(sessionID, info, sz, NULL, NULL)
-            pmix_free_info(info, sz)
-        else:
-            rc = PMIx_Session_control(sessionID, NULL, 0, NULL, NULL)
         return rc
 
 cdef int clientconnected(pmix_proc_t *proc, void *server_object,
@@ -3187,69 +3160,6 @@ cdef int fabric(const pmix_proc_t *requestor,
         rc = PMIX_ERR_NOT_SUPPORTED
     return rc
 
-cdef int sessioncontrol(const pmix_proc_t *requestor,
-                        uint32_t sessionID,
-                        const pmix_info_t directives[], size_t ndirs,
-                        pmix_info_cbfunc_t cbfunc, void *cbdata) with gil:
-    keys = pmixservermodule.keys()
-    if 'sessioncontrol' in keys:
-        args = {}
-        myproc = []
-        blist = []
-        ilist = []
-        barray = None
-
-        if NULL == requestor:
-            return PMIX_ERR_BAD_PARAM
-        pmix_unload_procs(requestor, 1, myproc)
-        args['requestor'] = myproc[0]
-        args['sessionID'] = sessionID
-        if NULL != directives:
-            rc = pmix_unload_info(directives, ndirs, ilist)
-            if PMIX_SUCCESS != rc:
-                return rc
-            args['directives'] = ilist
-        rc, refarginfo = pmixservermodule['sessioncontrol'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. So we start
-    # a new thread on a timer that should execute a
-    # callback after the function returns
-    cdef pmix_info_t *info
-    cdef pmix_info_t **info_ptr
-    cdef size_t ninfo = 0
-    info              = NULL
-    info_ptr          = &info
-    prc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
-    if PMIX_SUCCESS != prc:
-        print("Error transferring info to C:", prc)
-        return prc
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("sessioncontrol")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.info = info
-        mycaddy.ndata = ninfo
-        mycaddy.sessioncontrol = cbfunc
-        mycaddy.cbdata = cbdata
-        mycaddy.release_fn = NULL
-        mycaddy.notification_cbdata = NULL
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
-
-
 
 cdef class PMIxTool(PMIxServer):
     def __cinit__(self):
@@ -3521,70 +3431,3 @@ cdef class PMIxTool(PMIxServer):
         if 0 < ndirs:
             pmix_free_info(directives, ndirs)
         return rc
-
-cdef class PMIxScheduler(PMIxTool):
-    def __cinit__(self):
-        memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
-        self.myproc.rank = PMIX_RANK_UNDEF
-
-    # Initialize the PMIx tool library underneath the scheduler
-    #
-    # @dicts [INPUT]
-    #          - a list of dictionaries, where each
-    #            dictionary has a key, value, and val_type
-    #            defined as such:
-    #            [{key:y, value:val, val_type:ty}, … ]
-    def init(self, dicts:list):
-        cdef pmix_info_t *info
-        cdef pmix_info_t **info_ptr
-        cdef size_t sz
-        global myname
-        global progressThread
-
-        # start the event handler progress thread
-        progressThread.start()
-
-        # init myname
-        myname = {'nspace':'UNASSIGNED', 'rank':PMIX_RANK_UNDEF}
-
-        # allocate and load pmix info structs from python list of dictionaries
-        info_ptr = &info
-        rc = pmix_alloc_info(info_ptr, &sz, dicts)
-        if PMIX_SUCCESS != rc:
-            return rc, myname
-
-        if sz > 0:
-            rc = PMIx_tool_init(&self.myproc, info, sz)
-            pmix_free_info(info, sz)
-        else:
-            rc = PMIx_tool_init(&self.myproc, NULL, 0)
-        if PMIX_SUCCESS == rc:
-            # convert the returned name
-            myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
-        return rc, myname
-
-    # Finalize the tool library
-    def finalize(self):
-        global stop_progress
-
-        # stop progress thread
-        stop_progress = True
-        progressThread.join(timeout=1)
-        # finalize
-        rc = PMIx_tool_finalize()
-        return rc
-
-    # direct the RTE to instantiate a session
-    def assign_session(sessionID:int, allocID:str, ilist:list, applist:list):
-        cdef pmix_info_t *info
-        cdef pmix_info_t **info_ptr
-        cdef size_t sz
-        # convert the info list
-        info_ptr = &info
-        rc = pmix_alloc_info(info_ptr, &sz, ilist)
-        if PMIX_SUCCESS != rc:
-            return rc
-        if sz == 0:
-            info = NULL
-        # convert the app list
-
