@@ -644,7 +644,7 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_rank_t rel_rank;
     pmix_nspace_caddy_t *nm;
-    bool found;
+    bool found, data_added = false;
     pmix_list_t rank_blobs;
     rank_blob_t *blob;
     uint32_t kmap_size;
@@ -674,7 +674,6 @@ static pmix_status_t _collect_data(pmix_server_trkr_t *trk,
             uint32_t *key_count = NULL;
 
             pmix_value_array_init(key_count_array, sizeof(uint32_t));
-            *size = 0;
 
             PMIX_LIST_FOREACH (scd, &trk->local_cbs, pmix_server_caddy_t) {
                 pmix_strncpy(pcs.nspace, scd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
