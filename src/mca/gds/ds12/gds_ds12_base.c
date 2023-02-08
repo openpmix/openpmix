@@ -173,13 +173,6 @@ static pmix_status_t ds12_recv_modex_complete(pmix_buffer_t *buff)
     return PMIX_SUCCESS;
 }
 
-static void ds12_set_size(struct pmix_namespace_t *ns,
-                          size_t memsize)
-{
-    PMIX_HIDE_UNUSED_PARAMS(ns, memsize);
-    return;
-}
-
 pmix_gds_base_module_t pmix_ds12_module = {
     .name = "ds12",
     .is_tsafe = false,
@@ -197,7 +190,6 @@ pmix_gds_base_module_t pmix_ds12_module = {
     .del_nspace = ds12_del_nspace,
     .fetch_arrays = ds12_fetch_arrays,
     .mark_modex_complete = ds12_mark_modex_complete,
-    .recv_modex_complete = ds12_recv_modex_complete,
-    .set_size = ds12_set_size
+    .recv_modex_complete = ds12_recv_modex_complete
 };
 

@@ -179,14 +179,6 @@ static pmix_status_t ds21_recv_modex_complete(pmix_buffer_t *buff)
     return PMIX_SUCCESS;
 }
 
-static void ds21_set_size(struct pmix_namespace_t *ns,
-                          size_t memsize)
-{
-    PMIX_HIDE_UNUSED_PARAMS(ns, memsize);
-    return;
-}
-
-
 pmix_gds_base_module_t pmix_ds21_module = {
     .name = "ds21",
     .is_tsafe = true,
@@ -204,7 +196,6 @@ pmix_gds_base_module_t pmix_ds21_module = {
     .del_nspace = ds21_del_nspace,
     .fetch_arrays = ds21_fetch_arrays,
     .mark_modex_complete = ds21_mark_modex_complete,
-    .recv_modex_complete = ds21_recv_modex_complete,
-    .set_size = ds21_set_size
+    .recv_modex_complete = ds21_recv_modex_complete
 };
 
