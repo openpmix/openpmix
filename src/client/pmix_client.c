@@ -235,25 +235,28 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
                         void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr, buf);
+
+    PMIX_ACQUIRE_OBJECT(lock);
 
     pmix_output_verbose(2, pmix_client_globals.base_output,
                         "pmix:client wait_cbfunc received");
-    if (NULL == pr || NULL == hdr || NULL == buf || NULL == cbdata) {
-        ;
-    }
+
+    PMIX_POST_OBJECT(lock);
     PMIX_WAKEUP_THREAD(lock);
 }
 
 /* callback to receive job info */
-static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf, void *cbdata)
+static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
+                     pmix_buffer_t *buf, void *cbdata)
 {
     pmix_status_t rc;
     char *nspace;
     int32_t cnt = 1;
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
-
-
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
+
+    PMIX_ACQUIRE_OBJECT(cb);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -295,11 +298,12 @@ PMIX_EXPORT const char *PMIx_Get_version(void)
 static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t *) cbdata;
-
-
     PMIX_HIDE_UNUSED_PARAMS(evhandler_ref);
 
+    PMIX_ACQUIRE_OBJECT(lock);
+
     lock->status = status;
+    PMIX_POST_OBJECT(lock);
     PMIX_WAKEUP_THREAD(lock);
 }
 
@@ -356,10 +360,12 @@ typedef struct {
 static void release_info(pmix_status_t status, void *cbdata)
 {
     mydata_t *cd = (mydata_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
     PMIX_INFO_FREE(cd->info, cd->ninfo);
     free(cd);
-
-    PMIX_HIDE_UNUSED_PARAMS(status);
 }
 
 static void _check_for_notify(pmix_info_t info[], size_t ninfo)
@@ -434,12 +440,14 @@ static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix
     size_t refid, ninfo = 0;
     pmix_iof_req_t *req;
     pmix_info_t *info = NULL;
+    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
+
+    PMIX_ACQUIRE_OBJECT(peer);
 
     pmix_output_verbose(2, pmix_client_globals.iof_output,
                         "recvd IOF with %d bytes",
                         (int) buf->bytes_used);
 
-    PMIX_HIDE_UNUSED_PARAMS(hdr, cbdata);
 
     /* if the buffer is empty, they are simply closing the socket */
     if (0 == buf->bytes_used) {
