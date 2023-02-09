@@ -22,6 +22,30 @@
 #include "src/mca/bfrops/base/bfrop_base_tma.h"
 
 /**
+ * Convenience function for creating an initialized pmix_kval_t.
+ */
+static pmix_kval_t *
+newkval(
+    const char *key,
+    pmix_tma_t *tma
+) {
+    pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
+    if (PMIX_LIKELY(kv)) {
+        kv->key = pmix_tma_strdup(tma, key);
+        if (PMIX_UNLIKELY(!kv->key)) {
+            PMIX_RELEASE(kv);
+            return kv;
+        }
+        kv->value = pmix_tma_calloc(tma, 1, sizeof(pmix_value_t));
+        if (PMIX_UNLIKELY(!kv->value)) {
+            PMIX_RELEASE(kv);
+            return kv;
+        }
+    }
+    return kv;
+}
+
+/**
  * Populates the provided with the elements present in the given comma-delimited
  * string. If the list is not empty, it is first cleared and then set.
  */
@@ -45,6 +69,7 @@ set_host_aliases_from_cds(
     char **tmp = PMIx_Argv_split(cds, ',');
     if (PMIX_UNLIKELY(!tmp)) {
         rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
         goto out;
     }
 
@@ -53,12 +78,14 @@ set_host_aliases_from_cds(
         alias = PMIX_NEW(pmix_gds_shmem_host_alias_t, tma);
         if (PMIX_UNLIKELY(!alias)) {
             rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
             break;
         }
 
         alias->name = pmix_tma_strdup(tma, tmp[i]);
         if (PMIX_UNLIKELY(!alias->name)) {
             rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
             break;
         }
         pmix_list_append(list, &alias->super);
@@ -79,9 +106,8 @@ cache_node_info(
     pmix_tma_t *const tma = pmix_obj_get_tma(&cache->super);
     bool have_node_id_info = false;
 
-    pmix_gds_shmem_nodeinfo_t *inodeinfo;
-    inodeinfo = PMIX_NEW(pmix_gds_shmem_nodeinfo_t, tma);
-    if (!inodeinfo) {
+    pmix_gds_shmem_nodeinfo_t *iinfo = PMIX_NEW(pmix_gds_shmem_nodeinfo_t, tma);
+    if (PMIX_UNLIKELY(!iinfo)) {
         rc = PMIX_ERR_NOMEM;
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -95,47 +121,58 @@ cache_node_info(
         if (PMIX_CHECK_KEY(&info[j], PMIX_NODEID)) {
             have_node_id_info = true;
             PMIX_VALUE_GET_NUMBER(
-                rc, &info[j].value, inodeinfo->nodeid, uint32_t
+                rc, &info[j].value, iinfo->nodeid, uint32_t
             );
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
-                break;
+                goto out;
             }
         }
         else if (PMIX_CHECK_KEY(&info[j], PMIX_HOSTNAME)) {
             have_node_id_info = true;
-            inodeinfo->hostname = pmix_tma_strdup(
+            iinfo->hostname = pmix_tma_strdup(
                 tma, info[j].value.data.string
             );
+            if (PMIX_UNLIKELY(!iinfo->hostname)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
         }
         else if (PMIX_CHECK_KEY(&info[j], PMIX_HOSTNAME_ALIASES)) {
             have_node_id_info = true;
             // info[j].value.data.string is a
             // comma-delimited string of hostnames.
             rc = set_host_aliases_from_cds(
-                inodeinfo->aliases,
+                iinfo->aliases,
                 info[j].value.data.string
             );
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
-                break;
+                goto out;
             }
             // Need to cache this value as well.
-            pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
-            kv->key = pmix_tma_strdup(tma, info[j].key);
-            kv->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            pmix_kval_t *kv = newkval(info[j].key, tma);
+            if (PMIX_UNLIKELY(!kv)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
             rc = pmix_bfrops_base_tma_value_xfer(kv->value, &info[j].value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kv);
-                break;
+                goto out;
             }
             pmix_list_append(cache, &kv->super);
         }
         else {
-            pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
-            kv->key = pmix_tma_strdup(tma, info[j].key);
-            kv->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            pmix_kval_t *kv = newkval(info[j].key, tma);
+            if (PMIX_UNLIKELY(!kv)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
             rc = pmix_bfrops_base_tma_value_xfer(kv->value, &info[j].value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
@@ -149,12 +186,11 @@ cache_node_info(
     if (PMIX_UNLIKELY(!have_node_id_info)) {
         rc = PMIX_ERR_BAD_PARAM;
     }
-
+out:
     if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(inodeinfo);
-        inodeinfo = NULL;
+        PMIX_RELEASE(iinfo);
     }
-    *nodeinfo = inodeinfo;
+    *nodeinfo = iinfo;
     return rc;
 }
 
@@ -185,9 +221,7 @@ store_node_array(
     pmix_gds_shmem_nodeinfo_t *nodeinfo;
     rc = cache_node_info(
         (pmix_info_t *)val->data.darray->array,
-        val->data.darray->size,
-        cache,
-        &nodeinfo
+        val->data.darray->size, cache, &nodeinfo
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         goto out;
@@ -209,8 +243,6 @@ store_app_array(
     pmix_gds_shmem_job_t *job,
     pmix_value_t *val
 ) {
-    PMIX_GDS_SHMEM_VVOUT_HERE();
-
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_gds_shmem_app_t *app = NULL;
 
@@ -230,13 +262,17 @@ store_app_array(
     // Setup arrays and lists.
     pmix_list_t *app_cache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!app_cache)) {
-        return PMIX_ERR_NOMEM;
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     pmix_list_t *node_cache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!node_cache)) {
         PMIX_LIST_DESTRUCT(app_cache);
-        return PMIX_ERR_NOMEM;
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
     }
 
     const size_t size = val->data.darray->size;
@@ -262,6 +298,11 @@ store_app_array(
                 goto out;
             }
             app = PMIX_NEW(pmix_gds_shmem_app_t, tma);
+            if (PMIX_UNLIKELY(!app)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
             app->appnum = appnum;
         }
         else if (PMIX_CHECK_KEY(&info[j], PMIX_NODE_INFO_ARRAY)) {
@@ -272,9 +313,12 @@ store_app_array(
             }
         }
         else {
-            pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
-            kv->key = pmix_tma_strdup(tma, info[j].key);
-            kv->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            pmix_kval_t *kv = newkval(info[j].key, tma);
+            if (PMIX_UNLIKELY(!kv)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
             rc = pmix_bfrops_base_tma_value_xfer(kv->value, &info[j].value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
@@ -290,6 +334,11 @@ store_app_array(
         // an appnum so long as only one app is in the job.
         if (0 == pmix_list_get_size(job->smdata->appinfo)) {
             app = PMIX_NEW(pmix_gds_shmem_app_t, tma);
+            if (PMIX_UNLIKELY(!app)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
             app->appnum = 0;
         }
         else {
@@ -411,6 +460,7 @@ store_session_array(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+
     pmix_tma_t *const tma = pmix_gds_shmem_get_session_tma(job);
     pmix_list_t *ncache = PMIX_NEW(pmix_list_t, tma);
     if (PMIX_UNLIKELY(!ncache)) {
@@ -434,9 +484,12 @@ store_session_array(
             }
         }
         else {
-            pmix_kval_t *kval = PMIX_NEW(pmix_kval_t, tma);
-            kval->key = pmix_tma_strdup(tma, info[j].key);
-            kval->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            pmix_kval_t *kval = newkval(info[j].key, tma);
+            if (PMIX_UNLIKELY(!kval)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
             rc = pmix_bfrops_base_tma_value_xfer(kval->value, &info[j].value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
@@ -471,11 +524,10 @@ pmix_gds_shmem_store_qualified(
     // This does not need to use the TMA since its contents are later copied in
     // hash_store() using a TMA. This is just temporary storage.
     const size_t nquals = ninfo - 1;
-    // TODO(skg) Depending on how this is handled in store(), maybe we can get
-    // away without using a TMA here.
+
     pmix_info_t *quals = pmix_bfrops_base_tma_info_create(nquals, tma);
     for (size_t i = 1; i < ninfo; i++) {
-        PMIX_INFO_SET_QUALIFIER(&quals[i - 1]);
+        pmix_bfrops_base_tma_info_qualifier(&quals[i - 1], tma);
         rc = pmix_bfrops_base_tma_info_xfer(&quals[i - 1], &info[i], tma);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
@@ -483,8 +535,12 @@ pmix_gds_shmem_store_qualified(
         }
     }
     // Extract the primary value.
-    pmix_kval_t *kv;
-    kv = PMIX_NEW(pmix_kval_t, tma);
+    pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
+    if (PMIX_UNLIKELY(!kv)) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
     kv->key = info[0].key;
     kv->value = &info[0].value;
     // Store the result.
@@ -554,15 +610,20 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
             }
         }
         else {
-            pmix_kval_t *kv = PMIX_NEW(pmix_kval_t, tma);
-            kv->key = pmix_tma_strdup(tma, kvi->key);
-            kv->value = pmix_tma_malloc(tma, sizeof(pmix_value_t));
+            pmix_kval_t *kv = newkval(kvi->key, tma);
+            if (PMIX_UNLIKELY(!kv)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+
             rc = pmix_bfrops_base_tma_value_xfer(kv->value, kvi->value, tma);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_RELEASE(kv);
                 PMIX_ERROR_LOG(rc);
                 break;
             }
+
             rc = pmix_hash_store(
                 local_ht, PMIX_RANK_WILDCARD, kv, NULL, 0
             );
@@ -576,10 +637,12 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
     if (PMIX_SUCCESS == rc) {
         // Segments are ready for use.
         pmix_gds_shmem_set_status(
-            job, PMIX_GDS_SHMEM_JOB_ID, PMIX_GDS_SHMEM_READY_FOR_USE
+            job, PMIX_GDS_SHMEM_JOB_ID,
+            PMIX_GDS_SHMEM_READY_FOR_USE
         );
         pmix_gds_shmem_set_status(
-            job, PMIX_GDS_SHMEM_SESSION_ID, PMIX_GDS_SHMEM_READY_FOR_USE
+            job, PMIX_GDS_SHMEM_SESSION_ID,
+            PMIX_GDS_SHMEM_READY_FOR_USE
         );
     }
     return rc;
