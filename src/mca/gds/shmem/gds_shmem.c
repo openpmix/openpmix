@@ -587,7 +587,6 @@ session_smdata_construct(
 
     job->session->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
     if (!job->session->smdata->nodeinfo) {
-        PMIX_RELEASE(job->session->smdata->sessioninfo);
         rc = PMIX_ERR_NOMEM;
         PMIX_ERROR_LOG(rc);
         goto out;
