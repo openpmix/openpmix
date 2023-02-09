@@ -15,6 +15,7 @@
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -37,6 +38,7 @@
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
+#include "src/mca/bfrops/base/bfrop_base_tma.h"
 #include "src/mca/mca.h"
 
 /*
@@ -182,11 +184,15 @@ static void kvcon(pmix_kval_t *k)
 }
 static void kvdes(pmix_kval_t *k)
 {
+    pmix_tma_t *const tma = pmix_obj_get_tma(&k->super.super);
+
     if (NULL != k->key) {
-        free(k->key);
+        pmix_tma_free(tma, k->key);
     }
     if (NULL != k->value) {
-        PMIX_VALUE_RELEASE(k->value);
+        pmix_bfrops_base_tma_value_destruct(k->value, tma);
+        pmix_tma_free(tma, k->value);
+        k->value = NULL;
     }
 }
 PMIX_CLASS_INSTANCE(pmix_kval_t, pmix_list_item_t, kvcon, kvdes);

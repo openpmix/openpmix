@@ -200,11 +200,11 @@ tma_malloc(
     pmix_tma_t *tma,
     size_t size
 ) {
-    void *const current = *(tma->data_ptr);
-
     if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size))) {
         return NULL;
     }
+
+    void *const current = *(tma->data_ptr);
 #if PMIX_ENABLE_DEBUG
     memset(current, 0, size);
 #endif
@@ -219,11 +219,12 @@ tma_calloc(
     size_t size
 ) {
     const size_t real_size = nmemb * size;
-    void *const current = *(tma->data_ptr);
 
     if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, real_size))) {
         return NULL;
     }
+
+    void *const current = *(tma->data_ptr);
     memset(current, 0, real_size);
     *(tma->data_ptr) = addr_align(current, real_size);
     return current;
@@ -247,12 +248,13 @@ tma_strdup(
     pmix_tma_t *tma,
     const char *s
 ) {
-    void *const current = *(tma->data_ptr);
     const size_t size = strlen(s) + 1;
 
     if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size))) {
         return NULL;
     }
+
+    void *const current = *(tma->data_ptr);
     *(tma->data_ptr) = addr_align(current, size);
     return (char *)memmove(current, s, size);
 }
@@ -385,8 +387,6 @@ emit_shmem_usage_stats(
     pmix_gds_shmem_job_shmem_id_t shmem_id
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    pmix_tma_t *tma = NULL;
-    const char *smname = NULL;
 
     pmix_shmem_t *shmem;
     rc = pmix_gds_shmem_get_job_shmem_by_id(
@@ -397,6 +397,8 @@ emit_shmem_usage_stats(
         return;
     }
 
+    pmix_tma_t *tma = NULL;
+    const char *smname = NULL;
     switch (shmem_id) {
         case PMIX_GDS_SHMEM_JOB_ID:
             tma = &job->smdata->tma;
@@ -551,6 +553,7 @@ session_smdata_construct(
     pmix_gds_shmem_job_t *job,
     uint32_t sid
 ) {
+    pmix_status_t rc = PMIX_SUCCESS;
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // session know about its data located at the base of the segment.
@@ -574,12 +577,32 @@ session_smdata_construct(
     pmix_tma_t *const tma = &job->session->smdata->tma;
     // Now that we know the TMA, initialize smdata structures using it.
     job->session->smdata->id = sid;
+
     job->session->smdata->sessioninfo = PMIX_NEW(pmix_list_t, tma);
+    if (!job->session->smdata->sessioninfo) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+
     job->session->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
-
+    if (!job->session->smdata->nodeinfo) {
+        PMIX_RELEASE(job->session->smdata->sessioninfo);
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
     pmix_gds_shmem_vout_smsession(job->session);
-
-    return PMIX_SUCCESS;
+out:
+    if (PMIX_SUCCESS != rc) {
+        if (job->session->smdata->sessioninfo) {
+            PMIX_RELEASE(job->session->smdata->sessioninfo);
+        }
+        if (job->session->smdata->nodeinfo) {
+            PMIX_RELEASE(job->session->smdata->nodeinfo);
+        }
+    }
+    return rc;
 }
 
 static pmix_status_t
@@ -587,6 +610,7 @@ job_smdata_construct(
     pmix_gds_shmem_job_t *job,
     size_t htsize
 ) {
+    pmix_status_t rc = PMIX_SUCCESS;
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // job know about its data located at the base of the segment.
@@ -606,15 +630,51 @@ job_smdata_construct(
     pmix_tma_t *const tma = &job->smdata->tma;
     // Now that we know the TMA, initialize smdata structures using it.
     job->smdata->jobinfo = PMIX_NEW(pmix_list_t, tma);
+    if (!job->smdata->jobinfo) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+
     job->smdata->nodeinfo = PMIX_NEW(pmix_list_t, tma);
+    if (!job->smdata->nodeinfo) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+
     job->smdata->appinfo = PMIX_NEW(pmix_list_t, tma);
+    if (!job->smdata->appinfo) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
     // Will always have local data, so set it up.
     job->smdata->local_hashtab = PMIX_NEW(pmix_hash_table_t, tma);
+    if (!job->smdata->local_hashtab) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
     pmix_hash_table_init(job->smdata->local_hashtab, htsize);
 
     pmix_gds_shmem_vout_smdata(job);
-
-    return PMIX_SUCCESS;
+out:
+    if (PMIX_SUCCESS != rc) {
+        if (job->smdata->jobinfo) {
+            PMIX_RELEASE(job->smdata->jobinfo);
+        }
+        if (job->smdata->nodeinfo) {
+            PMIX_RELEASE(job->smdata->nodeinfo);
+        }
+        if (job->smdata->appinfo) {
+            PMIX_RELEASE(job->smdata->appinfo);
+        }
+        if (job->smdata->local_hashtab) {
+            PMIX_RELEASE(job->smdata->local_hashtab);
+        }
+    }
+    return rc;
 }
 
 static pmix_status_t
@@ -622,6 +682,7 @@ modex_smdata_construct(
     pmix_gds_shmem_job_t *job,
     size_t htsize
 ) {
+    pmix_status_t rc = PMIX_SUCCESS;
     // Setup the shared information structure. It will be at the base address of
     // the shared-memory segment. The memory is already allocated, so let the
     // job know about its data located at the base of the segment.
@@ -641,6 +702,11 @@ modex_smdata_construct(
     pmix_tma_t *const tma = &job->smmodex->tma;
     // Now that we know the TMA, initialize smdata structures using it.
     job->smmodex->hashtab = PMIX_NEW(pmix_hash_table_t, tma);
+    if (!job->smmodex->hashtab) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
     pmix_hash_table_init(job->smmodex->hashtab, htsize);
 
     pmix_gds_shmem_vout_smmodex(job);
@@ -903,6 +969,7 @@ shmem_segment_create_and_attach(
         VMEM_HOLE_BIGGEST, &base_addr, real_segsize
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
@@ -913,6 +980,7 @@ shmem_segment_create_and_attach(
     const char *segment_path = get_shmem_backing_path(job, segment_name);
     if (PMIX_UNLIKELY(!segment_path)) {
         rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
         goto out;
     }
     PMIX_GDS_SHMEM_VOUT(
@@ -931,6 +999,7 @@ shmem_segment_create_and_attach(
         shmem, real_segsize, segment_path
     );
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
         goto out;
     }
     // Attach to the shared-memory segment.
@@ -962,10 +1031,8 @@ static void
 module_finalize(void)
 {
     PMIX_GDS_SHMEM_VVOUT_HERE();
+    PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.sessions);
     PMIX_LIST_DESTRUCT(&pmix_mca_gds_shmem_component.jobs);
-    // Note to developers: the contents of pmix_mca_gds_shmem_component.sessions
-    // point to elements in shared-memory, so no need to destruct here since
-    // job_destruct took care of it.
 }
 
 static pmix_status_t
@@ -1029,7 +1096,7 @@ prepare_shmem_stores_for_local_job_data(
     pmix_gds_shmem_packed_local_job_info_t *pji
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
-    static const float fluff = 2.5;
+    static const float fluff = 3.0;
     const size_t kvsize = (sizeof(pmix_kval_t) + sizeof(pmix_value_t));
     // Initial hash table size.
     const size_t htsize = pji->hash_table_size;
@@ -1317,6 +1384,7 @@ unpack_shmem_connection_info(
     PMIX_DESTRUCT(&buffer);
 
     if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
+        PMIX_ERROR_LOG(rc);
         rc = PMIX_ERR_UNPACK_FAILURE;
         PMIX_ERROR_LOG(rc);
     }
@@ -1343,9 +1411,12 @@ fetch_local_job_data(
     job_cb->key = NULL;
     job_cb->proc = &wildcard;
     job_cb->copy = true;
+
     job_cb->scope = PMIX_LOCAL;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, job_cb);
-
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+    }
     return rc;
 }
 
@@ -1482,11 +1553,9 @@ cache_connection_info_for_job_shmem(
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-
     // Pack the payload for delivery. Note that the message we are going to send
     // is simply the shared memory connection information that is shared among
     // clients on a single node.
-
     // Start with the namespace name.
     PMIX_BFROPS_PACK(rc, me, job->conni, &job->nspace_id, 1, PMIX_STRING);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -1654,17 +1723,11 @@ unpack_shmem_seg_blob_and_attach_if_necessary(
 }
 
 static pmix_status_t
-store_job_info(
-    const char *nspace,
+client_connect_to_shmem_from_buffi(
     pmix_buffer_t *buff
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
     pmix_status_t rc = PMIX_SUCCESS;
-
-    PMIX_GDS_SHMEM_VOUT(
-        "%s:%s for namespace=%s", __func__,
-        PMIX_NAME_PRINT(&pmix_globals.myid), nspace
-    );
 
     pmix_kval_t kval;
     while (true) {
@@ -1700,16 +1763,28 @@ store_job_info(
     PMIX_DESTRUCT(&kval);
 
     if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
+        PMIX_ERROR_LOG(rc);
         rc = PMIX_ERR_UNPACK_FAILURE;
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    else {
-        rc = PMIX_SUCCESS;
-    }
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t
+store_job_info(
+    const char *nspace,
+    pmix_buffer_t *buff
+) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+
+    PMIX_GDS_SHMEM_VOUT(
+        "%s:%s for namespace=%s", __func__,
+        PMIX_NAME_PRINT(&pmix_globals.myid), nspace
+    );
     // Done. Before this point the server should have populated the
     // shared-memory segment with the relevant data.
-    return rc;
+    return client_connect_to_shmem_from_buffi(buff);
 }
 
 /**
@@ -1720,8 +1795,10 @@ get_modex_sizing_data(
     const pmix_gds_shmem_modex_ctx_t *mctx
 ) {
     const size_t kval_size = sizeof(pmix_kval_t);
-    // The default values if not provided with modex size info.
-    float fluff = 2.5;
+    // The default values if not provided with modex size info. More fluff than
+    // in other places because this calculation is more imprecise. In many ways
+    // this is okay because mmap() implements demand paging.
+    float fluff = 5.0;
     // Multiplier to fudge compression factor. zlib max compression is 5:1.
     size_t segment_size = mctx->buff_size * 5;
     // Get an estimate on the number of kvals we need to store.
@@ -1950,15 +2027,7 @@ server_mark_modex_complete(
             PMIX_ERROR_LOG(rc);
             break;
         }
-
-        rc = pack_shmem_seg_blob(
-            job, PMIX_GDS_SHMEM_JOB_ID, peer, reply
-        );
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            break;
-        }
-
+        // Pack modex info, if it is ready to be shared.
         rc = pack_shmem_seg_blob(
             job, PMIX_GDS_SHMEM_MODEX_ID, peer, reply
         );
@@ -1975,49 +2044,7 @@ client_recv_modex_complete(
     pmix_buffer_t *buff
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    pmix_kval_t kval;
-    while (true) {
-        PMIX_CONSTRUCT(&kval, pmix_kval_t);
-
-        int32_t nvals = 1;
-        PMIX_BFROPS_UNPACK(
-            rc, pmix_client_globals.myserver,
-            buff, &kval, &nvals, PMIX_KVAL
-        );
-        if (PMIX_SUCCESS != rc) {
-            break;
-        }
-
-        if (PMIX_CHECK_KEY(&kval, SHMEM_SEG_BLOB_KEY)) {
-            rc = unpack_shmem_seg_blob_and_attach_if_necessary(&kval);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                break;
-            }
-        }
-        else {
-            PMIX_GDS_SHMEM_VOUT(
-                "%s:ERROR unexpected key=%s", __func__, kval.key
-            );
-            rc = PMIX_ERR_BAD_PARAM;
-            PMIX_ERROR_LOG(rc);
-            break;
-        }
-        PMIX_DESTRUCT(&kval);
-    };
-    // Release the leftover kval.
-    PMIX_DESTRUCT(&kval);
-
-    if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
-        rc = PMIX_ERR_UNPACK_FAILURE;
-        PMIX_ERROR_LOG(rc);
-    }
-    else {
-        rc = PMIX_SUCCESS;
-    }
-    return rc;
+    return client_connect_to_shmem_from_buffi(buff);
 }
 
 pmix_gds_base_module_t pmix_shmem_module = {
