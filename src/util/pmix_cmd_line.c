@@ -17,7 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -126,9 +126,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
             break;
         }
         opt = getopt_long(argc, argv, shorts, myoptions, &option_index);
-        if (-1 == opt) {
-            break;
-        }
+
         switch (opt) {
             case 0:
                 /* if this is an MCA param of some type, store it */
@@ -245,7 +243,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                  * we have to check */
                 if (0 != argind && '-' != argv[argind][0]) {
                     // this was not an option
-                    break;
+                    goto done;
                 }
                 found = false;
                 for (n=0; '\0' != shorts[n]; n++) {
@@ -355,6 +353,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 return PMIX_ERR_SILENT;
         }
     }
+
+done:
     if (optind < argc) {
         /* if this is an '&', it simply indicates that the executable
          * was being pushed into the background - ignore it */
