@@ -117,12 +117,17 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     optopt = 0;
     optarg = NULL;
 
+    if (1 == argc) {
+        // nothing to parse
+        goto done;
+    }
+
     // run the parser
     while (1) {
         argind = optind;
-        // This is the executable, or we are at the last argument.
-        // Don't process any further.
         if (optind == argc || (optind > 0 && '-' != argv[optind][0])) {
+            // This is the executable, or we are at the last argument.
+            // Don't process any further.
             break;
         }
         opt = getopt_long(argc, argv, shorts, myoptions, &option_index);
@@ -238,11 +243,31 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 // if they ask for the version, that is all we do
                 PMIx_Argv_free(argv);
                 return PMIX_OPERATION_SUCCEEDED;
+            case 'v':
+                /* if the argv at this point is not pointing at a string
+                 * starting with "-v", then we just ignore it - the user
+                 * has passed a string with multiple 'v's in it and we
+                 * need to wait until the end */
+                if (0 != strncmp(argv[optind-1], "-v", 2)) {
+                    break;
+                }
+                /* we store the 'v' option with a value equal to the
+                 * number of 'v's the user provided */
+                n = strlen(&argv[optind-1][1]);
+                pmix_asprintf(&str, "%d", n);
+                mystore(myoptions[option_index].name, str, results);
+                free(str);
+                break;
             default:
                 /* this could be one of the short options other than 'h' or 'V', so
                  * we have to check */
                 if (0 != argind && '-' != argv[argind][0]) {
                     // this was not an option
+                    goto done;
+                }
+                if ((optind == argc || 0 == strcmp(argv[optind], ":")) && 0 == argind) {
+                    // command without any options
+                    optind = 1;
                     goto done;
                 }
                 found = false;
