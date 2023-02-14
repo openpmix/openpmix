@@ -16,6 +16,7 @@
  * Copyright (c) 2014      Hochschule Esslingen.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -107,6 +108,7 @@ int pmix_mca_base_show_load_errors_init(void)
     pmix_value_t value;
     PMIX_VALUE_LOAD(&value, pmix_mca_base_component_show_load_errors, PMIX_STRING);
     pmix_boolean_t ret = PMIx_Value_true(&value);
+    PMIx_Value_destruct(&value);
 
     // Treat true values as a synonym for "all", and false values
     // as a synonym for "none".
