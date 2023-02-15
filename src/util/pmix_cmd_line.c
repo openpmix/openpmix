@@ -270,6 +270,11 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     optind = 1;
                     goto done;
                 }
+                if (0 == strcmp(argv[argind], "--")) {
+                    // double-dash indicates separator between launcher
+                    // directives and the application
+                    break;
+                }
                 found = false;
                 for (n=0; '\0' != shorts[n]; n++) {
                     int ascii = shorts[n];
