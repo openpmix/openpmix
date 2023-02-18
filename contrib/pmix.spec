@@ -15,6 +15,7 @@
 # Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2015      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
+# Copyright (c) 2023      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -490,7 +491,7 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 %{_sysconfdir}/*
 %endif
 # If %%{install_in_opt}, then we're installing PMIx to
-# /opt/pmix<version>.  But be sure to also explicitly mention
+# /opt/pmix/<version>.  But be sure to also explicitly mention
 # /opt/pmix so that it can be removed by RPM when everything under
 # there is also removed.
 %if %{install_in_opt}
@@ -505,7 +506,7 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 %{shell_scripts_path}/%{shell_scripts_basename}.sh
 %{shell_scripts_path}/%{shell_scripts_basename}.csh
 %endif
-%doc README INSTALL LICENSE
+%doc README.md LICENSE
 
 # if building separate RPMs, split the compatibility libs
 %if !%{build_all_in_one_rpm}
