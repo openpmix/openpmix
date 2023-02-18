@@ -259,22 +259,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 free(str);
                 break;
             default:
-                /* this could be one of the short options other than 'h' or 'V', so
-                 * we have to check */
-                if (0 != argind && '-' != argv[argind][0]) {
-                    // this was not an option
-                    goto done;
-                }
-                if ((optind == argc || 0 == strcmp(argv[optind], ":")) && 0 == argind) {
-                    // command without any options
-                    optind = 1;
-                    goto done;
-                }
-                if (0 == strcmp(argv[argind], "--")) {
-                    // double-dash indicates separator between launcher
-                    // directives and the application
-                    break;
-                }
                 found = false;
                 for (n=0; '\0' != shorts[n]; n++) {
                     int ascii = shorts[n];
@@ -338,6 +322,22 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             }
                         }
                         if (found) {
+                            break;
+                        }
+                        /* this could be one of the short options other than 'h' or 'V', so
+                         * we have to check */
+                        if (0 != argind && '-' != argv[argind][0]) {
+                            // this was not an option
+                            goto done;
+                        }
+                        if ((optind == argc || 0 == strcmp(argv[optind], ":")) && 0 == argind) {
+                            // command without any options
+                            optind = 1;
+                            goto done;
+                        }
+                        if (0 == strcmp(argv[argind], "--")) {
+                            // double-dash indicates separator between launcher
+                            // directives and the application
                             break;
                         }
                         str = pmix_show_help_string("help-cli.txt", "short-no-long", true,
