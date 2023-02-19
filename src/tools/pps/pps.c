@@ -18,7 +18,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -150,7 +150,6 @@ static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
         PMIX_INFO_CREATE(mq->info, ninfo);
         mq->ninfo = ninfo;
         for (n = 0; n < ninfo; n++) {
-            fprintf(stderr, "Transferring %s\n", info[n].key);
             PMIX_INFO_XFER(&mq->info[n], &info[n]);
         }
     }
@@ -311,7 +310,6 @@ int main(int argc, char *argv[])
     myquery_data.info = NULL;
     myquery_data.ninfo = 0;
     /* execute the query */
-    fprintf(stderr, "pps: querying nspaces\n");
     if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void *) &myquery_data))) {
         fprintf(stderr, "PMIx_Query_info failed: %d\n", rc);
         goto done;
