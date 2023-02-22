@@ -2067,8 +2067,8 @@ pmix_bfrops_base_tma_setenv(
     pmix_tma_t *tma
 ) {
     // Note to developers: we don't use the TMA here because the values we
-    // allocate on the heap are nothing more than temporary values that are
-    // inconsequential to the way we currently use the TMA.
+    // allocate on the heap are values that are inconsequential to the way we
+    // currently use the TMA.
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     /* Check the bozo case */
