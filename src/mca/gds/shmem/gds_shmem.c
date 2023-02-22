@@ -36,7 +36,6 @@
 // Some items for future consideration:
 // * Address FT case at some point. We need to have a broader conversion about
 //   how we go about doing this. Ralph has some ideas.
-// * Is it worth adding memory arena boundary checks to our TMA allocators?
 
 /**
  * Key names used to find shared-memory segment info.
@@ -239,7 +238,7 @@ tma_realloc(
     PMIX_HIDE_UNUSED_PARAMS(tma, ptr, size);
     // We don't support realloc.
     PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-    assert(false);
+    abort();
     return NULL;
 }
 
@@ -275,6 +274,7 @@ tma_free(
     struct pmix_tma *tma,
     void *ptr
 ) {
+    // We don't currently reclaim freed space in our TMA.
     PMIX_HIDE_UNUSED_PARAMS(tma, ptr);
 }
 
@@ -416,7 +416,7 @@ emit_shmem_usage_stats(
         default:
             PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
             // This is an internal error.
-            assert(false);
+            abort();
             return;
     }
 
@@ -902,6 +902,7 @@ init_client_side_sm_data(
         case PMIX_GDS_SHMEM_INVALID_ID:
         default:
             PMIX_ERROR_LOG(PMIX_ERROR);
+            abort();
             return PMIX_ERROR;
     }
     // Segment is ready for use by the client.

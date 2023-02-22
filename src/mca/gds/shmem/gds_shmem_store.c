@@ -65,7 +65,8 @@ set_host_aliases_from_cds(
         }
     }
 
-    // Now, add each element present in the comma-delimited string list.
+    // Now, add each element present in the comma-delimited string list. Not
+    // using our TMA because this is a temporary value.
     char **tmp = PMIx_Argv_split(cds, ',');
     if (PMIX_UNLIKELY(!tmp)) {
         rc = PMIX_ERR_NOMEM;
@@ -549,8 +550,6 @@ pmix_gds_shmem_store_qualified(
         PMIX_ERROR_LOG(rc);
     }
 out:
-    // TODO(skg) Would be nice if pmix_bfrops_base_tma_info_free
-    // acted more like PMIX_INFO_FREE.
     pmix_bfrops_base_tma_info_free(quals, nquals, tma);
     pmix_tma_free(tma, quals);
     return rc;
