@@ -76,6 +76,7 @@ fetch_all_node_info(
         PMIX_RELEASE(kv);
         return PMIX_ERR_NOMEM;
     }
+
     size_t nds = pmix_list_get_size(nodeinfo->info);
     if (NULL != nodeinfo->hostname) {
         ++nds;

@@ -198,8 +198,9 @@ pmix_gds_shmem_get_job_shmem_by_id(
             break;
         case PMIX_GDS_SHMEM_INVALID_ID:
         default:
-            *shmem = NULL;
-            return PMIX_ERROR;
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            abort();
+            return PMIX_ERR_BAD_PARAM;
     }
     return PMIX_SUCCESS;
 }
@@ -219,7 +220,8 @@ get_job_shmem_status_flagp(
         case PMIX_GDS_SHMEM_INVALID_ID:
         default:
             // This is a fatal internal error.
-            assert(false);
+            PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+            abort();
             return NULL;
     }
 }
