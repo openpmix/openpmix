@@ -38,6 +38,8 @@
 #include "src/mca/preg/preg.h"
 #include "src/mca/bfrops/base/base.h"
 
+#include "src/util/pmix_printf.h"
+
 static inline void
 pmix_bfrops_base_tma_value_destruct(
     pmix_value_t *v,
@@ -2064,29 +2066,14 @@ pmix_bfrops_base_tma_setenv(
     char ***env,
     pmix_tma_t *tma
 ) {
-    int i;
-    char newvalue[100000], compare[100000];
-    size_t len;
-    bool valid;
+    // Note to developers: we don't use the TMA here because the values we
+    // allocate on the heap are nothing more than temporary values that are
+    // inconsequential to the way we currently use the TMA.
+    PMIX_HIDE_UNUSED_PARAMS(tma);
 
     /* Check the bozo case */
     if (NULL == env) {
         return PMIX_ERR_BAD_PARAM;
-    }
-
-    if (NULL != value) {
-        /* check the string for unacceptable length - i.e., ensure
-         * it is NULL-terminated */
-        valid = false;
-        for (i = 0; i < 100000; i++) {
-            if ('\0' == value[i]) {
-                valid = true;
-                break;
-            }
-        }
-        if (!valid) {
-            return PMIX_ERR_BAD_PARAM;
-        }
     }
 
     /* If this is the "environ" array, use setenv */
@@ -2101,41 +2088,53 @@ pmix_bfrops_base_tma_setenv(
     }
 
     /* Make the new value */
+    char *newvalue = NULL;
     if (NULL == value) {
-        snprintf(newvalue, 100000, "%s=", name);
+        pmix_asprintf(&newvalue, "%s=", name);
     } else {
-        snprintf(newvalue, 100000, "%s=%s", name, value);
+        pmix_asprintf(&newvalue, "%s=%s", name, value);
+    }
+    if (NULL == newvalue) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
     if (NULL == *env) {
-        pmix_bfrops_base_tma_argv_append_nosize(env, newvalue, tma);
+        pmix_bfrops_base_tma_argv_append_nosize(env, newvalue, NULL);
+        free(newvalue);
         return PMIX_SUCCESS;
     }
 
     /* Make something easy to compare to */
-
-    snprintf(compare, 100000, "%s=", name);
-    len = strlen(compare);
+    char *compare = NULL;
+    pmix_asprintf(&compare, "%s=", name);
+    if (NULL == compare) {
+        free(newvalue);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
 
     /* Look for a duplicate that's already set in the env */
-
-    for (i = 0; (*env)[i] != NULL; ++i) {
+    const size_t len = strlen(compare);
+    for (int i = 0; (*env)[i] != NULL; ++i) {
         if (0 == strncmp((*env)[i], compare, len)) {
             if (overwrite) {
-                pmix_tma_free(tma, (*env)[i]);
-                (*env)[i] = pmix_tma_strdup(tma, newvalue);
+                free((*env)[i]);
+                (*env)[i] = newvalue;
+                free(compare);
                 return PMIX_SUCCESS;
             } else {
+                free(compare);
+                free(newvalue);
                 return PMIX_ERR_EXISTS;
             }
         }
     }
 
     /* If we found no match, append this value */
-
-    pmix_bfrops_base_tma_argv_append_nosize(env, newvalue, tma);
+    pmix_bfrops_base_tma_argv_append_nosize(env, newvalue, NULL);
 
     /* All done */
+    free(compare);
+    free(newvalue);
     return PMIX_SUCCESS;
 }
 
