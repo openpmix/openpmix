@@ -5,8 +5,8 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- *
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -506,8 +506,12 @@ void pmix_hwloc_destruct_topology(pmix_topology_t *src)
     }
     if (NULL != src->topology) {
         hwloc_topology_destroy(src->topology);
+        src->topology = NULL;
     }
-    free(src->source);
+    if (NULL != src->source) {
+        free(src->source);
+        src->source = NULL;
+    }
 }
 
 // avoid ABI break
