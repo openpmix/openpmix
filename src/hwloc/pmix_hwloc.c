@@ -6,7 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -655,7 +655,7 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
             pmix_output_verbose(2, pmix_hwloc_output,
                                 "%s:%s no source stipulated - returning current version", __FILE__,
                                 __func__);
-            topo->source = strdup(pmix_globals.topology.source);
+            topo->source = pmix_globals.topology.source;
             topo->topology = pmix_globals.topology.topology;
             return PMIX_SUCCESS;
         }
@@ -690,7 +690,7 @@ pmix_status_t pmix_hwloc_load_topology(pmix_topology_t *topo)
                         "%s:%s nothing found - calling setup", __FILE__, __func__);
     rc = pmix_hwloc_setup_topology(NULL, 0);
     if (PMIX_SUCCESS == rc) {
-        topo->source = strdup(pmix_globals.topology.source);
+        topo->source = pmix_globals.topology.source;
         topo->topology = pmix_globals.topology.topology;
     }
     return rc;
