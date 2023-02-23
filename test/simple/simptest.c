@@ -18,6 +18,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -643,8 +644,10 @@ static void set_namespace(int nprocs, char *nspace, pmix_op_cbfunc_t cbfunc, myx
     }
     iptr = (pmix_info_t *) x->info[n].value.data.darray->array;
     PMIX_INFO_LOAD(&iptr[0], PMIX_NODE_MAP, regex, PMIX_REGEX);
+    free(regex);
     isv1 = &iptr[0];
     PMIX_INFO_LOAD(&iptr[1], PMIX_PROC_MAP, ppn, PMIX_REGEX);
+    free(ppn);
     isv2 = &iptr[1];
     PMIX_INFO_LOAD(&iptr[2], PMIX_JOB_SIZE, &nprocs, PMIX_UINT32);
     PMIX_INFO_LOAD(&iptr[3], PMIX_JOBID, "1234", PMIX_STRING);

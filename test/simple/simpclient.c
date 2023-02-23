@@ -18,6 +18,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -213,6 +214,7 @@ int main(int argc, char **argv)
                     myproc.rank, PMIx_Error_string(rc));
         exit(rc);
     }
+    free(tmp);
 
     /* get a list of our local peers */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
@@ -245,6 +247,7 @@ int main(int argc, char **argv)
                         myproc.rank, PMIx_Error_string(rc));
             exit(rc);
         }
+        free(tmp);
 
         (void) asprintf(&tmp, "%s-%d-remote-%d", myproc.nspace, myproc.rank, cnt);
         value.type = PMIX_STRING;
@@ -254,6 +257,7 @@ int main(int argc, char **argv)
                         myproc.rank, PMIx_Error_string(rc));
             exit(rc);
         }
+        free(tmp);
 
         if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
             pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Commit failed: %s", myproc.nspace,
