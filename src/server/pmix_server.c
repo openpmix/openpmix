@@ -10,7 +10,7 @@
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -740,6 +740,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         rinfo = PMIX_NEW(pmix_rank_info_t);
         pmix_globals.mypeer->info = rinfo;
     } else {
+        PMIX_RETAIN(pmix_globals.mypeer->info);
         rinfo = pmix_globals.mypeer->info;
     }
     if (NULL == pmix_globals.mypeer->nptr) {
@@ -753,7 +754,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     rinfo->pname.rank = pmix_globals.myid.rank;
     rinfo->uid = pmix_globals.uid;
     rinfo->gid = pmix_globals.gid;
-    PMIX_RETAIN(pmix_globals.mypeer->info);
     pmix_client_globals.myserver->info = pmix_globals.mypeer->info;
 
     /* open the pmdl framework and select the active modules for this environment */
@@ -869,6 +869,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                                 (void *) &reglock);
     /* wait for registration to complete */
     PMIX_WAIT_THREAD(&reglock);
+    PMIX_INFO_DESTRUCT(&evinfo[0]);
     PMIX_DESTRUCT_LOCK(&reglock);
 
     /* see if they gave us a rendezvous URI to which we are to call back */
