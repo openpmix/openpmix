@@ -504,14 +504,14 @@ void pmix_hwloc_destruct_topology(pmix_topology_t *src)
         0 != strncasecmp(src->source, "hwloc", 5)) {
         return;
     }
+
     if (NULL != src->topology) {
         hwloc_topology_destroy(src->topology);
         src->topology = NULL;
     }
-    if (NULL != src->source) {
-        free(src->source);
-        src->source = NULL;
-    }
+
+    free(src->source);
+    src->source = NULL;
 }
 
 // avoid ABI break
