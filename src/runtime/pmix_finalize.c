@@ -15,7 +15,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -48,6 +48,7 @@
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_show_help.h"
+#include "src/util/pmix_net.h"
 #include "src/runtime/pmix_init_util.h"
 #include <event.h>
 
@@ -95,6 +96,9 @@ void pmix_rte_finalize(void)
 
     /* close GDS */
     (void) pmix_mca_base_framework_close(&pmix_gds_base_framework);
+
+    /* Finalize the network helper subsystem. */
+    (void)pmix_net_finalize();
 
     /* finalize the mca */
     /* Clear out all the registered MCA params */
@@ -158,6 +162,7 @@ void pmix_rte_finalize(void)
         }
     }
     PMIX_DESTRUCT(&pmix_globals.keyindex);
+    free(pmix_globals.myidval.data.proc);
 
     /* now safe to release the event base */
     (void) pmix_progress_thread_stop(NULL);
