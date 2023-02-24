@@ -27,9 +27,6 @@
  * If tma is NULL, then the default heap manager is used.
  */
 
-// TODO(skg) pmix_bfrops_base_tma_info_free paths
-// need work on this side and prrte's.
-
 #ifndef PMIX_BFROP_BASE_TMA_H
 #define PMIX_BFROP_BASE_TMA_H
 
@@ -624,6 +621,7 @@ pmix_bfrops_base_tma_info_destruct(
     }
 }
 
+// TODO(skg) FIXME.
 static inline void
 pmix_bfrops_base_tma_info_free(
     pmix_info_t *p,
@@ -1129,11 +1127,11 @@ pmix_bfrops_base_tma_geometry_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == g) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_geometry_destruct(&g[m], tma);
+    if (NULL != g) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_geometry_destruct(&g[m], tma);
+        }
+        pmix_tma_free(tma, g);
     }
 }
 
@@ -1322,11 +1320,11 @@ pmix_bfrops_base_tma_byte_object_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == b) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_byte_object_destruct(&b[m], tma);
+    if (NULL != b) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_byte_object_destruct(&b[m], tma);
+        }
+        pmix_tma_free(tma, b);
     }
 }
 
@@ -1362,11 +1360,11 @@ pmix_bfrops_base_tma_endpoint_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == e) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_endpoint_destruct(&e[m], tma);
+    if (NULL != e) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_endpoint_destruct(&e[m], tma);
+        }
+        pmix_tma_free(tma, e);
     }
 }
 
@@ -1551,13 +1549,12 @@ pmix_bfrops_base_tma_argv_free(
     char **argv,
     pmix_tma_t *tma
 ) {
-    if (NULL == argv) {
-        return;
+    if (NULL != argv) {
+        for (char **p = argv; NULL != *p; ++p) {
+            pmix_tma_free(tma, *p);
+        }
+        pmix_tma_free(tma, argv);
     }
-    for (char **p = argv; NULL != *p; ++p) {
-        pmix_tma_free(tma, *p);
-    }
-    pmix_tma_free(tma, argv);
 }
 
 static inline char **
@@ -1746,6 +1743,7 @@ pmix_bfrops_base_tma_query_destruct(
 ) {
     if (NULL != p->keys) {
         pmix_bfrops_base_tma_argv_free(p->keys, tma);
+        p->keys = NULL;
     }
     if (NULL != p->qualifiers) {
         pmix_bfrops_base_tma_info_free(p->qualifiers, p->nqual, tma);
@@ -1765,6 +1763,7 @@ pmix_bfrops_base_tma_query_free(
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_query_destruct(&p[m], tma);
         }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -1839,6 +1838,7 @@ pmix_bfrops_base_tma_pdata_free(
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_pdata_destruct(&p[m], tma);
         }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -1917,6 +1917,7 @@ pmix_bfrops_base_tma_app_free(
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_app_destruct(&p[m], tma);
         }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -1973,9 +1974,11 @@ pmix_bfrops_base_tma_regattr_destruct(
     if (NULL != p) {
         if (NULL != p->name) {
             pmix_tma_free(tma, p->name);
+            p->name = NULL;
         }
         if (NULL != p->description) {
             pmix_bfrops_base_tma_argv_free(p->description, tma);
+            p->description = NULL;
         }
     }
 }
@@ -1990,6 +1993,7 @@ pmix_bfrops_base_tma_regattr_free(
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_regattr_destruct(&p[m], tma);
         }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -2194,10 +2198,9 @@ pmix_bfrops_base_tma_data_buffer_release(
     pmix_data_buffer_t *b,
     pmix_tma_t *tma
 ) {
-    if (NULL == b) {
-        return;
+    if (NULL != b) {
+        pmix_bfrops_base_tma_data_buffer_destruct(b, tma);
     }
-    pmix_bfrops_base_tma_data_buffer_destruct(b, tma);
 }
 
 static inline pmix_status_t
@@ -2224,11 +2227,11 @@ pmix_bfrops_base_tma_value_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == v) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_value_destruct(&v[m], tma);
+    if (NULL != v) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_value_destruct(&v[m], tma);
+        }
+        pmix_tma_free(tma, v);
     }
 }
 
@@ -2393,6 +2396,7 @@ pmix_bfrops_base_tma_proc_stats_free(
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_stats_destruct(&p[m], tma);
         }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -2490,6 +2494,7 @@ pmix_bfrops_base_tma_disk_stats_free(
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_disk_stats_destruct(&p[m], tma);
         }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -2564,6 +2569,7 @@ pmix_bfrops_base_tma_net_stats_free(
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_net_stats_destruct(&p[m], tma);
         }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -2640,9 +2646,13 @@ pmix_bfrops_base_tma_node_stats_destruct(
     }
     if (NULL != p->diskstats) {
         pmix_bfrops_base_tma_disk_stats_free(p->diskstats, p->ndiskstats, tma);
+        p->diskstats = NULL;
+        p->ndiskstats = 0;
     }
     if (NULL != p->netstats) {
         pmix_bfrops_base_tma_net_stats_free(p->netstats, p->nnetstats, tma);
+        p->netstats = NULL;
+        p->nnetstats = 0;
     }
 }
 
@@ -2673,6 +2683,7 @@ pmix_bfrops_base_tma_node_stats_free(
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_node_stats_destruct(&p[m], tma);
         }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -3657,7 +3668,6 @@ pmix_bfrops_base_tma_data_array_destruct(
             break;
         case PMIX_APP:
             pmix_bfrops_base_tma_app_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_INFO:
             pmix_bfrops_base_tma_info_free(d->array, d->size, tma);
@@ -3665,7 +3675,6 @@ pmix_bfrops_base_tma_data_array_destruct(
             break;
         case PMIX_PDATA:
             pmix_bfrops_base_tma_pdata_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_BUFFER: {
             pmix_buffer_t *const pb = (pmix_buffer_t *)d->array;
@@ -3709,7 +3718,6 @@ pmix_bfrops_base_tma_data_array_destruct(
             break;
         case PMIX_QUERY:
             pmix_bfrops_base_tma_query_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_ENVAR:
             pmix_bfrops_base_tma_envar_free(d->array, d->size, tma);
@@ -3719,7 +3727,6 @@ pmix_bfrops_base_tma_data_array_destruct(
             break;
         case PMIX_REGATTR:
             pmix_bfrops_base_tma_regattr_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_PROC_CPUSET:
             // TODO(skg) Add TMA support when necessary.
@@ -3750,6 +3757,7 @@ pmix_bfrops_base_tma_data_array_destruct(
             break;
         }
         case PMIX_DATA_BUFFER: {
+            // TODO(skg) This needs work. Can maybe just call free?
             pmix_data_buffer_t *const db = (pmix_data_buffer_t *)d->array;
             for (size_t n = 0; n < d->size; n++) {
                 pmix_bfrops_base_tma_data_buffer_destruct(&db[n], tma);
@@ -3759,19 +3767,15 @@ pmix_bfrops_base_tma_data_array_destruct(
         }
         case PMIX_PROC_STATS:
             pmix_bfrops_base_tma_proc_stats_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_DISK_STATS:
             pmix_bfrops_base_tma_disk_stats_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_NET_STATS:
             pmix_bfrops_base_tma_net_stats_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_NODE_STATS:
             pmix_bfrops_base_tma_node_stats_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         default:
             if (NULL != d->array) {
@@ -4070,28 +4074,24 @@ pmix_bfrops_base_tma_value_destruct(
         case PMIX_PROC_STATS:
             if (NULL != v->data.pstats) {
                 pmix_bfrops_base_tma_proc_stats_free(v->data.pstats, 1, tma);
-                pmix_tma_free(tma, v->data.pstats);
                 v->data.pstats = NULL;
             }
             break;
         case PMIX_DISK_STATS:
             if (NULL != v->data.dkstats) {
                 pmix_bfrops_base_tma_disk_stats_free(v->data.dkstats, 1, tma);
-                pmix_tma_free(tma, v->data.dkstats);
                 v->data.dkstats = NULL;
             }
             break;
         case PMIX_NET_STATS:
             if (NULL != v->data.netstats) {
                 pmix_bfrops_base_tma_net_stats_free(v->data.netstats, 1, tma);
-                pmix_tma_free(tma, v->data.netstats);
                 v->data.netstats = NULL;
             }
             break;
         case PMIX_NODE_STATS:
             if (NULL != v->data.ndstats) {
                 pmix_bfrops_base_tma_node_stats_free(v->data.ndstats, 1, tma);
-                pmix_tma_free(tma, v->data.ndstats);
                 v->data.ndstats = NULL;
             }
             break;
