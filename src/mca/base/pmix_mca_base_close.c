@@ -15,6 +15,7 @@
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -49,9 +50,15 @@ int pmix_mca_base_close(void)
         /* release the default paths */
         if (NULL != pmix_mca_base_system_default_path) {
             free(pmix_mca_base_system_default_path);
+            pmix_mca_base_system_default_path = NULL;
         }
         if (NULL != pmix_mca_base_user_default_path) {
             free(pmix_mca_base_user_default_path);
+            pmix_mca_base_user_default_path = NULL;
+        }
+        if (NULL != pmix_mca_base_component_path) {
+            free(pmix_mca_base_component_path);
+            pmix_mca_base_component_path = NULL;
         }
 
         /* Close down the component repository */
