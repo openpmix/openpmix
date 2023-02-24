@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2022      Nanook Consulting  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -494,8 +494,7 @@ void PMIx_Proc_construct(pmix_proc_t *p)
 
 void PMIx_Proc_destruct(pmix_proc_t *p)
 {
-    // TODO(skg) Is this correct?
-    pmix_bfrops_base_tma_proc_construct(p, NULL);
+    pmix_bfrops_base_tma_proc_destruct(p, NULL);
 }
 
 pmix_proc_t* PMIx_Proc_create(size_t n)
