@@ -972,6 +972,7 @@ pmix_bfrops_base_tma_topology_free(
     for (size_t m = 0; m < n; m++) {
         pmix_bfrops_base_tma_topology_destruct(&t[m], tma);
     }
+    pmix_tma_free(tma, t);
 }
 
 static inline void
@@ -4026,8 +4027,7 @@ pmix_bfrops_base_tma_value_destruct(
             break;
         case PMIX_TOPO:
             if (NULL != v->data.topo) {
-                // TODO(skg)
-                pmix_hwloc_release_topology(v->data.topo, 1);
+                pmix_bfrops_base_tma_topology_free(v->data.topo, 1, tma);
             }
             break;
         case PMIX_PROC_CPUSET:
