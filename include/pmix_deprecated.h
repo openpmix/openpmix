@@ -5,6 +5,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -698,7 +699,6 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_TOPOLOGY_FREE(m, n) \
     PMIx_Topology_free(m, n)
 
-
 #define PMIX_COORD_CREATE(m, n, d)  \
     (m) = PMIx_Coord_create(d, n)
 
@@ -708,10 +708,10 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_COORD_DESTRUCT(m)  \
     PMIx_Coord_destruct(m)
 
+// free(m) is done inside PMIx_Coord_free().
 #define PMIX_COORD_FREE(m, n)   \
     do {                        \
         PMIx_Coord_free(m, n);  \
-        free((m));              \
         (m) = NULL;             \
     } while(0)
 
@@ -785,10 +785,10 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_ENVAR_CREATE(m, n) \
     (m) = PMIx_Envar_create(n)
 
+// free(m) is done inside PMIx_Envar_free().
 #define PMIX_ENVAR_FREE(m, n)   \
     do {                        \
         PMIx_Envar_free(m, n);  \
-        pmix_free(m);           \
         (m) = NULL;             \
     } while(0)
 
@@ -834,19 +834,17 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_PROC_DESTRUCT(m) \
     PMIx_Proc_destruct(m)
 
+// free(m) is done inside PMIx_Proc_free().
 #define PMIX_PROC_FREE(m, n)    \
     do {                        \
         PMIx_Proc_free(m, n);   \
-        if (NULL != (m)) {      \
-            pmix_free((m));     \
-            (m) = NULL;         \
-        }                       \
+        (m) = NULL;             \
     } while (0)
 
+// free(m) is done inside PMIx_Proc_free().
 #define PMIX_PROC_RELEASE(m)    \
 do {                            \
     PMIX_PROC_FREE(m, 1);       \
-    pmix_free(m);               \
     (m) = NULL;                 \
 } while(0)
 
@@ -1093,11 +1091,10 @@ do {                            \
 #define PMIX_DATA_ARRAY_CREATE(m, n, t) \
     (m) = PMIx_Data_array_create(n, t)
 
-// TODO(skg) Can we just call free in pmix_bfrops_base_tma_data_array_free?
+// free(m) is done inside PMIx_Coord_free().
 #define PMIX_DATA_ARRAY_FREE(m)     \
     do {                            \
         PMIx_Data_array_free(m);    \
-        pmix_free((m));             \
         (m) = NULL;                 \
     } while(0)
 

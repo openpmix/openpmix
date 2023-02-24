@@ -27,6 +27,9 @@
  * If tma is NULL, then the default heap manager is used.
  */
 
+// TODO(skg) pmix_bfrops_base_tma_info_free paths
+// need work on this side and prrte's.
+
 #ifndef PMIX_BFROP_BASE_TMA_H
 #define PMIX_BFROP_BASE_TMA_H
 
@@ -303,7 +306,7 @@ pmix_bfrops_base_tma_data_buffer_load(
 
     bo.bytes = bytes;
     bo.size = sz;
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     PMIx_Data_load(b, &bo);
 }
 
@@ -319,7 +322,7 @@ pmix_bfrops_base_tma_data_buffer_unload(
     pmix_byte_object_t bo;
     pmix_status_t r;
 
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     r = PMIx_Data_unload(b, &bo);
     if (PMIX_SUCCESS == r) {
         *bytes = bo.bytes;
@@ -346,7 +349,8 @@ pmix_bfrops_base_tma_proc_destruct(
     pmix_proc_t *p,
     pmix_tma_t *tma
 ) {
-    // TODO(skg) Is this correct?
+    // Destruct in this case is only setting data members
+    // to default values, so call proc_construct.
     pmix_bfrops_base_tma_proc_construct(p, tma);
 }
 
@@ -384,12 +388,11 @@ pmix_bfrops_base_tma_proc_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == p) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        // TODO(skg) Is this correct?
-        pmix_bfrops_base_tma_proc_destruct(&p[m], tma);
+    if (NULL != p) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_proc_destruct(&p[m], tma);
+        }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -547,7 +550,7 @@ pmix_bfrops_base_tma_value_load(
     pmix_tma_t *tma
 ) {
     PMIX_HIDE_UNUSED_PARAMS(tma);
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     pmix_bfrops_base_value_load(v, data, type);
     return PMIX_SUCCESS;
 }
@@ -710,15 +713,41 @@ pmix_bfrops_base_tma_coord_destruct(
     pmix_coord_t *m,
     pmix_tma_t *tma
 ) {
-    if (NULL == m) {
-        return;
+    if (NULL != m) {
+        m->view = PMIX_COORD_VIEW_UNDEF;
+        if (NULL != m->coord) {
+            pmix_tma_free(tma, m->coord);
+            m->coord = NULL;
+            m->dims = 0;
+        }
+    }
+}
+
+static inline pmix_coord_t *
+pmix_bfrops_base_tma_coord_create(
+    size_t dims,
+    size_t number,
+    pmix_tma_t *tma
+) {
+    if (0 == number) {
+        return NULL;
+    }
+    pmix_coord_t *m = (pmix_coord_t *)pmix_tma_malloc(tma, number * sizeof(pmix_coord_t));
+    if (PMIX_UNLIKELY(NULL == m)) {
+        return NULL;
     }
     m->view = PMIX_COORD_VIEW_UNDEF;
-    if (NULL != m->coord) {
-        pmix_tma_free(tma, m->coord);
+    m->dims = dims;
+    if (0 == dims) {
         m->coord = NULL;
-        m->dims = 0;
     }
+    else {
+        m->coord = (uint32_t *)pmix_tma_malloc(tma, dims * sizeof(uint32_t));
+        if (PMIX_LIKELY(NULL != m->coord)) {
+            memset(m->coord, 0, dims * sizeof(uint32_t));
+        }
+    }
+    return m;
 }
 
 static inline void
@@ -727,12 +756,11 @@ pmix_bfrops_base_tma_coord_free(
     size_t number,
     pmix_tma_t *tma
 ) {
-    if (NULL == m) {
-        return;
-    }
-    for (size_t n = 0; n < number; n++) {
-        // TODO(skg) Done differently in pmix_bfrops_base_tma_copy_coord().
-        pmix_bfrops_base_tma_coord_destruct(&m[n], tma);
+    if (NULL != m) {
+        for (size_t n = 0; n < number; n++) {
+            pmix_bfrops_base_tma_coord_destruct(&m[n], tma);
+        }
+        pmix_tma_free(tma, m);
     }
 }
 
@@ -887,6 +915,7 @@ pmix_bfrops_base_tma_copy_coord(
     if (PMIX_UNLIKELY(NULL == d)) {
         return PMIX_ERR_NOMEM;
     }
+
     pmix_bfrops_base_tma_coord_construct(d, tma);
     pmix_status_t rc = pmix_bfrops_base_tma_fill_coord(d, src, tma);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -915,7 +944,7 @@ pmix_bfrops_base_tma_topology_destruct(
     pmix_tma_t *tma
 ) {
     PMIX_HIDE_UNUSED_PARAMS(tma);
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     pmix_hwloc_destruct_topology(t);
 }
 
@@ -949,7 +978,7 @@ pmix_bfrops_base_tma_copy_topology(
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     pmix_status_t rc = pmix_hwloc_copy_topology(dst, src);
     if (PMIX_SUCCESS == rc) {
         *dest = dst;
@@ -966,13 +995,12 @@ pmix_bfrops_base_tma_topology_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == t) {
-        return;
+    if (NULL != t) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_topology_destruct(&t[m], tma);
+        }
+        pmix_tma_free(tma, t);
     }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_topology_destruct(&t[m], tma);
-    }
-    pmix_tma_free(tma, t);
 }
 
 static inline void
@@ -991,7 +1019,7 @@ pmix_bfrops_base_tma_cpuset_destruct(
     pmix_tma_t *tma
 ) {
     PMIX_HIDE_UNUSED_PARAMS(tma);
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     pmix_hwloc_destruct_cpuset(c);
 }
 
@@ -1001,11 +1029,11 @@ pmix_bfrops_base_tma_cpuset_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == c) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_cpuset_destruct(&c[m], tma);
+    if (NULL != c) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_cpuset_destruct(&c[m], tma);
+        }
+        pmix_tma_free(tma, c);
     }
 }
 
@@ -1039,7 +1067,7 @@ pmix_bfrops_base_tma_copy_cpuset(
     if (PMIX_UNLIKELY(NULL == dst)) {
         return PMIX_ERR_NOMEM;
     }
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     pmix_status_t rc = pmix_hwloc_copy_cpuset(dst, src);
     if (PMIX_SUCCESS == rc) {
         *dest = dst;
@@ -1075,33 +1103,6 @@ pmix_bfrops_base_tma_geometry_create(
         }
     }
     return g;
-}
-
-static inline pmix_coord_t *
-pmix_bfrops_base_tma_coord_create(
-    size_t dims,
-    size_t number,
-    pmix_tma_t *tma
-) {
-    if (0 == number) {
-        return NULL;
-    }
-    pmix_coord_t *m = (pmix_coord_t *)pmix_tma_malloc(tma, number * sizeof(pmix_coord_t));
-    if (PMIX_UNLIKELY(NULL == m)) {
-        return NULL;
-    }
-    m->view = PMIX_COORD_VIEW_UNDEF;
-    m->dims = dims;
-    if (0 == dims) {
-        m->coord = NULL;
-    }
-    else {
-        m->coord = (uint32_t *)pmix_tma_malloc(tma, dims * sizeof(uint32_t));
-        if (PMIX_LIKELY(NULL != m->coord)) {
-            memset(m->coord, 0, dims * sizeof(uint32_t));
-        }
-    }
-    return m;
 }
 
 static inline void
@@ -1209,11 +1210,11 @@ pmix_bfrops_base_tma_device_distance_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == d) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_device_distance_destruct(&d[m], tma);
+    if (NULL != d) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_device_distance_destruct(&d[m], tma);
+        }
+        pmix_tma_free(tma, d);
     }
 }
 
@@ -2213,7 +2214,7 @@ pmix_bfrops_base_tma_copy_dbuf(
         return PMIX_ERR_NOMEM;
     }
     *dest = p;
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     return PMIx_Data_copy_payload(p, src);
 }
 
@@ -2239,7 +2240,7 @@ pmix_bfrops_base_tma_value_unload(
     pmix_tma_t *tma
 ) {
     PMIX_HIDE_UNUSED_PARAMS(tma);
-    // TODO(skg)
+    // TODO(skg) Add TMA support when necessary.
     return pmix_bfrops_base_value_unload(kv, data, sz);
 }
 
@@ -2315,11 +2316,11 @@ pmix_bfrops_base_tma_envar_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == e) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_envar_destruct(&e[m], tma);
+    if (NULL != e) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_envar_destruct(&e[m], tma);
+        }
+        pmix_tma_free(tma, e);
     }
 }
 
@@ -3236,10 +3237,10 @@ pmix_bfrops_base_tma_copy_darray(
         pmix_cpuset_t *const pcpuset = (pmix_cpuset_t *)p->array;
         pmix_cpuset_t *const scpuset = (pmix_cpuset_t *)src->array;
         for (size_t n = 0; n < src->size; n++) {
-            // TODO(skg)
+            // TODO(skg) Add TMA support when necessary.
             rc = pmix_hwloc_copy_cpuset(&pcpuset[n], &scpuset[n]);
             if (PMIX_SUCCESS != rc) {
-                // TODO(skg)
+                // TODO(skg) Add TMA support when necessary.
                 pmix_hwloc_release_cpuset(pcpuset, src->size);
                 pmix_tma_free(tma, p->array);
                 break;
@@ -3712,22 +3713,20 @@ pmix_bfrops_base_tma_data_array_destruct(
             break;
         case PMIX_ENVAR:
             pmix_bfrops_base_tma_envar_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_COORD:
             pmix_bfrops_base_tma_coord_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_REGATTR:
             pmix_bfrops_base_tma_regattr_free(d->array, d->size, tma);
             pmix_tma_free(tma, d->array);
             break;
         case PMIX_PROC_CPUSET:
-            // TODO(skg)
+            // TODO(skg) Add TMA support when necessary.
             pmix_hwloc_release_cpuset(d->array, d->size);
             break;
         case PMIX_TOPO:
-            // TODO(skg)
+            // TODO(skg) Add TMA support when necessary.
             pmix_hwloc_release_topology(d->array, d->size);
             break;
         case PMIX_GEOMETRY:
@@ -3743,7 +3742,7 @@ pmix_bfrops_base_tma_data_array_destruct(
             pmix_byte_object_t *const bo = (pmix_byte_object_t *)d->array;
             for (size_t n = 0; n < d->size; n++) {
                 if (NULL != bo[n].bytes) {
-                    // TODO(skg)
+                    // TODO(skg) Add TMA support when necessary.
                     pmix_preg.release(bo[n].bytes);
                 }
             }
@@ -3792,6 +3791,7 @@ pmix_bfrops_base_tma_data_array_free(
 ) {
     if (NULL != p) {
         pmix_bfrops_base_tma_data_array_destruct(p, tma);
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -4032,7 +4032,7 @@ pmix_bfrops_base_tma_value_destruct(
             break;
         case PMIX_PROC_CPUSET:
             if (NULL != v->data.cpuset) {
-                // TODO(skg)
+                // TODO(skg) Add TMA support when necessary.
                 pmix_hwloc_release_cpuset(v->data.cpuset, 1);
             }
             break;
@@ -4058,7 +4058,7 @@ pmix_bfrops_base_tma_value_destruct(
             break;
         case PMIX_REGEX:
             if (NULL != v->data.bo.bytes) {
-                // TODO(skg)
+                // TODO(skg) Add TMA support when necessary.
                 pmix_preg.release(v->data.bo.bytes);
             }
             break;
