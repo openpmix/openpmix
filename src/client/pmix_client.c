@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1070,6 +1071,9 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     /* flush anything that is still trying to be written out */
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stderr);
+
+    PMIX_DESTRUCT(&pmix_client_globals.iof_stdout);
+    PMIX_DESTRUCT(&pmix_client_globals.iof_stderr);
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (i = 0; i < pmix_client_globals.peers.size; i++) {
