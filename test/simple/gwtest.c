@@ -17,7 +17,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -530,6 +530,7 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
     pmix_info_t *info;
     pmix_rank_t rank;
     uint16_t lr;
+    pmix_nspace_t ns;
 
     gethostname(hostname, sizeof(hostname));
     x->ninfo = 7 + nprocs;
@@ -576,7 +577,8 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
         x->info[7 + n].value.data.darray = darray;
     }
 
-    PMIx_server_register_nspace(nspace, nprocs, x->info, x->ninfo, cbfunc, x);
+    PMIX_LOAD_NSPACE(ns, nspace);
+    PMIx_server_register_nspace(ns, nprocs, x->info, x->ninfo, cbfunc, x);
 }
 
 static void errhandler(size_t evhdlr_registration_id, pmix_status_t status,
