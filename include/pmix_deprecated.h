@@ -544,12 +544,11 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_VALUE_CREATE(m, n) \
     (m) = PMIx_Value_create(n)
 
-// free(m) is NOT called inside PMIx_Value_destruct(), so do it here.
-#define PMIX_VALUE_RELEASE(m)       \
-    do {                            \
-        PMIx_Value_destruct((m));   \
-        pmix_free((m));             \
-        (m) = NULL;                 \
+// free(m) is called inside PMIx_Value_free().
+#define PMIX_VALUE_RELEASE(m)  \
+    do {                       \
+        PMIx_Value_free(m, 1); \
+        (m) = NULL;            \
     } while (0)
 
 // free(m) is called inside PMIx_Value_free().
@@ -831,12 +830,11 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_DATA_BUFFER_CREATE(m)  \
     (m) = PMIx_Data_buffer_create()
 
-// free(m) is NOT called inside PMIx_Data_buffer_release(), so do it here.
-#define PMIX_DATA_BUFFER_RELEASE(m)     \
-    do {                                \
-        PMIx_Data_buffer_release(m);    \
-        pmix_free((m));                 \
-        (m) = NULL;                     \
+// free(m) is called inside PMIx_Data_buffer_release().
+#define PMIX_DATA_BUFFER_RELEASE(m)  \
+    do {                             \
+        PMIx_Data_buffer_release(m); \
+        (m) = NULL;                  \
     } while (0)
 
 #define PMIX_DATA_BUFFER_CONSTRUCT(m)       \
@@ -871,10 +869,9 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 // free(m) is called inside PMIx_Proc_free().
 #define PMIX_PROC_RELEASE(m)    \
 do {                            \
-    PMIX_PROC_FREE(m, 1);       \
+    PMIx_Proc_free(m, 1);       \
     (m) = NULL;                 \
 } while(0)
-
 
 #define PMIX_PROC_LOAD(m, n, r) \
     PMIx_Proc_load(m, n, r)
@@ -895,18 +892,17 @@ do {                            \
 #define PMIX_PROC_INFO_DESTRUCT(m) \
     PMIx_Proc_info_destruct(m)
 
-// TODO(skg) FIXME
-#define PMIX_PROC_INFO_FREE(m, n)   \
-    do {                            \
-        PMIx_Proc_info_free(m, n);  \
-        pmix_free((m));             \
+// free(m) is called inside PMIx_Proc_info_free().
+#define PMIX_PROC_INFO_FREE(m, n)  \
+    do {                           \
+        PMIx_Proc_info_free(m, n); \
+        (m) = NULL;                \
     } while (0)
 
-// TODO(skg) FIXME
+// free(m) is called inside PMIx_Proc_info_free().
 #define PMIX_PROC_INFO_RELEASE(m)   \
 do {                                \
-    PMIX_PROC_INFO_FREE((m), 1)     \
-    pmix_free(m);                   \
+    PMIx_Proc_info_free(m, 1)       \
     (m) = NULL;                     \
 } while(0)
 
@@ -929,7 +925,7 @@ do {                                \
 // free(m) is called inside PMIx_Proc_stats_free().
 #define PMIX_PROC_STATS_RELEASE(m)  \
 do {                                \
-    PMIX_PROC_STATS_FREE((m), 1);   \
+    PMIx_Proc_stats_free(m, 1);     \
     (m) = NULL;                     \
 } while(0)
 
@@ -950,12 +946,11 @@ do {                                \
 } while(0)
 
 // free(m) is called inside PMIx_Disk_stats_free().
-#define PMIX_DISK_STATS_RELEASE(m)  \
-do {                                \
-    PMIX_DISK_STATS_FREE((m), 1);   \
-    (m) = NULL;                     \
+#define PMIX_DISK_STATS_RELEASE(m) \
+do {                               \
+    PMIx_Disk_stats_free(m, 1);    \
+    (m) = NULL;                    \
 } while(0)
-
 
 #define PMIX_NET_STATS_CONSTRUCT(m) \
     PMIx_Net_stats_construct(m)
@@ -975,7 +970,7 @@ do {                               \
 
 #define PMIX_NET_STATS_RELEASE(m)  \
 do {                               \
-    PMIx_Net_stats_free((m), 1);   \
+    PMIx_Net_stats_free(m, 1);     \
     (m) = NULL;                    \
 } while(0)
 
@@ -998,7 +993,7 @@ do {                                \
 // free(m) is called inside PMIx_Node_stats_free().
 #define PMIX_NODE_STATS_RELEASE(m)  \
 do {                                \
-    PMIx_Node_stats_free((m), 1);   \
+    PMIx_Node_stats_free(m, 1);     \
     (m) = NULL;                     \
 } while(0)
 
@@ -1021,7 +1016,7 @@ do {                            \
 // free(m) is called inside PMIx_Pdata_free().
 #define PMIX_PDATA_RELEASE(m)   \
 do {                            \
-    PMIx_Pdata_free((m), 1);    \
+    PMIx_Pdata_free(m, 1);      \
     (m) = NULL;                 \
 } while(0)
 
@@ -1037,11 +1032,10 @@ do {                            \
 #define PMIX_APP_INFO_CREATE(m, n) \
     PMIx_App_info_create(m, n)
 
-// free(m) is NOT called inside PMIx_App_destruct(), so do it here.
+// free(m) is called inside PMIx_App_free().
 #define PMIX_APP_RELEASE(m)     \
     do {                        \
-        PMIx_App_destruct((m)); \
-        pmix_free((m));         \
+        PMIx_App_free(m, 1);    \
         (m) = NULL;             \
     } while (0)
 
