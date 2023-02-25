@@ -17,8 +17,8 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -617,6 +617,7 @@ static void set_namespace(int nprocs, char *nspace, pmix_op_cbfunc_t cbfunc, myx
     myxfer_t cd, lock;
     pmix_status_t rc;
     char tmp[50], **agg = NULL;
+    pmix_nspace_t ns;
 
     /* everything on one node */
     PMIx_generate_regex(pmix_globals.hostname, &regex);
@@ -748,7 +749,8 @@ static void set_namespace(int nprocs, char *nspace, pmix_op_cbfunc_t cbfunc, myx
         ++n;
     }
 
-    PMIx_server_register_nspace(nspace, nprocs, x->info, x->ninfo, cbfunc, x);
+    PMIX_LOAD_NSPACE(ns, nspace);
+    PMIx_server_register_nspace(ns, nprocs, x->info, x->ninfo, cbfunc, x);
 }
 
 static void errhandler(size_t evhdlr_registration_id, pmix_status_t status,
