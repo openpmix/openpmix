@@ -459,11 +459,11 @@ pmix_bfrops_base_tma_proc_info_free(
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == p) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_proc_info_destruct(&p[m], tma);
+    if (NULL != p) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_proc_info_destruct(&p[m], tma);
+        }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -2200,6 +2200,7 @@ pmix_bfrops_base_tma_data_buffer_release(
 ) {
     if (NULL != b) {
         pmix_bfrops_base_tma_data_buffer_destruct(b, tma);
+        pmix_tma_free(tma, b);
     }
 }
 
@@ -3711,7 +3712,6 @@ pmix_bfrops_base_tma_data_array_destruct(
         }
         case PMIX_PROC_INFO:
             pmix_bfrops_base_tma_proc_info_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_DATA_ARRAY:
             pmix_bfrops_base_tma_data_array_destruct(d->array, tma);
