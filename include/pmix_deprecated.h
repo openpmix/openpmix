@@ -587,7 +587,6 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
     (r) = PMIx_Value_xfer((v), (s))
 
-
 #define PMIX_INFO_CONSTRUCT(m) \
     PMIx_Info_construct(m)
 
@@ -597,26 +596,28 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_INFO_CREATE(m, n) \
     (m) = PMIx_Info_create(n)
 
-// TODO(skg) FIXME
-#define PMIX_INFO_FREE(m, n)    \
-    do {                        \
-        PMIx_Info_free(m, n);   \
-        pmix_free((m));         \
-        (m) = NULL;             \
+// free(m) is called inside PMIx_Info_free().
+#define PMIX_INFO_FREE(m, n)  \
+    do {                      \
+        PMIx_Info_free(m, n); \
+        (m) = NULL;           \
     } while (0)
 
 #define PMIX_INFO_REQUIRED(m) \
     PMIx_Info_required(m)
+
 #define PMIX_INFO_OPTIONAL(m) \
     PMIx_Info_optional(m)
 
 #define PMIX_INFO_IS_REQUIRED(m) \
     PMIx_Info_is_required(m)
+
 #define PMIX_INFO_IS_OPTIONAL(m) \
     PMIx_Info_is_optional(m)
 
 #define PMIX_INFO_PROCESSED(m)  \
     PMIx_Info_processed(m)
+
 #define PMIX_INFO_WAS_PROCESSED(m)  \
     PMIx_Info_was_processed(m)
 
@@ -627,11 +628,13 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 
 #define PMIX_INFO_SET_QUALIFIER(i)   \
     PMIx_Info_qualifier(i)
+
 #define PMIX_INFO_IS_QUALIFIER(i)    \
     PMIx_Info_is_qualifier(i)
 
 #define PMIX_INFO_SET_PERSISTENT(ii) \
     PMIx_Info_persistent(ii)
+
 #define PMIX_INFO_IS_PERSISTENT(ii)  \
     PMIx_Info_is_persistent(ii)
 
@@ -640,7 +643,6 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 
 #define PMIX_INFO_XFER(d, s)    \
     (void) PMIx_Info_xfer(d, s)
-
 
 #define PMIX_PDATA_LOAD(m, p, k, v, t)                                      \
     do {                                                                    \
@@ -826,7 +828,6 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_ENVAR_LOAD(m, e, v, s) \
     PMIx_Envar_load(m, e, v, s)
 
-
 #define PMIX_DATA_BUFFER_CREATE(m)  \
     (m) = PMIx_Data_buffer_create()
 
@@ -848,7 +849,6 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 
 #define PMIX_DATA_BUFFER_UNLOAD(b, d, s)    \
     PMIx_Data_buffer_unload(b, &(d), &(s))
-
 
 #define PMIX_PROC_CREATE(m, n) \
     (m) = PMIx_Proc_create(n)
@@ -881,7 +881,6 @@ do {                            \
 
 #define PMIX_MULTICLUSTER_NSPACE_PARSE(t, c, n) \
     PMIx_Multicluster_nspace_parse(t, c, n)
-
 
 #define PMIX_PROC_INFO_CREATE(m, n) \
     (m) = PMIx_Proc_info_create(n)

@@ -551,7 +551,6 @@ pmix_gds_shmem_store_qualified(
     }
 out:
     pmix_bfrops_base_tma_info_free(quals, nquals, tma);
-    pmix_tma_free(tma, quals);
     return rc;
 }
 
