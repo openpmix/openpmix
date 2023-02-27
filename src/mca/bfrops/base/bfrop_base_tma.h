@@ -621,18 +621,17 @@ pmix_bfrops_base_tma_info_destruct(
     }
 }
 
-// TODO(skg) FIXME.
 static inline void
 pmix_bfrops_base_tma_info_free(
     pmix_info_t *p,
     size_t n,
     pmix_tma_t *tma
 ) {
-    if (NULL == p) {
-        return;
-    }
-    for (size_t m = 0; m < n; m++) {
-        pmix_bfrops_base_tma_info_destruct(&p[m], tma);
+    if (NULL != p) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_info_destruct(&p[m], tma);
+        }
+        pmix_tma_free(tma, p);
     }
 }
 
@@ -1747,7 +1746,6 @@ pmix_bfrops_base_tma_query_destruct(
     }
     if (NULL != p->qualifiers) {
         pmix_bfrops_base_tma_info_free(p->qualifiers, p->nqual, tma);
-        pmix_tma_free(tma, p->qualifiers);
         p->qualifiers = NULL;
         p->nqual = 0;
     }
@@ -3665,14 +3663,12 @@ pmix_bfrops_base_tma_data_array_destruct(
         }
         case PMIX_VALUE:
             pmix_bfrops_base_tma_value_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_APP:
             pmix_bfrops_base_tma_app_free(d->array, d->size, tma);
             break;
         case PMIX_INFO:
             pmix_bfrops_base_tma_info_free(d->array, d->size, tma);
-            pmix_tma_free(tma, d->array);
             break;
         case PMIX_PDATA:
             pmix_bfrops_base_tma_pdata_free(d->array, d->size, tma);
@@ -3757,7 +3753,6 @@ pmix_bfrops_base_tma_data_array_destruct(
             break;
         }
         case PMIX_DATA_BUFFER: {
-            // TODO(skg) This needs work. Can maybe just call free?
             pmix_data_buffer_t *const db = (pmix_data_buffer_t *)d->array;
             for (size_t n = 0; n < d->size; n++) {
                 pmix_bfrops_base_tma_data_buffer_destruct(&db[n], tma);
