@@ -126,7 +126,8 @@ pmix_server_module_t pmix_host_server = {
     .push_stdin = NULL,
     .group = NULL,
     .fabric = NULL,
-    .client_connected2 = NULL
+    .client_connected2 = NULL,
+    .session_control = NULL
 };
 
 pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
@@ -2899,7 +2900,10 @@ pmix_status_t pmix_server_alloc(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_proc_t proc;
     pmix_alloc_directive_t directive;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "recvd query from client");
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "%s recvd allocate request from client %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIX_PEER_PRINT(peer));
 
     if (NULL == pmix_host_server.allocate) {
         return PMIX_ERR_NOT_SUPPORTED;
