@@ -1021,6 +1021,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         pmix_config_prefix[src/tools/pquery/Makefile]
         pmix_config_prefix[src/tools/wrapper/Makefile]
         pmix_config_prefix[src/tools/wrapper/pmixcc-wrapper-data.txt]
+        pmix_config_prefix[src/tools/palloc/Makefile]
         )
 
     # Success

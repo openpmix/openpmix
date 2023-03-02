@@ -70,6 +70,7 @@ bindings/python/pmix_constants.pxi
 bindings/python/tests/__pycache__/
 bindings/python/dist/
 bindings/python/pypmix.egg-info/
+bindings/python/tests/python/__pycache__/
 
 examples/alloc
 examples/client
@@ -115,7 +116,10 @@ src/mca/pinstalldirs/config/pinstall_dirs.h
 src/mca/pdl/base/static-components.h
 src/mca/pinstalldirs/base/static-components.h
 
+src/tools/palloc/palloc
 src/tools/pattrs/pattrs
+src/tools/pcancel/pcancel
+src/tools/pctrl/pctrl
 src/tools/pevent/pevent
 src/tools/pmix_info/pmix_info
 src/tools/plookup/plookup
