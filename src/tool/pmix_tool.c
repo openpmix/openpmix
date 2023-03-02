@@ -20,6 +20,7 @@
 
 #include "src/include/pmix_socket_errno.h"
 
+#include "include/pmix_server.h"
 #include "include/pmix_tool.h"
 #include "src/client/pmix_client_ops.h"
 
@@ -808,7 +809,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
     /* if we are acting as a server, then setup the global recv */
-    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         /* setup the wildcard recv for inbound messages from clients */
         rcv = PMIX_NEW(pmix_ptl_posted_recv_t);
         rcv->tag = UINT32_MAX;
@@ -919,7 +921,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
      * job info - we do this as a non-blocking
      * transaction because some systems cannot handle very large
      * blocking operations and error out if we try them. */
-    if (!do_not_connect) {
+    if (!do_not_connect && !PMIX_PEER_IS_SCHEDULER(pmix_client_globals.myserver)) {
         req = PMIX_NEW(pmix_buffer_t);
         cmd = PMIX_REQ_CMD;
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, req, &cmd, 1, PMIX_COMMAND);
@@ -970,7 +972,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_show_help_enabled = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    /* if we are acting as a server, then start listening */
+    /* if we are acting as a server, then start listening
+     * and register the server receive */
     if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
         PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         /* setup the fork/exec framework */
@@ -1371,6 +1374,12 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
         PMIX_RELEASE(kptr); // maintain accounting
     }
 
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t PMIx_tool_set_server_module(pmix_server_module_t *module)
+{
+    pmix_host_server = *module;
     return PMIX_SUCCESS;
 }
 
