@@ -15,7 +15,7 @@
  * Copyright (c) 2016-2017 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -118,9 +118,32 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_NUM_CONNECT_RETRIES    "num-connect-retries"       // required
 #define PMIX_CLI_PID                    "pid"                       // required
 #define PMIX_CLI_NAMESPACE              "namespace"                 // required
+#define PMIX_CLI_NSPACE                 "nspace"                    // required
 #define PMIX_CLI_URI                    "uri"                       // required
 #define PMIX_CLI_TIMEOUT                "timeout"                   // required
 #define PMIX_CLI_TMPDIR                 "tmpdir"                    // required
+
+// Allocation request options
+#define PMIX_CLI_REQ_ID                 "request-id"                // required
+#define PMIX_CLI_QUEUE                  "queue"                     // required, short is 'q'
+#define PMIX_CLI_RESOURCES              "resources"                 // required
+#define PMIX_CLI_NODES                  "nodes"                     // required, short is 'N'
+#define PMIX_CLI_IMAGE                  "image"                     // required, short is 'i'
+#define PMIX_CLI_EXCLUDE                "exclude"                   // required, short is 'x'
+#define PMIX_CLI_WAIT_ALL_NODES         "wait-all-nodes"            // none
+#define PMIX_CLI_NODELIST               "nodelist"                  // required, short is 'w'
+#define PMIX_CLI_UID                    "uid"                       // required
+#define PMIX_CLI_GID                    "gid"                       // required
+#define PMIX_CLI_TIME                   "time"                      // required, short is 't'
+#define PMIX_CLI_SIGNAL                 "signal"                    // required
+#define PMIX_CLI_SHARE                  "share"                     // none
+#define PMIX_CLI_EXTEND                 "extend"                    // none
+#define PMIX_CLI_SHRINK                 "shrink"                    // none
+#define PMIX_CLI_NO_SHELL               "no-shell"                  // none
+#define PMIX_CLI_BEGIN                  "begin"                     // required
+#define PMIX_CLI_IMMEDIATE              "immediate"                 // optional, short is 'I'
+#define PMIX_CLI_DEPENDENCY             "dependency"                // required, short is 'd'
+#define PMIX_CLI_DO_NOT_WAIT            "do-not-wait"               // none
 
 
 typedef void (*pmix_cmd_line_store_fn_t)(const char *name, const char *option,
