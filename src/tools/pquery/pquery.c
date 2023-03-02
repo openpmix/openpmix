@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -81,7 +81,6 @@ static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
 
-    fprintf(stderr, "pquery: Query returned status %s\n", PMIx_Error_string(status));
     mq->status = status;
     /* save the returned info - the PMIx library "owns" it
      * and will release it and perform other cleanup actions
