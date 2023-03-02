@@ -809,6 +809,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //         the allocated resources in, for example, a call to PMIx_Spawn
 #define PMIX_ALLOC_NUM_NODES                "pmix.alloc.nnodes"     // (uint64_t) number of nodes
 #define PMIX_ALLOC_NODE_LIST                "pmix.alloc.nlist"      // (char*) regex of specific nodes
+#define PMIX_ALLOC_EXCLUDE                  "pmix.alloc.exclude"    // (char*) regex of nodes to exclude from scheduling consideration
 #define PMIX_ALLOC_NUM_CPUS                 "pmix.alloc.ncpus"      // (uint64_t) number of cpus
 #define PMIX_ALLOC_NUM_CPU_LIST             "pmix.alloc.ncpulist"   // (char*) regex of #cpus for each node
 #define PMIX_ALLOC_CPU_LIST                 "pmix.alloc.cpulist"    // (char*) regex of specific cpus indicating the cpus involved.
@@ -840,7 +841,9 @@ typedef uint32_t pmix_rank_t;
                                                                     //         especially if the "required" flag was not set in the request
 #define PMIX_ALLOC_BANDWIDTH                "pmix.alloc.bw"         // (float) Mbits/sec
 #define PMIX_ALLOC_FABRIC_QOS               "pmix.alloc.netqos"     // (char*) quality of service level
-#define PMIX_ALLOC_TIME                     "pmix.alloc.time"       // (uint32_t) time in seconds that the allocation shall remain valid
+#define PMIX_ALLOC_TIME                     "pmix.alloc.time"       // (char*) time that the allocation shall remain valid. Time is specified in
+                                                                    //         usual time format of months:days:hours:minutes:seconds, scanning
+                                                                    //         from right to left (i.e., a value of "2" equates to 2 seconds)
 #define PMIX_ALLOC_FABRIC_TYPE              "pmix.alloc.nettype"    // (char*) type of desired transport (e.g., tcp, udp)
 #define PMIX_ALLOC_FABRIC_PLANE             "pmix.alloc.netplane"   // (char*) id string for the NIC (aka plane) to be used for this allocation
                                                                     //         (e.g., CIDR for Ethernet)
@@ -850,6 +853,28 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_QUEUE                    "pmix.alloc.queue"      // (char*) name of queue being referenced
 #define PMIX_ALLOC_PREEMPTIBLE              "pmix.alloc.preempt"    // (bool) by default, all jobs in the resulting allocation are to be
                                                                     //        considered preemptible (overridable at per-job level)
+#define PMIX_ALLOC_LEND                     "pmix.alloc.lend"       // (char*) estimated time before the lent resources shall be available for
+                                                                    //         return. Time is specified in usual time format of
+                                                                    //         months:days:hours:minutes:seconds, scanning from right to left
+                                                                    //         (i.e., a value of "2" equates to 2 seconds)
+#define PMIX_ALLOC_IMAGE                    "pmix.alloc.image"      // (char*) name of the image that the requested nodes are to have on them
+#define PMIX_ALLOC_WAIT_ALL_NODES           "pmix.alloc.waitall"    // (bool) whether or not to wait for all nodes to be scheduled before
+                                                                    //        starting to initialize and release nodes for use
+#define PMIX_ALLOC_SHARE                    "pmix.alloc.share"      // (bool) Allow non-exclusive use of specified resources
+#define PMIX_ALLOC_NOSHELL                  "pmix.alloc.noshell"    // (bool) Immediately exit after allocating resources, without running a command.
+#define PMIX_ALLOC_DEPENDENCY               "pmix.alloc.depend"     // (char*) Defer the start of allocation until the specified dependencies have
+                                                                    //         successfully completed.
+#define PMIX_ALLOC_BEGIN                    "pmix.alloc.begin"      // (char*) Direct the scheduler to defer allocation until the specified time. Time
+                                                                    //         may be of the form HH:MM:SS to schedule the session to start at a specific
+                                                                    //         time of day (seconds are optional). If that time is already past, the
+                                                                    //         next day is assumed. You may also specify "midnight" or "noon", and you
+                                                                    //         can have a time-of-day suffixed with AM or PM for running in the morning
+                                                                    //         or the evening. You can also say what day the session should start by
+                                                                    //         specifying a date of the form MMDDYY or MM/DD/YY YYYY-MM-DD. Combine date
+                                                                    //         and time using the usual format YYYY-MM-DD[THH:MM[:SS]]. You can also give
+                                                                    //         times like "now + count" time-units, where the time-units can be "seconds"
+                                                                    //         (default), "minutes", "hours", days, or weeks, or you can ask that the
+                                                                    //         allocation be made "today" or "tomorrow".
 
 
 /* job control attributes */
@@ -1579,9 +1604,8 @@ typedef uint8_t pmix_alloc_directive_t;
                                     // disjoint (i.e., not connected in a job sense) from the requesting allocation
 #define PMIX_ALLOC_EXTEND       2   // extend the existing allocation, either in time or as additional resources
 #define PMIX_ALLOC_RELEASE      3   // release part or all of the existing allocation. Attributes in the accompanying
-                                    // pmix\_info\_t array may be used to specify permanent release of the
-                                    // identified resources, or "lending" of those resources for some period
-                                    // of time.
+                                    // pmix\_info\_t array may be used to specify "lending" of those resources
+                                    // for some period of time.
 #define PMIX_ALLOC_REAQUIRE     4   // reacquire resources that were previously "lent" back to the scheduler
 #define PMIX_ALLOC_REQ_CANCEL   5   // Cancel the indicated allocation request
 

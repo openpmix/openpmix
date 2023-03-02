@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -876,26 +876,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_resources(pmix_info_t info[], siz
 PMIX_EXPORT pmix_status_t PMIx_server_deregister_resources(pmix_info_t info[], size_t ninfo,
                                                            pmix_op_cbfunc_t cbfunc,
                                                            void *cbdata);
-
-/* Request a session control action. The sessionID identifies the session
- * to which the specified control action is to be applied. A UINT32_MAX
- * value can be used to indicate all sessions under the caller's control.
- *
- * The directives are provided as pmix_info_t structs in the directives
- * array. The callback function provides a status to indicate whether or
- * not the request was granted, and to provide some information as to the
- * reason for any denial in the pmix_info_cbfunc_t' array of pmix_info_t
- * structures. If non-NULL, then the specified release_fn must be called
- * when the callback function completes - this will be used to release any
- * provided pmix_info_t array.
-
- * Passing NULL as the cbfunc to this call indicates that it shall be treated
- * as a blocking operation, with the return status indicative of the overall
- * operation's completion.
- */
-PMIX_EXPORT pmix_status_t PMIx_Session_control(uint32_t sessionID,
-                                               const pmix_info_t directives[], size_t ndirs,
-                                               pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
