@@ -4,6 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
+ * Copyright (c) 2023      Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -61,6 +62,7 @@
 
 /* provide access to the rest of the client functions */
 #include <pmix.h>
+#include <pmix_server.h>
 
 #if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
@@ -89,6 +91,11 @@ extern "C" {
  */
 PMIX_EXPORT pmix_status_t PMIx_tool_init(pmix_proc_t *proc,
                                          pmix_info_t info[], size_t ninfo);
+
+/* Provide an entry point by which a tool can provide a server function
+ * pointer module.
+ */
+PMIX_EXPORT pmix_status_t PMIx_tool_set_server_module(pmix_server_module_t *module);
 
 /* Finalize the PMIx tool library, closing the connection to the local server.
  * An error code will be returned if, for some reason, the connection
