@@ -645,6 +645,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t 
             cn->uri = NULL;
             peer->protocol = PMIX_PROTOCOL_V2;
             PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
+            PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SCHEDULER);
             PMIX_LIST_DESTRUCT(&connections);
             goto complete;
         }
