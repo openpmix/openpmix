@@ -1648,6 +1648,51 @@ cdef class PMIxServer(PMIxClient):
         self.fabric_set = 0
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
         self.myproc.rank = PMIX_RANK_UNDEF
+
+    # Initialize the PMIx server library
+    #
+    # @dicts [INPUT]
+    #          - a list of dictionaries, where each
+    #            dictionary has a key, value, and val_type
+    #            defined as such:
+    #            [{key:y, value:val, val_type:ty}, … ]
+    #
+    # @map [INPUT]
+    #          - a dictionary of key-function pairs that map
+    #            server module callback functions to provided
+    #            implementations
+    def init(self, dicts:list, map:dict):
+        cdef pmix_info_t *info
+        cdef pmix_info_t **info_ptr
+        cdef size_t sz
+        global progressThread
+
+        # start the event handler progress thread
+        progressThread.start()
+
+        # setup server module
+        self.server_module_init()
+        if map is None or 0 == len(map):
+            print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
+            return PMIX_ERR_INIT
+        kvkeys = list(map.keys())
+        for key in kvkeys:
+            try:
+                setmodulefn(key, map[key])
+            except KeyError:
+                print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
+                return PMIX_ERR_INIT
+
+        # allocate and load pmix info structs from python list of dictionaries
+        info_ptr = &info
+        rc = pmix_alloc_info(info_ptr, &sz, dicts)
+        if sz > 0:
+            rc = PMIx_server_init(&self.myserver, info, sz)
+        else:
+            rc = PMIx_server_init(&self.myserver, NULL, 0)
+        return rc
+
+    def server_module_init(self):
         # v1.x interfaces
         self.myserver.client_connected2 = <pmix_server_client_connected2_fn_t>clientconnected
         self.myserver.client_finalized = <pmix_server_client_finalized_fn_t>clientfinalized
@@ -1681,48 +1726,6 @@ cdef class PMIxServer(PMIxClient):
         # v4.x interfaces
         self.myserver.group = <pmix_server_grp_fn_t>group
         self.myserver.fabric = <pmix_server_fabric_fn_t>fabric
-
-    # Initialize the PMIx server library
-    #
-    # @dicts [INPUT]
-    #          - a list of dictionaries, where each
-    #            dictionary has a key, value, and val_type
-    #            defined as such:
-    #            [{key:y, value:val, val_type:ty}, … ]
-    #
-    # @map [INPUT]
-    #          - a dictionary of key-function pairs that map
-    #            server module callback functions to provided
-    #            implementations
-    def init(self, dicts:list, map:dict):
-        cdef pmix_info_t *info
-        cdef pmix_info_t **info_ptr
-        cdef size_t sz
-        global progressThread
-
-        # start the event handler progress thread
-        progressThread.start()
-
-        # setup server module
-        if map is None or 0 == len(map):
-            print("SERVER REQUIRES AT LEAST ONE MODULE FUNCTION TO OPERATE")
-            return PMIX_ERR_INIT
-        kvkeys = list(map.keys())
-        for key in kvkeys:
-            try:
-                setmodulefn(key, map[key])
-            except KeyError:
-                print("SERVER MODULE FUNCTION ", key, " IS NOT RECOGNIZED")
-                return PMIX_ERR_INIT
-
-        # allocate and load pmix info structs from python list of dictionaries
-        info_ptr = &info
-        rc = pmix_alloc_info(info_ptr, &sz, dicts)
-        if sz > 0:
-            rc = PMIx_server_init(&self.myserver, info, sz)
-        else:
-            rc = PMIx_server_init(&self.myserver, NULL, 0)
-        return rc
 
     # Allow a tool to set server module callback functions
     # when it needs to also act as a server
@@ -2471,7 +2474,7 @@ cdef int spawn(const pmix_proc_t *proc,
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("spawn")
-        mycaddy.status = rc
+        mycaddy.status = PMIX_SUCCESS
         pmix_copy_nspace(mycaddy.nspace, nspace)
         mycaddy.spawn  = cbfunc
         mycaddy.cbdata = cbdata
@@ -2685,7 +2688,7 @@ cdef int query(pmix_proc_t *source,
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("query")
-        mycaddy.status = rc
+        mycaddy.status = PMIX_SUCCESS
         mycaddy.info = info
         mycaddy.ndata = nqueries
         mycaddy.query = cbfunc
@@ -2701,9 +2704,10 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
                         pmix_tool_connection_cbfunc_t cbfunc,
                         void *cbdata) with gil:
     keys = pmixservermodule.keys()
+    ret_proc = {'nspace': "UNDEF", 'rank': PMIX_RANK_UNDEF}
     if 'toolconnected' in keys:
         args = {}
-        ilist = {}
+        ilist = []
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
@@ -2711,14 +2715,6 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
     else:
         rc = PMIX_ERR_NOT_SUPPORTED
 
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. So we start
-    # a new thread on a timer that should execute a
-    # callback after the function returns
-    cdef pmix_proc_t *proc
-    proc = NULL
-    pmix_copy_nspace(proc[0].nspace, ret_proc['nspace'])
-    proc[0].rank = ret_proc['rank']
     # we cannot execute a callback function here as
     # that would cause PMIx to lockup. Likewise, the
     # Python function we called can't do it as it
@@ -2729,8 +2725,10 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("toolconnected")
-        mycaddy.status = rc
-        mycaddy.proc = proc
+        mycaddy.status = PMIX_SUCCESS
+        pmix_copy_nspace(mycaddy.source.nspace, ret_proc['nspace'])
+        mycaddy.source.rank = ret_proc['rank']
+        mycaddy.proc = &mycaddy.source
         mycaddy.toolconnected = cbfunc
         mycaddy.cbdata = cbdata
         cb = PyCapsule_New(mycaddy, NULL, NULL)
@@ -2956,7 +2954,7 @@ cdef int getcredential(const pmix_proc_t *proc,
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("getcredential")
-        mycaddy.status = status
+        mycaddy.status = PMIX_SUCCESS
         mycaddy.info = info
         mycaddy.ndata = ninfo
         mycaddy.cred = bo
@@ -3020,7 +3018,7 @@ cdef int validatecredential(const pmix_proc_t *proc,
     if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
         mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
         mycaddy.op = strdup("validationcredential")
-        mycaddy.status = status
+        mycaddy.status = PMIX_SUCCESS
         mycaddy.info = info
         mycaddy.ndata = ninfo
         mycaddy.validationcredential = cbfunc
@@ -3161,6 +3159,7 @@ cdef int fabric(const pmix_proc_t *requestor,
     return rc
 
 
+
 cdef class PMIxTool(PMIxServer):
     def __cinit__(self):
         memset(self.myproc.nspace, 0, sizeof(self.myproc.nspace))
@@ -3186,6 +3185,9 @@ cdef class PMIxTool(PMIxServer):
         # init myname
         myname = {'nspace':'UNASSIGNED', 'rank':PMIX_RANK_UNDEF}
 
+        # init server module in case the tool uses it
+        self.server_module_init()
+
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &sz, dicts)
@@ -3200,6 +3202,7 @@ cdef class PMIxTool(PMIxServer):
         if PMIX_SUCCESS == rc:
             # convert the returned name
             myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
+            rc = PMIx_tool_set_server_module(&self.myserver);
         return rc, myname
 
     # Finalize the tool library
