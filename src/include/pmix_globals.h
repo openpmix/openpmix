@@ -15,7 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -420,6 +420,7 @@ typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     pmix_lock_t lock;
+    bool host_called;
     pmix_status_t status;
     pmix_query_t *queries;
     size_t nqueries;
@@ -507,6 +508,7 @@ typedef struct {
     pmix_status_t status;
     pmix_status_t *codes;
     size_t ncodes;
+    uint32_t sessionid;
     pmix_name_t pname;
     pmix_proc_t *proc;
     pmix_peer_t *peer;

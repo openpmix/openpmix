@@ -8,7 +8,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -296,6 +296,7 @@ static void scon(pmix_shift_caddy_t *p)
     PMIX_CONSTRUCT_LOCK(&p->lock);
     p->codes = NULL;
     p->ncodes = 0;
+    p->sessionid = UINT32_MAX;
     p->peer = NULL;
     p->proc = NULL;
     p->pname.nspace = NULL;
@@ -422,6 +423,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t, pmix_list_item_t, qlcon, NULL)
 static void qcon(pmix_query_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->host_called = false;
     p->queries = NULL;
     p->nqueries = 0;
     p->targets = NULL;
