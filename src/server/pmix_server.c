@@ -494,37 +494,6 @@ pmix_status_t pmix_server_initialize(void)
     return rc;
 }
 
-static pmix_server_module_t myhostserver = {
-    .client_connected = NULL,
-    .client_finalized = NULL,
-    .abort = NULL,
-    .fence_nb = NULL,
-    .direct_modex = NULL,
-    .publish = NULL,
-    .lookup = NULL,
-    .unpublish = NULL,
-    .spawn = NULL,
-    .connect = NULL,
-    .disconnect = NULL,
-    .register_events = NULL,
-    .deregister_events = NULL,
-    .listener = NULL,
-    .notify_event = NULL,
-    .query = NULL,
-    .tool_connected = NULL,
-    .log = NULL,
-    .allocate = NULL,
-    .job_control = NULL,
-    .monitor = NULL,
-    .get_credential = NULL,
-    .validate_credential = NULL,
-    .iof_pull = NULL,
-    .push_stdin = NULL,
-    .group = NULL,
-    .fabric = NULL,
-    .client_connected2 = NULL
-};
-
 PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_info_t info[],
                                            size_t ninfo)
 {
@@ -586,9 +555,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
 
     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SERVER);
     /* setup the function pointers */
-    if (NULL == module) {
-        pmix_host_server = myhostserver;
-    } else {
+    if (NULL != module) {
         pmix_host_server = *module;
     }
 
@@ -1667,7 +1634,7 @@ static void _session_control(int sd, short args, void *cbdata)
 
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    cd->cbfunc.infocbfunc(PMIX_SUCCESS, NULL, 0, cd->cbdata, NULL, NULL);
+    cd->cbfunc.infocbfunc(PMIX_ERR_NOT_SUPPORTED, NULL, 0, cd->cbdata, NULL, NULL);
     PMIX_RELEASE(cd);
 }
 
@@ -1690,7 +1657,7 @@ pmix_status_t PMIx_Session_control(uint32_t sessionID,
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     cd = PMIX_NEW(pmix_shift_caddy_t);
-    cd->ncodes = sessionID;
+    cd->sessionid = sessionID;
     cd->directives = (pmix_info_t*)directives;
     cd->ndirs = ndirs;
     cd->cbfunc.infocbfunc = cbfunc;
@@ -4540,8 +4507,11 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         PMIX_ERROR_LOG(rc);
         return rc;
     }
-    pmix_output_verbose(2, pmix_server_globals.base_output, "recvd pmix cmd %s from %s:%u bytes %u",
-                        pmix_command_string(cmd), peer->info->pname.nspace, peer->info->pname.rank,
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "%s recvd pmix cmd %s from %s bytes %u",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        pmix_command_string(cmd),
+                        PMIX_PEER_PRINT(peer),
                         (unsigned int) buf->bytes_used);
 
     /* if I am a tool, all I can do is relay this to my primary server
