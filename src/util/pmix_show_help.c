@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,11 +53,15 @@ static struct timeval show_help_interval = {5, 0};
 
 static void show_help_cbfunc(pmix_status_t status, void *cbdata)
 {
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
     PMIX_HIDE_UNUSED_PARAMS(status);
 
-    PMIX_INFO_FREE(cd->dirs, cd->ndirs);
-    PMIX_INFO_FREE(cd->info, cd->ninfo);
+    if (NULL != cd->directives) {
+        PMIX_INFO_FREE(cd->directives, cd->ndirs);
+    }
+    if (NULL != cd->info) {
+        PMIX_INFO_FREE(cd->info, cd->ninfo);
+    }
     PMIX_RELEASE(cd);
 }
 
