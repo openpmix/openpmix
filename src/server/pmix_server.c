@@ -3950,8 +3950,7 @@ complete:
 static void query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                          pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
 
@@ -3993,13 +3992,6 @@ complete:
     }
 
     // cleanup
-    if (NULL != qcd->queries) {
-        PMIX_QUERY_FREE(qcd->queries, qcd->nqueries);
-    }
-    if (NULL != qcd->info) {
-        PMIX_INFO_FREE(qcd->info, qcd->ninfo);
-    }
-    PMIX_RELEASE(qcd);
     PMIX_RELEASE(cd);
     if (NULL != release_fn) {
         release_fn(release_cbdata);

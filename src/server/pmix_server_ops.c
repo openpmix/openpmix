@@ -2749,6 +2749,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
+    cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
     /* unpack the number of queries */
     cnt = 1;
@@ -2774,15 +2775,8 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
             return rc;
         }
     }
-
-    /* let the query function handle it */
-    rc = PMIx_Query_info_nb(cd->queries, cd->nqueries,
-                            cbfunc, (void*)cd);
-
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(cd);
-    }
-    return rc;
+    PMIX_THREADSHIFT(cd, pmix_parse_localquery);
+    return PMIX_SUCCESS;
 }
 
 static void logcbfn(pmix_status_t status, void *cbdata)

@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -286,10 +286,8 @@ static void finalstep(pmix_status_t status, pmix_info_t info[], size_t ninfo, vo
     }
 }
 
-static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
-                                  pmix_info_cbfunc_t cbfunc, void *cbdata)
+static pmix_status_t request_help(pmix_query_caddy_t *cd)
 {
-    pmix_query_caddy_t *cd;
     pmix_local_query_caddy_t *local_cd;
     pmix_status_t rc;
     size_t num_local;
@@ -297,17 +295,15 @@ static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
     /* if our host has support, then we just issue the query and
-     * return the response */
-    if (NULL != pmix_host_server.query) {
+     * return the response - but don't pass it back to the host
+     * is the host is a server as that would be a loopback */
+    if (!cd->host_called && NULL != pmix_host_server.query) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:query handed to RM");
-        cd = PMIX_NEW(pmix_query_caddy_t);
-        cd->queries = queries;
-        cd->nqueries = nqueries;
-        cd->cbfunc = cbfunc;  // the final callback function
-        cd->cbdata = cbdata;  // the user's cbdata
-        rc = pmix_host_server.query(&pmix_globals.myid, queries, nqueries, finalstep, (void*)cd);
+        rc = pmix_host_server.query(&pmix_globals.myid,
+                                    cd->queries, cd->nqueries,
+                                    finalstep, (void*)cd);
         return rc;
     }
 
@@ -318,25 +314,25 @@ static pmix_status_t request_help(pmix_query_t queries[], size_t nqueries,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    num_local = pmix_query_get_num_local_resolve(queries, nqueries);
+    num_local = pmix_query_get_num_local_resolve(cd->queries, cd->nqueries);
     if( 0 == num_local ) {
         // No locally resolved keys, so send directly to the server
-        rc = send_for_help(queries, nqueries, cbfunc, cbdata);
+        rc = send_for_help(cd->queries,cd->nqueries, cd->cbfunc, cd->cbdata);
     } else {
         // Some locally resolved keys, so send the subset of non-locally resolved
         // keys to the server. We will patch up the results with the locally
         // resolved keys when they come back from the server in our callback.
         local_cd = PMIX_NEW(pmix_local_query_caddy_t);
         // Save original values
-        local_cd->orig_cbfunc = cbfunc;
-        local_cd->orig_cbdata = cbdata;
-        local_cd->orig_queries = queries;
-        local_cd->orig_nqueries = nqueries;
+        local_cd->orig_cbfunc = cd->cbfunc;
+        local_cd->orig_cbdata = cd->cbdata;
+        local_cd->orig_queries = cd->queries;
+        local_cd->orig_nqueries = cd->nqueries;
         local_cd->num_local = num_local;
         // Values we are going to send to the server
-        local_cd->super.nqueries = nqueries - num_local;
+        local_cd->super.nqueries = cd->nqueries - num_local;
         if (0 < local_cd->super.nqueries) {
-            local_cd->super.queries = pmix_query_strip_local_keys(queries, nqueries, nqueries - num_local);
+            local_cd->super.queries = pmix_query_strip_local_keys(cd->queries, cd->nqueries, cd->nqueries - num_local);
         } else {
             local_cd->super.queries = NULL;
         }
@@ -395,7 +391,7 @@ static void nxtcbfunc(pmix_status_t status, pmix_list_t *results, void *cbdata)
         }
     } else {
         /* need to ask our host */
-        rc = request_help(cd->queries, cd->nqueries, cd->cbfunc, cd->cbdata);
+        rc = request_help(cd);
         if (PMIX_SUCCESS != rc) {
             /* we have to return the error to the caller */
             if (NULL != cd->cbfunc) {
@@ -409,7 +405,7 @@ static void nxtcbfunc(pmix_status_t status, pmix_list_t *results, void *cbdata)
     }
 }
 
-static void localquery(int sd, short args, void *cbdata)
+void pmix_parse_localquery(int sd, short args, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_query_t *queries = cd->queries;
@@ -482,6 +478,14 @@ static void localquery(int sd, short args, void *cbdata)
                 PMIx_Value_load(kv->value, PMIX_STD_ABI_PROVISIONAL_VERSION, PMIX_STRING);
                 pmix_list_append(&cb.kvs, &kv->super);
                 rc = PMIX_SUCCESS;
+            } else if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
+                PMIX_THREADSHIFT(cd, pmix_attrs_query_support);
+                return ;
+            /* check for request to scan the local node for available
+             * servers the caller could connect to */
+            } else if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_AVAIL_SERVERS)) {
+                PMIX_THREADSHIFT(cd, pmix_ptl_base_query_servers);
+                return;
             } else {
                 PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
                 if (PMIX_SUCCESS != rc) {
@@ -529,17 +533,17 @@ nextstep:
             cd->cbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
         }
     } else if (PMIX_SUCCESS != rc) {
-        /* need to ask our host */
-        rc = request_help(cd->queries, cd->nqueries, cd->cbfunc, cd->cbdata);
+        /* ask for help */
+        rc = request_help(cd);
         if (PMIX_SUCCESS != rc) {
             /* we have to return the error to the caller */
             if (NULL != cd->cbfunc) {
                 cd->cbfunc(rc, NULL, 0, cd->cbdata, NULL, NULL);
             }
+            cd->queries = NULL;
+            cd->nqueries = 0;
+            PMIX_RELEASE(cd);
         }
-        cd->queries = NULL;
-        cd->nqueries = 0;
-        PMIX_RELEASE(cd);
         return;
     }
 
@@ -568,7 +572,8 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "%s pmix:query",
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "%s pmix:query",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* create a callback object as we need to pass it to the
@@ -600,12 +605,12 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
 
 {
     pmix_query_caddy_t *cd;
-    pmix_status_t rc;
     size_t n, p;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query non-blocking");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:query non-blocking");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -616,7 +621,6 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
     if (0 == nqueries || NULL == queries) {
         return PMIX_ERR_BAD_PARAM;
     }
-
     /* do a quick check of the qualifiers arrays to ensure
      * the nqual field has been set */
     for (n = 0; n < nqueries; n++) {
@@ -634,60 +638,15 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
         }
     }
 
-    /* check the directives to see if they want us to refresh
-     * the local cached results - if we wanted to optimize this
-     * more, we would check each query and allow those that don't
-     * want to be refreshed to be executed locally, and those that
-     * did would be sent to the host. However, for now we simply
-     * assume that any requirement to refresh will force all to
-     * do so */
-    for (n = 0; n < nqueries; n++) {
-        /* check for requests to report supported attributes */
-        if (0 == strcmp(queries[n].keys[0], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
-            cd = PMIX_NEW(pmix_query_caddy_t);
-            cd->queries = queries;
-            cd->nqueries = nqueries;
-            cd->cbfunc = cbfunc;
-            cd->cbdata = cbdata;
-            PMIX_THREADSHIFT(cd, pmix_attrs_query_support);
-            /* regardless of the result of the query, we return
-             * PMIX_SUCCESS here to indicate that the operation
-             * was accepted for processing */
-            return PMIX_SUCCESS;
-        }
-        /* check for request to scan the local node for available
-         * servers the caller could connect to */
-        if (0 == strcmp(queries[n].keys[0], PMIX_QUERY_AVAIL_SERVERS)) {
-            cd = PMIX_NEW(pmix_query_caddy_t);
-            cd->queries = queries;
-            cd->nqueries = nqueries;
-            cd->cbfunc = cbfunc;
-            cd->cbdata = cbdata;
-            PMIX_THREADSHIFT(cd, pmix_ptl_base_query_servers);
-            /* regardless of the result of the query, we return
-             * PMIX_SUCCESS here to indicate that the operation
-             * was accepted for processing */
-            return PMIX_SUCCESS;
-        }
-        for (p = 0; p < queries[n].nqual; p++) {
-            if (PMIX_CHECK_KEY(&queries[n].qualifiers[p], PMIX_QUERY_REFRESH_CACHE)) {
-                if (PMIX_INFO_TRUE(&queries[n].qualifiers[p])) {
-                    /* need to refresh the cache from our host */
-                    rc = request_help(queries, nqueries, cbfunc, cbdata);
-                    return rc;
-                }
-            }
-        }
-    }
-
     /* we get here if a refresh isn't required - need to
      * threadshift this to access our internal data */
     cd = PMIX_NEW(pmix_query_caddy_t);
+    cd->host_called = true;
     cd->queries = queries;
     cd->nqueries = nqueries;
     cd->cbfunc = cbfunc;
     cd->cbdata = cbdata;
-    PMIX_THREADSHIFT(cd, localquery);
+    PMIX_THREADSHIFT(cd, pmix_parse_localquery);
     /* regardless of the result of the query, we return
      * PMIX_SUCCESS here to indicate that the operation
      * was accepted for processing */
