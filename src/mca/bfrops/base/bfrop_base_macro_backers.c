@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -242,7 +242,7 @@ bool PMIx_Info_is_optional(const pmix_info_t *p)
 
 void PMIx_Info_processed(pmix_info_t *p)
 {
-    p->flags |= PMIX_INFO_REQD_PROCESSED;
+    pmix_bfrops_base_tma_info_processed(p, NULL);
 }
 
 bool PMIx_Info_was_processed(const pmix_info_t *p)
