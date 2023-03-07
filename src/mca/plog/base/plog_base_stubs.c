@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -81,6 +81,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
     bool all_complete = true;
     char *key = NULL, *val = NULL;
     bool agg = true;  // default to aggregating show_help messages
+    pmix_info_t *dt = (pmix_info_t*)data;
 
     if (!pmix_plog_globals.initialized) {
         return PMIX_ERR_INIT;
@@ -134,7 +135,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
                 for (k = 0; k < ndata; k++) {
                     // This is a dup and has been tracked as such,
                     // mark this as complete so we don't log it again.
-                    PMIX_INFO_OP_COMPLETED(&data[k]);
+                    PMIX_INFO_OP_COMPLETED(&dt[k]);
                 }
             }
         }

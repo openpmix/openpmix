@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
@@ -40,25 +40,20 @@
 
 #include "src/util/pmix_printf.h"
 
-static inline void
-pmix_bfrops_base_tma_value_destruct(
-    pmix_value_t *v,
-    pmix_tma_t *tma
-);
+static inline
+void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
+                                         pmix_tma_t *tma);
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_value_xfer(
-    pmix_value_t *p,
-    const pmix_value_t *src,
-    pmix_tma_t *tma
-);
+static inline
+pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
+                                              const pmix_value_t *src,
+                                              pmix_tma_t *tma);
 
-static inline char *
-pmix_bfrops_base_tma_buffer_extend(
-    pmix_buffer_t *buffer,
-    size_t bytes_to_add,
-    pmix_tma_t *tma
-) {
+static inline
+char* pmix_bfrops_base_tma_buffer_extend(pmix_buffer_t *buffer,
+                                         size_t bytes_to_add,
+                                         pmix_tma_t *tma)
+{
     size_t required, to_alloc;
     size_t pack_offset, unpack_offset;
 
@@ -110,12 +105,11 @@ pmix_bfrops_base_tma_buffer_extend(
     return buffer->pack_ptr;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_payload(
-    pmix_buffer_t *dest,
-    pmix_buffer_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_payload(pmix_buffer_t *dest,
+                                                pmix_buffer_t *src,
+                                                pmix_tma_t *tma)
+{
     size_t to_copy = 0;
     char *ptr;
 
@@ -147,12 +141,11 @@ pmix_bfrops_base_tma_copy_payload(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_load_key(
-    pmix_key_t key,
-    const char *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_load_key(pmix_key_t key,
+                                   const char *src,
+                                   pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(key, 0, PMIX_MAX_KEYLEN + 1);
@@ -161,72 +154,75 @@ pmix_bfrops_base_tma_load_key(
     }
 }
 
-static inline bool
-pmix_bfrops_base_tma_check_key(
-    const char *key,
-    const char *str,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_check_key(const char *key,
+                                    const char *str,
+                                    pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    return (0 == strncmp(key, str, PMIX_MAX_KEYLEN));
-}
-
-static inline bool
-pmix_bfrops_base_tma_nspace_invalid(
-    const char *nspace,
-    pmix_tma_t *tma
-) {
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-
-    if (NULL == nspace) {
+    if (0 == strncmp(key, str, PMIX_MAX_KEYLEN)) {
         return true;
     }
-    return (0 == pmix_nslen(nspace));
+    return false;
 }
 
-static inline bool
-pmix_bfrops_base_tma_check_nspace(
-    const char *nspace1,
-    const char *nspace2,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_nspace_invalid(const char *nspace,
+                                         pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    if (NULL == nspace || 0 == pmix_nslen(nspace)) {
+        return true;
+    }
+    return false;
+}
+
+static inline
+bool pmix_bfrops_base_tma_check_nspace(const char *nspace1,
+                                       const char *nspace2,
+                                       pmix_tma_t *tma)
+{
     if (pmix_bfrops_base_tma_nspace_invalid(nspace1, tma)) {
         return true;
     }
     if (pmix_bfrops_base_tma_nspace_invalid(nspace2, tma)) {
         return true;
     }
-    return (0 == strncmp(nspace1, nspace2, PMIX_MAX_NSLEN));
+    if (0 == strncmp(nspace1, nspace2, PMIX_MAX_NSLEN)) {
+        return true;
+    }
+    return false;
 }
 
-static inline bool
-pmix_bfrops_base_tma_check_reserved_key(
-    const char *key,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_check_reserved_key(const char *key,
+                                             pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    return (0 == strncmp(key, "pmix", 4));
+    if (0 == strncmp(key, "pmix", 4)) {
+        return true;
+    }
+    return false;
 }
 
-static inline void
-pmix_bfrops_base_tma_xfer_procid(
-    pmix_proc_t *dst,
-    const pmix_proc_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_xfer_procid(pmix_proc_t *dst,
+                                      const pmix_proc_t *src,
+                                      pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memcpy(dst, src, sizeof(pmix_proc_t));
 }
 
-static inline bool
-pmix_bfrops_base_tma_check_rank(
-    pmix_rank_t a,
-    pmix_rank_t b,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_check_rank(pmix_rank_t a,
+                                     pmix_rank_t b,
+                                     pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     if (a == b) {
@@ -239,23 +235,21 @@ pmix_bfrops_base_tma_check_rank(
     return false;
 }
 
-static inline bool
-pmix_bfrops_base_tma_check_procid(
-    const pmix_proc_t *a,
-    const pmix_proc_t *b,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_check_procid(const pmix_proc_t *a,
+                                       const pmix_proc_t *b,
+                                       pmix_tma_t *tma)
+{
     if (!pmix_bfrops_base_tma_check_nspace(a->nspace, b->nspace, tma)) {
         return false;
     }
     return pmix_bfrops_base_tma_check_rank(a->rank, b->rank, tma);
 }
 
-static inline bool
-pmix_bfrops_base_tma_procid_invalid(
-    const pmix_proc_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_procid_invalid(const pmix_proc_t *p,
+                                         pmix_tma_t *tma)
+{
     if (pmix_bfrops_base_tma_nspace_invalid(p->nspace, tma)) {
         return true;
     }
@@ -265,12 +259,11 @@ pmix_bfrops_base_tma_procid_invalid(
     return false;
 }
 
-static inline void
-pmix_bfrops_base_tma_load_nspace(
-    pmix_nspace_t nspace,
-    const char *str,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_load_nspace(pmix_nspace_t nspace,
+                                      const char *str,
+                                      pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(nspace, 0, PMIX_MAX_NSLEN + 1);
@@ -279,24 +272,22 @@ pmix_bfrops_base_tma_load_nspace(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_load_procid(
-    pmix_proc_t *p,
-    const char *ns,
-    pmix_rank_t rk,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_load_procid(pmix_proc_t *p,
+                                      const char *ns,
+                                      pmix_rank_t rk,
+                                      pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_load_nspace(p->nspace, ns, tma);
     p->rank = rk;
 }
 
-static inline void
-pmix_bfrops_base_tma_data_buffer_load(
-    pmix_data_buffer_t *b,
-    char *bytes,
-    size_t sz,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_buffer_load(pmix_data_buffer_t *b,
+                                           char *bytes,
+                                           size_t sz,
+                                           pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     pmix_byte_object_t bo;
@@ -307,13 +298,12 @@ pmix_bfrops_base_tma_data_buffer_load(
     PMIx_Data_load(b, &bo);
 }
 
-static inline void
-pmix_bfrops_base_tma_data_buffer_unload(
-    pmix_data_buffer_t *b,
-    char **bytes,
-    size_t *sz,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_buffer_unload(pmix_data_buffer_t *b,
+                                             char **bytes,
+                                             size_t *sz,
+                                             pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     pmix_byte_object_t bo;
@@ -330,43 +320,39 @@ pmix_bfrops_base_tma_data_buffer_unload(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_construct(
-    pmix_proc_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_construct(pmix_proc_t *p,
+                                         pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_proc_t));
     p->rank = PMIX_RANK_UNDEF;
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_destruct(
-    pmix_proc_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_destruct(pmix_proc_t *p,
+                                        pmix_tma_t *tma)
+{
     // Destruct in this case is only setting data members
     // to default values, so call proc_construct.
     pmix_bfrops_base_tma_proc_construct(p, tma);
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_load(
-    pmix_proc_t *p,
-    const char *nspace,
-    pmix_rank_t rank,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_load(pmix_proc_t *p,
+                                    const char *nspace,
+                                    pmix_rank_t rank,
+                                    pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_proc_construct(p, tma);
     pmix_bfrops_base_tma_load_procid(p, nspace, rank, tma);
 }
 
-static inline pmix_proc_t *
-pmix_bfrops_base_tma_proc_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_proc_t* pmix_bfrops_base_tma_proc_create(size_t n,
+                                              pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -379,12 +365,11 @@ pmix_bfrops_base_tma_proc_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_free(
-    pmix_proc_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_free(pmix_proc_t *p,
+                                    size_t n,
+                                    pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_destruct(&p[m], tma);
@@ -393,13 +378,12 @@ pmix_bfrops_base_tma_proc_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_multicluster_nspace_construct(
-    pmix_nspace_t target,
-    pmix_nspace_t cluster,
-    pmix_nspace_t nspace,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_multicluster_nspace_construct(pmix_nspace_t target,
+                                                        pmix_nspace_t cluster,
+                                                        pmix_nspace_t nspace,
+                                                        pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_load_nspace(target, NULL, tma);
     size_t len = pmix_nslen(cluster);
     if ((len + pmix_nslen(nspace)) < PMIX_MAX_NSLEN) {
@@ -409,13 +393,12 @@ pmix_bfrops_base_tma_multicluster_nspace_construct(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_multicluster_nspace_parse(
-    pmix_nspace_t target,
-    pmix_nspace_t cluster,
-    pmix_nspace_t nspace,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_multicluster_nspace_parse(pmix_nspace_t target,
+                                                    pmix_nspace_t cluster,
+                                                    pmix_nspace_t nspace,
+                                                    pmix_tma_t *tma)
+{
     size_t n, j;
 
     pmix_bfrops_base_tma_load_nspace(cluster, NULL, tma);
@@ -428,22 +411,20 @@ pmix_bfrops_base_tma_multicluster_nspace_parse(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_info_construct(
-    pmix_proc_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_info_construct(pmix_proc_info_t *p,
+                                              pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_proc_info_t));
     p->state = PMIX_PROC_STATE_UNDEF;
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_info_destruct(
-    pmix_proc_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_info_destruct(pmix_proc_info_t *p,
+                                             pmix_tma_t *tma)
+{
     if (NULL != p->hostname) {
         pmix_tma_free(tma, p->hostname);
     }
@@ -453,12 +434,11 @@ pmix_bfrops_base_tma_proc_info_destruct(
     pmix_bfrops_base_tma_proc_info_construct(p, tma);
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_info_free(
-    pmix_proc_info_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_info_free(pmix_proc_info_t *p,
+                                         size_t n,
+                                         pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_info_destruct(&p[m], tma);
@@ -467,11 +447,10 @@ pmix_bfrops_base_tma_proc_info_free(
     }
 }
 
-static inline pmix_proc_info_t *
-pmix_bfrops_base_tma_proc_info_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_proc_info_t* pmix_bfrops_base_tma_proc_info_create(size_t n,
+                                                        pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -484,13 +463,12 @@ pmix_bfrops_base_tma_proc_info_create(
     return p;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_pinfo(
-    pmix_proc_info_t **dest,
-    pmix_proc_info_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_pinfo(pmix_proc_info_t **dest,
+                                              pmix_proc_info_t *src,
+                                              pmix_data_type_t type,
+                                              pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_proc_info_t *p = pmix_bfrops_base_tma_proc_info_create(1, tma);
@@ -511,22 +489,20 @@ pmix_bfrops_base_tma_copy_pinfo(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_value_construct(
-    pmix_value_t *val,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_value_construct(pmix_value_t *val,
+                                          pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(val, 0, sizeof(pmix_value_t));
     val->type = PMIX_UNDEF;
 }
 
-static inline pmix_value_t *
-pmix_bfrops_base_tma_value_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_value_t* pmix_bfrops_base_tma_value_create(size_t n,
+                                                pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -539,24 +515,22 @@ pmix_bfrops_base_tma_value_create(
     return v;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_value_load(
-    pmix_value_t *v,
-    const void *data,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_value_load(pmix_value_t *v,
+                                              const void *data,
+                                              pmix_data_type_t type,
+                                              pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
     // TODO(skg) Add TMA support when necessary.
     pmix_bfrops_base_value_load(v, data, type);
     return PMIX_SUCCESS;
 }
 
-static inline pmix_boolean_t
-pmix_bfrops_base_tma_value_true(
-    const pmix_value_t *value,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_boolean_t pmix_bfrops_base_tma_value_true(const pmix_value_t *value,
+                                               pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     char *ptr;
@@ -601,32 +575,29 @@ pmix_bfrops_base_tma_value_true(
     return PMIX_NON_BOOL;
 }
 
-static inline bool
-pmix_bfrops_base_tma_info_is_persistent(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_info_is_persistent(const pmix_info_t *p,
+                                             pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    return (p->flags & PMIX_INFO_PERSISTENT);
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_PERSISTENT);
 }
 
-static inline void
-pmix_bfrops_base_tma_info_destruct(
-    pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_destruct(pmix_info_t *p,
+                                        pmix_tma_t *tma)
+{
     if (!pmix_bfrops_base_tma_info_is_persistent(p, tma)) {
         pmix_bfrops_base_tma_value_destruct(&p->value, tma);
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_info_free(
-    pmix_info_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_free(pmix_info_t *p,
+                                    size_t n,
+                                    pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_info_destruct(&p[m], tma);
@@ -635,21 +606,19 @@ pmix_bfrops_base_tma_info_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_info_construct(
-    pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_construct(pmix_info_t *p,
+                                         pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_load_key(p->key, NULL, tma);
-    p->flags = ~PMIX_INFO_PERSISTENT;  // default to non-persistent for historical reasons
+    p->flags = 0;  // default to non-persistent for historical reasons
     pmix_bfrops_base_tma_value_construct(&p->value, tma);
 }
 
-static inline pmix_info_t *
-pmix_bfrops_base_tma_info_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_info_t* pmix_bfrops_base_tma_info_create(size_t n,
+                                              pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -663,36 +632,33 @@ pmix_bfrops_base_tma_info_create(
     return i;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_info_load(
-    pmix_info_t *info,
-    const char *key,
-    const void *data,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_info_load(pmix_info_t *info,
+                                             const char *key,
+                                             const void *data,
+                                             pmix_data_type_t type,
+                                             pmix_tma_t *tma)
+{
+    pmix_bfrops_base_tma_info_construct(info, tma);
     if (NULL == key) {
         return PMIX_ERR_BAD_PARAM;
     }
     pmix_bfrops_base_tma_load_key(info->key, key, tma);
-    info->flags = 0;
     return pmix_bfrops_base_tma_value_load(&info->value, data, type, tma);
 }
 
-static inline pmix_boolean_t
-pmix_bfrops_base_tma_info_true(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_boolean_t pmix_bfrops_base_tma_info_true(const pmix_info_t *p,
+                                              pmix_tma_t *tma)
+{
     return pmix_bfrops_base_tma_value_true(&p->value, tma);
 }
 
-static inline  pmix_status_t
-pmix_bfrops_base_tma_fill_coord(
-    pmix_coord_t *dst,
-    pmix_coord_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_fill_coord(pmix_coord_t *dst,
+                                              pmix_coord_t *src,
+                                              pmix_tma_t *tma)
+{
     dst->view = src->view;
     dst->dims = src->dims;
     if (0 < dst->dims) {
@@ -705,11 +671,10 @@ pmix_bfrops_base_tma_fill_coord(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_coord_destruct(
-    pmix_coord_t *m,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_coord_destruct(pmix_coord_t *m,
+                                         pmix_tma_t *tma)
+{
     if (NULL != m) {
         m->view = PMIX_COORD_VIEW_UNDEF;
         if (NULL != m->coord) {
@@ -720,12 +685,11 @@ pmix_bfrops_base_tma_coord_destruct(
     }
 }
 
-static inline pmix_coord_t *
-pmix_bfrops_base_tma_coord_create(
-    size_t dims,
-    size_t number,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_coord_t* pmix_bfrops_base_tma_coord_create(size_t dims,
+                                                size_t number,
+                                                pmix_tma_t *tma)
+{
     if (0 == number) {
         return NULL;
     }
@@ -737,8 +701,7 @@ pmix_bfrops_base_tma_coord_create(
     m->dims = dims;
     if (0 == dims) {
         m->coord = NULL;
-    }
-    else {
+    } else {
         m->coord = (uint32_t *)pmix_tma_malloc(tma, dims * sizeof(uint32_t));
         if (PMIX_LIKELY(NULL != m->coord)) {
             memset(m->coord, 0, dims * sizeof(uint32_t));
@@ -747,12 +710,11 @@ pmix_bfrops_base_tma_coord_create(
     return m;
 }
 
-static inline void
-pmix_bfrops_base_tma_coord_free(
-    pmix_coord_t *m,
-    size_t number,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_coord_free(pmix_coord_t *m,
+                                     size_t number,
+                                     pmix_tma_t *tma)
+{
     if (NULL != m) {
         for (size_t n = 0; n < number; n++) {
             pmix_bfrops_base_tma_coord_destruct(&m[n], tma);
@@ -761,112 +723,110 @@ pmix_bfrops_base_tma_coord_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_info_required(
-    pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_required(pmix_info_t *p,
+                                        pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    p->flags |= PMIX_INFO_REQD;
+    PMIX_SET_BIT(p->flags, PMIX_INFO_REQD);
 }
 
-static inline bool
-pmix_bfrops_base_tma_info_is_required(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_info_is_required(const pmix_info_t *p,
+                                           pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    return (p->flags & PMIX_INFO_REQD);
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_REQD);
 }
 
-static inline void
-pmix_bfrops_base_tma_info_optional(
-    pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_optional(pmix_info_t *p,
+                                        pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    p->flags &= ~PMIX_INFO_REQD;
+    PMIX_UNSET_BIT(p->flags, PMIX_INFO_REQD);
 }
 
-static inline bool
-pmix_bfrops_base_tma_info_is_optional(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_info_is_optional(const pmix_info_t *p,
+                                           pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    return (!(p->flags & PMIX_INFO_REQD));
+    return PMIX_CHECK_BIT_NOT_SET(p->flags, PMIX_INFO_REQD);
 }
 
-static inline bool
-pmix_bfrops_base_tma_info_was_processed(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_processed(pmix_info_t *p,
+                                         pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    return (p->flags & PMIX_INFO_REQD_PROCESSED);
+    PMIX_SET_BIT(p->flags, PMIX_INFO_REQD_PROCESSED);
 }
 
-static inline void
-pmix_bfrops_base_tma_info_set_end(
-    pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_info_was_processed(const pmix_info_t *p,
+                                             pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    p->flags |= PMIX_INFO_ARRAY_END;
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_REQD_PROCESSED);
 }
 
-static inline bool
-pmix_bfrops_base_tma_info_is_end(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_set_end(pmix_info_t *p,
+                                       pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    return (p->flags & PMIX_INFO_ARRAY_END);
+    PMIX_SET_BIT(p->flags, PMIX_INFO_ARRAY_END);
 }
 
-static inline void
-pmix_bfrops_base_tma_info_qualifier(
-    pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_info_is_end(const pmix_info_t *p,
+                                      pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    p->flags |= PMIX_INFO_QUALIFIER;
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_ARRAY_END);
 }
 
-static inline bool
-pmix_bfrops_base_tma_info_is_qualifier(
-    const pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_qualifier(pmix_info_t *p,
+                                         pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    return (p->flags & PMIX_INFO_QUALIFIER);
+PMIX_SET_BIT(p->flags, PMIX_INFO_QUALIFIER);
 }
 
-static inline void
-pmix_bfrops_base_tma_info_persistent(
-    pmix_info_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+bool pmix_bfrops_base_tma_info_is_qualifier(const pmix_info_t *p,
+                                            pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
-    p->flags |= PMIX_INFO_PERSISTENT;
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_QUALIFIER);
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_info_xfer(
-    pmix_info_t *dest,
-    const pmix_info_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_info_persistent(pmix_info_t *p,
+                                          pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    PMIX_SET_BIT(p->flags, PMIX_INFO_PERSISTENT);
+}
+
+static inline
+pmix_status_t pmix_bfrops_base_tma_info_xfer(pmix_info_t *dest,
+                                             const pmix_info_t *src,
+                                             pmix_tma_t *tma)
+{
     pmix_status_t rc;
 
     if (PMIX_UNLIKELY(NULL == dest || NULL == src)) {
@@ -884,11 +844,10 @@ pmix_bfrops_base_tma_info_xfer(
     return rc;
 }
 
-static inline void
-pmix_bfrops_base_tma_coord_construct(
-    pmix_coord_t *m,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_coord_construct(pmix_coord_t *m,
+                                          pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     if (NULL == m) {
@@ -899,13 +858,12 @@ pmix_bfrops_base_tma_coord_construct(
     m->dims = 0;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_coord(
-    pmix_coord_t **dest,
-    pmix_coord_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_coord(pmix_coord_t **dest,
+                                              pmix_coord_t *src,
+                                              pmix_data_type_t type,
+                                              pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_coord_t *d = (pmix_coord_t *)pmix_tma_malloc(tma, sizeof(pmix_coord_t));
@@ -925,31 +883,28 @@ pmix_bfrops_base_tma_copy_coord(
     return rc;
 }
 
-static inline void
-pmix_bfrops_base_tma_topology_construct(
-    pmix_topology_t *t,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_topology_construct(pmix_topology_t *t,
+                                             pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(t, 0, sizeof(pmix_topology_t));
 }
 
-static inline void
-pmix_bfrops_base_tma_topology_destruct(
-    pmix_topology_t *t,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_topology_destruct(pmix_topology_t *t,
+                                            pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
     // TODO(skg) Add TMA support when necessary.
     pmix_hwloc_destruct_topology(t);
 }
 
-static inline pmix_topology_t *
-pmix_bfrops_base_tma_topology_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_topology_t* pmix_bfrops_base_tma_topology_create(size_t n,
+                                                      pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -962,13 +917,12 @@ pmix_bfrops_base_tma_topology_create(
     return t;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_topology(
-    pmix_topology_t **dest,
-    pmix_topology_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_topology(pmix_topology_t **dest,
+                                                 pmix_topology_t *src,
+                                                 pmix_data_type_t type,
+                                                 pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_topology_t *dst = pmix_bfrops_base_tma_topology_create(1, tma);
@@ -986,12 +940,11 @@ pmix_bfrops_base_tma_copy_topology(
     return rc;
 }
 
-static inline void
-pmix_bfrops_base_tma_topology_free(
-    pmix_topology_t *t,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_topology_free(pmix_topology_t *t,
+                                        size_t n,
+                                        pmix_tma_t *tma)
+{
     if (NULL != t) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_topology_destruct(&t[m], tma);
@@ -1000,32 +953,29 @@ pmix_bfrops_base_tma_topology_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_cpuset_construct(
-    pmix_cpuset_t *c,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_cpuset_construct(pmix_cpuset_t *c,
+                                           pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(c, 0, sizeof(pmix_cpuset_t));
 }
 
-static inline void
-pmix_bfrops_base_tma_cpuset_destruct(
-    pmix_cpuset_t *c,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_cpuset_destruct(pmix_cpuset_t *c,
+                                          pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
     // TODO(skg) Add TMA support when necessary.
     pmix_hwloc_destruct_cpuset(c);
 }
 
-static inline void
-pmix_bfrops_base_tma_cpuset_free(
-    pmix_cpuset_t *c,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_cpuset_free(pmix_cpuset_t *c,
+                                      size_t n,
+                                      pmix_tma_t *tma)
+{
     if (NULL != c) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_cpuset_destruct(&c[m], tma);
@@ -1034,11 +984,10 @@ pmix_bfrops_base_tma_cpuset_free(
     }
 }
 
-static inline pmix_cpuset_t *
-pmix_bfrops_base_tma_cpuset_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_cpuset_t* pmix_bfrops_base_tma_cpuset_create(size_t n,
+                                                  pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -1051,13 +1000,12 @@ pmix_bfrops_base_tma_cpuset_create(
     return c;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_cpuset(
-    pmix_cpuset_t **dest,
-    pmix_cpuset_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_cpuset(pmix_cpuset_t **dest,
+                                               pmix_cpuset_t *src,
+                                               pmix_data_type_t type,
+                                               pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_cpuset_t *dst = pmix_bfrops_base_tma_cpuset_create(1, tma);
@@ -1075,21 +1023,19 @@ pmix_bfrops_base_tma_copy_cpuset(
     return rc;
 }
 
-static inline void
-pmix_bfrops_base_tma_geometry_construct(
-    pmix_geometry_t *g,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_geometry_construct(pmix_geometry_t *g,
+                                             pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(g, 0, sizeof(pmix_geometry_t));
 }
 
-static inline pmix_geometry_t *
-pmix_bfrops_base_tma_geometry_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_geometry_t* pmix_bfrops_base_tma_geometry_create(size_t n,
+                                                      pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -1102,11 +1048,10 @@ pmix_bfrops_base_tma_geometry_create(
     return g;
 }
 
-static inline void
-pmix_bfrops_base_tma_geometry_destruct(
-    pmix_geometry_t *g,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_geometry_destruct(pmix_geometry_t *g,
+                                            pmix_tma_t *tma)
+{
     if (NULL != g->uuid) {
         pmix_tma_free(tma, g->uuid);
         g->uuid = NULL;
@@ -1120,12 +1065,11 @@ pmix_bfrops_base_tma_geometry_destruct(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_geometry_free(
-    pmix_geometry_t *g,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_geometry_free(pmix_geometry_t *g,
+                                        size_t n,
+                                        pmix_tma_t *tma)
+{
     if (NULL != g) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_geometry_destruct(&g[m], tma);
@@ -1134,13 +1078,12 @@ pmix_bfrops_base_tma_geometry_free(
     }
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_geometry(
-    pmix_geometry_t **dest,
-    pmix_geometry_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_geometry(pmix_geometry_t **dest,
+                                                 pmix_geometry_t *src,
+                                                 pmix_data_type_t type,
+                                                 pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_geometry_t *dst = pmix_bfrops_base_tma_geometry_create(1, tma);
@@ -1170,13 +1113,12 @@ pmix_bfrops_base_tma_copy_geometry(
     return PMIX_SUCCESS;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_nspace(
-    pmix_nspace_t **dest,
-    pmix_nspace_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_nspace(pmix_nspace_t **dest,
+                                               pmix_nspace_t *src,
+                                               pmix_data_type_t type,
+                                               pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_nspace_t *dst = (pmix_nspace_t *)pmix_tma_malloc(tma, sizeof(pmix_nspace_t));
@@ -1188,11 +1130,10 @@ pmix_bfrops_base_tma_copy_nspace(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_device_distance_destruct(
-    pmix_device_distance_t *d,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_device_distance_destruct(pmix_device_distance_t *d,
+                                                   pmix_tma_t *tma)
+{
     if (NULL != (d->uuid)) {
         pmix_tma_free(tma, d->uuid);
     }
@@ -1201,12 +1142,11 @@ pmix_bfrops_base_tma_device_distance_destruct(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_device_distance_free(
-    pmix_device_distance_t *d,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_device_distance_free(pmix_device_distance_t *d,
+                                               size_t n,
+                                               pmix_tma_t *tma)
+{
     if (NULL != d) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_device_distance_destruct(&d[m], tma);
@@ -1215,11 +1155,10 @@ pmix_bfrops_base_tma_device_distance_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_device_distance_construct(
-    pmix_device_distance_t *d,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_device_distance_construct(pmix_device_distance_t *d,
+                                                    pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(d, 0, sizeof(pmix_device_distance_t));
@@ -1228,11 +1167,10 @@ pmix_bfrops_base_tma_device_distance_construct(
     d->maxdist = UINT16_MAX;
 }
 
-static inline pmix_device_distance_t *
-pmix_bfrops_base_tma_device_distance_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_device_distance_t* pmix_bfrops_base_tma_device_distance_create(size_t n,
+                                                                    pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -1245,13 +1183,12 @@ pmix_bfrops_base_tma_device_distance_create(
     return d;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_devdist(
-    pmix_device_distance_t **dest,
-    pmix_device_distance_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_devdist(pmix_device_distance_t **dest,
+                                                pmix_device_distance_t *src,
+                                                pmix_data_type_t type,
+                                                pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_device_distance_t *dst = pmix_bfrops_base_tma_device_distance_create(1, tma);
@@ -1273,22 +1210,20 @@ pmix_bfrops_base_tma_copy_devdist(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_byte_object_construct(
-    pmix_byte_object_t *b,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_byte_object_construct(pmix_byte_object_t *b,
+                                                pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     b->bytes = NULL;
     b->size = 0;
 }
 
-static inline void
-pmix_bfrops_base_tma_byte_object_destruct(
-    pmix_byte_object_t *b,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_byte_object_destruct(pmix_byte_object_t *b,
+                                               pmix_tma_t *tma)
+{
     if (NULL != b->bytes) {
         pmix_tma_free(tma, b->bytes);
     }
@@ -1296,11 +1231,10 @@ pmix_bfrops_base_tma_byte_object_destruct(
     b->size = 0;
 }
 
-static inline pmix_byte_object_t *
-pmix_bfrops_base_tma_byte_object_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_byte_object_t* pmix_bfrops_base_tma_byte_object_create(size_t n,
+                                                            pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -1313,12 +1247,11 @@ pmix_bfrops_base_tma_byte_object_create(
     return b;
 }
 
-static inline void
-pmix_bfrops_base_tma_byte_object_free(
-    pmix_byte_object_t *b,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_byte_object_free(pmix_byte_object_t *b,
+                                           size_t n,
+                                           pmix_tma_t *tma)
+{
     if (NULL != b) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_byte_object_destruct(&b[m], tma);
@@ -1327,21 +1260,19 @@ pmix_bfrops_base_tma_byte_object_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_endpoint_construct(
-    pmix_endpoint_t *e,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_endpoint_construct(pmix_endpoint_t *e,
+                                             pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(e, 0, sizeof(pmix_endpoint_t));
 }
 
-static inline void
-pmix_bfrops_base_tma_endpoint_destruct(
-    pmix_endpoint_t *e,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_endpoint_destruct(pmix_endpoint_t *e,
+                                            pmix_tma_t *tma)
+{
     if (NULL != e->uuid) {
         pmix_tma_free(tma, e->uuid);
     }
@@ -1353,12 +1284,11 @@ pmix_bfrops_base_tma_endpoint_destruct(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_endpoint_free(
-    pmix_endpoint_t *e,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_endpoint_free(pmix_endpoint_t *e,
+                                        size_t n,
+                                        pmix_tma_t *tma)
+{
     if (NULL != e) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_endpoint_destruct(&e[m], tma);
@@ -1367,11 +1297,10 @@ pmix_bfrops_base_tma_endpoint_free(
     }
 }
 
-static inline pmix_endpoint_t *
-pmix_bfrops_base_tma_endpoint_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_endpoint_t* pmix_bfrops_base_tma_endpoint_create(size_t n,
+                                                      pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -1385,13 +1314,12 @@ pmix_bfrops_base_tma_endpoint_create(
     return e;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_endpoint(
-    pmix_endpoint_t **dest,
-    pmix_endpoint_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_endpoint(pmix_endpoint_t **dest,
+                                                 pmix_endpoint_t *src,
+                                                 pmix_data_type_t type,
+                                                 pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_endpoint_t *dst = pmix_bfrops_base_tma_endpoint_create(1, tma);
@@ -1415,11 +1343,10 @@ pmix_bfrops_base_tma_copy_endpoint(
     return PMIX_SUCCESS;
 }
 
-static inline int
-pmix_bfrops_base_tma_argv_count(
-    char **argv,
-    pmix_tma_t *tma
-) {
+static inline
+int pmix_bfrops_base_tma_argv_count(char **argv,
+                                    pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     char **p;
@@ -1434,12 +1361,11 @@ pmix_bfrops_base_tma_argv_count(
     return i;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_argv_append_nosize(
-    char ***argv,
-    const char *arg,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_argv_append_nosize(char ***argv,
+                                                      const char *arg,
+                                                      pmix_tma_t *tma)
+{
     int argc;
 
     /* Create new argv. */
@@ -1478,12 +1404,11 @@ pmix_bfrops_base_tma_argv_append_nosize(
     return PMIX_SUCCESS;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_argv_prepend_nosize(
-    char ***argv,
-    const char *arg,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_argv_prepend_nosize(char ***argv,
+                                                       const char *arg,
+                                                       pmix_tma_t *tma)
+{
     int argc;
     int i;
 
@@ -1516,12 +1441,11 @@ pmix_bfrops_base_tma_argv_prepend_nosize(
     return PMIX_SUCCESS;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_argv_append_unique_nosize(
-    char ***argv,
-    const char *arg,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_argv_append_unique_nosize(char ***argv,
+                                                             const char *arg,
+                                                             pmix_tma_t *tma)
+{
     int i;
 
     /* if the provided array is NULL, then the arg cannot be present,
@@ -1543,11 +1467,10 @@ pmix_bfrops_base_tma_argv_append_unique_nosize(
     return pmix_bfrops_base_tma_argv_append_nosize(argv, arg, tma);
 }
 
-static inline void
-pmix_bfrops_base_tma_argv_free(
-    char **argv,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_argv_free(char **argv,
+                                    pmix_tma_t *tma)
+{
     if (NULL != argv) {
         for (char **p = argv; NULL != *p; ++p) {
             pmix_tma_free(tma, *p);
@@ -1556,13 +1479,12 @@ pmix_bfrops_base_tma_argv_free(
     }
 }
 
-static inline char **
-pmix_bfrops_base_tma_argv_split_inter(
-    const char *src_string,
-    int delimiter,
-    bool include_empty,
-    pmix_tma_t *tma
-) {
+static inline
+char** pmix_bfrops_base_tma_argv_split_inter(const char *src_string,
+                                             int delimiter,
+                                             bool include_empty,
+                                             pmix_tma_t *tma)
+{
     char arg[512];
     char **argv = NULL;
     const char *p;
@@ -1638,30 +1560,27 @@ pmix_bfrops_base_tma_argv_split_inter(
     return argv;
 }
 
-static inline char **
-pmix_bfrops_base_tma_argv_split_with_empty(
-    const char *src_string,
-    int delimiter,
-    pmix_tma_t *tma
-) {
+static inline
+char** pmix_bfrops_base_tma_argv_split_with_empty(const char *src_string,
+                                                  int delimiter,
+                                                  pmix_tma_t *tma)
+{
     return pmix_bfrops_base_tma_argv_split_inter(src_string, delimiter, true, tma);
 }
 
-static inline char **
-pmix_bfrops_base_tma_argv_split(
-    const char *src_string,
-    int delimiter,
-    pmix_tma_t *tma
-) {
+static inline
+char** pmix_bfrops_base_tma_argv_split(const char *src_string,
+                                       int delimiter,
+                                       pmix_tma_t *tma)
+{
     return pmix_bfrops_base_tma_argv_split_inter(src_string, delimiter, false, tma);
 }
 
-static inline char *
-pmix_bfrops_base_tma_argv_join(
-    char **argv,
-    int delimiter,
-    pmix_tma_t *tma
-) {
+static inline
+char* pmix_bfrops_base_tma_argv_join(char **argv,
+                                     int delimiter,
+                                     pmix_tma_t *tma)
+{
     char **p;
     char *pp;
     char *str;
@@ -1711,11 +1630,10 @@ pmix_bfrops_base_tma_argv_join(
     return str;
 }
 
-static inline char **
-pmix_bfrops_base_tma_argv_copy(
-    char **argv,
-    pmix_tma_t *tma
-) {
+static inline
+char** pmix_bfrops_base_tma_argv_copy(char **argv,
+                                      pmix_tma_t *tma)
+{
     if (NULL == argv) {
         return NULL;
     }
@@ -1735,11 +1653,10 @@ pmix_bfrops_base_tma_argv_copy(
     return dupv;
 }
 
-static inline void
-pmix_bfrops_base_tma_query_destruct(
-    pmix_query_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_query_destruct(pmix_query_t *p,
+                                         pmix_tma_t *tma)
+{
     if (NULL != p->keys) {
         pmix_bfrops_base_tma_argv_free(p->keys, tma);
         p->keys = NULL;
@@ -1751,12 +1668,11 @@ pmix_bfrops_base_tma_query_destruct(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_query_free(
-    pmix_query_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_query_free(pmix_query_t *p,
+                                     size_t n,
+                                     pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_query_destruct(&p[m], tma);
@@ -1765,38 +1681,34 @@ pmix_bfrops_base_tma_query_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_query_release(
-    pmix_query_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_query_release(pmix_query_t *p,
+                                        pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_query_free(p, 1, tma);
 }
 
-static inline void
-pmix_bfrops_base_tma_pdata_construct(
-    pmix_pdata_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_pdata_construct(pmix_pdata_t *p,
+                                          pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_pdata_t));
     p->value.type = PMIX_UNDEF;
 }
 
-static inline void
-pmix_bfrops_base_tma_pdata_destruct(
-    pmix_pdata_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_pdata_destruct(pmix_pdata_t *p,
+                                         pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_value_destruct(&p->value, tma);
 }
 
-static inline pmix_pdata_t *
-pmix_bfrops_base_tma_pdata_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_pdata_t* pmix_bfrops_base_tma_pdata_create(size_t n,
+                                                pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -1809,12 +1721,11 @@ pmix_bfrops_base_tma_pdata_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_pdata_xfer(
-    pmix_pdata_t *dest,
-    const pmix_pdata_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_pdata_xfer(pmix_pdata_t *dest,
+                                     const pmix_pdata_t *src,
+                                     pmix_tma_t *tma)
+{
     if (NULL != dest) {
         memset(dest, 0, sizeof(*dest));
         pmix_bfrops_base_tma_load_nspace(
@@ -1826,12 +1737,11 @@ pmix_bfrops_base_tma_pdata_xfer(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_pdata_free(
-    pmix_pdata_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_pdata_free(pmix_pdata_t *p,
+                                     size_t n,
+                                     pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_pdata_destruct(&p[m], tma);
@@ -1840,11 +1750,10 @@ pmix_bfrops_base_tma_pdata_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_app_destruct(
-    pmix_app_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_app_destruct(pmix_app_t *p,
+                                       pmix_tma_t *tma)
+{
     if (NULL != p->cmd) {
         pmix_tma_free(tma, p->cmd);
         p->cmd = NULL;
@@ -1868,21 +1777,19 @@ pmix_bfrops_base_tma_app_destruct(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_app_construct(
-    pmix_app_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_app_construct(pmix_app_t *p,
+                                        pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_app_t));
 }
 
-static inline pmix_app_t *
-pmix_bfrops_base_tma_app_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_app_t* pmix_bfrops_base_tma_app_create(size_t n,
+                                            pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -1895,22 +1802,20 @@ pmix_bfrops_base_tma_app_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_app_info_create(
-    pmix_app_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_app_info_create(pmix_app_t *p,
+                                          size_t n,
+                                          pmix_tma_t *tma)
+{
     p->ninfo = n;
     p->info = pmix_bfrops_base_tma_info_create(n, tma);
 }
 
-static inline void
-pmix_bfrops_base_tma_app_free(
-    pmix_app_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_app_free(pmix_app_t *p,
+                                   size_t n,
+                                   pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_app_destruct(&p[m], tma);
@@ -1919,29 +1824,26 @@ pmix_bfrops_base_tma_app_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_app_release(
-    pmix_app_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_app_release(pmix_app_t *p,
+                                      pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_app_free(p, 1, tma);
 }
 
-static inline void
-pmix_bfrops_base_tma_query_construct(
-    pmix_query_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_query_construct(pmix_query_t *p,
+                                          pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_query_t));
 }
 
-static inline pmix_query_t *
-pmix_bfrops_base_tma_query_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_query_t* pmix_bfrops_base_tma_query_create(size_t n,
+                                                pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -1954,21 +1856,19 @@ pmix_bfrops_base_tma_query_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_query_qualifiers_create(
-    pmix_query_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_query_qualifiers_create(pmix_query_t *p,
+                                                  size_t n,
+                                                  pmix_tma_t *tma)
+{
     p->nqual = n;
     p->qualifiers = pmix_bfrops_base_tma_info_create(n, tma);
 }
 
-static inline void
-pmix_bfrops_base_tma_regattr_destruct(
-    pmix_regattr_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_regattr_destruct(pmix_regattr_t *p,
+                                           pmix_tma_t *tma)
+{
     if (NULL != p) {
         if (NULL != p->name) {
             pmix_tma_free(tma, p->name);
@@ -1981,12 +1881,11 @@ pmix_bfrops_base_tma_regattr_destruct(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_regattr_free(
-    pmix_regattr_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_regattr_free(pmix_regattr_t *p,
+                                       size_t n,
+                                       pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_regattr_destruct(&p[m], tma);
@@ -1995,22 +1894,20 @@ pmix_bfrops_base_tma_regattr_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_regattr_construct(
-    pmix_regattr_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_regattr_construct(pmix_regattr_t *p,
+                                            pmix_tma_t *tma)
+{
     p->name = NULL;
     pmix_bfrops_base_tma_load_key(p->string, NULL, tma);
     p->type = PMIX_UNDEF;
     p->description = NULL;
 }
 
-static inline pmix_regattr_t *
-pmix_bfrops_base_tma_regattr_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_regattr_t* pmix_bfrops_base_tma_regattr_create(size_t n,
+                                                    pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -2024,15 +1921,14 @@ pmix_bfrops_base_tma_regattr_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_regattr_load(
-    pmix_regattr_t *p,
-    const char *name,
-    const char *key,
-    pmix_data_type_t type,
-    const char *description,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_regattr_load(pmix_regattr_t *p,
+                                       const char *name,
+                                       const char *key,
+                                       pmix_data_type_t type,
+                                       const char *description,
+                                       pmix_tma_t *tma)
+{
     if (NULL != name) {
         p->name = pmix_tma_strdup(tma, name);
     }
@@ -2045,12 +1941,11 @@ pmix_bfrops_base_tma_regattr_load(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_regattr_xfer(
-    pmix_regattr_t *dest,
-    const pmix_regattr_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_regattr_xfer(pmix_regattr_t *dest,
+                                       const pmix_regattr_t *src,
+                                       pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_regattr_construct(dest, tma);
     if (NULL != (src->name)) {
         dest->name = pmix_tma_strdup(tma, src->name);
@@ -2062,14 +1957,13 @@ pmix_bfrops_base_tma_regattr_xfer(
     }
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_setenv(
-    const char *name,
-    const char *value,
-    bool overwrite,
-    char ***env,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_setenv(const char *name,
+                                          const char *value,
+                                          bool overwrite,
+                                          char ***env,
+                                          pmix_tma_t *tma)
+{
     // Note to developers: we don't use the TMA here because the values we
     // allocate on the heap are values that are inconsequential to the way we
     // currently use the TMA.
@@ -2142,12 +2036,11 @@ pmix_bfrops_base_tma_setenv(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_data_array_init(
-    pmix_data_array_t *p,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_array_init(pmix_data_array_t *p,
+                                          pmix_data_type_t type,
+                                          pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     p->array = NULL;
@@ -2155,20 +2048,18 @@ pmix_bfrops_base_tma_data_array_init(
     p->size = 0;
 }
 
-static inline void
-pmix_bfrops_base_tma_data_buffer_construct(
-    pmix_data_buffer_t *b,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_buffer_construct(pmix_data_buffer_t *b,
+                                                pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(b, 0, sizeof(pmix_data_buffer_t));
 }
 
-static inline pmix_data_buffer_t *
-pmix_bfrops_base_tma_data_buffer_create(
-    pmix_tma_t *tma
-) {
+static inline
+pmix_data_buffer_t* pmix_bfrops_base_tma_data_buffer_create(pmix_tma_t *tma)
+{
     pmix_data_buffer_t *b = (pmix_data_buffer_t *)pmix_tma_malloc(tma, sizeof(pmix_data_buffer_t));
     if (PMIX_LIKELY(NULL != b)) {
         pmix_bfrops_base_tma_data_buffer_construct(b, tma);
@@ -2176,11 +2067,10 @@ pmix_bfrops_base_tma_data_buffer_create(
     return b;
 }
 
-static inline void
-pmix_bfrops_base_tma_data_buffer_destruct(
-    pmix_data_buffer_t *b,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_buffer_destruct(pmix_data_buffer_t *b,
+                                               pmix_tma_t *tma)
+{
     if (NULL != b->base_ptr) {
         pmix_tma_free(tma, b->base_ptr);
         b->base_ptr = NULL;
@@ -2191,24 +2081,22 @@ pmix_bfrops_base_tma_data_buffer_destruct(
     b->bytes_used = 0;
 }
 
-static inline void
-pmix_bfrops_base_tma_data_buffer_release(
-    pmix_data_buffer_t *b,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_buffer_release(pmix_data_buffer_t *b,
+                                              pmix_tma_t *tma)
+{
     if (NULL != b) {
         pmix_bfrops_base_tma_data_buffer_destruct(b, tma);
         pmix_tma_free(tma, b);
     }
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_dbuf(
-    pmix_data_buffer_t **dest,
-    pmix_data_buffer_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_dbuf(pmix_data_buffer_t **dest,
+                                             pmix_data_buffer_t *src,
+                                             pmix_data_type_t type,
+                                             pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_data_buffer_t *p = pmix_bfrops_base_tma_data_buffer_create(tma);
@@ -2220,12 +2108,11 @@ pmix_bfrops_base_tma_copy_dbuf(
     return PMIx_Data_copy_payload(p, src);
 }
 
-static inline void
-pmix_bfrops_base_tma_value_free(
-    pmix_value_t *v,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_value_free(pmix_value_t *v,
+                                     size_t n,
+                                     pmix_tma_t *tma)
+{
     if (NULL != v) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_value_destruct(&v[m], tma);
@@ -2234,25 +2121,23 @@ pmix_bfrops_base_tma_value_free(
     }
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_value_unload(
-    pmix_value_t *kv,
-    void **data,
-    size_t *sz,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_value_unload(pmix_value_t *kv,
+                                                void **data,
+                                                size_t *sz,
+                                                pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
     // TODO(skg) Add TMA support when necessary.
     return pmix_bfrops_base_value_unload(kv, data, sz);
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_regattr(
-    pmix_regattr_t **dest,
-    pmix_regattr_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_regattr(pmix_regattr_t **dest,
+                                                pmix_regattr_t *src,
+                                                pmix_data_type_t type,
+                                                pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     *dest = pmix_bfrops_base_tma_regattr_create(1, tma);
@@ -2268,11 +2153,10 @@ pmix_bfrops_base_tma_copy_regattr(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_envar_construct(
-    pmix_envar_t *e,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_envar_construct(pmix_envar_t *e,
+                                          pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     e->envar = NULL;
@@ -2280,11 +2164,10 @@ pmix_bfrops_base_tma_envar_construct(
     e->separator = '\0';
 }
 
-static inline void
-pmix_bfrops_base_tma_envar_destruct(
-    pmix_envar_t *e,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_envar_destruct(pmix_envar_t *e,
+                                         pmix_tma_t *tma)
+{
     if (NULL != e->envar) {
         pmix_tma_free(tma, e->envar);
         e->envar = NULL;
@@ -2295,11 +2178,10 @@ pmix_bfrops_base_tma_envar_destruct(
     }
 }
 
-static inline pmix_envar_t *
-pmix_bfrops_base_tma_envar_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_envar_t* pmix_bfrops_base_tma_envar_create(size_t n,
+                                                pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -2312,12 +2194,11 @@ pmix_bfrops_base_tma_envar_create(
     return e;
 }
 
-static inline void
-pmix_bfrops_base_tma_envar_free(
-    pmix_envar_t *e,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_envar_free(pmix_envar_t *e,
+                                     size_t n,
+                                     pmix_tma_t *tma)
+{
     if (NULL != e) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_envar_destruct(&e[m], tma);
@@ -2326,14 +2207,13 @@ pmix_bfrops_base_tma_envar_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_envar_load(
-    pmix_envar_t *e,
-    char *var,
-    char *value,
-    char separator,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_envar_load(pmix_envar_t *e,
+                                     char *var,
+                                     char *value,
+                                     char separator,
+                                     pmix_tma_t *tma)
+{
     if (NULL != var) {
         e->envar = pmix_tma_strdup(tma, var);
     }
@@ -2343,21 +2223,19 @@ pmix_bfrops_base_tma_envar_load(
     e->separator = separator;
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_stats_construct(
-    pmix_proc_stats_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_stats_construct(pmix_proc_stats_t *p,
+                                               pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_proc_stats_t));
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_stats_destruct(
-    pmix_proc_stats_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_stats_destruct(pmix_proc_stats_t *p,
+                                              pmix_tma_t *tma)
+{
     if (NULL != p->node) {
         pmix_tma_free(tma, p->node);
         p->node = NULL;
@@ -2368,11 +2246,10 @@ pmix_bfrops_base_tma_proc_stats_destruct(
     }
 }
 
-static inline pmix_proc_stats_t *
-pmix_bfrops_base_tma_proc_stats_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_proc_stats_t* pmix_bfrops_base_tma_proc_stats_create(size_t n,
+                                                          pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -2385,12 +2262,11 @@ pmix_bfrops_base_tma_proc_stats_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_proc_stats_free(
-    pmix_proc_stats_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_proc_stats_free(pmix_proc_stats_t *p,
+                                          size_t n,
+                                          pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_stats_destruct(&p[m], tma);
@@ -2399,12 +2275,11 @@ pmix_bfrops_base_tma_proc_stats_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_populate_pstats(
-    pmix_proc_stats_t *p,
-    pmix_proc_stats_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_populate_pstats(pmix_proc_stats_t *p,
+                                          pmix_proc_stats_t *src,
+                                          pmix_tma_t *tma)
+{
     /* copy the individual fields */
     if (NULL != src->node) {
         p->node = pmix_tma_strdup(tma, src->node);
@@ -2427,13 +2302,12 @@ pmix_bfrops_base_tma_populate_pstats(
     p->sample_time.tv_usec = src->sample_time.tv_usec;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_pstats(
-    pmix_proc_stats_t **dest,
-    pmix_proc_stats_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_pstats(pmix_proc_stats_t **dest,
+                                               pmix_proc_stats_t *src,
+                                               pmix_data_type_t type,
+                                               pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
     /* create the new object */
     pmix_proc_stats_t *p = pmix_bfrops_base_tma_proc_stats_create(1, tma);
@@ -2445,32 +2319,29 @@ pmix_bfrops_base_tma_copy_pstats(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_disk_stats_construct(
-    pmix_disk_stats_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_disk_stats_construct(pmix_disk_stats_t *p,
+                                               pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_disk_stats_t));
 }
 
-static inline void
-pmix_bfrops_base_tma_disk_stats_destruct(
-    pmix_disk_stats_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_disk_stats_destruct(pmix_disk_stats_t *p,
+                                              pmix_tma_t *tma)
+{
     if (NULL != p->disk) {
         pmix_tma_free(tma, p->disk);
         p->disk = NULL;
     }
 }
 
-static inline pmix_disk_stats_t *
-pmix_bfrops_base_tma_disk_stats_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_disk_stats_t* pmix_bfrops_base_tma_disk_stats_create(size_t n,
+                                                          pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -2483,12 +2354,11 @@ pmix_bfrops_base_tma_disk_stats_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_disk_stats_free(
-    pmix_disk_stats_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_disk_stats_free(pmix_disk_stats_t *p,
+                                          size_t n,
+                                          pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_disk_stats_destruct(&p[m], tma);
@@ -2497,12 +2367,11 @@ pmix_bfrops_base_tma_disk_stats_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_populate_dkstats(
-    pmix_disk_stats_t *p,
-    pmix_disk_stats_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_populate_dkstats(pmix_disk_stats_t *p,
+                                           pmix_disk_stats_t *src,
+                                           pmix_tma_t *tma)
+{
     if (NULL != src->disk) {
         p->disk = pmix_tma_strdup(tma, src->disk);
     }
@@ -2519,13 +2388,12 @@ pmix_bfrops_base_tma_populate_dkstats(
     p->weighted_milliseconds_io = src->weighted_milliseconds_io;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_dkstats(
-    pmix_disk_stats_t **dest,
-    pmix_disk_stats_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_dkstats(pmix_disk_stats_t **dest,
+                                                pmix_disk_stats_t *src,
+                                                pmix_data_type_t type,
+                                                pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
     /* create the new object */
     pmix_disk_stats_t *p = pmix_bfrops_base_tma_disk_stats_create(1, tma);
@@ -2537,33 +2405,30 @@ pmix_bfrops_base_tma_copy_dkstats(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_net_stats_construct(
-    pmix_net_stats_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_net_stats_construct(pmix_net_stats_t *p,
+                                              pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_net_stats_t));
 }
 
-static inline void
-pmix_bfrops_base_tma_net_stats_destruct(
-    pmix_net_stats_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_net_stats_destruct(pmix_net_stats_t *p,
+                                             pmix_tma_t *tma)
+{
     if (NULL != p->net_interface) {
         pmix_tma_free(tma, p->net_interface);
         p->net_interface = NULL;
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_net_stats_free(
-    pmix_net_stats_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_net_stats_free(pmix_net_stats_t *p,
+                                         size_t n,
+                                         pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_net_stats_destruct(&p[m], tma);
@@ -2572,11 +2437,10 @@ pmix_bfrops_base_tma_net_stats_free(
     }
 }
 
-static inline pmix_net_stats_t *
-pmix_bfrops_base_tma_net_stats_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_net_stats_t* pmix_bfrops_base_tma_net_stats_create(size_t n,
+                                                        pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -2589,12 +2453,11 @@ pmix_bfrops_base_tma_net_stats_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_populate_netstats(
-    pmix_net_stats_t *p,
-    pmix_net_stats_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_populate_netstats(pmix_net_stats_t *p,
+                                            pmix_net_stats_t *src,
+                                            pmix_tma_t *tma)
+{
     if (NULL != src->net_interface) {
         p->net_interface = pmix_tma_strdup(tma, src->net_interface);
     }
@@ -2606,13 +2469,12 @@ pmix_bfrops_base_tma_populate_netstats(
     p->num_send_errs = src->num_send_errs;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_netstats(
-    pmix_net_stats_t **dest,
-    pmix_net_stats_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_netstats(pmix_net_stats_t **dest,
+                                                 pmix_net_stats_t *src,
+                                                 pmix_data_type_t type,
+                                                 pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
     /* create the new object */
     pmix_net_stats_t *p = pmix_bfrops_base_tma_net_stats_create(1, tma);
@@ -2624,21 +2486,19 @@ pmix_bfrops_base_tma_copy_netstats(
     return PMIX_SUCCESS;
 }
 
-static inline void
-pmix_bfrops_base_tma_node_stats_construct(
-    pmix_node_stats_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_node_stats_construct(pmix_node_stats_t *p,
+                                               pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
 
     memset(p, 0, sizeof(pmix_node_stats_t));
 }
 
-static inline void
-pmix_bfrops_base_tma_node_stats_destruct(
-    pmix_node_stats_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_node_stats_destruct(pmix_node_stats_t *p,
+                                              pmix_tma_t *tma)
+{
     if (NULL != p->node) {
         pmix_tma_free(tma, p->node);
         p->node = NULL;
@@ -2655,11 +2515,10 @@ pmix_bfrops_base_tma_node_stats_destruct(
     }
 }
 
-static inline pmix_node_stats_t *
-pmix_bfrops_base_tma_node_stats_create(
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_node_stats_t* pmix_bfrops_base_tma_node_stats_create(size_t n,
+                                                          pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -2672,12 +2531,11 @@ pmix_bfrops_base_tma_node_stats_create(
     return p;
 }
 
-static inline void
-pmix_bfrops_base_tma_node_stats_free(
-    pmix_node_stats_t *p,
-    size_t n,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_node_stats_free(pmix_node_stats_t *p,
+                                          size_t n,
+                                          pmix_tma_t *tma)
+{
     if (NULL != p) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_node_stats_destruct(&p[m], tma);
@@ -2686,12 +2544,11 @@ pmix_bfrops_base_tma_node_stats_free(
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_populate_ndstats(
-    pmix_node_stats_t *p,
-    pmix_node_stats_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_populate_ndstats(pmix_node_stats_t *p,
+                                           pmix_node_stats_t *src,
+                                           pmix_tma_t *tma)
+{
     /* copy the individual fields */
     if (NULL != src->node) {
         p->node = pmix_tma_strdup(tma, src->node);
@@ -2729,13 +2586,12 @@ pmix_bfrops_base_tma_populate_ndstats(
     }
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_ndstats(
-    pmix_node_stats_t **dest,
-    pmix_node_stats_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_ndstats(pmix_node_stats_t **dest,
+                                                pmix_node_stats_t *src,
+                                                pmix_data_type_t type,
+                                                pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
     /* create the new object */
     pmix_node_stats_t *p = pmix_bfrops_base_tma_node_stats_create(1, tma);
@@ -2747,12 +2603,11 @@ pmix_bfrops_base_tma_copy_ndstats(
     return PMIX_SUCCESS;
 }
 
-static inline pmix_value_cmp_t
-pmix_bfrops_base_tma_value_compare(
-    pmix_value_t *v1,
-    pmix_value_t *v2,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_value_cmp_t pmix_bfrops_base_tma_value_compare(pmix_value_t *v1,
+                                                    pmix_value_t *v2,
+                                                    pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(tma);
     // Note: No need for TMA here because no heap management, just comparisons.
     return pmix_bfrops_base_value_cmp(v1, v2);
@@ -2763,13 +2618,12 @@ pmix_bfrops_base_tma_value_compare(
  * and so we cannot just copy one value at a time. So handle all value types
  * here.
  */
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_darray(
-    pmix_data_array_t **dest,
-    pmix_data_array_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
+                                               pmix_data_array_t *src,
+                                               pmix_data_type_t type,
+                                               pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     pmix_status_t rc = PMIX_SUCCESS;
@@ -3419,12 +3273,11 @@ pmix_bfrops_base_tma_copy_darray(
     return rc;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_value_xfer(
-    pmix_value_t *p,
-    const pmix_value_t *src,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
+                                              const pmix_value_t *src,
+                                              pmix_tma_t *tma)
+{
     pmix_status_t rc;
 
     /* copy the right field */
@@ -3624,13 +3477,12 @@ pmix_bfrops_base_tma_value_xfer(
     return PMIX_SUCCESS;
 }
 
-static inline pmix_status_t
-pmix_bfrops_base_tma_copy_value(
-    pmix_value_t **dest,
-    pmix_value_t *src,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_value(pmix_value_t **dest,
+                                              pmix_value_t *src,
+                                              pmix_data_type_t type,
+                                              pmix_tma_t *tma)
+{
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     *dest = (pmix_value_t *)pmix_tma_malloc(tma, sizeof(pmix_value_t));
@@ -3645,11 +3497,10 @@ pmix_bfrops_base_tma_copy_value(
     return pmix_bfrops_base_tma_value_xfer(p, src, tma);
 }
 
-static inline void
-pmix_bfrops_base_tma_data_array_destruct(
-    pmix_data_array_t *d,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_array_destruct(pmix_data_array_t *d,
+                                              pmix_tma_t *tma)
+{
     switch (d->type) {
         case PMIX_STRING: {
             char **s = (char**)d->array;
@@ -3783,24 +3634,22 @@ pmix_bfrops_base_tma_data_array_destruct(
     d->size = 0;
 }
 
-static inline void
-pmix_bfrops_base_tma_data_array_free(
-    pmix_data_array_t *p,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_array_free(pmix_data_array_t *p,
+                                          pmix_tma_t *tma)
+{
     if (NULL != p) {
         pmix_bfrops_base_tma_data_array_destruct(p, tma);
         pmix_tma_free(tma, p);
     }
 }
 
-static inline void
-pmix_bfrops_base_tma_data_array_construct(
-    pmix_data_array_t *p,
-    size_t num,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
+                                               size_t num,
+                                               pmix_data_type_t type,
+                                               pmix_tma_t *tma)
+{
     p->type = type;
     p->size = num;
     if (0 < num) {
@@ -3951,12 +3800,11 @@ pmix_bfrops_base_tma_data_array_construct(
     }
 }
 
-static inline pmix_data_array_t *
-pmix_bfrops_base_tma_data_array_create(
-    size_t n,
-    pmix_data_type_t type,
-    pmix_tma_t *tma
-) {
+static inline
+pmix_data_array_t* pmix_bfrops_base_tma_data_array_create(size_t n,
+                                                          pmix_data_type_t type,
+                                                          pmix_tma_t *tma)
+{
     if (0 == n) {
         return NULL;
     }
@@ -3968,21 +3816,19 @@ pmix_bfrops_base_tma_data_array_create(
 }
 
 // Note **v to maintain sematics of PMIX_VALUE_RELEASE().
-static inline void
-pmix_bfrops_base_tma_value_release(
-    pmix_value_t **v,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_value_release(pmix_value_t **v,
+                                        pmix_tma_t *tma)
+{
     pmix_bfrops_base_tma_value_destruct(*v, tma);
     pmix_tma_free(tma, *v);
     *v = NULL;
 }
 
-static inline void
-pmix_bfrops_base_tma_value_destruct(
-    pmix_value_t *v,
-    pmix_tma_t *tma
-) {
+static inline
+void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
+                                         pmix_tma_t *tma)
+{
     switch (v->type) {
         case PMIX_STRING:
             if (NULL != v->data.string) {

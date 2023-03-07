@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1111,6 +1111,40 @@ do {                            \
         PMIx_Data_array_free(m);    \
         (m) = NULL;                 \
     } while(0)
+
+
+// functions that are no longer visible from inside
+// the PMIx library
+
+#define pmix_argv_append_nosize(a, b) \
+    PMIx_Argv_append_nosize(a, b)
+
+#define pmix_argv_append_unique_nosize(a, b) \
+    PMIx_Argv_append_unique_nosize(a, b)
+
+#define pmix_argv_split(a, b) \
+    PMIx_Argv_split(a, b)
+
+#define pmix_argv_split_with_empty(a, b) \
+    PMIx_Argv_split_with_empty(a, b)
+
+#define pmix_argv_free(a) \
+    PMIx_Argv_free(a)
+
+#define pmix_argv_count(a) \
+    PMIx_Argv_count(a)
+
+#define pmix_argv_join(a, b) \
+    PMIx_Argv_join(a, b)
+
+#define pmix_argv_prepend_nosize(a, b) \
+    PMIx_Argv_prepend_nosize(a, b)
+
+#define pmix_argv_copy(a) \
+    PMIx_Argv_copy(a)
+
+#define pmix_setenv(a, b, c, d) \
+    PMIx_Setenv(a, b, c, d)
 
 #if defined(c_plusplus) || defined(__cplusplus)
 }
