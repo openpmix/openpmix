@@ -1380,6 +1380,8 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
 pmix_status_t PMIx_tool_set_server_module(pmix_server_module_t *module)
 {
     pmix_host_server = *module;
+    /* mark that we are now a server */
+    PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_SERVER);
     return PMIX_SUCCESS;
 }
 
