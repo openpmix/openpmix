@@ -668,80 +668,62 @@ pmix_status_t PMIx_Info_load(pmix_info_t *info,
 
 void PMIx_Info_required(pmix_info_t *p)
 {
-    p->flags |= PMIX_INFO_REQD;
+    PMIX_SET_BIT(p->flags, PMIX_INFO_REQD);
 }
 
 void PMIx_Info_optional(pmix_info_t *p)
 {
-    p->flags &= ~PMIX_INFO_REQD;
+    PMIX_UNSET_BIT(p->flags, PMIX_INFO_REQD);
 }
 
 bool PMIx_Info_is_required(const pmix_info_t *p)
 {
-    bool ans;
-
-    ans = p->flags & PMIX_INFO_REQD;
-    return ans;
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_REQD);
 }
 
 bool PMIx_Info_is_optional(const pmix_info_t *p)
 {
-    bool ans;
-
-    ans = !(p->flags & PMIX_INFO_REQD);
-    return ans;
+    return PMIX_CHECK_BIT_NOT_SET(p->flags, PMIX_INFO_REQD);
 }
 
 void PMIx_Info_processed(pmix_info_t *p)
 {
-    p->flags |= PMIX_INFO_REQD_PROCESSED;
+    PMIX_SET_BIT(p->flags, PMIX_INFO_REQD_PROCESSED);
 }
 
 bool PMIx_Info_was_processed(const pmix_info_t *p)
 {
-    bool ans;
-
-    ans = p->flags & PMIX_INFO_REQD_PROCESSED;
-    return ans;
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_REQD_PROCESSED);
 }
 
 void PMIx_Info_set_end(pmix_info_t *p)
 {
-    p->flags |= PMIX_INFO_ARRAY_END;
+    PMIX_SET_BIT(p->flags, PMIX_INFO_ARRAY_END);
 }
 
 bool PMIx_Info_is_end(const pmix_info_t *p)
 {
-    bool ans;
-
-    ans = p->flags & PMIX_INFO_ARRAY_END;
-    return ans;
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_ARRAY_END);
 }
 
 void PMIx_Info_qualifier(pmix_info_t *p)
 {
-    p->flags |= PMIX_INFO_QUALIFIER;
+    PMIX_SET_BIT(p->flags, PMIX_INFO_QUALIFIER);
 }
 
 bool PMIx_Info_is_qualifier(const pmix_info_t *p)
 {
-    bool ans;
-
-    ans = p->flags & PMIX_INFO_QUALIFIER;
-    return ans;
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_QUALIFIER);
 }
 
 void PMIx_Info_persistent(pmix_info_t *p)
 {
-    p->flags |= PMIX_INFO_PERSISTENT;
+    PMIX_SET_BIT(p->flags, PMIX_INFO_PERSISTENT);
 }
 
 bool PMIx_Info_is_persistent(const pmix_info_t *p)
 {
-    bool ans;
-
-    ans = p->flags & PMIX_INFO_PERSISTENT;
-    return ans;
+    return PMIX_CHECK_BIT_IS_SET(p->flags, PMIX_INFO_PERSISTENT);
 }
 
 pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
