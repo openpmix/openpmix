@@ -66,9 +66,25 @@ BEGIN_C_DECLS
     "pmix.pnet.setapp" // (pmix_byte_object_t) blob containing info to be given to
                        //      pnet framework on remote nodes
 
+// define some bit handling macros
+#define PMIX_SET_BIT(a, f) \
+    (a) |= (f)
+
+#define PMIX_UNSET_BIT(a, f) \
+    (a) &= ~(f)
+
+#define PMIX_CHECK_BIT_IS_SET(a, f) \
+    ((a) & (f))
+
+#define PMIX_CHECK_BIT_NOT_SET(a, f) \
+    !PMIX_CHECK_BIT_IS_SET(a, f)
+
 #define PMIX_INFO_OP_COMPLETE       0x80000000
-#define PMIX_INFO_OP_COMPLETED(m)   ((pmix_info_t *) (m))->flags |= PMIX_INFO_OP_COMPLETE
-#define PMIX_INFO_OP_IS_COMPLETE(m) ((m)->flags & PMIX_INFO_OP_COMPLETE)
+#define PMIX_INFO_OP_COMPLETED(m) \
+      PMIX_SET_BIT((m)->flags, PMIX_INFO_OP_COMPLETE)
+#define PMIX_INFO_OP_IS_COMPLETE(m) \
+      PMIX_CHECK_BIT_IS_SET((m)->flags, PMIX_INFO_OP_COMPLETE)
+
 
 /* define an internal-only object for creating
  * lists of names */
