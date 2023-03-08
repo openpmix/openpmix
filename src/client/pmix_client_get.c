@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -238,17 +238,18 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     } else {
         PMIX_LOAD_NSPACE(p.nspace, proc->nspace);
     }
+    iptr = (pmix_info_t*)info;
+    nfo = ninfo;
 
     /* if the proc param is NULL, then we are seeking a key that
      * must be globally unique, so communicate this to the hash
      * functions with the UNDEF rank */
-    if (NULL == proc) {
+    if (NULL == proc || PMIX_RANK_UNDEF == proc->rank) {
         p.rank = PMIX_RANK_UNDEF;
+        goto doget;
     } else {
         p.rank = proc->rank;
     }
-    iptr = (pmix_info_t*)info;
-    nfo = ninfo;
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb value for proc %s key %s",
