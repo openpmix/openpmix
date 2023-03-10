@@ -23,6 +23,32 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
+4.2.4 -- TBD
+----------------------
+ - PR #3009: Fix fetch of globally unique keys
+ - PR #3008: Multiple commits
+    - Plug memory leaks
+    - Convert majority of PMIX_*_FREE() macros
+    - Improve PMIX_*_RELEASE() consistency
+    - Silence couple of nit warnings
+    - Complete PMIX_*_FREE() conversion
+    - Fix some Python bindings errors
+    - Correct cbdata type in pmix_show_help callback function
+    - Cleanup code style, fix bit checks, and fix backward compatibility
+ - PR #3002: Update OAC submodule pointer
+ - PR #2992: Multiple commits
+    - Update rpm spec file
+    - Silence debug output
+    - Avoid large stack allocations in pmix_bfrops_base_tma_setenv()
+ - PR #2977: Fix handling of cmd line arguments
+ - PR #2972: Handle the case where prterun is given no options
+ - PR #2966: Update sphinx requirements
+ - PR #2964: Trim v5 crossover from the Python bindings
+ - PR #2963: Multiple commits
+    - Remove the PMIX_SIZE_ESTIMATE attribute
+    - Remove GDS "set_size" entry points
+
+
 4.2.3 -- 7 Feb 2023
 ----------------------
  - PR #2959 Move release of pmix_client_globals.myserver to later

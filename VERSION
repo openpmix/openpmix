@@ -16,7 +16,7 @@
 
 major=4
 minor=2
-release=3
+release=4
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
 # it will be appended to the version number.  It does not have to be
@@ -24,7 +24,7 @@ release=3
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=rc2
+greek=rc1
 
 # PMIx required dependency versions.
 # List in x.y.z format.
@@ -53,7 +53,7 @@ flex_min_version=2.5.4
 # magnitude of the changes.
 std_major=4
 std_minor=2
-std_extension=3
+std_extension=4
 
 # PMIx Standard ABI Compliance Level(s)
 # The major and minor numbers (MAJOR.MINOR) indicate the version
@@ -116,7 +116,7 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=9:0:7
+libpmix_so_version=10:0:8
 
 # "Common" components install standalone libraries that are run-time
 # # linked by one or more components.  So they need to be versioned as
