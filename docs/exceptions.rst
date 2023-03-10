@@ -38,9 +38,9 @@ Scheduler Integration APIs
 
   .. code-block:: c
 
-  pmix_status_t PMIx_Session_control(uint32_t sessionID,
-                                     const pmix_info_t directives[], size_t ndirs,
-                                     pmix_info_cbfunc_t cbfunc, void *cbdata);
+     pmix_status_t PMIx_Session_control(uint32_t sessionID,
+                                        const pmix_info_t *directives, size_t ndirs,
+                                        pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 
 Tool APIs
