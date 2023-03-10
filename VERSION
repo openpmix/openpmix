@@ -24,7 +24,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=a1
+greek=rc1
 
 # PMIx required dependency versions.
 # List in x.y.z format.
@@ -53,7 +53,7 @@ flex_min_version=2.5.4
 # magnitude of the changes.
 std_major=4
 std_minor=1
-std_extension=2
+std_extension=5
 
 # PMIx Standard ABI Compliance Level(s)
 # The major and minor numbers (MAJOR.MINOR) indicate the version
@@ -119,10 +119,5 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=9:0:7
+libpmix_so_version=15:0:13
 
-# "Common" components install standalone libraries that are run-time
-# # linked by one or more components.  So they need to be versioned as
-# # well.  Yuck; this somewhat breaks the
-# # components-don't-affect-the-build-system abstraction.
-#

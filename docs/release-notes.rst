@@ -2,17 +2,16 @@ Release Notes
 =============
 
 The following abbreviated list of release notes applies to this code
-base as of this writing (12 November 2015):
+base as of this writing (10 Mar 2023):
 
 General notes
 -------------
 
 * Systems that have been tested are:
 
-  * Linux (various flavors/distros), 32 bit, with gcc
   * Linux (various flavors/distros), 64 bit (x86), with gcc, Intel,
     and Portland (*)
-  * OS X (10.7 and above), 32 and 64 bit (x86_64), with gcc (*)
+  * OS X (10.7 and above), 64 bit (x86_64), with gcc and clang (*)
 
 * OpenPMIx has taken some steps towards Reproducible Builds
   (https://reproducible-builds.org/).  Specifically, OpenPMIx's
