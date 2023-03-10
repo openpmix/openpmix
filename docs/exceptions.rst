@@ -25,6 +25,40 @@ function |mdash| in accordance with planned changes to the Standard.
 The macro versions have been retained as deprecated (without
 warnings) for backward compatibility.
 
+Qualified Values
+----------------
+
+OpenPMIx has introduced the concept of ``qualified values`` to allow users to specify a value combined with one or more qualifiers.
+
+
+Scheduler Integration APIs
+--------------------------
+
+* Allow a scheduler to direct the resource manager to execute a session-related operation, or allow the resource manager to report a session-related action (e.g., session terminated) to the scheduler:
+
+  .. code-block:: c
+
+     pmix_status_t PMIx_Session_control(uint32_t sessionID,
+                                        const pmix_info_t *directives, size_t ndirs,
+                                        pmix_info_cbfunc_t cbfunc, void *cbdata);
+
+
+Tool APIs
+---------
+
+* Check if the tool is connected to a PMIx server:
+
+  .. code-block:: c
+
+     bool PMIx_tool_is_connected(void);
+
+* Allow the tool to register a server function pointer module so it can service client requests:
+
+  .. code-block:: c
+
+     pmix_status_t PMIx_tool_set_server_module(pmix_server_module_t *mod);
+
+
 Utility APIs
 ------------
 
