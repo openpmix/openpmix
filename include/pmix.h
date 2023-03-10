@@ -485,7 +485,7 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
                                                      pmix_info_cbfunc_t cbfunc, void *cbdata);
 
 /* Request a session control action. The sessionID identifies the session
- * to which the specified control action is to be applied. A NULL
+ * to which the specified control action is to be applied. A UINT32_MAX
  * value can be used to indicate all sessions under the caller's control.
  *
  * The directives are provided as pmix_info_t structs in the directives
