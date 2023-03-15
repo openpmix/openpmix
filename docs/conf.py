@@ -17,7 +17,9 @@
 # -- Project information -----------------------------------------------------
 
 import datetime
-year = datetime.datetime.now().year
+mydate = datetime.datetime.now()
+year = mydate.year
+month = mydate.strftime("%B")
 
 project = 'OpenPMIx'
 copyright = f'2014-{year}, The OpenPMIx Community'
@@ -176,6 +178,7 @@ rst_prolog = f"""
 .. |rarrow| unicode:: U+02192 .. Right arrow
 
 .. |year| replace:: {year}
+.. |date| replace:: {month}-{year}
 .. |opmix_ver| replace:: {opmix_ver}
 .. |opmix_series| replace:: {opmix_series}
 .. |std_ver| replace:: {std_ver}

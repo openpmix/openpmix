@@ -1,3 +1,5 @@
+.. _label-version-numbers:
+
 Version Numbers and Binary Compatibility
 ========================================
 

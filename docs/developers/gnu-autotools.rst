@@ -7,8 +7,8 @@ There is enough detail in building the GNU Autotools that it warrants
 its own section.
 
 .. note:: As noted above, you only need to read/care about this
-          section if you are building OpenPMIx from a Git clone.  End
-          users installing an OpenPMIx distribution tarball do *not*
+          section if you are building PMIx from a Git clone.  End
+          users installing an PMIx distribution tarball do *not*
           need to have the GNU Autotools installed.
 
 Use a package manager
@@ -25,40 +25,46 @@ the internet and build/install it yourself).
 Autotools versions
 ------------------
 
-The following tools are required for developers to compile OpenPMIx
-from its repository sources (users who download OpenPMIx tarballs do
+The following tools are required for developers to compile PMIx
+from its repository sources (users who download PMIx tarballs do
 not need these tools - they are only required for developers working
-on the internals of OpenPMIx itself):
+on the internals of PMIx itself):
 
 .. list-table::
    :header-rows: 1
 
    * - Software package
-     - Notes
+     - Version
      - URL
 
    * - GNU m4
-     - See version chart below
+     - 1.4.17
      - https://ftp.gnu.org/gnu/m4/
    * - GNU Autoconf
-     - See version chart below
+     - 2.69
      - https://ftp.gnu.org/gnu/autoconf/
    * - GNU Automake
-     - See version chart below
+     - 1.15
      - https://ftp.gnu.org/gnu/automake/
    * - GNU Libtool
-     - See version chart below
+     - 2.4.6
      - https://ftp.gnu.org/gnu/libtool/
+   * - Flex
+     - 2.5.35
+     - https://sourceforge.net/projects/flex/
+   * - Sphinx
+     - 4.2.0
+     - https://www.sphinx-doc.org/en/master/index.html
 
-The table below lists the versions that are used to make nightly
-snapshot and official release OpenPMIx tarballs. Other versions of the
+The above table lists the versions that are used to make official
+release PMIx tarballs. Other versions of the
 tools *may* work for some (but almost certainly not all) platforms;
 the ones listed below are the versions that we know work across an
 extremely wide variety of platforms and environments.
 
-To strengthen the above point: the core OpenPMIx developers typically
+To strengthen this point: the core PMIx developers typically
 use very, very recent versions of the GNU tools.  There are known bugs
-in older versions of the GNU tools that OpenPMIx no longer compensates
+in older versions of the GNU tools that PMIx no longer compensates
 for (it seemed senseless to indefinitely support patches for ancient
 versions of Autoconf, for example).
 
@@ -67,139 +73,24 @@ versions of Autoconf, for example).
 
 That being said, ``autogen.pl`` and ``configure.ac`` scripts tend to
 be a bit lenient and enforce slightly older minimum versions than the
-ones listed below. This is because such older versions still make
-usable OpenPMIx builds on many platforms - especially Linux on x86_64
+ones listed above. This is because such older versions still make
+usable PMIx builds on many platforms - especially Linux on x86_64
 with GNU compilers - and are convenient for developers whose Linux
-distribution may not have as recent as the versions listed below (but are
+distribution may not have as recent as the versions listed above (but are
 recent enough to produce a working version for their platform).
 
-To be clear: the versions listed below are required to support a wide
-variety of platforms and environments, and are used to make nightly
-and official release tarballs. When building OpenPMIx, YMMV when using
-versions older than those listed below |mdash| especially if you are
+To be clear: the versions listed above are required to support a wide
+variety of platforms and environments, and are used to make the official
+release tarballs. When building PMIx, YMMV when using
+versions older than those listed above |mdash| especially if you are
 not building on Linux x86_64 with the GNU compilers.
 
 Using older versions is unsupported. If you run into problems, upgrade
-to at least the versions listed below.
+to at least the versions listed above.
 
-.. note:: You may need to scroll right in the following table.
-
-.. admonition:: PMIx Docs TODO
-   :class: error
-
-   The table below is almost certainly wrong; it has all the values
-   from Open MPI.  Need to update the table below with the appropriate
-   values for OpenPMIx.
-
-.. list-table::
-   :header-rows: 1
-
-   * - OpenPMIx
-     - M4
-     - Autoconf
-     - Automake
-     - Libtool
-     - Flex
-     - Sphinx
-
-   * - v1.0.x
-     - NA
-     - 2.58 - 2.59
-     - 1.7 - 1.9.6
-     - 1.5.16 - 1.5.22
-     - 2.5.4
-     - NA
-   * - v1.1.x
-     - NA
-     - 2.59
-     - 1.9.6
-     - 1.5.16 - 1.5.22
-     - 2.5.4
-     - NA
-   * - v1.2.x
-     - NA
-     - 2.59
-     - 1.9.6
-     - 1.5.22 - 2.1a
-     - 2.5.4
-     - NA
-   * - v1.3.x
-     - 1.4.11
-     - 2.63
-     - 1.10.1
-     - 2.2.6b
-     - 2.5.4
-     - NA
-   * - v1.4.x
-     - 1.4.11
-     - 2.63
-     - 1.10.3
-     - 2.2.6b
-     - 2.5.4
-     - NA
-   * - v1.5.x for x=0-4
-     - 1.4.13
-     - 2.65
-     - 1.11.1
-     - 2.2.6b
-     - 2.5.4
-     - NA
-   * - v1.5.x for x>=5
-     - 1.4.16
-     - 2.68
-     - 1.11.3
-     - 2.4.2
-     - 2.5.35
-     - NA
-   * - v1.6.x
-     - 1.4.16
-     - 2.68
-     - 1.11.3
-     - 2.4.2
-     - 2.5.35
-     - NA
-   * - v1.7.x
-     - 1.4.16
-     - 2.69
-     - 1.12.2
-     - 2.4.2
-     - 2.5.35
-     - NA
-   * - v1.8.x
-     - 1.4.16
-     - 2.69
-     - 1.12.2
-     - 2.4.2
-     - 2.5.35
-     - NA
-   * - v1.10.x
-     - 1.4.16
-     - 2.69
-     - 1.12.2
-     - 2.4.2
-     - 2.5.35
-     - NA
-   * - v2.0.x through v4.y
-     - 1.4.17
-     - 2.69
-     - 1.15
-     - 2.4.6
-     - 2.5.35
-     - NA
-   * - v5.0.x
-     - 1.4.17
-     - 2.69
-     - 1.15
-     - 2.4.6
-     - 2.5.35
-     - 4.2.0
-   * - Git main
-     - 1.4.17
-     - 2.69
-     - 1.15
-     - 2.4.6
-     - 2.5.35
-     - 4.2.0
+.. note:: Sphinx was only recently added to the list of required tools
+          to generate the documentation. It is not required for PMIx
+          versions prior to v4.2.3.
 
 Checking your versions
 ----------------------
@@ -231,7 +122,7 @@ The GNU Autotools sources can be can be downloaded from:
 * And if you need it: https://ftp.gnu.org/gnu/m4/
 
 It is certainly easiest to download/build/install all four of these
-tools together.  But note that OpenPMIx has no specific m4
+tools together.  But note that PMIx has no specific m4
 requirements; it is only listed here because Autoconf requires minimum
 versions of GNU m4.  Hence, you may or may not *need* to actually
 install a new version of GNU m4.  That being said, if you are confused

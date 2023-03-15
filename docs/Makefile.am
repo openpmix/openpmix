@@ -2,6 +2,7 @@
 # Copyright (c) 2022 Cisco Systems, Inc.  All rights reserved.
 #
 # Copyright (c) 2022-2023 Intel, Inc.  All rights reserved.
+# Copyright (c) 2023      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -33,10 +34,17 @@ TEXT_SOURCE_FILES = # if you have any .txt files, list them here
 IMAGE_SOURCE_FILES = # if you have any, list them here
 RST_SOURCE_FILES   = \
         $(srcdir)/*.rst \
+        $(srcdir)/building-apps/*.rst \
         $(srcdir)/developers/*.rst \
+        $(srcdir)/installing-pmix/*.rst \
+        $(srcdir)/installing-pmix/configure-cli-options/*.rst \
         $(srcdir)/man/*.rst \
         $(srcdir)/man/man1/*.rst \
-        $(srcdir)/man/man5/*.rst
+        $(srcdir)/man/man3/*.rst \
+        $(srcdir)/man/man5/*.rst \
+        $(srcdir)/news/*.rst \
+        $(srcdir)/release-notes/*.rst
+
 
 EXTRA_DIST         = \
         requirements.txt \
