@@ -104,6 +104,9 @@ typedef struct {
 #define PMIX_PROC_GATEWAY         (PMIX_PROC_SERVER | PMIX_PROC_GATEWAY_ACT)
 #define PMIX_PROC_SCHEDULER_ACT   0x80000000
 #define PMIX_PROC_SCHEDULER       (PMIX_PROC_SERVER | PMIX_PROC_SCHEDULER_ACT)
+#define PMIX_PROC_SYS_CTRLR_ACT   0x01000000
+#define PMIX_PROC_SYS_CTRLR       (PMIX_PROC_SERVER | PMIX_PROC_SYS_CTRLR_ACT)
+
 
 #define PMIX_SET_PEER_TYPE(a, b) (a)->proc_type.type |= (b)
 #define PMIX_SET_PROC_TYPE(a, b) (a)->type |= (b)
@@ -120,6 +123,8 @@ typedef struct {
     ((PMIX_PROC_CLIENT_TOOL_ACT & (p)->proc_type.type) && (PMIX_PROC_CLIENT & (p)->proc_type.type))
 #define PMIX_PEER_IS_GATEWAY(p)   (PMIX_PROC_GATEWAY_ACT & (p)->proc_type.type)
 #define PMIX_PEER_IS_SCHEDULER(p) (PMIX_PROC_SCHEDULER_ACT & (p)->proc_type.type)
+#define PMIX_PEER_IS_SYS_CTRLR(p) (PMIX_PROC_SYS_CTRLR_ACT & (p)->proc_type.type)
+
 
 #define PMIX_PROC_IS_CLIENT(p)   (PMIX_PROC_CLIENT & (p)->type)
 #define PMIX_PROC_IS_SERVER(p)   (PMIX_PROC_SERVER & (p)->type)
@@ -131,6 +136,8 @@ typedef struct {
     ((PMIX_PROC_CLIENT_TOOL_ACT & (p)->type) && (PMIX_PROC_CLIENT & (p)->type))
 #define PMIX_PROC_IS_GATEWAY(p)   (PMIX_PROC_GATEWAY_ACT & (p)->type)
 #define PMIX_PROC_IS_SCHEDULER(p) (PMIX_PROC_SCHEDULER_ACT & (p)->type)
+#define PMIX_PROC_IS_SYS_CTRLR(p) (PMIX_PROC_SYS_CTRLR_ACT & (p)->type)
+
 
 /* provide macros for setting the major, minor, and release values
  * just so people don't have to deal with the details of the struct */
