@@ -19,7 +19,7 @@ indicating the installation directory on the command line:
 
 Note that there are many, many configuration options to the
 ``./configure`` step.  Some of them may be needed for your particular
-environmnet; see below for desciptions of the options available.
+environment; see below for descriptions of the options available.
 
 If your installation prefix path is not writable by a regular user,
 you may need to use ``sudo`` or ``su`` to run the ``make install``
@@ -41,3 +41,4 @@ Finally, note that VPATH builds are fully supported.  For example:
    $ cd build
    $ ../configure --prefix=<path> |& tee config.out
    ...etc.
+

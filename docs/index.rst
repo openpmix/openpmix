@@ -18,17 +18,20 @@ The charter of the PMIx community is to:
    support evolving programming model requirements for application-RM
    interactions.
 
+  .. note:: You will see ``OpenPMIx`` frequently referred to
+            as just ``PMIx``. While there is a separate PMIx Standard, there
+            are (as of this writing) no alternative implementations of that
+            Standard. In fact, the Standard post-dates the library by several
+            years, and often lags behind the library in terms of new definitions.
+            Thus, it is customary to refer to the library as just ``PMIx`` and
+            drop the longer name - at least, until some other implementation
+            arises (which many consider unlikely).
+
 PMIx is designed to be particularly easy for resource managers to
 adopt, thus facilitating a rapid uptake into that community for
 application portability. Both client and server libraries are
 included, along with reference examples of client usage and
-server-side integration. A list of supported environments and versions
-is provided [here](etc) - please check regularly as the list is
-changing!
-
-.. error:: The above paragraph refers to a list of supported
-   environments and versions, but I don't know what it is referring
-   to.  This text / link should be fixed.
+server-side integration.
 
 PMIx targets support for the Linux operating system.  A reasonable
 effort is made to support all major, modern Linux distributions;
@@ -45,14 +48,18 @@ Table of contents
    :numbered:
 
    quickstart
-   history
-   release-notes
-   exceptions
    getting-help
-   install
+   release-notes/index
+   exceptions
+   installing-pmix/index
+   release-notes
+   history
    versions
+   mca
+   building-apps/index
    developers/index
    contributing
    license
    security
+   news/index
    man/index

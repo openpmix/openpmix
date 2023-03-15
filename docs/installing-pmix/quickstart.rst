@@ -1,3 +1,5 @@
+.. _label-quickstart-building-pmix:
+
 Installation
 ============
 
@@ -41,24 +43,29 @@ system from within the directory at the top of the tree:
    [...lots of output...]
    shell$ make all install
 
-.. note:: This version of PMIx requires the `Libevent package
-          <https://libevent.org/>`_ to build and operate. Any version
-          of Libevent greater than or equal to 2.0.21 is acceptable.
+.. note:: This version of PMIx requires the following 3rd-party
+          packages to build and operate:
 
-.. note:: This version of PMIx optionally supports the `HWLOC package
-          <https://www.open-mpi.org/projects/hwloc/>`_ for providing
-          topology information to both the host environment (by
-          collecting local inventory for rollup) and local client
-          processes. Any version of HWLOC greater than 1.10 is
-          supported, although versions in the 2.x series are
-          recommended.
+          * either the `Libevent package
+            <https://libevent.org/>`_ (any version
+            of Libevent greater than or equal to 2.0.21 is acceptable) or
+            the `libev package <https://metacpan.org/dist/EV/view/libev/ev.pod>`_
+            (no minimum version has been identified).
 
-Note that you must point ``configure`` at the libevent installation
-using the ``--with-libevent=<dir>`` option if it is in a non-standard
-location. Similarly, non-standard locations for the HWLOC package must
-be specified using the ``--with-hwloc=<dir>`` option. In both cases,
+          * the `HWLOC package
+            <https://www.open-mpi.org/projects/hwloc/>`_ for providing
+            topology information to both the host environment (by
+            collecting local inventory for rollup) and local client
+            processes. Any version of HWLOC greater than 1.10 is
+            supported, although versions in the 2.x series are
+            recommended.
+
+Note that you must point ``configure`` at these packages if they are
+in a non-standard location - libevent using the ``--with-libevent=<dir>``
+option; libev using the ``-with-libev=<dir>`` option, and HWLOC package
+using the ``--with-hwloc=<dir>`` option. In all cases,
 PMIx will automatically detect these packages in standard locations
-and built-in support for them unless otherwise specified using the
+and use them unless otherwise specified using the
 respective configure option.
 
 If you need special access to install, then you can execute ``make
@@ -68,8 +75,10 @@ install tree.
 
 Compiling support for specific compilers and environments may require
 additional command line flags when running ``configure``.  See the
-README file for more details.  Note that VPATH builds are fully
-supported.  For example:
+:ref:`compiler flags <install-configure-compilers-and-flags-label>` entry
+for more details.
+
+Note that VPATH builds are fully supported.  For example:
 
 .. code-block:: sh
 
@@ -102,7 +111,7 @@ There are many available options to ``configure`` (see ``./configure --help``
 for a full list); a summary of the more commonly used ones follows:
 
 * ``--prefix=<directory>``: Install PMIx into the base directory named
-  ``<directory>``.  Hence, OpenPMIx will place its executables in
+  ``<directory>``.  Hence, PMIx will place its executables in
   ``<directory>/bin``, its header files in ``<directory>/include``,
   its libraries in ``<directory>/lib``, etc.
 
@@ -159,6 +168,7 @@ for a full list); a summary of the more commonly used ones follows:
   .. code-block:: sh
 
      shell$ yum install Cython python3 python3-devel
+     or...
      shell$ pip3 install Cython
 
 Once OpenPMIx has been built and installed, it is safe to run ``make
