@@ -181,7 +181,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_SERVER_GATEWAY                 "pmix.srv.gway"         // (bool) Server is acting as a gateway for PMIx requests
                                                                     //        that cannot be serviced on backend nodes
                                                                     //        (e.g., logging to email)
-#define PMIX_SERVER_SCHEDULER               "pmix.srv.sched"        // (bool) Server supports system scheduler
+#define PMIX_SERVER_SYS_CONTROLLER          "pmix.srv.ctrlr"        // (bool) Server is hosted by the system controller for
+                                                                    //        the cluster
+#define PMIX_SERVER_SCHEDULER               "pmix.srv.sched"        // (bool) Server is hosted by the system scheduler
 #define PMIX_SERVER_START_TIME              "pmix.srv.strtime"      // (char*) Time when the server started - i.e., when the server created
                                                                     //         it's rendezvous file (given in ctime string format)
 #define PMIX_HOMOGENEOUS_SYSTEM             "pmix.homo"             // (bool) The nodes comprising the session are homogeneous - i.e., they
@@ -202,6 +204,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        a local system-level PMIx server
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first
 #define PMIX_CONNECT_TO_SCHEDULER           "pmix.cnct.sched"       // (bool) Connect to the system scheduler
+#define PMIX_CONNECT_TO_SYS_CONTROLLER      "pmix.cnct.ctrlr"       // (bool) Connect to the system controller
 #define PMIX_SERVER_URI                     "pmix.srvr.uri"         // (char*) URI of server to be contacted
 #define PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
 #define PMIX_SERVER_HOSTNAME                "pmix.srvr.host"        // (char*) node where target server is located
