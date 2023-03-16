@@ -74,6 +74,10 @@ pmix_status_t pmix_bfrops_base_unpack(pmix_pointer_array_t *regtypes, pmix_buffe
 
     /* check for error */
     if (NULL == buffer || NULL == dst || NULL == num_vals) {
+        pmix_output(0, "SOMEONE IS NULL: buffer %s dst %s num_vals %s",
+            (NULL == buffer) ? "NULL" : "GOOD",
+            (NULL == dst) ? "NULL" : "GOOD",
+            (NULL == num_vals) ? "NULL" : "GOOD");
         return PMIX_ERR_BAD_PARAM;
     }
 
