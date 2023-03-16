@@ -3783,7 +3783,8 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     pmix_server_caddy_t *cd;
     pmix_buffer_t *reply, xfer, dblob, rankblob;
     pmix_status_t ret;
-    size_t n, ctxid = SIZE_MAX, ngrpinfo;
+    size_t n, ctxid = SIZE_MAX, ngrpinfo, nmembers = 0;
+    pmix_proc_t *members = NULL;
     pmix_group_t *grp;
     pmix_byte_object_t *bo = NULL, pbo;
     pmix_nspace_caddy_t *nptr;
@@ -3838,6 +3839,9 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                 }
             } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_ENDPT_DATA)) {
                 bo = &scd->info[n].value.data.bo;
+            } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_MEMBERSHIP)) {
+                members = (pmix_proc_t*)scd->info[n].value.data.darray->array;
+                nmembers = scd->info[n].value.data.darray->size;
             }
         }
     }
@@ -4021,6 +4025,21 @@ release:
             PMIX_ERROR_LOG(ret);
             PMIX_RELEASE(reply);
             break;
+        }
+        /* add the final membership */
+        PMIX_BFROPS_PACK(ret, cd->peer, reply, &nmembers, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            PMIX_RELEASE(reply);
+            break;
+        }
+        if (0 < nmembers) {
+            PMIX_BFROPS_PACK(ret, cd->peer, reply, members, nmembers, PMIX_PROC);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+                PMIX_RELEASE(reply);
+                break;
+            }
         }
         if (!trk->hybrid) {
             /* if a ctxid was provided, pass it along */
