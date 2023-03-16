@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -78,7 +78,7 @@ int main(int argc, char **argv)
     uint32_t nprocs;
     mylock_t lock;
     pmix_info_t *results, info;
-    size_t nresults, cid;
+    size_t nresults, cid, n;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -147,9 +147,14 @@ int main(int argc, char **argv)
         /* we should have a single results object */
         if (NULL != results) {
             cid = 0;
-            PMIX_VALUE_GET_NUMBER(rc, &results[0].value, cid, size_t);
-            fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %lu\n",
-                    myproc.rank, PMIx_Error_string(rc), results[0].key, (unsigned long) cid);
+            for (n=0; n < nresults; n++) {
+                if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_CONTEXT_ID)) {
+                    PMIX_VALUE_GET_NUMBER(rc, &results[n].value, cid, size_t);
+                    fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %lu\n",
+                            myproc.rank, PMIx_Error_string(rc), results[n].key, (unsigned long) cid);
+                    break;
+                }
+            }
         } else {
             fprintf(stderr, "%d Group construct complete, but no CID returned\n", myproc.rank);
         }

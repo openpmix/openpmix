@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -111,8 +111,14 @@ static void gtdes(pmix_group_tracker_t *p)
 PMIX_CLASS_INSTANCE(pmix_group_tracker_t, pmix_object_t, gtcon, gtdes);
 
 /* callback for wait completion */
-static void grp_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
-                       void *cbdata);
+static void construct_cbfunc(struct pmix_peer_t *pr,
+                             pmix_ptl_hdr_t *hdr,
+                             pmix_buffer_t *buf,
+                             void *cbdata);
+static void destruct_cbfunc(struct pmix_peer_t *pr,
+                            pmix_ptl_hdr_t *hdr,
+                            pmix_buffer_t *buf,
+                            void *cbdata);
 static void op_cbfunc(pmix_status_t status, void *cbdata);
 static void op_cbfunc_rel(pmix_status_t status, void *cbdata);
 
@@ -260,7 +266,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     cb->grpid = strdup(grp);
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, grp_cbfunc, (void *) cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, construct_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
@@ -272,7 +278,8 @@ done:
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[], const pmix_info_t info[],
+PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
+                                              const pmix_info_t info[],
                                               size_t ninfo)
 {
     pmix_status_t rc;
@@ -388,7 +395,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[], const pmix_in
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, grp_cbfunc, (void *) cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, destruct_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
@@ -879,7 +886,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[], const pmix_info_t info[], size_t ninfo)
+PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
+                                           const pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc;
     pmix_group_tracker_t cb;
@@ -923,8 +931,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[], const pmix_info_t i
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[], const pmix_info_t info[],
-                                              size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata)
+PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
+                                              const pmix_info_t info[], size_t ninfo,
+                                              pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg = NULL;
     pmix_cmd_t cmd = PMIX_GROUP_LEAVE_CMD;
@@ -992,7 +1001,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[], const pmix_info_
     cb->cbdata = cbdata;
 
     /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, grp_cbfunc, (void *) cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, destruct_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
@@ -1033,7 +1042,7 @@ static void op_cbfunc_rel(pmix_status_t status, void *cbdata)
     PMIX_RELEASE(cb);
 }
 
-static void grp_cbfunc(struct pmix_peer_t *pr,
+static void construct_cbfunc(struct pmix_peer_t *pr,
                        pmix_ptl_hdr_t *hdr,
                        pmix_buffer_t *buf,
                        void *cbdata)
@@ -1042,9 +1051,13 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
     pmix_status_t rc;
     pmix_status_t ret;
     int32_t cnt;
-    size_t ctxid, ninfo = 0;
-    pmix_info_t info, *iptr = NULL;
+    size_t ctxid, ninfo = 0, n;
+    pmix_info_t *iptr = NULL;
     pmix_group_t *grp = NULL;
+    bool gotctxid = false;
+    pmix_data_array_t darray;
+    pmix_proc_t *members = NULL;
+    size_t nmembers = 0;
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -1071,6 +1084,26 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
+    /* unpack the final membership */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &nmembers, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+        goto report;
+    } else if (PMIX_SUCCESS == rc && 0 < nmembers) {
+        PMIX_PROC_CREATE(members, nmembers);
+        cnt = nmembers;
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, members, &cnt, PMIX_PROC);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            ret = rc;
+            goto report;
+        }
+        darray.array = members;
+        darray.size = nmembers;
+        darray.type = PMIX_PROC;
+    }
     /* unpack any ctxid that was provided - it is okay if
      * this attempts to unpack past end of buffer */
     cnt = 1;
@@ -1078,23 +1111,36 @@ static void grp_cbfunc(struct pmix_peer_t *pr,
     if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
-    } else {
-        PMIX_INFO_LOAD(&info, PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
-        iptr = &info;
-        ninfo = 1;
-        /* since the group construction has finished, we can add
-         * the group to out list of groups. Always sort the 
-         * the array to maintain the same view across participants.*/
-        if (0 < cb->nmembers)
-        { 
-            grp = PMIX_NEW(pmix_group_t);
-            PMIX_PROC_CREATE(grp->members, cb->nmembers);
-            memcpy(grp->members, cb->members, cb->nmembers * sizeof(pmix_proc_t));
-            qsort(grp->members, cb->nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
-            grp->nmbrs = cb->nmembers;
-            grp->grpid = strdup(cb->grpid);
-            pmix_list_append(&pmix_client_globals.groups, &grp->super);
-        }
+        goto report;
+    } else if (PMIX_SUCCESS == rc) {
+        gotctxid = true;
+    }
+    /* since the group construction has finished, we can add
+     * the group to out list of groups. Always sort the
+     * the array to maintain the same view across participants.*/
+    if (0 < cb->nmembers) {
+        grp = PMIX_NEW(pmix_group_t);
+        PMIX_PROC_CREATE(grp->members, cb->nmembers);
+        memcpy(grp->members, cb->members, cb->nmembers * sizeof(pmix_proc_t));
+        qsort(grp->members, cb->nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+        grp->nmbrs = cb->nmembers;
+        grp->grpid = strdup(cb->grpid);
+        pmix_list_append(&pmix_client_globals.groups, &grp->super);
+        ++ninfo;
+    }
+    if (gotctxid) {
+        ++ninfo;
+    }
+    PMIX_INFO_CREATE(iptr, ninfo);
+    n = 0;
+    if (0 < cb->nmembers) {
+        PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        ++n;
+    }
+    if (gotctxid) {
+        PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
+        ++n;
     }
 
 report:
@@ -1104,6 +1150,49 @@ report:
     } else if (NULL != cb->opcbfunc) {
         cb->opcbfunc(ret, cb->cbdata);
         return;
+    }
+    PMIX_RELEASE(cb);
+}
+
+static void destruct_cbfunc(struct pmix_peer_t *pr,
+                            pmix_ptl_hdr_t *hdr,
+                            pmix_buffer_t *buf,
+                            void *cbdata)
+{
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+    pmix_status_t rc;
+    pmix_status_t ret;
+    int32_t cnt;
+
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
+
+    pmix_output_verbose(2, pmix_client_globals.connect_output,
+                        "pmix:client recv callback activated with %d bytes",
+                        (NULL == buf) ? -1 : (int) buf->bytes_used);
+
+    if (NULL == buf) {
+        ret = PMIX_ERR_BAD_PARAM;
+        goto report;
+    }
+
+    /* a zero-byte buffer indicates that this recv is being
+     * completed due to a lost connection */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        ret = PMIX_ERR_UNREACH;
+        goto report;
+    }
+
+    /* unpack the returned status */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+    }
+
+report:
+    if (NULL != cb->opcbfunc) {
+        cb->opcbfunc(ret, cb->cbdata);
     }
     PMIX_RELEASE(cb);
 }
