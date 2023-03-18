@@ -225,6 +225,35 @@ pmix_shmem_segment_detach(
 }
 
 pmix_status_t
+pmix_shmem_segment_chown(
+    pmix_shmem_t *shmem,
+    uid_t owner,
+    gid_t group
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    if (chown(shmem->backing_path, owner, group) != 0) {
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
+}
+
+pmix_status_t
+pmix_shmem_segment_chmod(
+    pmix_shmem_t *shmem,
+    mode_t mode
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    if (chmod(shmem->backing_path, mode) != 0) {
+        rc = PMIX_ERROR;
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
+}
+
+pmix_status_t
 pmix_shmem_segment_unlink(
     pmix_shmem_t *shmem
 ) {
