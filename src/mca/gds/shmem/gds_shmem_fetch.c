@@ -719,7 +719,7 @@ pmix_gds_shmem_fetch(
     // Fetch from the corresponding hash table.
     // TODO(skg) I'm guessing this is one spot where we can decide if a copy is
     // appropriate.
-    pmix_hash_table_t *ht = job->smdata->local_hashtab;
+    pmix_hash_table_t *ht = NULL;
     if (PMIX_INTERNAL == scope ||
         PMIX_LOCAL == scope ||
         PMIX_GLOBAL == scope ||
