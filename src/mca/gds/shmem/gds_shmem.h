@@ -168,8 +168,12 @@ typedef struct {
     pmix_list_item_t super;
     /** User ID */
     uid_t uid;
+    /** Group ID */
+    gid_t gid;
     /** Change owner? */
     bool chown;
+    /** Change group? */
+    bool chgrp;
     /** Namespace identifier (name). */
     char *nspace_id;
     /** Pointer to the namespace. */
