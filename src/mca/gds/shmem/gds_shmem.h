@@ -166,6 +166,10 @@ typedef struct {
 
 typedef struct {
     pmix_list_item_t super;
+    /** User ID */
+    uid_t uid;
+    /** Change owner? */
+    bool chown;
     /** Namespace identifier (name). */
     char *nspace_id;
     /** Pointer to the namespace. */
