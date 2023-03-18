@@ -15,6 +15,8 @@
 #include "include/pmix_common.h"
 #include "src/class/pmix_object.h"
 
+#include <sys/stat.h>
+
 /**
  * Bitmap container for pmix_shmem flags.
  */
@@ -66,6 +68,25 @@ pmix_shmem_segment_detach(
 PMIX_EXPORT pmix_status_t
 pmix_shmem_segment_unlink(
     pmix_shmem_t *shmem
+);
+
+/**
+ * Change ownership of given shmem. Similar to chown(2).
+ */
+PMIX_EXPORT pmix_status_t
+pmix_shmem_segment_chown(
+    pmix_shmem_t *shmem,
+    uid_t owner,
+    gid_t group
+);
+
+/**
+ * Change permissions of given shmem. Similar to chmod(2).
+ */
+PMIX_EXPORT pmix_status_t
+pmix_shmem_segment_chmod(
+    pmix_shmem_t *shmem,
+    mode_t mode
 );
 
 /**

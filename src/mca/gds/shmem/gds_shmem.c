@@ -365,6 +365,9 @@ job_construct(
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
 
+    job->uid = getuid();
+    job->chown = false;
+
     job->nspace_id = NULL;
     job->nspace = NULL;
     // Session
@@ -1004,6 +1007,25 @@ shmem_segment_create_and_attach(
     }
     // Attach to the shared-memory segment.
     rc = shmem_attach(job, shmem_id, (uintptr_t)base_addr);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+    // chown segment?
+    if (job->chown) {
+        rc = pmix_shmem_segment_chown(shmem, job->uid, (gid_t)-1);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            goto out;
+        }
+
+        rc = pmix_shmem_segment_chmod(
+            shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
+        );
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
 out:
     if (PMIX_SUCCESS == rc) {
         // I created it, so I must release it.
@@ -1978,9 +2000,31 @@ server_add_nspace(
     pmix_info_t info[],
     size_t ninfo
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(nspace, nlocalprocs, info, ninfo);
+    PMIX_HIDE_UNUSED_PARAMS(nlocalprocs);
     PMIX_GDS_SHMEM_VVOUT_HERE();
-    return PMIX_SUCCESS;
+
+    // Create a job tracker for this nspace.
+    pmix_gds_shmem_job_t *job;
+    pmix_status_t rc = pmix_gds_shmem_get_job_tracker(nspace, true, &job);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    for (size_t i = 0; i < ninfo; ++i) {
+        if (PMIX_CHECK_KEY(&info[i], PMIX_USERID)) {
+            const uid_t nuid = (uid_t)info[i].value.data.uint32;
+            PMIX_GDS_SHMEM_VOUT(
+                "%s: updating nspace=%s UID from %zd to %zd",
+                __func__, nspace, (size_t)job->uid, (size_t)nuid
+            );
+            job->uid = nuid;
+            job->chown = true;
+            // We don't care about any other keys, so bail.
+            break;
+        }
+    }
+    return rc;
 }
 
 static pmix_status_t
