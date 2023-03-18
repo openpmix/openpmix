@@ -364,10 +364,12 @@ job_construct(
     pmix_gds_shmem_job_t *job
 ) {
     PMIX_GDS_SHMEM_VVOUT_HERE();
-
-    job->uid = getuid();
+    // Backing store ownership
+    job->uid = geteuid();
+    job->gid = getegid();
     job->chown = false;
-
+    job->chgrp = false;
+    // Namespace identification
     job->nspace_id = NULL;
     job->nspace = NULL;
     // Session
@@ -1011,14 +1013,22 @@ shmem_segment_create_and_attach(
         PMIX_ERROR_LOG(rc);
         goto out;
     }
-    // chown segment?
+    // Update segment ownership and permissions?
     if (job->chown) {
         rc = pmix_shmem_segment_chown(shmem, job->uid, (gid_t)-1);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
             goto out;
         }
-
+    }
+    if (job->chgrp) {
+        rc = pmix_shmem_segment_chown(shmem, (uid_t)-1, job->gid);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            goto out;
+        }
+    }
+    if (job->chown || job->chgrp) {
         rc = pmix_shmem_segment_chmod(
             shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
         );
@@ -2021,8 +2031,15 @@ server_add_nspace(
             );
             job->uid = nuid;
             job->chown = true;
-            // We don't care about any other keys, so bail.
-            break;
+        }
+        else if (PMIX_CHECK_KEY(&info[i], PMIX_GRPID)) {
+            const gid_t ngid = (gid_t)info[i].value.data.uint32;
+            PMIX_GDS_SHMEM_VOUT(
+                "%s: updating nspace=%s GID from %zd to %zd",
+                __func__, nspace, (size_t)job->gid, (size_t)ngid
+            );
+            job->gid = ngid;
+            job->chgrp = true;
         }
     }
     return rc;
