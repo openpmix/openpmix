@@ -1618,6 +1618,9 @@ server_register_new_job_info(
     pmix_cb_t job_cb;
     PMIX_CONSTRUCT(&job_cb, pmix_cb_t);
 
+    pmix_gds_shmem_packed_local_job_info_t pji;
+    PMIX_CONSTRUCT(&pji, pmix_gds_shmem_packed_local_job_info_t);
+
     rc = fetch_local_job_data(job->nspace_id, &job_cb);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -1625,8 +1628,6 @@ server_register_new_job_info(
     }
     // Pack the data so we can see how large it is. This will help inform how
     // large to make the shared-memory segments associated with these data.
-    pmix_gds_shmem_packed_local_job_info_t pji;
-    PMIX_CONSTRUCT(&pji, pmix_gds_shmem_packed_local_job_info_t);
     rc = get_local_job_data_info(&job_cb, &pji);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
