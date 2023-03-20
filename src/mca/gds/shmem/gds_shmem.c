@@ -956,6 +956,37 @@ shmem_segment_attach_and_init(
 }
 
 /**
+ * Updates backing file permissions based on PMIx directives.
+ */
+static pmix_status_t
+shmem_segment_fix_perms(
+    pmix_gds_shmem_job_t *job,
+    pmix_shmem_t *shmem
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    // Update segment ownership and permissions?
+    if (job->chown || job->chgrp) {
+        const uid_t uid = job->chown ? job->uid : (uid_t)-1;
+        const gid_t gid = job->chgrp ? job->gid : (gid_t)-1;
+
+        rc = pmix_shmem_segment_chown(shmem, uid, gid);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+
+        rc = pmix_shmem_segment_chmod(
+            shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
+        );
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    return rc;
+}
+
+/**
  * Create and attach to a shared-memory segment.
  */
 static pmix_status_t
@@ -1013,28 +1044,10 @@ shmem_segment_create_and_attach(
         PMIX_ERROR_LOG(rc);
         goto out;
     }
-    // Update segment ownership and permissions?
-    if (job->chown) {
-        rc = pmix_shmem_segment_chown(shmem, job->uid, (gid_t)-1);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            goto out;
-        }
-    }
-    if (job->chgrp) {
-        rc = pmix_shmem_segment_chown(shmem, (uid_t)-1, job->gid);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            goto out;
-        }
-    }
-    if (job->chown || job->chgrp) {
-        rc = pmix_shmem_segment_chmod(
-            shmem, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP
-        );
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-        }
+    // Fix-up backing file permission.
+    rc = shmem_segment_fix_perms(job, shmem);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
     }
 out:
     if (PMIX_SUCCESS == rc) {
