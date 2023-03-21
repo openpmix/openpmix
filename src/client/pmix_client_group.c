@@ -168,6 +168,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
     /* user takes responsibility for releasing any results */
     *results = cb->results;
     *nresults = cb->nresults;
+    cb->results = NULL;
+    cb->nresults = 0;
     PMIX_RELEASE(cb);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -257,12 +259,6 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     cb = PMIX_NEW(pmix_group_tracker_t);
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
-
-    /* save the participating procs in order to create a local
-     * view of the group for get operations */
-    PMIX_PROC_CREATE(cb->members, nprocs);
-    cb->nmembers = nprocs;
-    memcpy(cb->members, procs, nprocs * sizeof(pmix_proc_t));
     cb->grpid = strdup(grp);
 
     /* push the message into our event base to send to the server */
@@ -325,7 +321,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[], const pmix_info_t info[],
+PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_info_t info[],
                                                  size_t ninfo, pmix_op_cbfunc_t cbfunc,
                                                  void *cbdata)
 {
@@ -333,6 +329,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[], const pmix_in
     pmix_cmd_t cmd = PMIX_GROUP_DESTRUCT_CMD;
     pmix_status_t rc;
     pmix_group_tracker_t *cb = NULL;
+    pmix_group_t *grp, *pgrp;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -352,8 +349,20 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[], const pmix_in
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* check for bozo input */
-    if (NULL == grp) {
+    if (NULL == grpid) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    /* find this group */
+    grp = NULL;
+    PMIX_LIST_FOREACH(pgrp, &pmix_client_globals.groups, pmix_group_t) {
+        if (0 == strcmp(grpid, pgrp->grpid)) {
+            grp = pgrp;
+            break;
+        }
+    }
+    if (NULL == grp) {
+        return PMIX_ERR_NOT_FOUND;
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
@@ -365,7 +374,21 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[], const pmix_in
     }
 
     /* pack the group ID */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &grp, 1, PMIX_STRING);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &grpid, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+
+    /* pack the membership - the server isn't storing it,
+     * so we have to send it so that the server can
+     * track when all local procs have participated */
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &grp->nmbrs, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto done;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, grp->members, grp->nmbrs, PMIX_PROC);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto done;
@@ -1091,7 +1114,7 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
         PMIX_ERROR_LOG(rc);
         ret = rc;
         goto report;
-    } else if (PMIX_SUCCESS == rc && 0 < nmembers) {
+    } else if (PMIX_SUCCESS == rc) {
         PMIX_PROC_CREATE(members, nmembers);
         cnt = nmembers;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, members, &cnt, PMIX_PROC);
@@ -1100,10 +1123,8 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
             ret = rc;
             goto report;
         }
-        darray.array = members;
-        darray.size = nmembers;
-        darray.type = PMIX_PROC;
     }
+
     /* unpack any ctxid that was provided - it is okay if
      * this attempts to unpack past end of buffer */
     cnt = 1;
@@ -1115,27 +1136,31 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     } else if (PMIX_SUCCESS == rc) {
         gotctxid = true;
     }
+
     /* since the group construction has finished, we can add
      * the group to out list of groups. Always sort the
      * the array to maintain the same view across participants.*/
-    if (0 < cb->nmembers) {
-        grp = PMIX_NEW(pmix_group_t);
-        PMIX_PROC_CREATE(grp->members, cb->nmembers);
-        memcpy(grp->members, cb->members, cb->nmembers * sizeof(pmix_proc_t));
-        qsort(grp->members, cb->nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
-        grp->nmbrs = cb->nmembers;
-        grp->grpid = strdup(cb->grpid);
-        pmix_list_append(&pmix_client_globals.groups, &grp->super);
-        ++ninfo;
-    }
+    grp = PMIX_NEW(pmix_group_t);
+    PMIX_PROC_CREATE(grp->members, nmembers);
+    memcpy(grp->members, members, nmembers * sizeof(pmix_proc_t));
+    qsort(grp->members, nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+    grp->nmbrs = nmembers;
+    grp->grpid = strdup(cb->grpid);
+    pmix_list_append(&pmix_client_globals.groups, &grp->super);
+    darray.array = grp->members;
+    darray.size = grp->nmbrs;
+    darray.type = PMIX_PROC;
+    ++ninfo;
+
     if (gotctxid) {
         ++ninfo;
     }
+
     PMIX_INFO_CREATE(iptr, ninfo);
     n = 0;
-    if (0 < cb->nmembers) {
+    if (0 < nmembers) {
         PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
-        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        // do not destruct darray as the membership is being used
         ++n;
     }
     if (gotctxid) {
@@ -1144,11 +1169,11 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     }
 
 report:
+    if (NULL != members) {
+        PMIX_PROC_FREE(members, nmembers);
+    }
     if (NULL != cb->cbfunc) {
         cb->cbfunc(ret, iptr, ninfo, cb->cbdata, relfn, cb);
-        return;
-    } else if (NULL != cb->opcbfunc) {
-        cb->opcbfunc(ret, cb->cbdata);
         return;
     }
     PMIX_RELEASE(cb);
@@ -1172,6 +1197,7 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
 
     if (NULL == buf) {
         ret = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(ret);
         goto report;
     }
 

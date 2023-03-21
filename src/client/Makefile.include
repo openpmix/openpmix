@@ -4,6 +4,7 @@
 # Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
 #                         All rights reserved.
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2023      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,4 +24,5 @@ sources += \
         client/pmix_client_connect.c \
         client/pmix_client_group.c \
         client/pmix_client_fabric.c \
-        client/pmix_client_topology.c
+        client/pmix_client_topology.c \
+        client/pmix_client_convert.c
