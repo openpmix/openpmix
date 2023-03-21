@@ -1169,6 +1169,7 @@ PMIX_EXPORT char* PMIx_Info_string(const pmix_info_t *info);
 PMIX_EXPORT char* PMIx_Value_string(const pmix_value_t *value);
 PMIX_EXPORT char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 PMIX_EXPORT char* PMIx_App_string(const pmix_app_t *app);
+PMIX_EXPORT char* PMIx_Proc_string(const pmix_proc_t *proc);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */
