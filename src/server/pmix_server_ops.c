@@ -879,18 +879,15 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     int32_t cnt;
     pmix_status_t rc;
     size_t nprocs;
-    pmix_proc_t *procs = NULL, *newprocs;
+    pmix_proc_t *procs = NULL;
     bool collect_data = false;
     pmix_server_trkr_t *trk;
     char *data = NULL;
     size_t sz = 0;
     pmix_buffer_t bucket;
     pmix_info_t *info = NULL;
-    size_t ninfo = 0, ninf, n, nmbrs, idx;
+    size_t ninfo = 0, ninf, n;
     struct timeval tv = {0, 0};
-    pmix_list_t expand;
-    pmix_group_caddy_t *gcd;
-    pmix_group_t *grp;
 
     pmix_output_verbose(2, pmix_server_globals.fence_output,
                         "recvd FENCE");
@@ -921,67 +918,6 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     if (PMIX_SUCCESS != rc) {
         goto cleanup;
     }
-
-    /* cycle thru the procs and check to see if any reference
-     * a PMIx group */
-    nmbrs = nprocs;
-    PMIX_CONSTRUCT(&expand, pmix_list_t);
-    /* use groups as the outer-most loop as there will
-     * usually not be any */
-    PMIX_LIST_FOREACH (grp, &pmix_server_globals.groups, pmix_group_t) {
-        for (n = 0; n < nprocs; n++) {
-            if (PMIX_CHECK_NSPACE(procs[n].nspace, grp->grpid)) {
-                /* we need to replace this proc with grp members */
-                if (PMIX_RANK_WILDCARD == procs[n].rank) {
-                    gcd = PMIX_NEW(pmix_group_caddy_t);
-                    gcd->grp = grp;
-                    gcd->idx = n;
-                    gcd->rank = PMIX_RANK_WILDCARD;
-                    pmix_list_append(&expand, &gcd->super);
-                    nmbrs += grp->nmbrs - 1; // account for replacing current proc
-                } else {
-                    /* find the matching rank */
-                    if (grp->nmbrs <= procs[n].rank) {
-                        /* the group rank is out of bounds */
-                        PMIX_LIST_DESTRUCT(&expand);
-                        rc = PMIX_ERR_BAD_PARAM;
-                        goto cleanup;
-                    }
-                    /* we own the procs array, so just replace the procs entry
-                     * with that of the member with that group rank */
-                    memcpy(&procs[n], &grp->members[procs[n].rank], sizeof(pmix_proc_t));
-                }
-            }
-        }
-    }
-
-    if (0 < pmix_list_get_size(&expand)) {
-        PMIX_PROC_CREATE(newprocs, nmbrs);
-        gcd = (pmix_group_caddy_t *) pmix_list_remove_first(&expand);
-        n = 0;
-        idx = 0;
-        while (n < nmbrs && idx < nprocs) {
-            if (gcd == NULL || idx != gcd->idx) {
-                memcpy(&newprocs[n], &procs[idx], sizeof(pmix_proc_t));
-                ++n;
-            } else {
-                /* take them all */
-                memcpy(&newprocs[n], gcd->grp->members, gcd->grp->nmbrs * sizeof(pmix_proc_t));
-                n += gcd->grp->nmbrs;
-                PMIX_RELEASE(gcd);
-                if (0 < pmix_list_get_size(&expand)) {
-                    gcd = (pmix_group_caddy_t *) pmix_list_remove_first(&expand);
-                }
-            }
-            ++idx;
-        }
-        PMIX_PROC_FREE(procs, nprocs);
-        procs = newprocs;
-        nprocs = nmbrs;
-    }
-    PMIX_LIST_DESTRUCT(&expand);
-    /* sort the array */
-    qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
 
     /* unpack the number of provided info structs */
     cnt = 1;
@@ -3785,7 +3721,6 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     pmix_status_t ret;
     size_t n, ctxid = SIZE_MAX, ngrpinfo, nmembers = 0;
     pmix_proc_t *members = NULL;
-    pmix_group_t *grp;
     pmix_byte_object_t *bo = NULL, pbo;
     pmix_nspace_caddy_t *nptr;
     pmix_list_t nslist;
@@ -3814,35 +3749,29 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     }
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
-                        "server:grpcbfunc processing WITH %d MEMBERS",
+                        "server:grpcbfunc processing WITH %d CALLBACKS",
                         (int) pmix_list_get_size(&trk->local_cbs));
 
-    grp = (pmix_group_t *) trk->cbdata;
-
     /* the tracker's "hybrid" field is used to indicate construct
-     * vs destruct */
+     * vs destruct - true is destruct */
     if (trk->hybrid) {
-        /* we destructed the group */
-        if (NULL != grp) {
-            pmix_list_remove_item(&pmix_server_globals.groups, &grp->super);
-            PMIX_RELEASE(grp);
-        }
-    } else {
-        /* see if this group was assigned a context ID or collected data */
-        for (n = 0; n < scd->ninfo; n++) {
-            if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_VALUE_GET_NUMBER(ret, &scd->info[n].value, ctxid, size_t);
-                if (PMIX_SUCCESS != ret) {
-                    PMIX_ERROR_LOG(ret);
-                } else {
-                    ctxid_given = true;
-                }
-            } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_ENDPT_DATA)) {
-                bo = &scd->info[n].value.data.bo;
-            } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_MEMBERSHIP)) {
-                members = (pmix_proc_t*)scd->info[n].value.data.darray->array;
-                nmembers = scd->info[n].value.data.darray->size;
+        goto release;
+    }
+
+    /* see if this group was assigned a context ID or collected data */
+    for (n = 0; n < scd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_CONTEXT_ID)) {
+            PMIX_VALUE_GET_NUMBER(ret, &scd->info[n].value, ctxid, size_t);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+            } else {
+                ctxid_given = true;
             }
+        } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_ENDPT_DATA)) {
+            bo = &scd->info[n].value.data.bo;
+        } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_MEMBERSHIP)) {
+            members = (pmix_proc_t*)scd->info[n].value.data.darray->array;
+            nmembers = scd->info[n].value.data.darray->size;
         }
     }
 
@@ -4026,22 +3955,22 @@ release:
             PMIX_RELEASE(reply);
             break;
         }
-        /* add the final membership */
-        PMIX_BFROPS_PACK(ret, cd->peer, reply, &nmembers, 1, PMIX_SIZE);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-            PMIX_RELEASE(reply);
-            break;
-        }
-        if (0 < nmembers) {
-            PMIX_BFROPS_PACK(ret, cd->peer, reply, members, nmembers, PMIX_PROC);
+        if (!trk->hybrid) {
+            /* add the final membership */
+            PMIX_BFROPS_PACK(ret, cd->peer, reply, &nmembers, 1, PMIX_SIZE);
             if (PMIX_SUCCESS != ret) {
                 PMIX_ERROR_LOG(ret);
                 PMIX_RELEASE(reply);
                 break;
             }
-        }
-        if (!trk->hybrid) {
+            if (0 < nmembers) {
+                PMIX_BFROPS_PACK(ret, cd->peer, reply, members, nmembers, PMIX_PROC);
+                if (PMIX_SUCCESS != ret) {
+                    PMIX_ERROR_LOG(ret);
+                    PMIX_RELEASE(reply);
+                    break;
+                }
+            }
             /* if a ctxid was provided, pass it along */
             PMIX_BFROPS_PACK(ret, cd->peer, reply, &ctxid, 1, PMIX_SIZE);
             if (PMIX_SUCCESS != ret) {
@@ -4109,8 +4038,6 @@ static void grpcbfunc(pmix_status_t status,
 static void grp_timeout(int sd, short args, void *cbdata)
 {
     pmix_server_trkr_t *trk = (pmix_server_trkr_t *) cbdata;
-    pmix_group_t *grp = (pmix_group_t*)trk->cbdata;
-    pmix_group_t *pgrp, *psav;
     pmix_server_caddy_t *cd;
     pmix_buffer_t *reply;
     pmix_status_t ret, rc = PMIX_ERR_TIMEOUT;
@@ -4143,20 +4070,8 @@ static void grp_timeout(int sd, short args, void *cbdata)
     }
 
     trk->event_active = false;
-    /* remove this group from our list */
-    psav = NULL;
-    PMIX_LIST_FOREACH (pgrp, &pmix_server_globals.groups, pmix_group_t) {
-        if (0 == strcmp(grp->grpid, pgrp->grpid)) {
-            pmix_list_remove_item(&pmix_server_globals.groups, &pgrp->super);
-            psav = pgrp;
-            break;
-        }
-    }
     /* record this group as failed */
-    PMIx_Argv_append_nosize(&pmix_server_globals.failedgrps, grp->grpid);
-    if (NULL != psav) {
-        PMIX_RELEASE(psav);
-    }
+    PMIx_Argv_append_nosize(&pmix_server_globals.failedgrps, trk->id);
     /* remove the tracker from the list */
     pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
     PMIX_RELEASE(trk);
@@ -4172,15 +4087,13 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     pmix_status_t rc;
     char *grpid;
     pmix_proc_t *procs;
-    pmix_group_t *grp, *pgrp;
     pmix_info_t *info = NULL, *iptr = NULL, *grpinfoptr = NULL;
-    size_t n, ninfo, ninf, nprocs, n2, ngrpinfo = 0;
+    size_t n, ninfo, ninf, niptr, nprocs, n2, ngrpinfo = 0;
     pmix_server_trkr_t *trk;
     bool need_cxtid = false;
     bool match, force_local = false;
     bool embed_barrier = false;
     bool barrier_directive_included = false;
-    bool sorted = false;
     bool locally_complete = false;
     pmix_buffer_t bucket, bkt;
     pmix_byte_object_t bo;
@@ -4211,27 +4124,6 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         }
     }
 
-    /* see if we already have this group */
-    grp = NULL;
-    PMIX_LIST_FOREACH (pgrp, &pmix_server_globals.groups, pmix_group_t) {
-        if (0 == strcmp(grpid, pgrp->grpid)) {
-            grp = pgrp;
-            break;
-        }
-    }
-    if (NULL == grp) {
-        /* create a new entry */
-        grp = PMIX_NEW(pmix_group_t);
-        if (NULL == grp) {
-            rc = PMIX_ERR_NOMEM;
-            goto error;
-        }
-        grp->grpid = grpid;
-        pmix_list_append(&pmix_server_globals.groups, &grp->super);
-    } else {
-        free(grpid);
-    }
-
     /* unpack the number of procs */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &nprocs, &cnt, PMIX_SIZE);
@@ -4255,15 +4147,8 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         PMIX_PROC_FREE(procs, nprocs);
         goto error;
     }
-    if (NULL == grp->members) {
-        /* sort the procs */
-        qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
-        grp->members = procs;
-        grp->nmbrs = nprocs;
-        sorted = true;
-    } else {
-        PMIX_PROC_FREE(procs, nprocs);
-    }
+    /* sort the procs */
+    qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
 
     /* unpack the number of directives */
     cnt = 1;
@@ -4272,20 +4157,12 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         PMIX_ERROR_LOG(rc);
         goto error;
     }
-    if (sorted) {
-        ninfo = ninf + 2;
-    } else {
-        ninfo = ninf + 1;
-    }
+    ninfo = ninf + 2;
     PMIX_INFO_CREATE(info, ninfo);
     /* store default response */
     rc = PMIX_SUCCESS;
-    if (sorted) {
-        PMIX_INFO_LOAD(&info[ninf], PMIX_SORTED_PROC_ARRAY, NULL, PMIX_BOOL);
-        PMIX_INFO_LOAD(&info[ninf+1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
-    } else {
-        PMIX_INFO_LOAD(&info[ninf], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
-    }
+    PMIX_INFO_LOAD(&info[ninf], PMIX_SORTED_PROC_ARRAY, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[ninf+1], PMIX_LOCAL_COLLECTIVE_STATUS, &rc, PMIX_STATUS);
     if (0 < ninf) {
         cnt = ninf;
         PMIX_BFROPS_UNPACK(rc, peer, buf, info, &cnt, PMIX_INFO);
@@ -4343,10 +4220,10 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     }
 
     /* find/create the local tracker for this operation */
-    trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_CONSTRUCT_CMD);
+    trk = get_tracker(grpid, procs, nprocs, PMIX_GROUP_CONSTRUCT_CMD);
     if (NULL == trk) {
         /* If no tracker was found - create and initialize it once */
-        trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_CONSTRUCT_CMD);
+        trk = new_tracker(grpid, procs, nprocs, PMIX_GROUP_CONSTRUCT_CMD);
         if (NULL == trk) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
@@ -4358,13 +4235,28 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         trk->collect_type = PMIX_COLLECT_YES;
         /* mark as being a construct operation */
         trk->hybrid = false;
-        /* pass along the grp object */
-        trk->cbdata = grp;
-        /* we only save the info structs from the first caller
-         * who provides them - it is a user error to provide
-         * different values from different participants */
-        trk->info = info;
-        trk->ninfo = ninfo;
+        /* it is possible that different participants will
+         * provide different attributes, so collect the
+         * aggregate of them */
+        if (NULL == trk->info) {
+            trk->info = info;
+            trk->ninfo = ninfo;
+        } else {
+            niptr = trk->ninfo + ninfo;
+            PMIX_INFO_CREATE(iptr, niptr);
+            for (n=0; n < trk->ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
+            }
+            for (n=0; n < ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n+trk->ninfo], &info[n]);
+            }
+            PMIX_INFO_FREE(trk->info, trk->ninfo);
+            trk->info = iptr;
+            trk->ninfo = niptr;
+            /* cleanup */
+            PMIX_INFO_FREE(info, ninfo);
+            info = NULL;
+        }
         if (NULL != g) {
             pmix_list_append(&trk->grpinfo, &g->super);
         }
@@ -4379,11 +4271,11 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             trk->local = false;
         } else {
             trk->local = true;
-            for (n = 0; n < grp->nmbrs; n++) {
+            for (n = 0; n < nprocs; n++) {
                 /* if this entry references the local procs, then
                  * we can skip it */
-                if (PMIX_RANK_LOCAL_PEERS == grp->members[n].rank ||
-                    PMIX_RANK_LOCAL_NODE == grp->members[n].rank) {
+                if (PMIX_RANK_LOCAL_PEERS == procs[n].rank ||
+                    PMIX_RANK_LOCAL_NODE == procs[n].rank) {
                     continue;
                 }
                 /* see if it references a specific local proc */
@@ -4393,7 +4285,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                     if (NULL == pr) {
                         continue;
                     }
-                    if (PMIX_CHECK_NAMES(&grp->members[n], &pr->info->pname)) {
+                    if (PMIX_CHECK_NAMES(&procs[n], &pr->info->pname)) {
                         match = true;
                         break;
                     }
@@ -4406,9 +4298,28 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             }
         }
     } else {
-        /* cleanup */
-        PMIX_INFO_FREE(info, ninfo);
-        info = NULL;
+        /* it is possible that different participants will
+         * provide different attributes, so collect the
+         * aggregate of them */
+        if (NULL == trk->info) {
+            trk->info = info;
+            trk->ninfo = ninfo;
+        } else {
+            niptr = trk->ninfo + ninfo;
+            PMIX_INFO_CREATE(iptr, niptr);
+            for (n=0; n < trk->ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
+            }
+            for (n=0; n < ninfo; n++) {
+                PMIX_INFO_XFER(&iptr[n+trk->ninfo], &info[n]);
+            }
+            PMIX_INFO_FREE(trk->info, trk->ninfo);
+            trk->info = iptr;
+            trk->ninfo = niptr;
+            /* cleanup */
+            PMIX_INFO_FREE(info, ninfo);
+            info = NULL;
+        }
         /* add any grpinfo that might have been included */
         if (NULL != g) {
             pmix_list_append(&trk->grpinfo, &g->super);
@@ -4481,7 +4392,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                 info = NULL;
                 ninfo = 0;
             }
-            rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grp->grpid, trk->pcs, trk->npcs,
+            rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grpid, trk->pcs, trk->npcs,
                                         trk->info, trk->ninfo, grpcbfunc, trk);
             if (PMIX_SUCCESS != rc) {
                 if (PMIX_OPERATION_SUCCEEDED == rc) {
@@ -4599,7 +4510,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             iptr = NULL;
         }
     }
-    rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grp->grpid, trk->pcs, trk->npcs,
+    rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grpid, trk->pcs, trk->npcs,
                                 trk->info, trk->ninfo, grpcbfunc, trk);
     if (PMIX_SUCCESS != rc) {
         if (PMIX_OPERATION_SUCCEEDED == rc) {
@@ -4632,11 +4543,12 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
     pmix_peer_t *peer = (pmix_peer_t *) cd->peer;
     int32_t cnt, m;
     pmix_status_t rc;
-    char *grpid;
-    pmix_info_t *info = NULL;
-    size_t n, ninfo, ninf;
+    char *grpid = NULL;
+    pmix_info_t *info = NULL, *iptr;
+    size_t n, ninfo, ninf, niptr;
     pmix_server_trkr_t *trk;
-    pmix_group_t *grp, *pgrp;
+    pmix_proc_t *members = NULL;
+    size_t nmembers = 0;
     bool force_local = false;
     bool match;
     bool locally_complete = false;
@@ -4665,20 +4577,25 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
         }
     }
 
-    /* find this group in our list */
-    grp = NULL;
-    PMIX_LIST_FOREACH (pgrp, &pmix_server_globals.groups, pmix_group_t) {
-        if (0 == strcmp(grpid, pgrp->grpid)) {
-            grp = pgrp;
-            break;
-        }
+    /* unpack the number of members */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &nmembers, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
     }
-    free(grpid);
-
-    /* if not found, then this is an error - we cannot
-     * destruct a group we don't know about */
-    if (NULL == grp) {
-        rc = PMIX_ERR_NOT_FOUND;
+    if (0 == nmembers) {
+        /* not allowed */
+        rc = PMIX_ERR_BAD_PARAM;
+        goto error;
+    }
+    /* unpack the membership */
+    PMIX_PROC_CREATE(members, nmembers);
+    cnt = nmembers;
+    PMIX_BFROPS_UNPACK(rc, peer, buf, members, &cnt, PMIX_PROC);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_PROC_FREE(members, nmembers);
         goto error;
     }
 
@@ -4718,10 +4635,10 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
     }
 
     /* find/create the local tracker for this operation */
-    trk = get_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD);
+    trk = get_tracker(grpid, members, nmembers, PMIX_GROUP_DESTRUCT_CMD);
     if (NULL == trk) {
         /* If no tracker was found - create and initialize it once */
-        trk = new_tracker(grp->grpid, grp->members, grp->nmbrs, PMIX_GROUP_DESTRUCT_CMD);
+        trk = new_tracker(grpid, members, nmembers, PMIX_GROUP_DESTRUCT_CMD);
         if (NULL == trk) {
             /* only if a bozo error occurs */
             PMIX_ERROR_LOG(PMIX_ERROR);
@@ -4731,15 +4648,13 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
         trk->collect_type = PMIX_COLLECT_NO;
         /* mark as being a destruct operation */
         trk->hybrid = true;
-        /* pass along the group object */
-        trk->cbdata = grp;
         /* see if this destructor only references local processes */
         trk->local = true;
-        for (n = 0; n < grp->nmbrs; n++) {
+        for (n = 0; n < nmembers; n++) {
             /* if this entry references the local procs, then
              * we can skip it */
-            if (PMIX_RANK_LOCAL_PEERS == grp->members[n].rank ||
-                PMIX_RANK_LOCAL_NODE == grp->members[n].rank) {
+            if (PMIX_RANK_LOCAL_PEERS == members[n].rank ||
+                PMIX_RANK_LOCAL_NODE == members[n].rank) {
                 continue;
             }
             /* see if it references a specific local proc */
@@ -4749,7 +4664,7 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
                 if (NULL == pr) {
                     continue;
                 }
-                if (PMIX_CHECK_NAMES(&grp->members[n], &pr->info->pname)) {
+                if (PMIX_CHECK_NAMES(&members[n], &pr->info->pname)) {
                     match = true;
                     break;
                 }
@@ -4762,13 +4677,24 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
         }
     }
 
-    /* we only save the info structs from the first caller
-     * who provides them - it is a user error to provide
-     * different values from different participants */
+    /* it is possible that different participants will
+     * provide different attributes, so collect the
+     * aggregate of them */
     if (NULL == trk->info) {
         trk->info = info;
         trk->ninfo = ninfo;
     } else {
+        niptr = trk->ninfo + ninfo;
+        PMIX_INFO_CREATE(iptr, niptr);
+        for (n=0; n < trk->ninfo; n++) {
+            PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
+        }
+        for (n=0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&iptr[n+trk->ninfo], &info[n]);
+        }
+        PMIX_INFO_FREE(trk->info, trk->ninfo);
+        trk->info = iptr;
+        trk->ninfo = niptr;
         /* cleanup */
         PMIX_INFO_FREE(info, ninfo);
         info = NULL;
@@ -4838,18 +4764,22 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
                 info = NULL;
                 ninfo = 0;
             }
-            rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT, grp->grpid,
-                                        grp->members, grp->nmbrs,
+            rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT, grpid,
+                                        members, nmembers,
                                         trk->info, trk->ninfo, grpcbfunc, trk);
             if (PMIX_SUCCESS != rc) {
                 if (PMIX_OPERATION_SUCCEEDED == rc) {
                     /* let the grpcbfunc threadshift the result */
                     grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+                    PMIX_PROC_FREE(members, nmembers);
+                    free(grpid);
                     return PMIX_SUCCESS;
                 }
                 /* remove the tracker from the list */
                 pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
                 PMIX_RELEASE(trk);
+                PMIX_PROC_FREE(members, nmembers);
+                free(grpid);
                 return rc;
             }
             /* we will take care of the rest of the process when the
@@ -4858,6 +4788,8 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
             /* let the grpcbfunc threadshift the result and remove
              * the group from our list */
             grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+            PMIX_PROC_FREE(members, nmembers);
+            free(grpid);
             return PMIX_SUCCESS;
         }
     }
@@ -4868,29 +4800,43 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
         /* cannot support it */
         pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
         PMIX_RELEASE(trk);
+        PMIX_PROC_FREE(members, nmembers);
+        free(grpid);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT, grp->grpid,
-                                grp->members, grp->nmbrs,
+    rc = pmix_host_server.group(PMIX_GROUP_DESTRUCT, grpid,
+                                members, nmembers,
                                 trk->info, trk->ninfo, grpcbfunc, trk);
     if (PMIX_SUCCESS != rc) {
         if (PMIX_OPERATION_SUCCEEDED == rc) {
             /* let the grpcbfunc threadshift the result */
             grpcbfunc(PMIX_SUCCESS, NULL, 0, trk, NULL, NULL);
+            PMIX_PROC_FREE(members, nmembers);
+            free(grpid);
             return PMIX_SUCCESS;
         }
         /* remove the tracker from the list */
         pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
         PMIX_RELEASE(trk);
+        PMIX_PROC_FREE(members, nmembers);
+        free(grpid);
         return rc;
     }
 
+    PMIX_PROC_FREE(members, nmembers);
+    free(grpid);
     return PMIX_SUCCESS;
 
 error:
     if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
+    }
+    if (NULL != members) {
+        PMIX_PROC_FREE(members, nmembers);
+    }
+    if (NULL != grpid) {
+        free(grpid);
     }
     return rc;
 }

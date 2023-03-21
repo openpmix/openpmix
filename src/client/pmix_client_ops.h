@@ -60,6 +60,9 @@ PMIX_EXPORT extern pmix_client_globals_t pmix_client_globals;
 
 PMIX_EXPORT void pmix_parse_localquery(int sd, short args, void *cbdata);
 
+PMIX_EXPORT pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t insize,
+                                                          pmix_proc_t **outprocs, size_t *outsize);
+
 END_C_DECLS
 
 #endif /* PMIX_CLIENT_OPS_H */

@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  */
 
@@ -180,7 +180,6 @@ typedef struct {
     pmix_list_t gdata;  // cache of data given to me for passing to all clients
     char **genvars;     // argv array of envars given to me for passing to all clients
     pmix_list_t events; // list of pmix_regevents_info_t registered events
-    pmix_list_t groups; // list of pmix_group_t group memberships
     char **failedgrps;    // group IDs that failed to construct
     pmix_list_t iof;    // IO to be forwarded to clients
     pmix_list_t iof_residuals;  // leftover bytes waiting for newline
