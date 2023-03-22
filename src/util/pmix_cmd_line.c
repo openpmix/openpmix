@@ -330,15 +330,10 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             // this was not an option
                             goto done;
                         }
-                        if ((optind == argc || 0 == strcmp(argv[optind], ":")) && 0 == argind) {
-                            // command without any options
-                            optind = 1;
-                            goto done;
-                        }
-                        if (0 == strcmp(argv[argind], "--")) {
+                        if (0 == strcmp(argv[optind-1], "--")) {
                             // double-dash indicates separator between launcher
                             // directives and the application
-                            break;
+                            goto done;
                         }
                         str = pmix_show_help_string("help-cli.txt", "short-no-long", true,
                                                     pmix_tool_basename, argv[optind-1]);
@@ -372,6 +367,15 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         PMIx_Argv_free(argv);
                         return PMIX_ERR_SILENT;
                     }
+                }
+                if (0 == strcmp(argv[optind-1], "--")) {
+                    // double-dash indicates separator between launcher
+                    // directives and the application
+                    goto done;
+                }
+                if (1 == optind) {
+                    // command without any options
+                    goto done;
                 }
                 str = pmix_show_help_string("help-cli.txt", "unregistered-option", true,
                                             pmix_tool_basename, argv[optind-1], pmix_tool_basename);
