@@ -17,7 +17,7 @@
  * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -79,26 +79,6 @@
 #    endif
 
 /*
- *  Look for interface by name and returns its address
- *  as a dotted decimal formatted string.
- */
-
-int pmix_ifnametoaddr(const char *if_name, struct sockaddr *addr, int length)
-{
-    pmix_pif_t *intf;
-
-    for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
-         intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
-         intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
-        if (strcmp(intf->if_name, if_name) == 0) {
-            memcpy(addr, &intf->if_addr, length);
-            return PMIX_SUCCESS;
-        }
-    }
-    return PMIX_ERROR;
-}
-
-/*
  *  Look for interface by name and returns its
  *  corresponding pmix_list index.
  */
@@ -110,8 +90,10 @@ int pmix_ifnametoindex(const char *if_name)
     for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
          intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
          intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
-        if (strcmp(intf->if_name, if_name) == 0) {
-            return intf->if_index;
+        if (*(intf->if_name) != '\0') { // required by gcc 13.0 - not sure why
+            if (strncmp(intf->if_name, if_name, PMIX_IF_NAMESIZE-1) == 0) {
+                return intf->if_index;
+            }
         }
     }
     return -1;
@@ -129,8 +111,10 @@ int16_t pmix_ifnametokindex(const char *if_name)
     for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
          intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
          intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
-        if (strcmp(intf->if_name, if_name) == 0) {
-            return intf->if_kernel_index;
+        if (*(intf->if_name) != '\0') { // required by gcc 13.0 - not sure why
+            if (strncmp(intf->if_name, if_name, PMIX_IF_NAMESIZE-1) == 0) {
+                return intf->if_kernel_index;
+            }
         }
     }
     return -1;
@@ -185,6 +169,7 @@ int pmix_ifaddrtoname(const char *if_addr, char *if_name, int length)
         }
         return PMIX_ERR_NOT_FOUND;
     }
+    memset(if_name, 0, length);
 
     for (r = res; r != NULL; r = r->ai_next) {
         for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
@@ -463,6 +448,7 @@ int pmix_ifindextoname(int if_index, char *if_name, int length)
 {
     pmix_pif_t *intf;
 
+    memset(if_name, 0, length);
     for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
          intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
          intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
@@ -483,6 +469,7 @@ int pmix_ifkindextoname(int if_kindex, char *if_name, int length)
 {
     pmix_pif_t *intf;
 
+    memset(if_name, 0, length);
     for (intf = (pmix_pif_t *) pmix_list_get_first(&pmix_if_list);
          intf != (pmix_pif_t *) pmix_list_get_end(&pmix_if_list);
          intf = (pmix_pif_t *) pmix_list_get_next(intf)) {
@@ -714,22 +701,12 @@ void pmix_ifgetaliases(char ***aliases)
 /* if we don't have struct sockaddr_in, we don't have traditional
    ethernet devices.  Just make everything a no-op error call */
 
-int pmix_ifnametoaddr(const char *if_name, struct sockaddr *if_addr, int size)
-{
-    return PMIX_ERR_NOT_SUPPORTED;
-}
-
 int pmix_ifaddrtoname(const char *if_addr, char *if_name, int size)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 int pmix_ifnametoindex(const char *if_name)
-{
-    return PMIX_ERR_NOT_SUPPORTED;
-}
-
-int16_t pmix_ifnametokindex(const char *if_name)
 {
     return PMIX_ERR_NOT_SUPPORTED;
 }
