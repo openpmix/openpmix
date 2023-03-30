@@ -1,6 +1,6 @@
 # -*- text -*-
 #
-# Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+# Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -17,4 +17,5 @@ abort.
   Requested Address: 0x%zx
   Acquired Address:  0x%zx
 
-If this problem persists, please consider disabling the gds/shmem component.
+If this problem persists, please consider disabling the gds/shmem component by
+setting in your environment the following: PMIX_MCA_gds=hash
