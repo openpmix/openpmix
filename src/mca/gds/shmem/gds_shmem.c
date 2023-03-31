@@ -1715,16 +1715,21 @@ server_register_job_info(
         rc = server_register_new_job_info(job);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            break;
         }
 
         rc = cache_connection_info_for_job_shmem(job);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            break;
         }
     } while (false);
-    // Copy reply over to send to the connection info to the given peer.
-    PMIX_BFROPS_COPY_PAYLOAD(rc, peer, reply, job->conni);
-    if (PMIX_SUCCESS != rc) {
+
+    if (PMIX_LIKELY(PMIX_SUCCESS == rc)) {
+        // Copy reply over to send to the connection info to the given peer.
+        PMIX_BFROPS_COPY_PAYLOAD(rc, peer, reply, job->conni);
+    }
+    else {
         PMIX_ERROR_LOG(rc);
     }
     return rc;
