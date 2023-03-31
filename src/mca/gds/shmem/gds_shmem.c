@@ -1726,7 +1726,7 @@ server_register_job_info(
     } while (false);
 
     if (PMIX_LIKELY(PMIX_SUCCESS == rc)) {
-        // Copy reply over to send to the connection info to the given peer.
+        // Copy reply over to send the connection info to the given peer.
         PMIX_BFROPS_COPY_PAYLOAD(rc, peer, reply, job->conni);
     }
     else {
