@@ -12,14 +12,14 @@
 #                         All rights reserved.
 # Copyright (c) 2010-2012 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
 #
 # $HEADER$
 #
-# This is the US/English help file for ORTE orte-info error
+# This is the US/English help file for PMIx pmix-info help
 # messages.
 #
 [usage]
@@ -37,10 +37,10 @@ PMIx Library Information
 -V|--version                         Print version and exit
 
 -a|--all                             Show all configuration options and MCA parameters
-   --arch                            Show architecture PRRTE was compiled on
+   --arch                            Show architecture PMIx was compiled on
 -c|--config                          Show configuration options
-   --hostname                        Show the hostname that PRRTE was configured and built on
-   --internal                        Show internal MCA parameters (not meant to be
+   --hostname                        Show the hostname that PMIx was configured and built on
+   --internal                        Show internal MCA parameters (not meant to be modified by users)
    --param <arg0>:<arg1>,<arg2>      Show MCA parameters.  The first parameter is the framework (or the
                                      keyword "all"); the second parameter is a comma-delimited list of
                                      specific component names (if only <arg0> is given, then all
