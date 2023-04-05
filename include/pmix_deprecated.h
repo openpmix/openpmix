@@ -704,7 +704,7 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
     do {                          \
         PMIx_Topology_free(m, n); \
         (m) = NULL;               \
-    while (0)
+    } while (0)
 
 #define PMIX_COORD_CREATE(m, n, d)  \
     (m) = PMIx_Coord_create(d, n)
