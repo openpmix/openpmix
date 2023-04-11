@@ -1043,10 +1043,11 @@ doget:
     }
 
     /* if we got here, then we don't have the data for this proc. If we
-     * are a server, or we are a client and not connected, then there is
+     * are a server, or we are not connected, then there is
      * nothing more we can do */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
-        (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !pmix_globals.connected)) {
+    if ((PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) ||
+         !pmix_globals.connected) {
         cb->status = PMIX_ERR_NOT_FOUND;
         goto done;
     }
