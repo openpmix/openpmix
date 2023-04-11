@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -162,7 +162,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric register");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:fabric register");
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
@@ -198,15 +199,16 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FABRIC_REGISTER_CMD;
 
-    /* if I am a scheduler server, then I should be able
-     * to support this myself */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+    /* if I am a scheduler or a server (but not a tool),
+     * then I should be able to support this myself */
+    if ((PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) ||
         PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         rc = pmix_pnet.register_fabric(fabric, directives, ndirs, cbfunc, cbdata);
         return rc;
     }
 
-    /* finally, if I am a tool or client, then I need to send it to
+    /* otherwise, I need to send it to
      * a daemon for processing */
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
     if (!pmix_globals.connected) {
@@ -277,7 +279,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric)
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:fabric update");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:fabric update");
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
@@ -319,7 +322,8 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
 
     /* otherwise, if we are a server, then see if we can pass
      * it up to our host so they can send it to the scheduler */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.fabric) {
             return PMIX_ERR_NOT_SUPPORTED;

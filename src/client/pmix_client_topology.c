@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -312,8 +312,10 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     }
 
 request:
-    /* if I am a server or I am not connected, there is nothing more I can do */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || !pmix_globals.connected) {
+    /* if I am a server (but not a tool) or I am not connected, there is nothing more I can do */
+    if ((PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) ||
+        !pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         PMIX_RELEASE(cb);
         return PMIX_ERR_UNREACH;
