@@ -1158,7 +1158,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     return PMIX_SUCCESS;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[], pmix_proc_t procs[], size_t nprocs)
+PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
+                                     pmix_proc_t procs[], size_t nprocs)
 {
     pmix_buffer_t *bfr;
     pmix_cmd_t cmd = PMIX_ABORT_CMD;
@@ -1172,6 +1173,22 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[], pmix_proc_t pro
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
+    }
+
+    /* if we are a server (and not a tool), then try to
+     * handle this directly */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        if (NULL != pmix_host_server.abort) {
+            rc = pmix_host_server.abort(&pmix_globals.myid,
+                                        pmix_globals.mypeer->info->server_object,
+                                        flag, msg, procs, nprocs,
+                                        NULL, NULL);
+        } else {
+            rc = PMIX_ERR_NOT_SUPPORTED;
+        }
+        return rc;
     }
 
     /* if we aren't connected, don't attempt to send */
@@ -1479,8 +1496,9 @@ PMIX_EXPORT pmix_status_t PMIx_Commit(void)
         return PMIX_SUCCESS;
     }
 
-    /* if we are a server, or we aren't connected, don't attempt to send */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+    /* if we are a server (but not a tool), or we aren't connected, don't attempt to send */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_SUCCESS; // not an error
     }

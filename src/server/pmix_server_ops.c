@@ -140,7 +140,8 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_proc_t *procs = NULL;
     pmix_proc_t proc;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "recvd ABORT");
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "recvd ABORT");
 
     /* unpack the status */
     cnt = 1;
