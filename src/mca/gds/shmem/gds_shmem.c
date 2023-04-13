@@ -1882,7 +1882,6 @@ server_store_modex_cb(
     char **kmap,
     pmix_buffer_t *pbkt
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(ctx);
     pmix_status_t rc = PMIX_SUCCESS;
 
     PMIX_GDS_SHMEM_VOUT(
