@@ -919,6 +919,8 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     if (PMIX_SUCCESS != rc) {
         goto cleanup;
     }
+    /* sort the array */
+    qsort(procs, nprocs, sizeof(pmix_proc_t), pmix_util_compare_proc);
 
     /* unpack the number of provided info structs */
     cnt = 1;
