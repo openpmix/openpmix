@@ -228,6 +228,8 @@ pmix_client_globals_t pmix_client_globals = {
     .iof_verbose = 0,
     .base_output = -1,
     .base_verbose = 0,
+    .force_debug_output = -1,
+    .force_debug_verbose = 0,
     .iof_stdout = PMIX_IOF_SINK_STATIC_INIT,
     .iof_stderr = PMIX_IOF_SINK_STATIC_INIT
 };

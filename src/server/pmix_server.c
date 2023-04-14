@@ -3428,7 +3428,7 @@ finish_collective:
             PMIX_ERROR_LOG(rc);
             goto cleanup;
         }
-        pmix_output_verbose(2, pmix_server_globals.base_output,
+        pmix_output_verbose(2, pmix_client_globals.force_debug_output,
                             "server:modex_cbfunc reply being sent to %s:%u",
                             cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
         PMIX_SERVER_QUEUE_REPLY(ret, cd->peer, cd->hdr.tag, reply);

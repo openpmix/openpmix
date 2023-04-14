@@ -54,6 +54,8 @@ typedef struct {
     /* IOF output sinks */
     pmix_iof_sink_t iof_stdout;
     pmix_iof_sink_t iof_stderr;
+    int force_debug_output;
+    int force_debug_verbose;
 } pmix_client_globals_t;
 
 PMIX_EXPORT extern pmix_client_globals_t pmix_client_globals;

@@ -2122,8 +2122,16 @@ static pmix_status_t
 client_recv_modex_complete(
     pmix_buffer_t *buff
 ) {
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_client_globals.force_debug_output,
+                        "gds:shmem recv modex complete called");
     PMIX_GDS_SHMEM_VVOUT_HERE();
-    return client_connect_to_shmem_from_buffi(buff);
+    rc = client_connect_to_shmem_from_buffi(buff);
+    pmix_output_verbose(2, pmix_client_globals.force_debug_output,
+                        "gds:shmem connection complete with status %s", PMIx_Error_string(rc));
+    return rc;
+
 }
 
 pmix_gds_base_module_t pmix_shmem_module = {
