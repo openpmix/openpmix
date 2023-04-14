@@ -23,7 +23,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -157,11 +157,6 @@ pmix_status_t pmix_register_params(void)
                                       "Verbosity for basic client operations",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_client_globals.base_verbose);
-
-    (void) pmix_mca_base_var_register("pmix", "pmix", "client", "force_debug_verbose",
-                                      "Special verbosity",
-                                      PMIX_MCA_BASE_VAR_TYPE_INT,
-                                      &pmix_client_globals.force_debug_verbose);
 
     /****   SERVER: VERBOSE OUTPUT PARAMS   ****/
     (void) pmix_mca_base_var_register("pmix", "pmix", "server", "get_verbose",
