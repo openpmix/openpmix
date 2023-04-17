@@ -3489,13 +3489,20 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
         PMIX_ERROR_LOG(rc);
         goto cleanup;
     }
-    /* pack the blob being returned */
-    PMIX_CONSTRUCT(&buf, pmix_buffer_t);
-    PMIX_LOAD_BUFFER(cd->peer, &buf, data, ndata);
-    PMIX_BFROPS_COPY_PAYLOAD(rc, cd->peer, reply, &buf);
-    buf.base_ptr = NULL;
-    buf.bytes_used = 0;
-    PMIX_DESTRUCT(&buf);
+    /* if there are data, pack the blob being returned */
+    if (NULL != data) {
+        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+        PMIX_LOAD_BUFFER(cd->peer, &buf, data, ndata);
+        PMIX_BFROPS_COPY_PAYLOAD(rc, cd->peer, reply, &buf);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(reply);
+            PMIX_DESTRUCT(&buf);
+            goto cleanup;
+        }
+        buf.base_ptr = NULL;
+        buf.bytes_used = 0;
+        PMIX_DESTRUCT(&buf);
+    }
     /* send the data to the requestor */
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:get_cbfunc reply being sent to %s:%u", cd->peer->info->pname.nspace,
