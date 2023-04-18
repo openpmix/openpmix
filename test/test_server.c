@@ -5,6 +5,7 @@
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -74,8 +75,9 @@ static void nsdes(server_nspace_t *ns)
 
 static void nscon(server_nspace_t *ns)
 {
-    memset(ns->name, 0, PMIX_MAX_NSLEN);
+    memset(ns->name, 0, sizeof(ns->name));
     ns->ntasks = 0;
+    ns->ltasks = 0;
     ns->task_map = NULL;
 }
 
@@ -464,6 +466,7 @@ static int server_send_procs(void)
 {
     server_info_t *server;
     msg_hdr_t msg_hdr;
+    memset(&msg_hdr, 0, sizeof(msg_hdr));
     int rc = PMIX_SUCCESS;
     char *buf = NULL;
 
@@ -500,6 +503,7 @@ int server_barrier(void)
 {
     server_info_t *server;
     msg_hdr_t msg_hdr;
+    memset(&msg_hdr, 0, sizeof(msg_hdr));
     int rc = PMIX_SUCCESS;
 
     if (0 == my_server_id) {
@@ -535,6 +539,7 @@ static void server_read_cb(int fd, short event, void *arg)
 {
     server_info_t *server = (server_info_t *) arg;
     msg_hdr_t msg_hdr;
+    memset(&msg_hdr, 0, sizeof(msg_hdr));
     char *msg_buf = NULL;
     static char *fence_buf = NULL;
     int rc;
@@ -572,6 +577,7 @@ static void server_read_cb(int fd, short event, void *arg)
             server_info_t *tmp_server;
             PMIX_LIST_FOREACH (tmp_server, server_list, server_info_t) {
                 msg_hdr_t resp_hdr;
+                memset(&resp_hdr, 0, sizeof(resp_hdr));
                 resp_hdr.dst_id = tmp_server->idx;
                 resp_hdr.src_id = my_server_id;
                 resp_hdr.cmd = CMD_BARRIER_RESPONSE;
@@ -600,6 +606,7 @@ static void server_read_cb(int fd, short event, void *arg)
             server_info_t *tmp_server;
             PMIX_LIST_FOREACH (tmp_server, server_list, server_info_t) {
                 msg_hdr_t resp_hdr;
+                memset(&resp_hdr, 0, sizeof(resp_hdr));
                 resp_hdr.dst_id = tmp_server->idx;
                 resp_hdr.src_id = my_server_id;
                 resp_hdr.cmd = CMD_FENCE_COMPLETE;
@@ -651,6 +658,7 @@ int server_fence_contrib(char *data, size_t ndata, pmix_modex_cbfunc_t cbfunc, v
 {
     server_info_t *server;
     msg_hdr_t msg_hdr;
+    memset(&msg_hdr, 0, sizeof(msg_hdr));
     int rc = PMIX_SUCCESS;
 
     if (0 == my_server_id) {
@@ -708,6 +716,7 @@ static void server_unpack_dmdx(char *buf, int *sender, pmix_proc_t *proc)
 static void _dmdx_cb(int status, char *data, size_t sz, void *cbdata)
 {
     msg_hdr_t msg_hdr;
+    memset(&msg_hdr, 0, sizeof(msg_hdr));
     int *sender_id = (int *) cbdata;
 
     PMIX_HIDE_UNUSED_PARAMS(status);
@@ -727,6 +736,7 @@ int server_dmdx_get(const char *nspace, int rank, pmix_modex_cbfunc_t cbfunc, vo
 {
     server_info_t *server = NULL, *tmp;
     msg_hdr_t msg_hdr;
+    memset(&msg_hdr, 0, sizeof(msg_hdr));
     pmix_status_t rc = PMIX_SUCCESS;
     char *buf = NULL;
 
