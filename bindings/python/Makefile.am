@@ -110,6 +110,7 @@ BUILT_SOURCES = $(constants_files)
 noinst_DATA = $(SENTINEL_FILE)
 
 install-exec-local:
+	$(MKDIR_P) $(DESTDIR)$(pythondir)
 	PYTHONPATH=$$PYTHONPATH:$(DESTDIR)$(pythondir):$(DESTDIR)$(pyexecdir) \
 		PMIX_BINDINGS_TOP_SRCDIR=$(PMIX_TOP_SRCDIR) PMIX_BINDINGS_TOP_BUILDDIR=$(PMIX_TOP_BUILDDIR) \
 		$(PYTHON) $(top_srcdir)/bindings/python/setup.py install --quiet --prefix="$(DESTDIR)$(prefix)"
