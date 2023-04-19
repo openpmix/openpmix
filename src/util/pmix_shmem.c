@@ -13,6 +13,7 @@
 #include "pmix_common.h"
 #include "pmix_output.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_stdatomic.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_string_copy.h"
 
@@ -22,10 +23,8 @@
 #include <sys/mman.h>
 
 typedef struct pmix_shmem_header_t {
-    /** Header lock. */
-    pthread_mutex_t lock;
     /** Reference count. */
-    volatile int32_t ref_count;
+    pmix_atomic_int32_t ref_count;
 } pmix_shmem_header_t;
 
 static void *
@@ -43,15 +42,7 @@ update_ref_count(
     pmix_shmem_header_t *header,
     int32_t inc
 ) {
-    const int rc = pthread_mutex_lock(&header->lock);
-    if (EDEADLK == rc) {
-        errno = rc;
-        perror("pthread_mutex_lock()");
-        abort();
-    }
-    const int32_t ref_count = header->ref_count += inc;
-    pthread_mutex_unlock(&header->lock);
-    return ref_count;
+    return header->ref_count += inc;
 }
 
 static pmix_status_t
@@ -143,7 +134,6 @@ add_internal_segment_header(
     }
     // Add the header.
     pmix_shmem_header_t shmem_header = {
-        .lock = PTHREAD_MUTEX_INITIALIZER,
         .ref_count = 0
     };
     memmove(shmem->hdr_address, &shmem_header, sizeof(shmem_header));
