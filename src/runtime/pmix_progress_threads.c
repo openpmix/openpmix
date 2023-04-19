@@ -6,6 +6,7 @@
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,6 +25,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_stdatomic.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/threads/pmix_threads.h"
@@ -41,7 +43,7 @@ typedef struct {
 
     /* This will be set to false when it is time for the progress
        thread to exit */
-    volatile bool ev_active;
+    pmix_atomic_bool_t ev_active;
 
     /* This event will always be set on the ev_base (so that the
        ev_base is not empty!) */
