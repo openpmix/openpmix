@@ -15,6 +15,7 @@
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -39,6 +40,7 @@
 #include "src/mca/mca.h"
 
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_stdatomic.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
 #include "src/mca/ptl/ptl.h"
 
@@ -63,7 +65,7 @@ struct pmix_ptl_base_t {
     pmix_list_t posted_recvs; // list of pmix_ptl_posted_recv_t
     pmix_list_t unexpected_msgs;
     int stop_thread[2];
-    bool listen_thread_active;
+    pmix_atomic_bool_t listen_thread_active;
     pmix_listener_t listener;
     struct sockaddr_storage *connection;
     uint32_t current_tag;
