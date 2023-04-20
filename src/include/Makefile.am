@@ -14,7 +14,7 @@
 # Copyright (c) 2007-2022 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
@@ -61,7 +61,6 @@ headers += \
         pmix_atomic.h \
         pmix_hash_string.h \
         pmix_socket_errno.h \
-        pmix_stdatomic.h \
         pmix_stdint.h \
         pmix_prefetch.h \
         pmix_types.h \

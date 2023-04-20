@@ -17,7 +17,7 @@
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
  *                         reserved.
  * $COPYRIGHT$
@@ -61,7 +61,19 @@
 
 #include <stdatomic.h>
 
+typedef atomic_int pmix_atomic_int_t;
+typedef atomic_long pmix_atomic_long_t;
+
+typedef _Atomic bool pmix_atomic_bool_t;
 typedef _Atomic int32_t pmix_atomic_int32_t;
+typedef _Atomic uint32_t pmix_atomic_uint32_t;
+typedef _Atomic int64_t pmix_atomic_int64_t;
+typedef _Atomic uint64_t pmix_atomic_uint64_t;
+
+typedef _Atomic size_t pmix_atomic_size_t;
+typedef _Atomic ssize_t pmix_atomic_ssize_t;
+typedef _Atomic intptr_t pmix_atomic_intptr_t;
+typedef _Atomic uintptr_t pmix_atomic_uintptr_t;
 
 static inline void pmix_atomic_wmb(void)
 {
@@ -85,9 +97,21 @@ static inline void pmix_atomic_rmb(void)
                                                 memory_order_relaxed)
 
 
-#elif PMIX_ATOMIC_GCC_BUILTIN
+#else
 
+typedef volatile int pmix_atomic_int_t;
+typedef volatile long pmix_atomic_long_t;
+
+typedef volatile bool pmix_atomic_bool_t;
 typedef volatile int32_t pmix_atomic_int32_t;
+typedef volatile uint32_t pmix_atomic_uint32_t;
+typedef volatile int64_t pmix_atomic_int64_t;
+typedef volatile uint64_t pmix_atomic_uint64_t;
+
+typedef volatile size_t pmix_atomic_size_t;
+typedef volatile ssize_t pmix_atomic_ssize_t;
+typedef volatile intptr_t pmix_atomic_intptr_t;
+typedef volatile uintptr_t pmix_atomic_uintptr_t;
 
 static inline void pmix_atomic_wmb(void)
 {
