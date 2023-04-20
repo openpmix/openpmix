@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -40,7 +40,7 @@
 #include "src/mca/mca.h"
 
 #include "src/include/pmix_globals.h"
-#include "src/include/pmix_stdatomic.h"
+#include "src/include/pmix_atomic.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
 #include "src/mca/ptl/ptl.h"
 
