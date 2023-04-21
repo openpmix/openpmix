@@ -288,8 +288,7 @@ shmem_destruct(
         return;
     }
 
-    const int32_t refc = update_ref_count(s->hdr_address, -1);
-    if (0 == refc) {
+    if (0 == update_ref_count(s->hdr_address, -1)) {
         (void)segment_detach(s);
         (void)segment_unlink(s);
     }
