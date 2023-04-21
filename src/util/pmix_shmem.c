@@ -200,16 +200,11 @@ pmix_shmem_segment_detach(
     pmix_shmem_t *shmem
 ) {
     if (shmem->attached) {
-        const int32_t refc = update_ref_count(shmem->hdr_address, -1);
-        pmix_status_t rc = segment_detach(shmem);
-        // Set to false here to avoid multiple
-        // reference updates in shmem_destruct().
-        shmem->attached = false;
         // If we were the last one to hold a reference, also unlink.
-        if (0 == refc) {
+        if (0 == update_ref_count(shmem->hdr_address, -1)) {
             (void)segment_unlink(shmem);
         }
-        return rc;
+        return segment_detach(shmem);
     }
     return PMIX_SUCCESS;
 }
