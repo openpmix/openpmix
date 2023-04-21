@@ -15,7 +15,7 @@
 # Copyright (c) 2013-2016 Los Alamos National Security, Inc.  All rights
 #                         reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2023 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -35,7 +35,8 @@ EXTRA_DIST = \
     platform/intel/bend/mac \
     platform/intel/bend/mac.conf \
     platform/intel/bend/linux \
-    platform/intel/bend/linux.conf
+    platform/intel/bend/linux.conf \
+    check_compat.py
 
 include perf_tools/Makefile.include
 
