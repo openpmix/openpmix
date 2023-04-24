@@ -3,7 +3,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -310,8 +310,10 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
      * type with our server, or if we have directives, then we need to notify
      * the server - however, don't do this for a v1 server as the event
      * notification system there doesn't work */
-    if ((!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer))
-        && pmix_globals.connected && !PMIX_PEER_IS_V1(pmix_client_globals.myserver)
+    if ((!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+          PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
+          PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) &&
+        pmix_globals.connected && !PMIX_PEER_IS_V1(pmix_client_globals.myserver)
         && (need_register || 0 < pmix_list_get_size(xfer))) {
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "pmix: _add_hdlr sending to server");
