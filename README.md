@@ -27,3 +27,5 @@ https://docs.openpmix.org/en/master/developers/prerequisites.html#sphinx.
 The OpenPMIx security policy can be viewed online at https://docs.openpmix.org/en/latest/security.html.
 
 NOTE: any potential security issue should be reported immediately to us at security@pmix.org
+
+(Testing)
