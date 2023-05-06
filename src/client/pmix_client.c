@@ -621,6 +621,7 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
+
     /* setup the base verbosity */
     if (0 < pmix_client_globals.base_verbose) {
         /* set default output */
@@ -810,6 +811,10 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
             PMIX_RELEASE_THREAD(&pmix_global_lock);
             return rc;
         }
+        /* set our server ID to be ourselves */
+        pmix_client_globals.myserver->info->pname.nspace = strdup(pmix_globals.myid.nspace);
+        pmix_client_globals.myserver->info->pname.rank = pmix_globals.myid.rank;
+        /* mark that the server is unreachable */
         rc = PMIX_ERR_UNREACH;
     } else if (PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
         /* we are a connected singleton */
@@ -845,14 +850,8 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
         rc = cb.status;
         PMIX_DESTRUCT(&cb);
     }
+    pmix_init_result = rc;
 
-    if (PMIX_SUCCESS == rc) {
-        pmix_init_result = PMIX_SUCCESS;
-    } else {
-        pmix_init_result = rc;
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
     // enable show_help subsystem
     pmix_show_help_enabled = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
