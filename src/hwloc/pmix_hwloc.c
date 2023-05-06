@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1005,7 +1005,7 @@ pmix_status_t pmix_hwloc_get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t 
     }
     if (0 != rc) {
         hwloc_bitmap_free(cpuset->bitmap);
-        return PMIX_ERR_TAKE_NEXT_OPTION;
+        return PMIX_ERR_NOT_FOUND;
     }
     if (NULL == cpuset->source) {
         cpuset->source = strdup("hwloc");
