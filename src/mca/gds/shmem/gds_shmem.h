@@ -69,8 +69,8 @@ typedef enum {
 typedef uint8_t pmix_gds_shmem_status_t;
 
 typedef enum {
-    /** Indicates that caller is responsible for shmem release. */
-    PMIX_GDS_SHMEM_RELEASE = 0x01,
+    /** Indicates that caller is shmem creator. */
+    PMIX_GDS_SHMEM_MINE = 0x01,
     /** Indicates that the shared-memory segment is attached to. */
     PMIX_GDS_SHMEM_ATTACHED = 0x02,
     /** Indicates that the shared-memory segment is ready for use. */

@@ -470,16 +470,13 @@ job_destruct(
             PMIX_ERROR_LOG(rc);
             return;
         }
-        if (pmix_gds_shmem_has_status(job, sid, PMIX_GDS_SHMEM_RELEASE)) {
-            // Emit usage status before we destroy the segment.
+        if (pmix_gds_shmem_has_status(job, sid, PMIX_GDS_SHMEM_MINE)) {
+            // Emit usage status before we potentially destroy the segment.
             emit_shmem_usage_stats(job, sid);
         }
-        else {
-            // If we didn't create it, explicitly detach in case we need to
-            // later remap something in the address space covered by this.
-            pmix_shmem_segment_detach(shmem);
-        }
-        // Releases memory for the structures located in shared-memory.
+        // Releases memory for the structures located in shared-memory. This
+        // will also unmap in case we need to later remap something in the
+        // address space covered by this.
         PMIX_RELEASE(shmem);
         // Invalidate the shmem flags.
         pmix_gds_shmem_clearall_status(job, sid);
@@ -541,9 +538,11 @@ static void
 session_destruct(
     pmix_gds_shmem_session_t *s
 ) {
+    // job_destruct took care of our shmem.
+    s->shmem = NULL;
     // Invalidate the shmem flags.
     s->shmem_status = 0;
-    // job_destruct took care of our shmem.
+    s->smdata = NULL;
 }
 
 PMIX_CLASS_INSTANCE(
@@ -1051,9 +1050,9 @@ shmem_segment_create_and_attach(
     }
 out:
     if (PMIX_SUCCESS == rc) {
-        // I created it, so I must release it.
+        // I created it, so note that it is mine.
         pmix_gds_shmem_set_status(
-            job, shmem_id, PMIX_GDS_SHMEM_RELEASE
+            job, shmem_id, PMIX_GDS_SHMEM_MINE
         );
     }
     return rc;

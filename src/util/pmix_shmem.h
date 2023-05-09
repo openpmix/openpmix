@@ -34,7 +34,7 @@ typedef struct pmix_shmem_t {
     /** Parent class. */
     pmix_object_t super;
     /** Flag indicating if attached to segment. */
-    bool attached;
+    volatile bool attached;
     /** Size of shared-memory segment. */
     size_t size;
     /** Address of shared memory segment header. */
