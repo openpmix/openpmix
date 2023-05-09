@@ -527,6 +527,7 @@ void PMIx_Value_free(pmix_value_t *v, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Value_destruct(&v[m]);
     }
+    pmix_free(v);
 }
 
 pmix_boolean_t PMIx_Value_true(const pmix_value_t *value)
@@ -643,6 +644,7 @@ PMIX_EXPORT void PMIx_Info_free(pmix_info_t *p, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Info_destruct(&p[m]);
     }
+    pmix_free(p);
 }
 
 pmix_boolean_t PMIx_Info_true(const pmix_info_t *p)
@@ -803,6 +805,7 @@ void PMIx_Coord_free(pmix_coord_t *m, size_t number)
     for (n=0; n < number; n++) {
         PMIx_Coord_destruct(&m[n]);
     }
+    pmix_free(m);
 }
 
 void PMIx_Topology_construct(pmix_topology_t *t)
@@ -842,6 +845,7 @@ void PMIx_Topology_free(pmix_topology_t *t, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Topology_destruct(&t[m]);
     }
+    pmix_free(t);
 }
 
 void PMIx_Cpuset_construct(pmix_cpuset_t *c)
@@ -882,6 +886,7 @@ void PMIx_Cpuset_free(pmix_cpuset_t *c, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Cpuset_destruct(&c[m]);
     }
+    pmix_free(c);
 }
 
 void PMIx_Geometry_construct(pmix_geometry_t *g)
@@ -931,6 +936,7 @@ void PMIx_Geometry_free(pmix_geometry_t *g, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Geometry_destruct(&g[m]);
     }
+    pmix_free(g);
 }
 
 void PMIx_Device_distance_construct(pmix_device_distance_t *d)
@@ -978,6 +984,7 @@ void PMIx_Device_distance_free(pmix_device_distance_t *d, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Device_distance_destruct(&d[m]);
     }
+    pmix_free(d);
 }
 
 void PMIx_Byte_object_construct(pmix_byte_object_t *b)
@@ -1021,6 +1028,7 @@ void PMIx_Byte_object_free(pmix_byte_object_t *b, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Byte_object_destruct(&b[m]);
     }
+    pmix_free(b);
 }
 
 void PMIx_Endpoint_construct(pmix_endpoint_t *e)
@@ -1068,6 +1076,7 @@ void PMIx_Endpoint_free(pmix_endpoint_t *e, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Endpoint_destruct(&e[m]);
     }
+    pmix_free(e);
 }
 
 PMIX_EXPORT void PMIx_Envar_construct(pmix_envar_t *e)
@@ -1116,6 +1125,7 @@ void PMIx_Envar_free(pmix_envar_t *e, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Envar_destruct(&e[m]);
     }
+    pmix_free(e);
 }
 
 void PMIx_Envar_load(pmix_envar_t *e,
@@ -1166,6 +1176,7 @@ void PMIx_Data_buffer_release(pmix_data_buffer_t *b)
         return;
     }
     PMIx_Data_buffer_destruct(b);
+    pmix_free(b);
 }
 
 void PMIx_Data_buffer_load(pmix_data_buffer_t *b,
@@ -1233,6 +1244,7 @@ void PMIx_Proc_free(pmix_proc_t *p, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Proc_destruct(&p[m]);
     }
+    pmix_free(p);
 }
 
 void PMIx_Proc_load(pmix_proc_t *p,
@@ -1317,6 +1329,7 @@ void PMIx_Proc_info_free(pmix_proc_info_t *p, size_t n)
     for (m=0; m < n; m++) {
         PMIx_Proc_info_destruct(&p[m]);
     }
+    pmix_free(p);
 }
 
 void PMIx_Proc_stats_construct(pmix_proc_stats_t *p)
@@ -1362,6 +1375,7 @@ void PMIx_Proc_stats_free(pmix_proc_stats_t *p, size_t n)
             PMIx_Proc_stats_destruct(&p[m]);
         }
     }
+    pmix_free(p);
 }
 
 void PMIx_Disk_stats_construct(pmix_disk_stats_t *p)
@@ -1403,6 +1417,7 @@ void PMIx_Disk_stats_free(pmix_disk_stats_t *p, size_t n)
             PMIx_Disk_stats_destruct(&p[m]);
         }
     }
+    pmix_free(p);
 }
 
 void PMIx_Net_stats_construct(pmix_net_stats_t *p)
@@ -1444,6 +1459,7 @@ void PMIx_Net_stats_free(pmix_net_stats_t *p, size_t n)
             PMIx_Net_stats_destruct(&p[m]);
         }
     }
+    pmix_free(p);
 }
 
 void PMIx_Node_stats_construct(pmix_node_stats_t *p)
@@ -1491,6 +1507,7 @@ void PMIx_Node_stats_free(pmix_node_stats_t *p, size_t n)
             PMIx_Node_stats_destruct(&p[m]);
         }
     }
+    pmix_free(p);
 }
 
 void PMIx_Pdata_construct(pmix_pdata_t *p)
@@ -1530,6 +1547,7 @@ void PMIx_Pdata_free(pmix_pdata_t *p, size_t n)
             PMIx_Pdata_destruct(&p[m]);
         }
     }
+    pmix_free(p);
 }
 
 void PMIx_App_construct(pmix_app_t *p)
@@ -1594,6 +1612,7 @@ void PMIx_App_free(pmix_app_t *p, size_t n)
             PMIx_App_destruct(&p[m]);
         }
     }
+    pmix_free(p);
 }
 
 void PMIx_App_release(pmix_app_t *p)
@@ -1650,6 +1669,7 @@ void PMIx_Query_free(pmix_query_t *p, size_t n)
             PMIx_Query_destruct(&p[m]);
         }
     }
+    pmix_free(p);
 }
 
 void PMIx_Query_release(pmix_query_t *p)
@@ -1704,6 +1724,7 @@ void PMIx_Regattr_free(pmix_regattr_t *p, size_t n)
             PMIx_Regattr_destruct(&p[m]);
         }
     }
+    pmix_free(p);
 }
 
 void PMIx_Regattr_load(pmix_regattr_t *p,
@@ -1924,5 +1945,6 @@ PMIX_EXPORT void PMIx_Data_array_free(pmix_data_array_t *p)
     if (NULL != p) {
         PMIx_Data_array_destruct(p);
     }
+    pmix_free(p);
 }
 
