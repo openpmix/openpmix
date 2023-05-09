@@ -41,6 +41,8 @@ typedef _Atomic uintptr_t pmix_atomic_uintptr_t;
 
 #else
 
+#error "NO ATOMICS"
+
 typedef volatile int pmix_atomic_int_t;
 typedef volatile long pmix_atomic_long_t;
 
