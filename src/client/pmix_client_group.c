@@ -416,6 +416,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     cb = PMIX_NEW(pmix_group_tracker_t);
     cb->opcbfunc = cbfunc;
     cb->cbdata = cbdata;
+    cb->grpid  = strdup(grpid);
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, destruct_cbfunc, (void *) cb);
@@ -1188,6 +1189,7 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
     pmix_status_t rc;
     pmix_status_t ret;
     int32_t cnt;
+    pmix_group_t *grp;
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -1199,6 +1201,16 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
         ret = PMIX_ERR_BAD_PARAM;
         PMIX_ERROR_LOG(ret);
         goto report;
+    }
+
+    /* find this group */
+    grp = NULL;
+    PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
+        if (0 == strcmp(cb->grpid, grp->grpid)) {
+            pmix_list_remove_item(&pmix_client_globals.groups, &grp->super);
+            PMIX_RELEASE(grp);
+            break;
+        }
     }
 
     /* a zero-byte buffer indicates that this recv is being
