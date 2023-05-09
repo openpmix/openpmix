@@ -46,32 +46,6 @@ update_ref_count(
 }
 
 static pmix_status_t
-segment_detach(
-    pmix_shmem_t *shmem
-) {
-    int rc = 0;
-
-    if (shmem->attached) {
-        rc = munmap(shmem->hdr_address, shmem->size);
-    }
-    shmem->attached = false;
-    shmem->hdr_address = NULL;
-    shmem->data_address = NULL;
-
-    return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
-}
-
-static pmix_status_t
-segment_unlink(
-    pmix_shmem_t *shmem
-) {
-    const int rc = unlink(shmem->backing_path);
-    memset(shmem->backing_path, 0, PMIX_PATH_MAX);
-
-    return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
-}
-
-static pmix_status_t
 segment_attach(
     pmix_shmem_t *shmem,
     uintptr_t desired_base_address,
@@ -108,7 +82,7 @@ out:
         (void)close(fd);
     }
     if (PMIX_SUCCESS != rc) {
-        (void)segment_detach(shmem);
+        (void)pmix_shmem_segment_detach(shmem);
         PMIX_ERROR_LOG(rc);
     }
     else {
@@ -138,7 +112,7 @@ add_internal_segment_header(
     };
     memmove(shmem->hdr_address, &shmem_header, sizeof(shmem_header));
     // Done with internal mapping, so detach.
-    return segment_detach(shmem);
+    return pmix_shmem_segment_detach(shmem);
 }
 
 // TODO(skg) Add network FS warning?
@@ -199,14 +173,16 @@ pmix_status_t
 pmix_shmem_segment_detach(
     pmix_shmem_t *shmem
 ) {
-    if (shmem->attached) {
-        // If we were the last one to hold a reference, also unlink.
-        if (0 == update_ref_count(shmem->hdr_address, -1)) {
-            (void)segment_unlink(shmem);
-        }
-        return segment_detach(shmem);
+    int rc = 0;
+
+    if (shmem && shmem->attached) {
+        rc = munmap(shmem->hdr_address, shmem->size);
+        shmem->attached = false;
+        shmem->hdr_address = NULL;
+        shmem->data_address = NULL;
     }
-    return PMIX_SUCCESS;
+
+    return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
 pmix_status_t
@@ -242,7 +218,10 @@ pmix_status_t
 pmix_shmem_segment_unlink(
     pmix_shmem_t *shmem
 ) {
-    return segment_unlink(shmem);
+    const int rc = unlink(shmem->backing_path);
+    memset(shmem->backing_path, 0, PMIX_PATH_MAX);
+
+    return (0 == rc) ? PMIX_SUCCESS : PMIX_ERROR;
 }
 
 /**
@@ -287,11 +266,11 @@ shmem_destruct(
     if (!s->attached) {
         return;
     }
-
+    // If our reference count has reached zero, then unlink the backing file.
     if (0 == update_ref_count(s->hdr_address, -1)) {
-        (void)segment_detach(s);
-        (void)segment_unlink(s);
+        (void)pmix_shmem_segment_unlink(s);
     }
+    (void)pmix_shmem_segment_detach(s);
 }
 
 PMIX_EXPORT PMIX_CLASS_INSTANCE(
