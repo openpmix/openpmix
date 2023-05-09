@@ -372,6 +372,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grp[], const pmix_in
     cb = PMIX_NEW(pmix_group_tracker_t);
     cb->opcbfunc = cbfunc;
     cb->cbdata = cbdata;
+    cb->grpid  = strdup(grpid);
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, grp_cbfunc, (void *) cb);
@@ -1073,7 +1074,60 @@ report:
     if (NULL != cb->cbfunc) {
         cb->cbfunc(ret, iptr, ninfo, cb->cbdata, relfn, cb);
         return;
-    } else if (NULL != cb->opcbfunc) {
+    }
+    PMIX_RELEASE(cb);
+}
+
+static void destruct_cbfunc(struct pmix_peer_t *pr,
+                            pmix_ptl_hdr_t *hdr,
+                            pmix_buffer_t *buf,
+                            void *cbdata)
+{
+    pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
+    pmix_status_t rc;
+    pmix_status_t ret;
+    int32_t cnt;
+    pmix_group_t *grp;
+
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
+
+    pmix_output_verbose(2, pmix_client_globals.connect_output,
+                        "pmix:client recv callback activated with %d bytes",
+                        (NULL == buf) ? -1 : (int) buf->bytes_used);
+
+    if (NULL == buf) {
+        ret = PMIX_ERR_BAD_PARAM;
+        PMIX_ERROR_LOG(ret);
+        goto report;
+    }
+
+    /* find this group */
+    grp = NULL;
+    PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
+        if (0 == strcmp(cb->grpid, grp->grpid)) {
+            pmix_list_remove_item(&pmix_client_globals.groups, &grp->super);
+            PMIX_RELEASE(grp);
+            break;
+        }
+    }
+
+    /* a zero-byte buffer indicates that this recv is being
+     * completed due to a lost connection */
+    if (PMIX_BUFFER_IS_EMPTY(buf)) {
+        ret = PMIX_ERR_UNREACH;
+        goto report;
+    }
+
+    /* unpack the returned status */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ret, &cnt, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+    }
+
+report:
+    if (NULL != cb->opcbfunc) {
         cb->opcbfunc(ret, cb->cbdata);
         return;
     }
