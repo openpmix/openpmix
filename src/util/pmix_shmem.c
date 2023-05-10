@@ -37,12 +37,21 @@ data_addr_from_base(
     return (void *)((uintptr_t)base_addr + header_offset);
 }
 
-static inline int32_t
-update_ref_count(
-    pmix_shmem_header_t *header,
-    int32_t inc
+static inline void
+inc_ref_count(
+    pmix_shmem_header_t *header
 ) {
-    return header->ref_count += inc;
+    pmix_atomic_rmb();
+    ++(header->ref_count);
+}
+
+static inline bool
+dec_ref_count(
+    pmix_shmem_header_t *header
+) {
+    // Make sure pending writes complete.
+    pmix_atomic_wmb();
+    return --(header->ref_count) == 0;
 }
 
 static pmix_status_t
@@ -164,7 +173,7 @@ pmix_shmem_segment_attach(
     );
 
     if (PMIX_SUCCESS == rc) {
-        (void)update_ref_count(shmem->hdr_address, 1);
+        inc_ref_count(shmem->hdr_address);
     }
     return rc;
 }
@@ -267,7 +276,7 @@ shmem_destruct(
         return;
     }
     // If our reference count has reached zero, then unlink the backing file.
-    if (0 == update_ref_count(s->hdr_address, -1)) {
+    if (dec_ref_count(s->hdr_address)) {
         (void)pmix_shmem_segment_unlink(s);
     }
     (void)pmix_shmem_segment_detach(s);
