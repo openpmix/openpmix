@@ -21,7 +21,7 @@
 #include "pmix_stdint.h"
 #include <stdbool.h>
 
-#if PMIX_ATOMIC_C11
+#if PMIX_USE_C11_ATOMICS
 
 #include <stdatomic.h>
 

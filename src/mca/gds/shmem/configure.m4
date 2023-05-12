@@ -18,9 +18,7 @@ AC_DEFUN([MCA_pmix_gds_shmem_CONFIG], [
     dnl address space is probably too small for the 'virtual memory hole'
     dnl finding that we do here. Below assumes support for only 32- and 64-bit
     dnl architectures.
-    dnl Also note the requirement on C11 Atomics. We need this to properly
-    dnl support the shared-memory reference counting in util/pmix_shmem.
-    AS_IF([test $ac_cv_sizeof_void_p -ne 4 && test $pmix_atomic_c11 == 1 && test $oac_have_apple == 0],
+    AS_IF([test $ac_cv_sizeof_void_p -ne 4 && test $oac_have_apple == 0],
           [$1
            pmix_gds_shmem=yes],
           [$2
