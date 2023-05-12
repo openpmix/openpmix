@@ -17,9 +17,10 @@
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
- * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
+ * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c)           Amazon.com, Inc. or its affiliates.  All Rights
  *                         reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -56,24 +57,11 @@
 #define PMIX_SYS_ATOMIC_H 1
 
 #include "src/include/pmix_config.h"
+#include "src/include/pmix_stdatomic.h"
 
-#if PMIX_ATOMIC_C11
+#if PMIX_USE_C11_ATOMICS
 
 #include <stdatomic.h>
-
-typedef atomic_int pmix_atomic_int_t;
-typedef atomic_long pmix_atomic_long_t;
-
-typedef _Atomic bool pmix_atomic_bool_t;
-typedef _Atomic int32_t pmix_atomic_int32_t;
-typedef _Atomic uint32_t pmix_atomic_uint32_t;
-typedef _Atomic int64_t pmix_atomic_int64_t;
-typedef _Atomic uint64_t pmix_atomic_uint64_t;
-
-typedef _Atomic size_t pmix_atomic_size_t;
-typedef _Atomic ssize_t pmix_atomic_ssize_t;
-typedef _Atomic intptr_t pmix_atomic_intptr_t;
-typedef _Atomic uintptr_t pmix_atomic_uintptr_t;
 
 static inline void pmix_atomic_wmb(void)
 {
@@ -92,26 +80,23 @@ static inline void pmix_atomic_rmb(void)
 #    endif
 }
 
-#    define pmix_atomic_compare_exchange_strong_32(addr, compare, value)                    \
-        atomic_compare_exchange_strong_explicit(addr, compare, value, memory_order_relaxed, \
-                                                memory_order_relaxed)
+#define PMIX_ATOMIC_DEFINE_OP(type, bits, operator, name)                   \
+    static inline type                                                      \
+    pmix_atomic_fetch_##name##_##bits(pmix_atomic_##type *addr, type value) \
+    {                                                                       \
+        return atomic_fetch_##name##_explicit(                              \
+            addr, value, memory_order_relaxed);                             \
+    }                                                                       \
+                                                                            \
+    static inline type                                                      \
+    pmix_atomic_##name##_fetch_##bits(pmix_atomic_##type *addr, type value) \
+    {                                                                       \
+        return atomic_fetch_##name##_explicit(                              \
+            addr, value, memory_order_relaxed) operator value;              \
+    }
 
-
-#else
-
-typedef volatile int pmix_atomic_int_t;
-typedef volatile long pmix_atomic_long_t;
-
-typedef volatile bool pmix_atomic_bool_t;
-typedef volatile int32_t pmix_atomic_int32_t;
-typedef volatile uint32_t pmix_atomic_uint32_t;
-typedef volatile int64_t pmix_atomic_int64_t;
-typedef volatile uint64_t pmix_atomic_uint64_t;
-
-typedef volatile size_t pmix_atomic_size_t;
-typedef volatile ssize_t pmix_atomic_ssize_t;
-typedef volatile intptr_t pmix_atomic_intptr_t;
-typedef volatile uintptr_t pmix_atomic_uintptr_t;
+/* end of PMIX_USE_C11_ATOMICS */
+#elif PMIX_USE_GCC_BUILTIN_ATOMICS
 
 static inline void pmix_atomic_wmb(void)
 {
@@ -130,13 +115,28 @@ static inline void pmix_atomic_rmb(void)
 #endif
 }
 
-static inline bool pmix_atomic_compare_exchange_strong_32(pmix_atomic_int32_t *addr,
-                                                          int32_t *oldval, int32_t newval)
-{
-    return __atomic_compare_exchange_n(addr, oldval, newval, false,
-                                       __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
-}
+#define PMIX_ATOMIC_DEFINE_OP(type, bits, operator, name)                      \
+    static inline type                                                         \
+    pmix_atomic_fetch_##name##_##bits(pmix_atomic_##type *addr, type value)    \
+    {                                                                          \
+        return __atomic_fetch_##name(addr, value, __ATOMIC_RELAXED);           \
+    }                                                                          \
+                                                                               \
+    static inline type                                                         \
+    pmix_atomic_##name##_fetch_##bits(pmix_atomic_##type *addr, type value)    \
+    {                                                                          \
+        return __atomic_##name##_fetch(addr, value, __ATOMIC_RELAXED);         \
+    }
 
+/* end of PMIX_USE_GCC_BUILTIN_ATOMICS */
+#else
+#error OpenPMIx requires either C11 atomics support or GCC built-in atomics.
 #endif
+
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, +, add)
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, &, and)
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, |, or)
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, ^, xor)
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, -, sub)
 
 #endif /* PMIX_SYS_ATOMIC_H */
