@@ -41,17 +41,14 @@ static inline void
 inc_ref_count(
     pmix_shmem_header_t *header
 ) {
-    pmix_atomic_rmb();
-    ++(header->ref_count);
+    (void)pmix_atomic_fetch_add_32(&header->ref_count, 1);
 }
 
 static inline bool
 dec_ref_count(
     pmix_shmem_header_t *header
 ) {
-    // Make sure pending writes complete.
-    pmix_atomic_wmb();
-    return --(header->ref_count) == 0;
+    return pmix_atomic_sub_fetch_32(&header->ref_count, 1) == 0;
 }
 
 static pmix_status_t

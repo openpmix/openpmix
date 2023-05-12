@@ -20,6 +20,7 @@
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
  *                         reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -56,8 +57,9 @@
 #define PMIX_SYS_ATOMIC_H 1
 
 #include "src/include/pmix_config.h"
+#include "src/include/pmix_stdatomic.h"
 
-#if PMIX_ATOMIC_C11
+#if PMIX_USE_C11_ATOMICS
 
 #include <stdatomic.h>
 
@@ -78,7 +80,7 @@ static inline void pmix_atomic_rmb(void)
 #    endif
 }
 
-#elif PMIX_ATOMIC_GCC_BUILTIN
+#elif PMIX_USE_GCC_BUILTIN_ATOMICS
 
 static inline void pmix_atomic_wmb(void)
 {
@@ -96,6 +98,25 @@ static inline void pmix_atomic_rmb(void)
     __atomic_thread_fence(__ATOMIC_ACQUIRE);
 #endif
 }
+
+#define PMIX_ATOMIC_DEFINE_OP(type, bits, operator, name)                      \
+    static inline type                                                         \
+    pmix_atomic_fetch_##name##_##bits(pmix_atomic_##type *addr, type value)    \
+    {                                                                          \
+        return __atomic_fetch_##name(addr, value, __ATOMIC_RELAXED);           \
+    }                                                                          \
+                                                                               \
+    static inline type                                                         \
+    pmix_atomic_##name##_fetch_##bits(pmix_atomic_##type *addr, type value)    \
+    {                                                                          \
+        return __atomic_##name##_fetch(addr, value, __ATOMIC_RELAXED);         \
+    }
+
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, +, add)
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, &, and)
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, |, or)
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, ^, xor)
+PMIX_ATOMIC_DEFINE_OP(int32_t, 32, -, sub)
 
 #endif
 
