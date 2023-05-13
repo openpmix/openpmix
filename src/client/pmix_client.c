@@ -537,7 +537,8 @@ cleanup:
     PMIX_BYTE_OBJECT_DESTRUCT(&bo);
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_t ninfo)
+pmix_status_t PMIx_Init(pmix_proc_t *proc,
+                        pmix_info_t info[], size_t ninfo)
 {
     char *evar;
     pmix_status_t rc = PMIX_SUCCESS;
@@ -972,7 +973,11 @@ PMIX_EXPORT pmix_status_t PMIx_Init(pmix_proc_t *proc, pmix_info_t info[], size_
 
     /* register the client supported attrs */
     rc = pmix_register_client_attrs();
-    return rc;
+    if (PMIX_SUCCESS == pmix_init_result &&
+        PMIX_SUCCESS != rc) {
+        pmix_init_result = rc;
+    }
+    return pmix_init_result;
 }
 
 PMIX_EXPORT int PMIx_Initialized(void)
