@@ -15,7 +15,6 @@
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_string_copy.h"
-#include "src/include/pmix_atomic.h"
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
