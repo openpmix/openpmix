@@ -41,14 +41,25 @@ static inline void
 inc_ref_count(
     pmix_shmem_header_t *header
 ) {
+#if PMIX_USE_GCC_BUILTIN_ATOMICS
     (void)pmix_atomic_fetch_add_32(&header->ref_count, 1);
+#else
+    pmix_atomic_rmb();
+    ++(header->ref_count);
+#endif
 }
 
 static inline bool
 dec_ref_count(
     pmix_shmem_header_t *header
 ) {
+#if PMIX_USE_GCC_BUILTIN_ATOMICS
     return pmix_atomic_sub_fetch_32(&header->ref_count, 1) == 0;
+#else
+    // Make sure pending writes complete.
+    pmix_atomic_wmb();
+    return --(header->ref_count) == 0;
+#endif
 }
 
 static pmix_status_t
