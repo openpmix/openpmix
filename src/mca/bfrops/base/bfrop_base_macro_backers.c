@@ -1614,7 +1614,6 @@ void PMIx_Query_destruct(pmix_query_t *p)
     }
     if (NULL != p->qualifiers) {
         PMIx_Info_free(p->qualifiers, p->nqual);
-        pmix_free(p->qualifiers);
         p->qualifiers = NULL;
         p->nqual = 0;
     }
