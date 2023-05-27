@@ -125,7 +125,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     // run the parser
     while (1) {
         argind = optind;
-        if (optind == argc || (optind > 0 && '-' != argv[optind][0])) {
+        if (optind == argc || (optind > 0 && ('-' != argv[optind][0] || 0 == strcmp(argv[optind], "--")))) {
             // This is the executable, or we are at the last argument.
             // Don't process any further.
             break;
