@@ -68,8 +68,6 @@
 #include <unistd.h> /* for uid_t and gid_t */
 #include <sys/types.h> /* for uid_t and gid_t */
 
-extern char **environ;
-
 /* Whether C compiler supports -fvisibility */
 #undef PMIX_HAVE_VISIBILITY
 
