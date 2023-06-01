@@ -40,6 +40,8 @@
 
 #include "src/util/pmix_printf.h"
 
+extern char **environ;
+
 static inline
 void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
                                          pmix_tma_t *tma);
