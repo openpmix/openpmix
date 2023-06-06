@@ -53,7 +53,8 @@ noinst_LTLIBRARIES = libpmixglobal.la
 libpmixglobal_la_SOURCES = \
 	pmix_globals.h \
     pmix_globals.c \
-    pmix_dictionary.c
+    pmix_dictionary.c \
+    pmix_frameworks.c
 
 headers = pmix_globals.h
 

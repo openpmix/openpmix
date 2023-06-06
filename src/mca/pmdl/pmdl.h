@@ -5,7 +5,7 @@
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,7 +31,6 @@
 #include "pmix.h"
 
 #include "src/class/pmix_list.h"
-#include "src/include/pmix_globals.h"
 #include "src/mca/base/pmix_mca_base_framework.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/mca.h"
@@ -59,6 +58,13 @@ typedef pmix_status_t (*pmix_pmdl_base_module_harvest_envars_fn_t)(pmix_namespac
                                                                    const pmix_info_t info[],
                                                                    size_t ninfo, pmix_list_t *ilist,
                                                                    char ***priors);
+
+/* Check a list of pmix_mca_base_var_file_value_t items that were
+ * read from a file to see if any belong to this programming
+ * model - if they do, then cache them for passing to any nspaces
+ * during harvest_envars */
+typedef void (*pmix_pmdl_base_module_parse_file_envars_fn_t)(pmix_list_t *ilist);
+
 /**
  * Setup any programming model specific support for the given nspace
  */
@@ -96,15 +102,16 @@ typedef void (*pmix_pmdl_base_module_dregister_nspace_fn_t)(pmix_namespace_t *np
  */
 typedef struct {
     char *name;
-    pmix_pmdl_base_module_init_fn_t init;
-    pmix_pmdl_base_module_fini_fn_t finalize;
-    pmix_pmdl_base_module_harvest_envars_fn_t harvest_envars;
-    pmix_pmdl_base_module_setup_ns_fn_t setup_nspace;
-    pmix_pmdl_base_module_setup_ns_kv_fn_t setup_nspace_kv;
-    pmix_pmdl_base_module_reg_nspace_fn_t register_nspace;
-    pmix_pmdl_base_module_setup_client_fn_t setup_client;
-    pmix_pmdl_base_module_setup_fork_fn_t setup_fork;
-    pmix_pmdl_base_module_dregister_nspace_fn_t deregister_nspace;
+    pmix_pmdl_base_module_init_fn_t                 init;
+    pmix_pmdl_base_module_fini_fn_t                 finalize;
+    pmix_pmdl_base_module_harvest_envars_fn_t       harvest_envars;
+    pmix_pmdl_base_module_parse_file_envars_fn_t    parse_file_envars;
+    pmix_pmdl_base_module_setup_ns_fn_t             setup_nspace;
+    pmix_pmdl_base_module_setup_ns_kv_fn_t          setup_nspace_kv;
+    pmix_pmdl_base_module_reg_nspace_fn_t           register_nspace;
+    pmix_pmdl_base_module_setup_client_fn_t         setup_client;
+    pmix_pmdl_base_module_setup_fork_fn_t           setup_fork;
+    pmix_pmdl_base_module_dregister_nspace_fn_t     deregister_nspace;
 } pmix_pmdl_module_t;
 
 /* define a public API */
@@ -116,15 +123,16 @@ typedef pmix_status_t (*pmix_pmdl_base_API_setup_fork_fn_t)(const pmix_proc_t *p
 typedef void (*pmix_pmdl_base_API_dregister_nspace_fn_t)(const char *nptr);
 typedef struct {
     char *name;
-    pmix_pmdl_base_module_init_fn_t init;
-    pmix_pmdl_base_module_fini_fn_t finalize;
-    pmix_pmdl_base_API_harvest_envars_fn_t harvest_envars;
-    pmix_pmdl_base_module_setup_ns_fn_t setup_nspace;
-    pmix_pmdl_base_module_setup_ns_kv_fn_t setup_nspace_kv;
-    pmix_pmdl_base_module_reg_nspace_fn_t register_nspace;
-    pmix_pmdl_base_module_setup_client_fn_t setup_client;
-    pmix_pmdl_base_API_setup_fork_fn_t setup_fork;
-    pmix_pmdl_base_API_dregister_nspace_fn_t deregister_nspace;
+    pmix_pmdl_base_module_init_fn_t                 init;
+    pmix_pmdl_base_module_fini_fn_t                 finalize;
+    pmix_pmdl_base_API_harvest_envars_fn_t          harvest_envars;
+    pmix_pmdl_base_module_parse_file_envars_fn_t    parse_file_envars;
+    pmix_pmdl_base_module_setup_ns_fn_t             setup_nspace;
+    pmix_pmdl_base_module_setup_ns_kv_fn_t          setup_nspace_kv;
+    pmix_pmdl_base_module_reg_nspace_fn_t           register_nspace;
+    pmix_pmdl_base_module_setup_client_fn_t         setup_client;
+    pmix_pmdl_base_API_setup_fork_fn_t              setup_fork;
+    pmix_pmdl_base_API_dregister_nspace_fn_t        deregister_nspace;
 } pmix_pmdl_API_module_t;
 
 /* declare the global APIs */
