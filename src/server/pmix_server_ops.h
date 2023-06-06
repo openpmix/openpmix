@@ -22,11 +22,11 @@
 
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
-#include "src/include/pmix_types.h"
+#include "pmix_server.h"
 
-#include "include/pmix_server.h"
 #include "src/class/pmix_hotel.h"
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_types.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_hash.h"
 

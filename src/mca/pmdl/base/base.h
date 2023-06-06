@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,6 +80,9 @@ PMIX_EXPORT extern pmix_pmdl_globals_t pmix_pmdl_globals;
 
 PMIX_EXPORT pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info[],
                                                         size_t ninfo, pmix_list_t *ilist);
+PMIX_EXPORT void pmix_pmdl_base_parse_file_envars(pmix_list_t *ilist);
+PMIX_EXPORT bool pmix_pmdl_base_check_prte_param(char *param);
+PMIX_EXPORT bool pmix_pmdl_base_check_pmix_param(char *param);
 PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info);
 PMIX_EXPORT pmix_status_t pmix_pmdl_base_setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv);
 PMIX_EXPORT pmix_status_t pmix_pmdl_base_register_nspace(pmix_namespace_t *nptr);

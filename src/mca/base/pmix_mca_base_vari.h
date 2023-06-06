@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -60,6 +60,8 @@ BEGIN_C_DECLS
 PMIX_EXPORT extern const char *pmix_var_type_names[];
 PMIX_EXPORT extern const size_t pmix_var_type_sizes[];
 PMIX_EXPORT extern bool pmix_mca_base_var_initialized;
+PMIX_EXPORT extern pmix_list_t pmix_mca_base_var_file_values;
+PMIX_EXPORT extern pmix_list_t pmix_mca_base_var_override_values;
 
 /**
  * \internal
