@@ -14,7 +14,7 @@
 # Copyright (c) 2007-2022 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 # Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
@@ -53,7 +53,8 @@ noinst_LTLIBRARIES = libpmixglobal.la
 libpmixglobal_la_SOURCES = \
 	pmix_globals.h \
     pmix_globals.c \
-    pmix_dictionary.c
+    pmix_dictionary.c \
+    pmix_frameworks.c
 
 headers = pmix_globals.h
 
