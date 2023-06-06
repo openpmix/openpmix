@@ -16,7 +16,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -53,12 +53,18 @@
 #include "src/util/pmix_show_help.h"
 
 /*
+ * global variables
+ */
+bool pmix_mca_base_var_initialized = false;
+pmix_list_t pmix_mca_base_var_file_values = PMIX_LIST_STATIC_INIT;
+pmix_list_t pmix_mca_base_var_override_values = PMIX_LIST_STATIC_INIT;
+
+/*
  * local variables
  */
 static pmix_pointer_array_t pmix_mca_base_vars;
 static char *home = NULL;
 static char *cwd = NULL;
-bool pmix_mca_base_var_initialized = false;
 static char *force_agg_path = NULL;
 static char *pmix_mca_base_var_files = NULL;
 static char **pmix_mca_base_var_file_list = NULL;
@@ -66,8 +72,6 @@ static char *pmix_mca_base_var_override_file = NULL;
 static char *pmix_mca_base_var_file_prefix = NULL;
 static char *pmix_mca_base_param_file_path = NULL;
 static bool pmix_mca_base_var_suppress_override_warning = false;
-static pmix_list_t pmix_mca_base_var_file_values = PMIX_LIST_STATIC_INIT;
-static pmix_list_t pmix_mca_base_var_override_values = PMIX_LIST_STATIC_INIT;
 static int pmix_mca_base_var_count = 0;
 static pmix_hash_table_t pmix_mca_base_var_index_hash = PMIX_HASH_TABLE_STATIC_INIT;
 
@@ -289,7 +293,7 @@ static void resolve_relative_paths(char **file_prefix, char *file_path, bool rel
 int pmix_mca_base_var_cache_files(bool rel_path_search)
 {
     char *tmp;
-    int ret;
+    int ret = 0;
 
     /* We may need this later */
     home = (char *) pmix_home_directory(geteuid());
@@ -321,8 +325,7 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
 
-    /* Initialize a parameter that says where MCA param files can be found.
-       We may change this value so set the scope to PMIX_MCA_BASE_VAR_SCOPE_READONLY */
+    /* Initialize a parameter that says where MCA param files can be found */
     tmp = pmix_mca_base_var_files;
     ret = pmix_mca_base_var_register("pmix", "mca", "base", "param_files",
                                      "Path for MCA "

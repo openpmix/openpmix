@@ -109,6 +109,7 @@ src/include/pmix_config.h
 src/include/pmix_config.h.in
 src/include/pmix_config.h.in~
 src/include/pmix_frameworks.h
+src/include/pmix_frameworks.c
 src/include/pmix_dictionary.c
 src/include/pmix_dictionary.h
 
