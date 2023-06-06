@@ -54,6 +54,7 @@
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
+#include "src/mca/base/pmix_mca_base_vari.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
@@ -731,6 +732,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
+    /* pass any params read from the default MCA
+     * param files thru the pmdl components so they can
+     * check for their vars and deal with them */
+    pmix_pmdl.parse_file_envars(&pmix_mca_base_var_file_values);
+    pmix_pmdl.parse_file_envars(&pmix_mca_base_var_override_values);
 
     /* open the psensor framework */
     rc = pmix_mca_base_framework_open(&pmix_psensor_base_framework,

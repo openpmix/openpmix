@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,8 +54,10 @@
 
 static pmix_status_t ompi_init(void);
 static void ompi_finalize(void);
-static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t info[], size_t ninfo,
+static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
+                                    const pmix_info_t info[], size_t ninfo,
                                     pmix_list_t *ilist, char ***priors);
+static void parse_file_envars(pmix_list_t *ilist);
 static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info);
 static pmix_status_t setup_nspace_kv(pmix_namespace_t *nptr, pmix_kval_t *kv);
 static pmix_status_t register_nspace(pmix_namespace_t *nptr);
@@ -67,6 +69,7 @@ pmix_pmdl_module_t pmix_pmdl_ompi_module = {
     .init = ompi_init,
     .finalize = ompi_finalize,
     .harvest_envars = harvest_envars,
+    .parse_file_envars = parse_file_envars,
     .setup_nspace = setup_nspace,
     .setup_nspace_kv = setup_nspace_kv,
     .register_nspace = register_nspace,
@@ -90,16 +93,20 @@ static void nscon(pmdl_nspace_t *p)
     p->local_size = UINT32_MAX;
     p->num_apps = UINT32_MAX;
 }
-static PMIX_CLASS_INSTANCE(pmdl_nspace_t, pmix_list_item_t, nscon, NULL);
+static PMIX_CLASS_INSTANCE(pmdl_nspace_t,
+                           pmix_list_item_t,
+                           nscon, NULL);
 
 /* internal variables */
 static pmix_list_t mynspaces;
+static pmix_list_t myenvars;
 
 static pmix_status_t ompi_init(void)
 {
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output, "pmdl: ompi init");
 
     PMIX_CONSTRUCT(&mynspaces, pmix_list_t);
+    PMIX_CONSTRUCT(&myenvars, pmix_list_t);
 
     return PMIX_SUCCESS;
 }
@@ -107,6 +114,7 @@ static pmix_status_t ompi_init(void)
 static void ompi_finalize(void)
 {
     PMIX_LIST_DESTRUCT(&mynspaces);
+    PMIX_LIST_DESTRUCT(&myenvars);
 }
 
 static bool checkus(const pmix_info_t info[], size_t ninfo)
@@ -121,8 +129,8 @@ static bool checkus(const pmix_info_t info[], size_t ninfo)
     /* check the directives */
     for (n = 0; n < ninfo && !takeus; n++) {
         /* check the attribute */
-        if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL)
-            || PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
+        if (PMIX_CHECK_KEY(&info[n], PMIX_PROGRAMMING_MODEL) ||
+            PMIX_CHECK_KEY(&info[n], PMIX_PERSONALITY)) {
             if (NULL != strstr(info[n].value.data.string, "ompi")) {
                 takeus = true;
                 break;
@@ -133,18 +141,94 @@ static bool checkus(const pmix_info_t info[], size_t ninfo)
     return takeus;
 }
 
-static pmix_status_t harvest_envars(pmix_namespace_t *nptr, const pmix_info_t info[], size_t ninfo,
+static pmix_status_t process_param_file(char *file, pmix_list_t *ilist)
+{
+    pmix_list_t params;
+    pmix_mca_base_var_file_value_t *fv;
+    pmix_kval_t *kv;
+    char *tmp;
+
+    PMIX_CONSTRUCT(&params, pmix_list_t);
+    pmix_mca_base_parse_paramfile(file, &params);
+    PMIX_LIST_FOREACH (fv, &params, pmix_mca_base_var_file_value_t) {
+        /* see if this param actually refers to a PMIx value */
+        if (pmix_pmdl_base_check_pmix_param(fv->mbvfv_var)) {
+            kv = PMIX_NEW(pmix_kval_t);
+            if (NULL == kv) {
+                PMIX_LIST_DESTRUCT(&params);
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
+            kv->key = strdup(PMIX_SET_ENVAR);
+            kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+            if (NULL == kv->value) {
+                PMIX_RELEASE(kv);
+                PMIX_LIST_DESTRUCT(&params);
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
+            kv->value->type = PMIX_ENVAR;
+            pmix_asprintf(&tmp, "PMIX_MCA_%s", fv->mbvfv_var);
+            PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
+            free(tmp);
+            pmix_list_append(ilist, &kv->super);
+            continue;
+        }
+        /* see of this param actually refers to an old ORTE
+         * or PRRTE value */
+        if (pmix_pmdl_base_check_prte_param(fv->mbvfv_var)) {
+            kv = PMIX_NEW(pmix_kval_t);
+            if (NULL == kv) {
+                PMIX_LIST_DESTRUCT(&params);
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
+            kv->key = strdup(PMIX_SET_ENVAR);
+            kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+            if (NULL == kv->value) {
+                PMIX_RELEASE(kv);
+                PMIX_LIST_DESTRUCT(&params);
+                return PMIX_ERR_OUT_OF_RESOURCE;
+            }
+            kv->value->type = PMIX_ENVAR;
+            pmix_asprintf(&tmp, "PRTE_MCA_%s", fv->mbvfv_var);
+            PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
+            free(tmp);
+            pmix_list_append(ilist, &kv->super);
+            continue;
+        }
+        /* assume this is an OMPI param - need to prefix the param name */
+        kv = PMIX_NEW(pmix_kval_t);
+        if (NULL == kv) {
+            PMIX_LIST_DESTRUCT(&params);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->key = strdup(PMIX_SET_ENVAR);
+        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kv->value) {
+            PMIX_RELEASE(kv);
+            PMIX_LIST_DESTRUCT(&params);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->value->type = PMIX_ENVAR;
+        pmix_asprintf(&tmp, "OMPI_MCA_%s", fv->mbvfv_var);
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
+        free(tmp);
+        pmix_list_append(ilist, &kv->super);
+    }
+    PMIX_LIST_DESTRUCT(&params);
+    return PMIX_SUCCESS;
+}
+
+static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
+                                    const pmix_info_t info[], size_t ninfo,
                                     pmix_list_t *ilist, char ***priors)
 {
     pmdl_nspace_t *ns, *ns2;
     pmix_status_t rc;
     uint32_t uid = UINT32_MAX;
     const char *home;
-    pmix_list_t params;
     pmix_mca_base_var_file_value_t *fv;
     pmix_kval_t *kv;
     size_t n;
-    char *file, *tmp, *evar;
+    char *file, *evar;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                         "pmdl:ompi:harvest envars");
@@ -199,30 +283,11 @@ harvest:
     if (NULL != (evar = getenv("OMPIHOME"))) {
         /* look for the default MCA param file */
         file = pmix_os_path(false, evar, "etc", "openmpi-mca-params.conf", NULL);
-        PMIX_CONSTRUCT(&params, pmix_list_t);
-        pmix_mca_base_parse_paramfile(file, &params);
+        rc = process_param_file(file, ilist);
         free(file);
-        PMIX_LIST_FOREACH (fv, &params, pmix_mca_base_var_file_value_t) {
-            /* need to prefix the param name */
-            kv = PMIX_NEW(pmix_kval_t);
-            if (NULL == kv) {
-                PMIX_LIST_DESTRUCT(&params);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            kv->key = strdup(PMIX_SET_ENVAR);
-            kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-            if (NULL == kv->value) {
-                PMIX_RELEASE(kv);
-                PMIX_LIST_DESTRUCT(&params);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            kv->value->type = PMIX_ENVAR;
-            pmix_asprintf(&tmp, "OMPI_MCA_%s", fv->mbvfv_var);
-            PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
-            free(tmp);
-            pmix_list_append(ilist, &kv->super);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
         }
-        PMIX_LIST_DESTRUCT(&params);
         /* add an envar indicating that we did this so the OMPI
          * processes won't duplicate it */
         kv = PMIX_NEW(pmix_kval_t);
@@ -257,30 +322,11 @@ harvest:
     home = pmix_home_directory(uid);
     if (NULL != home) {
         file = pmix_os_path(false, home, ".openmpi", "mca-params.conf", NULL);
-        PMIX_CONSTRUCT(&params, pmix_list_t);
-        pmix_mca_base_parse_paramfile(file, &params);
+        rc = process_param_file(file, ilist);
         free(file);
-        PMIX_LIST_FOREACH (fv, &params, pmix_mca_base_var_file_value_t) {
-            /* need to prefix the param name */
-            kv = PMIX_NEW(pmix_kval_t);
-            if (NULL == kv) {
-                PMIX_LIST_DESTRUCT(&params);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            kv->key = strdup(PMIX_SET_ENVAR);
-            kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-            if (NULL == kv->value) {
-                PMIX_RELEASE(kv);
-                PMIX_LIST_DESTRUCT(&params);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            kv->value->type = PMIX_ENVAR;
-            pmix_asprintf(&tmp, "OMPI_MCA_%s", fv->mbvfv_var);
-            PMIX_ENVAR_LOAD(&kv->value->data.envar, tmp, fv->mbvfv_value, ':');
-            free(tmp);
-            pmix_list_append(ilist, &kv->super);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
         }
-        PMIX_LIST_DESTRUCT(&params);
         /* add an envar indicating that we did this so the OMPI
          * processes won't duplicate it */
         kv = PMIX_NEW(pmix_kval_t);
@@ -315,7 +361,124 @@ harvest:
         }
     }
 
+    /* add in any OMPI-specific envars that were in an MCA
+     * base paramfile since PMIx overlaps in that area */
+    PMIX_LIST_FOREACH(fv, &myenvars, pmix_mca_base_var_file_value_t) {
+        kv = PMIX_NEW(pmix_kval_t);
+        if (NULL == kv) {
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->key = strdup(PMIX_SET_ENVAR);
+        kv->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
+        if (NULL == kv->value) {
+            PMIX_RELEASE(kv);
+            return PMIX_ERR_OUT_OF_RESOURCE;
+        }
+        kv->value->type = PMIX_ENVAR;
+        // the OMPI_MCA_ has already been prefixed
+        PMIX_ENVAR_LOAD(&kv->value->data.envar, fv->mbvfv_var, fv->mbvfv_value, ':');
+        pmix_list_append(ilist, &kv->super);
+    }
     return PMIX_SUCCESS;
+}
+
+// These frameworks are current as of 16 Sep, 2022, and are the list
+// of frameworks that are planned to be in Open MPI v5.0.0.
+static char *ompi_frameworks_static_5_0_0[] = {
+    // Generic prefixes used by OMPI
+    "mca",
+    "opal",
+    "ompi",
+
+    /* OPAL frameworks */
+    "allocator",
+    "backtrace",
+    "btl",
+    "dl",
+    "hwloc",
+    "if",
+    "installdirs",
+    "memchecker",
+    "memcpy",
+    "memory",
+    "mpool",
+    "patcher",
+    "pmix",
+    "rcache",
+    "reachable",
+    "shmem",
+    "smsc",
+    "threads",
+    "timer",
+    /* OMPI frameworks */
+    "mpi", /* global options set in runtime/ompi_mpi_params.c */
+    "bml",
+    "coll",
+    "fbtl",
+    "fcoll",
+    "fs",
+    "hook",
+    "io",
+    "mtl",
+    "op",
+    "osc",
+    "part",
+    "pml",
+    "sharedfp",
+    "topo",
+    "vprotocol",
+    /* OSHMEM frameworks */
+    "memheap",
+    "scoll",
+    "spml",
+    "sshmem",
+    NULL,
+};
+static char **ompi_frameworks = ompi_frameworks_static_5_0_0;
+static bool ompi_frameworks_setup = false;
+
+static void setup_ompi_frameworks(void)
+{
+    if (ompi_frameworks_setup) {
+        return;
+    }
+    ompi_frameworks_setup = true;
+
+    char *env = getenv("OMPI_MCA_PREFIXES");
+    if (NULL == env) {
+        return;
+    }
+
+    // If we found the env variable, it will be a comma-delimited list
+    // of values.  Split it into an argv-style array.
+    char **tmp = PMIx_Argv_split(env, ',');
+    if (NULL != tmp) {
+        ompi_frameworks = tmp;
+    }
+}
+
+static void parse_file_envars(pmix_list_t *ilist)
+{
+    pmix_mca_base_var_file_value_t *fv, *fvsave;
+    char *tmp;
+
+    // ensure we have the current list of frameworks
+    setup_ompi_frameworks();
+
+    // scan the list for values directed at OMPI
+    // frameworks/components
+    PMIX_LIST_FOREACH_SAFE (fv, fvsave, ilist, pmix_mca_base_var_file_value_t) {
+        for (int j = 0; NULL != ompi_frameworks[j]; j++) {
+            if (0 == strncmp(fv->mbvfv_var, ompi_frameworks[j], strlen(ompi_frameworks[j]))) {
+                pmix_list_remove_item(ilist, &fv->super);
+                pmix_asprintf(&tmp, "OMPI_MCA_%s", fv->mbvfv_var);
+                free(fv->mbvfv_var);
+                fv->mbvfv_var = tmp;
+                pmix_list_append(&myenvars, &fv->super);
+                break;
+            }
+        }
+    }
 }
 
 static pmix_status_t setup_nspace(pmix_namespace_t *nptr, pmix_info_t *info)
@@ -974,6 +1137,11 @@ static pmix_status_t setup_fork(const pmix_proc_t *proc, char ***env, char ***pr
     PMIx_Setenv("OMPI_MCA_num_restarts", ev1, true, env);
     free(ev1);
     PMIX_DESTRUCT(&cb);
+
+    /* add any envars we collected from param files */
+    PMIX_LIST_FOREACH(kv, &myenvars, pmix_kval_t) {
+        PMIx_Setenv(kv->value->data.envar.envar, kv->value->data.envar.value, true, env);
+    }
 
     return PMIX_SUCCESS;
 }
