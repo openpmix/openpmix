@@ -8,7 +8,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -482,6 +482,23 @@ static void ndes(pmix_notify_caddy_t *p)
     }
 }
 PMIX_CLASS_INSTANCE(pmix_notify_caddy_t, pmix_object_t, ncon, ndes);
+
+static void grcon(pmix_group_t *p)
+{
+    p->grpid = NULL;
+    p->members = NULL;
+    p->nmbrs = 0;
+}
+static void grdes(pmix_group_t *p)
+{
+    if (NULL != p->grpid) {
+        free(p->grpid);
+    }
+    if (NULL != p->members) {
+        PMIX_PROC_FREE(p->members, p->nmbrs);
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_group_t, pmix_list_item_t, grcon, grdes);
 
 void pmix_execute_epilog(pmix_epilog_t *epi)
 {

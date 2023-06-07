@@ -164,7 +164,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     uint32_t sessionid = UINT32_MAX;
     uint32_t nodeid = UINT32_MAX;
     uint32_t appnum = UINT32_MAX;
-    pmix_proc_t p;
+    pmix_proc_t p, *ptr;
     pmix_info_t *iptr;
     bool copy = false;
     bool nodedirective = false;
@@ -249,6 +249,24 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         goto doget;
     } else {
         p.rank = proc->rank;
+    }
+
+    /* if they passed a group in the nspace of proc,
+     * replace it with the translated proc. */
+    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        proc != NULL && 0 != strlen(proc->nspace)) {
+        rc = pmix_client_convert_group_procs(proc, 1, &ptr, &n);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        if (1 < n) {
+            /* we can't support multi-proc gets */
+            PMIX_PROC_FREE(ptr, n);
+            return PMIX_ERR_BAD_PARAM;
+        }
+        /* transfer it across in case it was changed */
+        memcpy(&p, &ptr[0], sizeof(pmix_proc_t));
+        PMIX_PROC_FREE(ptr, n);
     }
 
     pmix_output_verbose(2, pmix_client_globals.get_output,

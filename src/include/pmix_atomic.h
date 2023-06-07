@@ -17,7 +17,7 @@
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c)           Amazon.com, Inc. or its affiliates.  All Rights
  *                         reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
@@ -95,6 +95,10 @@ static inline void pmix_atomic_rmb(void)
             addr, value, memory_order_relaxed) operator value;              \
     }
 
+#    define pmix_atomic_compare_exchange_strong_32(addr, compare, value)                    \
+        atomic_compare_exchange_strong_explicit(addr, compare, value, memory_order_relaxed, \
+                                                memory_order_relaxed)
+
 /* end of PMIX_USE_C11_ATOMICS */
 #elif PMIX_USE_GCC_BUILTIN_ATOMICS
 
@@ -127,6 +131,13 @@ static inline void pmix_atomic_rmb(void)
     {                                                                          \
         return __atomic_##name##_fetch(addr, value, __ATOMIC_RELAXED);         \
     }
+
+static inline bool pmix_atomic_compare_exchange_strong_32(pmix_atomic_int32_t *addr,
+                                                          int32_t *oldval, int32_t newval)
+{
+    return __atomic_compare_exchange_n(addr, oldval, newval, false,
+                                       __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
+}
 
 /* end of PMIX_USE_GCC_BUILTIN_ATOMICS */
 #else
