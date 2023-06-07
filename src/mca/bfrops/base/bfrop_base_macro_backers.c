@@ -18,6 +18,8 @@
 #include "src/util/pmix_printf.h"
 #include "src/mca/bfrops/base/base.h"
 
+extern char **environ;
+
 void PMIx_Load_key(pmix_key_t key, const char *src)
 {
     memset(key, 0, PMIX_MAX_KEYLEN+1);

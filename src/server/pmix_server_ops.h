@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  */
 
@@ -143,22 +143,6 @@ typedef struct {
     int code;
 } pmix_regevents_info_t;
 PMIX_CLASS_DECLARATION(pmix_regevents_info_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    char *grpid;
-    pmix_proc_t *members;
-    size_t nmbrs;
-} pmix_group_t;
-PMIX_CLASS_DECLARATION(pmix_group_t);
-
-typedef struct {
-    pmix_list_item_t super;
-    pmix_group_t *grp;
-    pmix_rank_t rank;
-    size_t idx;
-} pmix_group_caddy_t;
-PMIX_CLASS_DECLARATION(pmix_group_caddy_t);
 
 typedef struct {
     pmix_list_item_t super;
