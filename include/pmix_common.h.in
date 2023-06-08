@@ -68,7 +68,11 @@
 #include <unistd.h> /* for uid_t and gid_t */
 #include <sys/types.h> /* for uid_t and gid_t */
 
+/* Some environments/compilers have a #define for environ.  If so,
+   don't stomp on it. */
+#if !defined(environ)
 extern char **environ;
+#endif
 
 /* Whether C compiler supports -fvisibility */
 #undef PMIX_HAVE_VISIBILITY
