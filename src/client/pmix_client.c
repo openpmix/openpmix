@@ -1094,7 +1094,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
     }
-    PMIX_DESTRUCT(&pmix_client_globals.groups);
+    PMIX_LIST_DESTRUCT(&pmix_client_globals.groups);
 
     if (0 <= pmix_client_globals.myserver->sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
