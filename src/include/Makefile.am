@@ -71,7 +71,8 @@ headers += \
         pmix_portable_platform.h \
         pmix_portable_platform_real.h \
         pmix_frameworks.h \
-        pmix_dictionary.h
+        pmix_dictionary.h \
+        pmix_stdatomic.h
 
 nobase_pmix_HEADERS = $(headers)
 
