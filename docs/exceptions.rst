@@ -133,12 +133,6 @@ Utility APIs
 
      bool PMIx_Procid_invalid(const pmix_proc_t *p);
 
-* Check if the tool is connected to a PMIx server:
-
-  .. code-block:: c
-
-     bool PMIx_tool_is_connected(void);
-
 
 Argv Handling
 -------------
