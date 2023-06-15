@@ -18,7 +18,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -315,6 +315,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_globals.keyindex, 1024, INT_MAX, 128);
+    PMIX_CONSTRUCT(&pmix_client_globals.groups, pmix_list_t);
     /* need to hold off checking the hotel init return code
      * until after we construct all the globals so they can
      * correctly finalize */
