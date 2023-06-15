@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Pull Request Commit Checker
-        uses: open-mpi/pr-git-commit-checker@v1.0.0
+        uses: open-mpi/pr-git-commit-checker@v1.0.1
         with:
           token: "${{ secrets.GITHUB_TOKEN}}"
           cherry-pick-required: true
