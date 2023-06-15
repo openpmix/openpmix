@@ -648,7 +648,6 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                          PMIX_FWD_STDERR_CHANNEL, pmix_iof_write_handler);
 
     /* setup the globals */
-    PMIX_CONSTRUCT(&pmix_client_globals.groups, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.pending_requests, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_client_globals.peers, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_client_globals.peers, 1, INT_MAX, 1);
@@ -1143,7 +1142,6 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
         PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
     }
-    PMIX_LIST_DESTRUCT(&pmix_client_globals.groups);
 
     if (0 <= pmix_client_globals.myserver->sd) {
         CLOSE_THE_SOCKET(pmix_client_globals.myserver->sd);
