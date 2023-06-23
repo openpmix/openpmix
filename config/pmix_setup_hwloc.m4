@@ -3,7 +3,7 @@
 # Copyright (c) 2009-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 # Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -89,18 +89,33 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
            pmix_have_topology_dup=1],
           [AC_MSG_RESULT([no])])
 
-    AC_MSG_CHECKING([if hwloc version is 2.0 or greater])
+    AC_MSG_CHECKING([if hwloc version is at least 2.0])
     AC_COMPILE_IFELSE(
           [AC_LANG_PROGRAM([#include <hwloc.h>],
           [[
     #if HWLOC_VERSION_MAJOR < 2
-    #error "hwloc version is less than 2.x"
+    #error "hwloc version is less than 2.0"
     #endif
           ]])],
           [AC_MSG_RESULT([yes])
            pmix_version_high=1],
           [AC_MSG_RESULT([no])
            pmix_version_high=0])
+
+    AC_MSG_CHECKING([if hwloc version is greater than 2.x])
+    AC_COMPILE_IFELSE(
+          [AC_LANG_PROGRAM([#include <hwloc.h>],
+          [[
+    #if HWLOC_VERSION_MAJOR > 2
+    #error "hwloc version is greater than 2.x"
+    #endif
+          ]])],
+          [AC_MSG_RESULT([no])],
+          [AC_MSG_RESULT([yes])
+           AC_MSG_WARN([This PMIx version does not support HWLOC])
+           AC_MSG_WARN([versions 3.x or higher. Please direct us])
+           AC_MSG_WARN([to an HWLOC version in the 1.11-2.x range.])
+           AC_MSG_ERROR([Cannot continue])])
 
     CPPFLAGS=$pmix_check_hwloc_save_CPPFLAGS
 
