@@ -24,7 +24,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=rc1
+greek=rc2
 
 # PMIx required dependency versions.
 # List in x.y.z format.
@@ -52,7 +52,7 @@ flex_min_version=2.5.4
 # value would increment to "2" regardless of the
 # magnitude of the changes.
 std_major=4
-std_minor=1
+std_minor=2
 std_extension=5
 
 # PMIx Standard ABI Compliance Level(s)
