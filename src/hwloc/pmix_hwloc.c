@@ -775,7 +775,7 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         /* get the object type at this depth */
         type = hwloc_get_depth_type(pmix_globals.topology.topology, d);
         /* if it isn't one of interest, then ignore it */
-        if (HWLOC_OBJ_NODE != type && HWLOC_OBJ_PACKAGE != type &&
+        if (HWLOC_OBJ_NUMANODE != type && HWLOC_OBJ_PACKAGE != type &&
 #if HWLOC_API_VERSION < 0x20000
             HWLOC_OBJ_CACHE != type &&
 #else
@@ -794,7 +794,7 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         if (!hwloc_bitmap_iszero(result)) {
             hwloc_bitmap_list_asprintf(&tmp, result);
             switch (type) {
-                case HWLOC_OBJ_NODE:
+                case HWLOC_OBJ_NUMANODE:
                     pmix_asprintf(&t2, "%sNM%s:", (NULL == locality) ? "" : locality, tmp);
                     if (NULL != locality) {
                         free(locality);
