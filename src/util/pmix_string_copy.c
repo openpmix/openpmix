@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2018-2020 Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,4 +38,19 @@ void pmix_string_copy(char *dest, const char *src, size_t dest_len)
     }
 
     dest[i - 1] = '\0';
+}
+
+char *pmix_getline(FILE *fp)
+{
+    char *ret, *buff;
+    char input[1024];
+
+    ret = fgets(input, 1024, fp);
+    if (NULL != ret) {
+        input[strlen(input) - 1] = '\0'; /* remove newline */
+        buff = strdup(input);
+        return buff;
+    }
+
+    return NULL;
 }
