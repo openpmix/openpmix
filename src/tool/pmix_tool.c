@@ -1449,7 +1449,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_globals.mypeer->finalized = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:tool finalize called");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:tool finalize called");
 
     /* if we are connected, then disconnect */
     if (pmix_globals.connected) {
@@ -1524,9 +1525,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (n = 0; n < pmix_client_globals.peers.size; n++) {
-        if (NULL
-            != (peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_client_globals.peers,
-                                                                   n))) {
+        peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_client_globals.peers, n);
+        if (NULL != peer) {
             PMIX_RELEASE(peer);
         }
     }
@@ -1534,9 +1534,8 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_ptl_base_stop_listening();
 
     for (n = 0; n < pmix_server_globals.clients.size; n++) {
-        if (NULL
-            != (peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                                   n))) {
+        peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+        if (NULL != peer) {
             PMIX_RELEASE(peer);
         }
     }

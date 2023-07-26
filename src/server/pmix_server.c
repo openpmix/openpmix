@@ -1007,9 +1007,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_ptl_base_stop_listening();
 
     for (i = 0; i < pmix_server_globals.clients.size; i++) {
-        if (NULL
-            != (peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                                   i))) {
+        peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, i);
+        if (NULL != peer) {
             /* ensure that we do the specified cleanup - if this is an
              * abnormal termination, then the peer object may not be
              * at zero refcount */
