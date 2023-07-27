@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,6 +43,8 @@
 #include "src/util/pmix_cmd_line.h"
 #include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_show_help.h"
+
+#define PMIX_PRINT_ATTR_COLUMN_WIDTH   141
 
 typedef struct {
     pmix_lock_t lock;
@@ -172,7 +174,7 @@ int main(int argc, char **argv)
     mylock_t mylock;
     pmix_cli_result_t results;
     pmix_cli_item_t *opt;
-    char **fns = NULL;
+    char **fns = NULL, *ptr;
     size_t n, m;
     myquery_data_t mq;
     pmix_query_t query;
@@ -180,6 +182,7 @@ int main(int argc, char **argv)
     char **ans = NULL;
     bool clientfns, serverfns, toolfns, hostfns;
     char *client, *server, *tool, *host;
+    char line[PMIX_PRINT_ATTR_COLUMN_WIDTH];
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
     /* protect against problems if someone passes us thru a pipe
@@ -418,35 +421,49 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != mq.status) {
         fprintf(stderr, "PMIx_Query_info returned: %s\n", PMIx_Error_string(mq.status));
         rc = mq.status;
+    } else if (!PMIX_CHECK_KEY(&mq.info[0], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
+        fprintf(stderr, "PMIx_Query_info returned incorrect key: %s\n", mq.info[0].key);
+        rc = PMIX_ERR_BAD_PARAM;
     } else {
         /* print out the returned value(s) */
-        for (n = 0; n < mq.ninfo; n++) {
-            if (PMIX_CHECK_KEY(&mq.info[n], PMIX_HOST_FUNCTIONS)) {
-                fns = PMIx_Argv_split(mq.info[n].value.data.string, ',');
-                fprintf(stderr, "HOST SUPPORTED FUNCTIONS:\n");
-                for (m = 0; NULL != fns[m]; m++) {
-                    fprintf(stderr, "\t%s\n", fns[m]);
-                }
-                PMIx_Argv_free(fns);
+        if (PMIX_CHECK_KEY(&query.qualifiers[0], PMIX_HOST_FUNCTIONS)) {
+            pmix_attributes_print_headers(&ans, PMIX_HOST_FUNCTIONS);
+            if (PMIX_DATA_ARRAY == mq.info[0].value.type) {
+                info = (pmix_info_t *) mq.info[0].value.data.darray->array;
+                ptr = info[0].value.data.string;
             } else {
-                pmix_attributes_print_headers(&ans, PMIX_HOST_ATTRIBUTES);
-                if (PMIX_DATA_ARRAY == mq.info[n].value.type) {
-                    info = (pmix_info_t *) mq.info[n].value.data.darray->array;
-                    for (m = 0; m < mq.info[n].value.data.darray->size; m++) {
-                        reg = (pmix_regattr_t *) info[m].value.data.darray->array;
-                        pmix_attributes_print_attrs(&ans, info[m].key, reg,
-                                                    info[0].value.data.darray->size);
-                    }
-                } else {
-                    reg = (pmix_regattr_t *) mq.info[n].value.data.ptr;
-                    pmix_attributes_print_attrs(&ans, mq.info[n].key, reg, 1);
-                }
-                for (m = 0; NULL != ans[m]; m++) {
-                    fprintf(stderr, "%s\n", ans[m]);
-                }
-                PMIx_Argv_free(ans);
-                ans = NULL;
+                ptr = mq.info[0].value.data.string;
             }
+            ans = PMIx_Argv_split(ptr, ',');
+            for (m = 0; NULL != ans[m]; m++) {
+                fprintf(stderr, "%s\n", ans[m]);
+            }
+            PMIx_Argv_free(ans);
+            ans = NULL;
+        } else {
+            pmix_attributes_print_headers(&ans, PMIX_HOST_ATTRIBUTES);
+            memset(line, '=', PMIX_PRINT_ATTR_COLUMN_WIDTH);
+            line[PMIX_PRINT_ATTR_COLUMN_WIDTH - 1] = '\0';
+            if (PMIX_DATA_ARRAY == mq.info[0].value.type) {
+                info = (pmix_info_t *) mq.info[0].value.data.darray->array;
+                for (m = 0; m < mq.info[0].value.data.darray->size; m++) {
+                    reg = (pmix_regattr_t *) info[m].value.data.darray->array;
+                    pmix_attributes_print_attrs(&ans, info[m].key, reg,
+                                                info[m].value.data.darray->size);
+                    /* add a spacer between functions */
+                    PMIx_Argv_append_nosize(&ans, "   ");
+                    PMIx_Argv_append_nosize(&ans, line);
+                    PMIx_Argv_append_nosize(&ans, "   ");
+                }
+            } else {
+                reg = (pmix_regattr_t *) mq.info[0].value.data.ptr;
+                pmix_attributes_print_attrs(&ans, mq.info[0].key, reg, 1);
+            }
+            for (m = 0; NULL != ans[m]; m++) {
+                fprintf(stderr, "%s\n", ans[m]);
+            }
+            PMIx_Argv_free(ans);
+            ans = NULL;
         }
     }
 

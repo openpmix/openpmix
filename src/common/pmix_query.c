@@ -189,7 +189,7 @@ complete:
 static void qinfocb(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata,
                     pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    pmix_query_caddy_t *cb = (pmix_query_caddy_t *) cbdata;
     size_t n;
 
     cb->status = status;
@@ -551,8 +551,9 @@ nextstep:
 PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nqueries,
                                           pmix_info_t **results, size_t *nresults)
 {
-    pmix_cb_t cb;
+    pmix_query_caddy_t *cd;
     pmix_status_t rc;
+    size_t n, p;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -560,7 +561,8 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         rc = pmix_query_resolve_all_pre_init(queries, nqueries, results, nresults);
         if (PMIX_SUCCESS == rc) {
-            pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query completed - locally, pre-init");
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "pmix:query completed - locally, pre-init");
             return rc;
         } else {
             return PMIX_ERR_INIT;
@@ -571,30 +573,53 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
     pmix_output_verbose(2, pmix_globals.debug_output, "%s pmix:query",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    /* create a callback object as we need to pass it to the
-     * recv routine so we know which callback to use when
-     * the return message is recvd */
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(queries, nqueries, qinfocb, &cb))) {
-        PMIX_DESTRUCT(&cb);
-        return rc;
+    if (0 == nqueries || NULL == queries) {
+        return PMIX_ERR_BAD_PARAM;
     }
+    /* do a quick check of the qualifiers arrays to ensure
+     * the nqual field has been set */
+    for (n = 0; n < nqueries; n++) {
+        if (NULL != queries[n].qualifiers && 0 == queries[n].nqual) {
+            /* look for the info marked as "end" */
+            p = 0;
+            while (!(PMIX_INFO_IS_END(&queries[n].qualifiers[p])) && p < SIZE_MAX) {
+                ++p;
+            }
+            if (SIZE_MAX == p) {
+                /* nothing we can do */
+                return PMIX_ERR_BAD_PARAM;
+            }
+            queries[n].nqual = p;
+        }
+    }
+
+    /* we get here if a refresh isn't required - need to
+     * threadshift this to access our internal data */
+    cd = PMIX_NEW(pmix_query_caddy_t);
+    cd->host_called = true;
+    cd->queries = queries;
+    cd->nqueries = nqueries;
+    cd->cbfunc = qinfocb;
+    cd->cbdata = cd;
+    PMIX_THREADSHIFT(cd, pmix_parse_localquery);
 
     /* wait for the operation to complete */
-    PMIX_WAIT_THREAD(&cb.lock);
-    rc = cb.status;
-    if (NULL != cb.info) {
-        *results = cb.info;
-        *nresults = cb.ninfo;
-        cb.info = NULL;
-        cb.ninfo = 0;
+    PMIX_WAIT_THREAD(&cd->lock);
+    rc = cd->status;
+    if (NULL != cd->info) {
+        *results = cd->info;
+        *nresults = cd->ninfo;
+        cd->info = NULL;
+        cd->ninfo = 0;
     }
-    PMIX_DESTRUCT(&cb);
+    PMIX_RELEASE(cd);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query completed");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:query completed");
 
     return rc;
 }
+
 PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nqueries,
                                              pmix_info_cbfunc_t cbfunc, void *cbdata)
 

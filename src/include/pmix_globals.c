@@ -178,7 +178,9 @@ static void nsdes(pmix_namespace_t *p)
     }
     PMIX_LIST_DESTRUCT(&p->sinks);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namespace_t, pmix_list_item_t, nscon, nsdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_namespace_t,
+                                pmix_list_item_t,
+                                nscon, nsdes);
 
 static void ncdcon(pmix_nspace_caddy_t *p)
 {
@@ -190,7 +192,9 @@ static void ncddes(pmix_nspace_caddy_t *p)
         PMIX_RELEASE(p->ns);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_caddy_t, pmix_list_item_t, ncdcon, ncddes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_caddy_t,
+                                pmix_list_item_t,
+                                ncdcon, ncddes);
 
 static void info_con(pmix_rank_info_t *info)
 {
@@ -208,7 +212,9 @@ static void info_des(pmix_rank_info_t *info)
         free(info->pname.nspace);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t, pmix_list_item_t, info_con, info_des);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t,
+                                pmix_list_item_t,
+                                info_con, info_des);
 
 static void pcon(pmix_peer_t *p)
 {
@@ -267,7 +273,9 @@ static void pdes(pmix_peer_t *p)
         PMIX_RELEASE(p->nptr);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_peer_t, pmix_object_t, pcon, pdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_peer_t,
+                                pmix_object_t,
+                                pcon, pdes);
 
 static void iofreqcon(pmix_iof_req_t *p)
 {
@@ -332,7 +340,9 @@ static void scdes(pmix_shift_caddy_t *p)
         PMIX_RELEASE(p->kv);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_shift_caddy_t, pmix_object_t, scon, scdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_shift_caddy_t,
+                                pmix_object_t,
+                                scon, scdes);
 
 static void lgcon(pmix_get_logic_t *p)
 {
@@ -345,7 +355,9 @@ static void lgcon(pmix_get_logic_t *p)
     p->refresh_cache = false;
     p->scope = PMIX_SCOPE_UNDEF;
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_get_logic_t, pmix_object_t, lgcon, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_get_logic_t,
+                                pmix_object_t,
+                                lgcon, NULL);
 
 static void cbcon(pmix_cb_t *p)
 {
@@ -393,9 +405,13 @@ static void cbdes(pmix_cb_t *p)
         free(p->lg);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cb_t, pmix_list_item_t, cbcon, cbdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cb_t,
+                                pmix_list_item_t,
+                                cbcon, cbdes);
 
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_info_caddy_t, pmix_list_item_t, NULL, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_info_caddy_t,
+                                pmix_list_item_t,
+                                NULL, NULL);
 
 static void ifcon(pmix_infolist_t *p)
 {
@@ -405,13 +421,17 @@ static void ifdes(pmix_infolist_t *p)
 {
     PMIX_INFO_DESTRUCT(&p->info);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_infolist_t, pmix_list_item_t, ifcon, ifdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_infolist_t,
+                                pmix_list_item_t,
+                                ifcon, ifdes);
 
 static void qlcon(pmix_querylist_t *p)
 {
     PMIX_QUERY_CONSTRUCT(&p->query);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t, pmix_list_item_t, qlcon, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t,
+                                pmix_list_item_t,
+                                qlcon, NULL);
 
 static void qcon(pmix_query_caddy_t *p)
 {
@@ -442,7 +462,9 @@ static void qdes(pmix_query_caddy_t *p)
     PMIX_INFO_FREE(p->info, p->ninfo);
     PMIX_LIST_DESTRUCT(&p->results);
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t, pmix_object_t, qcon, qdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_query_caddy_t,
+                                pmix_object_t,
+                                qcon, qdes);
 
 static void ncon(pmix_notify_caddy_t *p)
 {
@@ -481,7 +503,9 @@ static void ndes(pmix_notify_caddy_t *p)
         free(p->targets);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_notify_caddy_t, pmix_object_t, ncon, ndes);
+PMIX_CLASS_INSTANCE(pmix_notify_caddy_t,
+                    pmix_object_t,
+                    ncon, ndes);
 
 static void grcon(pmix_group_t *p)
 {
@@ -498,7 +522,9 @@ static void grdes(pmix_group_t *p)
         PMIX_PROC_FREE(p->members, p->nmbrs);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_group_t, pmix_list_item_t, grcon, grdes);
+PMIX_CLASS_INSTANCE(pmix_group_t,
+                    pmix_list_item_t,
+                    grcon, grdes);
 
 void pmix_execute_epilog(pmix_epilog_t *epi)
 {
