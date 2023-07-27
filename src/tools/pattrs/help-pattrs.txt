@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -55,10 +55,10 @@ PMIx Supported Attributes and Functions tool
                                      printed (function or "all")
    --host <arg0>                     Comma-delimited list of host functions whose attributes are to be
                                      printed (function or "all")
-   --client                          List the functions supported in this client library
-   --server                          List the functions supported in this server library
-   --tool                            List the functions supported in this tool library
-   --host                            List the functions supported by this host environment
+   --client-fns                      List the functions supported in this client library
+   --server-fns                      List the functions supported in this server library
+   --tool-fns                        List the functions supported in this tool library
+   --host-fns                        List the functions supported by this host environment
 
 Report bugs to %s
 #
