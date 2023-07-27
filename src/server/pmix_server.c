@@ -3959,7 +3959,7 @@ complete:
 static void query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                          pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+    pmix_server_caddy_t *scd = (pmix_server_caddy_t*)cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
 
@@ -3970,22 +3970,22 @@ static void query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scd);
         return;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, scd->peer, reply, &status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
     /* pack the returned data */
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, scd->peer, reply, &ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
     if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
+        PMIX_BFROPS_PACK(rc, scd->peer, reply, info, ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -3995,16 +3995,16 @@ static void query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
 
 complete:
     // send reply
-    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    PMIX_SERVER_QUEUE_REPLY(rc, scd->peer, scd->hdr.tag, reply);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
     }
 
     // cleanup
-    PMIX_RELEASE(cd);
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
+    PMIX_RELEASE(scd);
 }
 
 static void jctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
