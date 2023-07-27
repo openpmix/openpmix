@@ -2681,7 +2681,8 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_status_t rc;
     pmix_query_caddy_t *cd;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output,
+  //  pmix_output_verbose(2, pmix_server_globals.base_output,
+    pmix_output(0,
                         "recvd query from client");
 
     cd = PMIX_NEW(pmix_query_caddy_t);
@@ -2689,7 +2690,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
         return PMIX_ERR_NOMEM;
     }
     cd->cbfunc = cbfunc;
-    cd->cbdata = cbdata;
+    cd->cbdata = cbdata;  // this is the pmix_server_caddy_t we were given
     /* unpack the number of queries */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nqueries, &cnt, PMIX_SIZE);
@@ -2714,6 +2715,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
             return rc;
         }
     }
+    pmix_output(0, "%s:%s:%d", __FILE__, __func__, __LINE__);
     PMIX_THREADSHIFT(cd, pmix_parse_localquery);
     return PMIX_SUCCESS;
 }
