@@ -17,7 +17,12 @@
 # -- Project information -----------------------------------------------------
 
 import datetime
-mydate = datetime.datetime.now()
+import os
+import time
+
+mydate = datetime.datetime.utcfromtimestamp(
+    int(os.environ.get('SOURCE_DATE_EPOCH', time.time()))
+)
 year = mydate.year
 month = mydate.strftime("%B")
 
