@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -24,7 +24,7 @@
 [usage]
 %s (%s) %s
 
-Usage: %s [OPTION]...
+Usage: %s [OPTION] KEY[qualifier(s)]
 PMIx Query tool
 
 
@@ -46,18 +46,6 @@ PMIx Query tool
    --wait-to-connect <arg0>          Delay specified number of seconds before trying to connect
    --num-connect-retries <arg0>      Max number of times to try to connect
 
-   --client <arg0>                   Comma-delimited list of client functions whose attributes are to be
-                                     printed (function or "all")
-   --server <arg0>                   Comma-delimited list of server functions whose attributes are to be
-                                     printed (function or "all")
-   --tool <arg0>                     Comma-delimited list of tool functions whose attributes are to be
-                                     printed (function or "all")
-   --host <arg0>                     Comma-delimited list of host functions whose attributes are to be
-                                     printed (function or "all")
-   --client                          List the functions supported in this client library
-   --server                          List the functions supported in this server library
-   --tool                            List the functions supported in this tool library
-   --host                            List the functions supported by this host environment
 Keys passed to pquery may optionally include one or more qualifiers, with the
 individual qualifiers delimited by semi-colons. For example:
 
