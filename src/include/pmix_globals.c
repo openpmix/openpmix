@@ -416,6 +416,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_querylist_t, pmix_list_item_t, qlcon, NULL)
 static void qcon(pmix_query_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->host_called = false;
     p->queries = NULL;
     p->nqueries = 0;
     p->targets = NULL;

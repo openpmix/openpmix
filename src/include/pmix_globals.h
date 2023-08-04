@@ -438,6 +438,7 @@ typedef struct {
     pmix_object_t super;
     pmix_event_t ev;
     pmix_lock_t lock;
+    bool host_called;
     pmix_status_t status;
     pmix_query_t *queries;
     size_t nqueries;
