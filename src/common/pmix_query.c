@@ -472,15 +472,13 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
                 PMIX_KVAL_NEW(kv, cb.key);
                 PMIx_Value_load(kv->value, PMIX_STD_ABI_STABLE_VERSION, PMIX_STRING);
                 pmix_list_append(&cb.kvs, &kv->super);
-                rc = PMIX_SUCCESS;
             } else if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_PROVISIONAL_ABI_VERSION)) {
                 PMIX_KVAL_NEW(kv, cb.key);
                 PMIx_Value_load(kv->value, PMIX_STD_ABI_PROVISIONAL_VERSION, PMIX_STRING);
                 pmix_list_append(&cb.kvs, &kv->super);
-                rc = PMIX_SUCCESS;
             } else if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
                 PMIX_THREADSHIFT(cd, pmix_attrs_query_support);
-                return ;
+                return;
             /* check for request to scan the local node for available
              * servers the caller could connect to */
             } else if (0 == strcmp(queries[n].keys[p], PMIX_QUERY_AVAIL_SERVERS)) {
@@ -500,6 +498,7 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
                 pmix_list_append(&results, &kv->super);
             }
             PMIX_DESTRUCT(&cb);
+            goto complete;
         }
     }
 
@@ -508,6 +507,7 @@ nextstep:
      * interfaces to see if someone can resolve it */
     rc = pmix_pstrg.query(queries, nqueries, &results, nxtcbfunc, cd);
     if (PMIX_OPERATION_SUCCEEDED == rc) {
+complete:
         /* if we get here, then all queries were locally
          * resolved, so construct the results for return */
         cd->status = PMIX_SUCCESS;
