@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -108,9 +108,9 @@ int main(int argc, char **argv)
     pmix_pdata_t *pdata = NULL;
     size_t ndata;
     int count, timeout;
-    char **keys = NULL;
     pmix_cli_result_t results;
     pmix_cli_item_t *opt;
+    char *ans;
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
 
@@ -235,18 +235,21 @@ int main(int argc, char **argv)
     /* setup the keys */
     PMIX_PDATA_CREATE(pdata, ndata);
     for (n = 0; n < ndata; n++) {
-        pmix_strncpy(pdata[n].key, keys[n], PMIX_MAX_KEYLEN);
+        pmix_strncpy(pdata[n].key, results.tail[n], PMIX_MAX_KEYLEN);
     }
     /* perform the lookup */
     rc = PMIx_Lookup(pdata, ndata, info, ninfo);
 
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "PMIx_Lookup failed: %d\n", rc);
+        fprintf(stderr, "PMIx_Lookup failed: %s\n", PMIx_Error_string(rc));
         goto done;
     }
 
     for (n = 0; n < ndata; n++) {
         fprintf(stderr, "Key: %s\n", pdata[n].key);
+        ans = PMIx_Value_string(&pdata[n].value);
+        fprintf(stderr, "    %s\n", ans);
+        free(ans);
     }
     PMIX_PDATA_FREE(pdata, ndata);
 
