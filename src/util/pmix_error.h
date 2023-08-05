@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,11 +32,15 @@ BEGIN_C_DECLS
  * that are never exposed outside the library */
 #define PMIX_INTERNAL_ERR_BASE -1330
 
+/****    PMIX ERROR CONSTANTS    ****/
+
 /* internal error codes - never exposed outside of the library */
-#define PMIX_ERR_PERM                 (PMIX_INTERNAL_ERR_BASE - 31)
-#define PMIX_ERR_FABRIC_NOT_PARSEABLE (PMIX_INTERNAL_ERR_BASE - 33)
-#define PMIX_ERR_TAKE_NEXT_OPTION     (PMIX_INTERNAL_ERR_BASE - 36)
-#define PMIX_ERR_TEMP_UNAVAILABLE     (PMIX_INTERNAL_ERR_BASE - 37)
+#define PMIX_ERR_PERM                 -1361
+#define PMIX_ERR_FABRIC_NOT_PARSEABLE -1363
+#define PMIX_ERR_TAKE_NEXT_OPTION     -1366
+#define PMIX_ERR_TEMP_UNAVAILABLE     -1367
+
+#define PMIX_INTERNAL_ERR_DONE   -2000
 
 #define PMIX_ERROR_LOG(r)                                                                  \
     do {                                                                                   \

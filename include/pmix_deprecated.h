@@ -73,7 +73,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 /* DATATYPES */
 #define PMIX_BUFFER                     26
 
-/* CONSTANTS */
+/****    PMIX ERROR CONSTANTS    ****/
 #define PMIX_ERR_SILENT                             -2
 #define PMIX_ERR_DEBUGGER_RELEASE                   -3
 #define PMIX_ERR_PROC_ABORTED                       -7
