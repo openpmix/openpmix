@@ -54,7 +54,8 @@ libpmixglobal_la_SOURCES = \
 	pmix_globals.h \
     pmix_globals.c \
     pmix_dictionary.c \
-    pmix_frameworks.c
+    pmix_frameworks.c \
+    pmix_event_strings.c
 
 headers = pmix_globals.h
 
@@ -72,14 +73,17 @@ headers += \
         pmix_portable_platform.h \
         pmix_portable_platform_real.h \
         pmix_frameworks.h \
-        pmix_dictionary.h
+        pmix_dictionary.h \
+        pmix_event_strings.h
 
 nobase_pmix_HEADERS = $(headers)
 
 # Files that are generated here.
 libpmixglobal_gen = \
 	pmix_dictionary.h \
-    pmix_dictionary.c
+    pmix_dictionary.c \
+    pmix_event_strings.h \
+    pmix_event_strings.c
 
 # Need to ensure that pmix_dictionary.h and pmix_dictionary.c are built first --
 # before any other targets.
@@ -89,5 +93,6 @@ $(libpmixglobal_gen): $(top_srcdir)/include/pmix_common.h.in \
                       $(top_srcdir)/include/pmix_deprecated.h \
                       $(top_srcdir)/src/common/pmix_attributes.c
 	        $(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
+	        $(PYTHON) $(top_srcdir)/contrib/construct_event_strings.py
 
 MAINTAINERCLEANFILES = $(libpmixglobal_gen)
