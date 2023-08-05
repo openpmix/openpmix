@@ -105,6 +105,14 @@ typedef struct {
     char **description;
 } pmix_regattr_input_t;
 
+/* define a struct for holding entries in the
+ * dictionary of event strings */
+typedef struct {
+    uint32_t index;
+    char *name;
+    int32_t code;
+} pmix_event_string_t;
+
 /* define a struct for storing data in memory */
 typedef struct {
     uint32_t index;
