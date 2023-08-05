@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -200,6 +200,8 @@ int main(int argc, char **argv)
         }
         exit(1);
     }
+    /* if the event is a name, look it up */
+
     status = (pmix_status_t) strtoul(opt->values[0], NULL, 10);
     opt = pmix_cmd_line_get_param(&results, "range");
     if (NULL == opt) {

@@ -112,6 +112,8 @@ src/include/pmix_frameworks.h
 src/include/pmix_frameworks.c
 src/include/pmix_dictionary.c
 src/include/pmix_dictionary.h
+src/include/pmix_event_strings.c
+src/include/pmix_event_strings.h
 
 src/mca/pinstalldirs/config/pinstall_dirs.h
 src/mca/pdl/base/static-components.h
