@@ -979,6 +979,13 @@ to add a ``const`` qualifier to their input parameter:
 
   This is not expected to cause any issues for users.
 
+The following function has been added to return the ``pmix_status_t``
+corresponding to the string name of the constant:
+
+   .. code-block:: c
+
+    pmix_status_t PMIx_Error_code(const char *errname);
+
 
 Constants
 ---------
