@@ -4,7 +4,7 @@ PMIx v1.x series
 This file contains all the NEWS updates for all the PMIx v1.x
 series, in reverse chronological order.
 
-1.2.5 -- TBD
+1.2.5 -- 6 Feb 2018
 ----------------------
 - Fix cross-version issue when v1.2 client interacts with v2.1 server (PR #564)
 - Update client connection for cross-version support (PR #591)

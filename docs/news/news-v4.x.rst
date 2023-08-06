@@ -4,8 +4,58 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
-4.2.4 -- TBD
-------------
+4.2.5 -- 6 Aug 2023
+----------------------
+ - PR #3121 Multiple commits
+    - Allow to override build date with SOURCE_DATE_EPOCH
+    - Adjust NEWS and VERSION for release
+ - PR #3120 Multiple commits
+    - Repair the pattrs utility
+    - docs: speed up Sphinx processing
+    - Fix bitrot in pquery tool
+    - Fix bitrot in plookup
+    - Construct the array of event strings
+    - Add new API and cleanup pevent tool
+    - Minor formatting cleanups
+    - Expose pmix_getline utility
+ - PR #3102 Multiple commits
+    - Protect against HWLOC v3 and above
+    - pmix_hwloc.c: use NUMANODE by default
+    - pmix_hwloc.h: PACKAGE/NUMANODE replaced SOCKET/NODE in 1.11, not 1.10
+
+
+4.2.4 -- 17 Jun 2023
+----------------------
+ - PR #3093 Require cherry picks and update github actions
+ - PR #3086 Multiple commits
+    - Handle the case of unbound proc. Also ensure topology is available
+    - Remove the group from client tracking when destruct is done
+    - Return the correct status from PMIx_Init
+    - Update asm config, shmem ref counting, atomic ops.
+    - Remove environ from public header
+    - Update MCA param file handling
+    - Cleanup changes and update to rc2
+ - PR #3081 Remove unimplemented component
+ - PR #3078 Eliminate double-free
+ - PR #3066 RTD: Add .readthedocs.yaml file
+ - PR #3064 Add missing frees
+ - PR #3060 Multiple commits
+    - Provide tool for checking compatibility between two PMIx libraries
+    - Ensure tools always send their event registration to their servers
+    - Include the OAC subdir in the autoconf make directories
+ - PR #3058 setserver fixes for v4.2 branch
+ - PR #3053 Multiple commits
+    - Attempt to resolve gcc13 complaint
+    - Add/update documentation
+    - PMIx: Fix compile error in macro
+    - Ensure tools send requests to their server
+    - Sort the procs for a fence operation
+    - Silence UBSan warning
+    - Make pmix_test MSan clean
+    - Silence TSan data race warnings
+    - Avoid python setup.py installdir error
+    - Remove duplicate atomic definitions
+ - PR #3029: Fix a few corner cases in the cmd line parser
  - PR #3009: Fix fetch of globally unique keys
  - PR #3008: Multiple commits
     - Plug memory leaks
