@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,8 +24,8 @@
  *
  */
 
-#include "src/include/pmix_config.h"
-#include "pmix.h"
+#include "pmix_config.h"
+#include "include/pmix.h"
 #include "pmix_common.h"
 #include "include/pmix_server.h"
 
@@ -35,7 +35,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "pmix_tool.h"
+#include "include/pmix_tool.h"
 #include "src/common/pmix_attributes.h"
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/pinstalldirs/base/base.h"
@@ -81,7 +81,6 @@ static void querycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
 
-    fprintf(stderr, "pquery: Query returned status %s\n", PMIx_Error_string(status));
     mq->status = status;
     /* save the returned info - the PMIx library "owns" it
      * and will release it and perform other cleanup actions
@@ -175,13 +174,12 @@ int main(int argc, char **argv)
     };
     char **qkeys = NULL;
     const char *attr;
-    bool server = false;
     pmix_list_t querylist, qlist;
     pmix_querylist_t *qry;
     char **qprs;
     char *strt, *endp, *kptr;
     pmix_infolist_t *iptr;
-    char *str, *result;
+    char *str, *result, **ans;
     pmix_query_t *queries;
     pmix_rank_t rank = 0;
     char hostname[PMIX_PATH_MAX];
@@ -231,15 +229,6 @@ int main(int argc, char **argv)
         }
         exit(1);
     }
-
-    /* they might be querying the system about a client, server, or tool
-     * attribute, so register those - this will allow us to compare the
-     * provided key with the actual name of the attribute so we can
-     * identify it */
-    pmix_init_registered_attrs();
-    pmix_register_client_attrs();
-    pmix_register_server_attrs();
-    pmix_register_tool_attrs();
 
     /* if we were given the pid of a starter, then direct that
      * we connect to it */
@@ -298,9 +287,8 @@ int main(int argc, char **argv)
     } else if (pmix_cmd_line_is_taken(&results, PMIX_CLI_SYSTEM_SERVER)) {
         PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYSTEM, NULL, PMIX_BOOL);
     } else {
-        /* we set ourselves up as a server, but no connections required */
-        PMIX_INFO_LOAD(&info[0], PMIX_GDS_MODULE, "hash", PMIX_STRING);
-        server = true;
+        /* we set ourselves up as a tool, but no connections required */
+        PMIX_INFO_LOAD(&info[0], PMIX_TOOL_CONNECT_OPTIONAL, NULL, PMIX_BOOL);
     }
 
     /* assign our own name */
@@ -309,22 +297,22 @@ int main(int argc, char **argv)
     free(kptr);
     PMIX_INFO_LOAD(&info[2], PMIX_TOOL_RANK, &rank, PMIX_PROC_RANK);
 
-    if (server) {
-        /* initialize as a server so we can process the query ourselves */
-        rc = PMIx_server_init(NULL, info, n);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "PMIx_server_init failed: %s\n", PMIx_Error_string(rc));
-            exit(rc);
-        }
-    } else {
-        /* init as a tool */
-        rc = PMIx_tool_init(&myproc, info, n);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
-            exit(rc);
-        }
-        PMIX_INFO_FREE(info, 1);
+    /* init as a tool */
+    rc = PMIx_tool_init(&myproc, info, n);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "PMIx_tool_init failed: %s\n", PMIx_Error_string(rc));
+        exit(rc);
     }
+    PMIX_INFO_FREE(info, 1);
+
+    /* they might be querying the system about a client, server, or tool
+     * attribute, so register those - this will allow us to compare the
+     * provided key with the actual name of the attribute so we can
+     * identify it */
+    pmix_init_registered_attrs();
+    pmix_register_client_attrs();
+    pmix_register_server_attrs();
+    pmix_register_tool_attrs();
 
     /* register a default event handler */
     PMIX_CONSTRUCT_LOCK(&mylock.lock);
@@ -438,18 +426,26 @@ int main(int argc, char **argv)
                 fprintf(stdout, "%s: ", attr);
             }
             fprintf(stdout, "\n");
-            result = PMIx_Value_string(&mq.info[n].value);
-            fprintf(stderr, "  %s\n", (NULL == result) ? "NULL" : result);
-            free(result);
+            if (PMIX_STRING == mq.info[n].value.type) {
+                ans = PMIx_Argv_split(mq.info[n].value.data.string, ',');
+                for (m=0; NULL != ans[m]; m++) {
+                    if (NULL == (attr = pmix_attributes_reverse_lookup(ans[m]))) {
+                        fprintf(stdout, "    %s\n", ans[m]);
+                    } else {
+                        fprintf(stdout, "    %s\n", attr);
+                    }
+                }
+                PMIx_Argv_free(ans);
+            } else {
+                result = PMIx_Value_string(&mq.info[n].value);
+                fprintf(stderr, "  %s\n", (NULL == result) ? "NULL" : result);
+                free(result);
+            }
         }
     }
 
 done:
-    if (server) {
-        PMIx_server_finalize();
-    } else {
-        PMIx_tool_finalize();
-    }
+    PMIx_tool_finalize();
 
     return (rc);
 }
