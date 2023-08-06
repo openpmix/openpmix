@@ -4,8 +4,8 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.0 -- TBD
-------------
+5.0.0 -- 6 Aug 2023
+----------------------
 .. important:: This is the first release in the v5 family
                and includes some significant changes, both internal
                and user-facing. A partial list includes:
