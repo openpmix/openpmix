@@ -23,7 +23,27 @@ other, a single NEWS-worthy item might apply to different series. For
 example, a bug might be fixed in the master, and then moved to
 multiple release branches.
 
-4.2.4 -- TBD
+4.2.5 -- 6 Aug 2023
+----------------------
+ - PR #3121 Multiple commits
+    - Allow to override build date with SOURCE_DATE_EPOCH
+    - Adjust NEWS and VERSION for release
+ - PR #3120 Multiple commits
+    - Repair the pattrs utility
+    - docs: speed up Sphinx processing
+    - Fix bitrot in pquery tool
+    - Fix bitrot in plookup
+    - Construct the array of event strings
+    - Add new API and cleanup pevent tool
+    - Minor formatting cleanups
+    - Expose pmix_getline utility
+ - PR #3102 Multiple commits
+    - Protect against HWLOC v3 and above
+    - pmix_hwloc.c: use NUMANODE by default
+    - pmix_hwloc.h: PACKAGE/NUMANODE replaced SOCKET/NODE in 1.11, not 1.10
+
+
+4.2.4 -- 17 Jun 2023
 ----------------------
  - PR #3093 Require cherry picks and update github actions
  - PR #3086 Multiple commits
