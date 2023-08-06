@@ -174,7 +174,6 @@ int main(int argc, char **argv)
     };
     char **qkeys = NULL;
     const char *attr;
-    bool server = false;
     pmix_list_t querylist, qlist;
     pmix_querylist_t *qry;
     char **qprs;
@@ -290,7 +289,6 @@ int main(int argc, char **argv)
     } else {
         /* we set ourselves up as a tool, but no connections required */
         PMIX_INFO_LOAD(&info[0], PMIX_TOOL_CONNECT_OPTIONAL, NULL, PMIX_BOOL);
-        server = true;
     }
 
     /* assign our own name */
@@ -447,11 +445,7 @@ int main(int argc, char **argv)
     }
 
 done:
-    if (server) {
-        PMIx_server_finalize();
-    } else {
-        PMIx_tool_finalize();
-    }
+    PMIx_tool_finalize();
 
     return (rc);
 }
