@@ -1120,7 +1120,7 @@ PMIX_EXPORT void PMIx_Progress(void);
  * - pmix_proc_state_t  (PMIX_PROC_STATE)
  * - attribute string value of provided name
  * - attribute name corresponding to provided string
- * - pmix_list_state_t (PMIX_LINK_STATE)
+ * - pmix_link_state_t (PMIX_LINK_STATE)
  * - pmix_device_type_t (PMIX_DEVTYPE)
  * - pmix_value_cmp_t (enum)
  * - pmix_info_t (PMIX_INFO)
@@ -1129,6 +1129,7 @@ PMIX_EXPORT void PMIx_Progress(void);
  * - pmix_app_t (PMIX_APP)
  */
 PMIX_EXPORT const char* PMIx_Error_string(pmix_status_t status);
+PMIX_EXPORT pmix_status_t PMIx_Error_code(const char *errname);
 PMIX_EXPORT const char* PMIx_Proc_state_string(pmix_proc_state_t state);
 PMIX_EXPORT const char* PMIx_Scope_string(pmix_scope_t scope);
 PMIX_EXPORT const char* PMIx_Persistence_string(pmix_persistence_t persist);
