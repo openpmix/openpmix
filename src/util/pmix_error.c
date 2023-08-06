@@ -38,3 +38,16 @@ PMIX_EXPORT const char *PMIx_Error_string(pmix_status_t errnum)
 
     return "ERROR STRING NOT FOUND";
 }
+
+PMIX_EXPORT pmix_status_t PMIx_Error_code(const char *errname)
+{
+    size_t n;
+
+    for (n=0; n < PMIX_EVENT_INDEX_BOUNDARY; n++) {
+        if (0 == strcasecmp(pmix_event_strings[n].name, errname)) {
+            return pmix_event_strings[n].code;
+        }
+    }
+
+    return INT32_MIN;
+}
