@@ -1076,12 +1076,14 @@ if test "$enable_devel_check" = "yes"; then
 elif test "$enable_devel_check" = "no"; then
     AC_MSG_RESULT([no])
     WANT_PICKY_COMPILER=0
-elif test "$pmix_git_repo_build" = "yes"; then
+    CFLAGS="$CFLAGS -Wno-unused-parameter"
+elif test "$pmix_git_repo_build" = "yes" && test "$pmix_debug" = "1"; then
     AC_MSG_RESULT([yes])
     WANT_PICKY_COMPILER=1
 else
     AC_MSG_RESULT([no])
     WANT_PICKY_COMPILER=0
+    CFLAGS="$CFLAGS -Wno-unused-parameter"
 fi
 
 AC_DEFINE_UNQUOTED(PMIX_PICKY_COMPILERS, $WANT_PICKY_COMPILER,
