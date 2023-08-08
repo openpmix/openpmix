@@ -16,7 +16,7 @@
 
 major=4
 minor=2
-release=5
+release=6
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
 # it will be appended to the version number.  It does not have to be
