@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -67,8 +67,6 @@ pmix_ptl_base_t pmix_ptl_base = {
     .selected = false,
     .posted_recvs = PMIX_LIST_STATIC_INIT,
     .unexpected_msgs = PMIX_LIST_STATIC_INIT,
-    .stop_thread = {0, 0},
-    .listen_thread_active = false,
     .listener = PMIX_LISTENER_STATIC_INIT,
     .connection = NULL,
     .current_tag = 0,
@@ -359,7 +357,6 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     pmix_ptl_base.initialized = true;
     PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.unexpected_msgs, pmix_list_t);
-    pmix_ptl_base.listen_thread_active = false;
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
     pmix_ptl_base.current_tag = PMIX_PTL_TAG_DYNAMIC;
     pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
@@ -428,7 +425,9 @@ static void sdes(pmix_ptl_send_t *p)
         PMIX_RELEASE(p->data);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_send_t, pmix_list_item_t, scon, sdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_send_t,
+                                pmix_list_item_t,
+                                scon, sdes);
 
 static void rcon(pmix_ptl_recv_t *p)
 {
@@ -447,7 +446,9 @@ static void rdes(pmix_ptl_recv_t *p)
         PMIX_RELEASE(p->peer);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_recv_t, pmix_list_item_t, rcon, rdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_recv_t,
+                                pmix_list_item_t,
+                                rcon, rdes);
 
 static void prcon(pmix_ptl_posted_recv_t *p)
 {
@@ -455,7 +456,9 @@ static void prcon(pmix_ptl_posted_recv_t *p)
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_posted_recv_t, pmix_list_item_t, prcon, NULL);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_posted_recv_t,
+                                pmix_list_item_t,
+                                prcon, NULL);
 
 static void srcon(pmix_ptl_sr_t *p)
 {
@@ -470,7 +473,9 @@ static void srdes(pmix_ptl_sr_t *p)
         PMIX_RELEASE(p->peer);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t, pmix_object_t, srcon, srdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t,
+                                pmix_object_t,
+                                srcon, srdes);
 
 static void pccon(pmix_pending_connection_t *p)
 {
@@ -511,10 +516,14 @@ static void pcdes(pmix_pending_connection_t *p)
         free(p->cred);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_pending_connection_t, pmix_object_t, pccon, pcdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_pending_connection_t,
+                                pmix_object_t,
+                                pccon, pcdes);
 
 static void lcon(pmix_listener_t *p)
 {
+    memset(&p->ev, 0, sizeof(pmix_event_t));
+    p->active = false;
     p->socket = -1;
     p->varname = NULL;
     p->uri = NULL;
@@ -534,7 +543,9 @@ static void ldes(pmix_listener_t *p)
         free(p->uri);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_listener_t, pmix_list_item_t, lcon, ldes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_listener_t,
+                                pmix_list_item_t,
+                                lcon, ldes);
 
 static void qcon(pmix_ptl_queue_t *p)
 {
@@ -548,7 +559,9 @@ static void qdes(pmix_ptl_queue_t *p)
         PMIX_RELEASE(p->peer);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_queue_t, pmix_object_t, qcon, qdes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_queue_t,
+                                pmix_object_t,
+                                qcon, qdes);
 
 static void ccon(pmix_connection_t *p)
 {
@@ -570,4 +583,6 @@ static void dcon(pmix_connection_t *p)
         free(p->version);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_connection_t, pmix_list_item_t, ccon, dcon);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_connection_t,
+                                pmix_list_item_t,
+                                ccon, dcon);

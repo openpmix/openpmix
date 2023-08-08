@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -64,8 +64,6 @@ struct pmix_ptl_base_t {
     bool selected;
     pmix_list_t posted_recvs; // list of pmix_ptl_posted_recv_t
     pmix_list_t unexpected_msgs;
-    int stop_thread[2];
-    pmix_atomic_bool_t listen_thread_active;
     pmix_listener_t listener;
     struct sockaddr_storage *connection;
     uint32_t current_tag;
