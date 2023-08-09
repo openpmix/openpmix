@@ -474,7 +474,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    lt->varname = strdup("PMIX_SERVER_URI41:PMIX_SERVER_URI4:PMIX_SERVER_URI3:"
+    lt->varname = strdup("PMIX_SERVER_URI51:PMIX_SERVER_URI41:PMIX_SERVER_URI4:PMIX_SERVER_URI3:"
                          "PMIX_SERVER_URI2:PMIX_SERVER_URI21");
     lt->protocol = PMIX_PROTOCOL_V2;
     lt->cbfunc = pmix_ptl_base_connection_handler;

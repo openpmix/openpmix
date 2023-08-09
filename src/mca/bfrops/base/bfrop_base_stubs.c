@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -138,6 +138,8 @@ static const char *basic_type_string(pmix_data_type_t type)
         return "PMIX_PROC_CPUSET";
     case PMIX_GEOMETRY:
         return "PMIX_GEOMETRY";
+    case PMIX_DEVICE:
+        return "PMIX_DEVICE";
     case PMIX_DEVICE_DIST:
         return "PMIX_DEVICE_DIST";
     case PMIX_ENDPOINT:

@@ -367,6 +367,26 @@ void PMIx_Geometry_free(pmix_geometry_t *g, size_t n)
     pmix_bfrops_base_tma_geometry_free(g, n, NULL);
 }
 
+void PMIx_Device_construct(pmix_device_t *d)
+{
+    pmix_bfrops_base_tma_device_construct(d, NULL);
+}
+
+void PMIx_Device_destruct(pmix_device_t *d)
+{
+    pmix_bfrops_base_tma_device_destruct(d, NULL);
+}
+
+pmix_device_t* PMIx_Device_create(size_t n)
+{
+    return pmix_bfrops_base_tma_device_create(n, NULL);
+}
+
+void PMIx_Device_free(pmix_device_t *d, size_t n)
+{
+    pmix_bfrops_base_tma_device_free(d, n, NULL);
+}
+
 void PMIx_Device_distance_construct(pmix_device_distance_t *d)
 {
     pmix_bfrops_base_tma_device_distance_construct(d, NULL);

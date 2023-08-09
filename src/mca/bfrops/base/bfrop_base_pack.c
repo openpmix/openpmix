@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -978,6 +978,7 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_pointer_array_t *regtypes, pmix_buf
     case PMIX_TOPO:
     case PMIX_PROC_CPUSET:
     case PMIX_GEOMETRY:
+    case PMIX_DEVICE:
     case PMIX_DEVICE_DIST:
     case PMIX_ENDPOINT:
     case PMIX_REGATTR:
@@ -1220,6 +1221,33 @@ pmix_status_t pmix_bfrops_base_pack_geometry(pmix_pointer_array_t *regtypes, pmi
         }
         PMIX_BFROPS_PACK_TYPE(ret, buffer, ptr[i].coordinates, ptr[i].ncoords, PMIX_COORD,
                               regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_pack_device(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                          const void *src, int32_t num_vals,
+                                          pmix_data_type_t type)
+{
+    pmix_device_t *ptr = (pmix_device_t *) src;
+    int32_t i;
+    pmix_status_t ret;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    for (i = 0; i < num_vals; ++i) {
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].uuid, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].osname, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].type, 1, PMIX_DEVTYPE, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
         }

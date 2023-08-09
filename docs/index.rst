@@ -52,6 +52,7 @@ Table of contents
    release-notes/index
    exceptions
    installing-pmix/index
+   how-things-work/index
    release-notes
    history
    versions

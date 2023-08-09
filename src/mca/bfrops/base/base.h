@@ -16,7 +16,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -472,6 +472,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_cpuset(pmix_pointer_array_t *reg
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_geometry(pmix_pointer_array_t *regtypes,
                                                          pmix_buffer_t *buffer, const void *src,
                                                          int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_device(pmix_pointer_array_t *regtypes,
+                                                       pmix_buffer_t *buffer, const void *src,
+                                                       int32_t num_vals, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_devdist(pmix_pointer_array_t *regtypes,
                                                         pmix_buffer_t *buffer, const void *src,
                                                         int32_t num_vals, pmix_data_type_t type);
@@ -675,6 +678,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_geometry(pmix_pointer_array_t 
                                                            pmix_buffer_t *buffer, void *dest,
                                                            int32_t *num_vals,
                                                            pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_device(pmix_pointer_array_t *regtypes,
+                                                         pmix_buffer_t *buffer, void *dest,
+                                                         int32_t *num_vals, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_devdist(pmix_pointer_array_t *regtypes,
                                                           pmix_buffer_t *buffer, void *dest,
                                                           int32_t *num_vals, pmix_data_type_t type);
@@ -781,6 +787,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_cpuset(pmix_cpuset_t **dest, pmi
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_geometry(pmix_geometry_t **dest,
                                                          pmix_geometry_t *src,
                                                          pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_device(pmix_device_t **dest,
+                                                       pmix_device_t *src,
+                                                       pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
                                                         pmix_device_distance_t *src,
                                                         pmix_data_type_t type);
@@ -932,6 +941,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_cpuset(char **output, char *pre
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_geometry(char **output, char *prefix,
                                                           pmix_geometry_t *src,
                                                           pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_device(char **output, char *prefix,
+                                                        pmix_device_t *src,
+                                                        pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_devdist(char **output, char *prefix,
                                                          pmix_device_distance_t *src,
                                                          pmix_data_type_t type);

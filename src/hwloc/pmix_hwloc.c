@@ -732,7 +732,8 @@ pmix_status_t pmix_hwloc_generate_cpuset_string(const pmix_cpuset_t *cpuset,
 pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpuset_t *cpuset)
 {
     char *src;
-
+    int hrc;
+    
     /* if we aren't the source, then pass */
     src = strchr(cpuset_string, ':');
     if (NULL == src) {
@@ -749,8 +750,10 @@ pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpu
 
     cpuset->source = strdup("hwloc");
     cpuset->bitmap = hwloc_bitmap_alloc();
-    hwloc_bitmap_list_sscanf(cpuset->bitmap, src);
-
+    hrc = hwloc_bitmap_list_sscanf(cpuset->bitmap, src);
+    if (0 != hrc) {
+        return PMIX_ERR_BAD_PARAM;
+    }
     return PMIX_SUCCESS;
 }
 

@@ -312,6 +312,12 @@ PMIX_EXPORT pmix_geometry_t* PMIx_Geometry_create(size_t n);
 PMIX_EXPORT void PMIx_Geometry_free(pmix_geometry_t *g, size_t n);
 
 
+PMIX_EXPORT void PMIx_Device_construct(pmix_device_t *d);
+PMIX_EXPORT void PMIx_Device_destruct(pmix_device_t *d);
+PMIX_EXPORT pmix_device_t* PMIx_Device_create(size_t n);
+PMIX_EXPORT void PMIx_Device_free(pmix_device_t *d, size_t n);
+
+
 PMIX_EXPORT void PMIx_Device_distance_construct(pmix_device_distance_t *d);
 PMIX_EXPORT void PMIx_Device_distance_destruct(pmix_device_distance_t *d);
 PMIX_EXPORT pmix_device_distance_t* PMIx_Device_distance_create(size_t n);
@@ -752,6 +758,22 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
     do {                            \
         PMIx_Geometry_free(m, n);   \
         (m) = NULL;                 \
+    } while(0)
+
+#define PMIX_DEVICE_CONSTRUCT(m) \
+    PMIx_Device_construct(m)
+
+#define PMIX_DEVICE_DESTRUCT(m) \
+    PMIx_Device_destruct(m)
+
+#define PMIX_DEVICE_CREATE(m, n) \
+    (m) = PMIx_Device_create(n)
+
+// free(m) is called inside PMIx_Device_distance_free().
+#define PMIX_DEVICE_FREE(m, n)  \
+    do {                        \
+        PMIx_Device_free(m, n); \
+        (m) = NULL;             \
     } while(0)
 
 #define PMIX_DEVICE_DIST_CONSTRUCT(m) \

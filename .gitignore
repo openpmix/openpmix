@@ -197,6 +197,7 @@ test/simple/simpvni
 test/simple/hybrid
 test/simple/asyncio
 test/simple/simpqual
+test/simple/simpdist
 
 test/sshot/daemon
 test/sshot/generate
