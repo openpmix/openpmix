@@ -862,6 +862,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_generate_locality_string(const pmix_cpuset
 PMIX_EXPORT pmix_status_t PMIx_server_generate_cpuset_string(const pmix_cpuset_t *cpuset,
                                                              char **cpuset_string);
 
+/* Generate a cpuset from the provided PMIx string representation.
+ * Provide a function by which the host environment can convert a PMIx
+ * string representation of a cpuset into the corresponding cpuset bitmap.
+ * Caller must provide storage for the pmix_cpuset_t.
+ */
+PMIX_EXPORT pmix_status_t PMIx_server_generate_cpuset(const char *cpuset_string,
+                                                      pmix_cpuset_t *cpuset);
+
 /* Define a process set
  * Provide a function by which the host environment can define a new process set.
  */

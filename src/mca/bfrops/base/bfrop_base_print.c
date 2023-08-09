@@ -14,7 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -783,6 +783,9 @@ static int print_val(char **output, pmix_value_t *src)
         case PMIX_DEVTYPE:
             rc = pmix_bfrops_base_print_devtype(&tp, NULL, &src->data.devtype, PMIX_DEVTYPE);
             break;
+        case PMIX_DEVICE:
+            rc = pmix_bfrops_base_print_device(&tp, NULL, src->data.device, PMIX_DEVICE);
+            break;
         case PMIX_DEVICE_DIST:
             rc = pmix_bfrops_base_print_devdist(&tp, NULL, src->data.devdist, PMIX_DEVICE_DIST);
             break;
@@ -1218,6 +1221,7 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
     pmix_locality_t *lcptr;
     pmix_geometry_t *geoptr;
     pmix_device_type_t *dvptr;
+    pmix_device_t *dev;
     pmix_device_distance_t *ddptr;
     pmix_endpoint_t *endptr;
     pmix_storage_medium_t *smptr;
@@ -1397,6 +1401,10 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
             case PMIX_DEVTYPE:
                 dvptr = (pmix_device_type_t*)src->array;
                 rc = pmix_bfrops_base_print_devtype(&tp, prefix, &dvptr[n], PMIX_DEVTYPE);
+                break;
+            case PMIX_DEVICE:
+                dev = (pmix_device_t*)src->array;
+                rc = pmix_bfrops_base_print_device(&tp, prefix, &dev[n], PMIX_DEVICE);
                 break;
             case PMIX_DEVICE_DIST:
                 ddptr = (pmix_device_distance_t*)src->array;
@@ -1762,6 +1770,26 @@ pmix_status_t pmix_bfrops_base_print_geometry(char **output, char *prefix, pmix_
     PMIx_Argv_free(result);
 
     return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_print_device(char **output, char *prefix,
+                                            pmix_device_t *src, pmix_data_type_t type)
+{
+    int ret;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    ret = asprintf(output,
+                   "%sData type: PMIX_DEVICE\tValue: UUID: %s OSName: %s Type: %s",
+                   (NULL == prefix) ? " " : prefix,
+                   (NULL == src->uuid) ? "NULL" : src->uuid, (NULL == src->osname) ? "NULL" : src->osname,
+                   PMIx_Device_type_string(src->type));
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
 }
 
 pmix_status_t pmix_bfrops_base_print_devdist(char **output, char *prefix,

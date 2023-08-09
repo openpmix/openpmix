@@ -12,7 +12,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -412,6 +412,30 @@ pmix_status_t pmix_bfrops_base_copy_geometry(pmix_geometry_t **dest, pmix_geomet
                                              pmix_data_type_t type)
 {
     return pmix_bfrops_base_tma_copy_geometry(dest, src, type, NULL);
+}
+
+pmix_status_t pmix_bfrops_base_copy_device(pmix_device_t **dest,
+                                           pmix_device_t *src, pmix_data_type_t type)
+{
+    pmix_device_t *dst;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    PMIX_DEVICE_CREATE(dst, 1);
+    if (NULL == dst) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    if (NULL != src->uuid) {
+        dst->uuid = strdup(src->uuid);
+    }
+    if (NULL != src->osname) {
+        dst->osname = strdup(src->osname);
+    }
+    dst->type = src->type;
+
+    *dest = dst;
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,

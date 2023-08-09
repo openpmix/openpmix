@@ -1133,6 +1133,82 @@ pmix_status_t pmix_bfrops_base_tma_copy_nspace(pmix_nspace_t **dest,
 }
 
 static inline
+void pmix_bfrops_base_tma_device_destruct(pmix_device_t *d,
+                                          pmix_tma_t *tma)
+{
+    if (NULL != (d->uuid)) {
+        pmix_tma_free(tma, d->uuid);
+    }
+    if (NULL != (d->osname)) {
+        pmix_tma_free(tma, d->osname);
+    }
+}
+
+static inline
+void pmix_bfrops_base_tma_device_free(pmix_device_t *d,
+                                      size_t n,
+                                      pmix_tma_t *tma)
+{
+    if (NULL != d) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_device_destruct(&d[m], tma);
+        }
+        pmix_tma_free(tma, d);
+    }
+}
+
+static inline
+void pmix_bfrops_base_tma_device_construct(pmix_device_t *d,
+                                           pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    memset(d, 0, sizeof(pmix_device_t));
+    d->type = PMIX_DEVTYPE_UNKNOWN;
+}
+
+static inline
+pmix_device_t* pmix_bfrops_base_tma_device_create(size_t n,
+                                                  pmix_tma_t *tma)
+{
+    if (0 == n) {
+        return NULL;
+    }
+    pmix_device_t *d = (pmix_device_t *)pmix_tma_malloc(tma, n * sizeof(pmix_device_t));
+    if (PMIX_LIKELY(NULL != d)) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_device_construct(&d[m], tma);
+        }
+    }
+    return d;
+}
+
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_device(pmix_device_t **dest,
+                                               pmix_device_t *src,
+                                               pmix_data_type_t type,
+                                               pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    pmix_device_t *dst = pmix_bfrops_base_tma_device_create(1, tma);
+    if (PMIX_UNLIKELY(NULL == dst)) {
+        return PMIX_ERR_NOMEM;
+    }
+
+    if (NULL != src->uuid) {
+        dst->uuid = pmix_tma_strdup(tma, src->uuid);
+    }
+    if (NULL != src->osname) {
+        dst->osname = pmix_tma_strdup(tma, src->osname);
+    }
+    dst->type = src->type;
+
+    *dest = dst;
+    return PMIX_SUCCESS;
+}
+
+static inline
 void pmix_bfrops_base_tma_device_distance_destruct(pmix_device_distance_t *d,
                                                    pmix_tma_t *tma)
 {
@@ -3153,6 +3229,25 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         }
         break;
     }
+    case PMIX_DEVICE: {
+        p->array = pmix_bfrops_base_tma_device_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_device_t *const pdev = (pmix_device_t *)p->array;
+        pmix_device_t *const sdev = (pmix_device_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            if (NULL != sdev[n].uuid) {
+                pdev[n].uuid = pmix_tma_strdup(tma, sdev[n].uuid);
+            }
+            if (NULL != sdev[n].osname) {
+                pdev[n].osname = pmix_tma_strdup(tma, sdev[n].osname);
+            }
+            pdev[n].type = sdev[n].type;
+        }
+        break;
+    }
     case PMIX_DEVICE_DIST: {
         p->array = pmix_bfrops_base_tma_device_distance_create(src->size, tma);
         if (PMIX_UNLIKELY(NULL == p->array)) {
@@ -3454,6 +3549,8 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
     case PMIX_DEVTYPE:
         memcpy(&p->data.devtype, &src->data.devtype, sizeof(pmix_device_type_t));
         break;
+    case PMIX_DEVICE:
+        return pmix_bfrops_base_tma_copy_device(&p->data.device, src->data.device, PMIX_DEVICE, tma);
     case PMIX_DEVICE_DIST:
         return pmix_bfrops_base_tma_copy_devdist(&p->data.devdist, src->data.devdist, PMIX_DEVICE_DIST, tma);
     case PMIX_ENDPOINT:
@@ -3587,6 +3684,9 @@ void pmix_bfrops_base_tma_data_array_destruct(pmix_data_array_t *d,
             break;
         case PMIX_GEOMETRY:
             pmix_bfrops_base_tma_geometry_free(d->array, d->size, tma);
+            break;
+        case PMIX_DEVICE:
+            pmix_bfrops_base_tma_device_free(d->array, d->size, tma);
             break;
         case PMIX_DEVICE_DIST:
             pmix_bfrops_base_tma_device_distance_free(d->array, d->size, tma);
@@ -3784,6 +3884,9 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
         } else if (PMIX_NODE_STATS == type) {
             p->array = pmix_bfrops_base_tma_node_stats_create(num, tma);
 
+        } else if (PMIX_DEVICE == type) {
+            p->array = pmix_bfrops_base_tma_device_create(num, tma);
+
         } else if (PMIX_DEVICE_DIST == type) {
             p->array = pmix_bfrops_base_tma_device_distance_create(num, tma);
 
@@ -3886,6 +3989,11 @@ void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
         case PMIX_GEOMETRY:
             if (NULL != v->data.geometry) {
                 pmix_bfrops_base_tma_geometry_free(v->data.geometry, 1, tma);
+            }
+            break;
+        case PMIX_DEVICE:
+            if (NULL != v->data.device) {
+                pmix_bfrops_base_tma_device_free(v->data.device, 1, tma);
             }
             break;
         case PMIX_DEVICE_DIST:

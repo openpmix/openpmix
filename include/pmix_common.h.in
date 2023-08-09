@@ -621,6 +621,11 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_RES_BLOCK_DEF            "pmix.qry.resdef"       // (pmix_data_array_t*) given the name of a resource block as its qualifier,
                                                                     //         return an array of pmix_info_t describing the resources contained
                                                                     //         in the block
+#define PMIX_QUERY_DEVICES                  "pmix.qry.dev"          // (pmix_data_array_t*) Return an array of pmix_device_t containing the devices
+                                                                    //         within the current topology that meet the specified query qualifications. This
+                                                                    //         includes specifying return of all devices of a given type via the PMIX_DEVICE_TYPE
+                                                                    //         attribute.
+
 
 /* query qualifiers - these are used to provide information to narrow/modify the query. Value type shown is the type of data expected
  * to be provided with the key */
@@ -1556,6 +1561,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_STOR_ACCESS                67
 #define PMIX_STOR_PERSIST               68
 #define PMIX_STOR_ACCESS_TYPE           69
+#define PMIX_DEVICE                     70
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1906,6 +1912,22 @@ typedef uint64_t pmix_device_type_t;
 #define PMIX_DEVTYPE_DMA            0x10
 #define PMIX_DEVTYPE_COPROC         0x20
 
+
+/****    PMIX_DEVICE    ****/
+typedef struct pmix_device {
+    char *uuid;
+    char *osname;
+    pmix_device_type_t type;
+} pmix_device_t;
+
+#define PMIX_DEVICE_STATIC_INIT         \
+{                                       \
+    .uuid = NULL,                       \
+    .osname = NULL,                     \
+    .type = PMIX_DEVTYPE_UNKNOWN        \
+}
+
+
 /****    PMIX_DISTANCE     ****/
 typedef struct pmix_device_distance {
     char *uuid;
@@ -2252,6 +2274,7 @@ typedef struct pmix_value {
         pmix_locality_t locality;
         pmix_geometry_t *geometry;
         pmix_device_type_t devtype;
+        pmix_device_t *device;
         pmix_device_distance_t *devdist;
         pmix_endpoint_t *endpoint;
         pmix_data_buffer_t *dbuf;

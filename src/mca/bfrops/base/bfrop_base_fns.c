@@ -56,6 +56,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
     pmix_cpuset_t *cpuset;
     pmix_geometry_t *geometry;
     pmix_endpoint_t *endpoint;
+    pmix_device_t *device;
     pmix_device_distance_t *devdist;
     pmix_data_buffer_t *dbuf;
     pmix_nspace_t *nspace;
@@ -262,6 +263,13 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
             break;
         case PMIX_DEVTYPE:
             memcpy(&(v->data.devtype), data, sizeof(pmix_device_type_t));
+            break;
+        case PMIX_DEVICE:
+            device = (pmix_device_t *) data;
+            rc = pmix_bfrops_base_copy_device(&v->data.device, device, PMIX_DEVICE);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
             break;
         case PMIX_DEVICE_DIST:
             devdist = (pmix_device_distance_t *) data;
@@ -553,6 +561,13 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
         case PMIX_DEVTYPE:
             memcpy(*data, &(kv->data.devtype), sizeof(pmix_device_type_t));
             *sz = sizeof(pmix_device_type_t);
+            break;
+        case PMIX_DEVICE:
+            rc = pmix_bfrops_base_copy_device((pmix_device_t **) data, kv->data.device,
+                                               PMIX_DEVICE);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_device_t);
+            }
             break;
         case PMIX_DEVICE_DIST:
             rc = pmix_bfrops_base_copy_devdist((pmix_device_distance_t **) data, kv->data.devdist,
@@ -866,6 +881,7 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
     pmix_topology_t *topo;
     pmix_cpuset_t *cset;
     pmix_geometry_t *geo;
+    pmix_device_t *dev;
     pmix_device_distance_t *dd;
     pmix_endpoint_t *endpt;
     pmix_regattr_t *rg;
@@ -1091,6 +1107,20 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
             break;
         case PMIX_DEVTYPE:
             *sz = array->size * sizeof(pmix_device_type_t);
+            break;
+        case PMIX_DEVICE:
+            *sz = array->size * sizeof(pmix_device_t);
+            dev = (pmix_device_t*)array->array;
+            for (n=0; n < array->size; n++) {
+                *sz += 1;
+                if (NULL != dev[n].uuid) {
+                    *sz += strlen(dev[n].uuid);
+                }
+                *sz += 1;
+                if (NULL != dev[n].osname) {
+                    *sz += strlen(dev[n].osname);
+                }
+            }
             break;
         case PMIX_DEVICE_DIST:
             *sz = array->size * sizeof(pmix_device_distance_t);
@@ -1394,6 +1424,17 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             break;
         case PMIX_DEVTYPE:
             *sz = sizeof(pmix_device_type_t);
+            break;
+        case PMIX_DEVICE:
+            *sz = sizeof(pmix_device_t);
+            *sz += 1;
+            if (NULL != v->data.device->uuid) {
+                *sz += strlen(v->data.device->uuid);
+            }
+            *sz += 1;
+            if (NULL != v->data.device->osname) {
+                *sz += strlen(v->data.device->osname);
+            }
             break;
         case PMIX_DEVICE_DIST:
             *sz = sizeof(pmix_device_distance_t);

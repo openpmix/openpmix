@@ -1869,6 +1869,19 @@ PMIX_EXPORT pmix_geometry_t* PMIx_Geometry_create(size_t n);
  * not free the struct memory itself */
 PMIX_EXPORT void PMIx_Geometry_free(pmix_geometry_t *g, size_t n);
 
+/* initialize a device struct */
+PMIX_EXPORT void PMIx_Device_construct(pmix_device_t *d);
+
+/* free memory stored inside a device struct */
+PMIX_EXPORT void PMIx_Device_destruct(pmix_device_t *d);
+
+/* create and initialize an array of device structs */
+PMIX_EXPORT pmix_device_t* PMIx_Device_create(size_t n);
+
+/* free memory stored inside an array of device structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Device_free(pmix_device_t *d, size_t n);
+
 /* initialize a device distance struct */
 PMIX_EXPORT void PMIx_Device_distance_construct(pmix_device_distance_t *d);
 

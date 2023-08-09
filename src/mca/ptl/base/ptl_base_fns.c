@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -60,15 +60,29 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
 
     vrs = getenv("PMIX_VERSION");
 
+    if (0 == strcmp(evar, "PMIX_SERVER_URI51")) {
+        /* we are talking to a v5.1 server */
+        PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+        PMIX_SET_PEER_VERSION(peer, vrs, 5, 1);
+
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V51 SERVER DETECTED");
+
+        /* must use the v51 bfrops module */
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v51");
+        return rc;
+    }
+
     if (0 == strcmp(evar, "PMIX_SERVER_URI41")) {
         /* we are talking to a v4.1 server */
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 4, 1);
 
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V41 SERVER DETECTED");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V41 SERVER DETECTED");
 
-        /* must use the latest bfrops module */
-        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, NULL);
+        /* must use the v41 bfrops module */
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v41");
         return rc;
     }
 
@@ -77,7 +91,8 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 4, 0);
 
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V4.0 SERVER DETECTED");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V4.0 SERVER DETECTED");
 
         /* must use the V4 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v4");
@@ -89,7 +104,8 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 3, 0);
 
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V3 SERVER DETECTED");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V3 SERVER DETECTED");
 
         /* must use the v3 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v3");
@@ -101,7 +117,8 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 2, 1);
 
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V21 SERVER DETECTED");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V21 SERVER DETECTED");
 
         /* must use the v21 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v21");
@@ -127,6 +144,12 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
 {
     char *evar;
     pmix_status_t rc;
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI51"))) {
+        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI51");
+        *ev = evar;
+        return rc;
+    }
 
     if (NULL != (evar = getenv("PMIX_SERVER_URI41"))) {
         rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI41");

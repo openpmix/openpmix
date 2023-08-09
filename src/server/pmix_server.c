@@ -2975,6 +2975,16 @@ pmix_status_t PMIx_server_generate_cpuset_string(const pmix_cpuset_t *cpuset, ch
     return rc;
 }
 
+pmix_status_t PMIx_server_generate_cpuset(const char *cpuset_string,
+                                          pmix_cpuset_t *cpuset)
+{
+    pmix_status_t rc;
+
+    /* just pass this down */
+    rc = pmix_hwloc_parse_cpuset_string(cpuset_string, cpuset);
+    return rc;
+}
+
 typedef struct {
     pmix_info_t *info;
     size_t ninfo;

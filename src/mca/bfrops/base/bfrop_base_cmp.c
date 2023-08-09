@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -363,6 +363,50 @@ static pmix_value_cmp_t cmp_cpuset(pmix_cpuset_t *cs1,
     free(p1);
     free(p2);
     PMIX_CHECK_SIMPLE(ret);
+}
+
+static pmix_value_cmp_t cmp_device(pmix_device_t *dd1,
+                                   pmix_device_t *dd2)
+{
+    int ret;
+
+    if (dd1->type != dd2->type) {
+        return PMIX_VALUE_INCOMPATIBLE_OBJECTS;
+    }
+
+    if (NULL != dd1->uuid) {
+        if (NULL == dd2->uuid) {
+            return PMIX_VALUE1_GREATER;
+        }
+        ret = strcmp(dd1->uuid, dd2->uuid);
+        if (ret < 0) {
+            return PMIX_VALUE2_GREATER;
+        } else if (0 < ret) {
+            return PMIX_VALUE1_GREATER;
+        }
+    } else if (NULL != dd2->uuid) {
+        /* we know g1->uuid had to be NULL */
+        return PMIX_VALUE2_GREATER;
+    }
+    /* uuids match or are both NULL */
+
+    if (NULL != dd1->osname) {
+        if (NULL == dd2->osname) {
+            return PMIX_VALUE1_GREATER;
+        }
+        ret = strcmp(dd1->osname, dd2->osname);
+        if (ret < 0) {
+            return PMIX_VALUE2_GREATER;
+        } else if (0 < ret) {
+            return PMIX_VALUE1_GREATER;
+        }
+    } else if (NULL != dd2->osname) {
+        /* we know g1->osname had to be NULL */
+        return PMIX_VALUE2_GREATER;
+    }
+    /* osnames match or are both NULL */
+
+    return PMIX_EQUAL;
 }
 
 static pmix_value_cmp_t cmp_devdist(pmix_device_distance_t *dd1,
@@ -971,6 +1015,7 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
     pmix_envar_t *e1, *e2;
     pmix_topology_t *t1, *t2;
     pmix_cpuset_t *cs1, *cs2;
+    pmix_device_t *dev1, *dev2;
     pmix_device_distance_t *dd1, *dd2;
     pmix_endpoint_t *end1, *end2;
     pmix_proc_stats_t *pcs1, *pcs2;
@@ -1240,6 +1285,16 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
             ret = memcmp(d1->array, d2->array, d1->size * sizeof(pmix_device_type_t));
             PMIX_CHECK_SIMPLE(ret);
             break;
+        case PMIX_DEVICE:
+            dev1 = (pmix_device_t*)d1->array;
+            dev2 = (pmix_device_t*)d2->array;
+            for (n=0; n < d1->size; n++) {
+                rc = cmp_device(&dev1[n], &dev2[n]);
+                if (PMIX_EQUAL != rc) {
+                    return rc;
+                }
+            }
+            return PMIX_EQUAL;
         case PMIX_DEVICE_DIST:
             dd1 = (pmix_device_distance_t*)d1->array;
             dd2 = (pmix_device_distance_t*)d2->array;
@@ -1504,9 +1559,13 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p1,
         rc = cmp_geometry(p1->data.geometry, p2->data.geometry);
         return rc;
         break;
-        case PMIX_DEVTYPE:
+    case PMIX_DEVTYPE:
         ret = memcmp(&p1->data.devtype, &p2->data.devtype, sizeof(pmix_device_type_t));
         PMIX_CHECK_SIMPLE(ret);
+        break;
+    case PMIX_DEVICE:
+        rc = cmp_device(p1->data.device, p2->data.device);
+        return rc;
         break;
     case PMIX_DEVICE_DIST:
         rc = cmp_devdist(p1->data.devdist, p2->data.devdist);
