@@ -101,6 +101,7 @@ examples/group_lcl_cid
 examples/nodeinfo
 examples/pset
 
+include/pmix_framework_names.h
 include/pmix_version.h
 include/pmix_rename.h
 include/pmix_common.h

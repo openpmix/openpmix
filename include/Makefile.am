@@ -21,6 +21,9 @@ include_HEADERS = \
 
 nodist_include_HEADERS = \
     pmix_common.h \
+    pmix_framework_names.h \
     pmix_version.h
 
 endif
+
+MAINTAINERCLEANFILES = pmix_framework_names.h
