@@ -548,6 +548,7 @@ static pmix_status_t read_topic(FILE *fp, char ***array)
 {
     int rc;
     char *line, *file, *tp;
+    char **tmparray = NULL;
 
     while (NULL != (line = localgetline(fp))) {
         /* the topic ends when we see either the end of
@@ -567,7 +568,7 @@ static pmix_status_t read_topic(FILE *fp, char ***array)
                 *tp = '\0';  // NULL-terminate the filename
                 ++tp;
             }
-            rc = load_array(array, file, tp);
+            rc = load_array(&tmparray, file, tp);
             if (PMIX_SUCCESS != rc) {
                 free(line);
                 return rc;
@@ -581,15 +582,48 @@ static pmix_status_t read_topic(FILE *fp, char ***array)
         if ('[' == line[0]) {
             /* start of the next topic */
             free(line);
-            return PMIX_SUCCESS;
+
+            /* Fall through to strip out leading / trailing blank
+               lines */
+            break;
         }
         /* save the line */
-        rc = PMIx_Argv_append_nosize(array, line);
+        rc = PMIx_Argv_append_nosize(&tmparray, line);
         free(line);
         if (rc != PMIX_SUCCESS) {
             return rc;
         }
     }
+
+    /* Strip off empty lines at the beginning and end of the resulting
+       array, because RST/Sphinx requires us to have blank lines to
+       separate paragraphs.
+
+       This algorithm is neither clever nor efficient, but it's
+       simple.  First, find the first and last non-blank lines. */
+    int first_nonblank = -1;
+    int last_nonblank = -1;
+    for (int i = 0; NULL != tmparray[i]; ++i) {
+        if (tmparray[i][0] != '\0') {
+            if (-1 == first_nonblank) {
+                first_nonblank = i;
+            }
+            last_nonblank = i;
+        }
+    }
+
+    /* If there were no non-blank lines, that's an error */
+    if (-1 == first_nonblank) {
+        PMIx_Argv_free(tmparray);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    /* Copy the range of [first_nonblank, last_nonblank] to the output
+       array */
+    for (int i = first_nonblank; i <= last_nonblank; ++i) {
+        PMIx_Argv_append_nosize(array, tmparray[i]);
+    }
+    PMIx_Argv_free(tmparray);
 
     return PMIX_SUCCESS;
 }
