@@ -1,8 +1,8 @@
-Building MPI applications
-=========================
+Building PMIx applications
+==========================
 
-The simplest way to compile and link MPI applications is to use the
-Open MPI "wrapper" compilers.
+The simplest way to compile and link PMIx applications is to use the
+PMIx "wrapper" compilers.
 
 .. toctree::
    :maxdepth: 1
