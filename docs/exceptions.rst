@@ -1,10 +1,6 @@
 Exceptions to the PMIx Standard
 ===============================
 
-.. |br| raw:: html
-
-    <br/>
-
 Exceptions to the base PMIx Standard are listed here. These exceptions
 are not indicative of any intent to stray
 from the Standard, but instead represent the difference between the
@@ -1065,206 +1061,206 @@ Attributes
      - Type
      - Description
 
-   * - ``PMIX_EXTERNAL_AUX_EVENT_BASE`` |br| ``"pmix.evaux"``
+   * - ``PMIX_EXTERNAL_AUX_EVENT_BASE`` ``"pmix.evaux"``
      - ``(void*)``
-     - event base to be used for auxiliary |br|
-       functions (e.g., capturing signals) that |br| would
-       otherwise interfere with the |br|
+     - event base to be used for auxiliary
+       functions (e.g., capturing signals) that would
+       otherwise interfere with the
        host
        
-   * - ``PMIX_CONNECT_TO_SCHEDULER`` |br| ``"pmix.cnct.sched"``
+   * - ``PMIX_CONNECT_TO_SCHEDULER`` ``"pmix.cnct.sched"``
      - ``(bool)``
      - Connect to the system scheduler
        
-   * - ``PMIX_BIND_PROGRESS_THREAD`` |br| ``"pmix.bind.pt"``
+   * - ``PMIX_BIND_PROGRESS_THREAD`` ``"pmix.bind.pt"``
      - ``(char*)``
-     - Comma-delimited ranges of CPUs |br|
-       that the internal PMIx progress |br|
+     - Comma-delimited ranges of CPUs
+       that the internal PMIx progress
        thread shall be bound to
          
-   * - ``PMIX_BIND_REQUIRED`` |br| ``"pmix.bind.reqd"``
+   * - ``PMIX_BIND_REQUIRED`` ``"pmix.bind.reqd"``
      - ``(bool)``
-     - Return error if the internal PMIx |br|
+     - Return error if the internal PMIx
        progress thread cannot be bound
            
-   * - ``PMIX_COLOCATE_PROCS`` |br| ``"pmix.colproc"``
+   * - ``PMIX_COLOCATE_PROCS`` ``"pmix.colproc"``
      - ``(pmix_data_array_t*)``
-     - Array of ``pmix_proc_t`` identifying the |br|
-       procs with which the new job's procs |br|
+     - Array of ``pmix_proc_t`` identifying the
+       procs with which the new job's procs
        are to be colocated
        
-   * - ``PMIX_COLOCATE_NPERPROC`` |br| ``"pmix.colnum.proc"``
+   * - ``PMIX_COLOCATE_NPERPROC`` ``"pmix.colnum.proc"``
      - ``(uint16_t)``
-     - Number of procs to colocate with |br|
+     - Number of procs to colocate with
        each identified proc
        
-   * - ``PMIX_COLOCATE_NPERNODE`` |br| ``"pmix.colnum.node"``
+   * - ``PMIX_COLOCATE_NPERNODE`` ``"pmix.colnum.node"``
      - ``(uint16_t)``
-     - Number of procs to colocate on the |br|
+     - Number of procs to colocate on the
        node of each identified proc
        
-   * - ``PMIX_EVENT_ONESHOT`` |br| ``pmix.evone``
+   * - ``PMIX_EVENT_ONESHOT`` ``pmix.evone``
      - ``(bool)``
-     - when registering, indicate that this |br|
-       event handler is to be deleted after |br|
+     - when registering, indicate that this
+       event handler is to be deleted after
        being invoked
 
-   * - ``PMIX_GROUP_ADD_MEMBERS`` |br| ``pmix.grp.add``
+   * - ``PMIX_GROUP_ADD_MEMBERS`` ``pmix.grp.add``
      - ``(pmix_data_array_t*)``
-     - Array of ``pmix_proc_t`` identifying |br|
-       procs that are not included in the |br|
-       membership specified in the procs |br|
-       array passed to the |br|
-       ``PMIx_Group_construct[_nb]()`` call, |br|
-       but are to be included in the final |br|
-       group. The identified procs will be |br|
-       sent an invitation to join the group |br|
-       during the construction procedure. |br|
-       This is used when some members of |br|
-       the proposed group do not know the |br|
-       full membership and therefore cannot |br|
-       include all members in the call to |br|
+     - Array of ``pmix_proc_t`` identifying
+       procs that are not included in the
+       membership specified in the procs
+       array passed to the
+       ``PMIx_Group_construct[_nb]()`` call,
+       but are to be included in the final
+       group. The identified procs will be
+       sent an invitation to join the group
+       during the construction procedure.
+       This is used when some members of
+       the proposed group do not know the
+       full membership and therefore cannot
+       include all members in the call to
        construct.
        
-   * - ``PMIX_GROUP_LOCAL_CID`` |br| ``pmix.grp.lclid``
+   * - ``PMIX_GROUP_LOCAL_CID`` ``pmix.grp.lclid``
      - ``(size_t)``
-     - Local context ID for the specified |br|
+     - Local context ID for the specified
        process member of a group
        
-   * - ``PMIX_GROUP_INFO`` |br| ``pmix.grp.info``
+   * - ``PMIX_GROUP_INFO`` ``pmix.grp.info``
      - ``pmix_data_array_t``
-     - Array of pmix_info_t containing data |br|
-       that is to be shared across all |br|
-       members of a group during group |br|
+     - Array of pmix_info_t containing data
+       that is to be shared across all
+       members of a group during group
        construction
 
-   * - ``PMIX_IOF_TAG_DETAILED_OUTPUT`` |br| ``pmix.iof.tagdet``
+   * - ``PMIX_IOF_TAG_DETAILED_OUTPUT`` ``pmix.iof.tagdet``
      - ``(bool)``
-     - Tag output with the |br|
-       [local jobid,rank][hostname:pid] |br|
+     - Tag output with the
+       [local jobid,rank][hostname:pid]
        and channel it comes from
        
-   * - ``PMIX_IOF_TAG_FULLNAME_OUTPUT`` |br| ``pmix.iof.tagfull``
+   * - ``PMIX_IOF_TAG_FULLNAME_OUTPUT`` ``pmix.iof.tagfull``
      - ``(bool)``
-     - Tag output with the [nspace,rank] |br|
+     - Tag output with the [nspace,rank]
        and channel it comes from
        
-   * - ``PMIX_LOG_AGG`` |br| ``pmix.log.agg``
+   * - ``PMIX_LOG_AGG`` ``pmix.log.agg``
      - ``(bool)``
-     - Whether to aggregate and prevent |br|
-       duplicate logging messages based |br|
+     - Whether to aggregate and prevent
+       duplicate logging messages based
        on key value pairs.
          
-   * - ``PMIX_LOG_KEY`` |br| ``pmix.log.key``
+   * - ``PMIX_LOG_KEY`` ``pmix.log.key``
      - ``(char*)``
      - key to a logging message
          
-   * - ``PMIX_LOG_VAL`` |br| ``pmix.log.val``
+   * - ``PMIX_LOG_VAL`` ``pmix.log.val``
      - ``(char*)``
      - value to a logging message
          
-   * - ``PMIX_MYSERVER_URI`` |br| ``pmix.mysrvr.uri``
+   * - ``PMIX_MYSERVER_URI`` ``pmix.mysrvr.uri``
      - ``(char*)``
      - URI of this proc's listener socket
          
-   * - ``PMIX_QUALIFIED_VALUE`` |br| ``pmix.qual.val``
+   * - ``PMIX_QUALIFIED_VALUE`` ``pmix.qual.val``
      - ``(pmix_data_array_t*)``
-     - Value being provided consists of the |br|
-       primary key-value pair in first position, |br|
-       followed by one or more key-value |br|
-       qualifiers to be used when |br|
-       subsequently retrieving the primary |br|
+     - Value being provided consists of the
+       primary key-value pair in first position,
+       followed by one or more key-value
+       qualifiers to be used when
+       subsequently retrieving the primary
        value
          
-   * - ``PMIX_WDIR_USER_SPECIFIED`` |br| ``pmix.wdir.user``
+   * - ``PMIX_WDIR_USER_SPECIFIED`` ``pmix.wdir.user``
      - ``(bool)``
      - User specified the working directory
          
-   * - ``PMIX_RUNTIME_OPTIONS`` |br| ``pmix.runopt``
+   * - ``PMIX_RUNTIME_OPTIONS`` ``pmix.runopt``
      - ``(char*)``
-     - Environment-specific runtime |br|
+     - Environment-specific runtime
        directives that control job behavior
          
-   * - ``PMIX_ABORT_NON_ZERO_TERM`` |br| ``pmix.abnz``
+   * - ``PMIX_ABORT_NON_ZERO_TERM`` ``pmix.abnz``
      - ``(bool)``
-     - Abort the spawned job if any process |br|
+     - Abort the spawned job if any process
        terminates with non-zero status
          
-   * - ``PMIX_DO_NOT_LAUNCH`` |br| ``pmix.dnl``
+   * - ``PMIX_DO_NOT_LAUNCH`` ``pmix.dnl``
      - ``(bool)``
-     - Execute all procedures to prepare the |br|
-       requested job for launch, but do not |br|
-       launch it. Typically combined with the |br|
-       PMIX_DISPLAY_MAP or |br|
-       PMIX_DISPLAY_MAP_DETAILED for |br|
+     - Execute all procedures to prepare the
+       requested job for launch, but do not
+       launch it. Typically combined with the
+       PMIX_DISPLAY_MAP or
+       PMIX_DISPLAY_MAP_DETAILED for
        debugging purposes.
          
-   * - ``PMIX_SHOW_LAUNCH_PROGRESS`` |br| ``pmix.showprog``
+   * - ``PMIX_SHOW_LAUNCH_PROGRESS`` ``pmix.showprog``
      - ``(bool)``
-     - Provide periodic progress reports on |br|
-       job launch procedure (e.g., after |br|
-       every 100 processes have been |br|
+     - Provide periodic progress reports on
+       job launch procedure (e.g., after
+       every 100 processes have been
        spawned)
          
-   * - ``PMIX_AGGREGATE_HELP`` |br| ``pmix.agg.help``
+   * - ``PMIX_AGGREGATE_HELP`` ``pmix.agg.help``
      - ``(bool)``
-     - Aggregate help messages, reporting |br|
-       each unique help message once |br|
-       accompanied by the number of |br|
+     - Aggregate help messages, reporting
+       each unique help message once
+       accompanied by the number of
        processes that reported it
          
-   * - ``PMIX_REPORT_CHILD_SEP`` |br| ``pmix.rptchildsep``
+   * - ``PMIX_REPORT_CHILD_SEP`` ``pmix.rptchildsep``
      - ``(bool)``
-     - Report the exit status of any child |br|
-       jobs spawned by the primary job |br|
-       separately. If false, then the final |br|
-       exit status reported will be zero if the |br|
-       primary job and all spawned jobs exit |br|
-       normally, or the first non-zero status |br|
-       returned by either primary or child |br|
+     - Report the exit status of any child
+       jobs spawned by the primary job
+       separately. If false, then the final
+       exit status reported will be zero if the
+       primary job and all spawned jobs exit
+       normally, or the first non-zero status
+       returned by either primary or child
        jobs.
          
-   * - ``PMIX_DISPLAY_MAP_DETAILED`` |br| ``pmix.dispmapdet``
+   * - ``PMIX_DISPLAY_MAP_DETAILED`` ``pmix.dispmapdet``
      - ``(bool)``
-     - display a highly detailed placement |br|
+     - display a highly detailed placement
        map upon spawn
        
-   * - ``PMIX_DISPLAY_ALLOCATION`` |br| ``pmix.dispalloc``
+   * - ``PMIX_DISPLAY_ALLOCATION`` ``pmix.dispalloc``
      - ``(bool)``
      - display the resource allocation
          
-   * - ``PMIX_DISPLAY_TOPOLOGY`` |br| ``pmix.disptopo``
+   * - ``PMIX_DISPLAY_TOPOLOGY`` ``pmix.disptopo``
      - ``(char*)``
-     - comma-delimited list of hosts whose |br|
+     - comma-delimited list of hosts whose
        topology is to be displayed
          
-   * - ``PMIX_DISPLAY_PROCESSORS`` |br| ``pmix.dispcpus``
+   * - ``PMIX_DISPLAY_PROCESSORS`` ``pmix.dispcpus``
      - ``(char*)``
-     - comma-delimited list of hosts whose |br|
+     - comma-delimited list of hosts whose
        available CPUs are to be displayed
 
-   * - ``PMIX_DISPLAY_PARSEABLE_OUTPUT`` |br| ``pmix.dispparse``
+   * - ``PMIX_DISPLAY_PARSEABLE_OUTPUT`` ``pmix.dispparse``
      - ``(bool)``
-     - display requested info in a format |br|
+     - display requested info in a format
        more amenable to machine parsing
 
-   * - ``PMIX_SORTED_PROC_ARRAY`` |br| ``pmix.sorted.parr``
+   * - ``PMIX_SORTED_PROC_ARRAY`` ``pmix.sorted.parr``
      - ``(bool)``
-     - Proc array being passed has been |br|
+     - Proc array being passed has been
        sorted
          
-   * - ``PMIX_QUERY_PROVISIONAL_ABI_VERSION`` |br| ``pmix.qry.prabiver``
+   * - ``PMIX_QUERY_PROVISIONAL_ABI_VERSION`` ``pmix.qry.prabiver``
      - ``(char*)``
-     - The PMIx Standard Provisional ABI |br|
-       version(s) supported, returned in the |br|
-       form of a comma separated list of |br|
+     - The PMIx Standard Provisional ABI
+       version(s) supported, returned in the
+       form of a comma separated list of
        "MAJOR.MINOR" pairs
 
-   * - ``PMIX_QUERY_STABLE_ABI_VERSION`` |br| ``pmix.qry.stabiver``
+   * - ``PMIX_QUERY_STABLE_ABI_VERSION`` ``pmix.qry.stabiver``
      - ``(char*)``
-     - The PMIx Standard Stable ABI |br|
-       version(s) supported, returned in the |br|
-       form of a comma separated list of |br|
+     - The PMIx Standard Stable ABI
+       version(s) supported, returned in the
+       form of a comma separated list of
        "MAJOR.MINOR" pairs
 
 .. note:: The attribute ``PMIX_DEBUG_STOP_IN_APP`` has been modified
@@ -1436,62 +1432,62 @@ Attributes supported by this API when called by the scheduler include:
      - Type
      - Description
 
-   * - ``PMIX_SESSION_APP`` |br| ``pmix.ssn.app``
+   * - ``PMIX_SESSION_APP`` ``pmix.ssn.app``
      - ``(pmix_data_array_t*)``
-     - Array of ``pmix_app_t`` to be executed |br|
-       in the assigned session upon session |br|
+     - Array of ``pmix_app_t`` to be executed
+       in the assigned session upon session
        instantiation
 
-   * - ``PMIX_SESSION_PROVISION`` |br| ``pmix.ssn.pvn``
+   * - ``PMIX_SESSION_PROVISION`` ``pmix.ssn.pvn``
      - ``(pmix_data_array_t*)``
-     - description of nodes to be |br|
+     - description of nodes to be
        provisioned with specified image
 
-   * - ``PMIX_SESSION_PROVISION_NODES`` |br| ``pmix.ssn.pvnnds``
+   * - ``PMIX_SESSION_PROVISION_NODES`` ``pmix.ssn.pvnnds``
      - ``(char*)``
-     - regex identifying nodes that are to be |br|
+     - regex identifying nodes that are to be
        provisioned
 
-   * - ``PMIX_SESSION_PROVISION_IMAGE`` |br| ``pmix.ssn.pvnimg``
+   * - ``PMIX_SESSION_PROVISION_IMAGE`` ``pmix.ssn.pvnimg``
      - ``(char*)``
-     - name of the image that is to be |br|
+     - name of the image that is to be
        provisioned
 
-   * - ``PMIX_SESSION_PAUSE`` |br| ``pmix.ssn.pause``
+   * - ``PMIX_SESSION_PAUSE`` ``pmix.ssn.pause``
      - ``(bool)``
      - pause all jobs in the specified session
 
-   * - ``PMIX_SESSION_RESUME`` |br| ``pmix.ssn.resume``
+   * - ``PMIX_SESSION_RESUME`` ``pmix.ssn.resume``
      - ``(bool)``
      - "un-pause" all jobs in the specified session
 
-   * - ``PMIX_SESSION_TERMINATE`` |br| ``pmix.ssn.terminate``
+   * - ``PMIX_SESSION_TERMINATE`` ``pmix.ssn.terminate``
      - ``(bool)``
-     - terminate all jobs in the specified |br|
-       session and recover all resources |br|
+     - terminate all jobs in the specified
+       session and recover all resources
        included in the session.
 
-   * - ``PMIX_SESSION_PREEMPT`` |br| ``pmix.ssn.preempt``
+   * - ``PMIX_SESSION_PREEMPT`` ``pmix.ssn.preempt``
      - ``(bool)``
-     - preempt indicated jobs (given in |br|
-       accompanying ``pmix_info_t`` via the |br|
-       ``PMIX_NSPACE`` attribute) in the specified |br|
-       session and recover all their resources. If |br|
-       no ``PMIX_NSPACE`` is specified, then preempt |br|
+     - preempt indicated jobs (given in
+       accompanying ``pmix_info_t`` via the
+       ``PMIX_NSPACE`` attribute) in the specified
+       session and recover all their resources. If
+       no ``PMIX_NSPACE`` is specified, then preempt
        all jobs in the session.
 
-   * - ``PMIX_SESSION_RESTORE`` |br| ``pmix.ssn.restore``
+   * - ``PMIX_SESSION_RESTORE`` ``pmix.ssn.restore``
      - ``(bool)``
-     - restore indicated jobs (given in |br|
-       accompanying ``pmix_info_t`` via the |br|
-       ``PMIX_NSPACE`` attribute) in the specified |br|
-       session, including all their resources. If |br|
-       no ``PMIX_NSPACE`` is specified, then restore |br|
+     - restore indicated jobs (given in
+       accompanying ``pmix_info_t`` via the
+       ``PMIX_NSPACE`` attribute) in the specified
+       session, including all their resources. If
+       no ``PMIX_NSPACE`` is specified, then restore
        all jobs in the session.
 
-   * - ``PMIX_SESSION_SIGNAL`` |br| ``pmix.ssn.sig``
+   * - ``PMIX_SESSION_SIGNAL`` ``pmix.ssn.sig``
      - ``(int)``
-     - send given signal to all processes of every |br|
+     - send given signal to all processes of every
        job in the session
 
 
@@ -1504,11 +1500,11 @@ Attributes supported by this API when called by the RTE include:
      - Type
      - Description
 
-   * - ``PMIX_SESSION_COMPLETE`` |br| ``pmix.ssn.complete``
+   * - ``PMIX_SESSION_COMPLETE`` ``pmix.ssn.complete``
      - ``(bool)``
-     - specified session has completed, all resources have been |br|
-       recovered and are available for scheduling. Must include |br|
-       ``pmix_info_t`` indicating ID and returned status of any jobs |br|
+     - specified session has completed, all resources have been
+       recovered and are available for scheduling. Must include
+       ``pmix_info_t`` indicating ID and returned status of any jobs
        executing in the session.
 
 
@@ -1548,11 +1544,11 @@ attribute has been added to that list:
      - Type
      - Description
 
-   * - ``PMIX_SESSION_CTRL_ID`` |br| ``pmix.ssnctrl.id``
+   * - ``PMIX_SESSION_CTRL_ID`` ``pmix.ssnctrl.id``
      - ``(char*)``
-     - provide a string identifier for this request. |br|
-       This identifier shall be included |br|
-       in all subsequent interactions relating to |br|
+     - provide a string identifier for this request.
+       This identifier shall be included
+       in all subsequent interactions relating to
        the request.
 
 
@@ -1570,27 +1566,27 @@ the query:
      - Type
      - Description
 
-   * - ``PMIX_QUERY_ALLOCATION`` |br| ``pmix.query.allc``
+   * - ``PMIX_QUERY_ALLOCATION`` ``pmix.query.allc``
      - ``(pmix_data_array_t*)``
-     - returns an array of ``pmix_info_t`` |br|
-       describing the nodes known to the |br|
-       server. Each array element will consist |br|
-       of the ``PMIX_NODE_INFO`` key containing |br|
-       a ``pmix_data_array_t`` of ``pmix_info_t``. |br|
-       The first element of the array must be |br|
-       the hostname of that node, with |br|
-       additional info on the node in |br|
-       subsequent entries. |br|
-       SUPPORTED_QUALIFIER: a |br|
-       ``PMIX_ALLOC_ID`` qualifier indicating |br|
+     - returns an array of ``pmix_info_t``
+       describing the nodes known to the
+       server. Each array element will consist
+       of the ``PMIX_NODE_INFO`` key containing
+       a ``pmix_data_array_t`` of ``pmix_info_t``.
+       The first element of the array must be
+       the hostname of that node, with
+       additional info on the node in
+       subsequent entries.
+       SUPPORTED_QUALIFIER: a
+       ``PMIX_ALLOC_ID`` qualifier indicating
        the specific allocation of interest
 
-   * - ``PMIX_TOPOLOGY_INDEX`` |br| ``pmix.topo.index``
+   * - ``PMIX_TOPOLOGY_INDEX`` ``pmix.topo.index``
      - ``(int)``
-     - index of a topology in a storage array. Used |br|
-       when returning an allocation to avoid duplicate |br|
-       topology information - the RTE can return an array |br|
-       of topologies and then indicate the index |br|
+     - index of a topology in a storage array. Used
+       when returning an allocation to avoid duplicate
+       topology information - the RTE can return an array
+       of topologies and then indicate the index
        to the topology as part of each node entry.
 
 
@@ -1608,11 +1604,11 @@ attribute has been added to that list:
      - Type
      - Description
 
-   * - ``PMIX_ALLOC_PREEMPTIBLE`` |br| ``pmix.alloc.preempt``
+   * - ``PMIX_ALLOC_PREEMPTIBLE`` ``pmix.alloc.preempt``
      - ``(bool)``
-     - by default, all jobs in the resulting |br|
-       allocation are to be considered |br|
-       preemptible (can be overridden at |br|
+     - by default, all jobs in the resulting
+       allocation are to be considered
+       preemptible (can be overridden at
        per-job level)
 
 
