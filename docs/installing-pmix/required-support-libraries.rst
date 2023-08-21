@@ -14,13 +14,13 @@ PMIx requires the following support libraries with the minimum listed versions:
      - Notes
    * - `Hardware Locality <https://www.open-mpi.org/projects/hwloc/>`_
      - |hwloc_min_version|
-     - | This library is required; PMIx will not build without it.
+     - This library is required; PMIx will not build without it.
    * - `Libevent <https://libevent.org/>`_
      - |event_min_version|
-     - | Either libevent or libev must be provided
+     - Either libevent or libev must be provided
    * - `libev <https://metacpan.org/dist/EV/view/libev/ev.pod>`_
-     - | no specified minimum
-     - | Either libevent or libev must be provided
+     - no specified minimum
+     - Either libevent or libev must be provided
 
 These support libraries are fundamental to PMIx's operation
 and pretty universally available in all environments. Worst case,
