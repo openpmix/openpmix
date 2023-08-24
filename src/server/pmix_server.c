@@ -539,6 +539,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         /* anything else should just be cleared */
         pmix_unsetenv("PMIX_MCA_ptl", &environ);
     }
+    // TEMP FIX: DISABLE SHMEM COMPONENT
+    if (NULL == getenv("PMIX_MCA_gds")) {
+        pmix_setenv("PMIX_MCA_gds", "hash", true, &environ);
+    }
 
     /* init the parent procid to something innocuous */
     PMIX_LOAD_PROCID(&myparent, NULL, PMIX_RANK_UNDEF);
