@@ -319,33 +319,40 @@ tryxml:
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS == rc) {
         file = popstr(&cb);
-        rc = load_xml(file);
-        free(file);
+        if (NULL == file) {
+            rc = PMIX_ERR_NOT_FOUND;
+        } else {
+            rc = load_xml(file);
+            free(file);
+        }
         cb.key = NULL;
         PMIX_DESTRUCT(&cb);
-        if (PMIX_SUCCESS == rc) {
-            pmix_output_verbose(2, pmix_hwloc_output,
-                                "%s:%s v2 xml adopted", __FILE__, __func__);
-            /* record locally in case someone does a PMIx_Get to retrieve it */
-            kv.key = PMIX_TOPOLOGY2;
-            kv.value = &val;
-            val.type = PMIX_TOPO;
-            val.data.topo = &pmix_globals.topology;
-            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, &kv);
-            pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored",
-                                __FILE__, __func__);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            if (share) {
-                goto sharetopo;
-            }
+        if (PMIX_SUCCESS != rc) {
+            goto tryv1;
+        }
+
+        pmix_output_verbose(2, pmix_hwloc_output,
+                            "%s:%s v2 xml adopted", __FILE__, __func__);
+        /* record locally in case someone does a PMIx_Get to retrieve it */
+        kv.key = PMIX_TOPOLOGY2;
+        kv.value = &val;
+        val.type = PMIX_TOPO;
+        val.data.topo = &pmix_globals.topology;
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, &kv);
+        pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored",
+                            __FILE__, __func__);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        if (share) {
+            goto sharetopo;
         }
         return rc;
     }
 
 #endif
 
+tryv1:
     /* try to get the v1 XML string */
     pmix_output_verbose(2, pmix_hwloc_output,
                         "%s:%s checking v1 xml",
@@ -357,35 +364,38 @@ tryxml:
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS == rc) {
         file = popstr(&cb);
-        rc = load_xml(file);
-        free(file);
+        if (NULL == file) {
+            rc = PMIX_ERR_NOT_FOUND;
+        } else {
+            rc = load_xml(file);
+            free(file);
+        }
         cb.key = NULL;
         PMIX_DESTRUCT(&cb);
-        if (PMIX_SUCCESS == rc) {
-            pmix_output_verbose(2, pmix_hwloc_output,
-                                "%s:%s v1 xml adopted", __FILE__, __func__);
+        if (PMIX_SUCCESS != rc) {
+            goto tryself;
+        }
+        pmix_output_verbose(2, pmix_hwloc_output,
+                            "%s:%s v1 xml adopted", __FILE__, __func__);
 
-            /* record locally in case someone does a PMIx_Get to retrieve it */
-            kv.key = PMIX_TOPOLOGY2;
-            kv.value = &val;
-            val.type = PMIX_TOPO;
-            val.data.topo = &pmix_globals.topology;
-            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, &kv);
-            pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored",
-                                __FILE__, __func__);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            if (share) {
-                goto sharetopo;
-            }
+        /* record locally in case someone does a PMIx_Get to retrieve it */
+        kv.key = PMIX_TOPOLOGY2;
+        kv.value = &val;
+        val.type = PMIX_TOPO;
+        val.data.topo = &pmix_globals.topology;
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, &kv);
+        pmix_output_verbose(2, pmix_hwloc_output, "%s:%s stored",
+                            __FILE__, __func__);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        if (share) {
+            goto sharetopo;
         }
         return rc;
     }
 
-#if HWLOC_API_VERSION >= 0x20000
 tryself:
-#endif
     /* did they give us one to use? */
     if (NULL != topo_file) {
         pmix_output_verbose(2, pmix_hwloc_output,
@@ -438,6 +448,7 @@ tryself:
                             "%s:%s discovery complete - source %s", __FILE__, __func__,
                             pmix_globals.topology.source);
     }
+
     /* record locally in case someone does a PMIx_Get to retrieve it */
     kv.key = PMIX_TOPOLOGY2;
     kv.value = &val;
