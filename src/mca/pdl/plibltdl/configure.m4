@@ -3,7 +3,7 @@
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 #
 # Copyright (c) 2017      Intel, Inc.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 # Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -45,20 +45,23 @@ AC_DEFUN([MCA_pmix_pdl_plibltdl_CONFIG],[
     AC_CONFIG_FILES([src/mca/pdl/plibltdl/Makefile])
 
     # Add --with options
-    AC_ARG_WITH([plibltdl],
+    AC_ARG_WITH([libltdl],
         [AS_HELP_STRING([--with-libltdl(=DIR)],
              [Build libltdl support, optionally adding DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries])])
     AC_ARG_WITH([libltdl-libdir],
        [AS_HELP_STRING([--with-libltdl-libdir=DIR],
              [Search for libltdl libraries in DIR])])
 
-    OAC_CHECK_PACKAGE([libltdl],
-                  [pmix_pdl_plibltdl],
-                  [ltdl.h],
-                  [ltdl],
-                  [lt_dlopen],
-                  [pmix_pdl_plibltdl_happy=yes],
-                  [pmix_pdl_plibltdl_happy=no])
+    pmix_pdl_plibltdl_happy=no
+    AS_IF([test "$with_libltdl" != "no"],
+        [OAC_CHECK_PACKAGE([libltdl],
+                      [pmix_pdl_plibltdl],
+                      [ltdl.h],
+                      [ltdl],
+                      [lt_dlopen],
+                      [pmix_pdl_plibltdl_happy=yes],
+                      [pmix_pdl_plibltdl_happy=no])
+        ])
 
     # If we have plibltdl, do we have lt_dladvise?
     pmix_pdl_plibltdl_have_lt_dladvise=0
