@@ -7,6 +7,7 @@
 # Copyright (c) 2017      Intel, Inc.  All rights reserved.
 # Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
+# Copyright (c) 2023      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -46,18 +47,21 @@ AC_DEFUN([MCA_pmix_pdl_pdlopen_CONFIG],[
 
     dnl This is effectively a back-door for PMIX developers to
     dnl force the use of the libltdl pdl component.
-    AC_ARG_ENABLE([dl-dlopen],
-        [AS_HELP_STRING([--disable-dl-dlopen],
-                        [Disable the "dlopen" PDL component (and probably force the use of the "libltdl" PDL component).])
+    AC_ARG_ENABLE([pmix-dlopen],
+        [AS_HELP_STRING([--disable-pmix-dlopen],
+                        [Disable the PMIx "dlopen" PDL component (and probably force the use of the "libltdl" PDL component).])
         ])
 
-    OAC_CHECK_PACKAGE([dlopen],
-              [pmix_pdl_pdlopen],
-              [dlfcn.h],
-              [dl],
-              [dlopen],
-              [pmix_pdl_pdlopen_happy=yes],
-              [pmix_pdl_pdlopen_happy=no])
+    pmix_pdl_pdlopen_happy=no
+    AS_IF([test "$enable_pmix_dlopen" != "no"],
+        [OAC_CHECK_PACKAGE([dlopen],
+                  [pmix_pdl_pdlopen],
+                  [dlfcn.h],
+                  [dl],
+                  [dlopen],
+                  [pmix_pdl_pdlopen_happy=yes],
+                  [pmix_pdl_pdlopen_happy=no])
+        ])
 
     AS_IF([test "$pmix_pdl_pdlopen_happy" = "yes"],
           [pmix_pdl_pdlopen_ADD_LIBS=$pmix_pdl_pdlopen_LIBS
