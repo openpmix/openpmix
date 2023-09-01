@@ -101,7 +101,7 @@ progressThread = threading.Thread(target = pyevhdlr, daemon = True, args =(lambd
 
 cdef void dmodx_cbfunc(pmix_status_t status,
                        char *data, size_t sz,
-                       void *cbdata):
+                       void *cbdata) noexcept:
     global active
     if PMIX_SUCCESS == status:
         active.cache_data(data, sz)
@@ -111,7 +111,7 @@ cdef void dmodx_cbfunc(pmix_status_t status,
 cdef void setupapp_cbfunc(pmix_status_t status,
                           pmix_info_t info[], size_t ninfo,
                           void *provided_cbdata,
-                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
+                          pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
     global active
     if PMIX_SUCCESS == status:
         ilist = []
@@ -126,7 +126,7 @@ cdef void setupapp_cbfunc(pmix_status_t status,
 cdef void collectinventory_cbfunc(pmix_status_t status, pmix_info_t info[],
                                   size_t ninfo, void *cbdata,
                                   pmix_release_cbfunc_t release_fn,
-                                  void *release_cbdata) with gil:
+                                  void *release_cbdata) noexcept with gil:
     global active
     if PMIX_SUCCESS == status:
         ilist = []
@@ -140,7 +140,7 @@ cdef void collectinventory_cbfunc(pmix_status_t status, pmix_info_t info[],
 
 cdef void pyiofhandler(size_t iofhdlr_id, pmix_iof_channel_t channel,
                        pmix_proc_t *source, pmix_byte_object_t *payload,
-                       pmix_info_t info[], size_t ninfo) with gil:
+                       pmix_info_t info[], size_t ninfo) noexcept with gil:
     cdef char* kystr
     pychannel = int(channel)
     pyiof_id  = int(iofhdlr_id)
@@ -205,7 +205,7 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
                          pmix_info_t info[], size_t ninfo,
                          pmix_info_t *results, size_t nresults,
                          pmix_event_notification_cbfunc_fn_t cbfunc,
-                         void *cbdata) with gil:
+                         void *cbdata) noexcept with gil:
     cdef pmix_info_t *myresults
     cdef pmix_info_t **myresults_ptr
     cdef size_t nmyresults
