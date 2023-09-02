@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -186,6 +186,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+    PMIX_LOAD_PROCID(&proc, nspace, rank);
+
     /* retrieve any provided info structs */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
@@ -230,6 +232,35 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_DATA_SCOPE)) {
             scope = cd->info[n].value.data.scope;
             scope_given = true;
+        }
+    }
+
+    /* check for a request for pset names - these are not associated
+     * with a given nspace. Instead, we are searching for any psets
+     * that contain the calling process */
+    if (keyprovided && PMIx_Check_key(key, PMIX_PSET_NAMES)) {
+        /* loop over all known psets and collect names
+         * in which this proc is a member */
+        pmix_pset_t *pset;
+        char **psets = NULL;
+        PMIX_LIST_FOREACH(pset, &pmix_server_globals.psets, pmix_pset_t) {
+            for (n=0; n < pset->nmembers; n++) {
+                if (PMIx_Check_procid(&pset->members[n], &proc)) {
+                    PMIx_Argv_append_nosize(&psets, pset->name);
+                    break;
+                }
+            }
+        }
+        if (NULL != psets) {
+            data = PMIx_Argv_join(psets, ',');
+            sz = strlen(data);
+            PMIx_Argv_free(psets);
+            // pass it back
+            cbfunc(PMIX_SUCCESS, data, sz, cbdata, relfn, data);
+            return PMIX_SUCCESS;
+        } else {
+            // return not found as this proc doesn't belong to any psets
+            return PMIX_ERR_NOT_FOUND;
         }
     }
 
