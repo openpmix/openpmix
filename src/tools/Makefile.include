@@ -31,7 +31,8 @@ SUBDIRS += \
     tools/pps \
     tools/pattrs \
     tools/pquery \
-    tools/wrapper
+    tools/wrapper \
+    tools/pctrl
 
 DIST_SUBDIRS += \
     tools/pevent \
@@ -40,4 +41,5 @@ DIST_SUBDIRS += \
     tools/pps \
     tools/pattrs \
     tools/pquery \
-    tools/wrapper
+    tools/wrapper \
+    tools/pctrl
