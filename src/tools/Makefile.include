@@ -33,7 +33,8 @@ SUBDIRS += \
     tools/pattrs \
     tools/pquery \
     tools/wrapper \
-    tools/palloc
+    tools/palloc \
+    tools/pctrl
 
 DIST_SUBDIRS += \
     tools/pevent \
@@ -43,4 +44,5 @@ DIST_SUBDIRS += \
     tools/pattrs \
     tools/pquery \
     tools/wrapper \
-    tools/palloc
+    tools/palloc \
+    tools/pctrl
