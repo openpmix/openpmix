@@ -1699,7 +1699,13 @@ PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
 
 
 
+PMIX_EXPORT void PMIx_Data_array_init(pmix_data_array_t *p,
+                                      pmix_data_type_t type);
+PMIX_EXPORT void PMIx_Data_array_construct(pmix_data_array_t *p,
+                                           size_t num, pmix_data_type_t type);
 PMIX_EXPORT void PMIx_Data_array_destruct(pmix_data_array_t *d);
+PMIX_EXPORT pmix_data_array_t* PMIx_Data_array_create(size_t n, pmix_data_type_t type);
+PMIX_EXPORT void PMIx_Data_array_free(pmix_data_array_t *p);
 
 
 /* initialize an info struct */

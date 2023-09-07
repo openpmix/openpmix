@@ -15,7 +15,7 @@
  * Copyright (c) 2016-2017 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -118,10 +118,23 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_NUM_CONNECT_RETRIES    "num-connect-retries"       // required
 #define PMIX_CLI_PID                    "pid"                       // required
 #define PMIX_CLI_NAMESPACE              "namespace"                 // required
+#define PMIX_CLI_NSPACE                 "nspace"                    // required
 #define PMIX_CLI_URI                    "uri"                       // required
 #define PMIX_CLI_TIMEOUT                "timeout"                   // required
 #define PMIX_CLI_TMPDIR                 "tmpdir"                    // required
 
+// Job control options
+#define PMIX_CLI_REQ_ID                 "request-id"                // required
+#define PMIX_CLI_SIGNAL                 "signal"                    // required
+#define PMIX_CLI_PAUSE                  "pause"                     // none
+#define PMIX_CLI_RESUME                 "resume"                    // none
+#define PMIX_CLI_CANCEL                 "cancel"                    // required
+#define PMIX_CLI_KILL                   "kill"                      // none
+#define PMIX_CLI_RESTART                "restart"                   // required
+#define PMIX_CLI_CHKPT                  "checkpoint"                // required
+#define PMIX_CLI_TARGETS                "targets"                   // required
+#define PMIX_CLI_TERMINATE              "terminate"                 // none
+#define PMIX_CLI_PSET_NAME              "pset"                      // required
 
 typedef void (*pmix_cmd_line_store_fn_t)(const char *name, const char *option,
                                          pmix_cli_result_t *results);
