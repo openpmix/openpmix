@@ -88,27 +88,11 @@ static void cbfunc(pmix_status_t status,
                    void *release_cbdata)
 {
     pmix_shift_caddy_t *req = (pmix_shift_caddy_t*)cbdata;
-    size_t n;
-    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(info, ninfo);
 
     PMIX_ACQUIRE_OBJECT(req);
 
-pmix_output(0, "CALLBACK RECVD: %s", PMIx_Error_string(status));
     req->status = status;
-    if (PMIX_SUCCESS == status && 0 < ninfo) {
-        req->ninfo = ninfo;
-        PMIX_INFO_CREATE(req->info, req->ninfo);
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&req->info[n], &info[n]);
-            if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, req->sessionid, uint32_t);
-                if (PMIX_SUCCESS != rc) {
-                    req->status = rc;
-                }
-            }
-        }
-    }
-
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
