@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -198,7 +198,7 @@ pmix_shmem_segment_chown(
 ) {
     pmix_status_t rc = PMIX_SUCCESS;
 
-    if (chown(shmem->backing_path, owner, group) != 0) {
+    if (lchown(shmem->backing_path, owner, group) != 0) {  // DO NOT FOLLOW LINKS
         rc = PMIX_ERROR;
         PMIX_ERROR_LOG(rc);
     }
