@@ -145,6 +145,16 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_DEPENDENCY             "dependency"                // required, short is 'd'
 #define PMIX_CLI_DO_NOT_WAIT            "do-not-wait"               // none
 
+// Job control options
+#define PMIX_CLI_PAUSE                  "pause"                     // none
+#define PMIX_CLI_RESUME                 "resume"                    // none
+#define PMIX_CLI_CANCEL                 "cancel"                    // required
+#define PMIX_CLI_KILL                   "kill"                      // none
+#define PMIX_CLI_RESTART                "restart"                   // required
+#define PMIX_CLI_CHKPT                  "checkpoint"                // required
+#define PMIX_CLI_TARGETS                "targets"                   // required
+#define PMIX_CLI_TERMINATE              "terminate"                 // none
+#define PMIX_CLI_PSET_NAME              "pset"                      // required
 
 typedef void (*pmix_cmd_line_store_fn_t)(const char *name, const char *option,
                                          pmix_cli_result_t *results);
