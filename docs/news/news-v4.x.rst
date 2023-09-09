@@ -4,8 +4,23 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
-4.2.6 -- 8 Sep 2023
+4.2.6 -- 9 Sep 2023
 ----------------------
+.. warning:: CVE-2023-41915
+
+    A security issue was reported by François Diakhate (CEA)
+    which is addressed in the PMIx v4.2.7 and v5.0.2 releases.
+    (Older PMIx versions may be vulnerable, but are no longer
+    supported.)
+
+    A filesystem race condition could permit a malicious user
+    to obtain ownership of an arbitrary file on the filesystem
+    when parts of the PMIx library are called by a process
+    running as uid 0. This may happen under the default
+    configuration of certain workload managers, including Slurm.
+
+----------------------
+
  - PR #3150 Do not follow links when doing "chown"
  - PR #3147 Multiple commits
     - Retrieve pset names upon PMIx_Get request
