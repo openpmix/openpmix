@@ -9,7 +9,7 @@ series, in reverse chronological order.
 .. warning:: CVE-2023-41915
 
     A security issue was reported by François Diakhate (CEA)
-    which is addressed in the PMIx v4.2.7 and v5.0.2 releases.
+    which is addressed in the PMIx v4.2.6 and v5.0.1 releases.
     (Older PMIx versions may be vulnerable, but are no longer
     supported.)
 
@@ -19,9 +19,8 @@ series, in reverse chronological order.
     running as uid 0. This may happen under the default
     configuration of certain workload managers, including Slurm.
 
-----------------------
-
- - PR #3150 Do not follow links when doing "chown"
+Detailed changes include:
+ - PR #3150 Do not follow links when doing `chown`
  - PR #3147 Multiple commits
     - Retrieve pset names upon PMIx_Get request
     - Add a new "pctrl" tool for requesting job control ops
