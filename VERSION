@@ -119,5 +119,5 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=15:0:13
+libpmix_so_version=15:1:13
 
