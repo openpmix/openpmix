@@ -116,7 +116,7 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=11:1:9
+libpmix_so_version=11:2:9
 
 # "Common" components install standalone libraries that are run-time
 # # linked by one or more components.  So they need to be versioned as

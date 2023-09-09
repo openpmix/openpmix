@@ -4,6 +4,25 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
+4.2.6 -- 8 Sep 2023
+----------------------
+ - PR #3150 Do not follow links when doing "chown"
+ - PR #3147 Multiple commits
+    - Retrieve pset names upon PMIx_Get request
+    - Add a new "pctrl" tool for requesting job control ops
+ - PR #3143 Multiple commits
+    - Properly support the "log" example
+    - Enable building of tarball
+    - show_help: strip leading/trailing blank lines
+    - docs: fix some leftover "Open MPI" references
+    - docs: fix HTML word wapping in table cells
+    - Improve error handling in setup_topology
+    - Minor cleanups for disable-dlopen
+    - Fix Python bindings
+ - PR #3132 Multiple commits
+    - Switch to using event lib for connections
+    - Roll to v4.2.6
+
 4.2.5 -- 6 Aug 2023
 ----------------------
  - PR #3121 Multiple commits
