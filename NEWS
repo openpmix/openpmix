@@ -1,6 +1,6 @@
 Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
 Copyright (c) 2017-2020 IBM Corporation.  All rights reserved.
-Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
                         All Rights reserved.
 $COPYRIGHT$
@@ -26,8 +26,23 @@ multiple release branches.
 Master (not on release branches yet)
 ------------------------------------
 
-4.0.1 -- TBD
+4.0.1 -- 12 Sep 2023
 ----------------------
+Warning:: CVE-2023-41915
+
+A security issue was reported by François Diakhate (CEA)
+which is addressed in the PMIx v4.2.6 and v5.0.1 releases.
+(Older PMIx versions may be vulnerable, but are no longer
+supported.)
+
+A filesystem race condition could permit a malicious user
+to obtain ownership of an arbitrary file on the filesystem
+when parts of the PMIx library are called by a process
+running as uid 0. This may happen under the default
+configuration of certain workload managers, including Slurm.
+
+ - PR #3155: Do not follow links when doing "chown"
+
  - PR #2154: Cherry-pick updates from master branch
      - Spawn needs to do a little checking of the app
      - build: Allow autogen.pl to be run from a tarball
