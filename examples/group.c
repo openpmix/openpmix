@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <libgen.h>
 
 #include <pmix.h>
 #include "examples.h"
@@ -53,8 +54,6 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
 
-    fprintf(stderr, "Client %s:%d OP CALLBACK CALLED WITH STATUS %d\n", myproc.nspace, myproc.rank,
-            status);
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -62,10 +61,8 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
+    EXAMPLES_HIDE_UNUSED_PARAMS(errhandler_ref);
 
-    fprintf(stderr,
-            "Client %s:%d ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu\n",
-            myproc.nspace, myproc.rank, status, (unsigned long) errhandler_ref);
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -74,13 +71,29 @@ int main(int argc, char **argv)
 {
     int rc;
     pmix_value_t *val = NULL;
-    pmix_proc_t proc, *procs;
+    pmix_proc_t proc, *procs, *parray;
     uint32_t nprocs;
     mylock_t lock;
-    pmix_info_t *results, info;
-    size_t nresults, cid;
-
+    pmix_info_t *results, info[2];
+    size_t nresults, cid, n, m, psize;
+    pmix_data_array_t dry;
+    char *tmp;
+    pmix_query_t query;
+    int i;
+    bool addmembers = false;
+    bool testquery = false;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
+
+    for (i=1; i < argc; i++) {
+        if (0 == strcmp(argv[i], "--add-members")) {
+            addmembers = true;
+        } else if (0 == strcmp(argv[i], "--test-query")) {
+            testquery = true;
+        } else {
+            fprintf(stderr, "Usage: %s [--add-members] [--test-query]\n", basename(argv[0]));
+            exit(1);
+        }
+    }
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -93,9 +106,9 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
-    /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_UNIV_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %s\n", myproc.nspace,
+    /* get our job size */
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
@@ -137,8 +150,19 @@ int main(int argc, char **argv)
         PMIX_PROC_LOAD(&procs[0], myproc.nspace, 0);
         PMIX_PROC_LOAD(&procs[1], myproc.nspace, 2);
         PMIX_PROC_LOAD(&procs[2], myproc.nspace, 3);
-        PMIX_INFO_LOAD(&info, PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
-        rc = PMIx_Group_construct("ourgroup", procs, nprocs, &info, 1, &results, &nresults);
+        PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+
+        if (addmembers && 3 == myproc.rank) {
+            PMIX_DATA_ARRAY_CONSTRUCT(&dry, 2, PMIX_PROC);
+            parray = (pmix_proc_t*)dry.array;
+            PMIX_LOAD_PROCID(&parray[0], myproc.nspace, 7);
+            PMIX_LOAD_PROCID(&parray[1], myproc.nspace, 10);
+            PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ADD_MEMBERS, &dry, PMIX_DATA_ARRAY);
+            PMIX_DATA_ARRAY_DESTRUCT(&dry);
+            rc = PMIx_Group_construct("ourgroup", procs, nprocs, info, 2, &results, &nresults);
+        } else {
+            rc = PMIx_Group_construct("ourgroup", procs, nprocs, info, 1, &results, &nresults);
+        }
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
@@ -147,20 +171,77 @@ int main(int argc, char **argv)
         /* we should have a single results object */
         if (NULL != results) {
             cid = 0;
-            PMIX_VALUE_GET_NUMBER(rc, &results[0].value, cid, size_t);
-            fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %d\n",
-                    myproc.rank, PMIx_Error_string(rc), results[0].key, (int) cid);
+            for (n=0; n < nresults; n++) {
+                if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_CONTEXT_ID)) {
+                    PMIX_VALUE_GET_NUMBER(rc, &results[n].value, cid, size_t);
+                    fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %lu\n",
+                            myproc.rank, PMIx_Error_string(rc), results[n].key, (unsigned long) cid);
+                } else if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_MEMBERSHIP)) {
+                    parray = (pmix_proc_t*)results[n].value.data.darray->array;
+                    psize = results[n].value.data.darray->size;
+                    if (0 == myproc.rank) {
+                        fprintf(stderr, "NUM MEMBERS: %u MEMBERSHIP:\n", (unsigned)psize);
+                        for (m=0; m < psize; m++) {
+                            fprintf(stderr, "\t%s:%u\n", parray[m].nspace, parray[m].rank);
+                        }
+                    }
+                }
+            }
+            PMIX_INFO_FREE(results, nresults);
         } else {
-            fprintf(stderr, "%d Group construct complete, but no CID returned\n", myproc.rank);
+            fprintf(stderr, "%d Group construct complete, but results returned\n", myproc.rank);
         }
         PMIX_PROC_FREE(procs, nprocs);
-        fprintf(stderr, "%d executing Group_destruct\n", myproc.rank);
-        rc = PMIx_Group_destruct("ourgroup", NULL, 0);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Group_destruct failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
+        if (!addmembers) {
+            fprintf(stderr, "%d executing Group_destruct\n", myproc.rank);
+            rc = PMIx_Group_destruct("ourgroup", NULL, 0);
+            if (PMIX_SUCCESS != rc) {
+                fprintf(stderr, "Client ns %s rank %d: PMIx_Group_destruct failed: %s\n", myproc.nspace,
+                        myproc.rank, PMIx_Error_string(rc));
+                goto done;
+            }
+        }
+    }
+    if (testquery && 0 == myproc.rank) {
+        /* first ask for a list of active namespaces */
+        PMIX_QUERY_CONSTRUCT(&query);
+        PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_NAMESPACES);
+
+        rc = PMIx_Query_info(&query, 1, &results, &nresults);
+        if (PMIX_SUCCESS != rc ) {
+            fprintf(stderr, "Error: PMIx_Query_info for namespaces failed: %d (%s)\n", rc, PMIx_Error_string(rc));
             goto done;
         }
+        fprintf(stderr, "\n\n--> Query returned (ninfo %d)\n", (int)nresults);
+        for (n = 0; n < nresults; ++n) {
+            tmp = PMIx_Info_string(&results[n]);
+            fprintf(stderr, "%s\n", tmp);
+            free(tmp);
+        }
+        fprintf(stderr, "<--- END\n\n\n");
+        PMIX_QUERY_DESTRUCT(&query);
+        PMIX_INFO_FREE(results, nresults);
+        /* we can then parse the results to find a namespace of interest, and
+         * query about that namespace in particular. Or we can simply query
+         * for info on ALL namespaces */
+
+        PMIX_QUERY_CONSTRUCT(&query);
+        PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_NAMESPACE_INFO);
+
+        rc = PMIx_Query_info(&query, 1, &results, &nresults);
+        if (PMIX_SUCCESS != rc ) {
+            fprintf(stderr, "Error: PMIx_Query_info for namespace info failed: %d (%s)\n", rc, PMIx_Error_string(rc));
+            goto done;
+        }
+        fprintf(stderr, "--> Query returned (ninfo %d)\n", (int)nresults);
+        for (n = 0; n < nresults; ++n) {
+            tmp = PMIx_Info_string(&results[n]);
+            fprintf(stderr, "%s\n", tmp);
+            free(tmp);
+        }
+        fprintf(stderr, "<--- END\n\n\n");
+        PMIX_QUERY_DESTRUCT(&query);
+        PMIX_INFO_FREE(results, nresults);
     }
 
 done:
