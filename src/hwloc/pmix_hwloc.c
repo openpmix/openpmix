@@ -1402,6 +1402,15 @@ static int set_flags(hwloc_topology_t topo, unsigned int flags)
     if (0 != hwloc_topology_set_flags(topo, flags)) {
         return PMIX_ERR_INIT;
     }
+    // Blacklist the "gl" component due to potential conflicts.
+    // See "https://github.com/open-mpi/ompi/issues/10025" for
+    // an explanation
+#if HWLOC_VERSION_MAJOR > 2
+    hwloc_topology_set_components(topo, HWLOC_TOPOLOGY_COMPONENTS_FLAG_BLACKLIST, "gl");
+#elif HWLOC_VERSION_MAJOR == 2 && HWLOC_VERSION_MINOR >= 1
+    hwloc_topology_set_components(topo, HWLOC_TOPOLOGY_COMPONENTS_FLAG_BLACKLIST, "gl");
+#endif
+
     return PMIX_SUCCESS;
 }
 
