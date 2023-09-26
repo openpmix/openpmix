@@ -97,7 +97,6 @@ static void cbfunc(pmix_status_t status,
 
     PMIX_ACQUIRE_OBJECT(req);
 
-pmix_output(0, "CALLBACK RECVD: %s", PMIx_Error_string(status));
     req->status = status;
     if (PMIX_SUCCESS == status && 0 < ninfo) {
         req->ninfo = ninfo;
