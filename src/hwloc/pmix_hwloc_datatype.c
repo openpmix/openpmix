@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -389,16 +389,12 @@ pmix_status_t pmix_hwloc_copy_topology(pmix_topology_t *dest, pmix_topology_t *s
     flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
     flags |= HWLOC_TOPOLOGY_FLAG_IO_DEVICES;
 #else
-    if (0 != hwloc_topology_set_io_types_filter(t, HWLOC_TYPE_FILTER_KEEP_IMPORTANT)) {
+    if (0 != hwloc_topology_set_io_types_filter(dest->topology, HWLOC_TYPE_FILTER_KEEP_IMPORTANT)) {
         hwloc_topology_destroy(dest->topology);
         free(xmlbuffer);
         return PMIX_ERROR;
     }
-#    if HWLOC_API_VERSION < 0x00020100
-    flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
-#    else
     flags |= HWLOC_TOPOLOGY_FLAG_INCLUDE_DISALLOWED;
-#    endif
 #endif
     if (0 != hwloc_topology_set_flags(dest->topology, flags)) {
         hwloc_topology_destroy(dest->topology);

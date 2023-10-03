@@ -710,6 +710,56 @@ sub patch_autotools_output {
     unlink("configure.patched");
 }
 
+sub export_version {
+    my ($name,$version) = @_;
+    $version =~ s/[^a-zA-Z0-9,.]//g;
+    my @version_splits = split(/\./,$version);
+    my $hex = sprintf("0x%04x%02x%02x", $version_splits[0], $version_splits[1], $version_splits[2]);
+    $m4 .= "m4_define([PMIX_${name}_MIN_VERSION], [$version])\n";
+    $m4 .= "m4_define([PMIX_${name}_NUMERIC_MIN_VERSION], [$hex])\n";
+}
+
+sub get_and_define_min_versions() {
+
+    open(IN, "VERSION") || my_die "Can't open VERSION";
+    while (<IN>) {
+          my $line = $_;
+          my @fields = split(/=/,$line);
+          if ($fields[0] eq "automake_min_version") {
+              if ($fields[1] ne "\n") {
+                  $pmix_automake_version = $fields[1];
+              }
+          }
+          elsif($fields[0] eq "autoconf_min_version") {
+              if ($fields[1] ne "\n") {
+                  $pmix_autoconf_version = $fields[1];
+              }
+          }
+          elsif($fields[0] eq "libtool_min_version") {
+              if ($fields[1] ne "\n") {
+                  $pmix_libtool_version = $fields[1];
+              }
+          }
+          elsif($fields[0] eq "hwloc_min_version") {
+              if ($fields[1] ne "\n") {
+                  export_version("HWLOC", $fields[1]);
+              }
+          }
+          elsif($fields[0] eq "event_min_version") {
+              if ($fields[1] ne "\n") {
+                  export_version("EVENT", $fields[1]);
+              }
+          }
+          elsif($fields[0] eq "flex_min_version") {
+              if ($fields[1] ne "\n") {
+                  export_version("FLEX", $fields[1]);
+              }
+          }
+    }
+    close(IN);
+}
+
+
 ##############################################################################
 
 sub in_tarball {
@@ -902,6 +952,8 @@ my $step = 1;
 verbose "PMIx autogen (buckle up!)
 
 $step. Checking tool versions\n\n";
+
+get_and_define_min_versions();
 
 # Check the autotools revision levels
 &find_and_check("autoconf", $pmix_autoconf_search, $pmix_autoconf_version);
