@@ -81,6 +81,38 @@ jobs:
         make install
         make uninstall
 
+  ubuntu-oldHWLOC:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libevent-dev
+    - name: Git clone HWLOC v1.x
+      uses: actions/checkout@v4
+      with:
+            repository: open-mpi/hwloc
+            ref: hwloc-1.11.13
+    - name: Build HWLOC
+      run: |
+        ./autogen.sh
+        ./configure --prefix=$RUNNER_TEMP/hwlocinstall
+        make -j install
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v3
+      with:
+            submodules: recursive
+    - name: Build OpenPMIx
+      run: |
+        ./autogen.pl
+        ./configure --prefix=${PWD}/install --with-hwloc=$RUNNER_TEMP/hwlocinstall
+        make -j
+        cd test
+        make check
+        cd ..
+        make install
+        make uninstall
+
   distcheck:
     runs-on: ubuntu-latest
     steps:
