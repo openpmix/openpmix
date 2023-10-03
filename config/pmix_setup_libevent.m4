@@ -6,7 +6,7 @@
 # Copyright (c) 2017-2019 Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
-# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
 # Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -53,7 +53,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
            pmix_libevent_support=0])
 
     AS_IF([test "$with_libevent_extra_libs" = "yes" -o "$with_libevent_extra_libs" = "no"],
-	  [AC_MSG_ERROR([--with-libevent-extra-libs requires an argument other than yes or no])])
+      [AC_MSG_ERROR([--with-libevent-extra-libs requires an argument other than yes or no])])
 
     AS_IF([test $pmix_libevent_support -eq 1],
           [pmix_check_libevent_save_CPPFLAGS="$CPPFLAGS"
@@ -113,7 +113,7 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
           ]])],
           [AC_MSG_RESULT([yes])],
           [AC_MSG_RESULT([no])
-           AC_MSG_WARN([PMIX requires libevent to be compiled with thread support enabled])
+           AC_MSG_WARN([PMIX rquires libevent to be compiled with thread support enabled])
            pmix_libevent_support=0])
     fi
 
@@ -134,20 +134,24 @@ AC_DEFUN([PMIX_LIBEVENT_CONFIG],[
     fi
 
     if test $pmix_libevent_support -eq 1; then
-        # Pin the "oldest supported" version to 2.0.21
-        AC_MSG_CHECKING([if libevent version is 2.0.21 or greater])
-        AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <event2/event.h>]],
-                                           [[
-                                             #if defined(_EVENT_NUMERIC_VERSION) && _EVENT_NUMERIC_VERSION < 0x02001500
-                                             #error "libevent API version is less than 0x02001500"
-                                             #elif defined(EVENT__NUMERIC_VERSION) && EVENT__NUMERIC_VERSION < 0x02001500
-                                             #error "libevent API version is less than 0x02001500"
-                                             #endif
-                                           ]])],
-                          [AC_MSG_RESULT([yes])],
-                          [AC_MSG_RESULT([no])
-                           AC_MSG_WARN([libevent version is too old (2.0.21 or later required)])
-                           pmix_libevent_support=0])
+        pmix_event_min_num_version=PMIX_EVENT_NUMERIC_MIN_VERSION
+        pmix_event_min_version=PMIX_EVENT_MIN_VERSION
+        AC_MSG_CHECKING([version at or above v$pmix_event_min_version])
+        AC_PREPROC_IFELSE([AC_LANG_PROGRAM([
+                                            #include <event2/event.h>
+#if defined(_EVENT_NUMERIC_VERSION) && _EVENT_NUMERIC_VERSION < $pmix_event_min_num_version
+#error "libevent API version is less than $pmix_event_min_version"
+#elif defined(EVENT__NUMERIC_VERSION) && EVENT__NUMERIC_VERSION < $pmix_event_min_num_version
+#error "libevent API version is less than $pmix_event_min_version"
+#endif
+                                       ], [])],
+                      [pmix_libevent_cv_version_check=yes
+                       AC_MSG_RESULT([yes])],
+                      [pmix_libevent_cv_version_check=no
+                       AC_MSG_RESULT([no])])
+        AS_IF([test "${pmix_libevent_cv_version_check}" = "no"],
+              [AC_MSG_WARN([libevent version is too old ($pmix_event_min_version or later required)])
+               pmix_libevent_support=0])
     fi
 
     # restore global flags
