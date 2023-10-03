@@ -16,7 +16,7 @@
 # MCA_hwloc_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
 AC_DEFUN([PMIX_SETUP_HWLOC],[
-    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir])
+    PMIX_VAR_SCOPE_PUSH([pmix_hwloc_dir pmix_hwloc_libdir pmix_check_hwloc_save_CPPFLAGS])
 
     AC_ARG_WITH([hwloc],
                 [AS_HELP_STRING([--with-hwloc=DIR],
@@ -32,9 +32,10 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                                   [If --disable-hwloc-lib-checks is specified, configure will assume that -lhwloc is available])])
 
     pmix_hwloc_support=1
+    pmix_check_hwloc_save_CPPFLAGS="$CPPFLAGS"
 
     if test "$with_hwloc" = "no"; then
-        AC_MSG_WARN([PRRTE requires HWLOC topology library support.])
+        AC_MSG_WARN([PMIx requires HWLOC topology library support.])
         AC_MSG_WARN([Please reconfigure so we can find the library.])
         AC_MSG_ERROR([Cannot continue.])
     fi
@@ -53,12 +54,15 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
           [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_hwloc_extra_libs])])
 
     if test $pmix_hwloc_support -eq 0; then
-        AC_MSG_WARN([PRRTE requires HWLOC topology library support, but])
+        AC_MSG_WARN([PMIx requires HWLOC topology library support, but])
         AC_MSG_WARN([an adequate version of that library was not found.])
         AC_MSG_WARN([Please reconfigure and point to a location where])
         AC_MSG_WARN([the HWLOC library can be found.])
         AC_MSG_ERROR([Cannot continue.])
     fi
+
+    # update global flags to test for HWLOC version
+    PMIX_FLAGS_PREPEND_UNIQ([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
 
     # NOTE: We have already read PMIx's VERSION file, so we can use
     # those values
@@ -102,6 +106,9 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                        AC_MSG_WARN([versions 3.x or higher. Please direct us])
                        AC_MSG_WARN([to an HWLOC version in the $pmix_hwloc_min_version-2.x range.])
                        AC_MSG_ERROR([Cannot continue])])
+
+    # reset global flags
+    CPPFLAGS=$pmix_check_hwloc_save_CPPFLAGS
 
     PMIX_FLAGS_APPEND_UNIQ([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
     PMIX_WRAPPER_FLAGS_ADD([CPPFLAGS], [$pmix_hwloc_CPPFLAGS])
