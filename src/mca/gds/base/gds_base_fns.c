@@ -7,7 +7,7 @@
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -130,7 +130,6 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace, pmix_bu
         if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
             /* no data was returned, so we are done with this blob */
             PMIX_DESTRUCT(&bkt);
-            PMIX_ERROR_LOG(rc);
             break;
         }
         if (PMIX_SUCCESS != rc) {
