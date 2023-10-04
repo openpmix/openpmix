@@ -51,7 +51,7 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                              [hwloc_topology_init],
                              [],
                              [pmix_hwloc_support=0])],
-          [PMIX_FLAGS_APPEND_UNIQ([PMIX_FINAL_LIBS], [$with_hwloc_extra_libs])])
+          [PMIX_FLAGS_APPEND_UNIQ([PMIX_DELAYED_LIBS], [$with_hwloc_extra_libs])])
 
     if test $pmix_hwloc_support -eq 0; then
         AC_MSG_WARN([PMIx requires HWLOC topology library support, but])
@@ -122,8 +122,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
     PMIX_WRAPPER_FLAGS_ADD([STATIC_LIBS], [$pmix_hwloc_STATIC_LIBS])
 
     PMIX_WRAPPER_FLAGS_ADD([PC_MODULES], [$pmix_hwloc_PC_MODULES])
-
-
 
     PMIX_SUMMARY_ADD([Required Packages], [HWLOC], [], [$pmix_hwloc_SUMMARY])
 
