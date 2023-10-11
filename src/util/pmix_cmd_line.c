@@ -93,7 +93,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         char *helpfile)
 {
     int option_index = 0;   /* getopt_long stores the option index here. */
-    int n, opt, argc, argind;
+    int n, m, opt, argc, argind;
     bool found;
     char *ptr, *str, **argv;
     pmix_cmd_line_store_fn_t mystore;
@@ -293,9 +293,9 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         } else {
                             ptr = NULL;
                         }
-                        for (n=0; NULL != myoptions[n].name; n++) {
-                            if (ascii == myoptions[n].val) {
-                                if (PMIX_ARG_NONE == myoptions[n].has_arg) {
+                        for (m=0; NULL != myoptions[m].name; m++) {
+                            if (ascii == myoptions[m].val) {
+                                if (PMIX_ARG_NONE == myoptions[m].has_arg) {
                                     /* if ptr isn't NULL, then that means we were given
                                      * an argument to an option that doesn't take one.
                                      * Report the error */
@@ -310,7 +310,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                         return PMIX_ERR_SILENT;
                                     }
                                     ptr = NULL;
-                                } else if (0 == strcmp(myoptions[n].name, "np") &&
+                                } else if (0 == strcmp(myoptions[m].name, "np") &&
                                            0 == strcmp(optarg, "p")) {
                                     /* we special-case the very common "-np" option */
                                     ptr = argv[optind];
@@ -336,7 +336,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             goto done;
                         }
                         str = pmix_show_help_string("help-cli.txt", "short-no-long", true,
-                                                    pmix_tool_basename, argv[optind-1]);
+                                                    pmix_tool_basename, shorts[n]);
                         if (NULL != str) {
                             printf("%s", str);
                             free(str);
