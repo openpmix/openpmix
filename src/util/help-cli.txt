@@ -61,7 +61,7 @@ When used in conjunction with other parameters, the output information
 A short option was provided to %s and recognized by the parser,
 but has no matching long option:
 
-  Short option: %s
+  Short option: %c
 
 This might require help from the developers.
 [unregistered-option]
@@ -76,7 +76,7 @@ supported options.
 A short option was provided to %s and recognized by the parser,
 but included an argument while the option does not support one:
 
-  Short option: %s
+  Short option: %c
   Given argument: %s
 
 Please correct the command line and try again.
