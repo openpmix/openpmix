@@ -876,6 +876,11 @@ typedef uint32_t pmix_rank_t;
                                                                     //         times like "now + count" time-units, where the time-units can be "seconds"
                                                                     //         (default), "minutes", "hours", days, or weeks, or you can ask that the
                                                                     //         allocation be made "today" or "tomorrow".
+#define PMIX_ALLOC_NOT_WAITING              "pmix.alloc.notwait"    // (bool) Requestor is not waiting for the allocation to be issued. When allocation
+                                                                    //        is made, start the provided job - if one is not provided, then setup the
+                                                                    //        allocated session and leave it idle. The requestor will discover the
+                                                                    //        allocation by either monitoring for the "allocated" event or by querying
+                                                                    //        the system
 
 
 /* job control attributes */

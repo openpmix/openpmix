@@ -62,23 +62,23 @@ static struct option pallocptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_REQ_ID, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE(PMIX_CLI_QUEUE, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE(PMIX_CLI_NODES, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE(PMIX_CLI_IMAGE, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE(PMIX_CLI_EXCLUDE, PMIX_ARG_REQD),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_QUEUE, PMIX_ARG_REQD, 'q'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_NODES, PMIX_ARG_REQD, 'N'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_IMAGE, PMIX_ARG_REQD, 'i'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_EXCLUDE, PMIX_ARG_REQD, 'x'),
     PMIX_OPTION_DEFINE(PMIX_CLI_WAIT_ALL_NODES, PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE(PMIX_CLI_NODELIST, PMIX_ARG_REQD),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_NODELIST, PMIX_ARG_REQD, 'w'),
     PMIX_OPTION_DEFINE(PMIX_CLI_UID, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_GID, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE(PMIX_CLI_TIME, PMIX_ARG_REQD),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_TIME, PMIX_ARG_REQD, 't'),
     PMIX_OPTION_DEFINE(PMIX_CLI_SIGNAL, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE(PMIX_CLI_SHARE, PMIX_ARG_NONE),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_SHARE, PMIX_ARG_NONE, 's'),
     PMIX_OPTION_DEFINE(PMIX_CLI_EXTEND, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHRINK, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_NO_SHELL, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_BEGIN, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE(PMIX_CLI_IMMEDIATE, PMIX_ARG_OPTIONAL),
-    PMIX_OPTION_DEFINE(PMIX_CLI_DEPENDENCY, PMIX_ARG_REQD),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_IMMEDIATE, PMIX_ARG_OPTIONAL, 'I'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_DEPENDENCY, PMIX_ARG_REQD, 'd'),
     PMIX_OPTION_DEFINE(PMIX_CLI_DO_NOT_WAIT, PMIX_ARG_NONE),
 
     PMIX_OPTION_END
@@ -119,6 +119,53 @@ static void cbfunc(pmix_status_t status,
     PMIX_POST_OBJECT(req);
     PMIX_WAKEUP_THREAD(&req->lock);
 }
+
+static void regcbfunc(pmix_status_t status, size_t ref, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t *) cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(ref, status);
+
+    PMIX_ACQUIRE_OBJECT(lock);
+    PMIX_WAKEUP_THREAD(lock);
+}
+
+static void defhandler(size_t evhdlr_registration_id, pmix_status_t status,
+                       const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                       pmix_info_t *results, size_t nresults,
+                       pmix_event_notification_cbfunc_fn_t evcbfunc, void *cbdata)
+{
+    pmix_shift_caddy_t *req = NULL;
+    size_t n;
+    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, results, nresults);
+
+    if (PMIX_ERR_UNREACH == status || PMIX_ERR_LOST_CONNECTION == status) {
+        /* we should always have info returned to us - if not, there is
+         * nothing we can do */
+        if (NULL != info) {
+            for (n = 0; n < ninfo; n++) {
+                if (PMIX_CHECK_KEY(&info[n], PMIX_EVENT_RETURN_OBJECT)) {
+                    req = (pmix_shift_caddy_t *) info[n].value.data.ptr;
+                }
+            }
+        }
+
+        if (NULL == req) {
+            exit(1);
+        }
+        /* save the status */
+        req->status = status;
+        /* release the lock */
+        PMIX_WAKEUP_THREAD(&req->lock);
+    }
+
+    /* we _always_ have to execute the evhandler callback or
+     * else the event progress engine will hang */
+    if (NULL != evcbfunc) {
+        evcbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
+}
+
+
 int main(int argc, char **argv)
 {
     pmix_proc_t myproc;
@@ -136,6 +183,7 @@ int main(int argc, char **argv)
     uint32_t ui32;
     uint64_t ui64;
     pmix_alloc_directive_t directive = PMIX_ALLOC_NEW;
+    pmix_lock_t lock;
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
     /* protect against problems if someone passes us thru a pipe
@@ -414,6 +462,12 @@ int main(int argc, char **argv)
 
     if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_DO_NOT_WAIT))) {
         donotwait = true;
+        PMIX_INFO_LIST_ADD(rc, options, PMIX_ALLOC_NOT_WAITING, NULL, PMIX_BOOL);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "PMIx info list add failed: %s\n", PMIx_Error_string(rc));
+            PMIX_INFO_LIST_RELEASE(options);
+            goto done;
+        }
     }
 
     req = PMIX_NEW(pmix_shift_caddy_t);
@@ -429,6 +483,17 @@ int main(int argc, char **argv)
         req->ninfo = darray.size;
     }
     PMIX_INFO_LIST_RELEASE(options);
+
+    // register an event handler so we can exit if the server
+    // goes away
+    PMIX_INFO_CREATE(info, 2);
+    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_RETURN_OBJECT, req, PMIX_POINTER);
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_HDLR_NAME, "DEFAULT", PMIX_STRING);
+    PMIX_CONSTRUCT_LOCK(&lock);
+    PMIx_Register_event_handler(NULL, 0, info, 2, defhandler, regcbfunc, &lock);
+    PMIX_WAIT_THREAD(&lock);
+    PMIX_DESTRUCT_LOCK(&lock);
+    PMIX_INFO_FREE(info, 2);
 
     rc = PMIx_Allocation_request_nb(directive, req->info, req->ninfo,
                                     cbfunc, req);
