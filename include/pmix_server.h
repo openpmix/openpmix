@@ -542,6 +542,14 @@ typedef pmix_status_t (*pmix_server_session_control_fn_t)(const pmix_proc_t *req
                                                           const pmix_info_t directives[], size_t ndirs,
                                                           pmix_info_cbfunc_t cbfunc, void *cbdata);
 
+/* Define/delete or extend/remove resources from a resource block */
+typedef pmix_status_t (*pmix_server_resource_block_fn_t)(const pmix_proc_t *requestor,
+                                                         pmix_resource_block_directive_t directive,
+                                                         const char *block,
+                                                         const pmix_info_t data[], size_t ndata,
+                                                         pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+
 typedef struct pmix_server_module_4_0_0_t {
     /* v1x interfaces */
     pmix_server_client_connected_fn_t   client_connected;
@@ -577,6 +585,7 @@ typedef struct pmix_server_module_4_0_0_t {
     pmix_server_client_connected2_fn_t  client_connected2;
     /* v5x interfaces */
     pmix_server_session_control_fn_t    session_control;
+    pmix_server_resource_block_fn_t     resource_block;
 } pmix_server_module_t;
 
 /****    HOST RM FUNCTIONS FOR INTERFACE TO PMIX SERVER    ****/

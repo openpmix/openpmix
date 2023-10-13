@@ -614,7 +614,13 @@ typedef uint32_t pmix_rank_t;
                                                                     //         Each of the remaining elements of the array is a pmix_info_t containing the query key
                                                                     //         and the corresponding value returned by the query. This attribute is solely for
                                                                     //         reporting purposes and cannot be used in PMIx_Get or other query operations
-
+#define PMIX_QUERY_MIN_ALLOC_UNIT           "pmix.qry.minau"        // (pmix_data_array_t*) array of pmix_info_t identifying the resources
+                                                                    //         composing the minimum allocatable unit for this system
+#define PMIX_QUERY_RES_BLOCKS               "pmix.qry.resblks"      // (pmix_data_array_t*) array of string names for currently defined
+                                                                    //         resource blocks
+#define PMIX_QUERY_RES_BLOCK_DEF            "pmix.qry.resdef"       // (pmix_data_array_t*) given the name of a resource block as its qualifier,
+                                                                    //         return an array of pmix_info_t describing the resources contained
+                                                                    //         in the block
 
 /* query qualifiers - these are used to provide information to narrow/modify the query. Value type shown is the type of data expected
  * to be provided with the key */
@@ -638,6 +644,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_SUPPORTED_QUALIFIERS     "pmix.qry.quals"        // (bool) return comma-delimited list of qualifiers supported by
                                                                     //        a query on the provided key, instead of actually performing
                                                                     //        the query on the key.
+#define PMIX_RESOURCE_BLOCK_NAME            "pmix.resblkname"       // (char*) Name of the resource block being queried about
 
 
 /* PMIx_Get information retrieval qualifiers */
@@ -881,6 +888,9 @@ typedef uint32_t pmix_rank_t;
                                                                     //        allocated session and leave it idle. The requestor will discover the
                                                                     //        allocation by either monitoring for the "allocated" event or by querying
                                                                     //        the system
+
+#define PMIX_ALLOC_RES_BLOCK                "pmix.alloc.blk"        // (char*) name of the previously-defined resource block to be allocated
+#define PMIX_ALLOC_NUM_BLOCKS               "pmix.alloc.nblks"      // (uint64_t) number of specified resource blocks to allocate
 
 
 /* job control attributes */
@@ -1619,6 +1629,18 @@ typedef uint8_t pmix_alloc_directive_t;
 /* define a value boundary beyond which implementers are free
  * to define their own directive values */
 #define PMIX_ALLOC_EXTERNAL     128
+
+/* define a set of directives for resource block requests */
+typedef uint8_t pmix_resource_block_directive_t;
+#define PMIX_RESOURCE_BLOCK_DEFINE  1   // define a new resource block
+#define PMIX_RESOURCE_BLOCK_EXTEND  2   // extend an existing block definition by adding the specified resources
+                                        // to the block
+#define PMIX_RESOURCE_BLOCK_REMOVE  3   // remove the specified resources from the block definition
+#define PMIX_RESOURCE_BLOCK_DELETE  4   // delete the resource block definition
+
+/* define a value boundary beyond which implementers are free
+ * to define their own directive values */
+#define PMIX_RESOURCE_BLOCK_EXTERNAL     128
 
 
 /* define a set of bit-mask flags for specifying IO
