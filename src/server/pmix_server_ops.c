@@ -5135,6 +5135,15 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
+pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
+                                 pmix_buffer_t *buf,
+                                 pmix_op_cbfunc_t cbfunc)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cd, buf, cbfunc);
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+
 /*****    INSTANCE SERVER LIBRARY CLASSES    *****/
 static void gcon(pmix_grpinfo_t *p)
 {

@@ -4839,6 +4839,14 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         return rc;
     }
 
+    if (PMIX_RESBLK_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_resblk(cd, buf, op_cbfunc))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 

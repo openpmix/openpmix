@@ -484,6 +484,20 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
                                                      pmix_info_t *info, size_t ninfo,
                                                      pmix_info_cbfunc_t cbfunc, void *cbdata);
 
+/* Define a resource "block" that can be used in allocation operations.
+ * Include the ability to define/delete, remove/extend block definitions.
+ * The provided block name must be unique within the requestor's current
+ * session
+ */
+PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t directive,
+                                              char *block, pmix_info_t *info, size_t ninfo);
+
+
+PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t directive,
+                                                 char *block, pmix_info_t *info, size_t ninfo,
+                                                 pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+
 /* Request a session control action. The sessionID identifies the session
  * to which the specified control action is to be applied. A UINT32_MAX
  * value can be used to indicate all sessions under the caller's control.
