@@ -2879,8 +2879,8 @@ pmix_status_t pmix_server_alloc(pmix_peer_t *peer, pmix_buffer_t *buf,
     proc.rank = peer->info->pname.rank;
 
     /* ask the host to execute the request */
-    if (PMIX_SUCCESS
-        != (rc = pmix_host_server.allocate(&proc, directive, cd->info, cd->ninfo, cbfunc, cd))) {
+    rc = pmix_host_server.allocate(&proc, directive, cd->info, cd->ninfo, cbfunc, cd);
+    if (PMIX_SUCCESS != rc) {
         goto exit;
     }
     return PMIX_SUCCESS;

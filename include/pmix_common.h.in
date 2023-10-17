@@ -968,8 +968,8 @@ typedef uint32_t pmix_rank_t;
 /* session operational attributes - called by RTE */
 #define PMIX_SESSION_COMPLETE               "pmix.ssn.complete"     // (bool) specified session has completed, all resources have been
                                                                     //        recovered and are available for scheduling. Must include
-                                                                    //        pmix_info_t indicating ID and returned status of any jobs
-                                                                    //        executing in the session.
+                                                                    //        pmix_info_t indicating returned status of any jobs
+                                                                    //        executed in the session.
 
 
 /* monitoring attributes */
