@@ -316,7 +316,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                     ptr = argv[optind];
                                     ++optind;
                                 }
-                                mystore(myoptions[n].name, ptr, results);
+                                mystore(myoptions[m].name, ptr, results);
                                 found = true;
                                 break;
                             }
