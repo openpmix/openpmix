@@ -122,6 +122,7 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_URI                    "uri"                       // required
 #define PMIX_CLI_TIMEOUT                "timeout"                   // required
 #define PMIX_CLI_TMPDIR                 "tmpdir"                    // required
+#define PMIX_CLI_CONNECTION_ORDER       "connect-order"             // required
 
 // Allocation request options
 #define PMIX_CLI_REQ_ID                 "request-id"                // required

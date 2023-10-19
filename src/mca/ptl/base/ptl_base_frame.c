@@ -76,6 +76,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .report_uri = NULL,
     .uri = NULL,
     .urifile = NULL,
+    .sysctrlr_filename = NULL,
     .scheduler_filename = NULL,
     .system_filename = NULL,
     .session_filename = NULL,
@@ -85,6 +86,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .created_rendezvous_file = false,
     .created_session_tmpdir = false,
     .created_system_tmpdir = false,
+    .created_sysctrlr_filename = false,
     .created_scheduler_filename = false,
     .created_system_filename = false,
     .created_session_filename = false,
@@ -264,6 +266,17 @@ static pmix_status_t pmix_ptl_close(void)
             }
         }
         free(pmix_ptl_base.scheduler_filename);
+    }
+    if (NULL != pmix_ptl_base.sysctrlr_filename) {
+        if (pmix_ptl_base.created_sysctrlr_filename) {
+            rc = remove(pmix_ptl_base.sysctrlr_filename);
+            if (0 != rc) {
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "Remove of %s failed: %s",
+                                    pmix_ptl_base.sysctrlr_filename, strerror(errno));
+            }
+        }
+        free(pmix_ptl_base.sysctrlr_filename);
     }
     if (NULL != pmix_ptl_base.system_filename) {
         if (pmix_ptl_base.created_system_filename) {

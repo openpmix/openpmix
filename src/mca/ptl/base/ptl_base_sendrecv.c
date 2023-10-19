@@ -7,7 +7,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -835,7 +835,7 @@ void pmix_ptl_base_process_msg(int fd, short flags, void *cbdata)
                 pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                                     "%s:%d EXECUTE CALLBACK for tag %u with %d bytes",
                                     pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                                    msg->hdr.tag, (int)msg->hdr.nbytes);
+                                    msg->hdr.tag, (int)buf.bytes_used);
                 rcv->cbfunc(msg->peer, &msg->hdr, &buf, rcv->cbdata);
                 pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                                     "%s:%d CALLBACK COMPLETE", pmix_globals.myid.nspace,

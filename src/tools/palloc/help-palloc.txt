@@ -34,6 +34,7 @@ PMIx Allocation Request tool
 -h|--help <arg0>                     Help for the specified option
 -v|--verbose                         Enable typical debug options
 -V|--version                         Print version and exit
+   --pmixmca <arg0> <arg1>           Set MCA parameter value
 
    --uri <arg0>                      Specify the URI of the server to which we are to connect, or
                                      the name of the file (specified as file:filename) that contains that info
@@ -44,6 +45,8 @@ PMIx Allocation Request tool
    --system-server-first             First look for a system server and connect to it if found
    --system-server-only              Connect only to a system-level server
    --tmpdir <arg0>                   Set the root for the session directory tree
+   --connect-order <arg0>            Specify search order for server connections - e.g., scheduler,
+                                     system controller, system-level server, or local server
    --wait-to-connect <arg0>          Delay specified number of seconds before trying to connect
    --num-connect-retries <arg0>      Max number of times to try to connect
 
@@ -153,6 +156,24 @@ location.
 #
 [wait-to-connect]
 Delay specified number of seconds before trying to connect
+#
+[connect-order]
+Comma-delimited list of attributes defining the order in which
+connections should be attempted, from first to last. If the
+final entry is not an "only" flag (e.g., PMIX_CONNECT_TO_SYSTEM),
+then connection will default to the local server if no preceding
+option succeeds. Thus, the following list:
+    PMIX_CONNECT_TO_SCHEDULER
+    PMIX_CONNECT_TO_SYS_CONTROLLER
+    PMIX_CONNECT_TO_SYSTEM
+would first attempt to connect to the scheduler, then the system
+controller, and then the local system-level server. If none of those
+succeed, then the connection attempt will error out.
+
+However, if the last entry were PMIX_CONNECT_SYSTEM_FIRST, then the
+connection procedure would (after failing to connect to a local
+system-level server) continue to include an attempt to connect
+to any local server that accepted the connection request.
 #
 #  QALLOC-SPECIFIC OPTIONS
 #
