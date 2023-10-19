@@ -53,6 +53,7 @@
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_output.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #include "src/client/pmix_client_ops.h"
@@ -127,6 +128,20 @@ static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_n
 }
 
 static bool util_initialized = false;
+
+void pmix_expose_param(char *param)
+{
+    char *value, *pm;
+
+    value = strchr(param, '=');
+    *value = '\0';
+    ++value;
+    pmix_asprintf(&pm, "PMIX_MCA_%s", param);
+    setenv(pm, value, true);
+    free(pm);
+    --value;
+    *value = '=';
+}
 
 int pmix_init_util(pmix_info_t info[], size_t ninfo, char *libdir)
 {

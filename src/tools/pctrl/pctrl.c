@@ -51,6 +51,7 @@ static struct option pctrlptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PMIXMCA, PMIX_ARG_REQD),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_SYS_SERVER_FIRST, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SYS_SERVER_ONLY, PMIX_ARG_NONE),
@@ -126,10 +127,6 @@ int main(int argc, char **argv)
     pmix_tool_basename = "pctrl";
     gethostname(hostname, sizeof(hostname));
 
-    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
-        return PMIX_ERROR;
-    }
-
     /* Parse the command line options */
     PMIX_CONSTRUCT(&results, pmix_cli_result_t);
     rc = pmix_cmd_line_parse(argv, pctrlshorts, pctrlptions,
@@ -143,6 +140,20 @@ int main(int argc, char **argv)
             fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
             exit(rc);
         }
+    }
+
+    // handle relevant MCA params
+    PMIX_LIST_FOREACH(opt, &results.instances, pmix_cli_item_t) {
+        if (0 == strcmp(opt->key, PMIX_CLI_PMIXMCA)) {
+            for (n=0; NULL != opt->values[n]; n++) {
+                pmix_expose_param(opt->values[n]);
+            }
+        }
+    }
+
+    // setup the base infrastructure
+    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
+        return PMIX_ERROR;
     }
 
     // check for common required command line option
