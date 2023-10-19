@@ -34,6 +34,7 @@ PMIx Query tool
 -h|--help <arg0>                     Help for the specified option
 -v|--verbose                         Enable typical debug options
 -V|--version                         Print version and exit
+   --pmixmca <arg0> <arg1>           Set MCA parameter value
 
    --uri <arg0>                      Specify the URI of the server to which we are to connect, or
                                      the name of the file (specified as file:filename) that contains that info

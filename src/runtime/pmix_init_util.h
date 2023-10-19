@@ -12,7 +12,7 @@
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2010-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -37,6 +37,8 @@ PMIX_EXPORT extern const char* pmix_tool_msg;
 
 PMIX_EXPORT int pmix_init_util(pmix_info_t info[], size_t ninfo, char *helpdir);
 PMIX_EXPORT int pmix_finalize_util(void);
+
+PMIX_EXPORT void pmix_expose_param(char *param);
 
 END_C_DECLS
 

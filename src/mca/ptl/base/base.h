@@ -73,6 +73,7 @@ struct pmix_ptl_base_t {
     char *report_uri;
     char *uri;
     char *urifile;
+    char *sysctrlr_filename;
     char *scheduler_filename;
     char *system_filename;
     char *session_filename;
@@ -82,6 +83,7 @@ struct pmix_ptl_base_t {
     bool created_rendezvous_file;
     bool created_session_tmpdir;
     bool created_system_tmpdir;
+    bool created_sysctrlr_filename;
     bool created_scheduler_filename;
     bool created_system_filename;
     bool created_session_filename;

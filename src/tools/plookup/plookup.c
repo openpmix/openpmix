@@ -89,6 +89,7 @@ static struct option plkoptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PMIXMCA, PMIX_ARG_REQD),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_PID, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
@@ -159,12 +160,6 @@ int main(int argc, char **argv)
         return PMIX_ERROR;
     }
 
-    /* register params for pmix */
-    if (PMIX_SUCCESS != (rc = pmix_register_params())) {
-        fprintf(stderr, "pmix_register_params failed with %d\n", rc);
-        return PMIX_ERROR;
-    }
-
     /* Parse the command line options */
     PMIX_CONSTRUCT(&results, pmix_cli_result_t);
     rc = pmix_cmd_line_parse(argv, plkshorts, plkoptions,
@@ -178,6 +173,21 @@ int main(int argc, char **argv)
             rc = PMIX_SUCCESS;
         }
         exit(rc);
+    }
+
+    // handle relevant MCA params
+    PMIX_LIST_FOREACH(opt, &results.instances, pmix_cli_item_t) {
+        if (0 == strcmp(opt->key, PMIX_CLI_PMIXMCA)) {
+            for (n=0; NULL != opt->values[n]; n++) {
+                pmix_expose_param(opt->values[n]);
+            }
+        }
+    }
+
+    /* register params for pmix */
+    if (PMIX_SUCCESS != (rc = pmix_register_params())) {
+        fprintf(stderr, "pmix_register_params failed with %d\n", rc);
+        return PMIX_ERROR;
     }
 
     if (pmix_cmd_line_is_taken(&results, "wait")) {
