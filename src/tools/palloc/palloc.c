@@ -51,6 +51,7 @@ static struct option pallocptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PMIXMCA, PMIX_ARG_REQD),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_SYS_SERVER_FIRST, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SYSTEM_SERVER, PMIX_ARG_NONE),
@@ -60,6 +61,7 @@ static struct option pallocptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_NAMESPACE, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_CONNECTION_ORDER, PMIX_ARG_REQD),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_REQ_ID, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_QUEUE, PMIX_ARG_REQD),
@@ -146,10 +148,6 @@ int main(int argc, char **argv)
     pmix_tool_basename = "palloc";
     gethostname(hostname, sizeof(hostname));
 
-    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
-        return PMIX_ERROR;
-    }
-
     /* Parse the command line options */
     PMIX_CONSTRUCT(&results, pmix_cli_result_t);
     rc = pmix_cmd_line_parse(argv, pallocshorts, pallocptions,
@@ -165,7 +163,21 @@ int main(int argc, char **argv)
         exit(rc);
     }
 
-     /* if we were given the pid of a starter, then direct that
+    // handle relevant MCA params
+    PMIX_LIST_FOREACH(opt, &results.instances, pmix_cli_item_t) {
+        if (0 == strcmp(opt->key, PMIX_CLI_PMIXMCA)) {
+            for (n=0; NULL != opt->values[n]; n++) {
+                pmix_expose_param(opt->values[n]);
+            }
+        }
+    }
+
+    // setup the base infrastructure
+    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
+        return PMIX_ERROR;
+    }
+
+    /* if we were given the pid of a starter, then direct that
      * we connect to it */
     n = 3;
     PMIX_INFO_CREATE(info, n);
@@ -230,6 +242,9 @@ int main(int argc, char **argv)
 
     } else if (pmix_cmd_line_is_taken(&results, PMIX_CLI_SYSTEM_SERVER)) {
         PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYSTEM, NULL, PMIX_BOOL);
+
+    } else if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_CONNECTION_ORDER))) {
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECTION_ORDER, opt->values[0], PMIX_STRING);
 
     } else {
         /* if none of the above, we just try to connect directly to the scheduler */

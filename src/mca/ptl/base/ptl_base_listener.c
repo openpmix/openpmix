@@ -646,6 +646,21 @@ nextstep:
         pmix_ptl_base.created_scheduler_filename = true;
     }
 
+    /* if we are the system controller, then drop an appropriately named
+     * contact file so others can find us */
+    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        if (0 > asprintf(&pmix_ptl_base.sysctrlr_filename, "%s/pmix.sysctrlr.%s",
+                         pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
+            goto sockerror;
+        }
+        rc = pmix_base_write_rndz_file(pmix_ptl_base.sysctrlr_filename, lt->uri,
+                                       &pmix_ptl_base.created_system_tmpdir);
+        if (PMIX_SUCCESS != rc) {
+            goto sockerror;
+        }
+        pmix_ptl_base.created_sysctrlr_filename = true;
+    }
+
     /* if we are going to support tools, then drop contact file(s) */
     if (pmix_ptl_base.system_tool) {
         if (0 > asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",

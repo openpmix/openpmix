@@ -194,10 +194,6 @@ int main(int argc, char **argv)
     pmix_tool_basename = "pquery";
     gethostname(hostname, sizeof(hostname));
 
-    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
-        return PMIX_ERROR;
-    }
-
     /* Parse the command line options */
     PMIX_CONSTRUCT(&results, pmix_cli_result_t);
     rc = pmix_cmd_line_parse(argv, pqshorts, pqoptions,
@@ -211,6 +207,20 @@ int main(int argc, char **argv)
             rc = PMIX_SUCCESS;
         }
         exit(rc);
+    }
+
+    // handle relevant MCA params
+    PMIX_LIST_FOREACH(opt, &results.instances, pmix_cli_item_t) {
+        if (0 == strcmp(opt->key, PMIX_CLI_PMIXMCA)) {
+            for (n=0; NULL != opt->values[n]; n++) {
+                pmix_expose_param(opt->values[n]);
+            }
+        }
+    }
+
+    // setup the base infrastructure
+    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
+        return PMIX_ERROR;
     }
 
     /* get the argv array of keys they want us to query */
