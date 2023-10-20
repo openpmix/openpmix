@@ -205,6 +205,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first
 #define PMIX_CONNECT_TO_SCHEDULER           "pmix.cnct.sched"       // (bool) Connect to the system scheduler
 #define PMIX_CONNECT_TO_SYS_CONTROLLER      "pmix.cnct.ctrlr"       // (bool) Connect to the system controller
+#define PMIX_CONNECTION_ORDER               "pmix.cnct.ord"         // (char*) Comma-delimited list of attributes defining connection order
 #define PMIX_SERVER_URI                     "pmix.srvr.uri"         // (char*) URI of server to be contacted
 #define PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
 #define PMIX_SERVER_HOSTNAME                "pmix.srvr.host"        // (char*) node where target server is located
