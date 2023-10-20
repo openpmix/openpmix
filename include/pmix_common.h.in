@@ -205,6 +205,21 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CONNECT_SYSTEM_FIRST           "pmix.cnct.sys.first"   // (bool) Preferentially look for a system-level PMIx server first
 #define PMIX_CONNECT_TO_SCHEDULER           "pmix.cnct.sched"       // (bool) Connect to the system scheduler
 #define PMIX_CONNECT_TO_SYS_CONTROLLER      "pmix.cnct.ctrlr"       // (bool) Connect to the system controller
+#define PMIX_CONNECTION_ORDER               "pmix.cnct.ord"         // (char*) Comma-delimited list of attributes defining the order in which
+                                                                    //        connections should be attempted, from first to last. If the
+                                                                    //        final entry is not an "only" flag (e.g., PMIX_CONNECT_TO_SYSTEM),
+                                                                    //        then connection will default to the local server if no preceding
+                                                                    //        option succeeds. Thus, the following list:
+                                                                    //              PMIX_CONNECT_TO_SCHEDULER
+                                                                    //              PMIX_CONNECT_TO_SYS_CONTROLLER
+                                                                    //              PMIX_CONNECT_TO_SYSTEM
+                                                                    //        would first attempt to connect to the scheduler, then the system
+                                                                    //        controller, and then the local system-level server. If none of those
+                                                                    //        succeed, then the connection attempt will error out.
+                                                                    //        However, if the last entry were PMIX_CONNECT_SYSTEM_FIRST, then the
+                                                                    //        connection procedure would (after failing to connect to a local
+                                                                    //        system-level server) continue to include an attempt to connect
+                                                                    //        to any local server that accepted the connection request.
 #define PMIX_SERVER_URI                     "pmix.srvr.uri"         // (char*) URI of server to be contacted
 #define PMIX_MYSERVER_URI                   "pmix.mysrvr.uri"       // (char*) URI of this proc's listener socket
 #define PMIX_SERVER_HOSTNAME                "pmix.srvr.host"        // (char*) node where target server is located
