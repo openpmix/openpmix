@@ -6,6 +6,7 @@ series, in reverse chronological order.
 
 4.2.7 -- 23 Oct 2023
 --------------------
+ - PR #3183: Update VERSION and NEWS for release
  - PR #3178: Multiple commits
     - Fix couple of bugs in cmd line parser
     - Fix typo in cmd line processor
