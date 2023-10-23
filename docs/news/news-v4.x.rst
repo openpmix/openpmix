@@ -4,6 +4,20 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
+4.2.7 -- 23 Oct 2023
+--------------------
+ - PR #3178: Multiple commits
+    - Fix couple of bugs in cmd line parser
+    - Fix typo in cmd line processor
+ - PR #3172: Multiple commits
+    - Make checking min versions consistent
+    - Add an action to test older HWLOC version
+    - Touchup the OMPI integration
+ - PR #3170: Remove spurious "error log"
+ - PR #3167: Blacklist the HWLOC GL component to avoid deadlock
+ - PR #3161: Add a new Github Action
+ - PR #3159: Update the "group" example
+
 4.2.6 -- 9 Sep 2023
 ----------------------
 .. warning:: CVE-2023-41915
