@@ -284,6 +284,9 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CHECK_SIZEOF(int)
     AC_CHECK_SIZEOF(long)
     AC_CHECK_SIZEOF(void *)
+    AS_IF([test "$ac_cv_sizeof_void_p" -eq 4],
+          [AC_MSG_WARN([PMIx does not support 32 bit builds.])
+           AC_MSG_ERROR([Cannot continue])])
     AC_CHECK_SIZEOF(size_t)
     AC_CHECK_SIZEOF(pid_t)
 
