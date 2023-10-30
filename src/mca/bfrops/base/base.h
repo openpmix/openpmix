@@ -444,6 +444,10 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_alloc_directive(pmix_pointer_arr
                                                                 pmix_buffer_t *buffer,
                                                                 const void *src, int32_t num_vals,
                                                                 pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_resblock_directive(pmix_pointer_array_t *regtypes,
+                                                                   pmix_buffer_t *buffer,
+                                                                   const void *src, int32_t num_vals,
+                                                                   pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_iof_channel(pmix_pointer_array_t *regtypes,
                                                             pmix_buffer_t *buffer, const void *src,
                                                             int32_t num_vals,
@@ -647,6 +651,10 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_alloc_directive(pmix_pointer_a
                                                                   pmix_buffer_t *buffer, void *dest,
                                                                   int32_t *num_vals,
                                                                   pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_resblock_directive(pmix_pointer_array_t *regtypes,
+                                                                     pmix_buffer_t *buffer, void *dest,
+                                                                     int32_t *num_vals,
+                                                                     pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_iof_channel(pmix_pointer_array_t *regtypes,
                                                               pmix_buffer_t *buffer, void *dest,
                                                               int32_t *num_vals,
@@ -918,6 +926,9 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_rank(char **output, char *prefi
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_alloc_directive(char **output, char *prefix,
                                                                  pmix_alloc_directive_t *src,
                                                                  pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_resblock_directive(char **output, char *prefix,
+                                                                    pmix_resource_block_directive_t *src,
+                                                                    pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_print_iof_channel(char **output, char *prefix,
                                                              pmix_iof_channel_t *src,
                                                              pmix_data_type_t type);

@@ -1017,6 +1017,18 @@ pmix_status_t pmix_bfrops_base_pack_alloc_directive(pmix_pointer_array_t *regtyp
     return ret;
 }
 
+pmix_status_t pmix_bfrops_base_pack_resblock_directive(pmix_pointer_array_t *regtypes,
+                                                       pmix_buffer_t *buffer, const void *src,
+                                                       int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t ret;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT8, regtypes);
+    return ret;
+}
+
 pmix_status_t pmix_bfrops_base_pack_iof_channel(pmix_pointer_array_t *regtypes,
                                                 pmix_buffer_t *buffer, const void *src,
                                                 int32_t num_vals, pmix_data_type_t type)

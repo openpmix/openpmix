@@ -203,6 +203,22 @@ PMIX_EXPORT const char *PMIx_Alloc_directive_string(pmix_alloc_directive_t direc
     }
 }
 
+PMIX_EXPORT const char *PMIx_Resource_block_directive_string(pmix_resource_block_directive_t directive)
+{
+    switch (directive) {
+    case PMIX_RESOURCE_BLOCK_DEFINE:
+        return "DEFINE";
+    case PMIX_RESOURCE_BLOCK_EXTEND:
+        return "EXTEND";
+    case PMIX_RESOURCE_BLOCK_REMOVE:
+        return "REMOVE";
+    case PMIX_RESOURCE_BLOCK_DELETE:
+        return "DELETE";
+    default:
+        return "UNSPECIFIED";
+    }
+}
+
 PMIX_EXPORT const char *pmix_command_string(pmix_cmd_t cmd)
 {
     switch (cmd) {

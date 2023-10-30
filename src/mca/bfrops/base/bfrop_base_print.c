@@ -756,6 +756,9 @@ static int print_val(char **output, pmix_value_t *src)
         case PMIX_ALLOC_DIRECTIVE:
             rc = pmix_bfrops_base_print_alloc_directive(&tp, NULL, &src->data.adir, PMIX_ALLOC_DIRECTIVE);
             break;
+        case PMIX_RESBLOCK_DIRECTIVE:
+            rc = pmix_bfrops_base_print_resblock_directive(&tp, NULL, &src->data.adir, PMIX_RESBLOCK_DIRECTIVE);
+            break;
         case PMIX_ENVAR:
             rc = pmix_bfrops_base_print_envar(&tp, NULL, &src->data.envar, PMIX_ENVAR);
             break;
@@ -1212,6 +1215,7 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
     pmix_data_array_t *daptr;
     pmix_regattr_t *rgptr;
     pmix_alloc_directive_t *adptr;
+    pmix_resource_block_directive_t *rbptr;
     pmix_envar_t *evptr;
     pmix_coord_t *coptr;
     pmix_link_state_t *lkptr;
@@ -1365,6 +1369,10 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
             case PMIX_ALLOC_DIRECTIVE:
                 adptr = (pmix_alloc_directive_t*)src->array;
                 rc = pmix_bfrops_base_print_alloc_directive(&tp, prefix, &adptr[n], PMIX_ALLOC_DIRECTIVE);
+                break;
+            case PMIX_RESBLOCK_DIRECTIVE:
+                rbptr = (pmix_resource_block_directive_t*)src->array;
+                rc = pmix_bfrops_base_print_resblock_directive(&tp, prefix, &rbptr[n], PMIX_RESBLOCK_DIRECTIVE);
                 break;
             case PMIX_ENVAR:
                 evptr = (pmix_envar_t*)src->array;
@@ -1563,6 +1571,25 @@ pmix_status_t pmix_bfrops_base_print_alloc_directive(char **output, char *prefix
     ret = asprintf(output, "%sData type: PMIX_ALLOC_DIRECTIVE\tValue: %s",
                    (NULL == prefix) ? " " : prefix,
                    PMIx_Alloc_directive_string(*src));
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_resblock_directive(char **output, char *prefix,
+                                                        pmix_resource_block_directive_t *src,
+                                                        pmix_data_type_t type)
+{
+    int ret;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    ret = asprintf(output, "%sData type: PMIX_RESBLOCK_DIRECTIVE\tValue: %s",
+                   (NULL == prefix) ? " " : prefix,
+                   PMIx_Resource_block_directive_string(*src));
 
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;

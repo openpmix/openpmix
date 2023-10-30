@@ -1214,6 +1214,10 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
             ret = memcmp(d1->array, d2->array, d1->size * sizeof(pmix_alloc_directive_t));
             PMIX_CHECK_SIMPLE(ret);
             break;
+        case PMIX_RESBLOCK_DIRECTIVE:
+            ret = memcmp(d1->array, d2->array, d1->size * sizeof(pmix_resource_block_directive_t));
+            PMIX_CHECK_SIMPLE(ret);
+            break;
         case PMIX_ENVAR:
             e1 = (pmix_envar_t*)d1->array;
             e2 = (pmix_envar_t*)d2->array;
@@ -1525,6 +1529,10 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p1,
         break;
     case PMIX_ALLOC_DIRECTIVE:
         ret = memcmp(&p1->data.adir, &p2->data.adir, sizeof(pmix_alloc_directive_t));
+        PMIX_CHECK_SIMPLE(ret);
+        break;
+    case PMIX_RESBLOCK_DIRECTIVE:
+        ret = memcmp(&p1->data.rbdir, &p2->data.rbdir, sizeof(pmix_resource_block_directive_t));
         PMIX_CHECK_SIMPLE(ret);
         break;
     case PMIX_ENVAR:

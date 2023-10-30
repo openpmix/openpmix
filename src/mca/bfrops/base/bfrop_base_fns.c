@@ -210,6 +210,9 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
         case PMIX_ALLOC_DIRECTIVE:
             memcpy(&(v->data.adir), data, sizeof(pmix_alloc_directive_t));
             break;
+        case PMIX_RESBLOCK_DIRECTIVE:
+            memcpy(&(v->data.rbdir), data, sizeof(pmix_resource_block_directive_t));
+            break;
         case PMIX_ENVAR:
             envar = (pmix_envar_t *) data;
             if (NULL != envar->envar) {
@@ -493,6 +496,10 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
         case PMIX_ALLOC_DIRECTIVE:
             memcpy(*data, &(kv->data.adir), sizeof(pmix_alloc_directive_t));
             *sz = sizeof(pmix_alloc_directive_t);
+            break;
+        case PMIX_RESBLOCK_DIRECTIVE:
+            memcpy(*data, &(kv->data.rbdir), sizeof(pmix_resource_block_directive_t));
+            *sz = sizeof(pmix_resource_block_directive_t);
             break;
         case PMIX_ENVAR:
             PMIX_ENVAR_CREATE(envar, 1);
@@ -1029,6 +1036,9 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
         case PMIX_ALLOC_DIRECTIVE:
             *sz = array->size * sizeof(pmix_alloc_directive_t);
             break;
+        case PMIX_RESBLOCK_DIRECTIVE:
+            *sz = array->size * sizeof(pmix_resource_block_directive_t);
+            break;
         case PMIX_ENVAR:
             *sz = array->size * sizeof(pmix_envar_t);
             en = (pmix_envar_t*)array->array;
@@ -1366,6 +1376,9 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             break;
         case PMIX_ALLOC_DIRECTIVE:
             *sz = sizeof(pmix_alloc_directive_t);
+            break;
+        case PMIX_RESBLOCK_DIRECTIVE:
+            *sz = sizeof(pmix_resource_block_directive_t);
             break;
         case PMIX_ENVAR:
             *sz = sizeof(pmix_envar_t);
