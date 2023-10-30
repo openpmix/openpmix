@@ -1577,6 +1577,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_STOR_PERSIST               68
 #define PMIX_STOR_ACCESS_TYPE           69
 #define PMIX_DEVICE                     70
+#define PMIX_RESBLOCK_DIRECTIVE         71
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -2280,6 +2281,7 @@ typedef struct pmix_value {
         pmix_data_array_t *darray;
         void *ptr;
         pmix_alloc_directive_t adir;
+        pmix_resource_block_directive_t rbdir;
         pmix_envar_t envar;
         pmix_coord_t *coord;
         pmix_link_state_t linkstate;

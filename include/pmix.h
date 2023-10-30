@@ -1170,6 +1170,7 @@ PMIX_EXPORT const char* PMIx_Persistence_string(pmix_persistence_t persist);
 PMIX_EXPORT const char* PMIx_Data_range_string(pmix_data_range_t range);
 PMIX_EXPORT const char* PMIx_Data_type_string(pmix_data_type_t type);
 PMIX_EXPORT const char* PMIx_Alloc_directive_string(pmix_alloc_directive_t directive);
+PMIX_EXPORT const char* PMIx_Resource_block_directive_string(pmix_resource_block_directive_t directive);
 PMIX_EXPORT const char* PMIx_IOF_channel_string(pmix_iof_channel_t channel);
 PMIX_EXPORT const char* PMIx_Job_state_string(pmix_job_state_t state);
 PMIX_EXPORT const char* PMIx_Get_attribute_string(const char *attribute);
