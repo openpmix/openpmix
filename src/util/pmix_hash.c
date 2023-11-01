@@ -623,32 +623,42 @@ static pmix_proc_data_t *lookup_proc(pmix_hash_table_t *jtable, uint32_t id, boo
     return proc_data;
 }
 
-void pmix_hash_register_key(uint32_t inid,
-                            pmix_regattr_input_t *ptr)
+void pmix_hash_register_key_in_keyindex(pmix_pointer_array_t *keyindex,
+                                        uint32_t *next_keyid_ptr,
+                                        uint32_t inid,
+                                        pmix_regattr_input_t *ptr)
 {
     pmix_regattr_input_t *p = NULL;
 
     if (UINT32_MAX == inid) {
         /* store the pointer in the array */
-        pmix_pointer_array_set_item(&pmix_globals.keyindex, pmix_globals.next_keyid, ptr);
-        ptr->index = pmix_globals.next_keyid;
-        pmix_globals.next_keyid += 1;
+        pmix_pointer_array_set_item(keyindex, (int)*next_keyid_ptr, ptr);
+        ptr->index = *next_keyid_ptr;
+        *next_keyid_ptr += 1;
         return;
     }
 
     /* check to see if this key was already registered */
-    p = pmix_pointer_array_get_item(&pmix_globals.keyindex, inid);
+    p = pmix_pointer_array_get_item(keyindex, inid);
     if (NULL != p) {
         /* already have this one */
         return;
     }
     /* store the pointer in the table */
-    pmix_pointer_array_set_item(&pmix_globals.keyindex, inid, ptr);
+    pmix_pointer_array_set_item(keyindex, inid, ptr);
+}
+
+void pmix_hash_register_key(uint32_t inid,
+                            pmix_regattr_input_t *ptr)
+{
+    pmix_hash_register_key_in_keyindex(&pmix_globals.keyindex, &pmix_globals.next_keyid, inid, ptr);
 }
 
 // TODO(skg) We may have to add a TMA wrapper for this call.
-pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
-                                           const char *key)
+pmix_regattr_input_t* pmix_hash_lookup_key_in_keyindex(pmix_pointer_array_t *keyindex,
+                                                       uint32_t *next_keyid_ptr,
+                                                       uint32_t inid,
+                                                       const char *key)
 {
     int id;
     pmix_regattr_input_t *ptr = NULL;
@@ -661,7 +671,7 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
         if (PMIX_CHECK_RESERVED_KEY(key)) {
             /* reserved keys are in the front of the table */
             for (id = 0; id < PMIX_INDEX_BOUNDARY; id++) {
-                ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, id);
+                ptr = pmix_pointer_array_get_item(keyindex, id);
                 if (NULL != ptr) {
                     if (0 == strcmp(key, ptr->string)) {
                         return ptr;
@@ -672,8 +682,8 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
             return NULL;
         }
         /* unreserved keys are at the back of the table */
-        for (id = PMIX_INDEX_BOUNDARY; id < pmix_globals.keyindex.size; id++) {
-            ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, id);
+        for (id = PMIX_INDEX_BOUNDARY; id < keyindex->size; id++) {
+            ptr = pmix_pointer_array_get_item(keyindex, id);
             if (NULL != ptr) {
                 if (0 == strcmp(key, ptr->string)) {
                     return ptr;
@@ -688,7 +698,7 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
         ptr->description = (char**)pmix_malloc(2 * sizeof(char*));
         ptr->description[0] = strdup("USER DEFINED");
         ptr->description[1] = NULL;
-        pmix_hash_register_key(UINT32_MAX, ptr);
+        pmix_hash_register_key_in_keyindex(keyindex, next_keyid_ptr, UINT32_MAX, ptr);
         return ptr;
     }
 
@@ -697,8 +707,14 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
      * non-reserved key, then it had to be registered or else the caller
      * would not have an index to pass us. Thus, the pointer is either
      * found or not - we don't register it if not found. */
-    ptr = pmix_pointer_array_get_item(&pmix_globals.keyindex, inid);
+    ptr = pmix_pointer_array_get_item(keyindex, inid);
     return ptr;
+}
+
+pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
+                                           const char *key)
+{
+    return pmix_hash_lookup_key_in_keyindex(&pmix_globals.keyindex, &pmix_globals.next_keyid, inid, key);
 }
 
 static void erase_qualifiers(pmix_proc_data_t *proc,
