@@ -5,6 +5,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,8 +48,18 @@ PMIX_EXPORT pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
                                                 pmix_rank_t rank,
                                                 const char *key);
 
+PMIX_EXPORT void pmix_hash_register_key_in_keyindex(pmix_pointer_array_t *keyindex,
+                                                    uint32_t *next_keyid_ptr,
+                                                    uint32_t inid,
+                                                    pmix_regattr_input_t *ptr);
+
 PMIX_EXPORT void pmix_hash_register_key(uint32_t inid,
                                         pmix_regattr_input_t *ptr);
+
+PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key_in_keyindex(pmix_pointer_array_t *keyindex,
+                                                                   uint32_t *next_keyid_ptr,
+                                                                   uint32_t inid,
+                                                                   const char *key);
 
 PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
                                                        const char *key);
