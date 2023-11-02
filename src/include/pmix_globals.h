@@ -209,6 +209,7 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_COMPUTE_DEVICE_DISTANCES_CMD 32
 #define PMIX_REFRESH_CACHE                33
 #define PMIX_RESBLK_CMD                   34
+#define PMIX_SESSION_CTRL_CMD             35
 
 /* provide a "pretty-print" function for cmds */
 const char *pmix_command_string(pmix_cmd_t cmd);

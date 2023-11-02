@@ -393,7 +393,6 @@ static pmix_status_t tryfile(pmix_peer_t *peer, char **nspace,
         cn->uri = NULL;
         peer->protocol = PMIX_PROTOCOL_V2;
         PMIX_SET_PEER_VERSION(peer, cn->version, 2, 0);
-        PMIX_LIST_DESTRUCT(&connections);
     }
     PMIX_LIST_DESTRUCT(&connections);
     return rc;

@@ -216,29 +216,47 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
         return PMIX_ERR_INIT;
     }
 
-    /* if we are the server, then we just issue the request and
-     * return the response */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    /* if we are hosted by the scheduler, then this makes no sense */
+    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        if (NULL == pmix_host_server.allocate) {
-            /* nothing we can do */
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* if we are the system controller but not connected
+     * to the scheduler, then nothing we can do */
+    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        if (!PMIX_PEER_IS_SCHEDULER(pmix_client_globals.myserver)) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_NOT_SUPPORTED;
         }
+        // otherwise send it to the scheduler
+        goto sendit;
+    }
+
+    /* if we are a server and our host provides an allocate
+     * entry, then pass it up - they might need to forward
+     * it to their system controller or via some outside
+     * path to the scheduler */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        NULL != pmix_host_server.allocate) {
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:allocate handed to RM");
+                            "pmix:allocate handed to host");
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         rc = pmix_host_server.allocate(&pmix_globals.myid, directive, info, ninfo, cbfunc, cbdata);
         return rc;
     }
 
-    /* if we are a client, then relay this request to the server */
-
-    /* if we aren't connected, don't attempt to send */
+sendit:
+    /* for all other cases, we need to send this to someone
+     * if we aren't connected, don't attempt to send */
     if (!pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_UNREACH;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
+    /* all other cases, relay this request to our server, which
+     * might (for a tool) actually be the scheduler itself */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
@@ -299,7 +317,7 @@ static void blkcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:query cback from server");
+                        "pmix:resource block cback from server");
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -391,30 +409,47 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
         return PMIX_ERR_INIT;
     }
 
-    /* if we are the server, then we just issue the request and
-     * return the response */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    /* if we are hosted by the scheduler, then this makes no sense */
+    if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        if (NULL == pmix_host_server.resource_block) {
-            /* nothing we can do */
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    /* if we are the system controller but not connected
+     * to the scheduler, then nothing we can do */
+    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        if (!PMIX_PEER_IS_SCHEDULER(pmix_client_globals.myserver)) {
+            PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_NOT_SUPPORTED;
         }
+        // otherwise send it to the scheduler
+        goto sendit;
+    }
+
+    /* if we are a server and our host provides a resource block
+     * entry, then pass it up - they might need to forward
+     * it to their system controller or via some outside
+     * path to the scheduler */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        NULL != pmix_host_server.resource_block) {
         pmix_output_verbose(2, pmix_globals.debug_output,
-                            "pmix:allocate handed to RM");
+                            "pmix:resource_block handed to host");
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
         rc = pmix_host_server.resource_block(&pmix_globals.myid, directive, block,
                                              info, ninfo, cbfunc, cbdata);
         return rc;
     }
 
-    /* if we are a client, then relay this request to the server */
-
-    /* if we aren't connected, don't attempt to send */
+sendit:
+    /* for all other cases, we need to send this to someone
+     *  if we aren't connected, don't attempt to send */
     if (!pmix_globals.connected) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_UNREACH;
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
+    /* all other cases, relay this request to our server */
     msg = PMIX_NEW(pmix_buffer_t);
     /* pack the cmd */
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
@@ -425,7 +460,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
     }
 
     /* pack the directive */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &directive, 1, PMIX_ALLOC_DIRECTIVE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &directive, 1, PMIX_RESBLOCK_DIRECTIVE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);

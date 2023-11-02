@@ -286,6 +286,10 @@ PMIX_EXPORT const char *pmix_command_string(pmix_cmd_t cmd)
         return "COMPUTE DEVICE DIST";
     case PMIX_REFRESH_CACHE:
         return "REFRESH CACHE";
+    case PMIX_RESBLK_CMD:
+        return "RESOURCE BLOCK";
+    case PMIX_SESSION_CTRL_CMD:
+        return "SESSION CONTROL";
     default:
         return "UNKNOWN";
     }
