@@ -5139,10 +5139,148 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
                                  pmix_buffer_t *buf,
                                  pmix_op_cbfunc_t cbfunc)
 {
-    PMIX_HIDE_UNUSED_PARAMS(cd, buf, cbfunc);
-    return PMIX_ERR_NOT_SUPPORTED;
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_setup_caddy_t *scd;
+    pmix_proc_t proc;
+    pmix_resource_block_directive_t directive;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "%s recvd resource block request from client %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIX_PEER_PRINT(cd->peer));
+
+    if (NULL == pmix_host_server.resource_block) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    scd = PMIX_NEW(pmix_setup_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    scd->cbdata = cd;
+
+    /* unpack the directive */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &directive, &cnt, PMIX_RESBLOCK_DIRECTIVE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    // unpack the block name
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &scd->nspace, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* unpack the number of info objects */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &scd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the info */
+    if (0 < scd->ninfo) {
+        PMIX_INFO_CREATE(scd->info, scd->ninfo);
+        cnt = scd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, scd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+    // declare the info to be copied so the destructor will release them
+    scd->copied = true;
+
+    /* setup the requesting peer name */
+    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = cd->peer->info->pname.rank;
+
+    /* ask the host to execute the request */
+    rc = pmix_host_server.resource_block(&proc, directive, scd->nspace,
+                                         scd->info, scd->ninfo, cbfunc, scd);
+    if (PMIX_SUCCESS != rc) {
+        goto exit;
+    }
+    return PMIX_SUCCESS;
+
+exit:
+    PMIX_RELEASE(scd);
+    return rc;
 }
 
+
+pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
+                                       pmix_buffer_t *buf,
+                                       pmix_info_cbfunc_t cbfunc)
+{
+    int32_t cnt;
+    pmix_status_t rc;
+    pmix_shift_caddy_t *scd;
+    pmix_proc_t proc;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "%s recvd session ctrl request from client %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIX_PEER_PRINT(cd->peer));
+
+    if (NULL == pmix_host_server.session_control) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == cd) {
+        return PMIX_ERR_NOMEM;
+    }
+    scd->cbdata = cd;
+    scd->cbfunc.infocbfunc = cbfunc;
+
+    /* unpack the sessionID */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &scd->sessionid, &cnt, PMIX_UINT32);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+
+    /* unpack the number of info objects */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &scd->ninfo, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the info */
+    if (0 < scd->ninfo) {
+        PMIX_INFO_CREATE(scd->info, scd->ninfo);
+        cnt = scd->ninfo;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, scd->info, &cnt, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* setup the requesting peer name */
+    pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
+    proc.rank = cd->peer->info->pname.rank;
+
+    /* ask the host to execute the request */
+    rc = pmix_host_server.session_control(&proc, scd->sessionid,
+                                          scd->info, scd->ninfo, cbfunc, scd);
+    if (PMIX_SUCCESS != rc) {
+        goto exit;
+    }
+    return PMIX_SUCCESS;
+
+exit:
+    PMIX_RELEASE(scd);
+    return rc;
+}
 
 /*****    INSTANCE SERVER LIBRARY CLASSES    *****/
 static void gcon(pmix_grpinfo_t *p)

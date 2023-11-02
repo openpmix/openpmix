@@ -6,7 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,13 +38,15 @@ static void relcbfunc(void *cbdata)
 {
     pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:job_ctrl release callback");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:job_ctrl release callback");
 
     if (NULL != cd->info) {
         PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
     PMIX_RELEASE(cd);
 }
+
 static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata)
 {
@@ -55,7 +57,8 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     PMIX_HIDE_UNUSED_PARAMS(hdr);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:job_ctrl cback from server with %d bytes", (int) buf->bytes_used);
+                        "pmix:job_ctrl cback from server with %d bytes",
+                        (int) buf->bytes_used);
 
     /* a zero-byte buffer indicates that this recv is being
      * completed due to a lost connection */
@@ -99,7 +102,8 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     }
 
 complete:
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:job_ctrl cback from server releasing");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:job_ctrl cback from server releasing");
     /* release the caller */
     if (NULL != cd->cbfunc) {
         cd->cbfunc(results->status, results->info, results->ninfo, cd->cbdata, relcbfunc, results);

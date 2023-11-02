@@ -362,6 +362,10 @@ PMIX_EXPORT pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
                                              pmix_buffer_t *buf,
                                              pmix_op_cbfunc_t cbfunc);
 
+PMIX_EXPORT pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
+                                                   pmix_buffer_t *buf,
+                                                   pmix_info_cbfunc_t cbfunc);
+
 PMIX_EXPORT void pmix_server_query_cbfunc(pmix_status_t status,
                                           pmix_info_t *info, size_t ninfo, void *cbdata,
                                           pmix_release_cbfunc_t release_fn, void *release_cbdata);
