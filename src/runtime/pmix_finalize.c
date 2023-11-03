@@ -63,7 +63,6 @@ void pmix_rte_finalize(void)
     int i;
     pmix_notify_caddy_t *cd;
     pmix_iof_req_t *req;
-    pmix_regattr_input_t *p;
 
     if (!pmix_init_called) {
         return;
@@ -147,22 +146,6 @@ void pmix_rte_finalize(void)
     }
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.groups);
-
-    for (i=0; i < pmix_globals.keyindex.size; i++) {
-        p = (pmix_regattr_input_t*)pmix_pointer_array_get_item(&pmix_globals.keyindex, i);
-        if (NULL != p) {
-            if (NULL != p->name) {
-                free(p->name);
-            }
-            if (NULL != p->string) {
-                free(p->string);
-            }
-            if (NULL != p->description) {
-                PMIx_Argv_free(p->description);
-            }
-            free(p);
-        }
-    }
     PMIX_DESTRUCT(&pmix_globals.keyindex);
     free(pmix_globals.myidval.data.proc);
 

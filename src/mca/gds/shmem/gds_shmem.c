@@ -1950,8 +1950,9 @@ server_store_modex_cb(
             );
         }
         else {
+            // TODO(skg)
             rc = pmix_hash_store(
-                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv, NULL, 0
+                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv, NULL, 0, NULL
             );
         }
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {

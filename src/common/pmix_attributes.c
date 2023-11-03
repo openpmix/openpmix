@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,7 +80,7 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
             p->string = strdup(pmix_dictionary[n].string);
             p->type = pmix_dictionary[n].type;
             p->description = PMIx_Argv_copy(pmix_dictionary[n].description);
-            pmix_hash_register_key(p->index, p);
+            pmix_hash_register_key(p->index, p, NULL);
         }
         initialized = true;
     }
