@@ -236,8 +236,14 @@ tma_realloc(
     size_t size
 ) {
     PMIX_HIDE_UNUSED_PARAMS(tma, ptr, size);
+    static const char *emsg = "\n***\nA realloc() backed by shared-memory "
+        "was attempted within the gds/shmem component. This behavior "
+        "is currently unsupported.\nResolve this issue by disabling the "
+        "gds/shmem component by setting in your environment the following:\n"
+        "PMIX_MCA_gds=hash\n***\n";
     // We don't support realloc.
-    PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+    // Present error this way because it is likely coming from the server.
+    perror(emsg);
     abort();
     return NULL;
 }
