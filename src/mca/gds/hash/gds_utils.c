@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- *
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -320,7 +320,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                             "[%s:%d] gds:hash:store_map adding key %s to job info",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank, kp2->key);
-        if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2, NULL, 0))) {
+        if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2, NULL, 0, NULL))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(kp2);
             return rc;
@@ -436,7 +436,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                                 "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
                                 pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, rank,
                                 kp2->key);
-            if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2, NULL, 0))) {
+            if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2, NULL, 0, NULL))) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(kp2);
                 PMIx_Argv_free(procs);
@@ -454,7 +454,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                                     pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, rank,
                                     kp2->key);
                 kp2->value->data.uint32 = n;
-                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2, NULL, 0))) {
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2, NULL, 0, NULL))) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(kp2);
                     PMIx_Argv_free(procs);
@@ -471,7 +471,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                                     "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
                                     pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, rank,
                                     kp2->key);
-                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2, NULL, 0))) {
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2, NULL, 0, NULL))) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(kp2);
                     PMIx_Argv_free(procs);
@@ -489,7 +489,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
                                     "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
                                     pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, rank,
                                     kp2->key);
-                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2, NULL, 0))) {
+                if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, rank, kp2, NULL, 0, NULL))) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_RELEASE(kp2);
                     PMIx_Argv_free(procs);
@@ -512,7 +512,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:hash:store_map for nspace %s: key %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, kp2->key);
-    if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2, NULL, 0))) {
+    if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2, NULL, 0, NULL))) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(kp2);
         return rc;
@@ -531,7 +531,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                             "[%s:%d] gds:hash:store_map for nspace %s: key %s",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, kp2->key);
-        if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2, NULL, 0))) {
+        if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2, NULL, 0, NULL))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(kp2);
             return rc;
@@ -553,7 +553,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                             "[%s:%d] gds:hash:store_map for nspace %s: key %s",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank, trk->ns, kp2->key);
-        if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2, NULL, 0))) {
+        if (PMIX_SUCCESS != (rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kp2, NULL, 0, NULL))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(kp2);
             return rc;
@@ -593,7 +593,7 @@ pmix_status_t pmix_gds_hash_store_qualified(pmix_hash_table_t *ht,
     }
 
     /* store the result */
-    rc = pmix_hash_store(ht, rank, &kv, quals, nquals);
+    rc = pmix_hash_store(ht, rank, &kv, quals, nquals, NULL);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
     }

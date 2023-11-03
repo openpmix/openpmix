@@ -580,8 +580,9 @@ pmix_gds_shmem_fetch(
     // complete copy of the job-level info for this nspace, so retrieve it.
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
         // Fetch all values from the hash table tied to rank=wildcard.
+        // TODO(skg)
         rc = pmix_hash_fetch(
-            local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
+            local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL
         );
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
@@ -622,9 +623,9 @@ pmix_gds_shmem_fetch(
         for (pmix_rank_t rank = 0; rank < job->nspace->nprocs; rank++) {
             pmix_list_t rkvs;
             PMIX_CONSTRUCT(&rkvs, pmix_list_t);
-
+            // TODO(skg)
             rc = pmix_hash_fetch(
-                local_ht, rank, NULL, NULL, 0, &rkvs
+                local_ht, rank, NULL, NULL, 0, &rkvs, NULL
             );
             if (PMIX_UNLIKELY(PMIX_ERR_NOMEM == rc)) {
                 PMIX_LIST_DESTRUCT(&rkvs);
@@ -742,7 +743,8 @@ doover:
     // be the source.
     if (PMIX_RANK_UNDEF == proc->rank && ht) {
         for (pmix_rank_t rnk = 0; rnk < job->nspace->nprocs; rnk++) {
-            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs);
+            // TODO(skg)
+            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs, NULL);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
@@ -771,8 +773,9 @@ doover:
         if (NULL == key) {
             // And need to add all job info just in case
             // that was passed via a different GDS component.
+            // TODO(skg)
             rc = pmix_hash_fetch(
-                local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs
+                local_ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL
             );
         }
         else {
@@ -781,8 +784,9 @@ doover:
     }
     else {
         if (ht) {
+            // TODO(skg)
             rc = pmix_hash_fetch(
-                ht, proc->rank, key, qualifiers, nqual, kvs
+                ht, proc->rank, key, qualifiers, nqual, kvs, NULL
             );
         }
         else {

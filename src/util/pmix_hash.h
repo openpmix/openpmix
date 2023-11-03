@@ -28,14 +28,16 @@ BEGIN_C_DECLS
  * rank index.*/
 PMIX_EXPORT pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                                           pmix_rank_t rank, pmix_kval_t *kin,
-                                          pmix_info_t *qualifiers, size_t nquals);
+                                          pmix_info_t *qualifiers, size_t nquals,
+                                          pmix_keyindex_t *kidx);
 
 /* Fetch the value for a specified key and rank from within
  * the given hash_table */
 PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t rank,
                                           const char *key,
                                           pmix_info_t *qualifiers, size_t nquals,
-                                          pmix_list_t *kvals);
+                                          pmix_list_t *kvals,
+                                          pmix_keyindex_t *kidx);
 
 /* remove the specified key-value from the given hash_table.
  * A NULL key will result in removal of all data for the
@@ -46,23 +48,16 @@ PMIX_EXPORT pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table, pmix_rank_t 
  * table */
 PMIX_EXPORT pmix_status_t pmix_hash_remove_data(pmix_hash_table_t *table,
                                                 pmix_rank_t rank,
-                                                const char *key);
-
-PMIX_EXPORT void pmix_hash_register_key_in_keyindex(pmix_pointer_array_t *keyindex,
-                                                    uint32_t *next_keyid_ptr,
-                                                    uint32_t inid,
-                                                    pmix_regattr_input_t *ptr);
+                                                const char *key,
+                                                pmix_keyindex_t *kidx);
 
 PMIX_EXPORT void pmix_hash_register_key(uint32_t inid,
-                                        pmix_regattr_input_t *ptr);
-
-PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key_in_keyindex(pmix_pointer_array_t *keyindex,
-                                                                   uint32_t *next_keyid_ptr,
-                                                                   uint32_t inid,
-                                                                   const char *key);
+                                        pmix_regattr_input_t *ptr,
+                                        pmix_keyindex_t *kidx);
 
 PMIX_EXPORT pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
-                                                       const char *key);
+                                                       const char *key,
+                                                       pmix_keyindex_t *kidx);
 
 #define PMIX_HASH_TRACE_KEY_ACTUAL(s, r, k, id, tbl, v)                     \
 do {                                                                        \
@@ -70,7 +65,7 @@ do {                                                                        \
     char *_v;                                                               \
     pmix_regattr_input_t *_p;                                               \
     if (NULL == (k) && UINT32_MAX != id) {                                  \
-        _p = pmix_hash_lookup_key((id), NULL);                              \
+        _p = pmix_hash_lookup_key((id), NULL, NULL);                        \
         if (NULL == _p) {                                                   \
             _k = "KEY NOT FOUND";                                           \
         } else {                                                            \
