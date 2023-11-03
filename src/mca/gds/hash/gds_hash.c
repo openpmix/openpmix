@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -314,7 +314,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                     kv.key = iptr[j].key;
                     kv.value = &iptr[j].value;
                     /* store it in the hash_table */
-                    rc = pmix_hash_store(ht, rank, &kv, NULL, 0);
+                    rc = pmix_hash_store(ht, rank, &kv, NULL, 0, NULL);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         goto release;
@@ -336,7 +336,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 kv.key = PMIX_APPNUM;
                 kv.value = &val;
                 PMIX_VALUE_LOAD(&val, &zero, PMIX_UINT32);
-                rc = pmix_hash_store(ht, rank, &kv, NULL, 0);
+                rc = pmix_hash_store(ht, rank, &kv, NULL, 0, NULL);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
@@ -445,7 +445,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                 /* just a value relating to the entire job */
                 kv.key = info[n].key;
                 kv.value = &info[n].value;
-                rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kv, NULL, 0);
+                rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kv, NULL, 0, NULL);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     goto release;
@@ -480,7 +480,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             if (PMIX_CHECK_KEY(kvptr, PMIX_QUALIFIED_VALUE)) {
                 rc = pmix_gds_hash_store_qualified(ht, PMIX_RANK_WILDCARD, kvptr->value);
             } else {
-                rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kvptr, NULL, 0);
+                rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, kvptr, NULL, 0, NULL);
             }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -539,7 +539,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
 
     /* fetch all values from the hash table tied to rank=wildcard */
     PMIX_CONSTRUCT(&values, pmix_list_t);
-    rc = pmix_hash_fetch(ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, &values);
+    rc = pmix_hash_fetch(ht, PMIX_RANK_WILDCARD, NULL, NULL, 0, &values, NULL);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_LIST_DESTRUCT(&values);
@@ -639,7 +639,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
         pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                             "FETCHING PROC INFO FOR RANK %s", PMIX_RANK_PRINT(rank));
         PMIX_CONSTRUCT(&values, pmix_list_t);
-        rc = pmix_hash_fetch(ht, rank, NULL, NULL, 0, &values);
+        rc = pmix_hash_fetch(ht, rank, NULL, NULL, 0, &values, NULL);
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_LIST_DESTRUCT(&values);
@@ -843,7 +843,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 if (PMIX_CHECK_KEY(&kp2, PMIX_QUALIFIED_VALUE)) {
                     rc = pmix_gds_hash_store_qualified(ht, rank, kp2.value);
                 } else {
-                    rc = pmix_hash_store(ht, rank, &kp2, NULL, 0);
+                    rc = pmix_hash_store(ht, rank, &kp2, NULL, 0, NULL);
                 }
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -944,7 +944,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                         2, pmix_gds_base_framework.framework_output,
                         "[%s:%u] pmix:gds:hash store map info for rank %u working key %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank, rank, kv2.key);
-                    rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kv2, NULL, 0);
+                    rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kv2, NULL, 0, NULL);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
                         PMIX_DESTRUCT(&kptr);
@@ -965,7 +965,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 val.type = PMIX_STRING;
                 val.data.string = PMIx_Argv_join(nodelist, ',');
                 PMIx_Argv_free(nodelist);
-                rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kv2, NULL, 0);
+                rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kv2, NULL, 0, NULL);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     PMIX_DESTRUCT(&kptr);
@@ -1110,7 +1110,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 if (PMIX_CHECK_KEY(&kv, PMIX_QUALIFIED_VALUE)) {
                     rc = pmix_gds_hash_store_qualified(ht, rank, kv.value);
                 } else {
-                    rc = pmix_hash_store(ht, rank, &kv, NULL, 0);
+                    rc = pmix_hash_store(ht, rank, &kv, NULL, 0, NULL);
                 }
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -1125,7 +1125,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
             if (PMIX_CHECK_KEY(&kptr, PMIX_QUALIFIED_VALUE)) {
                 rc = pmix_gds_hash_store_qualified(ht, PMIX_RANK_WILDCARD, kptr.value);
             } else {
-                rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kptr, NULL, 0);
+                rc = pmix_hash_store(ht, PMIX_RANK_WILDCARD, &kptr, NULL, 0, NULL);
             }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -1204,7 +1204,7 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
             if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
                 rc = pmix_gds_hash_store_qualified(&trk->internal, proc->rank, kv->value);
             } else {
-                rc = pmix_hash_store(&trk->internal, proc->rank, kv, NULL, 0);
+                rc = pmix_hash_store(&trk->internal, proc->rank, kv, NULL, 0, NULL);
             }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -1254,7 +1254,7 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
                                     "%s gds:hash:STORE data for nspace %s rank %u: key %s",
                                     PMIX_NAME_PRINT(&pmix_globals.myid), trk->ns, rank, kp.key);
                 /* store it in the hash_table */
-                rc = pmix_hash_store(&trk->internal, rank, &kp, NULL, 0);
+                rc = pmix_hash_store(&trk->internal, rank, &kp, NULL, 0, NULL);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                     return rc;
@@ -1266,7 +1266,7 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
         if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
             rc = pmix_gds_hash_store_qualified(&trk->internal, proc->rank, kv->value);
         } else {
-            rc = pmix_hash_store(&trk->internal, proc->rank, kv, NULL, 0);
+            rc = pmix_hash_store(&trk->internal, proc->rank, kv, NULL, 0, NULL);
         }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1276,7 +1276,7 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
         if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
             rc = pmix_gds_hash_store_qualified(&trk->remote, proc->rank, kv->value);
         } else {
-            rc = pmix_hash_store(&trk->remote, proc->rank, kv, NULL, 0);
+            rc = pmix_hash_store(&trk->remote, proc->rank, kv, NULL, 0, NULL);
         }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1286,7 +1286,7 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
         if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
             rc = pmix_gds_hash_store_qualified(&trk->local, proc->rank, kv->value);
         } else {
-            rc = pmix_hash_store(&trk->local, proc->rank, kv, NULL, 0);
+            rc = pmix_hash_store(&trk->local, proc->rank, kv, NULL, 0, NULL);
         }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1301,12 +1301,12 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
             }
             rc = pmix_gds_hash_store_qualified(&trk->local, proc->rank, kv->value);
         } else {
-            rc = pmix_hash_store(&trk->remote, proc->rank, kv, NULL, 0);
+            rc = pmix_hash_store(&trk->remote, proc->rank, kv, NULL, 0, NULL);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
-            rc = pmix_hash_store(&trk->local, proc->rank, kv, NULL, 0);
+            rc = pmix_hash_store(&trk->local, proc->rank, kv, NULL, 0, NULL);
         }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1367,7 +1367,7 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *pro
             if (PMIX_CHECK_KEY(&kv, PMIX_QUALIFIED_VALUE)) {
                 rc = pmix_gds_hash_store_qualified(&trk->remote, 0, kv.value);
             } else {
-                rc = pmix_hash_store(&trk->remote, 0, &kv, NULL, 0);
+                rc = pmix_hash_store(&trk->remote, 0, &kv, NULL, 0, NULL);
             }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
@@ -1378,7 +1378,7 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *pro
             if (PMIX_CHECK_KEY(&kv, PMIX_QUALIFIED_VALUE)) {
                 rc = pmix_gds_hash_store_qualified(&trk->remote, proc->rank, kv.value);
             } else {
-                rc = pmix_hash_store(&trk->remote, proc->rank, &kv, NULL, 0);
+                rc = pmix_hash_store(&trk->remote, proc->rank, &kv, NULL, 0, NULL);
             }
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);

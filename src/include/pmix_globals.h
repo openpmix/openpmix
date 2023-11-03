@@ -698,6 +698,22 @@ typedef struct {
 } pmix_notify_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_notify_caddy_t);
 
+typedef struct {
+    pmix_object_t super;
+    /** Points to key <--> index translation table. */
+    pmix_pointer_array_t *table;
+    /** Stores the next ID. */
+    uint32_t next_id;
+} pmix_keyindex_t;
+PMIX_CLASS_DECLARATION(pmix_keyindex_t);
+
+#define PMIX_KEYINDEX_STATIC_INIT                 \
+{                                                 \
+    .super = PMIX_OBJ_STATIC_INIT(pmix_object_t), \
+    .table = NULL,                                \
+    .next_id = PMIX_INDEX_BOUNDARY                \
+}
+
 /****    GLOBAL STORAGE    ****/
 /* define a global construct that includes values that must be shared
  * between various parts of the code library. The client, tool,
@@ -741,8 +757,7 @@ typedef struct {
     bool external_topology;
     bool external_progress;
     pmix_iof_flags_t iof_flags;
-    pmix_pointer_array_t keyindex;  // translation table of key <-> index
-    uint32_t next_keyid;
+    pmix_keyindex_t keyindex;
 } pmix_globals_t;
 
 /* provide access to a function to cleanup epilogs */

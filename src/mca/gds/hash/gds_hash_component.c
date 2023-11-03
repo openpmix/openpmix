@@ -14,6 +14,7 @@
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -111,11 +112,11 @@ static void htdes(pmix_job_t *p)
         PMIX_RELEASE(p->nptr);
     }
     PMIX_LIST_DESTRUCT(&p->jobinfo);
-    pmix_hash_remove_data(&p->internal, PMIX_RANK_WILDCARD, NULL);
+    pmix_hash_remove_data(&p->internal, PMIX_RANK_WILDCARD, NULL, NULL);
     PMIX_DESTRUCT(&p->internal);
-    pmix_hash_remove_data(&p->remote, PMIX_RANK_WILDCARD, NULL);
+    pmix_hash_remove_data(&p->remote, PMIX_RANK_WILDCARD, NULL, NULL);
     PMIX_DESTRUCT(&p->remote);
-    pmix_hash_remove_data(&p->local, PMIX_RANK_WILDCARD, NULL);
+    pmix_hash_remove_data(&p->local, PMIX_RANK_WILDCARD, NULL, NULL);
     PMIX_DESTRUCT(&p->local);
     PMIX_LIST_DESTRUCT(&p->apps);
     PMIX_LIST_DESTRUCT(&p->nodeinfo);

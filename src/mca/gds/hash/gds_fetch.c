@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -532,7 +532,7 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
      * info for this nspace - retrieve it */
     if (NULL == key && PMIX_RANK_WILDCARD == proc->rank) {
         /* fetch all values from the hash table tied to rank=wildcard */
-        rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
+        rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL);
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
@@ -566,7 +566,7 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
         /* finally, we need the job-level info for each rank in the job */
         for (rnk = 0; rnk < trk->nptr->nprocs; rnk++) {
             PMIX_CONSTRUCT(&rkvs, pmix_list_t);
-            rc = pmix_hash_fetch(&trk->internal, rnk, NULL, NULL, 0, &rkvs);
+            rc = pmix_hash_fetch(&trk->internal, rnk, NULL, NULL, 0, &rkvs, NULL);
             if (PMIX_ERR_NOMEM == rc) {
                 PMIX_LIST_DESTRUCT(&rkvs);
                 return rc;
@@ -673,7 +673,7 @@ doover:
      * be the source */
     if (PMIX_RANK_UNDEF == proc->rank) {
         for (rnk = 0; rnk < trk->nptr->nprocs; rnk++) {
-            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs);
+            rc = pmix_hash_fetch(ht, rnk, key, qualifiers, nqual, kvs, NULL);
             if (PMIX_ERR_NOMEM == rc) {
                 return rc;
             }
@@ -701,12 +701,12 @@ doover:
         if (NULL == key) {
             /* and need to add all job info just in case that was
              * passed via a different GDS component */
-            rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs);
+            rc = pmix_hash_fetch(&trk->internal, PMIX_RANK_WILDCARD, NULL, NULL, 0, kvs, NULL);
         } else {
             rc = PMIX_ERR_NOT_FOUND;
         }
     } else {
-        rc = pmix_hash_fetch(ht, proc->rank, key, qualifiers, nqual, kvs);
+        rc = pmix_hash_fetch(ht, proc->rank, key, qualifiers, nqual, kvs, NULL);
     }
     if (PMIX_SUCCESS == rc) {
         if (PMIX_GLOBAL == scope) {
@@ -742,7 +742,7 @@ doover:
         if (PMIX_RANK_IS_VALID(proc->rank)) {
             if (PMIX_LOCAL == scope) {
                 /* check the remote scope */
-                rc = pmix_hash_fetch(&trk->remote, proc->rank, key, qualifiers, nqual, kvs);
+                rc = pmix_hash_fetch(&trk->remote, proc->rank, key, qualifiers, nqual, kvs, NULL);
                 if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
                     while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
                         PMIX_RELEASE(kv);
@@ -753,7 +753,7 @@ doover:
                 }
             } else if (PMIX_REMOTE == scope) {
                 /* check the local scope */
-                rc = pmix_hash_fetch(&trk->local, proc->rank, key, qualifiers, nqual, kvs);
+                rc = pmix_hash_fetch(&trk->local, proc->rank, key, qualifiers, nqual, kvs, NULL);
                 if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
                     while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
                         PMIX_RELEASE(kv);

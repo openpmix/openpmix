@@ -19,7 +19,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -115,8 +115,7 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .external_topology = false,
     .external_progress = false,
     .iof_flags = PMIX_IOF_FLAGS_STATIC_INIT,
-    .keyindex = PMIX_POINTER_ARRAY_STATIC_INIT,
-    .next_keyid = PMIX_INDEX_BOUNDARY
+    .keyindex = PMIX_KEYINDEX_STATIC_INIT
 };
 
 static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_num, void *occupant)
@@ -328,8 +327,8 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     ret = pmix_hotel_init(&pmix_globals.notifications, pmix_globals.max_events, pmix_globals.evbase,
                           pmix_globals.event_eviction_time, _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
-    PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_pointer_array_t);
-    pmix_pointer_array_init(&pmix_globals.keyindex, 1024, INT_MAX, 128);
+    PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_keyindex_t);
+    pmix_pointer_array_init(pmix_globals.keyindex.table, 1024, INT_MAX, 128);
     PMIX_CONSTRUCT(&pmix_client_globals.groups, pmix_list_t);
     /* need to hold off checking the hotel init return code
      * until after we construct all the globals so they can
