@@ -25,6 +25,7 @@
 #include "src/include/pmix_socket_errno.h"
 #include "src/include/pmix_stdint.h"
 #include "src/include/pmix_types.h"
+#include "src/include/pmix_dictionary.h"
 
 #include "src/include/pmix_globals.h"
 
@@ -194,6 +195,40 @@ static void ncddes(pmix_nspace_caddy_t *p)
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_nspace_caddy_t,
                                 pmix_list_item_t,
                                 ncdcon, ncddes);
+
+static void keyindex_construct(pmix_keyindex_t *ki)
+{
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
+
+    ki->table = PMIX_NEW(pmix_pointer_array_t, tma);
+    ki->next_id = PMIX_INDEX_BOUNDARY;
+}
+
+static void keyindex_destruct(pmix_keyindex_t *ki)
+{
+    pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
+
+    for (int i = 0; i < ki->table->size; i++) {
+        pmix_regattr_input_t *p = (pmix_regattr_input_t *)pmix_pointer_array_get_item(ki->table, i);
+        if (NULL != p) {
+            if (NULL != p->name) {
+                pmix_tma_free(tma, p->name);
+            }
+            if (NULL != p->string) {
+                pmix_tma_free(tma, p->string);
+            }
+            if (NULL != p->description) {
+                pmix_bfrops_base_tma_argv_free(p->description, tma);
+            }
+            pmix_tma_free(tma, p);
+        }
+    }
+    PMIX_RELEASE(ki->table);
+}
+
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_keyindex_t,
+                                pmix_object_t,
+                                keyindex_construct, keyindex_destruct);
 
 static void info_con(pmix_rank_info_t *info)
 {

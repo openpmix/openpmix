@@ -9,7 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -3782,9 +3782,9 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
      * store it for us before releasing the group members */
     if (NULL != bo) {
         /* get the indices of the types of data */
-        p = pmix_hash_lookup_key(UINT32_MAX, PMIX_GROUP_ENDPT_DATA);
+        p = pmix_hash_lookup_key(UINT32_MAX, PMIX_GROUP_ENDPT_DATA, NULL);
         endptidx = p->index;
-        p = pmix_hash_lookup_key(UINT32_MAX, PMIX_GROUP_INFO);
+        p = pmix_hash_lookup_key(UINT32_MAX, PMIX_GROUP_INFO, NULL);
         infoidx = p->index;
 
         PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
@@ -4461,7 +4461,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             /* add the endpt data */
             PMIX_CONSTRUCT(&bucket, pmix_buffer_t);
             if (0 < bo.size) {
-                p = pmix_hash_lookup_key(UINT32_MAX, PMIX_GROUP_ENDPT_DATA);
+                p = pmix_hash_lookup_key(UINT32_MAX, PMIX_GROUP_ENDPT_DATA, NULL);
                 PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &p->index, 1, PMIX_UINT32);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
@@ -4477,7 +4477,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                 PMIX_BYTE_OBJECT_DESTRUCT(&bo);
             }
             if (0 < pmix_list_get_size(&trk->grpinfo)) {
-                p = pmix_hash_lookup_key(UINT32_MAX, PMIX_GROUP_INFO);
+                p = pmix_hash_lookup_key(UINT32_MAX, PMIX_GROUP_INFO, NULL);
                 PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &bucket, &p->index, 1, PMIX_UINT32);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
