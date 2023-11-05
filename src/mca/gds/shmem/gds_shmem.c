@@ -47,6 +47,10 @@
 #define SHMEM_SEG_SIZE_KEY "PMIX_GDS_SHMEM_SEG_SIZE"
 #define SHMEM_SEG_HADR_KEY "PMIX_GDS_SHMEM_SEG_HADR"
 
+#define EMSG_SHMEM_IS_BROKEN "\n***\nAn unrecoverable error occurred in the "  \
+"gds/shmem component.\nResolve this issue by disabling it. Set in your "       \
+"environment the following:\nPMIX_MCA_gds=hash\n***\n"
+
 /**
  * Stores packed job information.
  */
@@ -159,6 +163,60 @@ strtost(
 }
 
 /**
+ * Stores TMA memory allocation information.
+ */
+typedef struct {
+    /** Size of allocation. */
+    size_t extent;
+} pmix_gds_shmem_tma_alloc_t;
+
+/**
+ * Holds allocation context information.
+ */
+typedef struct {
+    pmix_object_t super;
+    /** Address to allocation information table. */
+    pmix_hash_table_t addr2info;
+    /** Handle to shared-memory backing store. */
+    pmix_shmem_t *shmem;
+    /** Points to a value that maintains the next available address. */
+    void **data_ptr;
+} pmix_gds_shmem_alloc_ctx_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem_alloc_ctx_t);
+
+static void
+shmem_allocator_construct(
+    pmix_gds_shmem_alloc_ctx_t *a
+) {
+    PMIX_CONSTRUCT(&a->addr2info, pmix_hash_table_t);
+    pmix_hash_table_init(&a->addr2info, 2048);
+
+    a->shmem = NULL;
+    a->data_ptr = NULL;
+}
+
+static void
+shmem_allocator_destruct(
+    pmix_gds_shmem_alloc_ctx_t *a
+) {
+    pmix_gds_shmem_tma_alloc_t *value;
+    void *key;
+
+    PMIX_HASH_TABLE_FOREACH_PTR(key, value, &a->addr2info, { free(value); });
+    PMIX_DESTRUCT(&a->addr2info);
+
+    a->shmem = NULL;
+    a->data_ptr = NULL;
+}
+
+PMIX_CLASS_INSTANCE(
+    pmix_gds_shmem_alloc_ctx_t,
+    pmix_object_t,
+    shmem_allocator_construct,
+    shmem_allocator_destruct
+);
+
+/**
  * Architecture-specific address alignment.
  */
 static inline void *
@@ -178,15 +236,39 @@ addr_align(
     return res;
 }
 
+static inline pmix_gds_shmem_alloc_ctx_t *
+tma_get_alloc_ctx(
+    pmix_tma_t *tma
+) {
+    return tma->data_context;
+}
+
+static inline void *
+tma_get_curraddr(
+    pmix_tma_t *tma
+) {
+    return *(tma_get_alloc_ctx(tma)->data_ptr);
+}
+
+static inline void
+tma_set_curraddr(
+    pmix_tma_t *tma,
+    void *newaddr
+) {
+    *(tma_get_alloc_ctx(tma)->data_ptr) = newaddr;
+}
+
 static inline bool
 tma_alloc_request_will_overflow(
     pmix_tma_t *tma,
     size_t alloc_size
 ) {
-    const pmix_shmem_t *const backing_store = (pmix_shmem_t *)tma->data_context;
+    const pmix_gds_shmem_alloc_ctx_t *const ctx = tma_get_alloc_ctx(tma);
+    const pmix_shmem_t *const backing_store = ctx->shmem;
+
     const uintptr_t hdr_baseptr = (uintptr_t)backing_store->hdr_address;
     const uintptr_t data_baseptr = (uintptr_t)backing_store->data_address;
-    const uintptr_t data_ptr_pos = (uintptr_t)*(tma->data_ptr);
+    const uintptr_t data_ptr_pos = (uintptr_t)tma_get_curraddr(tma);
     // Size of 'lost capacity` because of segment header.
     const size_t lost_capacity = (size_t)(data_baseptr - hdr_baseptr);
     const size_t bytes_used = (size_t)(data_ptr_pos - data_baseptr);
@@ -194,20 +276,54 @@ tma_alloc_request_will_overflow(
     return (bytes_used + alloc_size) > (backing_store->size - lost_capacity);
 }
 
+static inline void
+tma_register_alloc(
+    pmix_tma_t *tma,
+    void *base,
+    size_t extent
+) {
+    uintptr_t key = (uintptr_t)base;
+
+    pmix_gds_shmem_tma_alloc_t *value = calloc(1, sizeof(*value));
+    value->extent = extent;
+
+    pmix_hash_table_set_value_ptr(
+        &tma_get_alloc_ctx(tma)->addr2info,
+        &key, sizeof(key), value
+    );
+}
+
+static inline pmix_status_t
+tma_get_registered_alloc(
+    pmix_tma_t *tma,
+    void *addr,
+    pmix_gds_shmem_tma_alloc_t **result
+) {
+    uintptr_t key = (uintptr_t)addr;
+
+    return pmix_hash_table_get_value_ptr(
+        &tma_get_alloc_ctx(tma)->addr2info, &key,
+        sizeof(uintptr_t), (void **)result
+    );
+}
+
 static inline void *
 tma_malloc(
     pmix_tma_t *tma,
     size_t size
 ) {
+    if (0 == size) {
+        return NULL;
+    }
     if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, size))) {
         return NULL;
     }
-
-    void *const current = *(tma->data_ptr);
+    void *const current = tma_get_curraddr(tma);
+    tma_register_alloc(tma, current, size);
 #if PMIX_ENABLE_DEBUG
     memset(current, 0, size);
 #endif
-    *(tma->data_ptr) = addr_align(current, size);
+    tma_set_curraddr(tma, addr_align(current, size));
     return current;
 }
 
@@ -218,14 +334,16 @@ tma_calloc(
     size_t size
 ) {
     const size_t real_size = nmemb * size;
-
+    if (0 == real_size) {
+        return NULL;
+    }
     if (PMIX_UNLIKELY(tma_alloc_request_will_overflow(tma, real_size))) {
         return NULL;
     }
-
-    void *const current = *(tma->data_ptr);
+    void *const current = tma_get_curraddr(tma);
+    tma_register_alloc(tma, current, real_size);
     memset(current, 0, real_size);
-    *(tma->data_ptr) = addr_align(current, real_size);
+    tma_set_curraddr(tma, addr_align(current, real_size));
     return current;
 }
 
@@ -233,19 +351,36 @@ static inline void *
 tma_realloc(
     pmix_tma_t *tma,
     void *ptr,
-    size_t size
+    size_t new_size
 ) {
-    PMIX_HIDE_UNUSED_PARAMS(tma, ptr, size);
-    static const char *emsg = "\n***\nA realloc() backed by shared-memory "
-        "was attempted within the gds/shmem component. This behavior "
-        "is currently unsupported.\nResolve this issue by disabling the "
-        "gds/shmem component by setting in your environment the following:\n"
-        "PMIX_MCA_gds=hash\n***\n";
-    // We don't support realloc.
-    // Present error this way because it is likely coming from the server.
-    perror(emsg);
-    abort();
-    return NULL;
+    // Behave like malloc
+    if (NULL == ptr) {
+        return tma_malloc(tma, new_size);
+    }
+    // Behave like free
+    if (0 == new_size) {
+        pmix_tma_free(tma, ptr);
+        return NULL;
+    }
+    // Find the allocation info based on the provided address.
+    pmix_gds_shmem_tma_alloc_t *alloc = NULL;
+    int rc = tma_get_registered_alloc(tma, ptr, &alloc);
+    if (PMIX_SUCCESS != rc) {
+        perror(EMSG_SHMEM_IS_BROKEN);
+        abort();
+    }
+    const size_t old_size = alloc->extent;
+    if (new_size != old_size) {
+        void *new_base = pmix_tma_malloc(tma, new_size);
+        if (NULL == new_base) {
+            return ptr;
+        }
+        // Move min(new_size, old_size) into new space.
+        memmove(new_base, ptr, new_size < old_size ? new_size : old_size);
+        pmix_tma_free(tma, ptr);
+        return new_base;
+    }
+    return ptr;
 }
 
 static inline char *
@@ -259,20 +394,10 @@ tma_strdup(
         return NULL;
     }
 
-    void *const current = *(tma->data_ptr);
-    *(tma->data_ptr) = addr_align(current, size);
+    void *const current = tma_get_curraddr(tma);
+    tma_register_alloc(tma, current, size);
+    tma_set_curraddr(tma, addr_align(current, size));
     return (char *)memmove(current, s, size);
-}
-
-static inline void *
-tma_memmove(
-    struct pmix_tma *tma,
-    const void *src,
-    size_t size
-) {
-    void *const current = *(tma->data_ptr);
-    *(tma->data_ptr) = addr_align(current, size);
-    return memmove(current, src, size);
 }
 
 static inline void
@@ -280,8 +405,18 @@ tma_free(
     struct pmix_tma *tma,
     void *ptr
 ) {
-    // We don't currently reclaim freed space in our TMA.
-    PMIX_HIDE_UNUSED_PARAMS(tma, ptr);
+    // We don't reclaim freed space in our TMA. Just zero it out.
+    if (NULL == ptr) {
+        return;
+    }
+    // Find the allocation info based on the provided address.
+    pmix_gds_shmem_tma_alloc_t *alloc = NULL;
+    int rc = tma_get_registered_alloc(tma, ptr, &alloc);
+    if (PMIX_SUCCESS != rc) {
+        perror(EMSG_SHMEM_IS_BROKEN);
+        abort();
+    }
+    memset(ptr, 0, alloc->extent);
 }
 
 static void
@@ -292,7 +427,6 @@ tma_init_function_pointers(
     tma->tma_calloc = tma_calloc;
     tma->tma_realloc = tma_realloc;
     tma->tma_strdup = tma_strdup;
-    tma->tma_memmove = tma_memmove;
     tma->tma_free = tma_free;
 }
 
@@ -302,9 +436,14 @@ tma_init(
     pmix_tma_t *tma,
     void *data_ptr
 ) {
+    // Only available in the allocator's address space.
+    pmix_gds_shmem_alloc_ctx_t *ctx = PMIX_NEW(pmix_gds_shmem_alloc_ctx_t);
+
     tma_init_function_pointers(tma);
-    tma->data_context = (void *)shmem_backing_store;
-    tma->data_ptr = data_ptr;
+    tma->data_context = (void *)ctx;
+
+    ctx->shmem = shmem_backing_store;
+    ctx->data_ptr = data_ptr;
 }
 
 static void
@@ -392,6 +531,47 @@ job_construct(
     job->conni = NULL;
 }
 
+static pmix_tma_t *
+get_tma_by_shmem_id(
+    pmix_gds_shmem_job_t *job,
+    pmix_gds_shmem_job_shmem_id_t shmem_id
+) {
+    switch (shmem_id) {
+        case PMIX_GDS_SHMEM_JOB_ID:
+            return &job->smdata->tma;
+        case PMIX_GDS_SHMEM_MODEX_ID:
+            return &job->smmodex->tma;
+        case PMIX_GDS_SHMEM_SESSION_ID:
+            return &job->session->smdata->tma;
+        case PMIX_GDS_SHMEM_INVALID_ID:
+        default:
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            // This is an internal error.
+            abort();
+            return NULL;
+    }
+}
+
+static const char *
+get_shmem_id_name(
+    pmix_gds_shmem_job_shmem_id_t shmem_id
+) {
+    switch (shmem_id) {
+        case PMIX_GDS_SHMEM_JOB_ID:
+            return "smdata";
+        case PMIX_GDS_SHMEM_MODEX_ID:
+            return "smmodex";
+        case PMIX_GDS_SHMEM_SESSION_ID:
+            return "smsession";
+        case PMIX_GDS_SHMEM_INVALID_ID:
+        default:
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            // This is an internal error.
+            abort();
+            return NULL;
+    }
+}
+
 static void
 emit_shmem_usage_stats(
     pmix_gds_shmem_job_t *job,
@@ -408,31 +588,11 @@ emit_shmem_usage_stats(
         return;
     }
 
-    pmix_tma_t *tma = NULL;
-    const char *smname = NULL;
-    switch (shmem_id) {
-        case PMIX_GDS_SHMEM_JOB_ID:
-            tma = &job->smdata->tma;
-            smname = "smdata";
-            break;
-        case PMIX_GDS_SHMEM_MODEX_ID:
-            tma = &job->smmodex->tma;
-            smname = "smmodex";
-            break;
-        case PMIX_GDS_SHMEM_SESSION_ID:
-            tma = &job->session->smdata->tma;
-            smname = "smsession";
-            break;
-        case PMIX_GDS_SHMEM_INVALID_ID:
-        default:
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            // This is an internal error.
-            abort();
-            return;
-    }
+    pmix_tma_t *tma = get_tma_by_shmem_id(job, shmem_id);
+    const char *smname = get_shmem_id_name(shmem_id);
 
     const size_t shmem_size = shmem->size;
-    const size_t bytes_used = (size_t)((uintptr_t)*(tma->data_ptr)
+    const size_t bytes_used = (size_t)((uintptr_t)tma_get_curraddr(tma)
                             - (uintptr_t)shmem->data_address);
     const float utilization = (bytes_used / (float)shmem_size) * 100.0;
 
@@ -479,6 +639,8 @@ job_destruct(
         if (pmix_gds_shmem_has_status(job, sid, PMIX_GDS_SHMEM_MINE)) {
             // Emit usage status before we potentially destroy the segment.
             emit_shmem_usage_stats(job, sid);
+            // Points to a pmix_gds_shmem_alloc_ctx_t.
+            PMIX_RELEASE(get_tma_by_shmem_id(job, sid)->data_context);
         }
         // Releases memory for the structures located in shared-memory. This
         // will also unmap in case we need to later remap something in the
@@ -582,7 +744,7 @@ session_smdata_construct(
     );
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
-    *(job->session->smdata->tma.data_ptr) = addr_align(baseaddr, smdata_size);
+    tma_set_curraddr(&job->session->smdata->tma, addr_align(baseaddr, smdata_size));
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->session->smdata->tma;
     // Now that we know the TMA, initialize smdata structures using it.
@@ -634,7 +796,7 @@ job_smdata_construct(
     tma_init(job->shmem, &job->smdata->tma, &job->smdata->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
-    *(job->smdata->tma.data_ptr) = addr_align(baseaddr, smdata_size);
+    tma_set_curraddr(&job->smdata->tma, addr_align(baseaddr, smdata_size));
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->smdata->tma;
     // Now that we know the TMA, initialize smdata structures using it.
@@ -706,7 +868,7 @@ modex_smdata_construct(
     tma_init(job->modex_shmem, &job->smmodex->tma, &job->smmodex->current_addr);
     // Now we need to update the TMA's pointer to account for our using up some
     // space for its header.
-    *(job->smmodex->tma.data_ptr) = addr_align(baseaddr, smmodex_size);
+    tma_set_curraddr(&job->smmodex->tma, addr_align(baseaddr, smmodex_size));
     // We can now safely get our TMA.
     pmix_tma_t *const tma = &job->smmodex->tma;
     // Now that we know the TMA, initialize smdata structures using it.

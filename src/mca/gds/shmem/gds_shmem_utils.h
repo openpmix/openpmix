@@ -129,7 +129,6 @@ pmix_gds_shmem_vout_smdata(
         "shmem_hdr@%p, "
         "shmem_data@%p, "
         "smdata tma@%p, "
-        "smdata tma data_ptr=%p, "
         "jobinfo@%p, "
         "appinfo@%p, "
         "nodeinfo@%p, "
@@ -137,7 +136,6 @@ pmix_gds_shmem_vout_smdata(
         (void *)job->shmem->hdr_address,
         (void *)job->shmem->data_address,
         (void *)&job->smdata->tma,
-        (void *)job->smdata->tma.data_ptr,
         (void *)job->smdata->jobinfo,
         (void *)job->smdata->appinfo,
         (void *)job->smdata->nodeinfo,
@@ -152,11 +150,9 @@ pmix_gds_shmem_vout_smmodex(
     PMIX_GDS_SHMEM_VOUT(
         "modex_shmem@%p, "
         "smmodex tma@%p, "
-        "smmodex tma data_ptr=%p, "
         "hashtab@%p",
         (void *)job->modex_shmem->data_address,
         (void *)&job->smmodex->tma,
-        (void *)job->smmodex->tma.data_ptr,
         (void *)job->smmodex->hashtab
     );
 }
@@ -169,13 +165,11 @@ pmix_gds_shmem_vout_smsession(
         "shmem_hdr@%p, "
         "shmem_data@%p, "
         "smdata tma@%p, "
-        "smdata tma data_ptr=%p, "
         "sessioninfo@%p, "
         "nodeinfo@%p",
         (void *)sesh->shmem->hdr_address,
         (void *)sesh->shmem->data_address,
         (void *)&sesh->smdata->tma,
-        (void *)sesh->smdata->tma.data_ptr,
         (void *)sesh->smdata->sessioninfo,
         (void *)sesh->smdata->nodeinfo
     );
