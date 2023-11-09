@@ -911,6 +911,10 @@ typedef uint32_t pmix_rank_t;
 
 #define PMIX_ALLOC_RES_BLOCK                "pmix.alloc.blk"        // (char*) name of the previously-defined resource block to be allocated
 #define PMIX_ALLOC_NUM_BLOCKS               "pmix.alloc.nblks"      // (uint64_t) number of specified resource blocks to allocate
+#define PMIX_ALLOC_MAU                      "pmix.alloc.mau"        // (pmix_data_array_t*) Minimum allocatable unit for the system. This attribute
+                                                                    //         is used by the system scheduler to inform the system controller
+                                                                    //         of the MAU so the information can be passed along. Alternatively,
+                                                                    //         a host can pass the information into its PMIx server.
 
 
 /* job control attributes */
@@ -1920,13 +1924,14 @@ typedef struct pmix_geometry {
 
 /****    PMIX_DEVICE_TYPE    ****/
 typedef uint64_t pmix_device_type_t;
-#define PMIX_DEVTYPE_UNKNOWN        0x00
-#define PMIX_DEVTYPE_BLOCK          0x01
-#define PMIX_DEVTYPE_GPU            0x02
-#define PMIX_DEVTYPE_NETWORK        0x04
-#define PMIX_DEVTYPE_OPENFABRICS    0x08
-#define PMIX_DEVTYPE_DMA            0x10
-#define PMIX_DEVTYPE_COPROC         0x20
+#define PMIX_DEVTYPE_UNKNOWN        0x0000000000000000
+#define PMIX_DEVTYPE_BLOCK          0x0000000000000001
+#define PMIX_DEVTYPE_GPU            0x0000000000000002
+#define PMIX_DEVTYPE_NETWORK        0x0000000000000004
+#define PMIX_DEVTYPE_OPENFABRICS    0x0000000000000008
+#define PMIX_DEVTYPE_DMA            0x0000000000000010
+#define PMIX_DEVTYPE_COPROC         0x0000000000000020
+#define PMIX_DEVTYPE_MEMORY         0x0000000000000040
 
 
 /****    PMIX_DEVICE    ****/

@@ -515,10 +515,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_ptl_posted_recv_t *rcv;
     bool outputio;
     char *singleton = NULL;
+    pmix_data_array_t *mau = NULL;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server init called");
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+        "pmix:server init called");
 
     /* backward compatibility fix - remove any directive to use
      * the old usock component so we avoid a warning message */
@@ -584,6 +586,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                 outputio = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SINGLETON)) {
                 singleton = info[n].value.data.string;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_MAU)) {
+                mau = info[n].value.data.darray;
             }
         }
     }
@@ -824,6 +828,16 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         PMIx_server_finalize();
         return PMIX_ERR_INIT;
+    }
+
+    // if we were given an MAU, save it
+    if (NULL != mau) {
+        value.type = PMIX_DATA_ARRAY;
+        value.data.darray = mau;
+        rc = PMIx_Store_internal(&pmix_globals.myid, PMIX_ALLOC_MAU, &value);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
     }
 
     ++pmix_globals.init_cntr;
