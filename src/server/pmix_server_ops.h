@@ -58,6 +58,8 @@ typedef struct {
     int nlocalprocs;
     pmix_info_t *info;
     size_t ninfo;
+    pmix_resource_unit_t *units;
+    size_t nunits;
     bool copied;
     char **keys;
     pmix_app_t *apps;

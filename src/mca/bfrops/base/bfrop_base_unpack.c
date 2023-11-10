@@ -640,6 +640,13 @@ pmix_status_t pmix_bfrops_base_unpack_val(pmix_pointer_array_t *regtypes, pmix_b
             }
             PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.device, &m, PMIX_DEVICE, regtypes);
             return ret;
+        case PMIX_RESOURCE_UNIT:
+            PMIX_RESOURCE_UNIT_CREATE(val->data.resunit, 1);
+            if (NULL == val->data.resunit) {
+                return PMIX_ERR_NOMEM;
+            }
+            PMIX_BFROPS_UNPACK_TYPE(ret, buffer, val->data.resunit, &m, PMIX_RESOURCE_UNIT, regtypes);
+            return ret;
         case PMIX_DEVICE_DIST:
             PMIX_DEVICE_DIST_CREATE(val->data.devdist, 1);
             if (NULL == val->data.devdist) {
@@ -1712,6 +1719,41 @@ pmix_status_t pmix_bfrops_base_unpack_device(pmix_pointer_array_t *regtypes, pmi
         }
         m = 1;
         PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].type, &m, PMIX_DEVTYPE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
+pmix_status_t pmix_bfrops_base_unpack_resunit(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                              void *dest, int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_resource_unit_t *ptr;
+    int32_t i, n, m;
+    pmix_status_t ret;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrop_unpack: %d resource units", *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    ptr = (pmix_resource_unit_t *) dest;
+    n = *num_vals;
+
+    for (i = 0; i < n; ++i) {
+        PMIX_RESOURCE_UNIT_CONSTRUCT(&ptr[i]);
+        /* unpack the type */
+        m = 1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].type, &m, PMIX_DEVTYPE, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            PMIX_ERROR_LOG(ret);
+            return ret;
+        }
+        /* get the number of them */
+        m = 1;
+        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, &ptr[i].count, &m, PMIX_SIZE, regtypes);
         if (PMIX_SUCCESS != ret) {
             PMIX_ERROR_LOG(ret);
             return ret;

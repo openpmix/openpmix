@@ -634,7 +634,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_RES_BLOCKS               "pmix.qry.resblks"      // (pmix_data_array_t*) array of string names for currently defined
                                                                     //         resource blocks
 #define PMIX_QUERY_RES_BLOCK_DEF            "pmix.qry.resdef"       // (pmix_data_array_t*) given the name of a resource block as its qualifier,
-                                                                    //         return an array of pmix_info_t describing the resources contained
+                                                                    //         return an array of pmix_resource_unit_t describing the resources contained
                                                                     //         in the block
 #define PMIX_QUERY_DEVICES                  "pmix.qry.dev"          // (pmix_data_array_t*) Return an array of pmix_device_t containing the devices
                                                                     //         within the current topology that meet the specified query qualifications. This
@@ -914,7 +914,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_ALLOC_MAU                      "pmix.alloc.mau"        // (pmix_data_array_t*) Minimum allocatable unit for the system. This attribute
                                                                     //         is used by the system scheduler to inform the system controller
                                                                     //         of the MAU so the information can be passed along. Alternatively,
-                                                                    //         a host can pass the information into its PMIx server.
+                                                                    //         a host can pass the information into its PMIx server. Array consists
+                                                                    //         of pmix_resource_unit_t structs.
 
 
 /* job control attributes */
@@ -1582,6 +1583,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_STOR_ACCESS_TYPE           69
 #define PMIX_DEVICE                     70
 #define PMIX_RESBLOCK_DIRECTIVE         71
+#define PMIX_RESOURCE_UNIT              72
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -1932,7 +1934,8 @@ typedef uint64_t pmix_device_type_t;
 #define PMIX_DEVTYPE_DMA            0x0000000000000010
 #define PMIX_DEVTYPE_COPROC         0x0000000000000020
 #define PMIX_DEVTYPE_MEMORY         0x0000000000000040
-
+#define PMIX_DEVTYPE_CORE           0x0000000000000080
+#define PMIX_DEVTYPE_HWT            0x0000000000000100
 
 /****    PMIX_DEVICE    ****/
 typedef struct pmix_device {
@@ -1946,6 +1949,19 @@ typedef struct pmix_device {
     .uuid = NULL,                       \
     .osname = NULL,                     \
     .type = PMIX_DEVTYPE_UNKNOWN        \
+}
+
+
+/****    PMIX_RESOURCE_UNIT    ****/
+typedef struct pmix_resource_unit {
+    pmix_device_type_t type;
+    size_t count;
+} pmix_resource_unit_t;
+
+#define PMIX_RESOURCE_UNIT_STATIC_INIT  \
+{                                       \
+    .type = PMIX_DEVTYPE_UNKNOWN,       \
+    .count = 0                          \
 }
 
 
@@ -2304,6 +2320,7 @@ typedef struct pmix_value {
         pmix_disk_stats_t *dkstats;
         pmix_net_stats_t *netstats;
         pmix_node_stats_t *ndstats;
+        pmix_resource_unit_t *resunit;
     } data;
 } pmix_value_t;
 

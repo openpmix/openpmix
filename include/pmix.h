@@ -487,14 +487,18 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
 /* Define a resource "block" that can be used in allocation operations.
  * Include the ability to define/delete, remove/extend block definitions.
  * The provided block name must be unique within the requestor's current
- * session
+ * session.
  */
 PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t directive,
-                                              char *block, pmix_info_t *info, size_t ninfo);
+                                              char *block,
+                                              const pmix_resource_unit_t *res, size_t nres,
+                                              const pmix_info_t *info, size_t ninfo);
 
 
 PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t directive,
-                                                 char *block, pmix_info_t *info, size_t ninfo,
+                                                 char *block,
+                                                 const pmix_resource_unit_t *res, size_t nres,
+                                                 const pmix_info_t *info, size_t ninfo,
                                                  pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 
@@ -1186,6 +1190,7 @@ PMIX_EXPORT char* PMIx_Value_string(const pmix_value_t *value);
 PMIX_EXPORT char* PMIx_Info_directives_string(pmix_info_directives_t directives);
 PMIX_EXPORT char* PMIx_App_string(const pmix_app_t *app);
 PMIX_EXPORT char* PMIx_Proc_string(const pmix_proc_t *proc);
+PMIX_EXPORT char* PMIx_Resource_unit_string(const pmix_resource_unit_t *unit);
 
 /* Get the PMIx version string. Note that the provided string is
  * statically defined and must NOT be free'd  */
@@ -1880,8 +1885,21 @@ PMIX_EXPORT void PMIx_Device_destruct(pmix_device_t *d);
 PMIX_EXPORT pmix_device_t* PMIx_Device_create(size_t n);
 
 /* free memory stored inside an array of device structs (does
- * not free the struct memory itself */
+ * not free the struct memory itself) */
 PMIX_EXPORT void PMIx_Device_free(pmix_device_t *d, size_t n);
+
+/* initialize a resource unit struct */
+PMIX_EXPORT void PMIx_Resource_unit_construct(pmix_resource_unit_t *d);
+
+/* free memory stored inside a resource unit struct */
+PMIX_EXPORT void PMIx_Resource_unit_destruct(pmix_resource_unit_t *d);
+
+/* create and initialize an array of resource unit structs */
+PMIX_EXPORT pmix_resource_unit_t* PMIx_Resource_unit_create(size_t n);
+
+/* free memory stored inside an array of resource unit structs (does
+ * not free the struct memory itself) */
+PMIX_EXPORT void PMIx_Resource_unit_free(pmix_resource_unit_t *d, size_t n);
 
 /* initialize a device distance struct */
 PMIX_EXPORT void PMIx_Device_distance_construct(pmix_device_distance_t *d);

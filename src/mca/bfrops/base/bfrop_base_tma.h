@@ -1209,6 +1209,70 @@ pmix_status_t pmix_bfrops_base_tma_copy_device(pmix_device_t **dest,
 }
 
 static inline
+void pmix_bfrops_base_tma_resource_unit_destruct(pmix_resource_unit_t *d,
+                                                 pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(d, tma);
+}
+
+static inline
+void pmix_bfrops_base_tma_resource_unit_free(pmix_resource_unit_t *d,
+                                             size_t n,
+                                             pmix_tma_t *tma)
+{
+    if (NULL != d) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_resource_unit_destruct(&d[m], tma);
+        }
+        pmix_tma_free(tma, d);
+    }
+}
+
+static inline
+void pmix_bfrops_base_tma_resource_unit_construct(pmix_resource_unit_t *d,
+                                                  pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    memset(d, 0, sizeof(pmix_resource_unit_t));
+    d->type = PMIX_DEVTYPE_UNKNOWN;
+}
+
+static inline
+pmix_resource_unit_t* pmix_bfrops_base_tma_resource_unit_create(size_t n,
+                                                                pmix_tma_t *tma)
+{
+    if (0 == n) {
+        return NULL;
+    }
+    pmix_resource_unit_t *d = (pmix_resource_unit_t *)pmix_tma_malloc(tma, n * sizeof(pmix_resource_unit_t));
+    if (PMIX_LIKELY(NULL != d)) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_resource_unit_construct(&d[m], tma);
+        }
+    }
+    return d;
+}
+
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_resource_unit(pmix_resource_unit_t **dest,
+                                                      pmix_resource_unit_t *src,
+                                                      pmix_data_type_t type,
+                                                      pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    pmix_resource_unit_t *dst = pmix_bfrops_base_tma_resource_unit_create(1, tma);
+    if (PMIX_UNLIKELY(NULL == dst)) {
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(dst, src, sizeof(pmix_resource_unit_t));
+
+    *dest = dst;
+    return PMIX_SUCCESS;
+}
+
+static inline
 void pmix_bfrops_base_tma_device_distance_destruct(pmix_device_distance_t *d,
                                                    pmix_tma_t *tma)
 {
@@ -3248,6 +3312,19 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         }
         break;
     }
+    case PMIX_RESOURCE_UNIT: {
+        p->array = pmix_bfrops_base_tma_resource_unit_create(src->size, tma);
+        if (PMIX_UNLIKELY(NULL == p->array)) {
+            rc = PMIX_ERR_NOMEM;
+            break;
+        }
+        pmix_resource_unit_t *const pdev = (pmix_resource_unit_t *)p->array;
+        pmix_resource_unit_t *const sdev = (pmix_resource_unit_t *)src->array;
+        for (size_t n = 0; n < src->size; n++) {
+            memcpy(&pdev[n], &sdev[n], sizeof(pmix_resource_unit_t));
+        }
+        break;
+    }
     case PMIX_DEVICE_DIST: {
         p->array = pmix_bfrops_base_tma_device_distance_create(src->size, tma);
         if (PMIX_UNLIKELY(NULL == p->array)) {
@@ -3506,6 +3583,9 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
     case PMIX_ALLOC_DIRECTIVE:
         memcpy(&p->data.adir, &src->data.adir, sizeof(pmix_alloc_directive_t));
         break;
+    case PMIX_RESBLOCK_DIRECTIVE:
+        memcpy(&p->data.rbdir, &src->data.rbdir, sizeof(pmix_resource_block_directive_t));
+        break;
     case PMIX_ENVAR:
         pmix_bfrops_base_tma_envar_construct(&p->data.envar, tma);
 
@@ -3551,6 +3631,8 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
         break;
     case PMIX_DEVICE:
         return pmix_bfrops_base_tma_copy_device(&p->data.device, src->data.device, PMIX_DEVICE, tma);
+    case PMIX_RESOURCE_UNIT:
+        return pmix_bfrops_base_tma_copy_resource_unit(&p->data.resunit, src->data.resunit, PMIX_RESOURCE_UNIT, tma);
     case PMIX_DEVICE_DIST:
         return pmix_bfrops_base_tma_copy_devdist(&p->data.devdist, src->data.devdist, PMIX_DEVICE_DIST, tma);
     case PMIX_ENDPOINT:
@@ -3687,6 +3769,9 @@ void pmix_bfrops_base_tma_data_array_destruct(pmix_data_array_t *d,
             break;
         case PMIX_DEVICE:
             pmix_bfrops_base_tma_device_free(d->array, d->size, tma);
+            break;
+        case PMIX_RESOURCE_UNIT:
+            pmix_bfrops_base_tma_resource_unit_free(d->array, d->size, tma);
             break;
         case PMIX_DEVICE_DIST:
             pmix_bfrops_base_tma_device_distance_free(d->array, d->size, tma);
@@ -3887,6 +3972,9 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
         } else if (PMIX_DEVICE == type) {
             p->array = pmix_bfrops_base_tma_device_create(num, tma);
 
+        } else if (PMIX_RESOURCE_UNIT == type) {
+            p->array = pmix_bfrops_base_tma_resource_unit_create(num, tma);
+
         } else if (PMIX_DEVICE_DIST == type) {
             p->array = pmix_bfrops_base_tma_device_distance_create(num, tma);
 
@@ -3994,6 +4082,11 @@ void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
         case PMIX_DEVICE:
             if (NULL != v->data.device) {
                 pmix_bfrops_base_tma_device_free(v->data.device, 1, tma);
+            }
+            break;
+        case PMIX_RESOURCE_UNIT:
+            if (NULL != v->data.resunit) {
+                pmix_bfrops_base_tma_resource_unit_free(v->data.resunit, 1, tma);
             }
             break;
         case PMIX_DEVICE_DIST:
