@@ -36,8 +36,6 @@ static const char *basic_type_string(pmix_data_type_t type)
     switch (type) {
     case PMIX_BOOL:
         return "PMIX_BOOL";
-    case PMIX_REGEX:
-        return "PMIX_REGEX";
     case PMIX_BYTE:
         return "PMIX_BYTE";
     case PMIX_STRING:
@@ -114,8 +112,6 @@ static const char *basic_type_string(pmix_data_type_t type)
         return "PMIX_DATA_ARRAY";
     case PMIX_PROC_RANK:
         return "PMIX_PROC_RANK";
-    case PMIX_PROC_NSPACE:
-        return "PMIX_PROC_NSPACE";
     case PMIX_QUERY:
         return "PMIX_QUERY";
     case PMIX_COMPRESSED_STRING:
@@ -130,6 +126,8 @@ static const char *basic_type_string(pmix_data_type_t type)
         return "PMIX_COORD";
     case PMIX_REGATTR:
         return "PMIX_REGATTR";
+    case PMIX_REGEX:
+        return "PMIX_REGEX";
     case PMIX_JOB_STATE:
         return "PMIX_JOB_STATE";
     case PMIX_LINK_STATE:
@@ -138,8 +136,6 @@ static const char *basic_type_string(pmix_data_type_t type)
         return "PMIX_PROC_CPUSET";
     case PMIX_GEOMETRY:
         return "PMIX_GEOMETRY";
-    case PMIX_DEVICE:
-        return "PMIX_DEVICE";
     case PMIX_DEVICE_DIST:
         return "PMIX_DEVICE_DIST";
     case PMIX_ENDPOINT:
@@ -148,6 +144,12 @@ static const char *basic_type_string(pmix_data_type_t type)
         return "PMIX_TOPO";
     case PMIX_DEVTYPE:
         return "PMIX_DEVTYPE";
+    case PMIX_LOCTYPE:
+        return "PMIX_LOCTYPE";
+    case PMIX_COMPRESSED_BYTE_OBJECT:
+        return "PMIX_COMPRESSED_BYTE_OBJECT";
+    case PMIX_PROC_NSPACE:
+        return "PMIX_PROC_NSPACE";
     case PMIX_PROC_STATS:
         return "PMIX_PROC_STATS";
     case PMIX_DISK_STATS:
@@ -158,6 +160,20 @@ static const char *basic_type_string(pmix_data_type_t type)
         return "PMIX_NODE_STATS";
     case PMIX_DATA_BUFFER:
         return "PMIX_DATA_BUFFER";
+    case PMIX_STOR_MEDIUM:
+        return "PMIX_STOR_MEDIUM";
+    case PMIX_STOR_ACCESS:
+        return "PMIX_STOR_ACCESS";
+    case PMIX_STOR_PERSIST:
+        return "PMIX_STOR_PERSIST";
+    case PMIX_STOR_ACCESS_TYPE:
+        return "PMIX_STOR_ACCESS_TYPE";
+    case PMIX_DEVICE:
+        return "PMIX_DEVICE";
+    case PMIX_RESBLOCK_DIRECTIVE:
+        return "PMIX_RESBLOCK_DIRECTIVE";
+    case PMIX_RESOURCE_UNIT:
+        return "PMIX_RESOURCE_UNIT";
     default:
         return "NOT INITIALIZED";
     }

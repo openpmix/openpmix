@@ -1226,6 +1226,7 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
     pmix_geometry_t *geoptr;
     pmix_device_type_t *dvptr;
     pmix_device_t *dev;
+    pmix_resource_unit_t *resunit;
     pmix_device_distance_t *ddptr;
     pmix_endpoint_t *endptr;
     pmix_storage_medium_t *smptr;
@@ -1413,6 +1414,10 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
             case PMIX_DEVICE:
                 dev = (pmix_device_t*)src->array;
                 rc = pmix_bfrops_base_print_device(&tp, prefix, &dev[n], PMIX_DEVICE);
+                break;
+            case PMIX_RESOURCE_UNIT:
+                resunit = (pmix_resource_unit_t*)src->array;
+                rc = pmix_bfrops_base_print_resunit(&tp, prefix, &resunit[n], PMIX_RESOURCE_UNIT);
                 break;
             case PMIX_DEVICE_DIST:
                 ddptr = (pmix_device_distance_t*)src->array;
@@ -1811,6 +1816,25 @@ pmix_status_t pmix_bfrops_base_print_device(char **output, char *prefix,
                    (NULL == prefix) ? " " : prefix,
                    (NULL == src->uuid) ? "NULL" : src->uuid, (NULL == src->osname) ? "NULL" : src->osname,
                    PMIx_Device_type_string(src->type));
+
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    } else {
+        return PMIX_SUCCESS;
+    }
+}
+
+pmix_status_t pmix_bfrops_base_print_resunit(char **output, char *prefix,
+                                             pmix_resource_unit_t *src, pmix_data_type_t type)
+{
+    int ret;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    ret = asprintf(output,
+                   "%sData type: PMIX_RESOURCE_UNIT\tValue: Type: %s  Count: %" PRIsize_t "",
+                   (NULL == prefix) ? " " : prefix,
+                   PMIx_Device_type_string(src->type), src->count);
 
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;

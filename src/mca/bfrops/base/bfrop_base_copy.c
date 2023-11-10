@@ -442,6 +442,23 @@ pmix_status_t pmix_bfrops_base_copy_device(pmix_device_t **dest,
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_bfrops_base_copy_resunit(pmix_resource_unit_t **dest,
+                                            pmix_resource_unit_t *src, pmix_data_type_t type)
+{
+    pmix_resource_unit_t *dst;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    PMIX_RESOURCE_UNIT_CREATE(dst, 1);
+    if (NULL == dst) {
+        return PMIX_ERR_NOMEM;
+    }
+    memcpy(dst, src, sizeof(pmix_resource_unit_t));
+
+    *dest = dst;
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_bfrops_base_copy_devdist(pmix_device_distance_t **dest,
                                             pmix_device_distance_t *src, pmix_data_type_t type)
 {

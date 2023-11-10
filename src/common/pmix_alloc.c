@@ -351,7 +351,9 @@ static void opcb(pmix_status_t status, void *cbdata)
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t directive,
-                                              char *block, pmix_info_t *info, size_t ninfo)
+                                              char *block,
+                                              const pmix_resource_unit_t *units, size_t nunits,
+                                              const pmix_info_t *info, size_t ninfo)
 {
     pmix_cb_t cb;
     pmix_status_t rc;
@@ -372,7 +374,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t di
      * recv routine so we know which callback to use when
      * the return message is recvd */
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    rc = PMIx_Resource_block_nb(directive, block, info, ninfo, opcb, &cb);
+    rc = PMIx_Resource_block_nb(directive, block, units, nunits, info, ninfo, opcb, &cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_DESTRUCT(&cb);
         return rc;
@@ -391,7 +393,9 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t di
 
 
 PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t directive,
-                                                 char *block, pmix_info_t *info, size_t ninfo,
+                                                 char *block,
+                                                 const pmix_resource_unit_t *units, size_t nunits,
+                                                 const pmix_info_t *info, size_t ninfo,
                                                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_buffer_t *msg;
@@ -436,7 +440,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
                             "pmix:resource_block handed to host");
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         rc = pmix_host_server.resource_block(&pmix_globals.myid, directive, block,
-                                             info, ninfo, cbfunc, cbdata);
+                                             units, nunits, info, ninfo, cbfunc, cbdata);
         return rc;
     }
 
@@ -473,6 +477,22 @@ sendit:
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         return rc;
+    }
+
+    /* pack the units */
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nunits, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
+    if (0 < nunits) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, units, nunits, PMIX_RESOURCE_UNIT);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(msg);
+            return rc;
+        }
     }
 
     /* pack the info */

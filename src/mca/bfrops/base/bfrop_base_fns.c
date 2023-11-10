@@ -57,6 +57,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
     pmix_geometry_t *geometry;
     pmix_endpoint_t *endpoint;
     pmix_device_t *device;
+    pmix_resource_unit_t *resunit;
     pmix_device_distance_t *devdist;
     pmix_data_buffer_t *dbuf;
     pmix_nspace_t *nspace;
@@ -270,6 +271,13 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
         case PMIX_DEVICE:
             device = (pmix_device_t *) data;
             rc = pmix_bfrops_base_copy_device(&v->data.device, device, PMIX_DEVICE);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+            break;
+        case PMIX_RESOURCE_UNIT:
+            resunit = (pmix_resource_unit_t *) data;
+            rc = pmix_bfrops_base_copy_resunit(&v->data.resunit, resunit, PMIX_RESOURCE_UNIT);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
@@ -574,6 +582,13 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
                                                PMIX_DEVICE);
             if (PMIX_SUCCESS == rc) {
                 *sz = sizeof(pmix_device_t);
+            }
+            break;
+        case PMIX_RESOURCE_UNIT:
+            rc = pmix_bfrops_base_copy_resunit((pmix_resource_unit_t **) data,
+                                                kv->data.resunit, PMIX_RESOURCE_UNIT);
+            if (PMIX_SUCCESS == rc) {
+                *sz = sizeof(pmix_resource_unit_t);
             }
             break;
         case PMIX_DEVICE_DIST:
@@ -1132,6 +1147,9 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
                 }
             }
             break;
+        case PMIX_RESOURCE_UNIT:
+            *sz = array->size * sizeof(pmix_resource_unit_t);
+            break;
         case PMIX_DEVICE_DIST:
             *sz = array->size * sizeof(pmix_device_distance_t);
             dd = (pmix_device_distance_t*)array->array;
@@ -1448,6 +1466,9 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             if (NULL != v->data.device->osname) {
                 *sz += strlen(v->data.device->osname);
             }
+            break;
+        case PMIX_RESOURCE_UNIT:
+            *sz = sizeof(pmix_resource_unit_t);
             break;
         case PMIX_DEVICE_DIST:
             *sz = sizeof(pmix_device_distance_t);

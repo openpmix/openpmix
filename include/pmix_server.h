@@ -546,7 +546,8 @@ typedef pmix_status_t (*pmix_server_session_control_fn_t)(const pmix_proc_t *req
 typedef pmix_status_t (*pmix_server_resource_block_fn_t)(const pmix_proc_t *requestor,
                                                          pmix_resource_block_directive_t directive,
                                                          const char *block,
-                                                         const pmix_info_t data[], size_t ndata,
+                                                         const pmix_resource_unit_t *units, size_t nunit,
+                                                         const pmix_info_t *info, size_t ninfo,
                                                          pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 

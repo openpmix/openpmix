@@ -300,6 +300,10 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_device, pmix_bfrops_base_copy_device,
                        pmix_bfrops_base_print_device, &pmix_mca_bfrops_v51_component.types);
 
+    PMIX_REGISTER_TYPE("PMIX_RESOURCE_UNIT", PMIX_RESOURCE_UNIT, pmix_bfrops_base_pack_resunit,
+                       pmix_bfrops_base_unpack_resunit, pmix_bfrops_base_copy_resunit,
+                       pmix_bfrops_base_print_resunit, &pmix_mca_bfrops_v51_component.types);
+
     PMIX_REGISTER_TYPE("PMIX_DEVICE_DIST", PMIX_DEVICE_DIST, pmix_bfrops_base_pack_devdist,
                        pmix_bfrops_base_unpack_devdist, pmix_bfrops_base_copy_devdist,
                        pmix_bfrops_base_print_devdist, &pmix_mca_bfrops_v51_component.types);

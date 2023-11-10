@@ -290,6 +290,8 @@ PMIX_EXPORT const char *pmix_command_string(pmix_cmd_t cmd)
         return "RESOURCE BLOCK";
     case PMIX_SESSION_CTRL_CMD:
         return "SESSION CONTROL";
+    case PMIX_REQ_SYSINFO_CMD:
+        return "REQUEST SYSTEM INFO";
     default:
         return "UNKNOWN";
     }
@@ -492,4 +494,12 @@ char* PMIx_Proc_string(const pmix_proc_t *proc)
     tmp = pmix_util_print_name_args(proc);
     result = strdup(tmp);
     return result;
+}
+
+char* PMIx_Resource_unit_string(const pmix_resource_unit_t *p)
+{
+    char *tmp;
+
+    pmix_asprintf(&tmp, "TYPE: %s  COUNT: %" PRIsize_t "", PMIx_Data_type_string(p->type), p->count);
+    return tmp;
 }

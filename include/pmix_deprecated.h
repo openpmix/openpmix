@@ -318,6 +318,12 @@ PMIX_EXPORT pmix_device_t* PMIx_Device_create(size_t n);
 PMIX_EXPORT void PMIx_Device_free(pmix_device_t *d, size_t n);
 
 
+PMIX_EXPORT void PMIx_Resource_unit_construct(pmix_resource_unit_t *d);
+PMIX_EXPORT void PMIx_Resource_unit_destruct(pmix_resource_unit_t *d);
+PMIX_EXPORT pmix_resource_unit_t* PMIx_Resource_unit_create(size_t n);
+PMIX_EXPORT void PMIx_Resource_unit_free(pmix_resource_unit_t *d, size_t n);
+
+
 PMIX_EXPORT void PMIx_Device_distance_construct(pmix_device_distance_t *d);
 PMIX_EXPORT void PMIx_Device_distance_destruct(pmix_device_distance_t *d);
 PMIX_EXPORT pmix_device_distance_t* PMIx_Device_distance_create(size_t n);
@@ -769,10 +775,26 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
 #define PMIX_DEVICE_CREATE(m, n) \
     (m) = PMIx_Device_create(n)
 
-// free(m) is called inside PMIx_Device_distance_free().
+// free(m) is called inside PMIx_Device_free().
 #define PMIX_DEVICE_FREE(m, n)  \
     do {                        \
         PMIx_Device_free(m, n); \
+        (m) = NULL;             \
+    } while(0)
+
+#define PMIX_RESOURCE_UNIT_CONSTRUCT(m) \
+    PMIx_Resource_unit_construct(m)
+
+#define PMIX_RESOURCE_UNIT_DESTRUCT(m) \
+    PMIx_Resource_unit_destruct(m)
+
+#define PMIX_RESOURCE_UNIT_CREATE(m, n) \
+    (m) = PMIx_Resource_unit_create(n)
+
+// free(m) is called inside PMIx_Resource_unit_free().
+#define PMIX_RESOURCE_UNIT_FREE(m, n)  \
+    do {                        \
+        PMIx_Resource_unit_free(m, n); \
         (m) = NULL;             \
     } while(0)
 

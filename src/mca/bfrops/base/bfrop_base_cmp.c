@@ -409,6 +409,22 @@ static pmix_value_cmp_t cmp_device(pmix_device_t *dd1,
     return PMIX_EQUAL;
 }
 
+static pmix_value_cmp_t cmp_resunit(pmix_resource_unit_t *dd1,
+                                    pmix_resource_unit_t *dd2)
+{
+    if (dd1->type != dd2->type) {
+        return PMIX_VALUE_INCOMPATIBLE_OBJECTS;
+    }
+
+    if (dd1->count > dd2->count) {
+        return PMIX_VALUE1_GREATER;
+    } else if (dd1->count < dd2->count) {
+        return PMIX_VALUE2_GREATER;
+    }
+
+    return PMIX_EQUAL;
+}
+
 static pmix_value_cmp_t cmp_devdist(pmix_device_distance_t *dd1,
                                     pmix_device_distance_t *dd2)
 {
@@ -1016,6 +1032,7 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
     pmix_topology_t *t1, *t2;
     pmix_cpuset_t *cs1, *cs2;
     pmix_device_t *dev1, *dev2;
+    pmix_resource_unit_t *rs1, *rs2;
     pmix_device_distance_t *dd1, *dd2;
     pmix_endpoint_t *end1, *end2;
     pmix_proc_stats_t *pcs1, *pcs2;
@@ -1299,6 +1316,16 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
                 }
             }
             return PMIX_EQUAL;
+        case PMIX_RESOURCE_UNIT:
+            rs1 = (pmix_resource_unit_t*)d1->array;
+            rs2 = (pmix_resource_unit_t*)d2->array;
+            for (n=0; n < d1->size; n++) {
+                rc = cmp_resunit(&rs1[n], &rs2[n]);
+                if (PMIX_EQUAL != rc) {
+                    return rc;
+                }
+            }
+            return PMIX_EQUAL;
         case PMIX_DEVICE_DIST:
             dd1 = (pmix_device_distance_t*)d1->array;
             dd2 = (pmix_device_distance_t*)d2->array;
@@ -1573,6 +1600,10 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p1,
         break;
     case PMIX_DEVICE:
         rc = cmp_device(p1->data.device, p2->data.device);
+        return rc;
+        break;
+    case PMIX_RESOURCE_UNIT:
+        rc = cmp_resunit(p1->data.resunit, p2->data.resunit);
         return rc;
         break;
     case PMIX_DEVICE_DIST:

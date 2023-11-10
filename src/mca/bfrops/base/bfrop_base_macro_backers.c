@@ -387,6 +387,26 @@ void PMIx_Device_free(pmix_device_t *d, size_t n)
     pmix_bfrops_base_tma_device_free(d, n, NULL);
 }
 
+void PMIx_Resource_unit_construct(pmix_resource_unit_t *d)
+{
+    pmix_bfrops_base_tma_resource_unit_construct(d, NULL);
+}
+
+void PMIx_Resource_unit_destruct(pmix_resource_unit_t *d)
+{
+    pmix_bfrops_base_tma_resource_unit_destruct(d, NULL);
+}
+
+pmix_resource_unit_t* PMIx_Resource_unit_create(size_t n)
+{
+    return pmix_bfrops_base_tma_resource_unit_create(n, NULL);
+}
+
+void PMIx_Resource_unit_free(pmix_resource_unit_t *d, size_t n)
+{
+    pmix_bfrops_base_tma_resource_unit_free(d, n, NULL);
+}
+
 void PMIx_Device_distance_construct(pmix_device_distance_t *d)
 {
     pmix_bfrops_base_tma_device_distance_construct(d, NULL);

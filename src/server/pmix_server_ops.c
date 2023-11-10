@@ -5176,7 +5176,25 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
         goto exit;
     }
 
-    /* unpack the number of info objects */
+    /* unpack the number of units */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &scd->nunits, &cnt, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto exit;
+    }
+    /* unpack the resource units */
+    if (0 < scd->nunits) {
+        PMIX_RESOURCE_UNIT_CREATE(scd->units, scd->nunits);
+        cnt = scd->nunits;
+        PMIX_BFROPS_UNPACK(rc, cd->peer, buf, scd->units, &cnt, PMIX_RESOURCE_UNIT);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto exit;
+        }
+    }
+
+    /* unpack the number of info */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &scd->ninfo, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
@@ -5193,8 +5211,6 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
             goto exit;
         }
     }
-    // declare the info to be copied so the destructor will release them
-    scd->copied = true;
 
     /* setup the requesting peer name */
     pmix_strncpy(proc.nspace, cd->peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -5202,7 +5218,9 @@ pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,
 
     /* ask the host to execute the request */
     rc = pmix_host_server.resource_block(&proc, directive, scd->nspace,
-                                         scd->info, scd->ninfo, cbfunc, scd);
+                                         scd->units, scd->nunits,
+                                         scd->info, scd->ninfo,
+                                         cbfunc, scd);
     if (PMIX_SUCCESS != rc) {
         goto exit;
     }
@@ -5382,6 +5400,8 @@ static void scadcon(pmix_setup_caddy_t *p)
     p->nlocalprocs = 0;
     p->info = NULL;
     p->ninfo = 0;
+    p->units = NULL;
+    p->nunits = 0;
     p->copied = false;
     p->keys = NULL;
     p->channels = PMIX_FWD_NO_CHANNELS;
@@ -5409,6 +5429,7 @@ static void scaddes(pmix_setup_caddy_t *p)
             PMIX_APP_FREE(p->apps, p->napps);
         }
     }
+    PMIX_RESOURCE_UNIT_FREE(p->units, p->nunits);
     if (NULL != p->bo) {
         PMIX_BYTE_OBJECT_FREE(p->bo, p->nbo);
     }
