@@ -1933,9 +1933,12 @@ typedef uint64_t pmix_device_type_t;
 #define PMIX_DEVTYPE_OPENFABRICS    0x0000000000000008
 #define PMIX_DEVTYPE_DMA            0x0000000000000010
 #define PMIX_DEVTYPE_COPROC         0x0000000000000020
+/* devices used by resource units */
 #define PMIX_DEVTYPE_MEMORY         0x0000000000000040
 #define PMIX_DEVTYPE_CORE           0x0000000000000080
 #define PMIX_DEVTYPE_HWT            0x0000000000000100
+#define PMIX_DEVTYPE_CPU            0x0000000000000200
+#define PMIX_DEVTYPE_NODE           0x0000000000000400
 
 /****    PMIX_DEVICE    ****/
 typedef struct pmix_device {

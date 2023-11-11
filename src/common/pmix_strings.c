@@ -500,6 +500,6 @@ char* PMIx_Resource_unit_string(const pmix_resource_unit_t *p)
 {
     char *tmp;
 
-    pmix_asprintf(&tmp, "TYPE: %s  COUNT: %" PRIsize_t "", PMIx_Data_type_string(p->type), p->count);
+    pmix_asprintf(&tmp, "TYPE: %s  COUNT: %" PRIsize_t "", PMIx_Device_type_string(p->type), p->count);
     return tmp;
 }
