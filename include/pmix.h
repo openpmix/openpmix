@@ -52,6 +52,16 @@
 /* Structure and constant definitions */
 #include <pmix_common.h>
 
+/* Individual capability flags */
+#define PMIX_CAP_202311CLI       1
+#define PMIX_CAP_SOMETHING_ELSE  2
+#define PMIX_CAP_THIRD_THING     4
+
+/* These are the capabilities that this version of OpenPMIx has */
+#define PMIX_CAPABILITIES \
+    (PMIX_CAP_202311CLI | \
+     PMIX_CAP_THIRD_THING)
+
 #if defined(c_plusplus) || defined(__cplusplus)
 extern "C" {
 #endif
