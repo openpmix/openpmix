@@ -45,13 +45,13 @@
 #include "src/util/pmix_if.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
+#include "src/util/pmix_string_copy.h"
 
 #include "src/mca/ptl/base/base.h"
 #include "src/mca/ptl/base/ptl_base_handshake.h"
 
 /****    SUPPORTING FUNCTIONS    ****/
 static void timeout(int sd, short args, void *cbdata);
-static char *pmix_getline(FILE *fp);
 
 pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
 {
@@ -1409,21 +1409,6 @@ static void timeout(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_WAKEUP_THREAD(lock);
-}
-
-static char *pmix_getline(FILE *fp)
-{
-    char *ret, *buff;
-    char input[1024];
-
-    ret = fgets(input, 1024, fp);
-    if (NULL != ret) {
-        input[strlen(input) - 1] = '\0'; /* remove newline */
-        buff = strdup(input);
-        return buff;
-    }
-
-    return NULL;
 }
 
 /*
