@@ -333,7 +333,9 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         if (0 == strcmp(argv[optind-1], "--")) {
                             // double-dash indicates separator between launcher
                             // directives and the application
-                            goto done;
+                            results->tail = PMIx_Argv_copy(&argv[optind]);
+                            PMIx_Argv_free(argv);
+                            return PMIX_SUCCESS;
                         }
                         str = pmix_show_help_string("help-cli.txt", "short-no-long", true,
                                                     pmix_tool_basename, shorts[n]);
