@@ -138,8 +138,9 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
 
     pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
-                        "HASH:STORE:QUAL rank %s key %s",
-                        PMIX_RANK_PRINT(rank),
+                        "%s HASH:STORE:QUAL table %s rank %s key %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        table->ht_label, PMIX_RANK_PRINT(rank),
                         (NULL == kin) ? "NULL KVAL" : kin->key);
 
     if (PMIX_UNLIKELY(NULL == kin)) {
@@ -192,8 +193,8 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                 // temporary value.
                 char *tmp;
                 tmp = PMIx_Value_string(kin->value);
-                pmix_output(0, "%s VALUE UPDATING TO: %s",
-                            PMIX_NAME_PRINT(&pmix_globals.myid), tmp);
+                pmix_output(0, "%s KEY %s VALUE UPDATING TO: %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid), kin->key, tmp);
                 free(tmp);
             }
             pmix_bfrops_base_tma_value_release(&hv->value, tma);
@@ -304,9 +305,9 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
 
     pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
-                        "%s HASH:FETCH id %s key %s",
+                        "%s HASH:FETCH table %s id %s key %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
-                        PMIX_RANK_PRINT(rank),
+                        table->ht_label, PMIX_RANK_PRINT(rank),
                         (NULL == key) ? "NULL" : key);
 
     /* - PMIX_RANK_UNDEF should return following statuses
@@ -373,9 +374,9 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                     }
                     if (UINT32_MAX != hv->qualindex) {
                         pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
-                                            "%s INCLUDE %s VALUE %u FROM TABLE %s FOR RANK %s",
+                                            "%s INCLUDE %s VALUE %s FROM TABLE %s FOR RANK %s",
                                             PMIX_NAME_PRINT(&pmix_globals.myid), p->name,
-                                            (unsigned)hv->value->data.size, table->ht_label, PMIX_RANK_PRINT(rank));
+                                            PMIx_Value_string(hv->value), table->ht_label, PMIX_RANK_PRINT(rank));
                         /* this is a qualified value - need to return it as such */
                         PMIX_KVAL_NEW(kv, PMIX_QUALIFIED_VALUE);
                         darray = (pmix_data_array_t*)pmix_pointer_array_get_item(proc_data->quals, hv->qualindex);
