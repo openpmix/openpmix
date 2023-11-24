@@ -5131,8 +5131,65 @@ pmix_status_t pmix_server_refresh_cache(pmix_server_caddy_t *cd,
                                         pmix_buffer_t *buf,
                                         pmix_op_cbfunc_t cbfunc)
 {
-    PMIX_HIDE_UNUSED_PARAMS(cd, buf, cbfunc);
-    return PMIX_ERR_NOT_SUPPORTED;
+    pmix_proc_t p;
+    char *nspace;
+    int cnt;
+    pmix_status_t rc;
+    pmix_cb_t cb;
+    pmix_buffer_t *pbkt;
+    pmix_kval_t *kv;
+    PMIX_HIDE_UNUSED_PARAMS(cbfunc);
+
+    // unpack the ID of the proc being requested
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &nspace, &cnt, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    PMIX_LOAD_NSPACE(p.nspace, nspace);
+    free(nspace);
+
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, cd->peer, buf, &p.rank, &cnt, PMIX_PROC_RANK);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* retrieve the data for the specific rank they are asking about */
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &p;
+    cb.scope = PMIX_REMOTE;
+    cb.copy = false;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+
+    // pack it up
+    pbkt = PMIX_NEW(pmix_buffer_t);
+    // start with the status
+    PMIX_BFROPS_PACK(rc, cd->peer, pbkt, &cb.status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(pbkt);
+        return rc;
+    }
+    PMIX_LIST_FOREACH(kv, &cb.kvs, pmix_kval_t) {
+        PMIX_BFROPS_PACK(rc, cd->peer, pbkt, kv, 1, PMIX_KVAL);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(pbkt);
+            return rc;
+        }
+    }
+    PMIX_DESTRUCT(&cb);
+
+    // send it back to the requestor
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, pbkt);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(pbkt);
+    }
+
+    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_server_resblk(pmix_server_caddy_t *cd,

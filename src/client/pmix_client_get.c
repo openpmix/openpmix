@@ -72,7 +72,7 @@ static void _value_cbfunc(pmix_status_t status, pmix_value_t *kv, void *cbdata);
 
 static pmix_status_t process_values(pmix_cb_t *cb);
 
-static pmix_status_t refresh_cache(void);
+static pmix_status_t refresh_cache(const pmix_proc_t *proc);
 
 static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
                                      const pmix_info_t info[], size_t ninfo,
@@ -312,7 +312,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
 
     /* if we are to refresh the cache, go do that */
     if (lg->refresh_cache) {
-        rc = refresh_cache();
+        rc = refresh_cache(proc);
         if (PMIX_SUCCESS != rc) {
             // couldn't refresh for some reason
             PMIX_RELEASE(lg);
@@ -409,7 +409,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
 
     /* if we are to refresh the cache, go do that */
     if (lg->refresh_cache) {
-        rc = refresh_cache();
+        rc = refresh_cache(proc);
         if (PMIX_SUCCESS != rc) {
             // couldn't refresh for some reason
             PMIX_RELEASE(lg);
@@ -1126,9 +1126,10 @@ static void refcb(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     int32_t cnt;
     pmix_status_t rc, ret;
+    pmix_kval_t kv;
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     PMIX_ACQUIRE_OBJECT(cb);
-    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     if (NULL == cb) {
         /* nothing we can do */
@@ -1150,6 +1151,25 @@ static void refcb(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
+        goto done;
+    }
+
+    // unpack and store any returned data
+    PMIX_CONSTRUCT(&kv, pmix_kval_t);
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &kv, &cnt, PMIX_KVAL);
+    while (PMIX_SUCCESS == rc) {
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, cb->proc, PMIX_INTERNAL, &kv);
+        PMIX_DESTRUCT(&kv);
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &kv, &cnt, PMIX_KVAL);
+    }
+    PMIX_DESTRUCT(&kv);
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+        ret = PMIX_SUCCESS;
+    } else {
+        ret = rc;
     }
 
 done:
@@ -1160,16 +1180,25 @@ done:
     return;
 }
 
-static pmix_status_t refresh_cache(void)
+static pmix_status_t refresh_cache(const pmix_proc_t *p)
 {
-    pmix_cb_t cb;
+    pmix_cb_t *cb;
     pmix_buffer_t *msg;
     pmix_status_t rc;
     pmix_cmd_t cmd = PMIX_REFRESH_CACHE;
+    char *nspace = (char*)p->nspace;
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
-                        "%s REQUESTING CACHE REFRESH BY SERVER",
-                        PMIX_NAME_PRINT(&pmix_globals.myid));
+                        "%s REQUESTING CACHE REFRESH BY SERVER FOR PROC %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid),
+                        PMIX_NAME_PRINT(p));
+
+    /* if we are using something other than "hash", then there
+     * is nothing for us to do - the modex data would have
+     * been refreshed upon receipt */
+    if (0 != strcmp(pmix_client_globals.myserver->nptr->compat.gds->name, "hash")) {
+        return PMIX_SUCCESS;
+    }
 
     /* pack a quick message to the server asking it
      * to refresh our cache */
@@ -1181,16 +1210,32 @@ static pmix_status_t refresh_cache(void)
         return rc;
     }
 
-    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nspace, 1, PMIX_STRING);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &p->rank, 1, PMIX_PROC_RANK);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(msg);
+        return rc;
+    }
+
+    cb = PMIX_NEW(pmix_cb_t);
+    cb->proc = (pmix_proc_t*)p;
 
     /* send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, refcb, (void *)&cb);
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, refcb, (void *)cb);
     if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
         PMIX_DESTRUCT(&cb);
         return rc;
     }
-    PMIX_WAIT_THREAD(&cb.lock);
-    rc = cb.status;
-    PMIX_DESTRUCT(&cb);
+    PMIX_WAIT_THREAD(&cb->lock);
+    rc = cb->status;
+    PMIX_RELEASE(cb);
     return rc;
 }

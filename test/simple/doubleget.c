@@ -39,7 +39,8 @@ static int pmi_set_string(const char *key, void *data, size_t size)
     return 0;
 }
 
-static int pmi_get_string(uint32_t peer_rank, const char *key, void **data_out, size_t *data_size_out)
+static int pmi_get_string(uint32_t peer_rank, const char *key,
+                          void **data_out, size_t *data_size_out, bool retry)
 {
     int rc;
     pmix_proc_t proc;
@@ -47,7 +48,7 @@ static int pmi_get_string(uint32_t peer_rank, const char *key, void **data_out, 
     pmix_info_t info;
 
     PMIX_LOAD_PROCID(&proc, myproc.nspace, peer_rank);
-    if (refresh) {
+    if (refresh && retry) {
         PMIX_INFO_LOAD(&info, PMIX_GET_REFRESH_CACHE, &refresh, PMIX_BOOL);
         rc = PMIx_Get(&proc, key, &info, 1, &pvalue);
         PMIX_INFO_DESTRUCT(&info);
@@ -62,6 +63,7 @@ static int pmi_get_string(uint32_t peer_rank, const char *key, void **data_out, 
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "ERROR: Client ns %s rank %d: PMIx_Get on rank %u %s: %s\n", myproc.nspace, myproc.rank,
             peer_rank, key, PMIx_Error_string(rc));
+        return rc;
     }
     if (pvalue->type != PMIX_BYTE_OBJECT) {
         fprintf(stderr, "ERROR: Client ns %s rank %d: PMIx_Get %s: got wrong data type\n", myproc.nspace, myproc.rank,
@@ -247,10 +249,16 @@ int main(int argc, char *argv[])
 
     /* Each rank gets the key-value pair that was put by the other rank */
     if (0 == myproc.rank) {
-        pmi_get_string(1, "test-key-1", (void **) &data_out, &size_out);
+        rc = pmi_get_string(1, "test-key-1", (void **) &data_out, &size_out, false);
+        if (0 != rc) {
+            goto done;
+        }
         fprintf(stdout, "%d: obtained data for test-key-1 \"%s\"\n", myproc.rank, data_out);
     } else {
-        pmi_get_string(0, "test-key-0", (void **) &data_out, &size_out);
+        rc = pmi_get_string(0, "test-key-0", (void **) &data_out, &size_out, false);
+        if (0 != rc) {
+            goto done;
+        }
         fprintf(stdout, "%d: obtained data for test-key-0 \"%s\"\n", myproc.rank, data_out);
     }
 
@@ -283,10 +291,16 @@ int main(int argc, char *argv[])
     /* Each rank gets the value put by the other rank
      * If overwrite was successful, each rank should get the new value here */
     if (0 == myproc.rank) {
-        pmi_get_string(1, "test-key-1", (void **) &data_out, &size_out);
+        rc = pmi_get_string(1, "test-key-1", (void **) &data_out, &size_out, true);
+        if (0 != rc) {
+            goto done;
+        }
         fprintf(stdout, "%d: obtained data for test-key-1 \"%s\"\n", myproc.rank, data_out);
     } else {
-        pmi_get_string(0, "test-key-0", (void **) &data_out, &size_out);
+        rc = pmi_get_string(0, "test-key-0", (void **) &data_out, &size_out, true);
+        if (0 != rc) {
+            goto done;
+        }
         fprintf(stdout, "%d: obtained data for test-key-0 \"%s\"\n", myproc.rank, data_out);
     }
 
@@ -298,6 +312,7 @@ int main(int argc, char *argv[])
         }
     }
 
+done:
     if (all_procs != NULL) {
         PMIX_PROC_FREE(all_procs, nprocs);
     }
