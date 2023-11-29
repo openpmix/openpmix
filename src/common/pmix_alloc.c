@@ -233,11 +233,12 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
         goto sendit;
     }
 
-    /* if we are a server and our host provides an allocate
+    /* if we are the active server and our host provides an allocate
      * entry, then pass it up - they might need to forward
      * it to their system controller or via some outside
      * path to the scheduler */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+    if (pmix_globals.mypeer == pmix_client_globals.myserver &&
+        PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         NULL != pmix_host_server.allocate) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:allocate handed to host");
