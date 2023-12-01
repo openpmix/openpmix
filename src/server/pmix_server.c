@@ -2226,7 +2226,8 @@ static void _dmodex_req(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "DMODX LOOKING FOR %s",
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "DMODX LOOKING FOR %s",
                         PMIX_NAME_PRINT(&cd->proc));
 
     /* this should be one of my clients, but a race condition
