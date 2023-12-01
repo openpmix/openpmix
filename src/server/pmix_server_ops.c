@@ -3926,7 +3926,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                             PMIX_INFO_FREE(grpinfo, ngrpinfo);
                             goto release;
                         }
-                        /* reconstruct each value as a qualified one basd
+                        /* reconstruct each value as a qualified one based
                          * on the ctxid */
                         PMIX_CONSTRUCT(&kp, pmix_kval_t);
                         kp.value = &val;

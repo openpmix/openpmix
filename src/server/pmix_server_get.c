@@ -398,7 +398,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
      * we do know how many clients to expect, so first check to see if
      * all clients have been registered with us */
     if (!nptr->all_registered) {
-        pmix_output_verbose(2, pmix_server_globals.get_output, "%s:%d NSPACE %s not all registered",
+        pmix_output_verbose(2, pmix_server_globals.get_output,
+                            "%s:%d NSPACE %s not all registered",
                             pmix_globals.myid.nspace, pmix_globals.myid.rank, nspace);
         rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
         if (PMIX_ERR_NOT_FOUND == rc) {
@@ -452,10 +453,6 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     if (local && refresh_cache) {
         return PMIX_OPERATION_SUCCEEDED;
     } else if (refresh_cache) {
-        if (NULL != key) {
-            free(key);
-            key = NULL;
-        }
         goto request;
     }
 
@@ -1180,9 +1177,9 @@ static void _process_dmdx_reply(int sd, short args, void *cbdata)
                 PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &pbkt, kv, &cnt, PMIX_KVAL);
                 while (PMIX_SUCCESS == rc) {
                     if (caddy->lcd->proc.rank == PMIX_RANK_WILDCARD) {
-                        PMIX_GDS_STORE_KV(rc, peer, &caddy->lcd->proc, PMIX_INTERNAL, kv);
+                        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &caddy->lcd->proc, PMIX_INTERNAL, kv);
                     } else {
-                        PMIX_GDS_STORE_KV(rc, peer, &caddy->lcd->proc, PMIX_REMOTE, kv);
+                        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &caddy->lcd->proc, PMIX_REMOTE, kv);
                     }
                     if (PMIX_SUCCESS != rc) {
                         PMIX_ERROR_LOG(rc);
