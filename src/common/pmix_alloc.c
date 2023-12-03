@@ -222,15 +222,16 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    /* if we are the system controller but not connected
-     * to the scheduler, then nothing we can do */
-    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
-        if (!PMIX_PEER_IS_SCHEDULER(pmix_client_globals.myserver)) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        // otherwise send it to the scheduler
+    /* if our server is the scheduler, then send it */
+    if (PMIX_PEER_IS_SCHEDULER(pmix_client_globals.myserver)) {
         goto sendit;
+    }
+
+    /* if we are the system controller, then nothing we can do
+     * since the scheduler is not attached */
+    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_NOT_SUPPORTED;
     }
 
     /* if we are a server and our host provides an allocate
@@ -419,15 +420,16 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    /* if we are the system controller but not connected
-     * to the scheduler, then nothing we can do */
-    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
-        if (!PMIX_PEER_IS_SCHEDULER(pmix_client_globals.myserver)) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        // otherwise send it to the scheduler
+    /* if our server is the scheduler, then send it */
+    if (PMIX_PEER_IS_SCHEDULER(pmix_client_globals.myserver)) {
         goto sendit;
+    }
+
+    /* if we are the system controller, then nothing we can do
+     * since the scheduler is not attached */
+    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_NOT_SUPPORTED;
     }
 
     /* if we are a server and our host provides a resource block
