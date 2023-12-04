@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -50,7 +50,6 @@ static const char path_sep[] = PMIX_PATH_SEP;
 
 int pmix_os_dirpath_create(const char *path, const mode_t mode)
 {
-    struct stat buf;
     char **parts, *tmp;
     int i, len;
     int ret;
@@ -59,21 +58,27 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         return (PMIX_ERR_BAD_PARAM);
     }
 
-    /* coverity[TOCTOU] */
-    if (0 == (ret = stat(path, &buf))) {    /* already exists */
-        if (mode == (mode & buf.st_mode)) { /* has correct mode */
-            return (PMIX_SUCCESS);
-        }
-        if (0 == (ret = chmod(path, (buf.st_mode | mode)))) { /* successfully change mode */
-            return (PMIX_SUCCESS);
-        }
-        pmix_show_help("help-pmix-util.txt", "dir-mode", true, path, mode, strerror(errno));
-        return (PMIX_ERR_NO_PERMISSIONS); /* can't set correct mode */
-    }
-
-    /* quick -- try to make directory */
+    /* try to make directory */
     if (0 == mkdir(path, mode)) {
         return (PMIX_SUCCESS);
+    }
+    ret = errno; // preserve the error
+
+    /* check the error */
+    if (EEXIST == ret) {
+        // already exists - try to set the mode
+        if (0 == (ret = chmod(path, mode))) { /* successfully change mode */
+            return (PMIX_SUCCESS);
+        } else {
+            pmix_show_help("help-pmix-util.txt", "dir-mode", true,
+                           path, mode, strerror(errno));
+            return PMIX_ERR_SILENT;
+        }
+    } else if (ENOENT != ret) {
+        // cannot create it
+        pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
+                       path, strerror(ret));
+        return PMIX_ERR_SILENT;
     }
 
     /* didn't work, so now have to build our way down the tree */
@@ -114,23 +119,14 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         }
 
         /* Now that we have the name, try to create it */
-        mkdir(tmp, mode);
-        ret = errno; // save the errno for an error msg, if needed
-        /* coverity[TOCTOU] */
-        if (0 != stat(tmp, &buf)) {
+        ret = mkdir(tmp, mode);
+        if (0 != ret && EEXIST != ret) {
+            // true error
             pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
                            tmp, strerror(ret));
             PMIx_Argv_free(parts);
             free(tmp);
             return PMIX_ERR_SILENT;
-        } else if (i == (len - 1) &&
-                   (mode != (mode & buf.st_mode)) &&
-                   (0 > chmod(tmp, (buf.st_mode | mode)))) {
-            pmix_show_help("help-pmix-util.txt", "dir-mode", true,
-                           tmp, mode, strerror(errno));
-            PMIx_Argv_free(parts);
-            free(tmp);
-            return (PMIX_ERR_SILENT); /* can't set correct mode */
         }
     }
 

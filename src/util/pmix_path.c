@@ -206,8 +206,9 @@ char *pmix_path_findv(char *fname, int mode, char **envv, char *wrkdir)
         pmix_argv_append(&dirc, &dirv, wrkdir);
     }
 
-    if (NULL == dirv)
+    if (NULL == dirv) {
         return NULL;
+    }
     fullpath = pmix_path_find(fname, dirv, mode, envv);
     PMIx_Argv_free(dirv);
     return fullpath;
@@ -229,7 +230,6 @@ char *pmix_path_findv(char *fname, int mode, char **envv, char *wrkdir)
 char *pmix_path_access(char *fname, char *path, int mode)
 {
     char *fullpath = NULL;
-    struct stat buf;
 
     /* Allocate space for the full pathname. */
     if (NULL == path) {
@@ -240,45 +240,7 @@ char *pmix_path_access(char *fname, char *path, int mode)
     if (NULL == fullpath)
         return NULL;
 
-    /* first check to see - is this a file or a directory? We
-     * only want files
-     */
-    /* coverity[TOCTOU] */
-    if (0 != stat(fullpath, &buf)) {
-        /* couldn't stat the path - obviously, this also meets the
-         * existence check, if that was requested
-         */
-        free(fullpath);
-        return NULL;
-    }
-
-    if (!(S_IFREG & buf.st_mode) && !(S_IFLNK & buf.st_mode)) {
-        /* this isn't a regular file or a symbolic link, so
-         * ignore it
-         */
-        free(fullpath);
-        return NULL;
-    }
-
-    /* check the permissions */
-    if ((X_OK & mode) && !(S_IXUSR & buf.st_mode)) {
-        /* if they asked us to check executable permission,
-         * and that isn't set, then return NULL
-         */
-        free(fullpath);
-        return NULL;
-    }
-    if ((R_OK & mode) && !(S_IRUSR & buf.st_mode)) {
-        /* if they asked us to check read permission,
-         * and that isn't set, then return NULL
-         */
-        free(fullpath);
-        return NULL;
-    }
-    if ((W_OK & mode) && !(S_IWUSR & buf.st_mode)) {
-        /* if they asked us to check write permission,
-         * and that isn't set, then return NULL
-         */
+    if (0 != access(fullpath, mode)) {
         free(fullpath);
         return NULL;
     }
