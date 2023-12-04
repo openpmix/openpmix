@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -52,16 +52,6 @@
 
 #include "src/util/pmix_context_fns.h"
 
-static bool check_exist(char *path)
-{
-    struct stat buf;
-    /* coverity[TOCTOU] */
-    if (0 == stat(path, &buf)) { /* exists */
-        return true;
-    }
-    return false;
-}
-
 pmix_status_t pmix_util_check_context_cwd(char **incwd,
                                           bool want_chdir,
                                           bool user_cwd)
@@ -91,11 +81,7 @@ pmix_status_t pmix_util_check_context_cwd(char **incwd,
          was, barf because they specifically asked for something we
          can't provide. */
         if (user_cwd) {
-            /* if the directory does not exist, then report that */
-            if (!check_exist(cwd)) {
-                return PMIX_ERR_JOB_WDIR_NOT_FOUND;
-            }
-            /* if it does exist, then we must lack permissions */
+            /* does not exist, or we must lack permissions */
             return PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE;
         }
 
@@ -107,11 +93,7 @@ pmix_status_t pmix_util_check_context_cwd(char **incwd,
         if (NULL != tmp) {
             /* Try $HOME.  Same test as above. */
             if (want_chdir && 0 != chdir(tmp)) {
-                /* if the directory does not exist, then report that */
-                if (!check_exist(cwd)) {
-                    return PMIX_ERR_JOB_WDIR_NOT_FOUND;
-                }
-                /* if it does exist, then we must lack permissions */
+                /* does not exist, or we must lack permissions */
                 return PMIX_ERR_JOB_WDIR_NOT_ACCESSIBLE;
             }
 
