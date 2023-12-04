@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      University of Houston. All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -126,25 +126,6 @@ PMIX_EXPORT char *pmix_find_absolute_path(char *app_name) __pmix_attribute_warn_
  */
 PMIX_EXPORT char *pmix_path_access(char *fname, char *path, int mode)
     __pmix_attribute_malloc__ __pmix_attribute_warn_unused_result__;
-
-/**
- * @brief Figure out, whether fname is on network file system
- * and return fstype if known
- *
- * Try to figure out, whether the file name specified through fname is
- * on any network file system (currently NFS, Lustre, GPFS,  Panasas
- * and PVFS2 ).
- *
- * If the file is not created, the parent directory is checked.
- * This allows checking for NFS prior to opening the file.
- *
- * @fname[in]     File name to check
- * @fstype[out]   File system type if retval is true
- *
- * @retval true                If fname is on NFS, Lustre or Panasas
- * @retval false               otherwise
- */
-PMIX_EXPORT bool pmix_path_nfs(char *fname, char **fstype) __pmix_attribute_warn_unused_result__;
 
 /**
  * @brief Returns the disk usage of path.
