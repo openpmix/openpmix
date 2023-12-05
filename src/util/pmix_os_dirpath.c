@@ -120,10 +120,10 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
 
         /* Now that we have the name, try to create it */
         ret = mkdir(tmp, mode);
-        if (0 != ret && EEXIST != ret) {
+        if (0 != ret && EEXIST != errno) {
             // true error
             pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
-                           tmp, strerror(ret));
+                           tmp, strerror(errno));
             PMIx_Argv_free(parts);
             free(tmp);
             return PMIX_ERR_SILENT;
