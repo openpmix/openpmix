@@ -328,7 +328,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                           pmix_globals.event_eviction_time, _notification_eviction_cbfunc);
     PMIX_CONSTRUCT(&pmix_globals.nspaces, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_keyindex_t);
-    pmix_pointer_array_init(pmix_globals.keyindex.table, 1024, INT_MAX, 128);
     PMIX_CONSTRUCT(&pmix_client_globals.groups, pmix_list_t);
     /* need to hold off checking the hotel init return code
      * until after we construct all the globals so they can
