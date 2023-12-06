@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1231,7 +1232,7 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, refcb, (void *)cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIX_DESTRUCT(&cb);
+        PMIX_RELEASE(cb);
         return rc;
     }
     PMIX_WAIT_THREAD(&cb->lock);
