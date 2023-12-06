@@ -201,6 +201,8 @@ static void keyindex_construct(pmix_keyindex_t *ki)
     pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
 
     ki->table = PMIX_NEW(pmix_pointer_array_t, tma);
+    pmix_pointer_array_init(ki->table, 1024, INT_MAX, 128);
+
     ki->next_id = PMIX_INDEX_BOUNDARY;
 }
 
