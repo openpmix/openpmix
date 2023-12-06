@@ -217,7 +217,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     }
 
     /* see if they just want our version */
-    if (NULL == proc && 0 == strncmp(key, PMIX_VERSION_NUMERIC, PMIX_MAX_KEYLEN)) {
+    if (NULL != key && 0 == strncmp(key, PMIX_VERSION_NUMERIC, PMIX_MAX_KEYLEN)) {
         if (lg->stval) {
             ival = *val;
             ival->type = PMIX_UINT32;
