@@ -223,6 +223,20 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         return PMIX_SUCCESS;
     }
 
+    /* see if they just want our version */
+    if (NULL != key && 0 == strncmp(key, PMIX_VERSION_NUMERIC, PMIX_MAX_KEYLEN)) {
+        PMIX_VALUE_CREATE(ival, 1);
+        ival->type = PMIX_UINT32;
+        ival->data.uint32 = PMIX_NUMERIC_VERSION;
+        cb = PMIX_NEW(pmix_cb_t);
+        cb->status = PMIX_SUCCESS;
+        cb->value = ival;
+        cb->cbfunc.valuefn = cbfunc;
+        cb->cbdata = cbdata;
+        PMIX_THREADSHIFT(cb, gcbfn);
+        return PMIX_OPERATION_SUCCEEDED;
+    }
+
     /* if the key is NULL, the rank cannot be WILDCARD as
      * we cannot return all info from every rank */
     if (NULL != proc && PMIX_RANK_WILDCARD == proc->rank && NULL == key) {

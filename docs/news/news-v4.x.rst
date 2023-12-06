@@ -4,6 +4,15 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
+4.2.8 -- TBD
+------------
+ - PR #3209: Adjust preg component priorities
+ - PR #3206: Resolve a problem with updated "put" key-value pairs
+ - PR #3200: Multiple commits
+    - Error out of attempts for 32-bit builds
+    - Remove static version of global function
+    - Fix handling of "--" in cmd lines
+
 4.2.7 -- 23 Oct 2023
 --------------------
  - PR #3183: Update VERSION and NEWS for release
