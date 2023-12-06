@@ -175,12 +175,6 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *libdir)
         return ret;
     }
 
-    /* register params for pmix */
-    if (PMIX_SUCCESS != (ret = pmix_register_params())) {
-        fprintf(stderr, "pmix_register_params failed\n");
-        return ret;
-    }
-
     /* initialize the mca */
     if (PMIX_SUCCESS != (ret = pmix_mca_base_open(libdir))) {
         fprintf(stderr, "pmix_mca_base_open failed\n");
@@ -229,6 +223,12 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
 
     if (PMIX_SUCCESS != pmix_init_util(info, ninfo, NULL)) {
         return PMIX_ERROR;
+    }
+
+    /* register params for pmix */
+    if (PMIX_SUCCESS != (ret = pmix_register_params())) {
+        fprintf(stderr, "pmix_register_params failed\n");
+        return ret;
     }
 
     /* scan incoming info for directives */

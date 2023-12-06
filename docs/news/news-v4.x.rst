@@ -6,6 +6,7 @@ series, in reverse chronological order.
 
 4.2.8 -- TBD
 ------------
+ - PR #3220: Delay registering top-level MCA params
  - PR #3218: Update VERSION and NEWS for release
  - PR #3216: Multiple commits
     - Remove unused function
