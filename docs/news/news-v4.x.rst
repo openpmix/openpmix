@@ -6,6 +6,10 @@ series, in reverse chronological order.
 
 4.2.8 -- TBD
 ------------
+ - PR #3218: Update VERSION and NEWS for release
+ - PR #3216: Multiple commits
+    - Remove unused function
+    - Add the ability to retrieve the PMIx library version
  - PR #3209: Adjust preg component priorities
  - PR #3206: Resolve a problem with updated "put" key-value pairs
  - PR #3200: Multiple commits
