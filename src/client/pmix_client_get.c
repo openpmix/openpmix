@@ -216,6 +216,24 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         return PMIX_OPERATION_SUCCEEDED;
     }
 
+    /* see if they just want our version */
+    if (NULL == proc && 0 == strncmp(key, PMIX_VERSION_NUMERIC, PMIX_MAX_KEYLEN)) {
+        if (lg->stval) {
+            ival = *val;
+            ival->type = PMIX_UINT32;
+            ival->data.uint32 = PMIX_NUMERIC_VERSION;
+        } else {
+            PMIX_VALUE_CREATE(ival, 1);
+            if (NULL == ival) {
+                return PMIX_ERR_NOMEM;
+            }
+            ival->type = PMIX_UINT32;
+            ival->data.uint32 = PMIX_NUMERIC_VERSION;
+            *val = ival;
+        }
+        return PMIX_OPERATION_SUCCEEDED;
+    }
+
     /* if the given proc param is NULL, or the nspace is
      * empty, then the caller is referencing our own nspace */
     if (NULL == proc || 0 == strlen(proc->nspace)) {
