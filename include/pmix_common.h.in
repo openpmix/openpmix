@@ -1161,6 +1161,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_QUERY_PROVISIONAL_ABI_VERSION  "pmix.qry.prabiver"    // (char*) The PMIx Standard Provisional ABI version supported returned in the form of a comma separated "MAJOR.MINOR"
                                                                    //         This attribute can be used with PMIx_Query_info outside of the init/finalize region.
 
+#define PMIX_VERSION_NUMERIC                "pmix.vers.num"        // (uint32_t) Numeric representation of the version of the PMIx library
+                                                                   //            being used
+
+
 /****    PROCESS STATE DEFINITIONS    ****/
 typedef uint8_t pmix_proc_state_t;
 #define PMIX_PROC_STATE_UNDEF                    0  /* undefined process state */
