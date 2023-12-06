@@ -2393,8 +2393,13 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const cha
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
-    cd->pname.nspace = strdup(proc->nspace);
-    cd->pname.rank = proc->rank;
+    if (NULL == proc) {
+        cd->pname.nspace = strdup(pmix_globals.myid.nspace);
+        cd->pname.rank = pmix_globals.myid.rank;
+    } else {
+        cd->pname.nspace = strdup(proc->nspace);
+        cd->pname.rank = proc->rank;
+    }
 
     cd->kv = PMIX_NEW(pmix_kval_t);
     if (NULL == cd->kv) {
