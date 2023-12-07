@@ -196,6 +196,11 @@ int main(int argc, char **argv)
     pmix_tool_basename = "palloc";
     gethostname(hostname, sizeof(hostname));
 
+    // setup the base infrastructure
+    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
+        return PMIX_ERROR;
+    }
+
     /* Parse the command line options */
     PMIX_CONSTRUCT(&results, pmix_cli_result_t);
     rc = pmix_cmd_line_parse(argv, pallocshorts, pallocptions,
@@ -218,11 +223,6 @@ int main(int argc, char **argv)
                 pmix_expose_param(opt->values[n]);
             }
         }
-    }
-
-    // setup the base infrastructure
-    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
-        return PMIX_ERROR;
     }
 
     /* if we were given the pid of a starter, then direct that
