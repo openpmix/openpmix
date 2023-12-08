@@ -234,7 +234,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         cb->cbfunc.valuefn = cbfunc;
         cb->cbdata = cbdata;
         PMIX_THREADSHIFT(cb, gcbfn);
-        return PMIX_OPERATION_SUCCEEDED;
+        return PMIX_SUCCESS;
     }
 
     /* if the key is NULL, the rank cannot be WILDCARD as
