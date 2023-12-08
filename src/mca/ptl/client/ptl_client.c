@@ -139,7 +139,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, 
                                 "ptl:client looking for system server at %s", rendfile);
             /* try to read the file */
             PMIX_CONSTRUCT(&connections, pmix_list_t);
-            rc = pmix_ptl_base_parse_uri_file(rendfile, &connections);
+            rc = pmix_ptl_base_parse_uri_file(rendfile, true, &connections);
             free(rendfile);
             rendfile = NULL;
             if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections)) {

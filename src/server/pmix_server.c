@@ -515,6 +515,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_status_t code;
     pmix_ptl_posted_recv_t *rcv;
     bool outputio;
+    bool connect_optional = false;
+    bool connect_directed = false;
     char *singleton = NULL;
     pmix_data_array_t *mau = NULL;
 
@@ -571,6 +573,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                 if (PMIX_INFO_TRUE(&info[n])) {
                     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SCHEDULER);
                 }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SYS_CONTROLLER)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SYS_CTRLR);
+                }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
@@ -589,6 +595,40 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                 singleton = info[n].value.data.string;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_MAU)) {
                 mau = info[n].value.data.darray;
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
+                connect_optional = PMIX_INFO_TRUE(&info[n]);
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    connect_directed = true;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_SYSTEM_FIRST)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    connect_directed = true;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SCHEDULER)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    connect_directed = true;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYS_CONTROLLER)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    connect_directed = true;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECTION_ORDER)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    connect_directed = true;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_PIDINFO)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    connect_directed = true;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_ATTACHMENT_FILE)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    connect_directed = true;
+                }
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_LAUNCHER_RENDEZVOUS_FILE)) {
+                if (PMIX_INFO_TRUE(&info[n])) {
+                    connect_directed = true;
+                }
             }
         }
     }
@@ -931,7 +971,16 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         /* wait for release to arrive */
         PMIX_WAIT_THREAD(&releaselock);
         PMIX_DESTRUCT_LOCK(&releaselock);
+    } else if (connect_directed) {
+        /* connect to another server, if the info's direct us to */
+        rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver,
+                                      info, ninfo);
+        if (PMIX_SUCCESS != rc && !connect_optional) {
+            return rc;
+        }
     }
+
+
     return PMIX_SUCCESS;
 }
 

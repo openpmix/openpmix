@@ -759,6 +759,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             pmix_client_globals.myserver->info->pname.rank = pmix_globals.myid.rank;
             pmix_client_globals.myserver->info->uid = pmix_globals.uid;
             pmix_client_globals.myserver->info->gid = pmix_globals.gid;
+            // set the type of the server to be our own
+            PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, ptype.type);
         }
     } else {
         /* connect to the server */
@@ -785,10 +787,13 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
             pmix_client_globals.myserver->info->pname.rank = pmix_globals.myid.rank;
             pmix_client_globals.myserver->info->uid = pmix_globals.uid;
             pmix_client_globals.myserver->info->gid = pmix_globals.gid;
+            // set the type of the server to be our own
+            PMIX_SET_PEER_TYPE(pmix_client_globals.myserver, ptype.type);
             /* mark us as not connecting to avoid asking for our job info */
             do_not_connect = true;
         }
     }
+
     /* setup the wildcard ID */
     PMIX_LOAD_PROCID(&wildcard, pmix_globals.myid.nspace, PMIX_RANK_WILDCARD);
     /* pass back the ID */
@@ -969,6 +974,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         }
         PMIX_DESTRUCT(&cb);
     }
+
     // enable show_help subsystem
     pmix_show_help_enabled = true;
     PMIX_RELEASE_THREAD(&pmix_global_lock);

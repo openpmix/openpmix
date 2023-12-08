@@ -284,7 +284,9 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace, pmix_rank
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connections)
+pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
+                                           bool optional,
+                                           pmix_list_t *connections)
 {
     FILE *fp;
     char *srvr, *p = NULL;
@@ -304,7 +306,7 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connecti
      * not exist yet! Check for existence */
     /* coverity[TOCTOU] */
     if (0 != access(filename, R_OK)) {
-        if (ENOENT == errno) {
+        if (ENOENT == errno && !optional) {
             /* the file does not exist, so give it
              * a little time to see if the server
              * is still starting up */
@@ -401,7 +403,7 @@ process:
 }
 
 pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t info[], size_t ninfo,
-                                      pmix_list_t *connections)
+                                      bool optional, pmix_list_t *connections)
 {
     char *newdir;
     struct stat buf;
@@ -430,7 +432,7 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
         }
         /* if it is a directory, down search */
         if (S_ISDIR(buf.st_mode)) {
-            pmix_ptl_base_df_search(newdir, prefix, info, ninfo, connections);
+            pmix_ptl_base_df_search(newdir, prefix, info, ninfo, optional, connections);
             free(newdir);
             continue;
         }
@@ -441,7 +443,7 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
             /* try to read this file */
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "pmix:tool: reading file %s", newdir);
-            rc = pmix_ptl_base_parse_uri_file(newdir, connections);
+            rc = pmix_ptl_base_parse_uri_file(newdir, optional, connections);
             if (PMIX_SUCCESS != rc) {
                 free(newdir);
                 closedir(cur_dirp);
