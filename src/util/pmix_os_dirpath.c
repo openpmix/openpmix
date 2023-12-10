@@ -149,11 +149,9 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                             pmix_os_dirpath_destroy_callback_fn_t cbfunc)
 {
     int rc, exit_status = PMIX_SUCCESS;
-    bool is_dir = false;
     DIR *dp;
     struct dirent *ep;
     char *filenm;
-    struct stat buf;
 
     if (NULL == path) { /* protect against error */
         return PMIX_ERROR;
@@ -181,43 +179,6 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
             continue;
         }
 
-        /* Check to see if it is a directory */
-        is_dir = false;
-
-        /* Create a pathname.  This is not always needed, but it makes
-         * for cleaner code just to create it here.  Note that we are
-         * allocating memory here, so we need to free it later on.
-         */
-        filenm = pmix_os_path(false, path, ep->d_name, NULL);
-
-        /* coverity[TOCTOU] */
-        rc = stat(filenm, &buf);
-        if (0 > rc) {
-            /* Handle a race condition. filenm might have been deleted by an
-             * other process running on the same node. That typically occurs
-             * when one task is removing the job_session_dir and an other task
-             * is still removing its proc_session_dir.
-             */
-            free(filenm);
-            continue;
-        }
-        if (S_ISDIR(buf.st_mode)) {
-            is_dir = true;
-        }
-
-        /*
-         * If not recursively descending, then if we find a directory then fail
-         * since we were not told to remove it.
-         */
-        if (is_dir && !recursive) {
-            /* Set the error indicating that we found a directory,
-             * but continue removing files
-             */
-            exit_status = PMIX_ERROR;
-            free(filenm);
-            continue;
-        }
-
         /* Will the caller allow us to remove this file/directory? */
         if (NULL != cbfunc) {
             /*
@@ -225,25 +186,45 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
              * continue with the rest of the entries
              */
             if (!(cbfunc(path, ep->d_name))) {
-                free(filenm);
                 continue;
             }
         }
-        /* Directories are recursively destroyed */
-        if (is_dir) {
-            rc = pmix_os_dirpath_destroy(filenm, recursive, cbfunc);
-            free(filenm);
-            if (PMIX_SUCCESS != rc) {
-                exit_status = rc;
-                closedir(dp);
-                goto cleanup;
-            }
-        } else {
-            /* Files are removed right here */
-            if (0 != (rc = unlink(filenm))) {
+ 
+        /* Create a pathname.  This is not always needed, but it makes
+         * for cleaner code just to create it here.  Note that we are
+         * allocating memory here, so we need to free it later on.
+         */
+        filenm = pmix_os_path(false, path, ep->d_name, NULL);
+
+        // attempt to unlink it
+        rc = unlink(filenm);
+        if (0 > rc) {
+            // we failed to unlink it - save the error
+            rc = errno;
+            if (EPERM == rc) {
+                // it's a directory
+                if (recursive) {
+                    rc = pmix_os_dirpath_destroy(filenm, recursive, cbfunc);
+                    free(filenm);
+                    if (PMIX_SUCCESS != rc) {
+                        exit_status = rc;
+                        closedir(dp);
+                        goto cleanup;
+                    }
+                }
+            } else if (EBUSY == rc) {
+                /* file system mount point or another process
+                 * is using it */
                 exit_status = PMIX_ERROR;
+                continue;
+            } else {
+                // uncorrectable error
+                pmix_show_help("help-pmix-util.txt", "unlink-error", true,
+                               filenm,  strerror(rc));
+                free(filenm);
+                exit_status = PMIX_ERROR;
+                break;
             }
-            free(filenm);
         }
     }
 
