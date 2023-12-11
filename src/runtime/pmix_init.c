@@ -46,6 +46,7 @@
 #include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
+#include "src/mca/prm/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/pstrg/base/base.h"
@@ -559,6 +560,19 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
     if (PMIX_SUCCESS != (ret = pmix_pstrg_base_select())) {
         error = "pmix_pstrg_base_select";
+        goto return_error;
+    }
+
+    /* open and initialize */
+    ret = pmix_mca_base_framework_open(&pmix_prm_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT);
+    if (PMIX_SUCCESS != ret) {
+        error = "pmix_prm_base_open";
+        goto return_error;
+    }
+
+    ret = pmix_prm_base_select();
+    if (PMIX_SUCCESS != ret) {
+        error = "pmix_prm_base_select";
         goto return_error;
     }
 

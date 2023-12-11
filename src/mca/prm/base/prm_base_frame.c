@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -45,71 +45,62 @@
 #include "src/mca/prm/base/static-components.h"
 
 /* Instantiate the global vars */
-pmix_prm_globals_t pmix_prm_globals = {
-    .lock = PMIX_LOCK_STATIC_INIT,
-    .actives = PMIX_LIST_STATIC_INIT,
+pmix_prm_globals_t pmix_prm_base = {
     .initialized = false,
     .selected = false
 };
 
-pmix_prm_API_module_t pmix_prm = {
-    .notify = pmix_prm_base_notify
+static pmix_status_t base_allocate(pmix_alloc_directive_t directive,
+                                   pmix_info_t *info, size_t ninfo,
+                                   pmix_info_t **results, size_t *nresults)
+{
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+static pmix_status_t base_notify(pmix_status_t status, const pmix_proc_t *source,
+                                 pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
+                                 pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+static pmix_status_t base_grt(uint32_t *timeleft)
+{
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
+pmix_prm_module_t pmix_prm = {
+    .name = "base",
+    .init = NULL,
+    .finalize = NULL,
+    .allocate = base_allocate,
+    .notify = base_notify,
+    .get_remaining_time = base_grt
 };
 
 static pmix_status_t pmix_prm_close(void)
 {
-    pmix_prm_base_active_module_t *active, *prev;
-
-    if (!pmix_prm_globals.initialized) {
+    if (!pmix_prm_base.initialized) {
         return PMIX_SUCCESS;
     }
-    pmix_prm_globals.initialized = false;
-    pmix_prm_globals.selected = false;
+    pmix_prm_base.initialized = false;
+    pmix_prm_base.selected = false;
 
-    PMIX_LIST_FOREACH_SAFE (active, prev, &pmix_prm_globals.actives,
-                            pmix_prm_base_active_module_t) {
-        pmix_list_remove_item(&pmix_prm_globals.actives, &active->super);
-        if (NULL != active->module->finalize) {
-            active->module->finalize();
-        }
-        PMIX_RELEASE(active);
+    if (NULL != pmix_prm.finalize) {
+        pmix_prm.finalize();
     }
-    PMIX_DESTRUCT(&pmix_prm_globals.actives);
-
-    PMIX_DESTRUCT_LOCK(&pmix_prm_globals.lock);
     return pmix_mca_base_framework_components_close(&pmix_prm_base_framework, NULL);
 }
 
 static pmix_status_t pmix_prm_open(pmix_mca_base_open_flag_t flags)
 {
     /* initialize globals */
-    pmix_prm_globals.initialized = true;
-    PMIX_CONSTRUCT_LOCK(&pmix_prm_globals.lock);
-    pmix_prm_globals.lock.active = false;
-    PMIX_CONSTRUCT(&pmix_prm_globals.actives, pmix_list_t);
+    pmix_prm_base.initialized = true;
 
     /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_prm_base_framework, flags);
 }
 
-PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, prm, "PMIx Network Operations", NULL, pmix_prm_open,
+PMIX_MCA_BASE_FRAMEWORK_DECLARE(pmix, prm, "PMIx RM Operations", NULL, pmix_prm_open,
                                 pmix_prm_close, pmix_mca_prm_base_static_components,
                                 PMIX_MCA_BASE_FRAMEWORK_FLAG_DEFAULT);
-
-PMIX_CLASS_INSTANCE(pmix_prm_base_active_module_t, pmix_list_item_t, NULL, NULL);
-
-static void rlcon(pmix_prm_rollup_t *p)
-{
-    PMIX_CONSTRUCT_LOCK(&p->lock);
-    p->lock.active = false;
-    p->status = PMIX_SUCCESS;
-    p->requests = 0;
-    p->replies = 0;
-    p->cbfunc = NULL;
-    p->cbdata = NULL;
-}
-static void rldes(pmix_prm_rollup_t *p)
-{
-    PMIX_DESTRUCT_LOCK(&p->lock);
-}
-PMIX_CLASS_INSTANCE(pmix_prm_rollup_t, pmix_object_t, rlcon, rldes);

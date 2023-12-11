@@ -348,7 +348,8 @@ static void debugger_aggregator(size_t evhdlr_registration_id, pmix_status_t sta
         PMIX_LOAD_PROCID(&proc, source->nspace, PMIX_RANK_LOCAL_PEERS);
         /* pass an event to our host */
         rc = pmix_prm.notify(status, &proc, PMIX_RANGE_RM, info, ninfo, NULL, NULL);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc &&
+            PMIX_ERR_NOT_SUPPORTED != rc) {
             PMIX_ERROR_LOG(rc);
         }
     }
@@ -483,14 +484,7 @@ pmix_status_t pmix_server_initialize(void)
     /* get available gds modules */
     gds_mode = pmix_gds_base_get_available_modules();
 
-    /* open and initialize */
-    rc = pmix_mca_base_framework_open(&pmix_prm_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-
-    rc = pmix_prm_base_select();
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_info_t info[],

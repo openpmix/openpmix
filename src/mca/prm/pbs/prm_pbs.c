@@ -3,7 +3,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022      High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * $COPYRIGHT$
@@ -44,16 +44,19 @@
 #include "src/util/pmix_if.h"
 #include "src/util/pmix_environ.h"
 
-#include "prm_tm.h"
+#include "prm_pbs.h"
 #include "src/mca/prm/base/base.h"
 
-static pmix_status_t tm_notify(pmix_status_t status, const pmix_proc_t *source,
+static pmix_status_t pbs_notify(pmix_status_t status, const pmix_proc_t *source,
                                pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-pmix_prm_module_t pmix_prm_tm_module = {.name = "tm", .notify = tm_notify};
+pmix_prm_module_t pmix_prm_pbs_module = {
+    .name = "pbs",
+    .notify = pbs_notify
+};
 
-static pmix_status_t tm_notify(pmix_status_t status, const pmix_proc_t *source,
+static pmix_status_t pbs_notify(pmix_status_t status, const pmix_proc_t *source,
                                pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                pmix_op_cbfunc_t cbfunc, void *cbdata)
 {

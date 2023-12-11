@@ -14,7 +14,7 @@
 # Copyright (c) 2011-2013 Los Alamos National Security, LLC.
 #                         All rights reserved.
 # Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -34,6 +34,8 @@ AC_DEFUN([MCA_pmix_prm_slurm_CONFIG],[
     AS_IF([test "$prm_slurm_good" = "1"],
           [$1],
           [$2])
+
+    PMIX_SUMMARY_ADD([Resource Managers], [Slurm], [], [$prm_slurm_good (scheduler)])
 
     # set build flags to use in makefile
     AC_SUBST([prm_slurm_CPPFLAGS])

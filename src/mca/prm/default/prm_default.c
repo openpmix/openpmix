@@ -3,7 +3,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -45,14 +45,28 @@
 #include "prm_default.h"
 #include "src/mca/prm/base/base.h"
 
+
+static pmix_status_t default_allocate(pmix_alloc_directive_t directive,
+                                      pmix_info_t *info, size_t ninfo,
+                                      pmix_info_t **results, size_t *nresults);
+
 static pmix_status_t default_notify(pmix_status_t status, const pmix_proc_t *source,
                                     pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                     pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 pmix_prm_module_t pmix_prm_default_module = {
     .name = "default",
+    .allocate = default_allocate,
     .notify = default_notify
 };
+
+static pmix_status_t default_allocate(pmix_alloc_directive_t directive,
+                                      pmix_info_t *info, size_t ninfo,
+                                      pmix_info_t **results, size_t *nresults)
+{
+    return PMIX_ERR_NOT_SUPPORTED;
+}
+
 
 static pmix_status_t default_notify(pmix_status_t status, const pmix_proc_t *source,
                                     pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,

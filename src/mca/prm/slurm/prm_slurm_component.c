@@ -4,7 +4,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,14 +26,24 @@ static int component_query(pmix_mca_base_module_t **module, int *priority);
  */
 pmix_prm_base_component_t pmix_mca_prm_slurm_component = {
     PMIX_PRM_BASE_VERSION_1_0_0,
+
     .pmix_mca_component_name = "slurm",
     PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
                                 PMIX_RELEASE_VERSION),
+    
     .pmix_mca_query_component = component_query,
 };
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+        // disqualify - we do not want clients directly
+        // interacting with the scheduler
+        *priority = 0;
+        *module = NULL;
+        return PMIX_ERROR;
+    }
+    
     /* disqualify ourselves if we are not under slurm */
     if (NULL == getenv("SLURM_JOBID")) {
         *priority = 0;

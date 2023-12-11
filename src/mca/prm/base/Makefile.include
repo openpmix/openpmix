@@ -13,6 +13,7 @@
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2023      Nanook Consulting.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -28,7 +29,6 @@ headers += \
 
 sources += \
         base/prm_base_frame.c \
-        base/prm_base_select.c \
-        base/prm_base_stubs.c
+        base/prm_base_select.c
 
 dist_pmixdata_DATA = base/help-prm.txt
