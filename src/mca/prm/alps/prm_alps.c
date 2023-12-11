@@ -42,19 +42,19 @@
 #include "src/util/pmix_if.h"
 #include "src/util/pmix_environ.h"
 
-#include "prm_hpesmf.h"
+#include "prm_alps.h"
 #include "src/mca/prm/base/base.h"
 
-static pmix_status_t hpesmf_notify(pmix_status_t status, const pmix_proc_t *source,
+static pmix_status_t alps_notify(pmix_status_t status, const pmix_proc_t *source,
                                    pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-pmix_prm_module_t pmix_prm_hpesmf_module = {
-    .name = "hpesmf",
-    .notify = hpesmf_notify
+pmix_prm_module_t pmix_prm_alps_module = {
+    .name = "alps",
+    .notify = alps_notify
 };
 
-static pmix_status_t hpesmf_notify(pmix_status_t status, const pmix_proc_t *source,
+static pmix_status_t alps_notify(pmix_status_t status, const pmix_proc_t *source,
                                    pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                    pmix_op_cbfunc_t cbfunc, void *cbdata)
 {

@@ -2571,7 +2571,8 @@ static void intermed_step(pmix_status_t status, void *cbdata)
         /* let the callback function respond for us */
         return;
     }
-    if (PMIX_OPERATION_SUCCEEDED == rc) {
+    if (PMIX_OPERATION_SUCCEEDED == rc ||
+        PMIX_ERR_NOT_SUPPORTED == rc) {
         rc = PMIX_SUCCESS; // local_cbfunc will not be called
     }
 
