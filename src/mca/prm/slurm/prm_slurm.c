@@ -2,7 +2,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies Ltd.  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,14 +32,14 @@
 
 #include "prm_slurm.h"
 
-static int get_remaining_time(uint32_t *timeleft);
+static pmix_status_t get_remaining_time(uint32_t *timeleft);
 
 pmix_prm_module_t pmix_prm_slurm_module = {
     .name = "slurm",
     .get_remaining_time = get_remaining_time
 };
 
-static int get_remaining_time(uint32_t *timeleft)
+static pmix_status_t get_remaining_time(uint32_t *timeleft)
 {
     char output[256], *cmd, *jobid, **res;
     FILE *fp;
