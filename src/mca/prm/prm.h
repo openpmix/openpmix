@@ -5,7 +5,7 @@
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,6 +53,14 @@ typedef pmix_status_t (*pmix_prm_base_module_init_fn_t)(void);
 typedef void (*pmix_prm_base_module_fini_fn_t)(void);
 
 /**
+ * Allocate, deallocate, modify allocation request
+ */
+typedef pmix_status_t (*pmix_prm_base_module_alloc_fn_t)(pmix_alloc_directive_t directive,
+                                                         pmix_info_t *info, size_t ninfo,
+                                                         pmix_info_t **results, size_t *nresults);
+
+
+/**
  * Pass an event to the host system for transport. If the host system
  * has called PMIx_server_init and provided an entry for the event
  * notification upcall, then the default plugin will execute that
@@ -66,13 +74,8 @@ typedef pmix_status_t (*pmix_prm_base_module_notify_fn_t)(pmix_status_t status,
                                                           const pmix_info_t info[], size_t ninfo,
                                                           pmix_op_cbfunc_t cbfunc, void *cbdata);
 
-/* request time remaining in this allocation - only one module
- * capable of supporting this operation should be available
- * in a given environment. However, if a module is available
- * and decides it cannot provide the info in the current situation,
- * then it can return PMIX_ERR_TAKE_NEXT_OPTION to indicate that
- * another module should be tried */
-typedef int (*pmix_prm_base_module_get_rem_time_fn_t)(uint32_t *timeleft);
+/* request time remaining in this allocation */
+typedef pmix_status_t (*pmix_prm_base_module_get_rem_time_fn_t)(uint32_t *timeleft);
 
 /**
  * Base structure for a PRM module. Each component should malloc a
@@ -83,20 +86,14 @@ typedef struct {
     /* init/finalize */
     pmix_prm_base_module_init_fn_t                 init;
     pmix_prm_base_module_fini_fn_t                 finalize;
+    pmix_prm_base_module_alloc_fn_t                allocate;
     pmix_prm_base_module_notify_fn_t               notify;
     pmix_prm_base_module_get_rem_time_fn_t         get_remaining_time;
 } pmix_prm_module_t;
 
-/**
- * Base structure for a PRM API - don't expose the init/finalize fns
- */
-typedef struct {
-    pmix_prm_base_module_notify_fn_t               notify;
-    pmix_prm_base_module_get_rem_time_fn_t         get_remaining_time;
-} pmix_prm_API_module_t;
 
 /* declare the global APIs */
-PMIX_EXPORT extern pmix_prm_API_module_t pmix_prm;
+PMIX_EXPORT extern pmix_prm_module_t pmix_prm;
 
 /*
  * the standard component data structure

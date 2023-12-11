@@ -12,7 +12,7 @@
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,7 +32,7 @@
 
 #include "src/mca/ptl/base/base.h"
 
-/* Function for selecting a prioritized list of components
+/* Function for selecting a component
  * from all those that are available. */
 int pmix_ptl_base_select(void)
 {
@@ -93,5 +93,4 @@ int pmix_ptl_base_select(void)
                         "mca:ptl:select: using component %s", pmix_ptl.name);
 
     return PMIX_SUCCESS;
-    ;
 }

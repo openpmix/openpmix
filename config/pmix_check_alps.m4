@@ -18,7 +18,7 @@ dnl                         reserved.
 dnl Copyright (c) 2019      Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2020      Triad National Security, LLC. All rights
 dnl                         reserved.
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl $COPYRIGHT$
@@ -171,7 +171,6 @@ AC_DEFUN([PMIX_CHECK_ALPS],[
                CRAY_ALPSUTIL_LIBS = $CRAY_ALPSUTIL_STATIC_LIBS],
               [])
 
-	PMIX_SUMMARY_ADD([Resource Managers], [Cray Alps], [], [$pmix_check_cray_alps_happy])
     fi
 
     AS_IF([test "$pmix_check_cray_alps_happy" = "yes"],
