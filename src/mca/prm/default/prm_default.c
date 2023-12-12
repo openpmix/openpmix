@@ -64,6 +64,7 @@ static pmix_status_t default_allocate(pmix_alloc_directive_t directive,
                                       pmix_info_t *info, size_t ninfo,
                                       pmix_info_t **results, size_t *nresults)
 {
+    PMIX_HIDE_UNUSED_PARAMS(directive, info, ninfo, results, nresults);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
