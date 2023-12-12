@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
@@ -23,7 +23,9 @@
 
 #if PMIX_USE_C11_ATOMICS
 
+#ifdef HAVE_STDATOMIC_H
 #include <stdatomic.h>
+#endif
 
 typedef atomic_int pmix_atomic_int_t;
 typedef atomic_long pmix_atomic_long_t;
