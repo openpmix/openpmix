@@ -21,7 +21,7 @@ dnl Copyright (c) 2020-2023 Triad National Security, LLC. All rights
 dnl                         reserved.
 dnl Copyright (c) 2021      IBM Corporation.  All rights reserved.
 dnl
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
 dnl Copyright (c) 2022      Amazon.com, Inc. or its affiliates.  All Rights reserved.
 dnl $COPYRIGHT$
 dnl
@@ -180,16 +180,16 @@ AC_DEFUN([PMIX_SETUP_CC],[
     if test $pmix_cv_c11_supported = no ; then
         # It is not currently an error if C11 support is not available. Uncomment the
         # following lines and update the warning when we require a C11 compiler.
-        # AC_MSG_WARNING([Open MPI requires a C11 (or newer) compiler])
+        # AC_MSG_WARNING([PMIx requires a C11 (or newer) compiler])
         # AC_MSG_ERROR([Aborting.])
-        # From Open MPI 1.7 on we require a C99 compliant compiler
+        # We require a C99 compliant compiler
         # with autoconf 2.70 AC_PROG_CC makes AC_PROG_CC_C99 obsolete
         m4_version_prereq([2.70],
             [],
             [AC_PROG_CC_C99])
         # The C99 result of AC_PROG_CC is stored in ac_cv_prog_cc_c99
         if test "x$ac_cv_prog_cc_c99" = xno ; then
-            AC_MSG_WARN([Open MPI requires a C99 (or newer) compiler. C11 is recommended.])
+            AC_MSG_WARN([PMIx requires a C99 (or newer) compiler. C11 is recommended.])
             AC_MSG_ERROR([Aborting.])
         fi
 
@@ -405,7 +405,7 @@ AC_DEFUN([_PMIX_PROG_CC],[
     AC_PROG_CC
     BASECC="`basename $CC`"
     CFLAGS="$pmix_cflags_save"
-    AC_DEFINE_UNQUOTED(PMIX_CC, "$CC", [OMPI underlying C compiler])
+    AC_DEFINE_UNQUOTED(PMIX_CC, "$CC", [PMIx underlying C compiler])
     set dummy $CC
     pmix_cc_argv0=[$]2
     PMIX_WHICH([$pmix_cc_argv0], [PMIX_CC_ABSOLUTE])
