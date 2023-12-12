@@ -1014,6 +1014,7 @@ pmix_status_t pmix_hwloc_get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envelope_t 
     }
     if (0 != rc) {
         hwloc_bitmap_free(cpuset->bitmap);
+        cpuset->bitmap = NULL;
         return PMIX_ERR_NOT_FOUND;
     }
     if (NULL == cpuset->source) {
