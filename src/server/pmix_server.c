@@ -402,8 +402,6 @@ static pmix_status_t register_singleton(char *name)
 // local functions for connection support
 pmix_status_t pmix_server_initialize(void)
 {
-    pmix_status_t rc;
-
     /* setup the server-specific globals */
     PMIX_CONSTRUCT(&pmix_server_globals.clients, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_server_globals.clients, 1, INT_MAX, 1);

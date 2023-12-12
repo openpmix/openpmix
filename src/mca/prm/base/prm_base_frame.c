@@ -54,6 +54,7 @@ static pmix_status_t base_allocate(pmix_alloc_directive_t directive,
                                    pmix_info_t *info, size_t ninfo,
                                    pmix_info_t **results, size_t *nresults)
 {
+    PMIX_HIDE_UNUSED_PARAMS(directive, info, ninfo, results, nresults);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
@@ -61,11 +62,13 @@ static pmix_status_t base_notify(pmix_status_t status, const pmix_proc_t *source
                                  pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
                                  pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    PMIX_HIDE_UNUSED_PARAMS(status, source, range, info, ninfo, cbfunc, cbdata);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
 static pmix_status_t base_grt(uint32_t *timeleft)
 {
+    PMIX_HIDE_UNUSED_PARAMS(timeleft);
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
