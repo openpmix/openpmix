@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -312,7 +312,9 @@ int pmix_mca_base_var_enum_create_flag(const char *name,
          * hasn't already been specified. */
         assert(!(flags[i].flag & (flags[i].flag - 1)));
         assert(!(flags[i].flag & flags[i].conflicting_flag));
+#if PMIX_ENABLE_DEBUG
         assert(!(all_flags & flags[i].flag));
+#endif
         assert(flags[i].flag);
 #if PMIX_ENABLE_DEBUG
         all_flags |= flags[i].flag;
