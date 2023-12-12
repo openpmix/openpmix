@@ -412,7 +412,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                       netdb.h ucred.h zlib.h sys/auxv.h \
                       sys/sysctl.h termio.h termios.h pty.h \
                       libutil.h util.h grp.h sys/cdefs.h utmp.h stropts.h \
-                      sys/utsname.h])
+                      sys/utsname.h stdatomic.h])
 
     AC_CHECK_HEADERS([sys/mount.h], [], [],
                      [AC_INCLUDES_DEFAULT
