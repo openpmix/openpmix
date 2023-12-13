@@ -1303,8 +1303,7 @@ complete:
 static void query_servers(char *dirname, pmix_list_t *servers)
 {
     char *newdir, *dname;
-    struct stat buf;
-    DIR *cur_dirp;
+    DIR *cur_dirp, *tst;
     struct dirent *dir_entry;
 
     /* search the system tmpdir directory tree for files
@@ -1334,18 +1333,16 @@ static void query_servers(char *dirname, pmix_list_t *servers)
             continue;
         }
         newdir = pmix_os_path(false, dname, dir_entry->d_name, NULL);
-        /* coverity[TOCTOU] */
-        if (-1 == stat(newdir, &buf)) {
-            free(newdir);
-            continue;
-        }
         /* if it is a directory, down search */
-        if (S_ISDIR(buf.st_mode)) {
+        tst = opendir(newdir);
+        if (NULL != tst) {
+            closedir(tst);
             query_servers(newdir, servers);
             free(newdir);
             continue;
         }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "pmix:tcp: checking %s",
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "pmix:tcp: checking %s",
                             dir_entry->d_name);
         /* see if it starts with our prefix */
         if (0 == strncmp(dir_entry->d_name, "pmix.", strlen("pmix."))) {
