@@ -597,37 +597,19 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
 {
     pmix_cleanup_file_t *cf, *cfnext;
     pmix_cleanup_dir_t *cd, *cdnext;
-    struct stat statbuf;
+    DIR *tst;
     int rc;
     char **tmp;
     size_t n;
 
     /* start with any specified files */
     PMIX_LIST_FOREACH_SAFE (cf, cfnext, &epi->cleanup_files, pmix_cleanup_file_t) {
-        /* check the effective uid/gid of the file and ensure it
-         * matches that of the peer - we do this to provide at least
-         * some minimum level of protection */
         tmp = PMIx_Argv_split(cf->path, ',');
         for (n = 0; NULL != tmp[n]; n++) {
-            /* coverity[TOCTOU] */
-            rc = stat(tmp[n], &statbuf);
-            if (0 != rc) {
-                pmix_output_verbose(10, pmix_globals.debug_output, "File %s failed to stat: %d",
-                                    tmp[n], rc);
-                continue;
-            }
-            if (statbuf.st_uid != epi->uid || statbuf.st_gid != epi->gid) {
-                pmix_output_verbose(10, pmix_globals.debug_output,
-                                    "File %s uid/gid doesn't match: uid %lu(%lu) gid %lu(%lu)",
-                                    cf->path, (unsigned long) statbuf.st_uid,
-                                    (unsigned long) epi->uid, (unsigned long) statbuf.st_gid,
-                                    (unsigned long) epi->gid);
-                continue;
-            }
             rc = unlink(tmp[n]);
-            if (0 != rc) {
-                pmix_output_verbose(10, pmix_globals.debug_output, "File %s failed to unlink: %d",
-                                    tmp[n], rc);
+            if (0 > rc) {
+                pmix_output_verbose(10, pmix_globals.debug_output, "File %s failed to unlink: %s",
+                                    tmp[n], strerror(errno));
             }
         }
         PMIx_Argv_free(tmp);
@@ -637,31 +619,12 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
 
     /* now cleanup the directories */
     PMIX_LIST_FOREACH_SAFE (cd, cdnext, &epi->cleanup_dirs, pmix_cleanup_dir_t) {
-        /* check the effective uid/gid of the file and ensure it
-         * matches that of the peer - we do this to provide at least
-         * some minimum level of protection */
         tmp = PMIx_Argv_split(cd->path, ',');
         for (n = 0; NULL != tmp[n]; n++) {
-            /* coverity[TOCTOU] */
-            rc = stat(tmp[n], &statbuf);
-            if (0 != rc) {
-                pmix_output_verbose(10, pmix_globals.debug_output,
-                                    "Directory %s failed to stat: %d", tmp[n], rc);
-                continue;
-            }
-            if (statbuf.st_uid != epi->uid || statbuf.st_gid != epi->gid) {
-                pmix_output_verbose(10, pmix_globals.debug_output,
-                                    "Directory %s uid/gid doesn't match: uid %lu(%lu) gid %lu(%lu)",
-                                    cd->path, (unsigned long) statbuf.st_uid,
-                                    (unsigned long) epi->uid, (unsigned long) statbuf.st_gid,
-                                    (unsigned long) epi->gid);
-                continue;
-            }
-            if ((statbuf.st_mode & S_IRWXU) == S_IRWXU) {
+            tst = opendir(tmp[n]);
+            if (NULL != tst) {
+                closedir(tst);
                 dirpath_destroy(tmp[n], cd, epi);
-            } else {
-                pmix_output_verbose(10, pmix_globals.debug_output, "Directory %s lacks permissions",
-                                    tmp[n]);
             }
         }
         PMIx_Argv_free(tmp);
@@ -674,10 +637,9 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
 {
     int rc;
     bool is_dir = false;
-    DIR *dp;
+    DIR *dp, *tst;
     struct dirent *ep;
     char *filenm;
-    struct stat buf;
     pmix_cleanup_file_t *cf;
 
     if (NULL == path) { /* protect against error */
@@ -724,43 +686,22 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *e
         }
 
         /* Check to see if it is a directory */
-        is_dir = false;
-
-        /* coverity[TOCTOU] */
-        rc = stat(filenm, &buf);
-        if (0 > rc) {
-            /* Handle a race condition. filenm might have been deleted by an
-             * other process running on the same node. That typically occurs
-             * when one task is removing the job_session_dir and an other task
-             * is still removing its proc_session_dir.
+        tst = opendir(filenm);
+        if (NULL != tst) {
+            closedir(tst);
+            /*
+             * If not recursively descending, then if we find a directory then fail
+             * since we were not told to remove it.
              */
-            free(filenm);
-            continue;
-        }
-        /* if the uid/gid don't match, then leave it alone */
-        if (buf.st_uid != epi->uid || buf.st_gid != epi->gid) {
-            free(filenm);
-            continue;
-        }
-
-        if (S_ISDIR(buf.st_mode)) {
-            is_dir = true;
-        }
-
-        /*
-         * If not recursively descending, then if we find a directory then fail
-         * since we were not told to remove it.
-         */
-        if (is_dir && !cd->recurse) {
-            /* continue removing files */
-            free(filenm);
-            continue;
-        }
-
-        /* Directories are recursively destroyed */
-        if (is_dir && cd->recurse && ((buf.st_mode & S_IRWXU) == S_IRWXU)) {
-            dirpath_destroy(filenm, cd, epi);
-            free(filenm);
+            if (!cd->recurse) {
+                /* continue removing files */
+                free(filenm);
+                continue;
+            } else {
+                /* Directories are recursively destroyed */
+                dirpath_destroy(filenm, cd, epi);
+                free(filenm);
+            }
         } else {
             /* Files are removed right here */
             unlink(filenm);
