@@ -633,8 +633,6 @@ void pmix_execute_epilog(pmix_epilog_t *epi)
 
 static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd, pmix_epilog_t *epi)
 {
-    int rc;
-    bool is_dir = false;
     DIR *dp, *tst;
     struct dirent *ep;
     char *filenm;
