@@ -406,7 +406,6 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
                                       bool optional, pmix_list_t *connections)
 {
     char *newdir;
-    struct stat buf;
     DIR *cur_dirp, *tst;
     struct dirent *dir_entry;
     pmix_status_t rc;

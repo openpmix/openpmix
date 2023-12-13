@@ -74,10 +74,7 @@ PMIX_EXPORT bool pmix_os_dirpath_is_empty(const char *path);
 /**
  * Stale function left for PRRTE backward compatility
  */
-static int pmix_os_dirpath_access(const char *path, const mode_t mode)
-{
-    return PMIX_SUCCESS;
-}
+PMIX_EXPORT int pmix_os_dirpath_access(const char *path, const mode_t mode);
 
 /**
  * Callback for pmix_os_dirpath_destroy(). Call for every file/directory before
