@@ -39,6 +39,7 @@
 #endif /* HAVE_DIRENT_H */
 
 #include "pmix_common.h"
+#include "src/include/pmix_globals.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
@@ -269,4 +270,13 @@ bool pmix_os_dirpath_is_empty(const char *path)
     }
 
     return true;
+}
+
+/**
+ * Stale function left for PRRTE backward compatility
+ */
+int pmix_os_dirpath_access(const char *path, const mode_t mode)
+{
+    PMIX_HIDE_UNUSED_PARAMS(path, mode);
+    return PMIX_SUCCESS;
 }
