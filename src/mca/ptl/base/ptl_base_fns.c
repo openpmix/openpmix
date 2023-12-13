@@ -407,7 +407,7 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
 {
     char *newdir;
     struct stat buf;
-    DIR *cur_dirp;
+    DIR *cur_dirp, *tst;
     struct dirent *dir_entry;
     pmix_status_t rc;
 
@@ -425,13 +425,10 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
             continue;
         }
         newdir = pmix_os_path(false, dirname, dir_entry->d_name, NULL);
-        /* coverity[TOCTOU] */
-        if (-1 == stat(newdir, &buf)) {
-            free(newdir);
-            continue;
-        }
         /* if it is a directory, down search */
-        if (S_ISDIR(buf.st_mode)) {
+        tst = opendir(newdir);
+        if (NULL != tst) {
+            closedir(tst);
             pmix_ptl_base_df_search(newdir, prefix, info, ninfo, optional, connections);
             free(newdir);
             continue;
