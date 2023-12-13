@@ -14,7 +14,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -102,9 +102,7 @@ int pmix_mca_base_open(const char *add_path)
     value = (char *) pmix_home_directory(geteuid());
     pmix_asprintf(&pmix_mca_base_user_default_path,
                   "%s" PMIX_PATH_SEP ".pmix" PMIX_PATH_SEP "components", value);
-    if (PMIX_SUCCESS == pmix_os_dirpath_access(pmix_mca_base_user_default_path, 0)) {
-        PMIx_Argv_append_nosize(&paths, pmix_mca_base_user_default_path);
-    }
+    PMIx_Argv_append_nosize(&paths, pmix_mca_base_user_default_path);
 #endif
 
     var_id = pmix_mca_base_var_register("pmix", "mca", "base", "component_path",
