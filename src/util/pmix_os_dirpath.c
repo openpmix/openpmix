@@ -67,13 +67,7 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
     /* check the error */
     if (EEXIST == ret) {
         // already exists - try to set the mode
-        if (0 == (ret = chmod(path, mode))) { /* successfully change mode */
-            return (PMIX_SUCCESS);
-        } else {
-            pmix_show_help("help-pmix-util.txt", "dir-mode", true,
-                           path, mode, strerror(errno));
-            return PMIX_ERR_SILENT;
-        }
+        chmod(path, mode);
     } else if (ENOENT != ret) {
         // cannot create it
         pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
@@ -155,14 +149,6 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
 
     if (NULL == path) { /* protect against error */
         return PMIX_ERROR;
-    }
-
-    /*
-     * Make sure we have access to the base directory
-     */
-    if (PMIX_SUCCESS != (rc = pmix_os_dirpath_access(path, 0))) {
-        exit_status = rc;
-        goto cleanup;
     }
 
     /* Open up the directory */
@@ -264,30 +250,4 @@ bool pmix_os_dirpath_is_empty(const char *path)
     }
 
     return true;
-}
-
-int pmix_os_dirpath_access(const char *path, const mode_t in_mode)
-{
-    struct stat buf;
-    mode_t loc_mode = S_IRWXU; /* looking for full rights */
-
-    /*
-     * If there was no mode specified, use the default mode
-     */
-    if (0 != in_mode) {
-        loc_mode = in_mode;
-    }
-
-    /* coverity[TOCTOU] */
-    if (0 == stat(path, &buf)) {                    /* exists - check access */
-        if ((buf.st_mode & loc_mode) == loc_mode) { /* okay, I can work here */
-            return (PMIX_SUCCESS);
-        } else {
-            /* Don't have access rights to the existing path */
-            return (PMIX_ERR_NO_PERMISSIONS);
-        }
-    } else {
-        /* We could not find the path */
-        return (PMIX_ERR_NOT_FOUND);
-    }
 }

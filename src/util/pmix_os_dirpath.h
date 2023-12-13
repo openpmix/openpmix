@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -72,17 +72,12 @@ PMIX_EXPORT int pmix_os_dirpath_create(const char *path, const mode_t mode);
 PMIX_EXPORT bool pmix_os_dirpath_is_empty(const char *path);
 
 /**
- * Check access to the directory
- *
- * @param path A pointer to a string that contains the path name to be checked.
- * @param mode A mode_t bit mask that specifies the access permissions for the
- *             directory to be accessed.
- *
- * @retval PMIX_SUCCESS If directory exists, and permissions match
- * @retval PMIX_ERR_NOT_FOUND If directory does not exist
- * @retval PMIX_ERROR   If directory exists, and permissions do not match
+ * Stale function left for PRRTE backward compatility
  */
-PMIX_EXPORT int pmix_os_dirpath_access(const char *path, const mode_t mode);
+static int pmix_os_dirpath_access(const char *path, const mode_t mode)
+{
+    return PMIX_SUCCESS;
+}
 
 /**
  * Callback for pmix_os_dirpath_destroy(). Call for every file/directory before

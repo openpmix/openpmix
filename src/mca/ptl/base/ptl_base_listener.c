@@ -200,15 +200,13 @@ pmix_status_t pmix_base_write_rndz_file(char *filename, char *uri, bool *created
 
     dirname = pmix_dirname(filename);
     if (NULL != dirname) {
-        if (0 != pmix_os_dirpath_access(dirname, 0755)) {
-            if (0 != pmix_os_dirpath_create(dirname, 0755)) {
-                pmix_output(0, "System tmpdir %s could not be created\n", dirname);
-                PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-                free(dirname);
-                return PMIX_ERR_FILE_OPEN_FAILURE;
-            }
-            *created = true;
+        if (0 != pmix_os_dirpath_create(dirname, 0755)) {
+            pmix_output(0, "System tmpdir %s could not be created\n", dirname);
+            PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
+            free(dirname);
+            return PMIX_ERR_FILE_OPEN_FAILURE;
         }
+        *created = true;
         free(dirname);
     }
 
