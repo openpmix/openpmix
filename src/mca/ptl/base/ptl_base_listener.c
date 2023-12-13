@@ -271,6 +271,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     int outpipe;
     char *leftover;
     size_t n;
+    FILE *fptst;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tool setup_listener");
@@ -613,9 +614,9 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
          * just use it as providing the rendezvous info for our
          * server */
         if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-            struct stat buf;
-            /* coverity[TOCTOU] */
-            if (0 == stat(pmix_ptl_base.rendezvous_filename, &buf)) {
+            fptst = fopen(pmix_ptl_base.rendezvous_filename, "r");
+            if (NULL != fptst) {
+                fclose(fptst);
                 goto nextstep;
             }
         }
