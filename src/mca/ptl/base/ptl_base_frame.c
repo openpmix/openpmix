@@ -295,7 +295,7 @@ static pmix_status_t pmix_ptl_close(void)
             if (0 != rc) {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "Remove of %s failed: %s",
-                                    pmix_ptl_base.system_filename, strerror(errno));
+                                    pmix_ptl_base.session_filename, strerror(errno));
             }
         }
         free(pmix_ptl_base.session_filename);
@@ -306,7 +306,7 @@ static pmix_status_t pmix_ptl_close(void)
             if (0 != rc) {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "Remove of %s failed: %s",
-                                    pmix_ptl_base.system_filename, strerror(errno));
+                                    pmix_ptl_base.nspace_filename, strerror(errno));
             }
         }
         free(pmix_ptl_base.nspace_filename);
@@ -317,7 +317,7 @@ static pmix_status_t pmix_ptl_close(void)
             if (0 != rc) {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "Remove of %s failed: %s",
-                                    pmix_ptl_base.system_filename, strerror(errno));
+                                    pmix_ptl_base.pid_filename, strerror(errno));
             }
         }
         free(pmix_ptl_base.pid_filename);
@@ -328,7 +328,7 @@ static pmix_status_t pmix_ptl_close(void)
             if (0 != rc) {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "Remove of %s failed: %s",
-                                    pmix_ptl_base.system_filename, strerror(errno));
+                                    pmix_ptl_base.rendezvous_filename, strerror(errno));
             }
         }
         free(pmix_ptl_base.rendezvous_filename);
@@ -343,7 +343,7 @@ static pmix_status_t pmix_ptl_close(void)
             if (0 != rc) {
                 pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                     "Remove of %s failed: %s",
-                                    pmix_ptl_base.system_filename, strerror(errno));
+                                    pmix_ptl_base.urifile, strerror(errno));
             }
         }
         free(pmix_ptl_base.urifile);

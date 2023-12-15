@@ -40,6 +40,7 @@
 
 #include "pmix_common.h"
 #include "src/include/pmix_globals.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
@@ -240,10 +241,13 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
 cleanup:
 
     /*
-     * If the directory is empty, them remove it
+     * If the directory is empty, then remove it - but
+     * leave the system tmpdir alone!
      */
-    if (pmix_os_dirpath_is_empty(path)) {
-        rmdir(path);
+    if (0 != strcmp(path, pmix_server_globals.system_tmpdir)) {
+        if (pmix_os_dirpath_is_empty(path)) {
+            rmdir(path);
+        }
     }
 
     return exit_status;
