@@ -761,7 +761,8 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t 
             goto cleanup;
         }
         goto complete;
-    } else if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+    } else if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+               PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* we aren't a client, so we will search to see what session-level
          * tools are available to this user. We will take the first connection
          * that succeeds - this is based on the likelihood that there is only
@@ -782,6 +783,8 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t 
         if (!optional) {
             goto cleanup;
         }
+    } else {
+        pmix_output(0, "RATS");
     }
     rc = PMIX_ERR_UNREACH;
     goto cleanup;
