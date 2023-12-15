@@ -62,6 +62,7 @@ static struct option pallocptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_CONNECTION_ORDER, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SYS_CONTROLLER, PMIX_ARG_NONE),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_REQ_ID, PMIX_ARG_REQD),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_QUEUE, PMIX_ARG_REQD, 'q'),
@@ -294,9 +295,18 @@ int main(int argc, char **argv)
     } else if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_CONNECTION_ORDER))) {
         PMIX_INFO_LOAD(&info[0], PMIX_CONNECTION_ORDER, opt->values[0], PMIX_STRING);
 
+    } else if (pmix_cmd_line_is_taken(&results, PMIX_CLI_SYS_CONTROLLER)) {
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SYS_CONTROLLER, NULL, PMIX_BOOL);
+
     } else {
-        /* if none of the above, we just try to connect directly to the scheduler */
-        PMIX_INFO_LOAD(&info[0], PMIX_CONNECT_TO_SCHEDULER, NULL, PMIX_BOOL);
+        /* if none of the above, setup a common "order" to check */
+        char **tmp = NULL, *t2;
+        PMIx_Argv_append_nosize(&tmp, PMIX_CONNECT_TO_SCHEDULER);
+        PMIx_Argv_append_nosize(&tmp, PMIX_CONNECT_TO_SYS_CONTROLLER);
+        t2 = PMIx_Argv_join(tmp, ',');
+        PMIx_Argv_free(tmp);
+        PMIX_INFO_LOAD(&info[0], PMIX_CONNECTION_ORDER, t2, PMIX_STRING);
+        free(t2);
     }
 
     /* assign our own name */
