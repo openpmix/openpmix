@@ -1069,9 +1069,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     if (NULL != gds_mode) {
         free(gds_mode);
     }
-    if (NULL != pmix_server_globals.tmpdir) {
-        free(pmix_server_globals.tmpdir);
-    }
+
     /* close the psensor framework */
     (void) pmix_mca_base_framework_close(&pmix_psensor_base_framework);
     /* close the pnet framework */
@@ -1087,7 +1085,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
         PMIX_RELEASE(pmix_globals.mypeer);
     }
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server finalize complete");
+    if (NULL != pmix_server_globals.tmpdir) {
+        free(pmix_server_globals.tmpdir);
+    }
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server finalize complete");
 
     /* finalize the class/object system */
     pmix_class_finalize();
