@@ -52,6 +52,8 @@
 
 /****    SUPPORTING FUNCTIONS    ****/
 static void timeout(int sd, short args, void *cbdata);
+static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,
+                                       pmix_info_t *iptr, size_t niptr);
 
 pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
 {
@@ -551,7 +553,7 @@ static pmix_status_t send_connect_ack(pmix_peer_t *peer,
     peer->proc_type.flag = pmix_ptl_base_set_flag(&sdsize);
 
     /* construct the contact message */
-    rc = pmix_ptl_base_construct_message(peer, &msg, &sdsize, iptr, niptr);
+    rc = construct_message(peer, &msg, &sdsize, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
@@ -787,8 +789,8 @@ pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz)
     return flag;
 }
 
-pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,
-                                              pmix_info_t *iptr, size_t niptr)
+static pmix_status_t construct_message(pmix_peer_t *peer, char **msgout, size_t *sz,
+                                       pmix_info_t *iptr, size_t niptr)
 {
     char *msg;
     char *sec, *bfrops, *gds;

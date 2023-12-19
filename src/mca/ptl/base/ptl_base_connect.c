@@ -783,8 +783,6 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t 
         if (!optional) {
             goto cleanup;
         }
-    } else {
-        pmix_output(0, "RATS");
     }
     rc = PMIX_ERR_UNREACH;
     goto cleanup;
