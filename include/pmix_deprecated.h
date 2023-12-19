@@ -508,10 +508,10 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
     (r) = PMIx_Argv_count(a)
 
 #define PMIX_ARGV_APPEND(r, a, b) \
-    (r) = PMIx_Argv_append_nosize(&(a), (b))
+    (r) = PMIx_Argv_append_nosize((char***)&(a), (b))
 
 #define PMIX_ARGV_PREPEND(r, a, b) \
-    (r) = PMIx_Argv_prepend_nosize(&(a), b)
+    (r) = PMIx_Argv_prepend_nosize((char***)&(a), b)
 
 #define PMIX_ARGV_APPEND_UNIQUE(r, a, b) \
     (r) = PMIx_Argv_append_unique_nosize(a, b)
@@ -848,7 +848,7 @@ PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **n
     PMIx_Data_buffer_load(b, d, s)
 
 #define PMIX_DATA_BUFFER_UNLOAD(b, d, s)    \
-    PMIx_Data_buffer_unload(b, &(d), &(s))
+    PMIx_Data_buffer_unload(b, (char**)&(d), (size_t*)&(s))
 
 #define PMIX_PROC_CREATE(m, n) \
     (m) = PMIx_Proc_create(n)
