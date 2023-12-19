@@ -4,8 +4,14 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
-4.2.8 -- TBD
-------------
+4.2.8 -- 19 Dec 2023
+--------------------
+ - PR #3233: Multiple commits
+    - Protect a variable
+    - Check for stdatomic.h
+ - PR #3230: Assign NULL to free'd pointer
+ - PR #3226: avoid loopback in resolve_nspace_requests
+ - PR #3223: Fix backport issue in client get
  - PR #3220: Delay registering top-level MCA params
  - PR #3218: Update VERSION and NEWS for release
  - PR #3216: Multiple commits
