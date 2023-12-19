@@ -244,7 +244,8 @@ cleanup:
      * If the directory is empty, then remove it - but
      * leave the system tmpdir alone!
      */
-    if (0 != strcmp(path, pmix_server_globals.system_tmpdir)) {
+    if (NULL == pmix_server_globals.system_tmpdir ||
+        0 != strcmp(path, pmix_server_globals.system_tmpdir)) {
         if (pmix_os_dirpath_is_empty(path)) {
             rmdir(path);
         }

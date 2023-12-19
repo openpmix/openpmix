@@ -166,9 +166,6 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char 
                                                         pmix_info_t *iptr, size_t niptr);
 PMIX_EXPORT void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
                                                    pmix_rank_t rank, char *uri);
-PMIX_EXPORT pmix_status_t pmix_ptl_base_construct_message(pmix_peer_t *peer, char **msgout,
-                                                          size_t *sz, pmix_info_t *iptr,
-                                                          size_t niptr);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
                                                     pmix_socklen_t *sz, bool *sockopt);
 PMIX_EXPORT void pmix_ptl_base_setup_socket(pmix_peer_t *peer);
