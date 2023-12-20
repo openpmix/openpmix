@@ -1034,19 +1034,12 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 AC_DEFUN([PMIX_DEFINE_ARGS],[
 
-    # check for presence of "git" command
-    AC_CHECK_PROG(pmix_git_cmd, git, [git])
-    if test "$pmix_git_cmd" != ""; then
-        # A hint to tell us if we are working with a build from Git or a tarball.
-        # Helpful when preparing diagnostic output.
-        if git describe 731178f7ea0367fada846782dbb0561c86db20a2 &> /dev/null ; then
-            AC_DEFINE_UNQUOTED([PMIX_GIT_REPO_BUILD], ["1"],
-                               [If built from a git repo])
-            pmix_git_repo_build=yes
-        fi
-    else
-        # we cannot check, so assume it isn't a repo build
-        pmix_git_repo_build=no
+    # A hint to tell us if we are working with a build from Git or a tarball.
+    # Helpful when preparing diagnostic output.
+    if test -e $PMIX_TOP_SRCDIR/.git; then
+        AC_DEFINE_UNQUOTED([PMIX_GIT_REPO_BUILD], ["1"],
+            [If built from a git repo])
+        pmix_git_repo_build=yes
     fi
 
     # do we want dlopen support ?
