@@ -63,6 +63,9 @@
 #ifdef HAVE_PATHS_H
 #    include <paths.h>
 #endif
+#ifdef HAVE_FCNTL_H
+#    include <fcntl.h>
+#endif
 
 #ifdef _PATH_MOUNTED
 #    define MOUNTED_FILE _PATH_MOUNTED
@@ -73,6 +76,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/include/pmix_stdint.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_basename.h"
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_path.h"
@@ -406,6 +410,108 @@ char *pmix_find_absolute_path(char *app_name)
         return resolved_path;
     }
     return NULL;
+}
+
+/**
+ * @brief Figure out whether fname is on network file system
+ *
+ * Try to figure out whether the file name specified through fname is
+ * on any network file system (currently NFS, Lustre, Panasas and GPFS).
+ *
+ * @fname[in]          File name to check
+ * @fstype[out]        File system type if retval is true
+ *
+ * @retval true       If fname is on NFS, Lustre, Panasas or GPFS
+ * @retval false      otherwise
+ *
+ */
+bool pmix_path_nfs(char *fname, char **fstype)
+{
+#ifdef HAVE_MNTENT_H
+    struct stat s;
+    struct mntent mnt;
+    FILE *fp;
+    dev_t dev;
+    char buf[1024];
+    int fd, n;
+    char* fs_types[] = {
+        "lustre",
+        "nfs",
+        "autofs",
+        "panfs",
+        "gpfs",
+        "pvfs2",
+        NULL
+    };
+    char *parent;
+
+    fd = open(fname, O_RDONLY);
+    if (0 > fd) {
+        // try the parent
+        parent = pmix_dirname(fname);
+        fd = open(parent, O_RDONLY);
+        free(parent);
+        if (0 > fd) {
+            // give up
+            return false;
+        }
+    }
+    if (fstat(fd, &s) != 0) {
+        return false;
+    }
+    close(fd);
+
+    // retain the inode of the file
+    dev = s.st_dev;
+
+    // try a couple of possible locations for the
+    // mount table
+    if ((fp = setmntent("/proc/mounts", "r")) == NULL) {
+        if ((fp = setmntent("/etc/mtab", "r")) == NULL) {
+            return false;
+        }
+    }
+
+    // search the mount table for an entry with
+    // matching inode
+    while (getmntent_r(fp, &mnt, buf, sizeof(buf))) {
+        fd = open(mnt.mnt_dir, O_RDONLY);
+        if (0 > fd) {
+            // probably lack permissions
+            continue;
+        }
+        if (fstat(fd, &s) != 0) {
+            close(fd);
+            continue;
+        }
+
+        if (s.st_dev == dev) {
+            *fstype = strdup(mnt.mnt_type);
+            close(fd);
+            endmntent(fp);
+            // check if this is a file system of concern
+            for (n=0; NULL != fs_types[n]; n++) {
+                if (0 == strcmp(fs_types[n], mnt.mnt_type)) {
+                    // yep, this is a shared file system
+                    return true;
+                }
+            }
+            // if we get here, then this is not a file
+            // system of concern
+            return false;
+        }
+        close(fd);
+    }
+
+    endmntent(fp);
+
+    // Should never reach here.
+    return false;
+#else
+    // cannot do anything
+    PMIX_HIDE_UNUSED_PARAMS(fname, fstype);
+    return false;
+#endif
 }
 
 int pmix_path_df(const char *path, uint64_t *out_avail)
