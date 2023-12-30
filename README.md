@@ -20,7 +20,7 @@ Developers who clone the OpenPMIx Git repository will not have the
 HTML documentation and man pages by default; it must be built.
 Instructions for how to build the OpenPMIx documentation can be found
 here:
-https://docs.openpmix.org/en/master/developers/prerequisites.html#sphinx.
+https://docs.openpmix.org/en/latest/developers/prerequisites.html#sphinx-and-therefore-python.
 
 ## Security policy
 
