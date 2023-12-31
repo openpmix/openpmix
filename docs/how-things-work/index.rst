@@ -9,4 +9,5 @@ find information on that subject here.
 .. toctree::
    :maxdepth: 2
 
+   session_dirs.rst
    distances.rst
