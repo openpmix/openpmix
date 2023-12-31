@@ -2,7 +2,7 @@
 # Copyright (c) 2022 Cisco Systems, Inc.  All rights reserved.
 #
 # Copyright (c) 2022-2023 Intel, Inc.  All rights reserved.
-# Copyright (c) 2023      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2023-2024 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -40,6 +40,7 @@ RST_SOURCE_FILES   = \
         $(srcdir)/*.rst \
         $(srcdir)/building-apps/*.rst \
         $(srcdir)/developers/*.rst \
+        $(srcdir)/how-things-work/*.rst \
         $(srcdir)/installing-pmix/*.rst \
         $(srcdir)/installing-pmix/configure-cli-options/*.rst \
         $(srcdir)/man/*.rst \
