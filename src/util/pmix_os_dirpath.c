@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -189,7 +189,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
         if (0 > rc) {
             // we failed to unlink it - save the error
             rc = errno;
-            if (EPERM == rc) {
+            if (EPERM == rc || EISDIR == rc) {
                 // it's a directory
                 if (recursive) {
                     rc = pmix_os_dirpath_destroy(filenm, recursive, cbfunc);
