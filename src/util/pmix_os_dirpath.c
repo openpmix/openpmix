@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -217,14 +217,41 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                 continue;
             }
         }
-        /* Directories are recursively destroyed */
-        if (is_dir) {
-            rc = pmix_os_dirpath_destroy(filenm, recursive, cbfunc);
-            free(filenm);
-            if (PMIX_SUCCESS != rc) {
-                exit_status = rc;
-                closedir(dp);
-                goto cleanup;
+ 
+        /* Create a pathname.  This is not always needed, but it makes
+         * for cleaner code just to create it here.  Note that we are
+         * allocating memory here, so we need to free it later on.
+         */
+        filenm = pmix_os_path(false, path, ep->d_name, NULL);
+
+        // attempt to unlink it
+        rc = unlink(filenm);
+        if (0 > rc) {
+            // we failed to unlink it - save the error
+            rc = errno;
+            if (EPERM == rc || EISDIR == rc) {
+                // it's a directory
+                if (recursive) {
+                    rc = pmix_os_dirpath_destroy(filenm, recursive, cbfunc);
+                    free(filenm);
+                    if (PMIX_SUCCESS != rc) {
+                        exit_status = rc;
+                        closedir(dp);
+                        goto cleanup;
+                    }
+                }
+            } else if (EBUSY == rc) {
+                /* file system mount point or another process
+                 * is using it */
+                exit_status = PMIX_ERROR;
+                continue;
+            } else {
+                // uncorrectable error
+                pmix_show_help("help-pmix-util.txt", "unlink-error", true,
+                               filenm,  strerror(rc));
+                free(filenm);
+                exit_status = PMIX_ERROR;
+                break;
             }
         } else {
             /* Files are removed right here */
