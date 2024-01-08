@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -405,18 +405,8 @@ tma_free(
     struct pmix_tma *tma,
     void *ptr
 ) {
-    // We don't reclaim freed space in our TMA. Just zero it out.
-    if (NULL == ptr) {
-        return;
-    }
-    // Find the allocation info based on the provided address.
-    pmix_gds_shmem_tma_alloc_t *alloc = NULL;
-    int rc = tma_get_registered_alloc(tma, ptr, &alloc);
-    if (PMIX_SUCCESS != rc) {
-        perror(EMSG_SHMEM_IS_BROKEN);
-        abort();
-    }
-    memset(ptr, 0, alloc->extent);
+    PMIX_HIDE_UNUSED_PARAMS(tma, ptr);
+    // We don't do anything for free.
 }
 
 static void
