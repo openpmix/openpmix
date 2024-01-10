@@ -366,6 +366,7 @@ tma_realloc(
     pmix_gds_shmem_tma_alloc_t *alloc = NULL;
     int rc = tma_get_registered_alloc(tma, ptr, &alloc);
     if (PMIX_SUCCESS != rc) {
+        errno = EFAULT;
         perror(EMSG_SHMEM_IS_BROKEN);
         abort();
     }
