@@ -17,7 +17,7 @@
  * Copyright (c) 2016      University of Houston. All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -472,6 +472,7 @@ bool pmix_path_nfs(char *fname, char **fstype)
 #else
     // cannot do anything
     PMIX_HIDE_UNUSED_PARAMS(fname, fstype);
+    *fstype = strdup("unknown");
     return false;
 #endif
 }

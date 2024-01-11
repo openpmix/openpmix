@@ -190,8 +190,15 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
             // we failed to unlink it - save the error
             rc = errno;
             if (EPERM == rc || EISDIR == rc) {
-                // it's a directory
-                if (recursive) {
+                // it's a directory - attempt to remove it
+                rc = rmdir(filenm);
+                if (0 == rc) {
+                    // success
+                    continue;
+                }
+                /* if it wasn't empty and we are recursively removing
+                 * paths, then proceed downwards */
+                if (ENOTEMPTY == errno && recursive) {
                     rc = pmix_os_dirpath_destroy(filenm, recursive, cbfunc);
                     free(filenm);
                     if (PMIX_SUCCESS != rc) {
@@ -227,9 +234,7 @@ cleanup:
      */
     if (NULL == pmix_server_globals.system_tmpdir ||
         0 != strcmp(path, pmix_server_globals.system_tmpdir)) {
-        if (pmix_os_dirpath_is_empty(path)) {
-            rmdir(path);
-        }
+        rmdir(path);
     }
 
     return exit_status;
