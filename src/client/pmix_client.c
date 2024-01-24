@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -297,7 +297,8 @@ static void job_data(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t 
         while (PMIX_SUCCESS == rc) {
             if (PMIX_CHECK_KEY(kv, PMIX_NODE_INFO_ARRAY) ||
                 PMIX_CHECK_KEY(kv, PMIX_APP_INFO_ARRAY) ||
-                PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY)) {
+                PMIX_CHECK_KEY(kv, PMIX_SESSION_INFO_ARRAY) ||
+                PMIX_CHECK_KEY(kv, PMIX_JOB_SIZE)) {
                 PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &undef, PMIX_INTERNAL, kv);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);

@@ -9,7 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -3471,7 +3471,8 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
     pmix_status_t rc;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "server:get_cbfunc called with %d bytes", (int) ndata);
+                        "server:get_cbfunc called with status %s and %d bytes",
+                        PMIx_Error_string(status), (int) ndata);
 
     /* no need to thread-shift here as no global data is accessed
      * and we are called from another internal function
@@ -4464,6 +4465,8 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
     pmix_server_caddy_t *cd;
     pmix_proc_t proc;
     pmix_buffer_t *reply;
+    pmix_cb_t cb;
+    pmix_kval_t *kv;
 
     /* protect against zero-byte buffers - these can come if the
      * connection is dropped due to a process failure */
@@ -4518,6 +4521,21 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
                 PMIX_RELEASE(reply);
                 return rc;
             }
+            // and we have to ensure their hash component knows
+            // the job size
+            PMIX_CONSTRUCT(&cb, pmix_cb_t);
+            PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, PMIX_RANK_WILDCARD);
+            cb.proc = &proc;
+            cb.scope = PMIX_INTERNAL;
+            cb.copy = false;
+            cb.key = PMIX_JOB_SIZE;
+            PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+            if (PMIX_SUCCESS == rc) {
+                kv = (pmix_kval_t*)pmix_list_remove_first(&cb.kvs);
+                PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, reply, kv, 1, PMIX_KVAL);
+                PMIX_RELEASE(kv);
+            }
+            PMIX_DESTRUCT(&cb);
         }
         PMIX_SERVER_QUEUE_REPLY(rc, peer, tag, reply);
         if (PMIX_SUCCESS != rc) {
