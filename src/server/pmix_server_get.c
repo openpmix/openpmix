@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -495,8 +495,49 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         if ((PMIX_SUCCESS != rc) && local) {
             PMIX_GDS_FETCH_KV(rc, cd->peer, &cb);
             if (PMIX_SUCCESS == rc) {
-                cbfunc(rc, NULL, 0, cbdata, NULL, NULL);
+                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+                PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pbkt, cd);
+                if (rc != PMIX_SUCCESS) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&pbkt);
+                    PMIX_DESTRUCT(&cb);
+                    return rc;
+                }
                 PMIX_DESTRUCT(&cb);
+                if (PMIX_PEER_IS_V1(cd->peer)) {
+                    /* if the client is using v1, then it expects the
+                     * data returned to it as the rank followed by a byte object containing
+                     * a buffer - so we have to do a little gyration */
+                    pmix_buffer_t xfer;
+                    PMIX_CONSTRUCT(&xfer, pmix_buffer_t);
+                    PMIX_BFROPS_PACK(rc, cd->peer, &xfer, &pbkt, 1, PMIX_BUFFER);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_DESTRUCT(&pbkt);
+                        PMIX_DESTRUCT(&xfer);
+                        PMIX_DESTRUCT(&cb);
+                        return rc;
+                    }
+                    PMIX_UNLOAD_BUFFER(&xfer, bo.bytes, bo.size);
+                    PMIX_DESTRUCT(&xfer);
+                } else {
+                    PMIX_UNLOAD_BUFFER(&pbkt, bo.bytes, bo.size);
+                }
+                PMIX_DESTRUCT(&pbkt);
+                /* pack it for transmission */
+                PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+                PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&pbkt);
+                    return rc;
+                }
+                /* unload the resulting payload */
+                PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
+                PMIX_DESTRUCT(&pbkt);
+                /* call the internal callback function - it will
+                 * release the cbdata */
+                cbfunc(PMIX_SUCCESS, data, sz, cbdata, relfn, data);
                 return rc;
             }
         }
