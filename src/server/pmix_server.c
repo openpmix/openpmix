@@ -4534,6 +4534,14 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb.kvs);
                 PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, reply, kv, 1, PMIX_KVAL);
                 PMIX_RELEASE(kv);
+            } else {
+                // try to retrieve from another spot
+                PMIX_GDS_FETCH_KV(rc, peer, &cb);
+                if (PMIX_SUCCESS == rc) {
+                    kv = (pmix_kval_t*)pmix_list_remove_first(&cb.kvs);
+                    PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, reply, kv, 1, PMIX_KVAL);
+                    PMIX_RELEASE(kv);
+                }
             }
             PMIX_DESTRUCT(&cb);
         }
