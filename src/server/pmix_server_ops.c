@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -5213,7 +5213,9 @@ static void tdes(pmix_server_trkr_t *t)
     PMIX_LIST_DESTRUCT(&t->grpinfo);
     PMIX_DESTRUCT(&t->nslist);
 }
-PMIX_CLASS_INSTANCE(pmix_server_trkr_t, pmix_list_item_t, tcon, tdes);
+PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
+                    pmix_list_item_t,
+                    tcon, tdes);
 
 static void cdcon(pmix_server_caddy_t *cd)
 {
@@ -5239,7 +5241,9 @@ static void cddes(pmix_server_caddy_t *cd)
         PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_server_caddy_t, pmix_list_item_t, cdcon, cddes);
+PMIX_CLASS_INSTANCE(pmix_server_caddy_t,
+                    pmix_list_item_t,
+                    cdcon, cddes);
 
 static void scadcon(pmix_setup_caddy_t *p)
 {
@@ -5295,9 +5299,13 @@ static void scaddes(pmix_setup_caddy_t *p)
         free(p->flags.directory);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t, pmix_object_t, scadcon, scaddes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
+                                pmix_object_t,
+                                scadcon, scaddes);
 
-PMIX_CLASS_INSTANCE(pmix_trkr_caddy_t, pmix_object_t, NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_trkr_caddy_t,
+                    pmix_object_t,
+                    NULL, NULL);
 
 static void dmcon(pmix_dmdx_remote_t *p)
 {
@@ -5315,6 +5323,7 @@ static void dmrqcon(pmix_dmdx_request_t *p)
 {
     memset(&p->ev, 0, sizeof(pmix_event_t));
     p->event_active = false;
+    p->key = NULL;
     p->lcd = NULL;
 }
 static void dmrqdes(pmix_dmdx_request_t *p)
@@ -5322,11 +5331,16 @@ static void dmrqdes(pmix_dmdx_request_t *p)
     if (p->event_active) {
         pmix_event_del(&p->ev);
     }
+    if (NULL != p->key) {
+        free(p->key);
+    }
     if (NULL != p->lcd) {
         PMIX_RELEASE(p->lcd);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_dmdx_request_t, pmix_list_item_t, dmrqcon, dmrqdes);
+PMIX_CLASS_INSTANCE(pmix_dmdx_request_t,
+                    pmix_list_item_t,
+                    dmrqcon, dmrqdes);
 
 static void lmcon(pmix_dmdx_local_t *p)
 {

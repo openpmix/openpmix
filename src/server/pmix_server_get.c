@@ -83,11 +83,12 @@ PMIX_CLASS_INSTANCE(pmix_dmdx_reply_caddy_t, pmix_object_t, dcd_con, NULL);
 
 static void dmdx_cbfunc(pmix_status_t status, const char *data, size_t ndata, void *cbdata,
                         pmix_release_cbfunc_t relfn, void *relcbdata);
-static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
+static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, char *key,
                                       pmix_server_caddy_t *cd, bool diffnspace, pmix_scope_t scope,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata);
-static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, pmix_info_t info[],
-                                          size_t ninfo, pmix_modex_cbfunc_t cbfunc, void *cbdata,
+static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char *key,
+                                          pmix_info_t info[],  size_t ninfo,
+                                          pmix_modex_cbfunc_t cbfunc, void *cbdata,
                                           pmix_dmdx_local_t **lcd, pmix_dmdx_request_t **rq);
 static pmix_status_t get_job_data(char *nspace, pmix_server_caddy_t *cd,
                                   char *key, pmix_buffer_t *pbkt);
@@ -104,8 +105,9 @@ static void relfn(void *cbdata)
     }
 }
 
-static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, pmix_server_caddy_t *cd,
-                                    bool localonly, pmix_modex_cbfunc_t cbfunc, void *cbdata,
+static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, char *key,
+                                    pmix_server_caddy_t *cd, bool localonly,
+                                    pmix_modex_cbfunc_t cbfunc, void *cbdata,
                                     struct timeval *tv, pmix_dmdx_local_t **locald)
 {
     pmix_status_t rc;
@@ -122,12 +124,15 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, pmix_server_
     }
     /* we cannot do anything further, so just track this request
      * for now */
-    rc = create_local_tracker(nspace, rank, cd->info, cd->ninfo, cbfunc, cbdata, &lcd, &req);
+    rc = create_local_tracker(nspace, rank, key, cd->info, cd->ninfo,
+                              cbfunc, cbdata, &lcd, &req);
     if (PMIX_ERR_NOMEM == rc || NULL == lcd) {
         return rc;
     }
-    pmix_output_verbose(2, pmix_server_globals.get_output, "%s:%d TRACKER CREATED - WAITING",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank);
+    pmix_output_verbose(2, pmix_server_globals.get_output,
+                        "%s:%d TRACKER CREATED - WAITING TIMEOUT %d",
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank, 
+                       (NULL == tv) ? -1 : tv->tv_sec);
     /* if they specified a timeout, set it up now */
     if (NULL != tv && 0 < tv->tv_sec) {
         pmix_event_evtimer_set(pmix_globals.evbase, &req->ev, get_timeout, req);
@@ -399,9 +404,10 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
      * all clients have been registered with us */
     if (!nptr->all_registered) {
         pmix_output_verbose(2, pmix_server_globals.get_output,
-                            "%s:%d NSPACE %s not all registered",
-                            pmix_globals.myid.nspace, pmix_globals.myid.rank, nspace);
-        rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+                            "%s:%d NSPACE %s not all registered - delay %d",
+                            pmix_globals.myid.nspace, pmix_globals.myid.rank,
+                            nspace, tv.tv_sec);
+        rc = defer_response(nspace, rank, key, cd, localonly, cbfunc, cbdata, &tv, &lcd);
         if (PMIX_ERR_NOT_FOUND == rc) {
             /* just means we created a tracker */
             rc = PMIX_SUCCESS;
@@ -425,7 +431,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
                 if (rank == iptr->pname.rank) {
                     if (0 > iptr->peerid) {
                         /* this rank has not connected yet, so this request needs to be held */
-                        rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+                        rc = defer_response(nspace, rank, key, cd, localonly, cbfunc, cbdata, &tv, &lcd);
                         if (PMIX_ERR_NOT_FOUND == rc) {
                             /* just means we created a tracker */
                             rc = PMIX_SUCCESS;
@@ -556,7 +562,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
                 if (0 == tv.tv_sec) {
                     tv.tv_sec = 2;
                 }
-                rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, &tv, &lcd);
+                rc = defer_response(nspace, rank, key, cd, localonly, cbfunc, cbdata, &tv, &lcd);
                 if (PMIX_ERR_NOT_FOUND == rc) {
                     /* just means we created a tracker */
                     rc = PMIX_SUCCESS;
@@ -599,7 +605,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     }
 
     /* since everyone has registered, see if we already have this data */
-    rc = _satisfy_request(nptr, rank, cd, diffnspace, scope, cbfunc, cbdata);
+    rc = _satisfy_request(nptr, rank, key, cd, diffnspace, scope, cbfunc, cbdata);
     if (PMIX_SUCCESS == rc) {
         /* return success as the satisfy_request function
          * calls the cbfunc for us, and it will have
@@ -614,7 +620,7 @@ request:
     /* setup to handle this remote request, but don't set any timeout as
      * this might create a race condition with our host if they also
      * support the timeout */
-    rc = defer_response(nspace, rank, cd, localonly, cbfunc, cbdata, NULL, &lcd);
+    rc = defer_response(nspace, rank, key, cd, localonly, cbfunc, cbdata, NULL, &lcd);
     if (PMIX_SUCCESS == rc) {
         /* we are already waiting for the data - nothing more
          * for us to do as the function added the new request
@@ -669,8 +675,9 @@ request:
     return rc;
 }
 
-static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, pmix_info_t info[],
-                                          size_t ninfo, pmix_modex_cbfunc_t cbfunc, void *cbdata,
+static pmix_status_t create_local_tracker(char nspace[], pmix_rank_t rank, char *key,
+                                          pmix_info_t info[], size_t ninfo,
+                                          pmix_modex_cbfunc_t cbfunc, void *cbdata,
                                           pmix_dmdx_local_t **ld, pmix_dmdx_request_t **rq)
 {
     pmix_dmdx_local_t *lcd, *cd;
@@ -723,6 +730,9 @@ complete:
     if (NULL == req) {
         *ld = lcd;
         return PMIX_ERR_NOMEM;
+    }
+    if (NULL != key) {
+        req->key = strdup(key);
     }
     PMIX_RETAIN(lcd);
     req->lcd = lcd;
@@ -858,7 +868,7 @@ static pmix_status_t get_job_data(char *nspace,
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
+static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, char *key,
                                       pmix_server_caddy_t *cd, bool diffnspace, pmix_scope_t scope,
                                       pmix_modex_cbfunc_t cbfunc, void *cbdata)
 {
@@ -899,6 +909,7 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
      * of returning a copy of the data, or a pointer to
      * local storage */
     cb.proc = &proc;
+    cb.key = key;
     cb.scope = scope;
     cb.copy = false;
     cb.info = cd->info;
@@ -994,50 +1005,34 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank,
     return PMIX_ERR_NOT_FOUND;
 }
 
-/* Resolve pending requests to this namespace/rank */
-pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr,
-                                   pmix_rank_t rank,
-                                   pmix_status_t status,
-                                   pmix_scope_t scope,
-                                   pmix_dmdx_local_t *lcd)
+static void check_req(pmix_namespace_t *nptr,
+                      pmix_rank_t rank,
+                      pmix_status_t status,
+                      pmix_scope_t scope,
+                      pmix_dmdx_local_t *ptr)
 {
-    pmix_dmdx_local_t *cd, *ptr;
     pmix_dmdx_request_t *req, *rnext;
     pmix_server_caddy_t scd;
-
-    /* find corresponding request (if exists) */
-    if (NULL == lcd) {
-        ptr = NULL;
-        if (NULL != nptr) {
-            PMIX_LIST_FOREACH (cd, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
-                if (!PMIX_CHECK_NSPACE(nptr->nspace, cd->proc.nspace) || rank != cd->proc.rank) {
-                    continue;
-                }
-                ptr = cd;
-                break;
-            }
-        }
-        if (NULL == ptr) {
-            return PMIX_SUCCESS;
-        }
-    } else {
-        ptr = lcd;
-    }
+    bool diffnspace;
+    pmix_status_t rc;
+    char *key;
 
     /* if there are no local reqs on this request (e.g., only
      * one proc requested it and that proc has died), then
      * just remove the request */
     if (0 == pmix_list_get_size(&ptr->loc_reqs)) {
-        goto cleanup;
+        return;
     }
 
     /* somebody was interested in this rank */
     if (PMIX_SUCCESS != status) {
         /* if we've got an error for this request - just forward it*/
-        PMIX_LIST_FOREACH (req, &ptr->loc_reqs, pmix_dmdx_request_t) {
+        PMIX_LIST_FOREACH_SAFE(req, rnext, &ptr->loc_reqs, pmix_dmdx_request_t) {
             req->cbfunc(status, NULL, 0, req->cbdata, NULL, NULL);
+            pmix_list_remove_item(&ptr->loc_reqs, &req->super);
+            PMIX_RELEASE(req);
         }
-    } else if (NULL != nptr) {
+    } else {
         /* if we've got the blob - try to satisfy requests */
         /* run through all the requests for this rank */
         /* this info is going back to one of our peers, so provide a server
@@ -1045,33 +1040,65 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr,
         PMIX_CONSTRUCT(&scd, pmix_server_caddy_t);
         PMIX_RETAIN(pmix_globals.mypeer);
         scd.peer = pmix_globals.mypeer;
-        PMIX_LIST_FOREACH (req, &ptr->loc_reqs, pmix_dmdx_request_t) {
-            pmix_status_t rc;
-            bool diffnspace = !PMIX_CHECK_NSPACE(nptr->nspace, req->lcd->proc.nspace);
-            rc = _satisfy_request(nptr, rank, &scd, diffnspace, scope,
+        PMIX_LIST_FOREACH_SAFE(req, rnext, &ptr->loc_reqs, pmix_dmdx_request_t) {
+            diffnspace = !PMIX_CHECK_NSPACE(nptr->nspace, req->lcd->proc.nspace);
+            // if the rank is undef, then only ask for the one key - otherwise,
+            // return all keys for that rank. This is an optimization as we
+            // assume if someone asked for one key for a specific rank, they
+            // are likely to ask for more of them
+            if (PMIX_RANK_UNDEF == rank) {
+                key = req->key;
+            } else {
+                key = NULL;
+            }
+            rc = _satisfy_request(nptr, rank, key, &scd, diffnspace, scope,
                                   req->cbfunc, req->cbdata);
             if (PMIX_SUCCESS != rc) {
                 /* if we can't satisfy this particular request (missing key?) */
                 req->cbfunc(rc, NULL, 0, req->cbdata, NULL, NULL);
             }
+            pmix_list_remove_item(&ptr->loc_reqs, &req->super);
+            PMIX_RELEASE(req);
         }
         PMIX_DESTRUCT(&scd);
     }
+}
 
-cleanup:
-    /* remove all requests to this rank and cleanup the corresponding structure */
-    pmix_list_remove_item(&pmix_server_globals.local_reqs, &ptr->super);
-    /* the dmdx request is linked back to its local request for ease
-     * of lookup upon return from the server. However, this means that
-     * the refcount of the local request has been increased by the number
-     * dmdx requests attached to it. In order to release the local request's
-     * storage, we first have to drive the refcount down by releasing all
-     * of the associated dmdx requests */
-    PMIX_LIST_FOREACH_SAFE (req, rnext, &ptr->loc_reqs, pmix_dmdx_request_t) {
-        pmix_list_remove_item(&ptr->loc_reqs, &req->super);
-        PMIX_RELEASE(req); // decrements refcount of ptr
+/* Resolve pending requests to this namespace/rank */
+pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr,
+                                   pmix_rank_t rank,
+                                   pmix_status_t status,
+                                   pmix_scope_t scope,
+                                   pmix_dmdx_local_t *lcd)
+{
+    pmix_dmdx_local_t *cd, *cdnext;
+    pmix_dmdx_request_t *req, *rnext;
+    pmix_server_caddy_t scd;
+    pmix_status_t rc;
+    bool diffnspace;
+
+    /* find corresponding request (if exists) */
+    if (NULL == lcd) {
+        PMIX_LIST_FOREACH_SAFE(cd, cdnext, &pmix_server_globals.local_reqs, pmix_dmdx_local_t) {
+            if (!PMIX_CHECK_NSPACE(nptr->nspace, cd->proc.nspace) ) {
+                continue;
+            }
+            if (PMIX_RANK_UNDEF == cd->proc.rank ||
+                rank == cd->proc.rank) {
+                check_req(nptr, cd->proc.rank, status, scope, cd);
+            }
+            if (0 == pmix_list_get_size(&cd->loc_reqs)) {
+                pmix_list_remove_item(&pmix_server_globals.local_reqs, &cd->super);
+                PMIX_RELEASE(cd);
+            }
+        }
+    } else {
+        check_req(nptr, rank, status, scope, lcd);
+        if (0 == pmix_list_get_size(&lcd->loc_reqs)) {
+            pmix_list_remove_item(&pmix_server_globals.local_reqs, &lcd->super);
+            PMIX_RELEASE(lcd);
+        }
     }
-    PMIX_RELEASE(ptr);
 
     return PMIX_SUCCESS;
 }
