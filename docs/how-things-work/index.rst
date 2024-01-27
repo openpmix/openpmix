@@ -11,3 +11,4 @@ find information on that subject here.
 
    session_dirs.rst
    distances.rst
+   schedulers/index.rst
