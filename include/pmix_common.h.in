@@ -549,6 +549,9 @@ typedef uint32_t pmix_rank_t;
                                                                     //        separately. If false, then the final exit status reported will be
                                                                     //        zero if the primary job and all spawned jobs exit normally, or the
                                                                     //        first non-zero status returned by either primary or child jobs.
+#define PMIX_SPAWN_CHILD_SEP                "pmix.spchildsep"       // (bool) Treat the spawned job as independent from the parent - i.e, do not
+                                                                    //        terminate the spawned job if the parent terminates.
+
 
 
 /* query keys - value type shown is the type of the value that will be RETURNED by that key  */
@@ -924,6 +927,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //         of the MAU so the information can be passed along. Alternatively,
                                                                     //         a host can pass the information into its PMIx server. Array consists
                                                                     //         of pmix_resource_unit_t structs.
+#define PMIX_ALLOC_CHILD_SEP                "pmix.alloc.sep"        // (bool) Treat the resulting allocation as independent from its parent - i.e.,
+                                                                    //        do not terminate the allocation upon termination of the parent.
 
 
 /* job control attributes */
@@ -958,6 +963,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CLEANUP_LEAVE_TOPDIR           "pmix.clnup.lvtop"      // (bool) when recursively cleaning subdirs, do not remove
                                                                     //        the top-level directory (the one given in the
                                                                     //        cleanup request)
+#define PMIX_JOB_CTRL_SEP                   "pmix.jctrl.sep"        // (bool) Separate the specified nspace from its parent - i.e., allow
+                                                                    //        the two to independently terminate.
+
+
 /* session control attributes */
 #define PMIX_SESSION_CTRL_ID                "pmix.ssnctrl.id"       // (char*) provide a string identifier for this request
 
@@ -992,6 +1001,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        all their resources. If no PMIX_NSPACE is specified, then restore
                                                                     //        all jobs in the session.
 #define PMIX_SESSION_SIGNAL                 "pmix.ssn.sig"          // (int) send given signal to all processes of every job in the session
+#define PMIX_SESSION_SEP                    "pmix.ssn.sep"          // (bool) Separate the specified session from its parent - i.e., allow
+                                                                    //        the two to independently terminate.
 
 /* session operational attributes - called by RTE */
 #define PMIX_SESSION_COMPLETE               "pmix.ssn.complete"     // (bool) specified session has completed, all resources have been
