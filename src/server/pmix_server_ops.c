@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -5249,7 +5249,9 @@ static void tdes(pmix_server_trkr_t *t)
     PMIX_LIST_DESTRUCT(&t->grpinfo);
     PMIX_LIST_DESTRUCT(&t->nslist);
 }
-PMIX_CLASS_INSTANCE(pmix_server_trkr_t, pmix_list_item_t, tcon, tdes);
+PMIX_CLASS_INSTANCE(pmix_server_trkr_t,
+                    pmix_list_item_t,
+                    tcon, tdes);
 
 static void cdcon(pmix_server_caddy_t *cd)
 {
@@ -5275,7 +5277,9 @@ static void cddes(pmix_server_caddy_t *cd)
         PMIX_INFO_FREE(cd->info, cd->ninfo);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_server_caddy_t, pmix_list_item_t, cdcon, cddes);
+PMIX_CLASS_INSTANCE(pmix_server_caddy_t,
+                    pmix_list_item_t,
+                    cdcon, cddes);
 
 static void scadcon(pmix_setup_caddy_t *p)
 {
@@ -5331,7 +5335,9 @@ static void scaddes(pmix_setup_caddy_t *p)
         free(p->flags.directory);
     }
 }
-PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t, pmix_object_t, scadcon, scaddes);
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_setup_caddy_t,
+                                pmix_object_t,
+                                scadcon, scaddes);
 
 PMIX_CLASS_INSTANCE(pmix_trkr_caddy_t, pmix_object_t, NULL, NULL);
 
@@ -5345,13 +5351,16 @@ static void dmdes(pmix_dmdx_remote_t *p)
         PMIX_RELEASE(p->cd);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_dmdx_remote_t, pmix_list_item_t, dmcon, dmdes);
+PMIX_CLASS_INSTANCE(pmix_dmdx_remote_t,
+                    pmix_list_item_t,
+                    dmcon, dmdes);
 
 static void dmrqcon(pmix_dmdx_request_t *p)
 {
     memset(&p->ev, 0, sizeof(pmix_event_t));
     p->event_active = false;
     p->lcd = NULL;
+    p->key = NULL;
 }
 static void dmrqdes(pmix_dmdx_request_t *p)
 {
@@ -5361,8 +5370,13 @@ static void dmrqdes(pmix_dmdx_request_t *p)
     if (NULL != p->lcd) {
         PMIX_RELEASE(p->lcd);
     }
+    if (NULL != p->key) {
+        free(p->key);
+    }
 }
-PMIX_CLASS_INSTANCE(pmix_dmdx_request_t, pmix_list_item_t, dmrqcon, dmrqdes);
+PMIX_CLASS_INSTANCE(pmix_dmdx_request_t,
+                    pmix_list_item_t,
+                    dmrqcon, dmrqdes);
 
 static void lmcon(pmix_dmdx_local_t *p)
 {
@@ -5378,7 +5392,9 @@ static void lmdes(pmix_dmdx_local_t *p)
     }
     PMIX_LIST_DESTRUCT(&p->loc_reqs);
 }
-PMIX_CLASS_INSTANCE(pmix_dmdx_local_t, pmix_list_item_t, lmcon, lmdes);
+PMIX_CLASS_INSTANCE(pmix_dmdx_local_t,
+                    pmix_list_item_t,
+                    lmcon, lmdes);
 
 static void prevcon(pmix_peer_events_info_t *p)
 {
@@ -5395,7 +5411,9 @@ static void prevdes(pmix_peer_events_info_t *p)
         PMIX_PROC_FREE(p->affected, p->naffected);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_peer_events_info_t, pmix_list_item_t, prevcon, prevdes);
+PMIX_CLASS_INSTANCE(pmix_peer_events_info_t,
+                    pmix_list_item_t,
+                    prevcon, prevdes);
 
 static void regcon(pmix_regevents_info_t *p)
 {
@@ -5405,7 +5423,9 @@ static void regdes(pmix_regevents_info_t *p)
 {
     PMIX_LIST_DESTRUCT(&p->peers);
 }
-PMIX_CLASS_INSTANCE(pmix_regevents_info_t, pmix_list_item_t, regcon, regdes);
+PMIX_CLASS_INSTANCE(pmix_regevents_info_t,
+                    pmix_list_item_t,
+                    regcon, regdes);
 
 static void ilcon(pmix_inventory_rollup_t *p)
 {
@@ -5427,9 +5447,13 @@ static void ildes(pmix_inventory_rollup_t *p)
     PMIX_DESTRUCT_LOCK(&p->lock);
     PMIX_LIST_DESTRUCT(&p->payload);
 }
-PMIX_CLASS_INSTANCE(pmix_inventory_rollup_t, pmix_object_t, ilcon, ildes);
+PMIX_CLASS_INSTANCE(pmix_inventory_rollup_t,
+                    pmix_object_t,
+                    ilcon, ildes);
 
-PMIX_CLASS_INSTANCE(pmix_group_caddy_t, pmix_list_item_t, NULL, NULL);
+PMIX_CLASS_INSTANCE(pmix_group_caddy_t,
+                    pmix_list_item_t,
+                    NULL, NULL);
 
 static void iocon(pmix_iof_cache_t *p)
 {
@@ -5444,7 +5468,9 @@ static void iodes(pmix_iof_cache_t *p)
         PMIX_INFO_FREE(p->info, p->ninfo);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_iof_cache_t, pmix_list_item_t, iocon, iodes);
+PMIX_CLASS_INSTANCE(pmix_iof_cache_t,
+                    pmix_list_item_t,
+                    iocon, iodes);
 
 static void pscon(pmix_pset_t *p)
 {
@@ -5461,4 +5487,6 @@ static void psdes(pmix_pset_t *p)
         free(p->members);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_pset_t, pmix_list_item_t, pscon, psdes);
+PMIX_CLASS_INSTANCE(pmix_pset_t,
+                    pmix_list_item_t,
+                    pscon, psdes);
