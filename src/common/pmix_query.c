@@ -542,7 +542,6 @@ complete:
             }
             cd->queries = NULL;
             cd->nqueries = 0;
-            PMIX_RELEASE(cd);
         }
         return;
     }
