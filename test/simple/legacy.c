@@ -1,7 +1,11 @@
+#include "src/include/pmix_config.h"
+
 #include <assert.h>
 #include <stdio.h>
 #include <pmix.h>
 #include <string.h>
+
+#include "src/include/pmix_globals.h"
 
 int
 main(int argc, char *argv[])
@@ -9,6 +13,7 @@ main(int argc, char *argv[])
 pmix_value_t *val = NULL;
 pmix_status_t rc = PMIX_SUCCESS;
 pmix_proc_t global_proc, proc;
+PMIX_HIDE_UNUSED_PARAMS(argc, argv);
 
 rc = PMIx_Init(&global_proc, NULL, 0);
 assert(PMIX_SUCCESS == rc);
