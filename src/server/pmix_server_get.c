@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1035,10 +1036,6 @@ pmix_status_t pmix_pending_resolve(pmix_namespace_t *nptr,
                                    pmix_dmdx_local_t *lcd)
 {
     pmix_dmdx_local_t *cd, *cdnext;
-    pmix_dmdx_request_t *req, *rnext;
-    pmix_server_caddy_t scd;
-    pmix_status_t rc;
-    bool diffnspace;
 
     /* find corresponding request (if exists) */
     if (NULL == lcd) {
