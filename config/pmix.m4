@@ -192,23 +192,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     fi
     AC_SUBST(PMIX_RELEASE_DATE)
 
-    # Debug mode?
-    AC_MSG_CHECKING([if want pmix maintainer support])
-    pmix_debug=
-    AS_IF([test "$pmix_debug" = "" && test "$enable_debug" = "yes"],
-          [pmix_debug=1
-           pmix_debug_msg="enabled"])
-    AS_IF([test "$pmix_debug" = ""],
-          [pmix_debug=0
-           pmix_debug_msg="disabled"])
-    # Grr; we use #ifndef for PMIX_DEBUG!  :-(
-    AH_TEMPLATE(PMIX_ENABLE_DEBUG, [Whether we are in debugging mode or not])
-    AS_IF([test "$pmix_debug" = "1"], [AC_DEFINE([PMIX_ENABLE_DEBUG])])
-    AC_MSG_RESULT([$pmix_debug_msg])
-
-    AC_MSG_CHECKING([for pmix directory prefix])
-    AC_MSG_RESULT(m4_ifval([$1], pmix_config_prefix, [(none)]))
-
     # Note that private/config.h *MUST* be listed first so that it
     # becomes the "main" config header file.  Any AC-CONFIG-HEADERS
     # after that (pmix/config.h) will only have selective #defines
@@ -1065,6 +1048,20 @@ AC_DEFUN([PMIX_DEFINE_ARGS],[
 # Check the OS flavor here
 #
 OAC_CHECK_OS_FLAVORS
+
+# Debug mode?
+AC_MSG_CHECKING([if want pmix maintainer support])
+pmix_debug=0
+pmix_debug_msg="disabled"
+AS_IF([test "$enable_debug" = "yes"],
+      [pmix_debug=1
+       pmix_debug_msg="enabled"])
+# Grr; we use #ifndef for PMIX_DEBUG!  :-(
+AH_TEMPLATE(PMIX_ENABLE_DEBUG, [Whether we are in debugging mode or not])
+AS_IF([test "$pmix_debug" = "1"], [AC_DEFINE([PMIX_ENABLE_DEBUG])])
+AC_MSG_RESULT([$pmix_debug_msg])
+AC_MSG_CHECKING([for pmix directory prefix])
+AC_MSG_RESULT(m4_ifval([$1], pmix_config_prefix, [(none)]))
 
 #
 # Developer picky compiler options
