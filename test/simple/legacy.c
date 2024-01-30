@@ -4,7 +4,7 @@
 #include <string.h>
 
 int
-main(int argc, char *argv[])
+main(void)
 {
 pmix_value_t *val = NULL;
 pmix_status_t rc = PMIX_SUCCESS;
