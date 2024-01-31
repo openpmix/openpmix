@@ -4,6 +4,21 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
+4.2.9 -- TBD
+------------
+ - PR #3274: Multiple commits
+    - Restore default to enable-devel-check in Git repos
+    - Protect against empty envar definition for mca_base_param_files
+ - PR #3268: PMIx_Query_info: removed duplicated PMIX_RELEASE
+ - PR #3265: Do not add no-unused-parameter for non-devel-check builds
+ - PR #3262: Cast a few parameters when translating macros to functions
+ - PR #3261: Fix one more spot for "get" from rank undefined
+ - PR #3260: Fix "get" of key with undefined rank
+ - PR #3256: Multiple commits
+    - Resolve problem of stack variables and realloc
+    - Restore support for detecting shared file systems
+    - Fix broken link in README
+
 4.2.8 -- 19 Dec 2023
 --------------------
  - PR #3233: Multiple commits
