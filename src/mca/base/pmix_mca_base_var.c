@@ -16,7 +16,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -359,7 +359,8 @@ int pmix_mca_base_var_cache_files(bool rel_path_search)
     }
 
     /* Disable reading MCA parameter files. */
-    if (0 == strcmp(pmix_mca_base_var_files, "none")) {
+    if (NULL == pmix_mca_base_var_files ||
+        0 == strcmp(pmix_mca_base_var_files, "none")) {
         return PMIX_SUCCESS;
     }
 
@@ -1053,9 +1054,14 @@ static int fixup_files(char **file_list, char *path, bool rel_path_search, char 
 
 static int read_files(char *file_list, pmix_list_t *file_values, char sep)
 {
-    char **tmp = PMIx_Argv_split(file_list, sep);
-    int i, count;
+    char **tmp;
+    int i, count, rc;
 
+    if (NULL == file_list) {
+        return PMIX_SUCCESS;
+    }
+
+    tmp = PMIx_Argv_split(file_list, sep);
     if (!tmp) {
         return PMIX_ERR_OUT_OF_RESOURCE;
     }
@@ -1068,7 +1074,12 @@ static int read_files(char *file_list, pmix_list_t *file_values, char sep)
 
     for (i = count - 1; i >= 0; --i) {
         char *file_name = append_filename_to_list(tmp[i]);
-        pmix_mca_base_parse_paramfile(file_name, file_values);
+        rc = pmix_mca_base_parse_paramfile(file_name, file_values);
+        if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
+            // it is okay if the file isn't found
+            PMIx_Argv_free(tmp);
+            return rc;
+        }
     }
 
     PMIx_Argv_free(tmp);
