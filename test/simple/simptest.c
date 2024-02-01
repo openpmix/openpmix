@@ -17,7 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2023-2024 Triad National Security, LLC. All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -665,7 +665,10 @@ static void set_namespace(int nprocs, char *nspace, pmix_op_cbfunc_t cbfunc, myx
     iptr[3].value.type = PMIX_DATA_ARRAY;
     PMIX_DATA_ARRAY_CREATE(iptr[3].value.data.darray, 2, PMIX_INFO);
     ip = (pmix_info_t *) iptr[3].value.data.darray->array;
-    asprintf(&rks, "%s.net", nspace);
+    if (0 > asprintf(&rks, "%s.net", nspace)) {
+        errno = ENOMEM;
+        abort();
+    }
     PMIX_INFO_LOAD(&ip[0], PMIX_ALLOC_FABRIC_ID, rks, PMIX_STRING);
     free(rks);
     PMIX_INFO_LOAD(&ip[1], PMIX_ALLOC_FABRIC_SEC_KEY, NULL, PMIX_BOOL);

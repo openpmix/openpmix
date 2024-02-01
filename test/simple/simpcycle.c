@@ -17,7 +17,8 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -142,7 +143,10 @@ int main(int argc, char **argv)
     PMIx_Register_event_handler(NULL, 0, NULL, 0, notification_fn, NULL, NULL);
 
     /* put a few values */
-    (void) asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank);
+    if (0 > asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank)) {
+        errno = ENOMEM;
+        abort();
+    }
     value.type = PMIX_UINT32;
     value.data.uint32 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Store_internal(&myproc, tmp, &value))) {
