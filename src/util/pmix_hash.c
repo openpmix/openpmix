@@ -13,7 +13,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -140,8 +140,8 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                         "%s HASH:STORE:QUAL table %s rank %s key %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
-                        table->ht_label, PMIX_RANK_PRINT(rank),
-                        (NULL == kin) ? "NULL KVAL" : kin->key);
+                        (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label,
+                        PMIX_RANK_PRINT(rank), (NULL == kin) ? "NULL KVAL" : kin->key);
 
     if (PMIX_UNLIKELY(NULL == kin)) {
         return PMIX_ERR_BAD_PARAM;
@@ -272,7 +272,7 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
                     PMIX_NAME_PRINT(&pmix_globals.myid),
                     kin->key, v,
                     PMIX_RANK_PRINT(rank), (unsigned)m,
-                    table->ht_label);
+                    (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label);
         free(v);
     }
     pmix_pointer_array_add(proc_data->data, hv);
@@ -307,8 +307,8 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                         "%s HASH:FETCH table %s id %s key %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
-                        table->ht_label, PMIX_RANK_PRINT(rank),
-                        (NULL == key) ? "NULL" : key);
+                        (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label,
+                        PMIX_RANK_PRINT(rank), (NULL == key) ? "NULL" : key);
 
     /* - PMIX_RANK_UNDEF should return following statuses
      *     PMIX_ERR_NOT_FOUND | PMIX_SUCCESS
@@ -376,7 +376,9 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                         pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
                                             "%s INCLUDE %s VALUE %s FROM TABLE %s FOR RANK %s",
                                             PMIX_NAME_PRINT(&pmix_globals.myid), p->name,
-                                            PMIx_Value_string(hv->value), table->ht_label, PMIX_RANK_PRINT(rank));
+                                            PMIx_Value_string(hv->value),
+                                            (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label,
+                                            PMIX_RANK_PRINT(rank));
                         /* this is a qualified value - need to return it as such */
                         PMIX_KVAL_NEW(kv, PMIX_QUALIFIED_VALUE);
                         darray = (pmix_data_array_t*)pmix_pointer_array_get_item(proc_data->quals, hv->qualindex);
