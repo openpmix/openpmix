@@ -18,6 +18,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -350,13 +351,19 @@ int main(int argc, char **argv)
         /* we have a single namespace for all clients */
         atmp = NULL;
         for (n = 0; n < nprocs; n++) {
-            asprintf(&tmp, "%d", n);
+            if (0 > asprintf(&tmp, "%d", n)) {
+                errno = ENOMEM;
+                abort();
+            }
             PMIx_Argv_append_nosize(&atmp, tmp);
             free(tmp);
         }
         tmp = PMIx_Argv_join(atmp, ',');
         PMIx_Argv_free(atmp);
-        asprintf(&nspace, "foobar%d", m);
+        if (0 > asprintf(&nspace, "foobar%d", m)) {
+            errno = ENOMEM;
+            abort();
+        }
         pmix_strncpy(proc.nspace, nspace, PMIX_MAX_NSLEN);
         x = PMIX_NEW(myxfer_t);
         set_namespace(nprocs, tmp, nspace, opcbfunc, x);
@@ -526,7 +533,10 @@ static void set_namespace(int nprocs, char *ranks, char *nspace, pmix_op_cbfunc_
     iptr[3].value.type = PMIX_DATA_ARRAY;
     PMIX_DATA_ARRAY_CREATE(iptr[3].value.data.darray, 2, PMIX_INFO);
     ip = (pmix_info_t *) iptr[3].value.data.darray->array;
-    asprintf(&rks, "%s.net", nspace);
+    if (0 > asprintf(&rks, "%s.net", nspace)) {
+        errno = ENOMEM;
+        abort();
+    }
     PMIX_INFO_LOAD(&ip[0], PMIX_ALLOC_NETWORK_ID, rks, PMIX_STRING);
     free(rks);
     PMIX_INFO_LOAD(&ip[1], PMIX_ALLOC_NETWORK_SEC_KEY, NULL, PMIX_BOOL);
