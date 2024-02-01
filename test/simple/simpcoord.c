@@ -18,6 +18,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -127,7 +128,10 @@ nextstep:
             char **foo = NULL;
             char *view;
             for (n = 0; n < coords[m].dims; n++) {
-                asprintf(&tmp, "%d", coords[m].coord[n]);
+                if (0 > asprintf(&tmp, "%d", coords[m].coord[n])) {
+                    errno = ENOMEM;
+                    abort();
+                }
                 PMIx_Argv_append_nosize(&foo, tmp);
                 free(tmp);
             }
@@ -146,7 +150,10 @@ nextstep:
         char **foo = NULL;
         char *view;
         for (n = 0; n < val->data.coord->dims; n++) {
-            asprintf(&tmp, "%d", val->data.coord->coord[n]);
+            if (0 > asprintf(&tmp, "%d", val->data.coord->coord[n])) {
+                errno = ENOMEM;
+                abort();
+            }
             PMIx_Argv_append_nosize(&foo, tmp);
             free(tmp);
         }
