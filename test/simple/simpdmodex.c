@@ -16,6 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -173,7 +174,10 @@ int main(int argc, char **argv)
     ++msgnum;
 
     /* put a few values */
-    (void) asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank);
+    if (0 > asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank)) {
+        errno = ENOMEM;
+        abort();
+    }
     value.type = PMIX_UINT32;
     value.data.uint32 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Store_internal(&myproc, tmp, &value))) {
@@ -182,7 +186,10 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    (void) asprintf(&tmp, "%s-%d-local", myproc.nspace, myproc.rank);
+    if (0 > asprintf(&tmp, "%s-%d-local", myproc.nspace, myproc.rank)) {
+        errno = ENOMEM;
+        abort();
+    }
     value.type = PMIX_UINT64;
     value.data.uint64 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, tmp, &value))) {
@@ -191,7 +198,10 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    (void) asprintf(&tmp, "%s-%d-remote", myproc.nspace, myproc.rank);
+    if (0 > asprintf(&tmp, "%s-%d-remote", myproc.nspace, myproc.rank)) {
+        errno = ENOMEM;
+        abort();
+    }
     value.type = PMIX_STRING;
     value.data.string = "1234";
     if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, tmp, &value))) {
@@ -265,7 +275,10 @@ int main(int argc, char **argv)
             }
         }
         if (local) {
-            (void) asprintf(&tmp, "%s-%d-local", myproc.nspace, n);
+            if (0 > asprintf(&tmp, "%s-%d-local", myproc.nspace, n)) {
+                errno = ENOMEM;
+                abort();
+            }
             pmix_output(0, "Rank %u[msg=%d]: retrieving %s from local proc %u", myproc.rank, msgnum, tmp, n);
             ++msgnum;
             proc.rank = n;
@@ -276,7 +289,10 @@ int main(int argc, char **argv)
             }
             ++num_gets;
         } else {
-            (void) asprintf(&tmp, "%s-%d-remote", myproc.nspace, n);
+            if (0 > asprintf(&tmp, "%s-%d-remote", myproc.nspace, n)) {
+                errno = ENOMEM;
+                abort();
+            }
             pmix_output(0, "Rank %u[msg=%d]: retrieving %s from remote proc %u", myproc.rank, msgnum, tmp, n);
             if (PMIX_SUCCESS != (rc = PMIx_Get_nb(&proc, tmp, iptr, ninfo, valcbfunc, tmp))) {
                 pmix_output(0, "Rank %d[msg=%d]: PMIx_Get %s failed: %d", myproc.rank, msgnum, tmp, rc);
