@@ -18,7 +18,7 @@
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
- * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2023-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -206,7 +206,10 @@ int main(int argc, char **argv)
     PMIx_Register_event_handler(NULL, 0, NULL, 0, notification_fn, NULL, NULL);
 
     /* put a few values */
-    (void) asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank);
+    if (0 > asprintf(&tmp, "%s-%d-internal", myproc.nspace, myproc.rank)) {
+        errno = ENOMEM;
+        abort();
+    }
     value.type = PMIX_UINT32;
     value.data.uint32 = 1234;
     if (PMIX_SUCCESS != (rc = PMIx_Store_internal(&myproc, tmp, &value))) {
@@ -239,7 +242,10 @@ int main(int argc, char **argv)
 
     for (cnt = 0; cnt < MAXCNT; cnt++) {
         pmix_output(0, "Client %s:%d executing loop %d", myproc.nspace, myproc.rank, cnt);
-        (void) asprintf(&tmp, "%s-%d-local-%d", myproc.nspace, myproc.rank, cnt);
+        if (0 > asprintf(&tmp, "%s-%d-local-%d", myproc.nspace, myproc.rank, cnt)) {
+            errno = ENOMEM;
+            abort();
+        }
         value.type = PMIX_UINT64;
         value.data.uint64 = 1234;
         if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, tmp, &value))) {
@@ -249,7 +255,10 @@ int main(int argc, char **argv)
         }
         free(tmp);
 
-        (void) asprintf(&tmp, "%s-%d-remote-%d", myproc.nspace, myproc.rank, cnt);
+        if (0 > asprintf(&tmp, "%s-%d-remote-%d", myproc.nspace, myproc.rank, cnt)) {
+            errno = ENOMEM;
+            abort();
+        }
         value.type = PMIX_STRING;
         value.data.string = "1234";
         if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, tmp, &value))) {
@@ -293,7 +302,10 @@ int main(int argc, char **argv)
                     }
                 }
                 if (local) {
-                    (void) asprintf(&tmp, "%s-%d-local-%d", myproc.nspace, n, j);
+                    if (0 > asprintf(&tmp, "%s-%d-local-%d", myproc.nspace, n, j)) {
+                        errno = ENOMEM;
+                        abort();
+                    }
                     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                         pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s failed: %s",
                                     myproc.nspace, myproc.rank, j, tmp, PMIx_Error_string(rc));
@@ -328,7 +340,10 @@ int main(int argc, char **argv)
                     /* now check that we don't get data for a remote proc - note that we
                      * always can get our own remote data as we published it */
                     if (proc.rank != myproc.rank) {
-                        (void) asprintf(&tmp, "%s-%d-remote-%d", proc.nspace, n, j);
+                        if (0 > asprintf(&tmp, "%s-%d-remote-%d", proc.nspace, n, j)) {
+                            errno = ENOMEM;
+                            abort();
+                        }
                         if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                             /* this data should _not_ be found as we are on the same node
                              * and the data was "put" with a PMIX_REMOTE scope */
@@ -349,7 +364,10 @@ int main(int argc, char **argv)
                     }
                 } else {
                     val = NULL;
-                    (void) asprintf(&tmp, "%s-%d-remote-%d", proc.nspace, n, j);
+                    if (0 > asprintf(&tmp, "%s-%d-remote-%d", proc.nspace, n, j)) {
+                        errno = ENOMEM;
+                        abort();
+                    }
                     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, NULL, 0, &val))) {
                         pmix_output(0, "Client ns %s rank %d cnt %d: PMIx_Get %s returned correct",
                                     myproc.nspace, myproc.rank, j, tmp);
