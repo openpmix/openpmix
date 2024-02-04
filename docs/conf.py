@@ -155,7 +155,7 @@ man_pages = list()
 for root, dirs, files in os.walk("man"):
     for filename in files:
         # Parse filenames of the format a "foo.X.rst"
-        parts = re.search("^([^/]+?)\.([0-9]+)\.rst$", filename)
+        parts = re.search(r"^([^/]+?).([0-9]+).rst$", filename)
 
         # Skip files that do not match that format (e.g.,
         # "index.rst")
