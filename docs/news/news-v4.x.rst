@@ -4,8 +4,11 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
-4.2.9 -- TBD
-------------
+4.2.9 -- 4 Feb 2024
+-------------------
+ - PR #3278: Multiple commits
+    - Fix test builds with picky compiler options
+    - Update the Python regex for doc build
  - PR #3274: Multiple commits
     - Restore default to enable-devel-check in Git repos
     - Protect against empty envar definition for mca_base_param_files
