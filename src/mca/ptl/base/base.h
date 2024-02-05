@@ -123,7 +123,9 @@ PMIX_CLASS_DECLARATION(pmix_connection_t);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_notification_cbfunc(pmix_ptl_cbfunc_t cbfunc);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *peer,
                                                         pmix_info_t info[], size_t ninfo);
-PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connections);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
+                                                       bool optional,
+                                                       pmix_list_t *connections);
 
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_connection(char *uri,
                                                          struct sockaddr_storage *connection,
@@ -160,7 +162,7 @@ PMIX_EXPORT void pmix_ptl_base_query_servers(int sd, short args, void *cbdata);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace,
                                                   pmix_rank_t *rank, char **suri);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t info[],
-                                                  size_t ninfo, pmix_list_t *connections);
+                                                  size_t ninfo, bool optional, pmix_list_t *connections);
 PMIX_EXPORT pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
                                                         pmix_info_t *iptr, size_t niptr);

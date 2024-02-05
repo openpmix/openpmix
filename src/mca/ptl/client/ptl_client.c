@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -129,8 +129,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, 
              * in the environment, we are allowed to check
              * for a system server */
             pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
-            pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(
-                NULL);
+            pmix_client_globals.myserver->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);
             /* setup the system rendezvous file name */
             if (0 > asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
                              pmix_globals.hostname)) {
@@ -140,7 +139,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, 
                                 "ptl:client looking for system server at %s", rendfile);
             /* try to read the file */
             PMIX_CONSTRUCT(&connections, pmix_list_t);
-            rc = pmix_ptl_base_parse_uri_file(rendfile, &connections);
+            rc = pmix_ptl_base_parse_uri_file(rendfile, true, &connections);
             free(rendfile);
             rendfile = NULL;
             if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections)) {
