@@ -4,29 +4,124 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.2 -- TBD 2024
+----------------------
+.. important:: Cross-version incompatibility
+               The known issue of cross-version operability between
+               members of the PMIx v5.0 release series has been
+               resolved by disabling the gds/shmem component at
+               runtime. This will allow v5.0.2 and all subsequent
+               releases to operate across versions, including the
+               v5.0.1 and v5.0.0 releases.
+
+               Those wishing to use the shmem component (i.e., those
+               who know they are not going to encounter cross-version
+               operations with v5.0.1 or v5.0.0) can re-enable the
+               shmem component by setting the "gds_shmem_enable" MCA
+               param to "true" (or "1", etc.). We expect to re-enable
+               the component by default in the near future.
+
+Detailed changes include:
+ - PR #3280 Multiple commits
+    - Implement attribute to specify connection order and process MCA params
+    - Error out of attempts for 32-bit builds
+    - hash: Add internal APIs that specify target key index.
+    - hash: Update pmix_hash functions to accept a pmix_keyindex_t*
+    - gds/shmem: Improve error message in tma_realloc()
+    - Remove static version of global function
+    - Fix handling of "--" in cmd lines
+    - Update the doubleget test
+    - Fully implement refresh cache support
+    - Adjust preg component priorities
+    - Remove unused function
+    - gds/shmem: Implement first cut of tma_realloc()
+    - Begin work on removing use of "stat"
+    - Fix typo
+    - avoid loopback in resolve_nspace_requests
+    - Refactor the prm framework
+    - Assign NULL to free'd pointer
+    - Cleanup some "unused params" errors
+    - Protect a variable
+    - Check for stdatomic.h
+    - Remove pmix_osd_dirpath_access
+    - Remove use of stat from pmix_getcwd
+    - Remove use of stat
+    - Remove use of stat in pmix_globals
+    - Remove use of stat to check file existence
+    - Test open a dir instead of using stat
+    - Minor cleanups for unused params
+    - pmix.h: Add capability flags
+    - Cleanup comments and prep for commit
+    - Do not remove the system tmpdir during cleanup
+    - Cleanup palloc and prun connections
+    - Cleanup a few typos and remove debug output
+    - Cast a few parameters when translating macros to functions
+    - Resolve problem of stack variables and realloc
+    - Restore support for detecting shared file systems
+    - Properly handle directories during cleanup
+    - gds/shmem: revert tma_free() strategy
+    - gds/shmem: fix potentially confusing error output
+    - Touchup the dirpath_destroy code
+    - Fix broken link in README
+    - Add a query attribute for number of available slots
+    - Do not add no-unused-parameter for non-devel-check builds
+    - Better support global keys
+    - PMIx_Query_info: removed duplicated PMIX_RELEASE
+    - Provide an explanation of session directories
+    - Fix --enable-devel-check builds
+    - Restore default to enable-devel-check in Git repos
+    - Protect against empty envar definition for mca_base_param_files
+    - Fix test builds with picky compiler options
+    - Protect against NULL hash table labels in debug output
+    - Update the Python regex for doc build
+    - Disable gds/shmem at runtime
+    - Cleanup update
+ - PR #3182 Multiple commits
+    - Remove debug print
+    - Make checking min versions consistent
+    - Add an action to test older HWLOC version
+    - Touchup the OMPI integration
+    - Fix couple of bugs in cmd line parser
+    - Fix typo in cmd line processor
+    - Add a new attribute to specify connection order
+ - PR #3166: Blacklist the HWLOC GL component to avoid deadlock
+ - PR #3162: Add a new Github Action
+
+
 5.0.1 -- 9 Sep 2023
 ----------------------
 .. warning:: CVE-2023-41915
 
-    A security issue was reported by François Diakhate (CEA)
-    which is addressed in the PMIx v4.2.6 and v5.0.1 releases.
-    (Older PMIx versions may be vulnerable, but are no longer
-    supported.)
+             A security issue was reported by François Diakhate (CEA)
+             which is addressed in the PMIx v4.2.6 and v5.0.1 releases.
+             (Older PMIx versions may be vulnerable, but are no longer
+             supported.)
 
-    A filesystem race condition could permit a malicious user
-    to obtain ownership of an arbitrary file on the filesystem
-    when parts of the PMIx library are called by a process
-    running as uid 0. This may happen under the default
-    configuration of certain workload managers, including Slurm.
+             A filesystem race condition could permit a malicious user
+             to obtain ownership of an arbitrary file on the filesystem
+             when parts of the PMIx library are called by a process
+             running as uid 0. This may happen under the default
+             configuration of certain workload managers, including Slurm.
+
+.. warning:: Cross-version incompatibility
+
+             There is a known issue when operating between
+             PMIx versions v5.0.1 and v5.0.0. This occurs due
+             to a difference in the key-to-index conversion
+             between the two versions. Users are advised
+             to set the PMIX_MCA_gds=hash parameter
+             in their environment when using these two
+             versions.
 
 Detailed changes include:
+ - Update news and version for release
  - PR #3149 Multiple commits
-    - Do not follow links when doing `chown`
+    - Do not follow links when doing "chown"
     - Cleanup a little debug in new pctrl tool
- - PR #3145
+ - PR #3145 Multiple commits
     - Retrieve pset names upon PMIx_Get request
     - Add a new "pctrl" tool for requesting job control ops
- - PR #3144
+ - PR #3144 Multiple commits
     - Properly support the "log" example
     - show_help: strip leading/trailing blank lines
     - docs: fix some leftover "Open MPI" references
@@ -37,10 +132,10 @@ Detailed changes include:
     - Fix Python bindings
  - PR #3131 Multiple commits
     - Switch to using event lib for connections
-    - Roll to v5.0.1
+    - Roll to version 5.0.1
 
 
-5.0.0 -- 6 Aug 2023
+5.0.0 -- 7 Aug 2023
 ----------------------
 .. important:: This is the first release in the v5 family
                and includes some significant changes, both internal
