@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -133,12 +133,6 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
 {
     char *evar;
     pmix_status_t rc;
-
-    if (NULL != (evar = getenv("PMIX_SERVER_URI51"))) {
-        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI51");
-        *ev = evar;
-        return rc;
-    }
 
     if (NULL != (evar = getenv("PMIX_SERVER_URI41"))) {
         rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI41");
