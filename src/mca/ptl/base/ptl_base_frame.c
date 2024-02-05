@@ -134,23 +134,21 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                &max_msg_size);
     pmix_ptl_base.max_msg_size = max_msg_size * 1024 * 1024;
 
-    idx = pmix_mca_base_var_register(
-        "pmix", "ptl", "base", "if_include",
-        "Comma-delimited list of devices and/or CIDR notation of TCP networks "
-        "(e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with ptl_tcp_if_exclude.",
-        PMIX_MCA_BASE_VAR_TYPE_STRING,
-        &pmix_ptl_base.if_include);
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_include",
+                                     "Comma-delimited list of devices and/or CIDR notation of TCP networks "
+                                     "(e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with ptl_tcp_if_exclude.",
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                     &pmix_ptl_base.if_include);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_include",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
-    idx = pmix_mca_base_var_register(
-        "pmix", "ptl", "base", "if_exclude",
-        "Comma-delimited list of devices and/or CIDR notation of TCP networks to NOT use "
-        "-- all devices not matching these specifications will be used (e.g., "
-        "\"eth0,192.168.0.0/16\"). "
-        "If set to a non-default value, it is mutually exclusive with ptl_tcp_if_include.",
-        PMIX_MCA_BASE_VAR_TYPE_STRING,
-        &pmix_ptl_base.if_exclude);
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_exclude",
+                                     "Comma-delimited list of devices and/or CIDR notation of TCP networks to NOT use "
+                                     "-- all devices not matching these specifications will be used (e.g., "
+                                     "\"eth0,192.168.0.0/16\"). "
+                                     "If set to a non-default value, it is mutually exclusive with ptl_tcp_if_include.",
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                     &pmix_ptl_base.if_exclude);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "if_exclude",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
@@ -187,35 +185,31 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "disable_ipv6_family",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
-    idx = pmix_mca_base_var_register(
-        "pmix", "ptl", "base", "connection_wait_time",
-        "Number of seconds to wait for the server connection file to appear",
-        PMIX_MCA_BASE_VAR_TYPE_INT,
-        &pmix_ptl_base.wait_to_connect);
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "connection_wait_time",
+                                     "Number of seconds to wait for the server connection file to appear",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT,
+                                     &pmix_ptl_base.wait_to_connect);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "connection_wait_time",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
-    idx = pmix_mca_base_var_register(
-        "pmix", "ptl", "base", "max_retries",
-        "Number of times to look for the connection file before quitting",
-        PMIX_MCA_BASE_VAR_TYPE_INT,
-        &pmix_ptl_base.max_retries);
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "max_retries",
+                                     "Number of times to look for the connection file before quitting",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT,
+                                     &pmix_ptl_base.max_retries);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "max_retries",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
-    idx = pmix_mca_base_var_register(
-        "pmix", "ptl", "base", "handshake_wait_time",
-        "Number of seconds to wait for the server reply to the handshake request",
-        PMIX_MCA_BASE_VAR_TYPE_INT,
-        &pmix_ptl_base.handshake_wait_time);
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_wait_time",
+                                     "Number of seconds to wait for the server reply to the handshake request",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT,
+                                     &pmix_ptl_base.handshake_wait_time);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_wait_time",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 
-    idx = pmix_mca_base_var_register(
-        "pmix", "ptl", "base", "handshake_max_retries",
-        "Number of times to retry the handshake request before giving up",
-        PMIX_MCA_BASE_VAR_TYPE_INT,
-        &pmix_ptl_base.handshake_max_retries);
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "handshake_max_retries",
+                                     "Number of times to retry the handshake request before giving up",
+                                     PMIX_MCA_BASE_VAR_TYPE_INT,
+                                     &pmix_ptl_base.handshake_max_retries);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "handshake_max_retries",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
 

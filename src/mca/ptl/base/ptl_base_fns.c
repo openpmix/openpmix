@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -67,10 +67,11 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 4, 1);
 
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V41 SERVER DETECTED");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V41 SERVER DETECTED");
 
-        /* must use the latest bfrops module */
-        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, NULL);
+        /* must use the v41 bfrops module */
+        PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v41");
         return rc;
     }
 
@@ -79,7 +80,8 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 4, 0);
 
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V4.0 SERVER DETECTED");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V4.0 SERVER DETECTED");
 
         /* must use the V4 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v4");
@@ -91,7 +93,8 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 3, 0);
 
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V3 SERVER DETECTED");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V3 SERVER DETECTED");
 
         /* must use the v3 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v3");
@@ -103,7 +106,8 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar)
         PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
         PMIX_SET_PEER_VERSION(peer, vrs, 2, 1);
 
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "V21 SERVER DETECTED");
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "V21 SERVER DETECTED");
 
         /* must use the v21 bfrops module */
         PMIX_BFROPS_SET_MODULE(rc, pmix_globals.mypeer, peer, "v21");
@@ -129,6 +133,12 @@ pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **ev)
 {
     char *evar;
     pmix_status_t rc;
+
+    if (NULL != (evar = getenv("PMIX_SERVER_URI51"))) {
+        rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI51");
+        *ev = evar;
+        return rc;
+    }
 
     if (NULL != (evar = getenv("PMIX_SERVER_URI41"))) {
         rc = pmix_ptl_base_set_peer(peer, "PMIX_SERVER_URI41");
@@ -263,7 +273,9 @@ pmix_status_t pmix_ptl_base_parse_uri(const char *evar, char **nspace, pmix_rank
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connections)
+pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
+                                           bool optional,
+                                           pmix_list_t *connections)
 {
     FILE *fp;
     char *srvr, *p = NULL;
@@ -283,7 +295,7 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename, pmix_list_t *connecti
      * not exist yet! Check for existence */
     /* coverity[TOCTOU] */
     if (0 != access(filename, R_OK)) {
-        if (ENOENT == errno) {
+        if (ENOENT == errno && !optional) {
             /* the file does not exist, so give it
              * a little time to see if the server
              * is still starting up */
@@ -380,7 +392,7 @@ process:
 }
 
 pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t info[], size_t ninfo,
-                                      pmix_list_t *connections)
+                                      bool optional, pmix_list_t *connections)
 {
     char *newdir;
     DIR *cur_dirp, *tst;
@@ -416,7 +428,7 @@ pmix_status_t pmix_ptl_base_df_search(char *dirname, char *prefix, pmix_info_t i
             /* try to read this file */
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "pmix:tool: reading file %s", newdir);
-            rc = pmix_ptl_base_parse_uri_file(newdir, connections);
+            rc = pmix_ptl_base_parse_uri_file(newdir, optional, connections);
             if (PMIX_SUCCESS != rc) {
                 free(newdir);
                 closedir(cur_dirp);
