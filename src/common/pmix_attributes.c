@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,7 +80,7 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
             p->string = strdup(pmix_dictionary[n].string);
             p->type = pmix_dictionary[n].type;
             p->description = PMIx_Argv_copy(pmix_dictionary[n].description);
-            pmix_hash_register_key(p->index, p, NULL);
+            pmix_hash_register_key(p->index, p, &pmix_globals.keyindex);
         }
         initialized = true;
     }
@@ -866,11 +866,13 @@ release:
 /*****   LOCATE A GIVEN ATTRIBUTE    *****/
 PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 {
-    size_t n;
+    pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
 
-    for (n = 0; 0 != strlen(pmix_dictionary[n].name); n++) {
-        if (0 == strcasecmp(pmix_dictionary[n].name, attr)) {
-            return pmix_dictionary[n].string;
+    for (int i = 0; i < kidx->table->size; ++i) {
+        pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
+        if (NULL == ra) continue;
+        if (0 == strcasecmp(ra->name, attr)) {
+            return ra->string;
         }
     }
     return attr;
@@ -878,11 +880,13 @@ PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 
 PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 {
-    size_t n;
+    pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
 
-    for (n = 0; 0 != strlen(pmix_dictionary[n].name); n++) {
-        if (0 == strcasecmp(pmix_dictionary[n].string, attrstring)) {
-            return pmix_dictionary[n].name;
+    for (int i = 0; i < kidx->table->size; ++i) {
+        pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
+        if (NULL == ra) continue;
+        if (0 == strcasecmp(ra->string, attrstring)) {
+            return ra->name;
         }
     }
     return attrstring;
@@ -890,11 +894,13 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 
 PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)
 {
-    size_t n;
+    pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
 
-    for (n = 0; 0 != strlen(pmix_dictionary[n].name); n++) {
-        if (0 == strcmp(pmix_dictionary[n].name, attr)) {
-            return &pmix_dictionary[n];
+    for (int i = 0; i < kidx->table->size; ++i) {
+        pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
+        if (NULL == ra) continue;
+        if (0 == strcasecmp(ra->name, attr)) {
+            return ra;
         }
     }
     return NULL;
