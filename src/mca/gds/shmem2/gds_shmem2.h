@@ -9,8 +9,8 @@
  * $HEADER$
  */
 
-#ifndef PMIX_GDS_SHMEM_H
-#define PMIX_GDS_SHMEM_H
+#ifndef PMIX_GDS_SHMEM2_H
+#define PMIX_GDS_SHMEM2_H
 
 #include "pmix_config.h"
 
@@ -27,55 +27,45 @@
 /**
  * The name of this module.
  */
-#define PMIX_GDS_SHMEM_NAME "shmem"
-
-/**
- * Set to 1 to completely disable this component.
- */
-#define PMIX_GDS_SHMEM_DISABLE 0
+#define PMIX_GDS_SHMEM2_NAME "shmem2"
 
 /**
  * Default component/module priority.
  */
-#if (PMIX_GDS_SHMEM_DISABLE == 1)
-#define PMIX_GDS_SHMEM_DEFAULT_PRIORITY 0
-#else
-// We want to be just above hash's priority.
-#define PMIX_GDS_SHMEM_DEFAULT_PRIORITY 20
-#endif
+#define PMIX_GDS_SHMEM2_DEFAULT_PRIORITY 20
 
 BEGIN_C_DECLS
 
-extern pmix_gds_base_module_t pmix_shmem_module;
+extern pmix_gds_base_module_t pmix_shmem2_module;
 
 /**
  * Stores MCA parameter value for segment_size_multiplier.
  */
-PMIX_EXPORT extern double pmix_gds_shmem_segment_size_multiplier;
+PMIX_EXPORT extern double pmix_gds_shmem2_segment_size_multiplier;
 
 /**
- * IDs for pmix_shmem_ts in pmix_gds_shmem_job_t.
+ * IDs for pmix_shmem_ts in pmix_gds_shmem2_job_t.
  */
 typedef enum {
-    PMIX_GDS_SHMEM_JOB_ID = 0,
-    PMIX_GDS_SHMEM_SESSION_ID,
-    PMIX_GDS_SHMEM_MODEX_ID,
-    PMIX_GDS_SHMEM_INVALID_ID
-} pmix_gds_shmem_job_shmem_id_t;
+    PMIX_GDS_SHMEM2_JOB_ID = 0,
+    PMIX_GDS_SHMEM2_SESSION_ID,
+    PMIX_GDS_SHMEM2_MODEX_ID,
+    PMIX_GDS_SHMEM2_INVALID_ID
+} pmix_gds_shmem2_job_shmem2_id_t;
 
 /**
  * Bitmap container for flags associated with a pmix_shmem_t structure.
  */
-typedef uint8_t pmix_gds_shmem_status_t;
+typedef uint8_t pmix_gds_shmem2_status_t;
 
 typedef enum {
-    /** Indicates that caller is shmem creator. */
-    PMIX_GDS_SHMEM_MINE = 0x01,
+    /** Indicates that caller is shmem2 creator. */
+    PMIX_GDS_SHMEM2_MINE = 0x01,
     /** Indicates that the shared-memory segment is attached to. */
-    PMIX_GDS_SHMEM_ATTACHED = 0x02,
+    PMIX_GDS_SHMEM2_ATTACHED = 0x02,
     /** Indicates that the shared-memory segment is ready for use. */
-    PMIX_GDS_SHMEM_READY_FOR_USE = 0x04
-} pmix_gds_shmem_status_flag_t;
+    PMIX_GDS_SHMEM2_READY_FOR_USE = 0x04
+} pmix_gds_shmem2_status_flag_t;
 
 typedef struct {
     pmix_gds_base_component_t super;
@@ -83,17 +73,17 @@ typedef struct {
     pmix_list_t jobs;
     /** List of sessions that I'm supporting. */
     pmix_list_t sessions;
-} pmix_gds_shmem_component_t;
+} pmix_gds_shmem2_component_t;
 // The component must be visible data for the linker to find it.
 PMIX_EXPORT extern
-pmix_gds_shmem_component_t pmix_mca_gds_shmem_component;
+pmix_gds_shmem2_component_t pmix_mca_gds_shmem2_component;
 
 typedef struct {
     pmix_list_item_t super;
     /** Hostname. */
     char *name;
-} pmix_gds_shmem_host_alias_t;
-PMIX_CLASS_DECLARATION(pmix_gds_shmem_host_alias_t);
+} pmix_gds_shmem2_host_alias_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem2_host_alias_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -105,8 +95,8 @@ typedef struct {
     pmix_list_t *aliases;
     /** Node information. */
     pmix_list_t *info;
-} pmix_gds_shmem_nodeinfo_t;
-PMIX_CLASS_DECLARATION(pmix_gds_shmem_nodeinfo_t);
+} pmix_gds_shmem2_nodeinfo_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem2_nodeinfo_t);
 
 typedef struct {
     /** Shared-memory allocator for data this structure. */
@@ -119,24 +109,24 @@ typedef struct {
     pmix_list_t *sessioninfo;
     /** Node information. */
     pmix_list_t *nodeinfo;
-} pmix_gds_shmem_shared_session_data_t;
+} pmix_gds_shmem2_shared_session_data_t;
 
 typedef struct {
     pmix_list_item_t super;
     /** Shared-memory object that maintains backing store for session data. */
-    pmix_shmem_t *shmem;
-    /** Stores status for shmem. */
-    pmix_gds_shmem_status_t shmem_status;
+    pmix_shmem_t *shmem2;
+    /** Stores status for shmem2. */
+    pmix_gds_shmem2_status_t shmem2_status;
     /** Session data stored in shared-memory. */
-    pmix_gds_shmem_shared_session_data_t *smdata;
-} pmix_gds_shmem_session_t;
-PMIX_CLASS_DECLARATION(pmix_gds_shmem_session_t);
+    pmix_gds_shmem2_shared_session_data_t *smdata;
+} pmix_gds_shmem2_session_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem2_session_t);
 
 /**
  * Shared data structures that reside in shared-memory. The server populates
  * these data and clients are only permitted to read from them.
  *
- * Note that the shared data structures in pmix_gds_shmem_shared_*_data_t are
+ * Note that the shared data structures in pmix_gds_shmem2_shared_*_data_t are
  * pointers since their respective locations must reside on the shared heap
  * located in shared-memory and managed by a shared-memory TMA.
  */
@@ -153,7 +143,7 @@ typedef struct {
     pmix_list_t *appinfo;
     /** Stores static local (node) job data. */
     pmix_hash_table_t *local_hashtab;
-} pmix_gds_shmem_shared_job_data_t;
+} pmix_gds_shmem2_shared_job_data_t;
 
 typedef struct {
     /** Shared-memory allocator for data this structure. */
@@ -162,7 +152,7 @@ typedef struct {
     void *current_addr;
     /** Stores static modex data. */
     pmix_hash_table_t *hashtab;
-} pmix_gds_shmem_shared_modex_data_t;
+} pmix_gds_shmem2_shared_modex_data_t;
 
 typedef struct {
     pmix_list_item_t super;
@@ -179,25 +169,25 @@ typedef struct {
     /** Pointer to the namespace. */
     pmix_namespace_t *nspace;
     /** Pointer to this job's session information. */
-    pmix_gds_shmem_session_t *session;
-    /** Stores status for shmem. */
-    pmix_gds_shmem_status_t shmem_status;
+    pmix_gds_shmem2_session_t *session;
+    /** Stores status for shmem2. */
+    pmix_gds_shmem2_status_t shmem2_status;
     /** Shared-memory object that maintains backing store for smdata data. */
-    pmix_shmem_t *shmem;
-    /** Stores status for modex_shmem. */
-    pmix_gds_shmem_status_t modex_shmem_status;
+    pmix_shmem_t *shmem2;
+    /** Stores status for modex_shmem2. */
+    pmix_gds_shmem2_status_t modex_shmem2_status;
     /** Shared-memory object that maintains backing store for smmodex data. */
-    pmix_shmem_t *modex_shmem;
+    pmix_shmem_t *modex_shmem2;
     /** Points to shared job data located in a shared-memory segment. */
-    pmix_gds_shmem_shared_job_data_t *smdata;
+    pmix_gds_shmem2_shared_job_data_t *smdata;
     /** Points to shared modex data located in a shared-memory segment. */
-    pmix_gds_shmem_shared_modex_data_t *smmodex;
+    pmix_gds_shmem2_shared_modex_data_t *smmodex;
     /** Packed connection information to this segment. */
     pmix_buffer_t *conni;
     /** Flag indicating whether client-side keyindex updates have been done. */
     bool client_keyindex_fixup_done;
-} pmix_gds_shmem_job_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem_job_t);
+} pmix_gds_shmem2_job_t;
+PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_gds_shmem2_job_t);
 
 typedef struct {
     pmix_list_item_t super;
@@ -208,9 +198,9 @@ typedef struct {
     /** Node information. */
     pmix_list_t *nodeinfo;
     /* Application job info. */
-    pmix_gds_shmem_job_t *job;
-} pmix_gds_shmem_app_t;
-PMIX_CLASS_DECLARATION(pmix_gds_shmem_app_t);
+    pmix_gds_shmem2_job_t *job;
+} pmix_gds_shmem2_app_t;
+PMIX_CLASS_DECLARATION(pmix_gds_shmem2_app_t);
 
 END_C_DECLS
 
