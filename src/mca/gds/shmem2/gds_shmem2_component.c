@@ -28,16 +28,15 @@
  * entire components just to query their version and parameters.
  */
 
-#include "gds_shmem.h"
+#include "gds_shmem2.h"
 
 static int
-gds_shmem_component_register(void);
+gds_shmem2_component_register(void);
 
 static int
-component_query(
-    pmix_mca_base_module_t **module,
-    int *priority
-) {
+component_query(pmix_mca_base_module_t **module,
+                int *priority)
+{
     // See if the required system file is present.
     // See pmix_vmem_find_hole() for more information.
     if (access("/proc/self/maps", F_OK) == -1) {
@@ -45,26 +44,20 @@ component_query(
         *module = NULL;
         return PMIX_ERROR;
     }
-#if (PMIX_GDS_SHMEM_DISABLE == 1)
-    *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
-    *module = NULL;
-    return PMIX_ERROR;
-#else
-    *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
-    *module = (pmix_mca_base_module_t *)&pmix_shmem_module;
+    *priority = PMIX_GDS_SHMEM2_DEFAULT_PRIORITY;
+    *module = (pmix_mca_base_module_t *)&pmix_shmem2_module;
     return PMIX_SUCCESS;
-#endif
 }
 
 /**
  * Instantiate the public struct with all of our public
  * information and pointers to our public functions in it.
  */
-pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
+pmix_gds_shmem2_component_t pmix_mca_gds_shmem2_component = {
     .super = {
         PMIX_GDS_BASE_VERSION_1_0_0,
         /** Component name and version. */
-        .pmix_mca_component_name = PMIX_GDS_SHMEM_NAME,
+        .pmix_mca_component_name = PMIX_GDS_SHMEM2_NAME,
         PMIX_MCA_BASE_MAKE_VERSION(
             component,
             PMIX_MAJOR_VERSION,
@@ -72,7 +65,7 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
             PMIX_RELEASE_VERSION
         ),
         /** Component register. */
-        .pmix_mca_register_component_params = gds_shmem_component_register,
+        .pmix_mca_register_component_params = gds_shmem2_component_register,
         /** Component query function. */
         .pmix_mca_query_component = component_query,
         .reserved = {0}
@@ -81,26 +74,26 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
     .sessions = PMIX_LIST_STATIC_INIT
 };
 
-double pmix_gds_shmem_segment_size_multiplier = 1.0;
+double pmix_gds_shmem2_segment_size_multiplier = 1.0;
 
 static int
-gds_shmem_component_register(void)
+gds_shmem2_component_register(void)
 {
-#if (!PMIX_GDS_SHMEM_DISABLE)
-    const int varidx = pmix_mca_base_component_var_register(
-        &pmix_mca_gds_shmem_component.super,
+    int varidx;
+
+    varidx = pmix_mca_base_component_var_register(
+        &pmix_mca_gds_shmem2_component.super,
         "segment_size_multiplier",
         "Multiplier that influences the ultimate sizes of the shared-memory "
         "segments used for gds data storage. As a percentage, values less or "
         "greater than 1.0 decrease or increase the final segment sizes, "
         "respectively.",
         PMIX_MCA_BASE_VAR_TYPE_DOUBLE,
-        &pmix_gds_shmem_segment_size_multiplier
+        &pmix_gds_shmem2_segment_size_multiplier
     );
     if (varidx < 0) {
         return PMIX_ERROR;
     }
-#endif
     return PMIX_SUCCESS;
 }
 
