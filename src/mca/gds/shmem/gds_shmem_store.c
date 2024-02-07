@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -418,7 +418,6 @@ store_proc_data(
             job->nspace_id, rank, kv->key
         );
         // Store it in the hash_table.
-        // TODO(skg)
         rc = pmix_hash_store(ht, rank, kv, NULL, 0, NULL);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
@@ -546,7 +545,6 @@ pmix_gds_shmem_store_qualified(
     kv->key = info[0].key;
     kv->value = &info[0].value;
     // Store the result.
-    // TODO(skg)
     rc = pmix_hash_store(ht, rank, kv, quals, nquals, NULL);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
@@ -623,7 +621,6 @@ pmix_gds_shmem_store_local_job_data_in_shmem(
                 PMIX_ERROR_LOG(rc);
                 break;
             }
-            // TODO(skg)
             rc = pmix_hash_store(
                 local_ht, PMIX_RANK_WILDCARD, kv, NULL, 0, NULL
             );
