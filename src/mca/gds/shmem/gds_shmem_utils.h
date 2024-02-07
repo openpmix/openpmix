@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
- * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,11 +33,20 @@ do {                                                                           \
 #if PMIX_ENABLE_DEBUG
 #define PMIX_GDS_SHMEM_VVOUT(...)                                              \
 do {                                                                           \
+    pmix_output_verbose(8, pmix_gds_base_framework.framework_output,           \
+                        "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
+} while (0)
+
+#define PMIX_GDS_SHMEM_VVVOUT(...)                                             \
+do {                                                                           \
     pmix_output_verbose(9, pmix_gds_base_framework.framework_output,           \
                         "gds:" PMIX_GDS_SHMEM_NAME ":" __VA_ARGS__);           \
 } while (0)
 #else
 #define PMIX_GDS_SHMEM_VVOUT(...)                                              \
+do { } while (0)
+
+#define PMIX_GDS_SHMEM_VVVOUT(...)                                             \
 do { } while (0)
 #endif
 

@@ -19,6 +19,8 @@
 #include "gds_shmem_store.h"
 #include "gds_shmem_fetch.h"
 
+#include "src/include/pmix_dictionary.h"
+
 #include "src/util/pmix_show_help.h"
 #include "src/util/pmix_string_copy.h"
 #include "src/util/pmix_vmem.h"
@@ -46,6 +48,16 @@
 #define SHMEM_SEG_PATH_KEY "PMIX_GDS_SHMEM_SEG_PATH"
 #define SHMEM_SEG_SIZE_KEY "PMIX_GDS_SHMEM_SEG_SIZE"
 #define SHMEM_SEG_HADR_KEY "PMIX_GDS_SHMEM_SEG_HADR"
+
+#define SHMEM_KIDX_KEY             "PMIX_GDS_SHMEM_KIDX"
+#define SHMEM_KIDX_NSID_KEY        "PMIX_GDS_SHMEM_KIDX_NSPACEID"
+#define SHMEM_KIDX_TAB_SIZE_KEY    "PMIX_GDS_SHMEM_KIDX_TAB_SIZE"
+#define SHMEM_KIDX_INDEX_KEY       "PMIX_GDS_SHMEM_KIDX_INDEX"
+#define SHMEM_KIDX_TYPE_KEY        "PMIX_GDS_SHMEM_KIDX_TYPE"
+#define SHMEM_KIDX_NAME_KEY        "PMIX_GDS_SHMEM_KIDX_NAME"
+#define SHMEM_KIDX_STRING_KEY      "PMIX_GDS_SHMEM_KIDX_STRING"
+#define SHMEM_KIDX_DESCRIPTION_KEY "PMIX_GDS_SHMEM_KIDX_DESCRIPTION"
+#define SHMEM_KIDX_ELEM_DONE_KEY   "PMIX_GDS_SHMEM_KIDX_ELEM_DONE"
 
 #define EMSG_SHMEM_IS_BROKEN "\n***\nAn unrecoverable error occurred in the "  \
 "gds/shmem component.\nResolve this issue by disabling it. Set in your "       \
@@ -520,6 +532,8 @@ job_construct(
     job->smmodex = NULL;
     // Connection info
     job->conni = NULL;
+    // Fixup flag
+    job->client_keyindex_fixup_done = false;
 }
 
 static pmix_tma_t *
@@ -873,7 +887,7 @@ modex_smdata_construct(
 
     pmix_gds_shmem_vout_smmodex(job);
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 /**
@@ -1463,6 +1477,204 @@ pack_shmem_connection_info(
     return rc;
 }
 
+static inline pmix_status_t
+pack_server_keyindex_description(
+    pmix_peer_t *peer,
+    pmix_buffer_t *buffer,
+    char **description
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    // Nothing to pack.
+    if (NULL == description) {
+        return PMIX_SUCCESS;
+    }
+
+    pmix_kval_t kv;
+    PMIX_CONSTRUCT(&kv, pmix_kval_t);
+    kv.key = strdup(SHMEM_KIDX_DESCRIPTION_KEY);
+    kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+    kv.value->type = PMIX_STRING;
+    kv.value->data.string = NULL;
+    // Encode the char** as a new-line-delimited string.
+    for (int i = 0; NULL != description[i]; ++i) {
+        int nw = -1;
+        if (0 == i) {
+            nw = asprintf(&kv.value->data.string, "%s", description[i]);
+        }
+        else {
+            char *curs = kv.value->data.string;
+            nw = asprintf(&kv.value->data.string, "%s\n%s", curs, description[i]);
+            free(curs);
+        }
+        if (PMIX_UNLIKELY(nw == -1)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+    }
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        goto out;
+    }
+    PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+    }
+out:
+    PMIX_DESTRUCT(&kv);
+    return rc;
+}
+
+static inline int
+dictionary_nelems(
+    const pmix_regattr_input_t *dict
+) {
+    int i = 0;
+    for ( ; UINT32_MAX != dict[i].index; ++i) { }
+    return i;
+}
+
+static inline pmix_status_t
+pack_server_keyindex_info(
+    pmix_gds_shmem_job_t *job,
+    pmix_peer_t *peer,
+    pmix_buffer_t *buffer
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    PMIX_GDS_SHMEM_VVOUT(
+        "%s:%s for peer (ID=%d) namespace=%s", __func__,
+        PMIX_NAME_PRINT(&pmix_globals.myid),
+        peer->info->peerid, job->nspace_id
+    );
+
+    pmix_kval_t kv;
+    do {
+        // First, pack the namespace name.
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM_KIDX_NSID_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value->type = PMIX_STRING;
+        kv.value->data.string = strdup(job->nspace_id);
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_DESTRUCT(&kv);
+
+        // Pack the size of the server's keyindex table.
+        const int tabsize = dictionary_nelems(pmix_dictionary);
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+        kv.key = strdup(SHMEM_KIDX_TAB_SIZE_KEY);
+        kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+        kv.value->type = PMIX_UINT32;
+        kv.value->data.uint32 = (uint32_t)tabsize;
+
+        PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        PMIX_DESTRUCT(&kv);
+
+        for (int i = 0; i < tabsize; ++i) {
+            const pmix_regattr_input_t *p = &pmix_dictionary[i];
+            PMIX_GDS_SHMEM_VVVOUT(
+                "%s:keyindex=(index=%zd, type=%zd, name=%s string=%s, description=%s)",
+                __func__, (size_t)p->index, (size_t)p->type,
+                p->name ? p->name : "NULL", p->string ? p->string : "NULL",
+                // For debug, only print the first element, if present.
+                (p->description && p->description[0]) ? p->description[0] : "NULL"
+            );
+            // Pack index
+            PMIX_CONSTRUCT(&kv, pmix_kval_t);
+            kv.key = strdup(SHMEM_KIDX_INDEX_KEY);
+            kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+            kv.value->type = PMIX_UINT32;
+            assert(sizeof(kv.value->data.uint32) == sizeof(p->index));
+            kv.value->data.uint32 = p->index;
+
+            PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+            PMIX_DESTRUCT(&kv);
+            // Pack type
+            PMIX_CONSTRUCT(&kv, pmix_kval_t);
+            kv.key = strdup(SHMEM_KIDX_TYPE_KEY);
+            kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+            kv.value->type = PMIX_UINT16;
+            assert(sizeof(kv.value->data.uint16) == sizeof(p->type));
+            kv.value->data.uint16 = p->type;
+
+            PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+            PMIX_DESTRUCT(&kv);
+            // Pack name, if available.
+            if (p->name) {
+                PMIX_CONSTRUCT(&kv, pmix_kval_t);
+                kv.key = strdup(SHMEM_KIDX_NAME_KEY);
+                kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+                kv.value->type = PMIX_STRING;
+                kv.value->data.string = strdup(p->name);
+
+                PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                    PMIX_ERROR_LOG(rc);
+                    break;
+                }
+                PMIX_DESTRUCT(&kv);
+            }
+            // Pack string, if available.
+            if (p->string) {
+                PMIX_CONSTRUCT(&kv, pmix_kval_t);
+                kv.key = strdup(SHMEM_KIDX_STRING_KEY);
+                kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+                kv.value->type = PMIX_STRING;
+                kv.value->data.string = strdup(p->string);
+
+                PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                    PMIX_ERROR_LOG(rc);
+                    break;
+                }
+                PMIX_DESTRUCT(&kv);
+            }
+            // Pack description.
+            rc = pack_server_keyindex_description(peer, buffer, p->description);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+            // Last mark the element boundary.
+            PMIX_CONSTRUCT(&kv, pmix_kval_t);
+            kv.key = strdup(SHMEM_KIDX_ELEM_DONE_KEY);
+            kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
+            kv.value->type = PMIX_UINT8;
+            kv.value->data.uint8 = 1;
+
+            PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+            PMIX_DESTRUCT(&kv);
+        }
+    } while (false);
+
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&kv);
+    }
+
+    return rc;
+}
+
 /**
  * Emits the contents of an pmix_gds_shmem_unpacked_seg_blob_t.
  */
@@ -1589,6 +1801,344 @@ unpack_shmem_connection_info(
         vout_unpacked_seg_blob(usb, __func__);
         rc = PMIX_SUCCESS;
     }
+    return rc;
+}
+
+static inline int
+parray_nelem(
+    pmix_pointer_array_t *array
+) {
+    int i = 0;
+    for ( ; i < array->size; ++i) {
+        if (!pmix_pointer_array_get_item(array, i)) {
+            break;
+        }
+    }
+    return i;
+}
+
+static inline void
+regattr_list_free(
+    pmix_regattr_input_t *ra,
+    int nra
+) {
+    if (NULL == ra) return;
+
+    for (int i = 0; i < nra; ++i) {
+        free(ra[i].name);
+        free(ra[i].string);
+        PMIx_Argv_free(ra[i].description);
+    }
+    free(ra);
+}
+
+static inline pmix_status_t
+regattr_cp(
+    const pmix_regattr_input_t *const src,
+    pmix_regattr_input_t *const dst
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    if (!src || !dst) {
+        rc = PMIX_ERR_INVALID_ARG;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    dst->index = src->index;
+    dst->name = strdup(src->name);
+    dst->string = strdup(src->string);
+    dst->type = src->type;
+    dst->description = PMIx_Argv_copy(src->description);
+
+    if (!dst->name || !dst->string || !dst->description) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
+}
+
+static pmix_status_t
+client_get_missing_keyindex_keys(
+    const pmix_regattr_input_t *const keyindex,
+    int nkeyindex,
+    pmix_regattr_input_t **result,
+    int *nresult
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_pointer_array_t *const mytab = pmix_globals.keyindex.table;
+    const int nmykeyindex = parray_nelem(pmix_globals.keyindex.table);
+    // See how many values are on our side. It may be the case that we, the
+    // client, may have more attributes than the server. This will likely mean
+    // that we are a newer client, so we have some work to do to sort that out.
+    if (nkeyindex >= nmykeyindex) {
+        // Great, nothing to do here.
+        *result = NULL;
+        *nresult = 0;
+        return PMIX_SUCCESS;
+    }
+    // We have more keys than the server, so
+    // populate the array of the missing keys.
+    int inresult = nmykeyindex - nkeyindex;
+    pmix_regattr_input_t *iresult = calloc(inresult, sizeof(*iresult));
+    if (!iresult) {
+        rc = PMIX_ERR_NOMEM;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    int nfound = 0;
+    for (int i = 0; i < nmykeyindex; ++i) {
+        bool key_found = false;
+        pmix_regattr_input_t *const rai = pmix_pointer_array_get_item(mytab, i);
+        for (int j = 0; j < nkeyindex; ++j) {
+            const pmix_regattr_input_t *const raj = &keyindex[j];
+            if (0 == strcasecmp(rai->string, raj->string)) {
+                key_found = true;
+                break;
+            }
+        }
+        // Didn't find rai in the provided keyindex, so add it to our list.
+        if (!key_found) {
+            rc = regattr_cp(rai, &iresult[nfound++]);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                goto out;
+            }
+        }
+    }
+out:
+    if (PMIX_SUCCESS != rc) {
+        regattr_list_free(iresult, inresult);
+        iresult = NULL;
+        inresult = 0;
+    }
+    *result = iresult;
+    *nresult = inresult;
+    return rc;
+}
+
+static pmix_status_t
+client_update_global_keyindex_if_necessary(
+    char *nspace_name,
+    pmix_regattr_input_t *keyindex,
+    int nkeyindex
+) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    // Do we need to update?
+    pmix_gds_shmem_job_t *job;
+    rc = pmix_gds_shmem_get_job_tracker(nspace_name, true, &job);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    if (job->client_keyindex_fixup_done) {
+        // Already done!
+        return PMIX_SUCCESS;
+    }
+
+    pmix_regattr_input_t *client_other_keys = NULL;
+    int nclient_other_keys = 0;
+    rc = client_get_missing_keyindex_keys(
+        keyindex, nkeyindex, &client_other_keys, &nclient_other_keys
+    );
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+    // Get a fresh pmix_globals.keyindex.
+    PMIX_DESTRUCT(&pmix_globals.keyindex);
+    PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_keyindex_t);
+    // Add the server's keys.
+    for (int i = 0; i < nkeyindex; ++i) {
+        pmix_regattr_input_t *ra = calloc(1, sizeof(*ra));
+        if (PMIX_UNLIKELY(!ra)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+
+        rc = regattr_cp(&keyindex[i], ra);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+
+        pmix_hash_register_key(ra->index, ra, &pmix_globals.keyindex);
+
+        PMIX_GDS_SHMEM_VVVOUT(
+            "%s:keyindex=(index=%zd, type=%zd, name=%s string=%s, description=%s)",
+            __func__, (size_t)ra->index, (size_t)ra->type,
+            ra->name ? ra->name : "NULL", ra->string ? ra->string : "NULL",
+            // For debug, only print the first element, if present.
+            (ra->description && ra->description[0]) ? ra->description[0] : "NULL"
+        );
+    }
+    // Add any missing keys.
+    int ifixup = nkeyindex;
+    for (int i = 0; i < nclient_other_keys; ++i) {
+        pmix_regattr_input_t *ra = calloc(1, sizeof(*ra));
+        if (PMIX_UNLIKELY(!ra)) {
+            rc = PMIX_ERR_NOMEM;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+
+        rc = regattr_cp(&client_other_keys[i], ra);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        // Notice the index fixup here. We add it at the
+        // end of where we already registered keys.
+        ra->index = ifixup;
+        pmix_hash_register_key(ifixup++, ra, &pmix_globals.keyindex);
+
+        PMIX_GDS_SHMEM_VVVOUT(
+            "%s:adding missing keyindex=(index=%zd, type=%zd, "
+            "name=%s string=%s, description=%s)",
+            __func__, (size_t)ra->index, (size_t)ra->type,
+            ra->name ? ra->name : "NULL", ra->string ? ra->string : "NULL",
+            // For debug, only print the first element, if present.
+            (ra->description && ra->description[0]) ? ra->description[0] : "NULL"
+        );
+    }
+    if (PMIX_SUCCESS == rc) {
+        job->client_keyindex_fixup_done = true;
+    }
+    return rc;
+}
+
+static inline pmix_status_t
+unpack_srv_kindx_info(
+    pmix_kval_t *kvbo
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+    int tabsize = 0, tabindex = 0;
+    pmix_regattr_input_t *tmpsrvdict = NULL;
+    char *nspace_name = NULL;
+
+    // Make sure this is the expected type.
+    if (PMIX_UNLIKELY(PMIX_BYTE_OBJECT != kvbo->value->type)) {
+        rc = PMIX_ERR_TYPE_MISMATCH;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    pmix_buffer_t buffer;
+    PMIX_CONSTRUCT(&buffer, pmix_buffer_t);
+
+    PMIX_LOAD_BUFFER(
+        pmix_client_globals.myserver,
+        &buffer,
+        kvbo->value->data.bo.bytes,
+        kvbo->value->data.bo.size
+    );
+
+    pmix_kval_t kv;
+    while (true) {
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
+
+        int32_t count = 1;
+        PMIX_BFROPS_UNPACK(
+            rc, pmix_client_globals.myserver,
+            &buffer, &kv, &count, PMIX_KVAL
+        );
+        if (PMIX_SUCCESS != rc) {
+            break;
+        }
+
+        if (PMIX_CHECK_KEY(&kv, SHMEM_KIDX_NSID_KEY)) {
+            int nw = asprintf(&nspace_name, "%s", kv.value->data.string);
+            if (PMIX_UNLIKELY(nw == -1)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_KIDX_TAB_SIZE_KEY)) {
+            // Create a temporary dict to unpack into.
+            assert(kv.value->type == PMIX_UINT32);
+            tabsize = kv.value->data.uint32;
+            tmpsrvdict = calloc(tabsize, sizeof(*tmpsrvdict));
+            if (NULL == tmpsrvdict) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_KIDX_INDEX_KEY) && tmpsrvdict) {
+            tmpsrvdict[tabindex].index = kv.value->data.uint32;
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_KIDX_TYPE_KEY) && tmpsrvdict) {
+            tmpsrvdict[tabindex].type = (pmix_data_type_t)kv.value->data.uint16;
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_KIDX_NAME_KEY) && tmpsrvdict) {
+            const int nw = asprintf(
+                &tmpsrvdict[tabindex].name, "%s", kv.value->data.string
+            );
+            if (PMIX_UNLIKELY(nw == -1)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_KIDX_STRING_KEY) && tmpsrvdict) {
+            const int nw = asprintf(
+                &tmpsrvdict[tabindex].string, "%s", kv.value->data.string
+            );
+            if (PMIX_UNLIKELY(nw == -1)) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_KIDX_DESCRIPTION_KEY) && tmpsrvdict) {
+            tmpsrvdict[tabindex].description = PMIx_Argv_split(
+                kv.value->data.string, '\n'
+            );
+            if (NULL == tmpsrvdict[tabindex].description) {
+                rc = PMIX_ERR_NOMEM;
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        else if (PMIX_CHECK_KEY(&kv, SHMEM_KIDX_ELEM_DONE_KEY) && tmpsrvdict) {
+            // Done with this element, so on to the next one.
+            tabindex += 1;
+        }
+        else {
+            rc = PMIX_ERR_BAD_PARAM;
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+        // Done with this one.
+        PMIX_DESTRUCT(&kv);
+    }
+    // Catch last kval.
+    PMIX_DESTRUCT(&kv);
+    PMIX_DESTRUCT(&buffer);
+
+    if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
+        PMIX_ERROR_LOG(rc);
+        rc = PMIX_ERR_UNPACK_FAILURE;
+        PMIX_ERROR_LOG(rc);
+    }
+    else {
+        // Last step is to update our view of the
+        // PMIx attributes, if we haven't already.
+        rc = client_update_global_keyindex_if_necessary(
+            nspace_name, tmpsrvdict, tabsize
+        );
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+    // No longer needed.
+    regattr_list_free(tmpsrvdict, tabsize);
+    free(nspace_name);
     return rc;
 }
 
@@ -1735,6 +2285,44 @@ pack_shmem_seg_blob(
     return rc;
 }
 
+static inline pmix_status_t
+pack_server_keyindex_blob(
+    pmix_gds_shmem_job_t *job,
+    struct pmix_peer_t *peer,
+    pmix_buffer_t *reply
+) {
+    pmix_status_t rc = PMIX_SUCCESS;
+
+    pmix_buffer_t buff;
+    do {
+        PMIX_CONSTRUCT(&buff, pmix_buffer_t);
+
+        rc = pack_server_keyindex_info(job, peer, &buff);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+            break;
+        }
+
+        pmix_value_t blob = {
+            .type = PMIX_BYTE_OBJECT
+        };
+        pmix_kval_t kv = {
+            .key = SHMEM_KIDX_KEY,
+            .value = &blob
+        };
+
+        PMIX_UNLOAD_BUFFER(&buff, blob.data.bo.bytes, blob.data.bo.size);
+        PMIX_BFROPS_PACK(rc, peer, reply, &kv, 1, PMIX_KVAL);
+        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+            PMIX_ERROR_LOG(rc);
+        }
+        PMIX_VALUE_DESTRUCT(&blob);
+    } while (false);
+    PMIX_DESTRUCT(&buff);
+
+    return rc;
+}
+
 static pmix_status_t
 cache_connection_info_for_job_shmem(
     pmix_gds_shmem_job_t *job
@@ -1772,6 +2360,14 @@ cache_connection_info_for_job_shmem(
     rc = pack_shmem_seg_blob(
         job, PMIX_GDS_SHMEM_SESSION_ID, me, job->conni
     );
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+    }
+    // PMIx standard attribute index mappings might differ between client/server
+    // versions, so pack the server's mappings and share them with its clients.
+    // Then, clients will unpack those data and update their view of the
+    // standard attributes, so both client and servers start from the same view.
+    rc = pack_server_keyindex_blob(job, me, job->conni);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
     }
@@ -1888,6 +2484,19 @@ server_register_job_info(
 }
 
 static pmix_status_t
+unpack_srv_kindx_blob_and_update_if_necessary(
+    pmix_kval_t *kvbo
+) {
+    PMIX_GDS_SHMEM_VVOUT_HERE();
+
+    pmix_status_t rc = unpack_srv_kindx_info(kvbo);
+    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+        PMIX_ERROR_LOG(rc);
+    }
+    return rc;
+}
+
+static pmix_status_t
 unpack_shmem_seg_blob_and_attach_if_necessary(
     pmix_kval_t *kvbo
 ) {
@@ -1947,6 +2556,13 @@ client_connect_to_shmem_from_buffi(
 
         if (PMIX_CHECK_KEY(&kval, SHMEM_SEG_BLOB_KEY)) {
             rc = unpack_shmem_seg_blob_and_attach_if_necessary(&kval);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
+            }
+        }
+        else if (PMIX_CHECK_KEY(&kval, SHMEM_KIDX_KEY)) {
+            rc = unpack_srv_kindx_blob_and_update_if_necessary(&kval);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
@@ -2103,7 +2719,6 @@ server_store_modex_cb(
             );
         }
         else {
-            // TODO(skg)
             rc = pmix_hash_store(
                 ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv, NULL, 0, NULL
             );
