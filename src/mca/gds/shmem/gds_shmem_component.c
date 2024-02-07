@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2022-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -34,25 +34,26 @@ static int
 gds_shmem_component_register(void);
 
 static int
-component_query(pmix_mca_base_module_t **module,
-                int *priority)
-{
-    if (pmix_mca_gds_shmem_component.enable) {
-        // See if the required system file is present.
-        // See pmix_vmem_find_hole() for more information.
-        if (access("/proc/self/maps", F_OK) == -1) {
-            *priority = 0;
-            *module = NULL;
-            return PMIX_ERROR;
-        }
-        *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
-        *module = (pmix_mca_base_module_t *)&pmix_shmem_module;
-        return PMIX_SUCCESS;
-    } else {
+component_query(
+    pmix_mca_base_module_t **module,
+    int *priority
+) {
+    // See if the required system file is present.
+    // See pmix_vmem_find_hole() for more information.
+    if (access("/proc/self/maps", F_OK) == -1) {
         *priority = 0;
         *module = NULL;
         return PMIX_ERROR;
     }
+#if (PMIX_GDS_SHMEM_DISABLE == 1)
+    *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
+    *module = NULL;
+    return PMIX_ERROR;
+#else
+    *priority = PMIX_GDS_SHMEM_DEFAULT_PRIORITY;
+    *module = (pmix_mca_base_module_t *)&pmix_shmem_module;
+    return PMIX_SUCCESS;
+#endif
 }
 
 /**
@@ -76,7 +77,6 @@ pmix_gds_shmem_component_t pmix_mca_gds_shmem_component = {
         .pmix_mca_query_component = component_query,
         .reserved = {0}
     },
-    .enable = false,
     .jobs = PMIX_LIST_STATIC_INIT,
     .sessions = PMIX_LIST_STATIC_INIT
 };
@@ -86,9 +86,8 @@ double pmix_gds_shmem_segment_size_multiplier = 1.0;
 static int
 gds_shmem_component_register(void)
 {
-    int varidx;
-
-    varidx = pmix_mca_base_component_var_register(
+#if (!PMIX_GDS_SHMEM_DISABLE)
+    const int varidx = pmix_mca_base_component_var_register(
         &pmix_mca_gds_shmem_component.super,
         "segment_size_multiplier",
         "Multiplier that influences the ultimate sizes of the shared-memory "
@@ -101,18 +100,7 @@ gds_shmem_component_register(void)
     if (varidx < 0) {
         return PMIX_ERROR;
     }
-
-    varidx = pmix_mca_base_component_var_register(
-        &pmix_mca_gds_shmem_component.super,
-        "enable",
-        "Enable the shmem component to operate (default=false)",
-        PMIX_MCA_BASE_VAR_TYPE_BOOL,
-        &pmix_mca_gds_shmem_component.enable
-    );
-    if (varidx < 0) {
-        return PMIX_ERROR;
-    }
-
+#endif
     return PMIX_SUCCESS;
 }
 
