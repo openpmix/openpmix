@@ -870,7 +870,7 @@ PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) continue;
+        if (NULL == ra) break;
         if (0 == strcasecmp(ra->name, attr)) {
             return ra->string;
         }
@@ -884,7 +884,7 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) continue;
+        if (NULL == ra) break;
         if (0 == strcasecmp(ra->string, attrstring)) {
             return ra->name;
         }
@@ -898,7 +898,7 @@ PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)
 
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
-        if (NULL == ra) continue;
+        if (NULL == ra) break;
         if (0 == strcasecmp(ra->name, attr)) {
             return ra;
         }
