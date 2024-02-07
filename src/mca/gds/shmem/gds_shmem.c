@@ -1279,6 +1279,12 @@ assign_module(
             break;
         }
     }
+#if (PMIX_GDS_SHMEM_DISABLE == 1)
+    if (true) {
+        *priority = 0;
+        return PMIX_SUCCESS;
+    }
+#endif
     // If they don't want us, then disqualify ourselves.
     if (specified && *priority != max_priority) {
         *priority = 0;
