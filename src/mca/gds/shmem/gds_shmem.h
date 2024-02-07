@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2022-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -29,8 +29,20 @@
  */
 #define PMIX_GDS_SHMEM_NAME "shmem"
 
+/**
+ * Set to 1 to completely disable this component.
+ */
+#define PMIX_GDS_SHMEM_DISABLE 0
+
+/**
+ * Default component/module priority.
+ */
+#if (PMIX_GDS_SHMEM_DISABLE == 1)
+#define PMIX_GDS_SHMEM_DEFAULT_PRIORITY 0
+#else
 // We want to be just above hash's priority.
 #define PMIX_GDS_SHMEM_DEFAULT_PRIORITY 20
+#endif
 
 BEGIN_C_DECLS
 
@@ -67,7 +79,6 @@ typedef enum {
 
 typedef struct {
     pmix_gds_base_component_t super;
-    bool enable;
     /** List of jobs that I'm supporting. */
     pmix_list_t jobs;
     /** List of sessions that I'm supporting. */
