@@ -217,7 +217,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                 continue;
             }
         }
- 
+
         /* Create a pathname.  This is not always needed, but it makes
          * for cleaner code just to create it here.  Note that we are
          * allocating memory here, so we need to free it later on.
