@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,6 +47,7 @@
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
+#include "src/util/pmix_os_path.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_show_help.h"
 
@@ -223,6 +224,29 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
     return PMIX_SUCCESS;
 }
 
+static bool _check_file(const char *root, const char *path)
+{
+    struct stat st;
+    char *fullpath;
+
+    /*
+     * Keep:
+     *  - non-zero files starting with "output-"
+     */
+    if (0 == strncmp(path, "output-", strlen("output-"))) {
+        memset(&st, 0, sizeof(struct stat));
+        fullpath = pmix_os_path(false, root, path, NULL);
+        stat(fullpath, &st);
+        free(fullpath);
+        if (0 == st.st_size) {
+            return true;
+        }
+        return false;
+    }
+
+    return true;
+}
+
 static pmix_status_t pmix_ptl_close(void)
 {
     int rc;
@@ -346,13 +370,13 @@ static pmix_status_t pmix_ptl_close(void)
     if (NULL != pmix_ptl_base.session_tmpdir) {
         /* if I created the session tmpdir, then remove it if empty */
         if (pmix_ptl_base.created_session_tmpdir) {
-            pmix_os_dirpath_destroy(pmix_ptl_base.session_tmpdir, true, NULL);
+            pmix_os_dirpath_destroy(pmix_ptl_base.session_tmpdir, true, _check_file);
         }
         free(pmix_ptl_base.session_tmpdir);
     }
     if (NULL != pmix_ptl_base.system_tmpdir) {
         if (pmix_ptl_base.created_system_tmpdir) {
-            pmix_os_dirpath_destroy(pmix_ptl_base.system_tmpdir, true, NULL);
+            pmix_os_dirpath_destroy(pmix_ptl_base.system_tmpdir, true, _check_file);
         }
         free(pmix_ptl_base.system_tmpdir);
     }
