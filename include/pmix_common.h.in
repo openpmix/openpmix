@@ -258,6 +258,11 @@ typedef uint32_t pmix_rank_t;
 /* identification attributes */
 #define PMIX_USERID                         "pmix.euid"             // (uint32_t) effective user id
 #define PMIX_GRPID                          "pmix.egid"             // (uint32_t) effective group id
+#define PMIX_REQUESTOR                      "pmix.requestor"        // (pmix_proc_t*) ID of the process requesting the
+                                                                    //         specified operation. Used when relaying
+                                                                    //         a request to the PMIx library on behalf
+                                                                    //         of someone else where the API doesn't
+                                                                    //         include a "requestor" parameter
 #define PMIX_VERSION_INFO                   "pmix.version"          // (char*) PMIx version of contactor
 #define PMIX_REQUESTOR_IS_TOOL              "pmix.req.tool"         // (bool) requesting process is a tool
 #define PMIX_REQUESTOR_IS_CLIENT            "pmix.req.client"       // (bool) requesting process is a client process
@@ -980,6 +985,10 @@ typedef uint32_t pmix_rank_t;
  *  - an array of applications (if any) that are to be started in the
  *    session once instantiated
  */
+#define PMIX_SESSION_INSTANTIATE            "pmix.ssn.inst"         // (bool) Instantiate the specified session
+#define PMIX_SESSION_JOB                    "pmix.ssn.job"          // (pmix_data_array_t*) Array of pmix_info_t describing the job info
+                                                                    //        to be applied in conjunction with specified PMIX_SESSION_APP
+                                                                    //        definitions. Error if given without a PMIX_SESSION_APP description.
 #define PMIX_SESSION_APP                    "pmix.ssn.app"          // (pmix_data_array_t*) Array of pmix_app_t to be executed in the assigned
                                                                     //        session upon session instantiation
 #define PMIX_SESSION_PROVISION              "pmix.ssn.pvn"          // (pmix_data_array_t*) description of nodes to be provisioned with
@@ -1003,6 +1012,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_SESSION_SIGNAL                 "pmix.ssn.sig"          // (int) send given signal to all processes of every job in the session
 #define PMIX_SESSION_SEP                    "pmix.ssn.sep"          // (bool) Separate the specified session from its parent - i.e., allow
                                                                     //        the two to independently terminate.
+#define PMIX_SESSION_EXTEND                 "pmix.ssn.xtend"        // (bool) Extend the specified session either in terms of time or resources,
+                                                                    //        based on additional provided attributes
 
 /* session operational attributes - called by RTE */
 #define PMIX_SESSION_COMPLETE               "pmix.ssn.complete"     // (bool) specified session has completed, all resources have been
