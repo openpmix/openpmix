@@ -17,7 +17,7 @@
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -85,22 +85,7 @@ static void output_usage(void)
 
 static hwloc_obj_type_t convert_type(const char *name, char **strname)
 {
-    if (0 == strncasecmp(name, "L3", 2)) {
-        if (NULL != strname) {
-            *strname = "L3CACHE";
-        }
-        return HWLOC_OBJ_L3CACHE;
-    } else if (0 == strncasecmp(name, "L2", 2)) {
-        if (NULL != strname) {
-            *strname = "L2CACHE";
-        }
-        return HWLOC_OBJ_L2CACHE;
-    } else if (0 == strncasecmp(name, "L1", 2)) {
-        if (NULL != strname) {
-            *strname = "L1CACHE";
-        }
-        return HWLOC_OBJ_L1CACHE;
-    } else if (0 == strncasecmp(name, "C", 1)) {
+    if (0 == strncasecmp(name, "C", 1)) {
         if (NULL != strname) {
             *strname = "CORE";
         }
@@ -121,6 +106,31 @@ static hwloc_obj_type_t convert_type(const char *name, char **strname)
             *strname = "PACKAGE";
         }
         return HWLOC_OBJ_PACKAGE;
+#if HWLOC_API_VERSION >= 0x20000
+    } else if (0 == strncasecmp(name, "L3", 2)) {
+        if (NULL != strname) {
+            *strname = "L3CACHE";
+        }
+        return HWLOC_OBJ_L3CACHE;
+    } else if (0 == strncasecmp(name, "L2", 2)) {
+        if (NULL != strname) {
+            *strname = "L2CACHE";
+        }
+        return HWLOC_OBJ_L2CACHE;
+    } else if (0 == strncasecmp(name, "L1", 2)) {
+        if (NULL != strname) {
+            *strname = "L1CACHE";
+        }
+        return HWLOC_OBJ_L1CACHE;
+#else
+    } else if (0 == strncasecmp(name, "L3", 2) ||
+               0 == strncasecmp(name, "L2", 2) ||
+               0 == strncasecmp(name, "L1", 2)) {
+        if (NULL != strname) {
+            *strname = "CACHE";
+        }
+        return HWLOC_OBJ_CACHE;
+#endif
     } else {
         fprintf(stderr, "UNRECOGNIZED HWLOC TYPE: %s\n", name);
         return HWLOC_OBJ_TYPE_MAX;

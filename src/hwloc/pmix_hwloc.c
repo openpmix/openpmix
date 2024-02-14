@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -350,9 +350,9 @@ tryxml:
         return rc;
     }
 
+tryv1:
 #endif
 
-tryv1:
     /* try to get the v1 XML string */
     pmix_output_verbose(2, pmix_hwloc_output,
                         "%s:%s checking v1 xml",
@@ -733,7 +733,7 @@ pmix_status_t pmix_hwloc_parse_cpuset_string(const char *cpuset_string, pmix_cpu
 {
     char *src;
     int hrc;
-    
+
     /* if we aren't the source, then pass */
     src = strchr(cpuset_string, ':');
     if (NULL == src) {
@@ -1404,13 +1404,18 @@ static int set_flags(hwloc_topology_t topo, unsigned int flags)
     if (0 != hwloc_topology_set_flags(topo, flags)) {
         return PMIX_ERR_INIT;
     }
+#ifdef HWLOC_VERSION_MAJOR
     // Blacklist the "gl" component due to potential conflicts.
     // See "https://github.com/open-mpi/ompi/issues/10025" for
-    // an explanation
+    // an explanation. Sadly, HWLOC doesn't define version numbers
+    // until v2.0, so we cannot check versions here. Fortunately,
+    // the blacklist ability was added in HWLOC v2.1, so we can't
+    // do it for earlier versions anyway.
 #if HWLOC_VERSION_MAJOR > 2
     hwloc_topology_set_components(topo, HWLOC_TOPOLOGY_COMPONENTS_FLAG_BLACKLIST, "gl");
 #elif HWLOC_VERSION_MAJOR == 2 && HWLOC_VERSION_MINOR >= 1
     hwloc_topology_set_components(topo, HWLOC_TOPOLOGY_COMPONENTS_FLAG_BLACKLIST, "gl");
+#endif
 #endif
 
     return PMIX_SUCCESS;
