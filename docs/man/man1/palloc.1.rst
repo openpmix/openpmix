@@ -108,8 +108,10 @@ OPTIONS
 EXIT STATUS
 -----------
 
-The command returns the string session ID of the resulting allocation, or if executed with the ``--do-not-wait`` option, the
-string session ID of the allocation request as assigned by the scheduler. Any command line arguments following the provided
+Returns 0 for success, non-zero error code if a problem occurred. Note that success does not necessarily translate to success of the requested operation, depending upon provided options, but may instead mean that the request has been accepted for processing.
+
+The command outputs the integer session ID of the resulting allocation, or if executed with the ``--do-not-wait`` option, a message indicating
+if the request has been accepted for processing. Any command line arguments following the provided
 options are taken as the job script or executable to be run within the allocation (once assigned) and its attendant
 argv array. In this case, the allocation will terminate once the provide job script or executable completes.
 

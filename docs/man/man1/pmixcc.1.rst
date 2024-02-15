@@ -1,101 +1,127 @@
 .. _man1-pmixcc:
 
-pmix_info
+pmixcc
 =========
 
 .. include_body
 
-pmix_info |mdash| Display information about the PMIx installation
+pmixcc |mdash| wrapper compiler for PMIx-based applications or tools
 
 SYNOPSIS
 --------
 
-``pmix_info [options]``
+``pmixcc [options] <file>``
 
 
 DESCRIPTION
 -----------
 
-``pmix_info`` provides detailed information about the PMIx
-installation. It can be useful for at least three common scenarios:
-
-#. Checking local configuration and seeing how PMIx was installed.
-
-#. Submitting bug reports / help requests to the PMIx community
-   (see :doc:`Getting help </getting-help>`).
-
-#. Seeing a list of installed PMIx plugins and querying what MCA
-   parameters they support.
+``pmixcc`` is a wrapper compiler that can be used to build PMIx-based
+applications or tools.
 
 
 OPTIONS
 -------
 
-``pmix_info`` accepts the following options:
+``pmixcc`` accepts the following options:
 
-* ``-h`` | ``--help <arg0>``: Show help message. If the optional
-  argument is not provided, then a generalized help message similar
-  to the information provided here is returned. If an argument is
-  provided, then a more detailed help message for that specific
-  command line option is returned.
+* ``-h`` | ``--help``: Show help message
+
+* ``--help={common|optimizers|params|target|warnings|[^]{joined|separate|undocumented}}[,...].``: Display specific types of command line options
 
 * ``-v`` | ``--verbose``: Enable debug output.
 
 * ``-V`` | ``--version``: Print version and exit.
 
-* ``-a``, ``--all``: Show all configuration options and MCA
-  parameters. Also changes the default MCA parameter level to 9,
-  unless ``--level`` is also specified.
+* ``-dumpspecs``: Display all of the built in spec strings.
 
-* ``--arch``: Show architecture on which Open MPI was compiled.
+* ``-dumpversion``: Display the version of the compiler.
 
-* ``-c``, ``--config``: Show configuration options
+* ``-dumpmachine``: Display the compiler's target processor.
 
-* ``-gmca``, ``--gmca <param> <value>``: Pass global MCA parameters
-  that are applicable to all contexts.
+* ``-foffload=<targets>``: Specify offloading targets.
 
-* ``-h``, ``--help``: Shows help / usage message.
+* ``-print-search-dirs``: Display the directories in the compiler's search path.
 
-* ``--hostname``: Show the hostname on which Open MPI was configured
-  and built.
+* ``-print-libgcc-file-name``: Display the name of the compiler's companion library.
 
-* ``--internal``: Show internal MCA parameters (not meant to be
-  modified by users).
+* ``-print-file-name=<lib>``: Display the full path to library <lib>.
 
-* ``-mca``, ``--mca <param> <value>``: Pass context-specific MCA
-  parameters; they are considered global if ``--gmca`` is not used and
-  only one context is specified.
+* ``-print-prog-name=<prog>``: Display the full path to compiler component <prog>.
 
-* ``--param <type> <component>``: Show MCA parameters. The first
-  parameter is the type of the component to display; the second
-  parameter is the specific component to display (or the keyword
-  ``all``, meaning "display all components of this type").
+* ``-print-multiarch``: Display the target's normalized GNU triplet, used as a component in the library path.
 
-* ``-t``, ``--type``: Show MCA parameters of the type specified in the
-  parameter. Accepts the following parameters: ``unsigned_int``,
-  ``unsigned_long``, ``unsigned_long_long``, ``size_t``, ``string``,
-  ``version_string``, ``bool``, ``double``. By default level is 1
-  unless it is specified with ``--level``.
+* ``-print-multi-directory``: Display the root directory for versions of libgcc.
 
-* ``--parsable``: When used in conjunction with other parameters, the
-  output is displayed in a machine-parsable format ``--parseable``
-  Synonym for ``--parsable``.
+* ``-print-multi-lib``: Display the mapping between command line options and multiple library search directories.
 
-* ``--path <type>``: Show paths that Open MPI was configured
-  with. Accepts the following parameters: ``prefix``, ``bindir``,
-  ``libdir``, ``incdir``, ``pkglibdir``, ``sysconfdir``.
+* ``-print-multi-os-directory``: Display the relative path to OS libraries.
 
-* ``--pretty``: When used in conjunction with other parameters, the output is
-  displayed in "prettyprint" format (default)
+* ``-print-sysroot``: Display the target libraries directory.
 
-* ``--selected-only``: Show only variables from selected components.
+* ``-print-sysroot-headers-suffix``: Display the sysroot suffix used to find headers.
 
-* ``-V``, ``--version``: Show version of Open MPI.
+* ``-Wa,<options>``: Pass comma-separated <options> on to the assembler.
+
+* ``-Wp,<options>``: Pass comma-separated <options> on to the preprocessor.
+* ``-Wl,<options>``: Pass comma-separated <options> on to the linker.
+
+* ``-Xassembler <arg>``: Pass <arg> on to the assembler.
+
+* ``-Xpreprocessor <arg>``: Pass <arg> on to the preprocessor.
+
+* ``-Xlinker <arg>``: Pass <arg> on to the linker.
+
+* ``-save-temps``: Do not delete intermediate files.
+
+* ``-save-temps=<arg>``: Do not delete intermediate files.
+
+* ``-no-canonical-prefixes``: Do not canonicalize paths when building relative prefixes to other gcc components.
+
+* ``-pipe``: Use pipes rather than intermediate files.
+
+* ``-time``: Time the execution of each subprocess.
+
+* ``-specs=<file>``: Override built-in specs with the contents of <file>.
+
+* ``-std=<standard>``: Assume that the input sources are for <standard>.
+
+* ``--sysroot=<directory>``: Use <directory> as the root directory for headers and libraries.
+
+* ``-B <directory>``: Add <directory> to the compiler's search paths.
+
+* ``-v``: Display the programs invoked by the compiler.
+
+* ``-###``: Like -v but options quoted and commands not executed.
+
+* ``-E``: Preprocess only; do not compile, assemble or link.
+
+* ``-S``: Compile only; do not assemble or link.
+
+* ``-c``: Compile and assemble, but do not link.
+
+* ``-o <file>``: Place the output into <file>.
+
+* ``-pie``: Create a dynamically linked position independent executable.
+
+* ``-shared``: Create a shared library.
+
+* ``-x <language>``: Specify the language of the following input files.
+  Permissible languages include: c c++ assembler none
+  'none' means revert to the default behavior of
+  guessing the language based on the file's extension.
+
+
+Options starting with ``-g``, ``-f``, ``-m``, ``-O``, ``-W``, or ``--param`` are automatically
+passed on to the various sub-processes invoked by the compiler.  In order to pass
+other options on to these processes the ``-W<letter>`` options must be used.
+
 
 EXIT STATUS
 -----------
 
-Description of the various exit statuses of this command.
+Returns 0 if build is successful, a non-zero error code if otherwise.
+
 
 EXAMPLES
 --------
