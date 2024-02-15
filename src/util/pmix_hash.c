@@ -672,7 +672,8 @@ void pmix_hash_register_key(uint32_t inid,
     pmix_pointer_array_set_item(keyindex->table, inid, ptr);
 }
 
-// TODO(skg) We may have to add a TMA wrapper for this call.
+// skg: Note that one may have to add a TMA wrapper for this call if changes are
+// made to how pmix_hash operates. Something for developers to keep in mind.
 pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
                                            const char *key,
                                            pmix_keyindex_t *kidx)

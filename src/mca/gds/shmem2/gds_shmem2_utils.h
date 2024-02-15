@@ -19,38 +19,38 @@
 
 #include "gds_shmem2.h"
 
-#define PMIX_GDS_SHMEM2_OUT(...)                                                \
+#define PMIX_GDS_SHMEM2_OUT(...)                                               \
 do {                                                                           \
-    pmix_output(0, "gds:" PMIX_GDS_SHMEM2_NAME ":" __VA_ARGS__);                \
+    pmix_output(0, "gds:" PMIX_GDS_SHMEM2_NAME ":" __VA_ARGS__);               \
 } while (0)
 
-#define PMIX_GDS_SHMEM2_VOUT(...)                                               \
+#define PMIX_GDS_SHMEM2_VOUT(...)                                              \
 do {                                                                           \
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,           \
-                        "gds:" PMIX_GDS_SHMEM2_NAME ":" __VA_ARGS__);           \
+                        "gds:" PMIX_GDS_SHMEM2_NAME ":" __VA_ARGS__);          \
 } while (0)
 
 #if PMIX_ENABLE_DEBUG
-#define PMIX_GDS_SHMEM2_VVOUT(...)                                              \
+#define PMIX_GDS_SHMEM2_VVOUT(...)                                             \
 do {                                                                           \
     pmix_output_verbose(8, pmix_gds_base_framework.framework_output,           \
-                        "gds:" PMIX_GDS_SHMEM2_NAME ":" __VA_ARGS__);           \
+                        "gds:" PMIX_GDS_SHMEM2_NAME ":" __VA_ARGS__);          \
 } while (0)
 
-#define PMIX_GDS_SHMEM2_VVVOUT(...)                                             \
+#define PMIX_GDS_SHMEM2_VVVOUT(...)                                            \
 do {                                                                           \
     pmix_output_verbose(9, pmix_gds_base_framework.framework_output,           \
-                        "gds:" PMIX_GDS_SHMEM2_NAME ":" __VA_ARGS__);           \
+                        "gds:" PMIX_GDS_SHMEM2_NAME ":" __VA_ARGS__);          \
 } while (0)
 #else
-#define PMIX_GDS_SHMEM2_VVOUT(...)                                              \
+#define PMIX_GDS_SHMEM2_VVOUT(...)                                             \
 do { } while (0)
 
-#define PMIX_GDS_SHMEM2_VVVOUT(...)                                             \
+#define PMIX_GDS_SHMEM2_VVVOUT(...)                                            \
 do { } while (0)
 #endif
 
-#define PMIX_GDS_SHMEM2_VVOUT_HERE()                                            \
+#define PMIX_GDS_SHMEM2_VVOUT_HERE()                                           \
 PMIX_GDS_SHMEM2_VVOUT("HERE AT %s,%d", __func__, __LINE__)
 
 BEGIN_C_DECLS
