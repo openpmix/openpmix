@@ -1,37 +1,29 @@
 .. _man1-pattrs:
 
-pmix_info
+pattrs
 =========
 
 .. include_body
 
-pmix_info |mdash| Display information about the PMIx installation
+pattrs |mdash| Display information about supported attributes
 
 SYNOPSIS
 --------
 
-``pmix_info [options]``
+``pattrs [options]``
 
 
 DESCRIPTION
 -----------
 
-``pmix_info`` provides detailed information about the PMIx
-installation. It can be useful for at least three common scenarios:
-
-#. Checking local configuration and seeing how PMIx was installed.
-
-#. Submitting bug reports / help requests to the PMIx community
-   (see :doc:`Getting help </getting-help>`).
-
-#. Seeing a list of installed PMIx plugins and querying what MCA
-   parameters they support.
+``pattrs`` provides information on the attributes supported by the
+client, server, and tool interfaces of the PMIx library being used.
 
 
 OPTIONS
 -------
 
-``pmix_info`` accepts the following options:
+``pattrs`` accepts the following options:
 
 * ``-h`` | ``--help <arg0>``: Show help message. If the optional
   argument is not provided, then a generalized help message similar
@@ -43,59 +35,48 @@ OPTIONS
 
 * ``-V`` | ``--version``: Print version and exit.
 
-* ``-a``, ``--all``: Show all configuration options and MCA
-  parameters. Also changes the default MCA parameter level to 9,
-  unless ``--level`` is also specified.
+* ``--pmixmca <arg0> <arg1>``: Set MCA parameter value
 
-* ``--arch``: Show architecture on which Open MPI was compiled.
+* ``--do-not-connect``: Do not connect to a server
 
-* ``-c``, ``--config``: Show configuration options
+* ``--uri <arg0>``: Specify the URI of the server to which we are to connect, or the name of the file (specified as file:filename) that contains that info
 
-* ``-gmca``, ``--gmca <param> <value>``: Pass global MCA parameters
-  that are applicable to all contexts.
+* ``--namespace <arg0>``: Namespace of the daemon to which we should connect
 
-* ``-h``, ``--help``: Shows help / usage message.
+* ``--pid <arg0>``: PID of the daemon to which we should connect (int => PID or file:<file> for file containing the PID
 
-* ``--hostname``: Show the hostname on which Open MPI was configured
-  and built.
+* ``--system-server-first``: First look for a system server and connect to it if found
 
-* ``--internal``: Show internal MCA parameters (not meant to be
-  modified by users).
+* ``--system-server``: Connect to a system-level server
 
-* ``-mca``, ``--mca <param> <value>``: Pass context-specific MCA
-  parameters; they are considered global if ``--gmca`` is not used and
-  only one context is specified.
+* ``--tmpdir <arg0>``: Set the root for the session directory tree
 
-* ``--param <type> <component>``: Show MCA parameters. The first
-  parameter is the type of the component to display; the second
-  parameter is the specific component to display (or the keyword
-  ``all``, meaning "display all components of this type").
+* ``--wait-to-connect <arg0>``: Delay specified number of seconds before trying to connect
 
-* ``-t``, ``--type``: Show MCA parameters of the type specified in the
-  parameter. Accepts the following parameters: ``unsigned_int``,
-  ``unsigned_long``, ``unsigned_long_long``, ``size_t``, ``string``,
-  ``version_string``, ``bool``, ``double``. By default level is 1
-  unless it is specified with ``--level``.
+* ``--num-connect-retries <arg0>``: Max number of times to try to connect
 
-* ``--parsable``: When used in conjunction with other parameters, the
-  output is displayed in a machine-parsable format ``--parseable``
-  Synonym for ``--parsable``.
+* ``--client <arg0>``: Comma-delimited list of client functions whose attributes are to be printed (function or "all")
 
-* ``--path <type>``: Show paths that Open MPI was configured
-  with. Accepts the following parameters: ``prefix``, ``bindir``,
-  ``libdir``, ``incdir``, ``pkglibdir``, ``sysconfdir``.
+* ``--server <arg0>``: Comma-delimited list of server functions whose attributes are to be printed (function or "all")
 
-* ``--pretty``: When used in conjunction with other parameters, the output is
-  displayed in "prettyprint" format (default)
+* ``--tool <arg0>``: Comma-delimited list of tool functions whose attributes are to be printed (function or "all")
 
-* ``--selected-only``: Show only variables from selected components.
+* ``--host <arg0>``: Comma-delimited list of host functions whose attributes are to be printed (function or "all")
 
-* ``-V``, ``--version``: Show version of Open MPI.
+* ``--client-fns``: List the functions supported in this client library
+
+* ``--server-fns``: List the functions supported in this server library
+
+* ``--tool-fns``: List the functions supported in this tool library
+
+* ``--host-fns``: List the functions supported by this host environment
+
 
 EXIT STATUS
 -----------
 
-Description of the various exit statuses of this command.
+Returns 0 for successful completion or a non-zero error code. The command outputs the requested information to stdout.
+
 
 EXAMPLES
 --------
