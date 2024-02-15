@@ -15,7 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -104,6 +104,38 @@ typedef struct {
     pmix_data_type_t type;
     char **description;
 } pmix_regattr_input_t;
+#define PMIX_REGATTR_INPUT_NEW(a, i, n, s, t, d)                            \
+do {                                                                        \
+    (a) = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t)); \
+    if (NULL != (a)) {                                                      \
+        memset((a), 0, sizeof(pmix_regattr_input_t));                       \
+        (a)->index = (i);                                                   \
+        if (NULL != (n)) {                                                    \
+            (a)->name = strdup((n));                                       \
+        }                                                                   \
+        if (NULL != (s)) {                                                    \
+            (a)->string = strdup((s));                                        \
+        }                                                                   \
+        (a)->type = (t);                                                    \
+        if (NULL != (d)) {                                                    \
+            (a)->description = PMIx_Argv_copy((d));                           \
+        }                                                                   \
+    }                                                                       \
+} while(0)
+#define PMIX_REGATTR_INPUT_FREE(a)      \
+do {                                    \
+    if (NULL != (a)) {                  \
+        if (NULL != (a)->name) {        \
+            free((a)->name);            \
+        }                               \
+        if (NULL != (a)->string)        \
+            free((a)->string);          \
+        }                               \
+        if (NULL != (a)->description) { \
+            free((a)->description);     \
+        }                               \
+    }                                   \
+} while(0)
 
 /* define a struct for holding entries in the
  * dictionary of event strings */
