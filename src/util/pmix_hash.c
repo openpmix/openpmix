@@ -12,7 +12,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -686,21 +686,7 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
             /* they have to give us something! */
             return NULL;
         }
-        if (PMIX_CHECK_RESERVED_KEY(key)) {
-            /* reserved keys are in the front of the table */
-            for (id = 0; id < PMIX_INDEX_BOUNDARY; id++) {
-                ptr = pmix_pointer_array_get_item(keyindex->table, id);
-                if (NULL != ptr) {
-                    if (0 == strcmp(key, ptr->string)) {
-                        return ptr;
-                    }
-                }
-            }
-            /* reserved keys must already have been registered */
-            return NULL;
-        }
-        /* unreserved keys are at the back of the table */
-        for (id = PMIX_INDEX_BOUNDARY; id < keyindex->table->size; id++) {
+        for (id = 0; id < keyindex->table->size; id++) {
             ptr = pmix_pointer_array_get_item(keyindex->table, id);
             if (NULL != ptr) {
                 if (0 == strcmp(key, ptr->string)) {
@@ -708,6 +694,7 @@ pmix_regattr_input_t* pmix_hash_lookup_key(uint32_t inid,
                 }
             }
         }
+
         /* we didn't find it - register it */
         ptr = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t));
         ptr->name = strdup(key);
