@@ -1832,92 +1832,8 @@ regattr_list_free(
     free(ra);
 }
 
-static inline pmix_status_t
-regattr_cp(
-    const pmix_regattr_input_t *const src,
-    pmix_regattr_input_t *const dst
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-
-    if (!src || !dst) {
-        rc = PMIX_ERR_INVALID_ARG;
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
-    dst->index = src->index;
-    dst->name = strdup(src->name);
-    dst->string = strdup(src->string);
-    dst->type = src->type;
-    dst->description = PMIx_Argv_copy(src->description);
-
-    if (!dst->name || !dst->string || !dst->description) {
-        rc = PMIX_ERR_NOMEM;
-        PMIX_ERROR_LOG(rc);
-    }
-    return rc;
-}
-
-static pmix_status_t
-client_get_missing_keyindex_keys(
-    const pmix_regattr_input_t *const keyindex,
-    int nkeyindex,
-    pmix_regattr_input_t **result,
-    int *nresult
-) {
-    pmix_status_t rc = PMIX_SUCCESS;
-    pmix_pointer_array_t *const mytab = pmix_globals.keyindex.table;
-    const int nmykeyindex = parray_nelem(pmix_globals.keyindex.table);
-    // See how many values are on our side. It may be the case that we, the
-    // client, may have more attributes than the server. This will likely mean
-    // that we are a newer client, so we have some work to do to sort that out.
-    if (nkeyindex >= nmykeyindex) {
-        // Great, nothing to do here.
-        *result = NULL;
-        *nresult = 0;
-        return PMIX_SUCCESS;
-    }
-    // We have more keys than the server, so
-    // populate the array of the missing keys.
-    int inresult = nmykeyindex - nkeyindex;
-    pmix_regattr_input_t *iresult = calloc(inresult, sizeof(*iresult));
-    if (!iresult) {
-        rc = PMIX_ERR_NOMEM;
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-
-    int nfound = 0;
-    for (int i = 0; i < nmykeyindex; ++i) {
-        bool key_found = false;
-        pmix_regattr_input_t *const rai = pmix_pointer_array_get_item(mytab, i);
-        for (int j = 0; j < nkeyindex; ++j) {
-            const pmix_regattr_input_t *const raj = &keyindex[j];
-            if (0 == strcasecmp(rai->string, raj->string)) {
-                key_found = true;
-                break;
-            }
-        }
-        // Didn't find rai in the provided keyindex, so add it to our list.
-        if (!key_found) {
-            rc = regattr_cp(rai, &iresult[nfound++]);
-            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
-                goto out;
-            }
-        }
-    }
-out:
-    if (PMIX_SUCCESS != rc) {
-        regattr_list_free(iresult, inresult);
-        iresult = NULL;
-        inresult = 0;
-    }
-    *result = iresult;
-    *nresult = inresult;
-    return rc;
-}
-
+// keyindex = dictionary from the server
+// nkeyindex = number of entries in that dictionary
 static pmix_status_t
 client_update_global_keyindex_if_necessary(
     char *nspace_name,
@@ -1925,7 +1841,11 @@ client_update_global_keyindex_if_necessary(
     int nkeyindex
 ) {
     PMIX_GDS_SHMEM2_VVOUT_HERE();
-    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_status_t rc;
+    int i, m;
+    pmix_regattr_input_t *ra, *rb;
+    pmix_keyindex_t tmpindex;
+    bool found;
 
     // Do we need to update?
     pmix_gds_shmem2_job_t *job;
@@ -1939,34 +1859,36 @@ client_update_global_keyindex_if_necessary(
         return PMIX_SUCCESS;
     }
 
-    pmix_regattr_input_t *client_other_keys = NULL;
-    int nclient_other_keys = 0;
-    rc = client_get_missing_keyindex_keys(
-        keyindex, nkeyindex, &client_other_keys, &nclient_other_keys
-    );
-    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
-    // Get a fresh pmix_globals.keyindex.
-    PMIX_DESTRUCT(&pmix_globals.keyindex);
-    PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_keyindex_t);
+    // We can _never_ assume that the indices in our dictionary
+    // match the ones in the server's dictionary. Even if the
+    // number of entries is the same, there is no guarantee that
+    // they are in the same order - and thus, the index of a
+    // particular entry can be different, causing errors on our
+    // side. Likewise, even if we have more entries than they do,
+    // there is no guarantee that their entries are in the same
+    // order as ours. So we have to rebuild the dictionary to
+    // match what they have - and if we have additional entries,
+    // then we add them back at the end of the new dictionary.
+
+    // Get a fresh temp index.
+    PMIX_CONSTRUCT(&tmpindex, pmix_keyindex_t);
+    tmpindex.next_id = 0;
     // Add the server's keys.
-    for (int i = 0; i < nkeyindex; ++i) {
-        pmix_regattr_input_t *ra = calloc(1, sizeof(*ra));
-        if (PMIX_UNLIKELY(!ra)) {
+    for (i = 0; i < nkeyindex; ++i) {
+        PMIX_REGATTR_INPUT_NEW(ra, keyindex[i].index,
+                                   keyindex[i].name,
+                                   keyindex[i].string,
+                                   keyindex[i].type,
+                                   keyindex[i].description);
+        if (PMIX_UNLIKELY(NULL == ra)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
             return rc;
         }
 
-        rc = regattr_cp(&keyindex[i], ra);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-
-        pmix_hash_register_key(ra->index, ra, &pmix_globals.keyindex);
+       pmix_pointer_array_set_item(tmpindex.table, (int)tmpindex.next_id, ra);
+        ra->index = tmpindex.next_id;
+        tmpindex.next_id += 1;
 
         PMIX_GDS_SHMEM2_VVVOUT(
             "%s:keyindex=(index=%zd, type=%zd, name=%s string=%s, description=%s)",
@@ -1976,39 +1898,120 @@ client_update_global_keyindex_if_necessary(
             (ra->description && ra->description[0]) ? ra->description[0] : "NULL"
         );
     }
-    // Add any missing keys.
-    int ifixup = nkeyindex;
-    for (int i = 0; i < nclient_other_keys; ++i) {
-        pmix_regattr_input_t *ra = calloc(1, sizeof(*ra));
-        if (PMIX_UNLIKELY(!ra)) {
+
+    // now cycle thru our dictionary, adding anything missing to the
+    // new keyindex - some definitions are added to the dictionary
+    // but are internally defined, so they might not be in the keyindex
+    // just yet
+    for (i = 0; i < PMIX_INDEX_BOUNDARY; ++i) {
+        ra = (pmix_regattr_input_t*)&pmix_dictionary[i];
+        if (UINT32_MAX == ra->index) {
+            break;
+        }
+        // see if this entry is already present in the new keyindex
+        found = false;
+        for (m=0; m < tmpindex.table->size; m++) {
+            rb = (pmix_regattr_input_t*)pmix_pointer_array_get_item(tmpindex.table, m);
+            if (NULL == rb) {
+                // left-justified
+                break;
+            }
+            if (0 == strcmp(ra->name, rb->name)) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            // ignore this entry
+            continue;
+        }
+
+        // not found, so we need to add it back
+        PMIX_REGATTR_INPUT_NEW(rb, ra->index,
+                                   ra->name,
+                                   ra->string,
+                                   ra->type,
+                                   ra->description);
+        if (PMIX_UNLIKELY(NULL == rb)) {
             rc = PMIX_ERR_NOMEM;
             PMIX_ERROR_LOG(rc);
             return rc;
         }
 
-        rc = regattr_cp(&client_other_keys[i], ra);
-        if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-        // Notice the index fixup here. We add it at the
-        // end of where we already registered keys.
-        ra->index = ifixup;
-        pmix_hash_register_key(ifixup++, ra, &pmix_globals.keyindex);
+        pmix_pointer_array_set_item(tmpindex.table, (int)tmpindex.next_id, rb);
+        rb->index = tmpindex.next_id;
+        tmpindex.next_id += 1;
 
         PMIX_GDS_SHMEM2_VVVOUT(
-            "%s:adding missing keyindex=(index=%zd, type=%zd, "
-            "name=%s string=%s, description=%s)",
+            "%s:keyindex=(index=%zd, type=%zd, name=%s string=%s, description=%s)",
             __func__, (size_t)ra->index, (size_t)ra->type,
             ra->name ? ra->name : "NULL", ra->string ? ra->string : "NULL",
             // For debug, only print the first element, if present.
             (ra->description && ra->description[0]) ? ra->description[0] : "NULL"
         );
     }
-    if (PMIX_SUCCESS == rc) {
-        job->client_keyindex_fixup_done = true;
+
+    // now cycle thru our keyindex, adding anything missing to the
+    // new keyindex
+    for (i = 0; i < pmix_globals.keyindex.table->size; ++i) {
+        ra = (pmix_regattr_input_t*)pmix_pointer_array_get_item(pmix_globals.keyindex.table, i);
+        if (NULL == ra) {
+            // the array is left-justified
+            break;
+        }
+        // see if this entry is already present in the new keyindex
+        found = false;
+        for (m=0; m < tmpindex.table->size; m++) {
+            rb = (pmix_regattr_input_t*)pmix_pointer_array_get_item(tmpindex.table, m);
+            if (NULL == rb) {
+                // left-justified
+                break;
+            }
+            if (0 == strcmp(ra->name, rb->name)) {
+                found = true;
+                break;
+            }
+        }
+        if (found) {
+            // ignore this entry
+            continue;
+        }
+
+        // not found, so we need to add it back
+        // to save operations, we remove the entry from the global keyindex
+        // and add it to the new index
+        pmix_pointer_array_set_item(pmix_globals.keyindex.table, i, NULL);
+        pmix_pointer_array_set_item(tmpindex.table, (int)tmpindex.next_id, ra);
+        ra->index = tmpindex.next_id;
+        tmpindex.next_id += 1;
+
+        PMIX_GDS_SHMEM2_VVVOUT(
+            "%s:keyindex=(index=%zd, type=%zd, name=%s string=%s, description=%s)",
+            __func__, (size_t)ra->index, (size_t)ra->type,
+            ra->name ? ra->name : "NULL", ra->string ? ra->string : "NULL",
+            // For debug, only print the first element, if present.
+            (ra->description && ra->description[0]) ? ra->description[0] : "NULL"
+        );
     }
-    return rc;
+
+    // now replace the global keyindex with this new one
+    PMIX_DESTRUCT(&pmix_globals.keyindex);
+    PMIX_CONSTRUCT(&pmix_globals.keyindex, pmix_keyindex_t);
+    pmix_globals.keyindex.next_id = 0;
+    for (i=0; i < tmpindex.table->size; i++) {
+        rb = (pmix_regattr_input_t*)pmix_pointer_array_get_item(tmpindex.table, i);
+        if (NULL == rb) {
+            // array is left-justified
+            break;
+        }
+        pmix_pointer_array_set_item(tmpindex.table, i, NULL);
+        pmix_pointer_array_set_item(pmix_globals.keyindex.table, rb->index, rb);
+        pmix_globals.keyindex.next_id++;
+    }
+    PMIX_DESTRUCT(&tmpindex);
+
+    job->client_keyindex_fixup_done = true;
+    return PMIX_SUCCESS;
 }
 
 static inline pmix_status_t
@@ -2059,7 +2062,8 @@ unpack_srv_kindx_info(
             }
         }
         else if (PMIX_CHECK_KEY(&kv, SHMEM2_KIDX_TAB_SIZE_KEY)) {
-            // Create a temporary dict to unpack into.
+            // Create a temporary dict to unpack into - this is the
+            // size of the server's dictionary
             assert(kv.value->type == PMIX_UINT32);
             tabsize = kv.value->data.uint32;
             tmpsrvdict = calloc(tabsize, sizeof(*tmpsrvdict));
