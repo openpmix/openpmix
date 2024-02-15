@@ -1,37 +1,30 @@
 .. _man1-plookup:
 
-pmix_info
+plookup
 =========
 
 .. include_body
 
-pmix_info |mdash| Display information about the PMIx installation
+plookup |mdash| lookup the value of keys posted using the ``PMIx_Publish`` API
+
 
 SYNOPSIS
 --------
 
-``pmix_info [options]``
+``plookup [options] <KEY1>,<KEY2>,...``
 
 
 DESCRIPTION
 -----------
 
-``pmix_info`` provides detailed information about the PMIx
-installation. It can be useful for at least three common scenarios:
-
-#. Checking local configuration and seeing how PMIx was installed.
-
-#. Submitting bug reports / help requests to the PMIx community
-   (see :doc:`Getting help </getting-help>`).
-
-#. Seeing a list of installed PMIx plugins and querying what MCA
-   parameters they support.
+``plookup`` performs a ``PMIx_Lookup`` for each of the provided
+keys and returns the results
 
 
 OPTIONS
 -------
 
-``pmix_info`` accepts the following options:
+``plookup`` accepts the following options:
 
 * ``-h`` | ``--help <arg0>``: Show help message. If the optional
   argument is not provided, then a generalized help message similar
@@ -43,59 +36,22 @@ OPTIONS
 
 * ``-V`` | ``--version``: Print version and exit.
 
-* ``-a``, ``--all``: Show all configuration options and MCA
-  parameters. Also changes the default MCA parameter level to 9,
-  unless ``--level`` is also specified.
+* ``--pmixmca <arg0> <arg1>``: Set MCA parameter value
 
-* ``--arch``: Show architecture on which Open MPI was compiled.
+* ``--pid <arg0>``: PID of the daemon to which we should connect (int => PID or file:<file> for file containing the PID
 
-* ``-c``, ``--config``: Show configuration options
+* ``--tmpdir <arg0>``: Set the root for the session directory tree
 
-* ``-gmca``, ``--gmca <param> <value>``: Pass global MCA parameters
-  that are applicable to all contexts.
+* ``--timeout <arg0>``: Max number of seconds to wait for data to become available
 
-* ``-h``, ``--help``: Shows help / usage message.
+* ``--wait``: Wait for data to become available if not immediately present
 
-* ``--hostname``: Show the hostname on which Open MPI was configured
-  and built.
-
-* ``--internal``: Show internal MCA parameters (not meant to be
-  modified by users).
-
-* ``-mca``, ``--mca <param> <value>``: Pass context-specific MCA
-  parameters; they are considered global if ``--gmca`` is not used and
-  only one context is specified.
-
-* ``--param <type> <component>``: Show MCA parameters. The first
-  parameter is the type of the component to display; the second
-  parameter is the specific component to display (or the keyword
-  ``all``, meaning "display all components of this type").
-
-* ``-t``, ``--type``: Show MCA parameters of the type specified in the
-  parameter. Accepts the following parameters: ``unsigned_int``,
-  ``unsigned_long``, ``unsigned_long_long``, ``size_t``, ``string``,
-  ``version_string``, ``bool``, ``double``. By default level is 1
-  unless it is specified with ``--level``.
-
-* ``--parsable``: When used in conjunction with other parameters, the
-  output is displayed in a machine-parsable format ``--parseable``
-  Synonym for ``--parsable``.
-
-* ``--path <type>``: Show paths that Open MPI was configured
-  with. Accepts the following parameters: ``prefix``, ``bindir``,
-  ``libdir``, ``incdir``, ``pkglibdir``, ``sysconfdir``.
-
-* ``--pretty``: When used in conjunction with other parameters, the output is
-  displayed in "prettyprint" format (default)
-
-* ``--selected-only``: Show only variables from selected components.
-
-* ``-V``, ``--version``: Show version of Open MPI.
 
 EXIT STATUS
 -----------
 
-Description of the various exit statuses of this command.
+Returns 0 upon success, or else a non-zero error code. Prints any returned values to stdout.
+
 
 EXAMPLES
 --------
