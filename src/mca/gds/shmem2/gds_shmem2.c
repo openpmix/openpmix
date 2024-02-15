@@ -59,9 +59,15 @@
 #define SHMEM2_KIDX_DESCRIPTION_KEY "PMIX_GDS_SHMEM2_KIDX_DESCRIPTION"
 #define SHMEM2_KIDX_ELEM_DONE_KEY   "PMIX_GDS_SHMEM2_KIDX_ELEM_DONE"
 
-#define EMSG_SHMEM2_IS_BROKEN "\n***\nAn unrecoverable error occurred in the "  \
-"gds/shmem2 component.\nResolve this issue by disabling it. Set in your "       \
+#define EMSG_SHMEM2_IS_BROKEN "\n***\nAn unrecoverable error occurred in the " \
+"gds/shmem2 component.\nResolve this issue by disabling it. Set in your "      \
 "environment the following:\nPMIX_MCA_gds=hash\n***\n"
+
+#define EMSG_SHMEM2_OOM "\n***\nA memory allocation backed by shared-memory "  \
+"failed in the gds/shmem2 component.\nResolve this issue by either:"           \
+"\n1.) Increasing the value of PMIX_MCA_gds_shmem2_segment_size_multiplier "   \
+"\nor"                                                                         \
+"\n2.) Disabling gds/shmem2 via PMIX_MCA_gds=hash\n***\n"
 
 /**
  * Stores packed job information.
@@ -285,7 +291,14 @@ tma_alloc_request_will_overflow(
     const size_t lost_capacity = (size_t)(data_baseptr - hdr_baseptr);
     const size_t bytes_used = (size_t)(data_ptr_pos - data_baseptr);
 
-    return (bytes_used + alloc_size) > (backing_store->size - lost_capacity);
+    bool wo = (bytes_used + alloc_size) > (backing_store->size - lost_capacity);
+
+    if (PMIX_UNLIKELY(wo)) {
+        errno = ENOMEM;
+        perror(EMSG_SHMEM2_OOM);
+        abort();
+    }
+    return wo;
 }
 
 static inline void
