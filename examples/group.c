@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -50,6 +50,58 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     fprintf(stderr, "Client %s:%d NOTIFIED with status %d\n", myproc.nspace, myproc.rank, status);
 }
 
+// the invite handler
+static void invite_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
+                        const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
+                        pmix_info_t results[], size_t nresults,
+                        pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
+{
+    myquery_data_t *qd;
+    size_t n;
+
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source,
+                                results, nresults);
+
+    fprintf(stderr, "Client %s:%d INVITED with status %d\n", myproc.nspace, myproc.rank, status);
+
+    // find the object we provided
+    for (n = 0; n < ninfo; n++) {
+        if (0 == strncmp(info[n].key, PMIX_EVENT_RETURN_OBJECT, PMIX_MAX_KEYLEN)) {
+            qd = (myquery_data_t *) info[n].value.data.ptr;
+            break;
+        }
+    }
+    /* if the object wasn't returned, then that is an error */
+    if (NULL == qd) {
+        fprintf(stderr, "LOCK WASN'T RETURNED IN RELEASE CALLBACK\n");
+        /* let the event handler progress */
+        if (NULL != cbfunc) {
+            cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
+        }
+        return;
+    }
+
+
+    // transfer the info across
+    qd->ninfo = ninfo;
+    if (0 < qd->ninfo) {
+        PMIX_INFO_CREATE(qd->info, qd->ninfo);
+        for (n=0; n < qd->ninfo; n++) {
+            PMIX_INFO_XFER(&qd->info[n], &info[n]);
+        }
+    }
+
+
+    // release the lock
+    qd->lock.status = status;
+    DEBUG_WAKEUP_THREAD(&qd->lock);
+
+    // complete the event chain
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
+    }
+}
+
 static void op_callbk(pmix_status_t status, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
@@ -74,7 +126,7 @@ int main(int argc, char **argv)
     pmix_proc_t proc, *procs, *parray;
     uint32_t nprocs;
     mylock_t lock;
-    pmix_info_t *results, info[2];
+    pmix_info_t *results, info[3];
     size_t nresults, cid, n, m, psize;
     pmix_data_array_t dry;
     char *tmp;
@@ -82,6 +134,7 @@ int main(int argc, char **argv)
     int i;
     bool addmembers = false;
     bool testquery = false;
+    myquery_data_t qd;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     for (i=1; i < argc; i++) {
@@ -114,13 +167,18 @@ int main(int argc, char **argv)
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
-    if (nprocs < 4) {
+    if (addmembers && nprocs < 6) {
+        if (0 == myproc.rank) {
+            fprintf(stderr, "This example with add-members requires a minimum of 6 processes\n");
+        }
+        goto done;
+    } else if (nprocs < 4) {
         if (0 == myproc.rank) {
             fprintf(stderr, "This example requires a minimum of 4 processes\n");
         }
         goto done;
     }
-    fprintf(stderr, "Client %s:%d universe size %d\n", myproc.nspace, myproc.rank, nprocs);
+    fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
 
     /* register our default errhandler */
     DEBUG_CONSTRUCT_LOCK(&lock);
@@ -153,10 +211,11 @@ int main(int argc, char **argv)
         PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
 
         if (addmembers && 3 == myproc.rank) {
+            fprintf(stderr, "[%u]: Adding members\n", myproc.rank);
             PMIX_DATA_ARRAY_CONSTRUCT(&dry, 2, PMIX_PROC);
             parray = (pmix_proc_t*)dry.array;
-            PMIX_LOAD_PROCID(&parray[0], myproc.nspace, 7);
-            PMIX_LOAD_PROCID(&parray[1], myproc.nspace, 10);
+            PMIX_LOAD_PROCID(&parray[0], myproc.nspace, 4);
+            PMIX_LOAD_PROCID(&parray[1], myproc.nspace, 5);
             PMIX_INFO_LOAD(&info[1], PMIX_GROUP_ADD_MEMBERS, &dry, PMIX_DATA_ARRAY);
             PMIX_DATA_ARRAY_DESTRUCT(&dry);
             rc = PMIx_Group_construct("ourgroup", procs, nprocs, info, 2, &results, &nresults);
@@ -201,7 +260,49 @@ int main(int argc, char **argv)
                 goto done;
             }
         }
+    } else if (addmembers && (4 == myproc.rank || 5 == myproc.rank)) {
+        fprintf(stderr, "[%u]: Registering for event\n", myproc.rank);
+        // ranks 4 and 5 wait for invite
+        DEBUG_CONSTRUCT_LOCK(&lock);
+        rc = PMIX_GROUP_INVITED;
+        // provide an object by which we get back the groupID and membership
+        DEBUG_CONSTRUCT_MYQUERY(&qd);
+        PMIX_INFO_LOAD(&info[0], PMIX_EVENT_RETURN_OBJECT, &qd, PMIX_POINTER);
+        PMIX_INFO_LOAD(&info[1], PMIX_EVENT_ONESHOT, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[2], PMIX_EVENT_HDLR_NAME, "INVITEHDLR", PMIX_STRING);
+        // register it
+        PMIx_Register_event_handler(&rc, 1, info, 3, invite_hdlr , errhandler_reg_callbk,
+                                    (void *) &lock);
+        DEBUG_WAIT_THREAD(&lock);
+        rc = lock.status;
+        DEBUG_DESTRUCT_LOCK(&lock);
+        if (PMIX_SUCCESS != rc) {
+            goto done;
+        }
+        // now wait for the invitation
+        DEBUG_WAIT_THREAD(&qd.lock);
+        fprintf(stderr, "[%u]: Invite received\n", myproc.rank);
+        // search the returned info for the groupID, context ID, and membership
+        for (n=0; n < qd.ninfo; n++) {
+            if (PMIX_CHECK_KEY(&qd.info[n], PMIX_GROUP_ID)) {
+                fprintf(stderr, "[%u]: Received groupID %s\n", myproc.rank, qd.info[n].value.data.string);
+
+            } else if (PMIX_CHECK_KEY(&qd.info[n], PMIX_GROUP_CONTEXT_ID)) {
+                PMIX_VALUE_GET_NUMBER(rc, &qd.info[n].value, cid, size_t);
+                fprintf(stderr, "[%d] Received CID %lu\n", myproc.rank, (unsigned long) cid);
+
+            } else if (PMIX_CHECK_KEY(&qd.info[n], PMIX_GROUP_MEMBERSHIP)) {
+                parray = (pmix_proc_t*)qd.info[n].value.data.darray->array;
+                psize = qd.info[n].value.data.darray->size;
+                fprintf(stderr, "[%u] NUM MEMBERS: %u MEMBERSHIP:\n", myproc.rank, (unsigned)psize);
+                for (m=0; m < psize; m++) {
+                    fprintf(stderr, "\t%s:%u\n", parray[m].nspace, parray[m].rank);
+                }
+            }
+        }
+        DEBUG_DESTRUCT_MYQUERY(&qd);
     }
+
     if (testquery && 0 == myproc.rank) {
         /* first ask for a list of active namespaces */
         PMIX_QUERY_CONSTRUCT(&query);
