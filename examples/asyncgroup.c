@@ -18,7 +18,7 @@
  * Copyright (c) 2019      Triad National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -77,9 +77,14 @@ static void grpcomplete(size_t evhdlr_registration_id, pmix_status_t status, con
                         pmix_info_t info[], size_t ninfo, pmix_info_t results[], size_t nresults,
                         pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo, results, nresults, cbfunc, cbdata);
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, info, ninfo, results, nresults);
 
     DEBUG_WAKEUP_THREAD(&invitedlock);
+
+    // progress the event thread
+    if (NULL != cbfunc) {
+        cbfunc(PMIX_SUCCESS, NULL, 0, NULL, NULL, cbdata);
+    }
 }
 
 static void invitefn(size_t evhdlr_registration_id, pmix_status_t status, const pmix_proc_t *source,

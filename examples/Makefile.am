@@ -12,7 +12,7 @@
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      IBM Corporation. All rights reserved.
 # $COPYRIGHT$
 #
@@ -26,7 +26,8 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 
 noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
-                  hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log
+                  hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
+                  group_bootstrap
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -128,8 +129,13 @@ log_SOURCES = log.c examples.h
 log_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 log_LDADD = $(top_builddir)/src/libpmix.la
 
+group_bootstrap_SOURCES = group_bootstrap.c examples.h
+group_bootstrap_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+group_bootstrap_LDADD = $(top_builddir)/src/libpmix.la
+
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
         debugger debuggerd dmodex dynamic fault group \
         hello jctrl launcher log pub pubi server tool \
-        abi_no_init abi_with_init group_lcl_cid
+        abi_no_init abi_with_init group_lcl_cid pset \
+        async_group group_dmodex group_bootstrap

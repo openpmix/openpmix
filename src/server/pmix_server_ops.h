@@ -394,5 +394,14 @@ static inline pmix_peer_t* pmix_get_peer_object(const pmix_proc_t *proc)
     return NULL;
 }
 
+// Utilities
+PMIX_EXPORT pmix_server_trkr_t *pmix_server_get_tracker(char *id, pmix_proc_t *procs,
+                                                        size_t nprocs, pmix_cmd_t type);
+
+PMIX_EXPORT pmix_server_trkr_t *pmix_server_new_tracker(char *id, pmix_proc_t *procs,
+                                                        size_t nprocs, pmix_cmd_t type);
+
+PMIX_EXPORT pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
+                                                   pmix_buffer_t *buf);
 
 #endif // PMIX_SERVER_OPS_H

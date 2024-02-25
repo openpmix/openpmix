@@ -546,6 +546,7 @@ typedef struct {
     pmix_collect_t collect_type; // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;
+    pmix_info_cbfunc_t info_cbfunc;
     void *cbdata;
 } pmix_server_trkr_t;
 PMIX_CLASS_DECLARATION(pmix_server_trkr_t);

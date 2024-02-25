@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -46,7 +46,6 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     for (n = 0; n < insize; n++) {
         match = false;
         PMIX_LIST_FOREACH(grp, &pmix_client_globals.groups, pmix_group_t) {
-
             if (PMIX_CHECK_NSPACE(grp->grpid, inprocs[n].nspace)) {
                 match = true;
                 /* the nspace matches this group ID */
