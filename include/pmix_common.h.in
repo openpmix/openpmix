@@ -1132,6 +1132,15 @@ typedef uint32_t pmix_rank_t;
                                                                     //        join the group during the construction procedure. This is used when
                                                                     //        some members of the proposed group do not know the full membership
                                                                     //        and therefore cannot include all members in the call to construct.
+#define PMIX_GROUP_BOOTSTRAP                "pmix.grp.btstrp"       // (size_t) Group construct call will not include all members as individual
+                                                                    //        participants don't know the entire list. The provided number indicates
+                                                                    //        the number of procs that will start the construction. Additional
+                                                                    //        members will be provided via the PMIX_GROUP_ADD_MEMBERS attribute.
+                                                                    //        Non-bootstrap participants will still call PMIx_Group_construct, but
+                                                                    //        with a NULL for the procs parameter. This indicates that the caller
+                                                                    //        wishes to be included via a group invite, and so the library will
+                                                                    //        handle the necessary event registrations on behalf of the caller.
+
 
 /* Storage-Related Attributes */
 #define PMIX_QUERY_STORAGE_LIST             "pmix.strg.list"       // (char*) return comma-delimited list of identifiers for all available storage systems

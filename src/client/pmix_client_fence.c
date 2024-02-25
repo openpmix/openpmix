@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -124,6 +124,7 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
     pmix_cb_t *cb;
     pmix_proc_t rg, *rgs;
     size_t nrg;
+    bool created = false;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -154,14 +155,25 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
         rgs = &rg;
         nrg = 1;
     } else {
-        rgs = (pmix_proc_t *) procs;
-        nrg = nprocs;
+        // if they are referencing a group, then replace that group with
+        // the actual proc(s)
+        rc = pmix_client_convert_group_procs(procs, nprocs, &rgs, &nrg);
+        if (PMIX_SUCCESS != rc) {
+            return rc;
+        }
+        created = true;
     }
 
     msg = PMIX_NEW(pmix_buffer_t);
     if (PMIX_SUCCESS != (rc = pack_fence(msg, cmd, rgs, nrg, info, ninfo))) {
         PMIX_RELEASE(msg);
+        if (created) {
+            PMIX_PROC_FREE(rgs, nrg);
+        }
         return rc;
+    }
+    if (created) {
+        PMIX_PROC_FREE(rgs, nrg);
     }
 
     /* create a callback object as we need to pass it to the
@@ -198,7 +210,7 @@ static pmix_status_t unpack_return(pmix_buffer_t *data)
     }
     pmix_output_verbose(2, pmix_client_globals.fence_output,
                         "client:unpack fence received status %d", ret);
-    
+
     /* provide an opportunity to store any data (or at least how to access
      * any data) that was included in the fence */
     PMIX_GDS_RECV_MODEX_COMPLETE(rc, pmix_client_globals.myserver, data);

@@ -42,6 +42,7 @@ RST_SOURCE_FILES   = \
         $(srcdir)/developers/*.rst \
         $(srcdir)/how-things-work/*.rst \
         $(srcdir)/how-things-work/schedulers/*.rst \
+        $(srcdir)/how-things-work/sets_groups/*.rst \
         $(srcdir)/installing-pmix/*.rst \
         $(srcdir)/installing-pmix/configure-cli-options/*.rst \
         $(srcdir)/man/*.rst \

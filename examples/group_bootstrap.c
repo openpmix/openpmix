@@ -17,9 +17,6 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
- * Copyright (c) 2022      Triad National Security, LLC.
- *                         All rights reserved.
- *
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,25 +25,18 @@
  *
  */
 
-/*
- * This test simulates the way Open MPI uses the PMIx_Group_construct to
- * implement MPI4 functions:
- * - MPI_Comm_create_from_group
- * - MPI_Intercomm_create_from_groups
- */
-
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <libgen.h>
 
 #include <pmix.h>
 #include "examples.h"
 
 static pmix_proc_t myproc;
-static uint32_t get_timeout = 600; /* default 600 secs to get remote data */
 
 static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
                             const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
@@ -64,8 +54,6 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
 
-    fprintf(stderr, "Client %s:%d OP CALLBACK CALLED WITH STATUS %d\n", myproc.nspace, myproc.rank,
-            status);
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -73,10 +61,8 @@ static void op_callbk(pmix_status_t status, void *cbdata)
 static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, void *cbdata)
 {
     mylock_t *lock = (mylock_t *) cbdata;
+    EXAMPLES_HIDE_UNUSED_PARAMS(errhandler_ref);
 
-    fprintf(stderr,
-            "Client %s:%d ERRHANDLER REGISTRATION CALLBACK CALLED WITH STATUS %d, ref=%lu\n",
-            myproc.nspace, myproc.rank, status, (unsigned long) errhandler_ref);
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -84,15 +70,13 @@ static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, v
 int main(int argc, char **argv)
 {
     int rc;
-    size_t n;
     pmix_value_t *val = NULL;
-    pmix_value_t value;
-    pmix_proc_t proc, *procs;
     uint32_t nprocs;
+    pmix_proc_t proc, *parray;
     mylock_t lock;
-    pmix_info_t *results, info, tinfo;
-    size_t nresults, cid;
-    char tmp[1024];
+    pmix_info_t *results = NULL, info[3];
+    size_t nresults, cid, n, m, psize;
+    pmix_data_array_t dry;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
@@ -109,13 +93,19 @@ int main(int argc, char **argv)
 
     /* get our job size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get universe size failed: %s\n", myproc.nspace,
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
-    fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
+    if (nprocs < 6) {
+        if (0 == myproc.rank) {
+            fprintf(stderr, "This example with add-members requires a minimum of 6 processes\n");
+        }
+        goto done;
+    }
+    fprintf(stderr, "Client %s:%d job size %u\n", myproc.nspace, myproc.rank, nprocs);
 
     /* register our default errhandler */
     DEBUG_CONSTRUCT_LOCK(&lock);
@@ -137,85 +127,80 @@ int main(int argc, char **argv)
         goto done;
     }
 
-    PMIX_PROC_CREATE(procs, nprocs);
-    for (n = 0; n < nprocs; n++) {
-        PMIX_PROC_LOAD(&procs[n], myproc.nspace, n);
-    }
-    PMIX_INFO_LOAD(&info, PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
-    rc = PMIx_Group_construct("ourgroup", procs, nprocs, &info, 1, &results, &nresults);
-    if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
-                myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-        goto done;
-    }
-    /* check the results */
-    if (NULL != results) {
-        for (n=0; n < nresults; n++) {
-            if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &results[n].value, cid, size_t);
-                fprintf(stderr, "%d Group construct complete with status %s CID %lu\n",
-                        myproc.rank, PMIx_Error_string(rc), cid);
-                break;
-            }
+    /* rank=0 and 3 bootstrap a new group */
+    if (0 == myproc.rank || 3 == myproc.rank) {
+        fprintf(stderr, "%d executing Group_construct\n", myproc.rank);
+        PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
+        // two procs are performing the bootstrap
+        n = 2;
+        PMIX_INFO_LOAD(&info[1], PMIX_GROUP_BOOTSTRAP, &n, PMIX_SIZE);
+
+        PMIX_DATA_ARRAY_CONSTRUCT(&dry, 1, PMIX_PROC);
+        parray = (pmix_proc_t*)dry.array;
+        if (3 == myproc.rank) {
+            fprintf(stderr, "[%u]: Adding members\n", myproc.rank);
+            PMIX_LOAD_PROCID(&parray[0], myproc.nspace, 4);
+        } else {
+            fprintf(stderr, "[%u]: Adding members\n", myproc.rank);
+            PMIX_LOAD_PROCID(&parray[0], myproc.nspace, 5);
         }
-    } else {
-        fprintf(stderr, "%d Group construct complete, but no CID returned\n", myproc.rank);
-        goto done;
-    }
-    PMIX_PROC_FREE(procs, nprocs);
-
-    /*
-     * put some data
-     */
-    (void) snprintf(tmp, 1024, "%s-%lu-%d-remote", myproc.nspace, cid, myproc.rank);
-    value.type = PMIX_UINT64;
-    value.data.uint64 = 1234UL + (unsigned long) myproc.rank;
-    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_GLOBAL, tmp, &value))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
-        goto done;
-    }
-
-    /* commit the data to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
-        goto done;
+        PMIX_INFO_LOAD(&info[2], PMIX_GROUP_ADD_MEMBERS, &dry, PMIX_DATA_ARRAY);
+        PMIX_DATA_ARRAY_DESTRUCT(&dry);
+        rc = PMIx_Group_construct("ourgroup", &myproc, 1, info, 3, &results, &nresults);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            goto done;
+        }
+    } else if (4 == myproc.rank || 5 == myproc.rank) {
+        rc = PMIx_Group_construct("ourgroup", NULL, 0, NULL, 0, &results, &nresults);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            goto done;
+        }
     }
 
-    /*
-     * destruct the group
-     */
-    rc = PMIx_Group_destruct("ourgroup", NULL, 0);
-    if (PMIX_SUCCESS != rc) {
+    if (0 == myproc.rank || 3 == myproc.rank ||
+        4 == myproc.rank || 5 == myproc.rank) {
+        /* we should have a single results object */
+        if (NULL != results) {
+            cid = 0;
+            for (n=0; n < nresults; n++) {
+                if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_CONTEXT_ID)) {
+                    PMIX_VALUE_GET_NUMBER(rc, &results[n].value, cid, size_t);
+                    fprintf(stderr, "%d Group construct complete with status %s KEY %s CID %lu\n",
+                            myproc.rank, PMIx_Error_string(rc), results[n].key, (unsigned long) cid);
+                } else if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_MEMBERSHIP)) {
+                    parray = (pmix_proc_t*)results[n].value.data.darray->array;
+                    psize = results[n].value.data.darray->size;
+                    fprintf(stderr, "[%u] NUM MEMBERS: %u MEMBERSHIP:\n", myproc.rank, (unsigned)psize);
+                    for (m=0; m < psize; m++) {
+                        fprintf(stderr, "\t%s:%u\n", parray[m].nspace, parray[m].rank);
+                    }
+                }
+            }
+            PMIX_INFO_FREE(results, nresults);
+        } else {
+            fprintf(stderr, "%d Group construct complete, but no results returned\n", myproc.rank);
+        }
+
+        fprintf(stderr, "%d Executing group fence\n", myproc.rank);
+        PMIX_PROC_CONSTRUCT(&proc);
+        PMIX_LOAD_PROCID(&proc, "ourgroup", PMIX_RANK_WILDCARD);
+        if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, NULL, 0))) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
+                    rc);
+            goto done;
+        }
+
+        fprintf(stderr, "%d executing Group_destruct\n", myproc.rank);
+        rc = PMIx_Group_destruct("ourgroup", NULL, 0);
+        if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_destruct failed: %s\n", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
             goto done;
-    }
-
-    PMIX_INFO_CONSTRUCT(&tinfo);
-    PMIX_INFO_LOAD(&tinfo, PMIX_TIMEOUT, &get_timeout, PMIX_UINT32);
-    for (n = 0; n < nprocs; n++) {
-        proc.rank = n;
-        (void)snprintf(tmp, 1024, "%s-%lu-%d-remote", myproc.nspace, cid, (int)n);
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, tmp, &tinfo, 1, &val))) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Get %s failed: %d\n",
-                        myproc.nspace, (int)n, tmp, rc);
-            goto done;
         }
-        if (PMIX_UINT64 != val->type) {
-           fprintf(stderr, "%s:%d: PMIx_Get Key %s returned wrong type: %d\n",
-                   myproc.nspace, myproc.rank, tmp, val->type);
-            PMIX_VALUE_RELEASE(val);
-            goto done;
-        }
-        if ((1234UL + (unsigned long)n) != val->data.uint64) {
-            fprintf(stderr, "%s:%d: PMIx_Get Key %s returned wrong value: %lu\n",
-                    myproc.nspace, myproc.rank, tmp, (unsigned long)val->data.uint64);
-            PMIX_VALUE_RELEASE(val);
-            goto done;
-        }
-        PMIX_VALUE_RELEASE(val);
     }
 
 done:
@@ -225,9 +210,13 @@ done:
     DEBUG_WAIT_THREAD(&lock);
     DEBUG_DESTRUCT_LOCK(&lock);
 
+    fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
                 myproc.rank, PMIx_Error_string(rc));
+    } else {
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
+                myproc.nspace, myproc.rank);
     }
     fprintf(stderr, "%s:%d COMPLETE\n", myproc.nspace, myproc.rank);
     fflush(stderr);
