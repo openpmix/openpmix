@@ -725,7 +725,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     AC_CHECK_FUNCS([pthread_setaffinity_np])
 
     # Setup HTML and man page processing
-    OAC_SETUP_SPHINX([$srcdir/docs/_build/html/index.html], [])
+    OAC_SETUP_SPHINX([$srcdir/docs/_build/html/index.html], [],
+                     [$srcdir/docs/requirements.txt])
 
     AS_IF([test -n "$OAC_MAKEDIST_DISABLE"],
           [AS_IF([test -n "$PMIX_MAKEDIST_DISABLE"],
