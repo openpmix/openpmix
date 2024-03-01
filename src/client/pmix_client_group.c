@@ -148,7 +148,7 @@ static void invite_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
 
     PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, results, nresults);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "Client %s INVITED with status %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid),
                         PMIx_Error_string(status));
@@ -248,7 +248,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group_construct called");
 
     if (pmix_globals.init_cntr <= 0) {
@@ -267,6 +267,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
      * group creation operation - it will be included by invitation,
      * so we need to register the invite handler */
     if (NULL == procs) {
+        pmix_output_verbose(2, pmix_client_globals.group_output,
+                            "pmix: group_construct bootstrap operation");
         PMIX_CONSTRUCT_LOCK(&lock);
         rc = PMIX_GROUP_INVITED;
         // provide an object by which we get back the groupID and membership
@@ -348,7 +350,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_construct_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
@@ -367,6 +369,8 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
      * group creation operation - it will be included by invitation,
      * so we need to register the invite handler */
     if (NULL == procs) {
+        pmix_output_verbose(2, pmix_client_globals.group_output,
+                            "pmix: group_construct_nb bootstrap operation");
         PMIX_CONSTRUCT_LOCK(&lock);
         rc = PMIX_GROUP_INVITED;
         // provide an object by which we get back the groupID and membership
@@ -466,7 +470,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group_destruct called");
 
     if (pmix_globals.init_cntr <= 0) {
@@ -498,7 +502,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
     rc = cb.status;
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group destruct completed");
 
     return rc;
@@ -516,7 +520,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_destruct_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
@@ -1008,7 +1012,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
     rc = cb->status;
     PMIX_RELEASE(cb);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group construction completed");
 
     return rc;
@@ -1025,7 +1029,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     pmix_data_range_t range;
     PMIX_HIDE_UNUSED_PARAMS(grp, cbfunc);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "[%s:%d] pmix: join nb called",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
 
@@ -1085,7 +1089,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(cb);
     }
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "[%s:%d] pmix: group invite %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
                         (PMIX_GROUP_INVITE_ACCEPTED == code) ? "ACCEPTED" : "DECLINED");
@@ -1101,7 +1105,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output, "pmix: group_leave called");
+    pmix_output_verbose(2, pmix_client_globals.group_output, "pmix: group_leave called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -1132,7 +1136,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
     rc = cb.status;
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group leave completed");
 
     return rc;
@@ -1149,7 +1153,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_leave_nb called");
 
     if (pmix_globals.init_cntr <= 0) {
@@ -1267,7 +1271,7 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
 
@@ -1337,7 +1341,7 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     n = 0;
     if (0 < nmembers) {
         PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
-        // do not destruct darray as the membership is being used
+        // data was copied into the info
         ++n;
     }
     if (gotctxid) {
@@ -1369,7 +1373,7 @@ static void destruct_cbfunc(struct pmix_peer_t *pr,
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
-    pmix_output_verbose(2, pmix_client_globals.connect_output,
+    pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:client recv callback activated with %d bytes",
                         (NULL == buf) ? -1 : (int) buf->bytes_used);
 

@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
@@ -890,7 +890,7 @@ pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next)
     return &active->info;
 }
 
-static pmix_status_t get_darray_size(pmix_data_array_t *array, 
+static pmix_status_t get_darray_size(pmix_data_array_t *array,
                                      size_t *sz)
 {
     pmix_status_t rc = PMIX_SUCCESS;

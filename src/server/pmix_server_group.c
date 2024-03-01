@@ -442,6 +442,125 @@ static void grp_timeout(int sd, short args, void *cbdata)
     PMIX_RELEASE(trk);
 }
 
+static pmix_status_t aggregate_info(pmix_server_trkr_t *trk,
+                                    pmix_info_t *info, size_t ninfo)
+{
+    pmix_list_t ilist, nmlist;
+    size_t n, m, j, k, niptr;
+    pmix_info_t *iptr;
+    bool found, nmfound;
+    pmix_info_caddy_t *icd;
+    pmix_proclist_t *nm;
+    pmix_proc_t *nmarray, *trkarray;
+    size_t nmsize, trksize, bt, bt2;
+    pmix_status_t rc;
+
+    if (NULL == trk->info) {
+        trk->info = info;
+        trk->ninfo = ninfo;
+        return PMIX_EXISTS;
+    }
+
+    // only keep unique entries
+    PMIX_CONSTRUCT(&ilist, pmix_list_t);
+    for (m=0; m < ninfo; m++) {
+        found = false;
+        for (n=0; n < trk->ninfo; n++) {
+            if (PMIX_CHECK_KEY(&trk->info[n], info[m].key)) {
+
+                // check a few critical keys
+                if (PMIX_CHECK_KEY(&info[m], PMIX_GROUP_ADD_MEMBERS)) {
+                    // aggregate the members
+                    nmarray = (pmix_proc_t*)info[m].value.data.darray->array;
+                    nmsize = info[m].value.data.darray->size;
+                    trkarray = (pmix_proc_t*)trk->info[n].value.data.darray->array;
+                    trksize = trk->info[n].value.data.darray->size;
+                    PMIX_CONSTRUCT(&nmlist, pmix_list_t);
+                    // sadly, an exhaustive search
+                    for (j=0; j < nmsize; j++) {
+                        nmfound = false;
+                        for (k=0; k < trksize; k++) {
+                            if (PMIX_CHECK_PROCID(&nmarray[j], &trkarray[k])) {
+                                // if the new one is rank=WILDCARD, then ensure
+                                // we keep it as wildcard
+                                if (PMIX_RANK_WILDCARD == nmarray[j].rank) {
+                                    trkarray[k].rank = PMIX_RANK_WILDCARD;
+                                }
+                                nmfound = true;
+                                break;
+                            }
+                        }
+                        if (!nmfound) {
+                            nm = PMIX_NEW(pmix_proclist_t);
+                            memcpy(&nm->proc, &nmarray[j], sizeof(pmix_proc_t));
+                            pmix_list_append(&nmlist, &nm->super);
+                        }
+                    }
+                    // create the replacement array, if needed
+                    if (0 < pmix_list_get_size(&nmlist)) {
+                        nmsize = trksize + pmix_list_get_size(&nmlist);
+                        PMIX_PROC_CREATE(nmarray, nmsize);
+                        memcpy(nmarray, trkarray, trksize * sizeof(pmix_proc_t));
+                        j = trksize;
+                        PMIX_LIST_FOREACH(nm, &nmlist, pmix_proclist_t) {
+                            memcpy(&nmarray[j], &nm->proc, sizeof(pmix_proc_t));
+                            ++j;
+                        }
+                        PMIX_PROC_FREE(trkarray, trksize);
+                        trk->info[n].value.data.darray->array = nmarray;
+                        trk->info[n].value.data.darray->size = nmsize;
+                    }
+                    PMIX_LIST_DESTRUCT(&nmlist);
+
+                } else if (PMIX_CHECK_KEY(&info[m], PMIX_GROUP_BOOTSTRAP)) {
+                    // the numbers must match
+                    PMIX_VALUE_GET_NUMBER(rc, &info[m].value, bt, size_t);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_LIST_DESTRUCT(&ilist);
+                        return rc;
+                    }
+                    PMIX_VALUE_GET_NUMBER(rc, &trk->info[n].value, bt2, size_t);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_LIST_DESTRUCT(&ilist);
+                        return rc;
+                    }
+                    if (bt != bt2) {
+                        PMIX_LIST_DESTRUCT(&ilist);
+                        return PMIX_ERR_BAD_PARAM;
+                    }
+                }
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            // add this one in
+            icd = PMIX_NEW(pmix_info_caddy_t);
+            icd->info = &info[m];
+            icd->ninfo = 1;
+            pmix_list_append(&ilist, &icd->super);
+        }
+    }
+    if (0 < pmix_list_get_size(&ilist)) {
+        niptr = trk->ninfo + pmix_list_get_size(&ilist);
+        PMIX_INFO_CREATE(iptr, niptr);
+        for (n=0; n < trk->ninfo; n++) {
+            PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
+        }
+        n = trk->ninfo;
+        PMIX_LIST_FOREACH(icd, &ilist, pmix_info_caddy_t) {
+            PMIX_INFO_XFER(&iptr[n], icd->info);
+            ++n;
+        }
+        PMIX_INFO_FREE(trk->info, trk->ninfo);
+        trk->info = iptr;
+        trk->ninfo = niptr;
+        /* cleanup */
+    }
+    PMIX_LIST_DESTRUCT(&ilist);
+    return PMIX_SUCCESS;
+}
+
 /* we are being called from the PMIx server's switchyard function,
  * which means we are in an event and can access global data */
 pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *buf)
@@ -453,13 +572,14 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     char *grpid;
     pmix_proc_t *procs;
     pmix_info_t *info = NULL, *iptr = NULL, *grpinfoptr = NULL;
-    size_t n, ninfo, ninf, niptr, nprocs, n2, ngrpinfo = 0;
+    size_t n, ninfo, ninf, nprocs, n2, ngrpinfo = 0;
     pmix_server_trkr_t *trk;
     bool need_cxtid = false;
     bool match, force_local = false;
     bool embed_barrier = false;
     bool barrier_directive_included = false;
     bool locally_complete = false;
+    bool bootstrap = false;
     pmix_buffer_t bucket, bkt;
     pmix_byte_object_t bo;
     pmix_grpinfo_t *g = NULL;
@@ -541,11 +661,19 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ASSIGN_CONTEXT_ID)) {
             need_cxtid = PMIX_INFO_TRUE(&info[n]);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_LOCAL_ONLY)) {
             force_local = PMIX_INFO_TRUE(&info[n]);
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_BOOTSTRAP)) {
+            // ignore the actual value - we just need to know it
+            // is present
+            bootstrap = true;
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_EMBED_BARRIER)) {
             embed_barrier = PMIX_INFO_TRUE(&info[n]);
             barrier_directive_included = true;
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
             PMIX_VALUE_GET_NUMBER(rc, &info[n].value, tv.tv_sec, uint32_t);
             if (PMIX_SUCCESS != rc) {
@@ -553,6 +681,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                 PMIX_INFO_FREE(info, ninfo);
                 goto error;
             }
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_INFO)) {
             grpinfoptr = (pmix_info_t*)info[n].value.data.darray->array;
             ngrpinfo = info[n].value.data.darray->size;
@@ -614,22 +743,9 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         /* it is possible that different participants will
          * provide different attributes, so collect the
          * aggregate of them */
-        if (NULL == trk->info) {
-            trk->info = info;
-            trk->ninfo = ninfo;
-        } else {
-            niptr = trk->ninfo + ninfo;
-            PMIX_INFO_CREATE(iptr, niptr);
-            for (n=0; n < trk->ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
-            }
-            for (n=0; n < ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n+trk->ninfo], &info[n]);
-            }
-            PMIX_INFO_FREE(trk->info, trk->ninfo);
-            trk->info = iptr;
-            trk->ninfo = niptr;
-            /* cleanup */
+        rc = aggregate_info(trk, info, ninfo);
+        if (PMIX_SUCCESS == rc) {
+            // we extended the trk's info array
             PMIX_INFO_FREE(info, ninfo);
             info = NULL;
         }
@@ -677,22 +793,9 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         /* it is possible that different participants will
          * provide different attributes, so collect the
          * aggregate of them */
-        if (NULL == trk->info) {
-            trk->info = info;
-            trk->ninfo = ninfo;
-        } else {
-            niptr = trk->ninfo + ninfo;
-            PMIX_INFO_CREATE(iptr, niptr);
-            for (n=0; n < trk->ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n], &trk->info[n]);
-            }
-            for (n=0; n < ninfo; n++) {
-                PMIX_INFO_XFER(&iptr[n+trk->ninfo], &info[n]);
-            }
-            PMIX_INFO_FREE(trk->info, trk->ninfo);
-            trk->info = iptr;
-            trk->ninfo = niptr;
-            /* cleanup */
+        rc = aggregate_info(trk, info, ninfo);
+        if (PMIX_SUCCESS == rc) {
+            // we extended the trk's info array
             PMIX_INFO_FREE(info, ninfo);
             info = NULL;
         }
@@ -705,6 +808,11 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     /* add this contributor to the tracker so they get
      * notified when we are done */
     pmix_list_append(&trk->local_cbs, &cd->super);
+
+    // if this is a bootstrap, then pass it up
+    if (bootstrap) {
+        goto proceed;
+    }
 
     /* are we locally complete? */
     if (trk->def_complete && pmix_list_get_size(&trk->local_cbs) == trk->nlocal) {
@@ -796,6 +904,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
      * here if the operation is NOT completely local, and
      * we only activate the timeout if it IS local */
 
+proceed:
     /* check if our host supports group operations */
     if (NULL == pmix_host_server.group) {
         /* cannot support it */
@@ -886,6 +995,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             iptr = NULL;
         }
     }
+
     rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grpid, trk->pcs, trk->npcs,
                                 trk->info, trk->ninfo, grpcbfunc, trk);
     if (PMIX_SUCCESS != rc) {

@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
  *
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1295,7 +1295,8 @@ bool pmix_notify_check_range(pmix_range_trkr_t *rng, const pmix_proc_t *proc)
             if (0 != strncmp(rng->procs[n].nspace, proc->nspace, PMIX_MAX_NSLEN)) {
                 continue;
             }
-            if (PMIX_RANK_WILDCARD == rng->procs[n].rank || rng->procs[n].rank == proc->rank) {
+            if (PMIX_RANK_WILDCARD == rng->procs[n].rank ||
+                rng->procs[n].rank == proc->rank) {
                 return true;
             }
         }
