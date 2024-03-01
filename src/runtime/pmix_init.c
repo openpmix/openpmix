@@ -18,7 +18,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -385,6 +385,11 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
         /* set default output */
         pmix_client_globals.iof_output = pmix_output_open(NULL);
         pmix_output_set_verbosity(pmix_client_globals.iof_output, pmix_client_globals.iof_verbose);
+    }
+    if (0 < pmix_client_globals.group_verbose) {
+        /* set default output */
+        pmix_client_globals.group_output = pmix_output_open(NULL);
+        pmix_output_set_verbosity(pmix_client_globals.group_output, pmix_client_globals.group_verbose);
     }
 
     /* get our effective id's */

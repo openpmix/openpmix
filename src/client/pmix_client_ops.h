@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,6 +54,9 @@ typedef struct {
     /* IOF output sinks */
     pmix_iof_sink_t iof_stdout;
     pmix_iof_sink_t iof_stderr;
+    // verbosity for client group operations
+    int group_output;
+    int group_verbose;
 } pmix_client_globals_t;
 
 PMIX_EXPORT extern pmix_client_globals_t pmix_client_globals;
