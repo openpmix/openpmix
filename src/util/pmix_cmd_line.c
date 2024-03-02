@@ -17,7 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -94,7 +94,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
 {
     int option_index = 0;   /* getopt_long stores the option index here. */
     int n, m, opt, argc, argind;
-    bool found;
+    bool found, firstpass = true;
     char *ptr, *str, **argv;
     pmix_cmd_line_store_fn_t mystore;
 
@@ -125,12 +125,22 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     // run the parser
     while (1) {
         argind = optind;
-        if (optind == argc || (optind > 0 && '-' != argv[optind][0])) {
+        if (optind == argc || (0 == strcmp("--", argv[optind]))) {
             // This is the executable, or we are at the last argument.
             // Don't process any further.
             break;
         }
         opt = getopt_long(argc, argv, shorts, myoptions, &option_index);
+        if (optind == argc) {
+            if (firstpass) {
+                // tool immediately followed by the executable
+                optind = 1;
+            } else {
+                optind = argind;
+            }
+            break;
+        }
+        firstpass = false;
 
         switch (opt) {
             case 0:
