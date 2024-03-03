@@ -56,7 +56,7 @@ static void invite_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
                         pmix_info_t results[], size_t nresults,
                         pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    myquery_data_t *qd;
+    myquery_data_t *qd = NULL;
     size_t n;
 
     EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source,
