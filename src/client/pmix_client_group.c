@@ -139,7 +139,7 @@ static void invite_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
                         pmix_info_t results[], size_t nresults,
                         pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
-    pmix_server_trkr_t *cd;
+    pmix_server_trkr_t *cd = NULL;
     pmix_status_t rc;
     size_t n;
     bool ourop = false;

@@ -91,7 +91,7 @@ int main(int argc, char **argv)
     uint32_t nprocs;
     mylock_t lock;
     pmix_info_t *results, info, tinfo;
-    size_t nresults, cid;
+    size_t nresults, cid = SIZE_MAX;
     char tmp[1024];
 
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
