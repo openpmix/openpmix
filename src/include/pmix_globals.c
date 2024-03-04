@@ -8,7 +8,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -528,6 +528,7 @@ static void ncon(pmix_notify_caddy_t *p)
     memset(p->source.nspace, 0, PMIX_MAX_NSLEN + 1);
     p->source.rank = PMIX_RANK_UNDEF;
     p->range = PMIX_RANGE_UNDEF;
+    p->staylocal = false;
     p->targets = NULL;
     p->ntargets = 0;
     p->nleft = SIZE_MAX;
