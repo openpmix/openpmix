@@ -462,6 +462,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EVENT_TIMESTAMP                "pmix.evtstamp"         // (time_t) System time when the associated event occurred.
 #define PMIX_EVENT_ONESHOT                  "pmix.evone"            // (bool) when registering, indicate that this event handler is to be deleted
                                                                     //        after being invoked
+#define PMIX_EVENT_STAYS_LOCAL              "pmix.evlocal"          // (bool) Event is not to be passed up to the host environment - used
+                                                                    //        when the range is custom to also indicate range=local and prevent
+                                                                    //        infinite loops with the host
 
 /* fault tolerance-related events */
 #define PMIX_EVENT_TERMINATE_SESSION        "pmix.evterm.sess"      // (bool) RM intends to terminate session
@@ -469,6 +472,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EVENT_TERMINATE_NODE           "pmix.evterm.node"      // (bool) RM intends to terminate all procs on this node
 #define PMIX_EVENT_TERMINATE_PROC           "pmix.evterm.proc"      // (bool) RM intends to terminate just this process
 #define PMIX_EVENT_ACTION_TIMEOUT           "pmix.evtimeout"        // (int) time in sec before RM will execute error response
+
 
 /* attributes used to describe "spawn" directives */
 #define PMIX_PERSONALITY                    "pmix.pers"             // (char*) name of personality to use
@@ -1140,6 +1144,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        with a NULL for the procs parameter. This indicates that the caller
                                                                     //        wishes to be included via a group invite, and so the library will
                                                                     //        handle the necessary event registrations on behalf of the caller.
+#define PMIX_GROUP_JOB_INFO                 "pmix.grp.jinfo"        // (pmix_byte_object_t) Job-level info for group construction
 
 
 /* Storage-Related Attributes */

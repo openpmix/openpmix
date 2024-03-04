@@ -939,10 +939,10 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         /* check for caching instructions */
         for (n = 0; n < cd->ninfo; n++) {
             if (PMIX_CHECK_KEY(&cd->info[n], PMIX_EVENT_DO_NOT_CACHE)) {
-                if (PMIX_INFO_TRUE(&cd->info[n])) {
-                    holdcd = false;
-                }
-                break;
+                holdcd = !PMIX_INFO_TRUE(&cd->info[n]);
+
+            } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_EVENT_STAYS_LOCAL)) {
+                cd->staylocal = PMIX_INFO_TRUE(&cd->info[n]);
             }
         }
     }
@@ -1185,6 +1185,7 @@ static void _notify_client_event(int sd, short args, void *cbdata)
         }
         PMIX_LIST_DESTRUCT(&trk);
         if (PMIX_RANGE_LOCAL != cd->range &&
+            !cd->staylocal &&
             PMIX_CHECK_PROCID(&cd->source, &pmix_globals.myid)) {
             /* if we are the source, then we need to post this upwards as
              * well so the host RM can broadcast it as necessary */

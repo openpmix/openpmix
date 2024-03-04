@@ -145,6 +145,10 @@ static void invite_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
     bool ourop = false;
     pmix_proc_t *members = NULL;
     size_t nmembers;
+    pmix_byte_object_t *pbo = NULL, bo;
+    pmix_buffer_t jobinfo, bkt;
+    char *nspace;
+    int32_t cnt;
 
     PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, source, results, nresults);
 
@@ -179,6 +183,8 @@ static void invite_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_MEMBERSHIP)) {
             members = (pmix_proc_t*)info[n].value.data.darray->array;
             nmembers = info[n].value.data.darray->size;
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_JOB_INFO)) {
+            pbo = (pmix_byte_object_t*)&info[n].value.data.bo;
         }
     }
     if (!ourop) {
@@ -209,6 +215,45 @@ static void invite_hdlr(size_t evhdlr_registration_id, pmix_status_t status,
         }
     }
 
+    // if job info was provided, process it
+    if (NULL != pbo) {
+        /* load it for unpacking */
+        PMIX_CONSTRUCT(&jobinfo, pmix_buffer_t);
+        PMIX_LOAD_BUFFER(pmix_client_globals.myserver, &jobinfo, pbo->bytes, pbo->size);
+
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &jobinfo, &bo, &cnt, PMIX_BYTE_OBJECT);
+        while (PMIX_SUCCESS == rc) {
+            /* load it for unpacking */
+            PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
+            PMIX_LOAD_BUFFER(pmix_client_globals.myserver, &bkt, bo.bytes, bo.size);
+
+            /* unpack the nspace for this blob */
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &bkt, &nspace, &cnt, PMIX_STRING);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&bkt);
+                continue;
+            }
+            if (!PMIX_CHECK_NSPACE(nspace, pmix_globals.myid.nspace)) {
+                /* extract and process any proc-related info for this nspace */
+                PMIX_GDS_STORE_JOB_INFO(rc, pmix_globals.mypeer, nspace, &bkt);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                }
+            }
+            free(nspace);
+            PMIX_DESTRUCT(&bkt);
+            /* get the next one */
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &jobinfo, &bo, &cnt, PMIX_BYTE_OBJECT);
+        }
+        if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+
+    }
     // release the lock
     cd->lock.status = status;
     if (NULL == cd->info_cbfunc) {
@@ -1268,6 +1313,9 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     pmix_data_array_t darray;
     pmix_proc_t *members = NULL;
     size_t nmembers = 0;
+    char *nspace;
+    pmix_buffer_t bkt;
+    pmix_byte_object_t bo;
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -1294,6 +1342,11 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
         PMIX_ERROR_LOG(rc);
         ret = rc;
     }
+
+    if (PMIX_SUCCESS != ret) {
+        goto report;
+    }
+
     /* unpack the final membership */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &nmembers, &cnt, PMIX_SIZE);
@@ -1322,6 +1375,39 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
         goto report;
     } else if (PMIX_SUCCESS == rc) {
         gotctxid = true;
+    }
+
+    /* group construct has to also pass back data from all nspace's involved in
+     * the operation, including our own. Each will come as a byte object */
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    while (PMIX_SUCCESS == rc) {
+        /* load it for unpacking */
+        PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
+        PMIX_LOAD_BUFFER(pmix_client_globals.myserver, &bkt, bo.bytes, bo.size);
+
+        /* unpack the nspace for this blob */
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, &bkt, &nspace, &cnt, PMIX_STRING);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&bkt);
+            continue;
+        }
+        /* extract and process any proc-related info for this nspace */
+        PMIX_GDS_STORE_JOB_INFO(rc, pmix_globals.mypeer, nspace, &bkt);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+        free(nspace);
+        PMIX_DESTRUCT(&bkt);
+        /* get the next one */
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    }
+    if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
     }
 
     /* since the group construction has finished, we can add

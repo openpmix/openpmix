@@ -700,6 +700,7 @@ typedef struct {
     pmix_status_t status;
     pmix_proc_t source;
     pmix_data_range_t range;
+    bool staylocal;  // do not pass up to host environment
     /* For notification, we use the targets field to track
      * any custom range of procs that are to receive the
      * event.
