@@ -17,7 +17,13 @@ must then run:
 
 .. code-block:: sh
 
+   shell$ git submodule update --init
    shell$ ./autogen.pl
+
+The ``submodule update`` is required as PMIx incorporates a submodule
+to support its `autoconf` logic. You can, however, omit the explicit
+submodule update step `if` you cloned the Git repository with the
+``--recursive`` flag.
 
 You will need very recent versions of GNU Autoconf, Automake, and
 Libtool.  If ``autogen.pl`` fails, read the :doc:`Developer's Guide

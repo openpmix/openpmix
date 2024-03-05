@@ -22,6 +22,19 @@ shell startup files)::
    # For csh/tcsh:
    set AUTOMAKE_JOBS 4
 
+.. important:: ``autogen.pl`` will fail and report an error if you
+   forgot to install the required submodule prior to running the
+   autogen script. You can either do this by adding the ``--recursive``
+   flag to your Git ``clone`` command, or by manually populating the
+   submodule by running:
+
+   .. code-block:: sh
+
+      shell$ git submodule update --init
+
+   prior to executing ``autogen.pl``.
+
+
 .. important:: You generally need to run ``autogen.pl`` whenever the
    top-level file ``configure.ac`` changes, or any files in the
    ``config/`` or ``<project>/config/`` directories change (these
