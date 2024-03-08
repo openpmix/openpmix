@@ -540,6 +540,7 @@ typedef struct {
     pmix_info_t *info;      // array of info structs
     size_t ninfo;           // number of info structs in array
     pmix_list_t grpinfo;    // list of group info to be distributed
+    int grpop;              // the group operation being tracked
     pmix_collect_t collect_type; // whether or not data is to be returned at completion
     pmix_modex_cbfunc_t modexcbfunc;
     pmix_op_cbfunc_t op_cbfunc;

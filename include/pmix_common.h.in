@@ -1660,7 +1660,8 @@ typedef enum {
 
 typedef enum {
     PMIX_GROUP_CONSTRUCT,
-    PMIX_GROUP_DESTRUCT
+    PMIX_GROUP_DESTRUCT,
+    PMIX_GROUP_NONE
 } pmix_group_operation_t;
 
 /* define storage medium values
