@@ -361,7 +361,7 @@ release:
             PMIX_RELEASE(reply);
             break;
         }
-        if (PMIX_SUCCESS == scd->status && !trk->hybrid) {
+        if (PMIX_SUCCESS == scd->status && PMIX_GROUP_CONSTRUCT == trk->grpop) {
             /* add the final membership */
             PMIX_BFROPS_PACK(ret, cd->peer, reply, &nmembers, 1, PMIX_SIZE);
             if (PMIX_SUCCESS != ret) {
@@ -509,6 +509,11 @@ done:
     /* remove the tracker from the list */
     pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
     PMIX_RELEASE(trk);
+
+    // cleanup
+    if (NULL != nspaces) {
+        PMIx_Argv_free(nspaces);
+    }
 
     /* we are done */
     if (NULL != scd->cbfunc.relfn) {
