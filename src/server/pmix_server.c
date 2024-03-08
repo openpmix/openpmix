@@ -9,7 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1447,10 +1447,76 @@ void pmix_server_purge_events(pmix_peer_t *peer, pmix_proc_t *proc)
     }
 }
 
+static void remove_client(pmix_namespace_t *nptr, pmix_proc_t *p)
+{
+    pmix_rank_info_t *info, *inext;
+    pmix_peer_t *peer;
+    pmix_proc_t proc;
+
+    PMIX_LIST_FOREACH_SAFE(info, inext, &nptr->ranks, pmix_rank_info_t) {
+        if (NULL == p || info->pname.rank == p->rank) {
+            if (NULL == p) {
+                PMIX_LOAD_PROCID(&proc, info->pname.nspace, info->pname.rank);
+            } else {
+                memcpy(&proc, p, sizeof(pmix_proc_t));
+            }
+            /* if this client failed to call finalize, we still need
+             * to restore any allocations that were given to it */
+            peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
+            if (NULL == peer) {
+                /* this peer never connected, and hence it won't finalize,
+                 * so account for it here */
+                nptr->nfinalized++;
+                /* even if they never connected, resources were allocated
+                 * to them, so we need to ensure they are properly released */
+                pmix_pnet.child_finalized(&proc);
+            } else {
+                if (!peer->finalized) {
+                    /* this peer connected to us, but is being deregistered
+                     * without having finalized. This usually means an
+                     * abnormal termination that was picked up by
+                     * our host prior to our seeing the connection drop.
+                     * It is also possible that we missed the dropped
+                     * connection, so mark the peer as finalized so
+                     * we don't duplicate account for it and take care
+                     * of it here */
+                    peer->finalized = true;
+                    nptr->nfinalized++;
+                }
+                /* resources may have been allocated to them, so
+                 * ensure they get cleaned up - this isn't true
+                 * for tools, so don't clean them up */
+                if (!PMIX_PEER_IS_TOOL(peer)) {
+                    pmix_pnet.child_finalized(&proc);
+                    pmix_psensor.stop(peer, NULL);
+                }
+                /* honor any registered epilogs */
+                pmix_execute_epilog(&peer->epilog);
+                /* ensure we close the socket to this peer so we don't
+                 * generate "connection lost" events should it be
+                 * subsequently "killed" by the host */
+                CLOSE_THE_SOCKET(peer->sd);
+                // remove it from our client array
+                pmix_pointer_array_set_item(&pmix_server_globals.clients, info->peerid, NULL);
+                PMIX_RELEASE(peer);
+            }
+            if (nptr->nlocalprocs == nptr->nfinalized) {
+                pmix_pnet.local_app_finalized(nptr);
+            }
+            pmix_list_remove_item(&nptr->ranks, &info->super);
+            PMIX_RELEASE(info);
+            if (NULL != p) {
+                break;
+            }
+        }
+    }
+    return;
+}
+
 static void _deregister_nspace(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
-    pmix_namespace_t *tmp;
+    pmix_namespace_t *tmp, *nptr;
     pmix_status_t rc;
 
     PMIX_ACQUIRE_OBJECT(cd);
@@ -1478,18 +1544,30 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
      * cached notifications targeting procs from this nspace */
     pmix_server_purge_events(NULL, &cd->proc);
 
-    /* release this nspace */
+    // find the nspace object
+    nptr = NULL;
     PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
         if (PMIX_CHECK_NSPACE(tmp->nspace, cd->proc.nspace)) {
-            /* perform any nspace-level epilog */
-            pmix_execute_epilog(&tmp->epilog);
-            /* remove and release it */
-            pmix_list_remove_item(&pmix_globals.nspaces, &tmp->super);
-            PMIX_RELEASE(tmp);
+            nptr = tmp;
             break;
         }
     }
+    if (NULL == nptr) {
+        /* nothing to do */
+        goto cleanup;
+    }
 
+    // ensure all local clients have been deregistered
+    remove_client(nptr, NULL);
+
+    /* perform any epilog */
+    pmix_execute_epilog(&nptr->epilog);
+
+    /* remove and release it */
+    pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+    PMIX_RELEASE(nptr);
+
+cleanup:
     /* release the caller */
     cd->opcbfunc(rc, cd->cbdata);
     PMIX_RELEASE(cd);
@@ -2018,9 +2096,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc, u
 static void _deregister_client(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
-    pmix_rank_info_t *info;
     pmix_namespace_t *nptr, *tmp;
-    pmix_peer_t *peer;
 
     PMIX_ACQUIRE_OBJECT(cd);
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
@@ -2041,54 +2117,9 @@ static void _deregister_client(int sd, short args, void *cbdata)
         /* nothing to do */
         goto cleanup;
     }
+
     /* find and remove this client */
-    PMIX_LIST_FOREACH (info, &nptr->ranks, pmix_rank_info_t) {
-        if (info->pname.rank == cd->proc.rank) {
-            /* if this client failed to call finalize, we still need
-             * to restore any allocations that were given to it */
-            peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
-            if (NULL == peer) {
-                /* this peer never connected, and hence it won't finalize,
-                 * so account for it here */
-                nptr->nfinalized++;
-                /* even if they never connected, resources were allocated
-                 * to them, so we need to ensure they are properly released */
-                pmix_pnet.child_finalized(&cd->proc);
-            } else {
-                if (!peer->finalized) {
-                    /* this peer connected to us, but is being deregistered
-                     * without having finalized. This usually means an
-                     * abnormal termination that was picked up by
-                     * our host prior to our seeing the connection drop.
-                     * It is also possible that we missed the dropped
-                     * connection, so mark the peer as finalized so
-                     * we don't duplicate account for it and take care
-                     * of it here */
-                    peer->finalized = true;
-                    nptr->nfinalized++;
-                }
-                /* resources may have been allocated to them, so
-                 * ensure they get cleaned up - this isn't true
-                 * for tools, so don't clean them up */
-                if (!PMIX_PEER_IS_TOOL(peer)) {
-                    pmix_pnet.child_finalized(&cd->proc);
-                    pmix_psensor.stop(peer, NULL);
-                }
-                /* honor any registered epilogs */
-                pmix_execute_epilog(&peer->epilog);
-                /* ensure we close the socket to this peer so we don't
-                 * generate "connection lost" events should it be
-                 * subsequently "killed" by the host */
-                CLOSE_THE_SOCKET(peer->sd);
-            }
-            if (nptr->nlocalprocs == nptr->nfinalized) {
-                pmix_pnet.local_app_finalized(nptr);
-            }
-            pmix_list_remove_item(&nptr->ranks, &info->super);
-            PMIX_RELEASE(info);
-            break;
-        }
-    }
+    remove_client(nptr, &cd->proc);
 
 cleanup:
     cd->opcbfunc(PMIX_SUCCESS, cd->cbdata);

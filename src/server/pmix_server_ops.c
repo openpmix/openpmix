@@ -3017,13 +3017,11 @@ pmix_status_t pmix_server_job_ctrl(pmix_peer_t *peer, pmix_buffer_t *buf,
                 /* we need to find the precise peer - we can only
                  * do cleanup for a local client */
                 for (m = 0; m < pmix_server_globals.clients.size; m++) {
-                    if (NULL
-                        == (pr = (pmix_peer_t *)
-                                pmix_pointer_array_get_item(&pmix_server_globals.clients, m))) {
+                    pr = (pmix_peer_t *)pmix_pointer_array_get_item(&pmix_server_globals.clients, m);
+                    if (NULL == pr) {
                         continue;
                     }
-                    if (0
-                        != strncmp(pr->info->pname.nspace, cd->targets[n].nspace, PMIX_MAX_NSLEN)) {
+                    if (!PMIX_CHECK_NSPACE(pr->info->pname.nspace, cd->targets[n].nspace)) {
                         continue;
                     }
                     if (pr->info->pname.rank == cd->targets[n].rank) {
@@ -4300,6 +4298,7 @@ static void tcon(pmix_server_trkr_t *t)
     t->info = NULL;
     t->ninfo = 0;
     PMIX_CONSTRUCT(&t->grpinfo, pmix_list_t);
+    t->grpop = PMIX_GROUP_NONE;
     /* this needs to be set explicitly */
     t->collect_type = PMIX_COLLECT_INVALID;
     t->modexcbfunc = NULL;

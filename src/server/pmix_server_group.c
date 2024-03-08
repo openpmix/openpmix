@@ -134,9 +134,8 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                         "server:grpcbfunc processing WITH %d CALLBACKS",
                         (int) pmix_list_get_size(&trk->local_cbs));
 
-    /* the tracker's "hybrid" field is used to indicate construct
-     * vs destruct - true is destruct */
-    if (trk->hybrid) {
+    // if this is a destruct operation, there is nothing more to do
+    if (PMIX_GROUP_DESTRUCT == trk->grpop) {
         goto release;
     }
 
@@ -893,7 +892,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
          * upon completion of the construct operation */
         trk->collect_type = PMIX_COLLECT_YES;
         /* mark as being a construct operation */
-        trk->hybrid = false;
+        trk->grpop = PMIX_GROUP_CONSTRUCT;
         /* it is possible that different participants will
          * provide different attributes, so collect the
          * aggregate of them */
@@ -1287,7 +1286,7 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
         }
         trk->collect_type = PMIX_COLLECT_NO;
         /* mark as being a destruct operation */
-        trk->hybrid = true;
+        trk->grpop = PMIX_GROUP_DESTRUCT;
         /* see if this destructor only references local processes */
         trk->local = true;
         for (n = 0; n < nmembers; n++) {
@@ -1297,12 +1296,22 @@ pmix_status_t pmix_server_grpdestruct(pmix_server_caddy_t *cd, pmix_buffer_t *bu
                 PMIX_RANK_LOCAL_NODE == members[n].rank) {
                 continue;
             }
-            /* see if it references a specific local proc */
+            /* see if it references a specific local proc - note that
+             * the member name could include rank=wildcard */
             match = false;
             for (m = 0; m < pmix_server_globals.clients.size; m++) {
                 pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, m);
                 if (NULL == pr) {
                     continue;
+                }
+                // cannot use PMIX_CHECK_PROCID here as pmix_peer_t includes a pname field
+                // and not a pmix_proc_t
+                if (PMIX_RANK_WILDCARD == members[n].rank ||
+                    PMIX_RANK_WILDCARD == pr->info->pname.rank) {
+                    if (PMIX_CHECK_NSPACE(members[n].nspace, pr->info->pname.nspace)) {
+                        match = true;
+                        break;
+                    }
                 }
                 if (PMIX_CHECK_NAMES(&members[n], &pr->info->pname)) {
                     match = true;
