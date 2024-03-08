@@ -2708,45 +2708,44 @@ server_store_modex_cb(
     }
 
     pmix_hash_table_t *const ht = job->smmodex->hashtab;
-    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
     // This is data returned via the PMIx_Fence call when data collection was
     // requested, so it only contains REMOTE/GLOBAL data. The byte object
     // contains the rank followed by pmix_kval_ts.
-    pmix_kval_t *kv;
+    pmix_kval_t kv;
     // Unpack the values until we hit the end of the buffer.
     while (true) {
-        kv = PMIX_NEW(pmix_kval_t, tma);
-        if (PMIX_UNLIKELY(NULL == kv)) {
-            rc = PMIX_ERR_NOMEM;
-            PMIX_ERROR_LOG(rc);
-            break;
-        }
+        // it is okay to use a static variable here and construct it
+        // because we are NOT going to actually store the variable
+        // anywhere - the hash_store function COPIES it into an
+        // appropriately allocated object
+        PMIX_CONSTRUCT(&kv, pmix_kval_t);
 
-        rc = pmix_gds_base_modex_unpack_kval(key_fmt, pbkt, kmap, kv);
+        rc = pmix_gds_base_modex_unpack_kval(key_fmt, pbkt, kmap, &kv);
         if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&kv);
             break;
         }
 
         const pmix_rank_t rank = proc->rank;
         // If the rank is undefined, then we store it on the remote table of
         // rank=0 as we know that rank must always exist.
-        if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+        if (PMIX_CHECK_KEY(&kv, PMIX_QUALIFIED_VALUE)) {
             rc = pmix_gds_shmem2_store_qualified(
-                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv->value
+                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv.value
             );
         }
         else {
             rc = pmix_hash_store(
-                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, kv, NULL, 0, NULL
+                ht, (PMIX_RANK_UNDEF == rank) ? 0 : rank, &kv, NULL, 0, NULL
             );
         }
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
             PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&kv);
             break;
         }
-        PMIX_DESTRUCT(kv);
+        PMIX_DESTRUCT(&kv);
     }
-    PMIX_DESTRUCT(kv);
 
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
         PMIX_ERROR_LOG(rc);
