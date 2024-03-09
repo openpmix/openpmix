@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
@@ -140,6 +140,36 @@ pmix_status_t pmix_bfrops_base_tma_copy_payload(pmix_buffer_t *dest,
     memcpy(ptr, src->unpack_ptr, to_copy);
     dest->bytes_used += to_copy;
     dest->pack_ptr += to_copy;
+    return PMIX_SUCCESS;
+}
+
+static inline
+pmix_status_t pmix_bfrops_base_tma_embed_payload(pmix_buffer_t *dest,
+                                                 pmix_byte_object_t *src,
+                                                 pmix_tma_t *tma)
+{
+    char *ptr;
+
+    /* deal with buffer type */
+    if (NULL == dest->base_ptr) {
+        /* destination buffer is empty - derive src buffer type */
+        dest->type = pmix_bfrops_globals.default_type;
+    }
+
+    /* if the src is empty, then there is
+     * nothing to do */
+    if (NULL == src->bytes) {
+        return PMIX_SUCCESS;
+    }
+
+    /* extend the dest if necessary */
+    if (NULL == (ptr = pmix_bfrops_base_tma_buffer_extend(dest, src->size, tma))) {
+        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+    memcpy(ptr, src->bytes, src->size);
+    dest->bytes_used += src->size;
+    dest->pack_ptr += src->size;
     return PMIX_SUCCESS;
 }
 

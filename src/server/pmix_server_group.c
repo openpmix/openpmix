@@ -61,7 +61,7 @@
 #include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
 #include "src/hwloc/pmix_hwloc.h"
-#include "src/mca/bfrops/bfrops.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/plog/plog.h"
 #include "src/mca/pnet/pnet.h"
@@ -181,7 +181,8 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
             // see if we already have this nspace
             found = false;
             PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
-                if (0 == strcmp(nptr->ns->compat.gds->name, cd->peer->nptr->compat.gds->name)) {
+                // if we already have this nspace, ignore this entry
+                if (PMIX_CHECK_NSPACE(nptr->ns->nspace, cd->peer->nptr->nspace)) {
                     found = true;
                     break;
                 }
@@ -217,18 +218,23 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                 PMIX_DESTRUCT(&xfer);
                 goto release;
             }
-            PMIX_CONSTRUCT(&dblob, pmix_buffer_t);
-            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &dblob, pbo.bytes, pbo.size);
-            PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
 
             if (index == endptidx) {
                 PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
+                    PMIX_CONSTRUCT(&dblob, pmix_buffer_t);
+                    ret = pmix_bfrops_base_embed_payload(&dblob, &pbo);  // does NOT alter the pbo
+                    if (PMIX_SUCCESS != ret) {
+                        PMIX_ERROR_LOG(ret);
+                        break;
+                    }
                     PMIX_GDS_STORE_MODEX(ret, nptr->ns, &dblob, trk);
                     if (PMIX_SUCCESS != ret) {
                         PMIX_ERROR_LOG(ret);
                         break;
                     }
+                    PMIX_DESTRUCT(&dblob);
                 }
+                PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
             } else if (index == infoidx) {
                 /* this is packed differently, at least for now, so we have
                  * to unpack it and process it directly */
@@ -237,6 +243,9 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                      * of the contributing proc followed by the pmix_info_t they
                      * provided */
                     ret = PMIX_SUCCESS;
+                    PMIX_CONSTRUCT(&dblob, pmix_buffer_t);
+                    PMIX_LOAD_BUFFER(pmix_globals.mypeer, &dblob, pbo.bytes, pbo.size);
+                    PMIX_BYTE_OBJECT_DESTRUCT(&pbo);
                     while (PMIX_SUCCESS == ret) {
                         cnt = 1;
                         PMIX_BFROPS_UNPACK(ret, pmix_globals.mypeer, &dblob, &pbo, &cnt, PMIX_BYTE_OBJECT);
@@ -314,9 +323,9 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
                         PMIX_DESTRUCT(&rankblob);
                         ret = PMIX_SUCCESS;
                     }
+                    PMIX_DESTRUCT(&dblob);
                 }
             }
-            PMIX_DESTRUCT(&dblob);
             /* get the next blob */
             cnt = 1;
             PMIX_BFROPS_UNPACK(ret, pmix_globals.mypeer, &xfer, &index, &cnt, PMIX_UINT32);
