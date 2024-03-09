@@ -16,7 +16,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -992,6 +992,8 @@ PMIX_EXPORT pmix_status_t pmix_bfrop_get_data_type(pmix_pointer_array_t *regtype
                                                    pmix_buffer_t *buffer, pmix_data_type_t *type);
 
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_copy_payload(pmix_buffer_t *dest, pmix_buffer_t *src);
+
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_embed_payload(pmix_buffer_t *dest, pmix_byte_object_t *src);
 
 PMIX_EXPORT void pmix_bfrops_base_value_load(pmix_value_t *v, const void *data,
                                              pmix_data_type_t type);

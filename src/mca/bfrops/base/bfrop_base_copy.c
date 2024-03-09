@@ -12,7 +12,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -56,6 +56,11 @@ pmix_status_t pmix_bfrops_base_copy(pmix_pointer_array_t *regtypes, void **dest,
 pmix_status_t pmix_bfrops_base_copy_payload(pmix_buffer_t *dest, pmix_buffer_t *src)
 {
     return pmix_bfrops_base_tma_copy_payload(dest, src, NULL);
+}
+
+pmix_status_t pmix_bfrops_base_embed_payload(pmix_buffer_t *dest, pmix_byte_object_t *src)
+{
+    return pmix_bfrops_base_tma_embed_payload(dest, src, NULL);
 }
 
 /*
