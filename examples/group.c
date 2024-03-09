@@ -17,6 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -127,7 +128,7 @@ int main(int argc, char **argv)
     uint32_t nprocs;
     mylock_t lock;
     pmix_info_t *results, info[3];
-    size_t nresults, cid, n, m, psize;
+    size_t nresults, cid = 0, n, m, psize;
     pmix_data_array_t dry;
     char *tmp;
     pmix_query_t query;

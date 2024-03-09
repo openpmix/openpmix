@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1505,7 +1506,7 @@ static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
                         pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_group_tracker_t *cb = (pmix_group_tracker_t *) cbdata;
-    size_t n, nmembers;
+    size_t n, nmembers = 0;
     pmix_proc_t *members = NULL;
     char *grpid = NULL;
 
