@@ -14,6 +14,7 @@ series, in reverse chronological order.
                v5.0.1 and v5.0.0 releases.
 
 Detailed changes include:
+ - PR #3319: Toughen the submodule checks in autogen.pl
  - PR #3317 Correct group modex storage to avoid duplication
  - PR #3314 Fix memory leak in storing of modex data
  - PR #3311 More cleanup of group operations and local client array
