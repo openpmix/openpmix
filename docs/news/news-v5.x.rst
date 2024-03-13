@@ -9,19 +9,34 @@ series, in reverse chronological order.
 .. important:: Cross-version incompatibility
                The known issue of cross-version operability between
                members of the PMIx v5.0 release series has been
-               resolved by disabling the gds/shmem component at
-               runtime. This will allow v5.0.2 and all subsequent
-               releases to operate across versions, including the
+               resolved in this release. Thus, v5.0.2 and all subsequent
+               releases can operate across versions, including the
                v5.0.1 and v5.0.0 releases.
 
-               Those wishing to use the shmem component (i.e., those
-               who know they are not going to encounter cross-version
-               operations with v5.0.1 or v5.0.0) can re-enable the
-               shmem component by setting the "gds_shmem_enable" MCA
-               param to "true" (or "1", etc.). We expect to re-enable
-               the component by default in the near future.
-
 Detailed changes include:
+ - PR #3317 Correct group modex storage to avoid duplication
+ - PR #3314 Fix memory leak in storing of modex data
+ - PR #3311 More cleanup of group operations and local client array
+ - PR #3307 Include notes about submodules in docs
+ - PR #3299 Multiple commits
+    - gds/shmem2: provide a useful error message on memory allocation failure
+    - Add "close stale issues" actions
+    - oac: strengthen Sphinx check
+    - Remove stat call when destroying a dirpath
+    - Do not remove the system tmpdir during cleanup
+ - PR #3293 Multiple commits
+    - gds/shmem: fix build
+    - Update how PMIx attributes are looked up.
+    - Improve PMIx attribute lookup efficiency.
+    - gds/shmem: improve cross-version capabilities
+    - Revert "Disable gds/shmem at runtime"
+    - Revert "gds/shmem: fix build."
+    - Rename the gds/shmem component to gds/shmem2
+    - Protect output files during cleanup
+    - Begin to add man pages for PMIx commands
+    - Restore support for HWLOC truly ancient
+    - Continue work on tool man pages
+    - Fix the dictionary transfer in shmem2
  - PR #3280 Multiple commits
     - Implement attribute to specify connection order and process MCA params
     - Error out of attempts for 32-bit builds
