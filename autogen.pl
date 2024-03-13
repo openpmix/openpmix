@@ -9,7 +9,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2015      IBM Corporation.  All rights reserved.
 #
-# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -968,33 +968,80 @@ verbose "\n$step. Checking for git submodules\n\n";
 # Make sure we got a submodule-full clone.  If not, abort and let a
 # human figure it out.
 if (-f ".gitmodules") {
-    open(IN, "git submodule status|")
-        || die "Can't run \"git submodule status\"";
-    while (<IN>) {
-        $_ =~ m/^(.)[0-9a-f]{40}\s+(\S+)/;
-        my $status = $1;
-        my $path   = $2;
+    print("   Doing some sanity checks for required submodule(s)...\n");
 
-        print("=== Submodule: $path\n");
-        # Make sure the submodule is there
-        if ($status eq "-") {
-            print("    ==> ERROR: Missing
+    # Do a quick sanity check to ensure that required
+    # submodule(s) are at least present (e.g., they won't be present
+    # if you downloaded a GitHub.com-created tarball).
+    open(IN, ".gitmodules") ||
+        die "Can't open .gitmodules";
+    while (<IN>) {
+        # Find "path = " lines
+        if (!($_ =~ m/^\s+path = (.+)$/)) {
+            next;
+        }
+        my $path = $1;
+
+        # Check that the path exists and is non-empty.
+        my $happy = 1;
+        my $havefiles = 1;
+        if (! -d $path) {
+            $happy = 0;
+        } else {
+            opendir(DIR, $path) ||
+                my_die "Can't open $path directory";
+            my @files = readdir(DIR);
+            closedir(DIR);
+
+            $havefiles = 0
+                if ($#files < 4);
+        }
+
+        if (!$happy) {
+            print("    ==> ERROR: Missing submodule directory
+
+The submodule path \"$path\" is missing.\n\n");
+            exit(1);
+        }
+
+        if (!$havefiles) {
+            print("    ==> ERROR: Missing submodule files
+
+The submodule \"$path\" files are missing.\n\n");
+            exit(1);
+        }
+
+    }
+    if (-d ".git") {
+        open(IN, "git submodule status|")
+            || die "Can't run \"git submodule status\"";
+        while (<IN>) {
+            $_ =~ m/^(.)[0-9a-f]{40}\s+(\S+)/;
+            my $status = $1;
+            my $path   = $2;
+
+            print("=== Submodule: $path\n");
+
+            # Make sure the submodule is there
+            if ($status eq "-") {
+                print("    ==> ERROR: Missing
 
 The submodule \"$path\" is missing.
 
 Perhaps you forgot to \"git clone --recursive ...\", or you need to
- \"git submodule update --init --recursive\"...?\n\n");
-            exit(1);
-        }
+\"git submodule update --init --recursive\"...?\n\n");
+                exit(1);
+            }
 
-        # See if the commit in the submodule is not the same as the
-        # commit that the git submodule thinks it should be.
-        elsif ($status eq "+") {
-            print("    ==> WARNING: Submodule hash is different than upstream.
+            # See if the commit in the submodule is not the same as the
+            # commit that the git submodule thinks it should be.
+            elsif ($status eq "+") {
+                print("    ==> WARNING: Submodule hash is different than upstream.
          If this is not intentional, you may want to run:
          \"git submodule update --init --recursive\"\n");
-        } else {
-            print("    Local hash is what is expected by the submodule (good!)\n");
+            } else {
+                print("    Local hash is what is expected by the submodule (good!)\n");
+            }
         }
     }
 }
