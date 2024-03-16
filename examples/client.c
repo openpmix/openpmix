@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      ParTec AG.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -123,7 +123,7 @@ int main(int argc, char **argv)
 {
     pmix_status_t rc;
     pmix_value_t value;
-    pmix_value_t *val = NULL;
+    pmix_value_t *val = NULL, *val2 = NULL;
     char *tmp;
     pmix_proc_t proc;
     uint32_t nprocs, n, k, nlocal;
@@ -298,6 +298,26 @@ int main(int argc, char **argv)
         goto done;
     }
     PMIX_INFO_FREE(info, 1);
+
+    /* get a list of our local procs - some may not be in our job */
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PROCS, NULL, 0, &val))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get local procs with WILDCARD rank failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        goto done;
+    }
+    // get the list using our proc ID
+    if (PMIX_SUCCESS != (rc = PMIx_Get(&myproc, PMIX_LOCAL_PROCS, NULL, 0, &val2))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get local procs with my ID failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        goto done;
+    }
+    if (PMIX_EQUAL == PMIx_Value_compare(val, val2)) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get local procs GOOD\n", myproc.nspace, myproc.rank);
+    } else {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get local procs mismatch\n", myproc.nspace, myproc.rank);
+    }
+    PMIX_VALUE_RELEASE(val);
+    PMIX_VALUE_RELEASE(val2);
 
     /* get a list of our local peers */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, NULL, 0, &val))) {
