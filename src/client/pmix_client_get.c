@@ -8,7 +8,8 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -194,7 +195,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
     }
 
     /* see if they just want their own process ID */
-    if (NULL == proc && 0 == strncmp(key, PMIX_PROCID, PMIX_MAX_KEYLEN)) {
+    if (NULL == proc && PMIx_Check_key(key, PMIX_PROCID)) {
         if (lg->stval) {
             ival = *val;
             ival->type = PMIX_PROC;
@@ -215,6 +216,24 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         return PMIX_OPERATION_SUCCEEDED;
     }
 
+    /* see if they just want our version */
+    if (NULL != key && PMIx_Check_key(key, PMIX_VERSION_NUMERIC)) {
+        if (lg->stval) {
+            ival = *val;
+            ival->type = PMIX_UINT32;
+            ival->data.uint32 = PMIX_NUMERIC_VERSION;
+        } else {
+            PMIX_VALUE_CREATE(ival, 1);
+            if (NULL == ival) {
+                return PMIX_ERR_NOMEM;
+            }
+            ival->type = PMIX_UINT32;
+            ival->data.uint32 = PMIX_NUMERIC_VERSION;
+            *val = ival;
+        }
+        return PMIX_OPERATION_SUCCEEDED;
+    }
+
     /* if the given proc param is NULL, or the nspace is
      * empty, then the caller is referencing our own nspace */
     if (NULL == proc || 0 == strlen(proc->nspace)) {
@@ -226,7 +245,12 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
      * must be globally unique, so communicate this to the hash
      * functions with the UNDEF rank */
     if (NULL == proc) {
-        lg->p.rank = PMIX_RANK_UNDEF;
+        // if they want node or app info, then use our rank
+        if (lg->nodeinfo || lg->appinfo) {
+            lg->p.rank = pmix_globals.myid.rank;
+        } else {
+            lg->p.rank = PMIX_RANK_UNDEF;
+        }
     } else {
         lg->p.rank = proc->rank;
     }
@@ -235,7 +259,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
      * for PMIX_RANK, then they are asking for our process rank */
     if (PMIX_RANK_INVALID == lg->p.rank &&
         PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace) &&
-        NULL != key && 0 == strncmp(key, PMIX_RANK, PMIX_MAX_KEYLEN)) {
+        NULL != key && PMIx_Check_key(key, PMIX_RANK)) {
         if (lg->stval) {
             ival = *val;
             ival->type = PMIX_PROC_RANK;
@@ -254,7 +278,7 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         return PMIX_OPERATION_SUCCEEDED;
     }
 
-    /* if they passed a group in the nspace of proc, 
+    /* if they passed a group in the nspace of proc,
      * replace it with the translated proc. */
     if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         proc != NULL && 0 != strlen(proc->nspace)) {
@@ -736,17 +760,26 @@ static void get_data(int sd, short args, void *cbdata)
             /* if they didn't specify the target node, then see if they
              * specified a proc */
             if (PMIX_RANK_IS_VALID(cb->proc->rank)) {
-                /* if this is us, then we know our info */
+                /* if this is us, then see if we know our info */
                 if (PMIX_CHECK_PROCID(cb->proc, &pmix_globals.myid)) {
-                    lg->hostname = strdup(pmix_globals.hostname);
-                    lg->nodeid = pmix_globals.nodeid;
-                } else {
+                    if (NULL != pmix_globals.hostname) {
+                        lg->hostname = strdup(pmix_globals.hostname);
+                    }
+                    if (UINT32_MAX != pmix_globals.nodeid) {
+                        lg->nodeid = pmix_globals.nodeid;
+                    }
+                }
+                if (NULL == lg->hostname) {
                     PMIX_CONSTRUCT(&cb2, pmix_cb_t);
                     cb2.proc = cb->proc;
                     cb2.key = PMIX_HOSTNAME;
                     cb2.info = &optional;
                     cb2.ninfo = 1;
-                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+                        PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb2);
+                    } else {
+                        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    }
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
@@ -756,30 +789,38 @@ static void get_data(int sd, short args, void *cbdata)
                         } else {
                             lg->hostname = strdup("unknown");
                         }
+                    }
+                }
+                if (UINT32_MAX == lg->nodeid) {
+                    /* try for the nodeid */
+                    PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+                    cb2.proc = cb->proc;
+                    cb2.key = PMIX_NODEID;
+                    cb2.info = &optional;
+                    cb2.ninfo = 1;
+                    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+                        PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb2);
                     } else {
-                        /* try for the nodeid */
-                        cb2.key = PMIX_NODEID;
                         PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
-                        if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
-                            kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                            PMIX_DESTRUCT(&cb2);
-                            if (NULL != kv) {  // will never be NULL
-                                PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->nodeid, uint32_t);
-                                PMIX_RELEASE(kv);
-                            } else {
-                                rc = PMIX_ERROR;
-                            }
-                            if (PMIX_SUCCESS != rc) {
-                                cb->status = rc;
-                                goto done;
-                            }
+                    }
+                    if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
+                        kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
+                        PMIX_DESTRUCT(&cb2);
+                        if (NULL != kv) {  // will never be NULL
+                            PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->nodeid, uint32_t);
+                            PMIX_RELEASE(kv);
                         } else {
-                            /* could not find hostname or nodeid, so we cannot do anything */
-                            cb->status = PMIX_ERR_NOT_FOUND;
+                            rc = PMIX_ERROR;
+                        }
+                        if (PMIX_SUCCESS != rc) {
+                            cb->status = rc;
                             goto done;
                         }
                     }
                 }
+                // set the rank to undefined since this request is
+                // required to ignore the procID
+                cb->proc->rank = PMIX_RANK_UNDEF;
             } else {
                 /* it's an invalid rank - assume they are asking about this node.
                  * This is consistent with prior releases */
@@ -788,20 +829,26 @@ static void get_data(int sd, short args, void *cbdata)
                 lg->nodeid = pmix_globals.nodeid;
             }
         }
-        /* if we have a hostname and that is what they were
-         * asking for, then we are done */
-        if (NULL != lg->hostname && 0 == strcmp(cb->key, PMIX_HOSTNAME)) {
-            cb->status = PMIX_SUCCESS;
-            PMIX_VALUE_CREATE(cb->value, 1);
-            PMIX_VALUE_LOAD(cb->value, lg->hostname, PMIX_STRING);
+        /* if they were asking for hostname, then we are done */
+        if (PMIx_Check_key(cb->key, PMIX_HOSTNAME)) {
+            if (NULL != lg->hostname) {
+                cb->status = PMIX_SUCCESS;
+                PMIX_VALUE_CREATE(cb->value, 1);
+                PMIX_VALUE_LOAD(cb->value, lg->hostname, PMIX_STRING);
+            } else {
+                cb->status = PMIX_ERR_NOT_FOUND;
+            }
             goto done;
         }
-        /* if we have a nodeid and that is what they were
-         * asking for, then we are done */
-        if (UINT32_MAX != lg->nodeid && 0 == strcmp(cb->key, PMIX_NODEID)) {
-            cb->status = PMIX_SUCCESS;
-            PMIX_VALUE_CREATE(cb->value, 1);
-            PMIX_VALUE_LOAD(cb->value, &lg->nodeid, PMIX_UINT32);
+        /* if they were asking for nodeid, then we are done */
+        if (PMIx_Check_key(cb->key, PMIX_NODEID)) {
+            if (UINT32_MAX != lg->nodeid) {
+                cb->status = PMIX_SUCCESS;
+                PMIX_VALUE_CREATE(cb->value, 1);
+                PMIX_VALUE_LOAD(cb->value, &lg->nodeid, PMIX_UINT32);
+            } else {
+                cb->status = PMIX_ERR_NOT_FOUND;
+            }
             goto done;
         }
         /* we have to look for the info, so we need to tell the GDS
@@ -817,7 +864,7 @@ static void get_data(int sd, short args, void *cbdata)
             if (NULL != lg->hostname) {
                 PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_HOSTNAME, lg->hostname, PMIX_STRING);
             } else {
-                PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_HOSTNAME, &lg->nodeid, PMIX_UINT32);
+                PMIX_INFO_LOAD(&iptr[cb->ninfo], PMIX_NODEID, &lg->nodeid, PMIX_UINT32);
             }
             PMIX_INFO_LOAD(&iptr[cb->ninfo+1], PMIX_OPTIONAL, NULL, PMIX_BOOL);
             cb->infocopy = true;
@@ -855,7 +902,11 @@ static void get_data(int sd, short args, void *cbdata)
                     cb2.key = PMIX_APPNUM;
                     cb2.info = &optional;
                     cb2.ninfo = 1;
-                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
+                        PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb2);
+                    } else {
+                        PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    }
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
@@ -871,6 +922,9 @@ static void get_data(int sd, short args, void *cbdata)
                         goto done;
                     }
                 }
+                // set the rank to undefined since this request is
+                // required to ignore the procID
+                cb->proc->rank = PMIX_RANK_UNDEF;
             } else {
                 /* rank is invalid - assume they want info about our app.
                  * This is consistent with prior releases */

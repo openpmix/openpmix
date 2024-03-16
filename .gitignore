@@ -75,6 +75,7 @@ bindings/python/tests/python/__pycache__/
 examples/alloc
 examples/client
 examples/client2
+examples/client3
 examples/debugger
 examples/debuggerd
 examples/dmodex
