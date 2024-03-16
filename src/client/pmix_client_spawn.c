@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -195,7 +195,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     PMIX_APP_CREATE(appsptr, napps);
     for (n = 0; n < napps; n++) {
         aptr = (pmix_app_t *) &apps[n];
-        /* protect against idiot case (yes, they exist) */
+        /* protect against bozo case */
         if (NULL == aptr->cmd && NULL == aptr->argv) {
             /* they gave us nothing to spawn! */
             PMIX_APP_FREE(appsptr, napps);
@@ -204,7 +204,13 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             }
             return PMIX_ERR_BAD_PARAM;
         }
-        appsptr[n].cmd = strdup(aptr->cmd);
+        if (NULL == aptr->cmd) {
+            // aptr->argv cannot be NULL as well or we
+            // would have caught it above
+            appsptr[n].cmd = strdup(aptr->argv[0]);
+        } else {
+            appsptr[n].cmd = strdup(aptr->cmd);
+        }
 
         /* if they didn't give us a desired working directory, then
          * take the one we are in */
@@ -233,7 +239,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             tmp = pmix_basename(aptr->cmd);
             t2 = pmix_basename(aptr->argv[0]);
             if (0 != strcmp(tmp, t2)) {
-                PMIx_Argv_prepend_nosize(&appsptr[n].argv, tmp);
+                free(appsptr[n].argv[0]);
+                appsptr[n].argv[0] = strdup(tmp);
             }
             free(tmp);
             free(t2);
