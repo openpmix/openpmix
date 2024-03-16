@@ -239,8 +239,11 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             tmp = pmix_basename(aptr->cmd);
             t2 = pmix_basename(aptr->argv[0]);
             if (0 != strcmp(tmp, t2)) {
-                free(appsptr[n].argv[0]);
-                appsptr[n].argv[0] = strdup(tmp);
+                // assume that the user may have put the argv
+                // for their cmd in the argv array, but not
+                // started with the actual cmd - so add it
+                // to the front of the array
+                PMIx_Argv_prepend_nosize(&appsptr[n].argv, tmp);
             }
             free(tmp);
             free(t2);
