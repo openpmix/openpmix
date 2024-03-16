@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -565,7 +565,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
         }
     }
     PMIX_LIST_DESTRUCT(&results);
-\
+
     /* if the job's tracker points to a non-default session ID,
      * then we add the default session information to it */
     if (NULL != trk->session && UINT32_MAX != trk->session->session) {
