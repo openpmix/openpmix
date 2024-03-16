@@ -12,7 +12,7 @@
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -253,6 +253,10 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest, pmix_
 {
     pmix_status_t rc;
     pmix_buffer_t buf1, buf2;
+
+    if (NULL == src) {
+        return PMIX_SUCCESS;
+    }
 
     /* setup the hosts */
     PMIX_CONSTRUCT(&buf1, pmix_buffer_t);

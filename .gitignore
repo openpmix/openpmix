@@ -102,6 +102,7 @@ examples/group_lcl_cid
 examples/nodeinfo
 examples/pset
 examples/group_bootstrap
+examples/spawn_group
 
 include/pmix_version.h
 include/pmix_rename.h

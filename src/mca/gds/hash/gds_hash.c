@@ -1437,7 +1437,8 @@ static pmix_status_t nspace_del(const char *nspace)
     return PMIX_SUCCESS;
 }
 
-static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc, pmix_list_t *kvs, pmix_buffer_t *buf,
+static pmix_status_t assemb_kvs_req(const pmix_proc_t *proc,
+                                    pmix_list_t *kvs, pmix_buffer_t *buf,
                                     void *cbdata)
 {
     pmix_status_t rc = PMIX_SUCCESS;

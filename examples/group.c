@@ -26,6 +26,7 @@
  *
  */
 
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -33,6 +34,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <libgen.h>
+#include <unistd.h>
 
 #include <pmix.h>
 #include "examples.h"
@@ -123,7 +125,7 @@ static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, v
 int main(int argc, char **argv)
 {
     int rc;
-    pmix_value_t *val = NULL;
+    pmix_value_t *val = NULL, value;
     pmix_proc_t proc, *procs, *parray;
     uint32_t nprocs;
     mylock_t lock;
@@ -189,6 +191,37 @@ int main(int argc, char **argv)
     rc = lock.status;
     DEBUG_DESTRUCT_LOCK(&lock);
     if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+
+    if (0 > asprintf(&tmp, "%s-%d-local", myproc.nspace, myproc.rank)) {
+        exit(1);
+    }
+    value.type = PMIX_UINT64;
+    value.data.uint64 = 1234;
+    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_LOCAL, tmp, &value))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        goto done;
+    }
+    free(tmp);
+
+    if (0 > asprintf(&tmp, "%s-%d-remote", myproc.nspace, myproc.rank)) {
+        exit(1);
+    }
+    value.type = PMIX_STRING;
+    value.data.string = "1234";
+    if (PMIX_SUCCESS != (rc = PMIx_Put(PMIX_REMOTE, tmp, &value))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Put internal failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
+        goto done;
+    }
+    free(tmp);
+
+    /* push the data to our PMIx server */
+    if (PMIX_SUCCESS != (rc = PMIx_Commit())) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Commit failed: %s\n", myproc.nspace,
+                myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
 

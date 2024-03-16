@@ -992,13 +992,15 @@ typedef uint32_t pmix_rank_t;
  *    session once instantiated
  */
 #define PMIX_SESSION_INSTANTIATE            "pmix.ssn.inst"         // (bool) Instantiate the specified session
+#define PMIX_SESSION_RESOURCES              "pmix.ssn.res"          // (pmix_data_array_t*) Array of pmix_info_t describing the
+                                                                    //        resources to be included in the session. This can
+                                                                    //        include a regex of node names, array of resource blocks,
+                                                                    //        etc.
 #define PMIX_SESSION_JOB                    "pmix.ssn.job"          // (pmix_data_array_t*) Array of pmix_info_t describing the job info
                                                                     //        to be applied in conjunction with specified PMIX_SESSION_APP
                                                                     //        definitions. Error if given without a PMIX_SESSION_APP description.
 #define PMIX_SESSION_APP                    "pmix.ssn.app"          // (pmix_data_array_t*) Array of pmix_app_t to be executed in the assigned
                                                                     //        session upon session instantiation
-#define PMIX_SESSION_PROVISION              "pmix.ssn.pvn"          // (pmix_data_array_t*) description of nodes to be provisioned with
-                                                                    //       specified image
 #define PMIX_SESSION_PROVISION_NODES        "pmix.ssn.pvnnds"       // (char*) regex identifying nodes that are to be provisioned
 #define PMIX_SESSION_PROVISION_IMAGE        "pmix.ssn.pvnimg"       // (char*) name of the image that is to be provisioned
 
@@ -1129,7 +1131,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GROUP_NAMES                    "pmix.pgrp.nm"          // (pmix_data_array_t*) Returns an array of string names of the process groups
                                                                     //        in which the given process is a member.
 #define PMIX_GROUP_INFO                     "pmix.grp.info"         // (pmix_data_array_t*) Array of pmix_info_t containing data that is to be
-                                                                    //        shared across all members of a group during group construction
+                                                                    //        shared across all members of a group during group construction. When
+                                                                    //        passed to the host, the array must start with the process ID
+                                                                    //        of the proc that provided it
+#define PMIX_GROUP_INFO_ARRAY               "pmix.grp.infoarray"    // (pmix_data_array_t*) Array of pmix_info_t, each containing a PMIX_GROUP_INFO array
 #define PMIX_GROUP_LOCAL_CID                "pmix.grp.lclid"        // (size_t) local context ID for the specified process member of a group
 #define PMIX_GROUP_ADD_MEMBERS              "pmix.grp.add"          // (pmix_data_array_t*) Array of pmix_proc_t identifying procs that are not
                                                                     //        included in the membership specified in the procs array passed to

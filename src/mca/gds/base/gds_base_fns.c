@@ -21,6 +21,7 @@
 #include "src/include/pmix_globals.h"
 
 #include "src/class/pmix_list.h"
+#include "src/mca/pcompress/pcompress.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 
@@ -94,12 +95,12 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_buffer_t bkt, bkt2, bkt3;
-    pmix_byte_object_t bo, bo2, bo3, bo4;
+    pmix_byte_object_t bo, bo2, bo3, bo4, wbo;
     int32_t cnt = 1;
     pmix_server_trkr_t *trk = (pmix_server_trkr_t *) cbdata;
     pmix_proc_t proc;
     pmix_buffer_t pbkt;
-    bool compressed, found;
+    bool compressed, decompressed, found;
     pmix_collect_t last_blob_info_byte, blob_info_byte;
     pmix_list_t nspaces;
     pmix_proclist_t *plist;
@@ -163,7 +164,13 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
 
         // decompress it if required
         if (compressed) {
-
+            decompressed = pmix_compress.decompress((uint8_t**)&wbo.bytes, &wbo.size,
+                                                    (uint8_t*)bo3.bytes, bo3.size);
+            if (decompressed) {
+                PMIX_BYTE_OBJECT_DESTRUCT(&bo3);
+                bo3.bytes = wbo.bytes;
+                bo3.size = wbo.size;
+            }
         }
 
         // set it up for unpacking
