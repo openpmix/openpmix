@@ -35,6 +35,7 @@
  * - MPI_Intercomm_create_from_groups
  */
 
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -88,8 +89,12 @@ int main(int argc, char **argv)
     size_t nresults, cid, lcid, ninfo, m;
     pmix_data_array_t darray;
     void *grpinfo, *list;
-
+    char hostname[1024];
+    pmix_value_t value;
+    bool idassigned = false;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
+
+    gethostname(hostname, 1024);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -97,7 +102,8 @@ int main(int argc, char **argv)
                 PMIx_Error_string(rc));
         exit(0);
     }
-    fprintf(stderr, "Client ns %s rank %d pid %lu: Running\n", myproc.nspace, myproc.rank, (unsigned long)getpid());
+    fprintf(stderr, "Client ns %s rank %d host %s pid %lu: Running\n",
+            myproc.nspace, myproc.rank, hostname, (unsigned long)getpid());
 
     PMIX_PROC_CONSTRUCT(&proc);
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
@@ -118,6 +124,27 @@ int main(int argc, char **argv)
     DEBUG_WAIT_THREAD(&lock);
     rc = lock.status;
     DEBUG_DESTRUCT_LOCK(&lock);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+
+    // put some "modex" data
+    asprintf(&value.data.string, "btl-tcp-%u", myproc.rank);
+    value.type = PMIX_STRING;
+    rc = PMIx_Put(PMIX_GLOBAL, "modex-btl", &value);
+    free(value.data.string);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+    asprintf(&value.data.string, "btl-smcuda-%u", myproc.rank);
+    rc = PMIx_Put(PMIX_GLOBAL, "modex-btl", &value);
+    free(value.data.string);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+
+    // commit it
+    rc = PMIx_Commit();
     if (PMIX_SUCCESS != rc) {
         goto done;
     }
@@ -190,11 +217,12 @@ int main(int argc, char **argv)
         for (m=0; m < nresults; m++) {
             if (PMIX_CHECK_KEY(&results[m], PMIX_GROUP_CONTEXT_ID)) {
                 PMIX_VALUE_GET_NUMBER(rc, &results[m].value, cid, size_t);
+                idassigned = true;
                 break;
             }
         }
-        fprintf(stderr, "Rank %d Group construct complete with status %s KEY %s CID %lu\n",
-                myproc.rank, PMIx_Error_string(rc), results[0].key, (unsigned long) cid);
+        fprintf(stderr, "Rank %d Group construct complete with status %s KEY %s CID assigned: %s value: %lu\n",
+                myproc.rank, PMIx_Error_string(rc), results[0].key, idassigned ? "T" : "F", (unsigned long) cid);
     } else {
         fprintf(stderr, "Rank %d Group construct complete, but no CID returned\n", myproc.rank);
     }

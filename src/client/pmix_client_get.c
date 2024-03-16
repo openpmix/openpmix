@@ -314,7 +314,8 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.get_output, "pmix:client get for %s key %s",
+    pmix_output_verbose(2, pmix_client_globals.get_output,
+                        "pmix:client get for %s key %s",
                         (NULL == proc) ? "NULL" : PMIX_NAME_PRINT(proc),
                         (NULL == key) ? "NULL" : key);
 
@@ -566,9 +567,10 @@ static void _getnb_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     int32_t cnt;
     pmix_kval_t *kv;
     pmix_get_logic_t *lg;
+    pmix_info_t *iptr;
+    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     PMIX_ACQUIRE_OBJECT(cb);
-    PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix: get_nb callback recvd");
@@ -660,9 +662,17 @@ done:
                     val = NULL;
                 } else {
                     kv = (pmix_kval_t *) pmix_list_remove_first(&cb->kvs);
-                    val = kv->value;
-                    kv->value = NULL; // protect the value
-                    PMIX_RELEASE(kv);
+                    if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+                        // extract the actual value
+                        iptr = (pmix_info_t*)kv->value->data.darray->array;
+                        PMIX_VALUE_CREATE(val, 1);
+                        PMIx_Value_xfer(val, &iptr[0].value);
+                        PMIX_RELEASE(kv);
+                    } else {
+                        val = kv->value;
+                        kv->value = NULL; // protect the value
+                        PMIX_RELEASE(kv);
+                    }
                 }
             }
             if (cb->checked) {
@@ -1060,7 +1070,7 @@ doget:
         }
     }
     pmix_output_verbose(5, pmix_client_globals.get_output,
-                        "pmix:client job-level data NOT found");
+                        "pmix:client requested data NOT found");
 
     /* we may wind up requesting the data using a different rank as an
      * indicator of the breadth of data we want, but we will need to
@@ -1106,9 +1116,8 @@ doget:
         goto done;
     }
 
-    /* since we are looking for a non-reserved key, check to see if we already
-     * have the data for this proc - if we do, then no point in asking for
-     * it again */
+    /* if the data is available in a different scope, then
+     * let the user know */
     if (PMIX_ERR_EXISTS_OUTSIDE_SCOPE == rc) {
         cb->status = rc;
         goto done;

@@ -507,6 +507,7 @@ PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
 typedef struct {
     pmix_list_item_t super;
     char *grpid;
+    size_t ctxid;
     pmix_proc_t *members;
     size_t nmbrs;
 } pmix_group_t;

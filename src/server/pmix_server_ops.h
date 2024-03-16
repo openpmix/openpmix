@@ -192,6 +192,7 @@ typedef struct {
     char *tmpdir;             // temporary directory for this server
     char *system_tmpdir;      // system tmpdir
     bool fence_localonly_opt; // local-only fence optimization
+    pmix_list_t grp_collectives;  // group-op collectives
     // verbosity for server get operations
     int get_output;
     int get_verbose;

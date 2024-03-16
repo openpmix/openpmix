@@ -402,7 +402,7 @@ void pmix_bfrops_base_tma_proc_free(pmix_proc_t *p,
                                     size_t n,
                                     pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_destruct(&p[m], tma);
         }
@@ -471,7 +471,7 @@ void pmix_bfrops_base_tma_proc_info_free(pmix_proc_info_t *p,
                                          size_t n,
                                          pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_info_destruct(&p[m], tma);
         }
@@ -630,7 +630,7 @@ void pmix_bfrops_base_tma_info_free(pmix_info_t *p,
                                     size_t n,
                                     pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_info_destruct(&p[m], tma);
         }
@@ -1845,7 +1845,7 @@ void pmix_bfrops_base_tma_query_free(pmix_query_t *p,
                                      size_t n,
                                      pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_query_destruct(&p[m], tma);
         }
@@ -1914,7 +1914,7 @@ void pmix_bfrops_base_tma_pdata_free(pmix_pdata_t *p,
                                      size_t n,
                                      pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_pdata_destruct(&p[m], tma);
         }
@@ -1942,7 +1942,7 @@ void pmix_bfrops_base_tma_app_destruct(pmix_app_t *p,
         pmix_tma_free(tma, p->cwd);
         p->cwd = NULL;
     }
-    if (NULL != p->info) {
+    if (NULL != p->info && 0 < p->ninfo) {
         pmix_bfrops_base_tma_info_free(p->info, p->ninfo, tma);
         p->info = NULL;
         p->ninfo = 0;
@@ -1988,7 +1988,7 @@ void pmix_bfrops_base_tma_app_free(pmix_app_t *p,
                                    size_t n,
                                    pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_app_destruct(&p[m], tma);
         }
@@ -2058,7 +2058,7 @@ void pmix_bfrops_base_tma_regattr_free(pmix_regattr_t *p,
                                        size_t n,
                                        pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_regattr_destruct(&p[m], tma);
         }
@@ -2439,7 +2439,7 @@ void pmix_bfrops_base_tma_proc_stats_free(pmix_proc_stats_t *p,
                                           size_t n,
                                           pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_proc_stats_destruct(&p[m], tma);
         }
@@ -2531,7 +2531,7 @@ void pmix_bfrops_base_tma_disk_stats_free(pmix_disk_stats_t *p,
                                           size_t n,
                                           pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_disk_stats_destruct(&p[m], tma);
         }
@@ -2601,7 +2601,7 @@ void pmix_bfrops_base_tma_net_stats_free(pmix_net_stats_t *p,
                                          size_t n,
                                          pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_net_stats_destruct(&p[m], tma);
         }
@@ -2708,7 +2708,7 @@ void pmix_bfrops_base_tma_node_stats_free(pmix_node_stats_t *p,
                                           size_t n,
                                           pmix_tma_t *tma)
 {
-    if (NULL != p) {
+    if (NULL != p && 0 < n) {
         for (size_t m = 0; m < n; m++) {
             pmix_bfrops_base_tma_node_stats_destruct(&p[m], tma);
         }

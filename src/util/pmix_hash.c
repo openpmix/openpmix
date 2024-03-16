@@ -111,7 +111,9 @@ static void pddes(pmix_proc_data_t *p)
     }
     PMIX_RELEASE(p->quals);
 }
-static PMIX_CLASS_INSTANCE(pmix_proc_data_t, pmix_object_t, pdcon, pddes);
+static PMIX_CLASS_INSTANCE(pmix_proc_data_t,
+                           pmix_object_t,
+                           pdcon, pddes);
 
 static pmix_dstor_t *lookup_keyval(pmix_proc_data_t *proc, uint32_t kid,
                                    pmix_info_t *qualifiers, size_t nquals,
@@ -279,6 +281,53 @@ pmix_status_t pmix_hash_store(pmix_hash_table_t *table,
     return PMIX_SUCCESS;
 }
 
+static pmix_status_t make_copy(pmix_regattr_input_t *p,
+                               pmix_dstor_t *hv,
+                               pmix_list_t *kvals,
+                               pmix_proc_data_t *proc_data,
+                               pmix_keyindex_t *const keyindex)
+{
+    pmix_kval_t *kv;
+    pmix_data_array_t *darray;
+    pmix_qual_t *quals;
+    pmix_info_t *iptr;
+    size_t nq, m;
+
+    if (UINT32_MAX != hv->qualindex) {
+        /* this is a qualified value - need to return it as such */
+        PMIX_KVAL_NEW(kv, PMIX_QUALIFIED_VALUE);
+        darray = (pmix_data_array_t*)pmix_pointer_array_get_item(proc_data->quals, hv->qualindex);
+        quals = (pmix_qual_t*)darray->array;
+        nq = darray->size;
+        PMIX_DATA_ARRAY_CREATE(darray, nq+1, PMIX_INFO);
+        iptr = (pmix_info_t*)darray->array;
+        /* the first location is the actual value */
+        PMIX_LOAD_KEY(iptr[0].key, p->string);
+        PMIx_Value_xfer(&iptr[0].value, hv->value);
+        /* now add the qualifiers */
+        for (m=0; m < nq; m++) {
+            p = pmix_hash_lookup_key(quals[m].index, NULL, keyindex);
+            if (NULL == p) {
+                /* should never happen */
+                PMIX_RELEASE(kv);
+                PMIX_DATA_ARRAY_FREE(darray);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            PMIX_LOAD_KEY(iptr[m+1].key, p->string);
+            PMIx_Value_xfer(&iptr[m+1].value, quals[m].value);
+            PMIX_INFO_SET_QUALIFIER(&iptr[m+1]);
+        }
+        kv->value->type = PMIX_DATA_ARRAY;
+        kv->value->data.darray = darray;
+        pmix_list_append(kvals, &kv->super);
+    } else {
+        PMIX_KVAL_NEW(kv, p->string);
+        PMIx_Value_xfer(kv->value, hv->value);
+        pmix_list_append(kvals, &kv->super);
+    }
+    return PMIX_SUCCESS;
+}
+
 // TODO(skg) We may have to provide a different fetch entry point with different
 // semantics for gds shmem to further reduce memory usage. For now this seems to
 // work for our current use case.
@@ -295,13 +344,8 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
     uint32_t id, kid=UINT32_MAX;
     char *node;
     pmix_regattr_input_t *p;
-    pmix_info_t *iptr;
-    size_t nq, m;
     int n;
-    pmix_kval_t *kv;
     bool fullsearch = false;
-    pmix_data_array_t *darray;
-    pmix_qual_t *quals;
     pmix_keyindex_t *const keyindex = get_keyindex_ptr(kidx);
 
     pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
@@ -372,43 +416,15 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                         PMIX_CHECK_RESERVED_KEY(p->string)) {
                         continue;
                     }
-                    if (UINT32_MAX != hv->qualindex) {
-                        pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
-                                            "%s INCLUDE %s VALUE %s FROM TABLE %s FOR RANK %s",
-                                            PMIX_NAME_PRINT(&pmix_globals.myid), p->name,
-                                            PMIx_Value_string(hv->value),
-                                            (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label,
-                                            PMIX_RANK_PRINT(rank));
-                        /* this is a qualified value - need to return it as such */
-                        PMIX_KVAL_NEW(kv, PMIX_QUALIFIED_VALUE);
-                        darray = (pmix_data_array_t*)pmix_pointer_array_get_item(proc_data->quals, hv->qualindex);
-                        quals = (pmix_qual_t*)darray->array;
-                        nq = darray->size;
-                        PMIX_DATA_ARRAY_CREATE(darray, nq+1, PMIX_INFO);
-                        iptr = (pmix_info_t*)darray->array;
-                        /* the first location is the actual value */
-                        PMIX_LOAD_KEY(iptr[0].key, p->string);
-                        PMIx_Value_xfer(&iptr[0].value, hv->value);
-                        /* now add the qualifiers */
-                        for (m=0; m < nq; m++) {
-                            p = pmix_hash_lookup_key(quals[m].index, NULL, keyindex);
-                            if (NULL == p) {
-                                /* should never happen */
-                                PMIX_RELEASE(kv);
-                                PMIX_DATA_ARRAY_FREE(darray);
-                                return PMIX_ERR_BAD_PARAM;
-                            }
-                            PMIX_LOAD_KEY(iptr[m+1].key, p->string);
-                            PMIx_Value_xfer(&iptr[m+1].value, quals[m].value);
-                            PMIX_INFO_SET_QUALIFIER(&iptr[m+1]);
-                        }
-                        kv->value->type = PMIX_DATA_ARRAY;
-                        kv->value->data.darray = darray;
-                        pmix_list_append(kvals, &kv->super);
-                    } else {
-                        PMIX_KVAL_NEW(kv, p->string);
-                        PMIx_Value_xfer(kv->value, hv->value);
-                        pmix_list_append(kvals, &kv->super);
+                    pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
+                                        "%s INCLUDE %s VALUE %s FROM TABLE %s FOR RANK %s",
+                                        PMIX_NAME_PRINT(&pmix_globals.myid), p->name,
+                                        PMIx_Value_string(hv->value),
+                                        (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label,
+                                        PMIX_RANK_PRINT(rank));
+                    rc = make_copy(p, hv, kvals, proc_data, keyindex);
+                    if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                        return rc;
                     }
                 }
             }
@@ -417,10 +433,7 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
             /* find the value from within this data object */
             hv = lookup_keyval(proc_data, kid, qualifiers, nquals, keyindex);
             if (NULL != hv) {
-                /* create the copy */
-                PMIX_KVAL_NEW(kv, key);
-                PMIx_Value_xfer(kv->value, hv->value);
-                pmix_list_append(kvals, &kv->super);
+                rc = make_copy(p, hv, kvals, proc_data, keyindex);
                 break;
             } else if (!fullsearch) {
                 pmix_output_verbose(10, pmix_gds_base_framework.framework_output,

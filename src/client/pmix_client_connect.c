@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -112,7 +112,14 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_CONNECTNB_CMD;
     pmix_status_t rc;
-    pmix_cb_t *cb;
+    pmix_cb_t *cb, cb2;
+    pmix_byte_object_t bo;
+    pmix_buffer_t pbkt;
+    pmix_info_t xfer;
+    pmix_kval_t *kv;
+    void *ilist;
+    pmix_data_array_t darray;
+    bool found;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -170,6 +177,56 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
             return rc;
         }
     }
+
+    /* get our endpt info, if some was posted. We use
+     * the global scope here as connect may involve
+     * cross-nspace, and so the local endpts may
+     * be relevant */
+    PMIX_BYTE_OBJECT_CONSTRUCT(&bo);
+    PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+    cb2.proc = &pmix_globals.myid;
+    cb2.scope = PMIX_GLOBAL;
+    cb2.copy = true;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+    if (PMIX_SUCCESS == rc) {
+        ilist = PMIx_Info_list_start();
+        PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
+        // start with our procID
+        PMIx_Info_list_add(ilist, PMIX_PROCID, &pmix_globals.myid, PMIX_PROC);
+        // now add the kvals
+        found = false;
+        PMIX_LIST_FOREACH (kv, &cb2.kvs, pmix_kval_t) {
+            if (PMIx_Check_reserved_key(kv->key)) {
+                continue;
+            }
+            PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value);
+            found = true;
+        }
+        if (found) {
+            // convert to array
+            rc = PMIx_Info_list_convert(ilist, &darray);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                PMIx_Info_list_release(ilist);
+                return rc;
+            }
+            // insert into a pmix_info_t for packing
+            PMIX_INFO_LOAD(&xfer, PMIX_PROC_DATA, &darray, PMIX_DATA_ARRAY);
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+            // pack the result
+            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &xfer, 1, PMIX_INFO);
+            PMIX_INFO_DESTRUCT(&xfer);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_RELEASE(msg);
+                PMIx_Info_list_release(ilist);
+                return rc;
+            }
+        }
+        PMIx_Info_list_release(ilist);
+    }
+    PMIX_DESTRUCT(&cb2);
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when

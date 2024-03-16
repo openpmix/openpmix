@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -440,6 +440,13 @@ void PMIx_Byte_object_destruct(pmix_byte_object_t *b)
 pmix_byte_object_t* PMIx_Byte_object_create(size_t n)
 {
     return pmix_bfrops_base_tma_byte_object_create(n, NULL);
+}
+
+void PMIx_Byte_object_load(pmix_byte_object_t *b,
+                           char *d, size_t sz)
+{
+    b->bytes = d;
+    b->size = sz;
 }
 
 void PMIx_Byte_object_free(pmix_byte_object_t *b, size_t n)

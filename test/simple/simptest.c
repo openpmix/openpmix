@@ -18,7 +18,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2023-2024 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1294,23 +1294,28 @@ static pmix_status_t grp_fn(pmix_group_operation_t op, char *gpid,
                             pmix_info_cbfunc_t cbfunc, void *cbdata)
 {
     mylog_t *lg = (mylog_t *) malloc(sizeof(mylog_t));
-    pmix_info_t *info;
     size_t n;
     size_t ctxid = 1;
+    pmix_data_array_t darray;
     PMIX_HIDE_UNUSED_PARAMS(op, gpid, procs, nprocs);
 
     memset(lg, 0, sizeof(mylog_t));
     if (PMIX_GROUP_CONSTRUCT == op) {
-        PMIX_INFO_CREATE(info, 2);
-        PMIX_INFO_LOAD(&info[0], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
+        lg->ninfo = 3;
+        PMIX_INFO_CREATE(lg->info, lg->ninfo);
+        PMIX_INFO_LOAD(&lg->info[0], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
+        darray.array = (pmix_proc_t*)procs;
+        darray.type = PMIX_PROC;
+        darray.size = nprocs;
+        PMIX_INFO_LOAD(&lg->info[1], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
+        lg->ninfo = 2;
         for (n=0; n < ndirs; n++) {
             if (PMIX_CHECK_KEY(&directives[n], PMIX_GROUP_ENDPT_DATA)) {
-                PMIX_INFO_XFER(&info[1], &directives[n]);
+                PMIX_INFO_XFER(&lg->info[2], &directives[n]);
+                lg->ninfo = 3;
                 break;
             }
         }
-        lg->info = info;
-        lg->ninfo = 2;
     }
     lg->infocbfunc = cbfunc;
     lg->cbdata = cbdata;

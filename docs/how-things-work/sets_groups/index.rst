@@ -10,3 +10,4 @@ sets and groups.
 
    overview.rst
    psets.rst
+   group_construct

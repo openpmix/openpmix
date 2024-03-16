@@ -413,6 +413,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_get_logic_t,
 static void cbcon(pmix_cb_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->status = PMIX_SUCCESS;
     p->checked = false;
     PMIX_CONSTRUCT(&p->data, pmix_buffer_t);
     p->cbfunc.ptlfn = NULL;
@@ -581,6 +582,7 @@ void pmix_dstor_release_tma(pmix_dstor_t *d,
 static void grcon(pmix_group_t *p)
 {
     p->grpid = NULL;
+    p->ctxid = SIZE_MAX;
     p->members = NULL;
     p->nmbrs = 0;
 }
@@ -590,6 +592,7 @@ static void grdes(pmix_group_t *p)
         free(p->grpid);
         p->grpid = NULL;
     }
+    p->ctxid = SIZE_MAX;
     if (NULL != p->members) {
         PMIX_PROC_FREE(p->members, p->nmbrs);
         p->members = NULL;

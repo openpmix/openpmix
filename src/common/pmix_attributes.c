@@ -870,6 +870,11 @@ PMIX_EXPORT const char *pmix_attributes_lookup(const char *attr)
 {
     pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
 
+    if (NULL == kidx->table) {
+        // we haven't been initialized yet - just return the string
+        return attr;
+    }
+
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
         if (NULL == ra) break;
@@ -884,6 +889,11 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 {
     pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
 
+    if (NULL == kidx->table) {
+        // we haven't been initialized yet - just return the string
+        return attrstring;
+    }
+
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
         if (NULL == ra) break;
@@ -897,6 +907,11 @@ PMIX_EXPORT const char *pmix_attributes_reverse_lookup(const char *attrstring)
 PMIX_EXPORT const pmix_regattr_input_t *pmix_attributes_lookup_term(char *attr)
 {
     pmix_keyindex_t *const kidx = &pmix_globals.keyindex;
+
+    if (NULL == kidx->table) {
+        // we haven't been initialized yet - just return the string
+        return NULL;
+    }
 
     for (int i = 0; i < kidx->table->size; ++i) {
         pmix_regattr_input_t *ra = pmix_pointer_array_get_item(kidx->table, i);
