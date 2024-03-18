@@ -60,6 +60,7 @@
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 #include "src/util/pmix_getcwd.h"
+#include "src/util/pmix_printf.h"
 
 #include "src/server/pmix_server_ops.h"
 #include "pmix_client_ops.h"
@@ -130,7 +131,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_kval_t *kv;
     pmix_list_t ilist;
     char cwd[PMIX_PATH_MAX];
-    char *tmp, *t2;
+    char *tmp, *t2, *prefix, *defprefix = NULL;
     pmix_setup_caddy_t *cd;
     bool proxy = false;
     pmix_proc_t parent;
@@ -185,6 +186,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PARENT_ID)) {
                 PMIX_XFER_PROCID(&parent, job_info[n].value.data.proc);
                 proxy = true;
+            } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PREFIX)) {
+                defprefix = job_info[n].value.data.string;
             }
             PMIX_INFO_XFER(&jinfo[n], &job_info[n]);
         }
@@ -247,6 +250,26 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             }
             free(tmp);
             free(t2);
+        }
+
+        // check for prefix and adjust if required
+        prefix = NULL;
+        for (m=0; m < aptr->ninfo; m++) {
+            if (PMIX_CHECK_KEY(&aptr->info[m], PMIX_PREFIX)) {
+                prefix = aptr->info[m].value.data.string;
+                break;
+            }
+        }
+        if (NULL != prefix) {
+            // prefix the command
+            pmix_asprintf(&tmp, "%s/%s", prefix, aptr->cmd);
+            free(aptr->cmd);
+            aptr->cmd = tmp;
+        } else if (NULL != defprefix) {
+            // prefix the command
+            pmix_asprintf(&tmp, "%s/%s", defprefix, aptr->cmd);
+            free(aptr->cmd);
+            aptr->cmd = tmp;
         }
 
         // copy the env array
