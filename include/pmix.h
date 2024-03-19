@@ -38,7 +38,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1182,6 +1182,7 @@ PMIX_EXPORT const char* PMIx_Get_attribute_name(const char *attrstring);
 PMIX_EXPORT const char* PMIx_Link_state_string(pmix_link_state_t state);
 PMIX_EXPORT const char* PMIx_Device_type_string(pmix_device_type_t type);
 PMIX_EXPORT const char* PMIx_Value_comparison_string(pmix_value_cmp_t cmp);
+PMIX_EXPORT const char* PMIx_Group_operation_string(pmix_group_operation_t op);
 
 /* the following print statements return ALLOCATED strings
  * that the user must release when done */
@@ -1658,7 +1659,7 @@ PMIX_EXPORT bool PMIx_Check_nspace(const char *key1, const char *key2);
 PMIX_EXPORT bool PMIx_Nspace_invalid(const char *nspace);
 
 /* load a process ID struct */
-PMIX_EXPORT void PMIx_Load_procid(pmix_proc_t *p, 
+PMIX_EXPORT void PMIx_Load_procid(pmix_proc_t *p,
                                   const char *ns,
                                   pmix_rank_t rk);
 

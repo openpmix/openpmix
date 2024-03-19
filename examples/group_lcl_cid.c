@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC.
  *                         All rights reserved.
  *
@@ -72,7 +72,7 @@ static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, v
 {
     mylock_t *lock = (mylock_t *) cbdata;
     EXAMPLES_HIDE_UNUSED_PARAMS(errhandler_ref);
-    
+
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
@@ -85,7 +85,7 @@ int main(int argc, char **argv)
     uint32_t nprocs, n;
     mylock_t lock;
     pmix_info_t *results, *info, tinfo[2];
-    size_t nresults, cid, lcid, ninfo;
+    size_t nresults, cid, lcid, ninfo, m;
     pmix_data_array_t darray;
     void *grpinfo, *list;
 
@@ -184,10 +184,15 @@ int main(int argc, char **argv)
                 myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
-    /* we should have a single results object */
+    /* check the results for our global CID*/
     if (NULL != results) {
         cid = 0;
-        PMIX_VALUE_GET_NUMBER(rc, &results[0].value, cid, size_t);
+        for (m=0; m < nresults; m++) {
+            if (PMIX_CHECK_KEY(&results[m], PMIX_GROUP_CONTEXT_ID)) {
+                PMIX_VALUE_GET_NUMBER(rc, &results[m].value, cid, size_t);
+                break;
+            }
+        }
         fprintf(stderr, "Rank %d Group construct complete with status %s KEY %s CID %lu\n",
                 myproc.rank, PMIx_Error_string(rc), results[0].key, (unsigned long) cid);
     } else {
