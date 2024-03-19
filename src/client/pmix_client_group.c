@@ -1309,14 +1309,16 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     pmix_status_t ret;
     int32_t cnt;
     size_t ctxid, ninfo = 0, n;
-    pmix_info_t *iptr = NULL;
+    pmix_info_t *iptr = NULL, *grpinfo;
     bool gotctxid = false;
     pmix_data_array_t darray;
-    pmix_proc_t *members = NULL;
-    size_t nmembers = 0;
+    pmix_proc_t *members = NULL, procid;
+    size_t nmembers = 0, ngrpinfo;
     char *nspace;
-    pmix_buffer_t bkt;
+    pmix_buffer_t bkt, rankblob, srvrblob;
     pmix_byte_object_t bo;
+    pmix_kval_t kp;
+    pmix_value_t val;
 
     PMIX_HIDE_UNUSED_PARAMS(pr, hdr);
 
@@ -1355,7 +1357,8 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
         PMIX_ERROR_LOG(rc);
         ret = rc;
         goto report;
-    } else if (PMIX_SUCCESS == rc) {
+    }
+    if (0 < nmembers) {
         PMIX_PROC_CREATE(members, nmembers);
         cnt = nmembers;
         PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, members, &cnt, PMIX_PROC);
@@ -1366,16 +1369,140 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
         }
     }
 
-    /* unpack any ctxid that was provided - it is okay if
-     * this attempts to unpack past end of buffer */
+    /* unpack any ctxid that was provided */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ctxid, &cnt, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc && PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &gotctxid, &cnt, PMIX_BOOL);
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         ret = rc;
         goto report;
-    } else if (PMIX_SUCCESS == rc) {
-        gotctxid = true;
+    }
+    if (gotctxid) {
+        cnt = 1;
+        PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &ctxid, &cnt, PMIX_SIZE);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            ret = rc;
+            goto report;
+        }
+    }
+
+    // unpack any group info that was provided
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_client_globals.myserver, buf, &bo, &cnt, PMIX_BYTE_OBJECT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        ret = rc;
+        goto report;
+    }
+    // processing this info requires that we received a ctxID
+    if (gotctxid && 0 < bo.size) {
+        /* load it for unpacking */
+        PMIX_CONSTRUCT(&bkt, pmix_buffer_t);
+        PMIX_LOAD_BUFFER(pmix_client_globals.myserver, &bkt, bo.bytes, bo.size);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+
+        /* the blob consists of a set of byte objects, each containing the ID
+         * of the contributing proc followed by the pmix_info_t they
+         * provided */
+        rc = PMIX_SUCCESS;
+        while (PMIX_SUCCESS == rc) {
+            cnt = 1;
+            PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &bo, &cnt, PMIX_BYTE_OBJECT);
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+                /* not an error - we are simply done */
+                break;
+            }
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&bkt);
+                goto report;
+            }
+            // there is one blob from each contributing server
+            PMIX_CONSTRUCT(&srvrblob, pmix_buffer_t);
+            PMIX_LOAD_BUFFER(pmix_globals.mypeer, &srvrblob, bo.bytes, bo.size);
+            PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+            // there are multiple rank blobs in the server blob
+            rc = PMIX_SUCCESS;
+            while (PMIX_SUCCESS == rc) {
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &srvrblob, &bo, &cnt, PMIX_BYTE_OBJECT);
+                if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+                    /* not an error - we are simply done */
+                    break;
+                }
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&bkt);
+                    goto report;
+                }
+                PMIX_CONSTRUCT(&rankblob, pmix_buffer_t);
+                PMIX_LOAD_BUFFER(pmix_globals.mypeer, &rankblob, bo.bytes, bo.size);
+                PMIX_BYTE_OBJECT_DESTRUCT(&bo);
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &rankblob, &procid, &cnt, PMIX_PROC);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&bkt);
+                    PMIX_DESTRUCT(&rankblob);
+                    PMIX_DESTRUCT(&srvrblob);
+                    goto report;
+                }
+                cnt = 1;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &rankblob, &ngrpinfo, &cnt, PMIX_SIZE);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&bkt);
+                    PMIX_DESTRUCT(&rankblob);
+                    PMIX_DESTRUCT(&srvrblob);
+                    goto report;
+                }
+                PMIX_INFO_CREATE(grpinfo, ngrpinfo);
+                cnt = ngrpinfo;
+                PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &rankblob, grpinfo, &cnt, PMIX_INFO);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&bkt);
+                    PMIX_DESTRUCT(&rankblob);
+                    PMIX_DESTRUCT(&srvrblob);
+                    PMIX_INFO_FREE(grpinfo, ngrpinfo);
+                    goto report;
+                }
+                /* reconstruct each value as a qualified one based
+                 * on the ctxid */
+                PMIX_CONSTRUCT(&kp, pmix_kval_t);
+                kp.value = &val;
+                kp.key = PMIX_QUALIFIED_VALUE;
+                val.type = PMIX_DATA_ARRAY;
+                for (n=0; n < ngrpinfo; n++) {
+                    PMIX_DATA_ARRAY_CONSTRUCT(&darray, 2, PMIX_INFO);
+                    iptr = (pmix_info_t*)darray.array;
+                    /* the primary value is in the first position */
+                    PMIX_INFO_XFER(&iptr[0], &grpinfo[n]);
+                    /* add the context ID qualifier */
+                    PMIX_INFO_LOAD(&iptr[1], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
+                    PMIX_INFO_SET_QUALIFIER(&iptr[1]);
+                    /* add it to the kval */
+                    val.data.darray = &darray;
+                    /* store it */
+                    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &procid, PMIX_GLOBAL, &kp);
+                    PMIX_DATA_ARRAY_DESTRUCT(&darray);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_DESTRUCT(&bkt);
+                        PMIX_DESTRUCT(&rankblob);
+                        PMIX_DESTRUCT(&srvrblob);
+                        PMIX_INFO_FREE(grpinfo, ngrpinfo);
+                        goto report;
+                    }
+                }
+                PMIX_DESTRUCT(&rankblob);
+                rc = PMIX_SUCCESS;
+            }
+            PMIX_INFO_FREE(grpinfo, ngrpinfo);
+            PMIX_DESTRUCT(&srvrblob);
+            rc = PMIX_SUCCESS;
+        }
+        PMIX_DESTRUCT(&bkt);
     }
 
     /* group construct has to also pass back data from all nspace's involved in
@@ -1420,12 +1547,16 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     darray.type = PMIX_PROC;
     ++ninfo;
 
+    ++ninfo; // account for the grpID
+
     if (gotctxid) {
         ++ninfo;
     }
 
     PMIX_INFO_CREATE(iptr, ninfo);
     n = 0;
+    PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_ID, &cb->grpid, PMIX_STRING);
+    ++n;
     if (0 < nmembers) {
         PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
         // data was copied into the info

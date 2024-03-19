@@ -1911,7 +1911,8 @@ pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     pmix_server_trkr_t *trk;
     struct timeval tv = {0, 0};
 
-    pmix_output_verbose(2, pmix_server_globals.connect_output, "recvd CONNECT from peer %s:%d",
+    pmix_output_verbose(2, pmix_server_globals.connect_output,
+                        "recvd CONNECT from peer %s:%d",
                         cd->peer->info->pname.nspace, cd->peer->info->pname.rank);
 
     /* unpack the number of procs */

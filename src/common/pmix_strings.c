@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -502,4 +502,18 @@ char* PMIx_Resource_unit_string(const pmix_resource_unit_t *p)
 
     pmix_asprintf(&tmp, "TYPE: %s  COUNT: %" PRIsize_t "", PMIx_Device_type_string(p->type), p->count);
     return tmp;
+}
+
+const char* PMIx_Group_operation_string(pmix_group_operation_t op)
+{
+    switch(op) {
+        case PMIX_GROUP_CONSTRUCT:
+            return "CONSTRUCT";
+        case PMIX_GROUP_DESTRUCT:
+            return "DESTRUCT";
+        case PMIX_GROUP_NONE:
+            return "NONE";
+        default:
+            return "UNKNOWN VALUE";
+    }
 }
