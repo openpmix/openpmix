@@ -124,18 +124,19 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_SPAWNNB_CMD;
     pmix_status_t rc;
-    size_t n, m;
+    size_t n, m, jninfo = 0;
     pmix_app_t *aptr, *appsptr;
     bool jobenvars = false;
     bool forkexec = false;
     pmix_kval_t *kv;
-    pmix_list_t ilist;
+    pmix_list_t ilist, xlist;
     char cwd[PMIX_PATH_MAX];
     char *tmp, *t2, *prefix, *defprefix = NULL;
     pmix_setup_caddy_t *cd;
     bool proxy = false;
     pmix_proc_t parent;
     pmix_info_t *jinfo = NULL;
+    pmix_infolist_t *ilt;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -163,14 +164,14 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     /* check job info for directives */
     if (NULL != job_info) {
-        PMIX_INFO_CREATE(jinfo, ninfo);
+        PMIX_CONSTRUCT(&xlist, pmix_list_t);
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&job_info[n], PMIX_SETUP_APP_ENVARS)) {
                 PMIX_CONSTRUCT(&ilist, pmix_list_t);
                 rc = pmix_pmdl.harvest_envars(NULL, job_info, ninfo, &ilist);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_LIST_DESTRUCT(&ilist);
-                    PMIX_INFO_FREE(jinfo, ninfo);
+                    PMIX_LIST_DESTRUCT(&xlist);
                     return rc;
                 }
                 PMIX_LIST_FOREACH (kv, &ilist, pmix_kval_t) {
@@ -188,9 +189,22 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                 proxy = true;
             } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PREFIX)) {
                 defprefix = job_info[n].value.data.string;
+                // do not transfer this key - we will handle it here
+                continue;
             }
-            PMIX_INFO_XFER(&jinfo[n], &job_info[n]);
+            ilt = PMIX_NEW(pmix_infolist_t);
+            PMIX_INFO_XFER(&ilt->info, &job_info[n]);
+            pmix_list_append(&xlist, &ilt->super);
         }
+        // convert the list to an array
+        jninfo = pmix_list_get_size(&xlist);
+        PMIX_INFO_CREATE(jinfo, jninfo);
+        n = 0;
+        PMIX_LIST_FOREACH(ilt, &xlist, pmix_infolist_t) {
+            PMIX_INFO_XFER(&jinfo[n], &ilt->info);
+            ++n;
+        }
+        PMIX_LIST_DESTRUCT(&xlist);
     }
 
     /* sadly, we have to copy the apps array since we are
@@ -252,25 +266,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             free(t2);
         }
 
-        // check for prefix and adjust if required
-        prefix = NULL;
-        for (m=0; m < aptr->ninfo; m++) {
-            if (PMIX_CHECK_KEY(&aptr->info[m], PMIX_PREFIX)) {
-                prefix = aptr->info[m].value.data.string;
-                break;
-            }
-        }
-        if (NULL != prefix) {
-            // prefix the command
-            pmix_asprintf(&tmp, "%s/%s", prefix, aptr->cmd);
-            free(aptr->cmd);
-            aptr->cmd = tmp;
-        } else if (NULL != defprefix) {
-            // prefix the command
-            pmix_asprintf(&tmp, "%s/%s", defprefix, aptr->cmd);
-            free(aptr->cmd);
-            aptr->cmd = tmp;
-        }
 
         // copy the env array
         appsptr[n].env = PMIx_Argv_copy(aptr->env);
@@ -298,12 +293,40 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         }
 
         // copy the info array
+        prefix = NULL;
         if (0 < aptr->ninfo) {
-            appsptr[n].ninfo = aptr->ninfo;
-            PMIX_INFO_CREATE(appsptr[n].info, appsptr[n].ninfo);
+            PMIX_CONSTRUCT(&xlist, pmix_list_t);
             for (m=0; m < aptr->ninfo; m++) {
-                PMIX_INFO_XFER(&appsptr[n].info[m], &aptr->info[m]);
+                if (PMIX_CHECK_KEY(&aptr->info[m], PMIX_PREFIX)) {
+                    prefix = aptr->info[m].value.data.string;
+                    // do not transfer this key
+                    continue;
+                }
+                ilt = PMIX_NEW(pmix_infolist_t);
+                PMIX_INFO_XFER(&ilt->info, &aptr->info[m]);
+                pmix_list_append(&xlist, &ilt->super);
             }
+            appsptr[n].ninfo = pmix_list_get_size(&xlist);
+            PMIX_INFO_CREATE(appsptr[n].info, appsptr[n].ninfo);
+            m = 0;
+            PMIX_LIST_FOREACH(ilt, &xlist, pmix_infolist_t) {
+                PMIX_INFO_XFER(&appsptr[n].info[m], &ilt->info);
+                ++m;
+            }
+            PMIX_LIST_DESTRUCT(&xlist);
+        }
+
+        // adjust the cmd prefix if required
+        if (NULL != prefix) {
+            // prefix the command
+            pmix_asprintf(&tmp, "%s/%s", prefix, aptr->cmd);
+            free(aptr->cmd);
+            aptr->cmd = tmp;
+        } else if (NULL != defprefix) {
+            // prefix the command
+            pmix_asprintf(&tmp, "%s/%s", defprefix, aptr->cmd);
+            free(aptr->cmd);
+            aptr->cmd = tmp;
         }
 
         if (!jobenvars) {
@@ -339,7 +362,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         if (NULL == pmix_host_server.spawn) {
             PMIX_APP_FREE(appsptr, napps);
             if (NULL != jinfo) {
-                PMIX_INFO_FREE(jinfo, ninfo);
+                PMIX_INFO_FREE(jinfo, jninfo);
             }
             return PMIX_ERR_NOT_SUPPORTED;
         }
@@ -348,7 +371,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         if (NULL == cd) {
             PMIX_APP_FREE(appsptr, napps);
             if (NULL != jinfo) {
-                PMIX_INFO_FREE(jinfo, ninfo);
+                PMIX_INFO_FREE(jinfo, jninfo);
             }
             return PMIX_ERR_NOMEM;
         }
@@ -361,7 +384,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
                 PMIX_RELEASE(cd);
                 PMIX_APP_FREE(appsptr, napps);
                 if (NULL != jinfo) {
-                    PMIX_INFO_FREE(jinfo, ninfo);
+                    PMIX_INFO_FREE(jinfo, jninfo);
                 }
                 return PMIX_ERR_NOT_FOUND;
             }
@@ -370,7 +393,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         }
         PMIX_RETAIN(cd->peer);
         cd->info = jinfo;
-        cd->ninfo = ninfo;
+        cd->ninfo = jninfo;
         cd->copied = true;
         cd->apps = appsptr;
         cd->napps = napps;
@@ -399,6 +422,9 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     if (forkexec) {
         rc = pmix_pfexec.spawn_job(job_info, ninfo, appsptr, napps, cbfunc, cbdata);
         PMIX_APP_FREE(appsptr, napps);
+        if (NULL != jinfo) {
+            PMIX_INFO_FREE(jinfo, jninfo);
+        }
         return rc;
     }
 
@@ -410,30 +436,30 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         PMIX_RELEASE(msg);
         PMIX_APP_FREE(appsptr, napps);
         if (NULL != jinfo) {
-            PMIX_INFO_FREE(jinfo, ninfo);
+            PMIX_INFO_FREE(jinfo, jninfo);
         }
         return rc;
     }
 
     /* pack the job-level directives */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &jninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_APP_FREE(appsptr, napps);
         if (NULL != jinfo) {
-            PMIX_INFO_FREE(jinfo, ninfo);
+            PMIX_INFO_FREE(jinfo, jninfo);
         }
         return rc;
     }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, jinfo, ninfo, PMIX_INFO);
+    if (0 < jninfo) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, jinfo, jninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
             PMIX_APP_FREE(appsptr, napps);
             if (NULL != jinfo) {
-                PMIX_INFO_FREE(jinfo, ninfo);
+                PMIX_INFO_FREE(jinfo, jninfo);
             }
             return rc;
         }
@@ -446,7 +472,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         PMIX_RELEASE(msg);
         PMIX_APP_FREE(appsptr, napps);
         if (NULL != jinfo) {
-            PMIX_INFO_FREE(jinfo, ninfo);
+            PMIX_INFO_FREE(jinfo, jninfo);
         }
         return rc;
     }
@@ -457,7 +483,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             PMIX_RELEASE(msg);
             PMIX_APP_FREE(appsptr, napps);
             if (NULL != jinfo) {
-                PMIX_INFO_FREE(jinfo, ninfo);
+                PMIX_INFO_FREE(jinfo, jninfo);
             }
             return rc;
         }
@@ -470,7 +496,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     if (NULL == cd) {
         PMIX_APP_FREE(appsptr, napps);
         if (NULL != jinfo) {
-            PMIX_INFO_FREE(jinfo, ninfo);
+            PMIX_INFO_FREE(jinfo, jninfo);
         }
         return PMIX_ERR_NOMEM;
     }
@@ -480,7 +506,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     cd->apps = appsptr;
     cd->napps = napps;
     cd->info = jinfo;
-    cd->ninfo = ninfo;
+    cd->ninfo = jninfo;
     /* check for IOF flags */
     pmix_server_spawn_parser(pmix_globals.mypeer, cd);
 
