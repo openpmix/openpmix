@@ -14,6 +14,11 @@ series, in reverse chronological order.
                v5.0.1 and v5.0.0 releases.
 
 Detailed changes include:
+ - PR #3330: Do not include PMIX_PREFIX in spawn upcall
+ - PR #3325: Multiple commits
+    - Correctly set the app cmd and argv0 fields
+    - Don't overwrite user's args
+    - Correct error in retrieval of node and app info
  - PR #3319: Toughen the submodule checks in autogen.pl
  - PR #3317 Correct group modex storage to avoid duplication
  - PR #3314 Fix memory leak in storing of modex data
