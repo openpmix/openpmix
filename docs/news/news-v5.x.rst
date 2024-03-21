@@ -4,8 +4,8 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.2 -- TBD 2024
-----------------------
+5.0.2 -- 21 Mar 2024
+--------------------
 .. important:: Cross-version incompatibility
                The known issue of cross-version operability between
                members of the PMIx v5.0 release series has been
@@ -110,7 +110,7 @@ Detailed changes include:
 
 
 5.0.1 -- 9 Sep 2023
-----------------------
+-------------------
 .. warning:: CVE-2023-41915
 
              A security issue was reported by François Diakhate (CEA)
@@ -157,7 +157,7 @@ Detailed changes include:
 
 
 5.0.0 -- 7 Aug 2023
-----------------------
+-------------------
 .. important:: This is the first release in the v5 family
                and includes some significant changes, both internal
                and user-facing. A partial list includes:
