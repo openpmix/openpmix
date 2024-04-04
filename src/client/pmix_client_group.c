@@ -1555,7 +1555,7 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
 
     PMIX_INFO_CREATE(iptr, ninfo);
     n = 0;
-    PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_ID, &cb->grpid, PMIX_STRING);
+    PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
     ++n;
     if (0 < nmembers) {
         PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
