@@ -582,9 +582,11 @@ static void grdes(pmix_group_t *p)
 {
     if (NULL != p->grpid) {
         free(p->grpid);
+        p->grpid = NULL;
     }
     if (NULL != p->members) {
         PMIX_PROC_FREE(p->members, p->nmbrs);
+        p->members = NULL;
     }
 }
 PMIX_CLASS_INSTANCE(pmix_group_t,

@@ -1138,6 +1138,7 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
         gotctxid = true;
     }
 
+
     /* since the group construction has finished, we can add
      * the group to out list of groups. Always sort the
      * the array to maintain the same view across participants.*/
@@ -1153,12 +1154,16 @@ static void construct_cbfunc(struct pmix_peer_t *pr,
     darray.type = PMIX_PROC;
     ++ninfo;
 
+    ++ninfo; // account for the grpID
+
     if (gotctxid) {
         ++ninfo;
     }
 
     PMIX_INFO_CREATE(iptr, ninfo);
     n = 0;
+    PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_ID, cb->grpid, PMIX_STRING);
+    ++n;
     if (0 < nmembers) {
         PMIX_INFO_LOAD(&iptr[n], PMIX_GROUP_MEMBERSHIP, &darray, PMIX_DATA_ARRAY);
         // do not destruct darray as the membership is being used
