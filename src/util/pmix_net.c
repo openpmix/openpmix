@@ -15,7 +15,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -420,13 +420,14 @@ bool pmix_net_islocalhost(const struct sockaddr *addr)
     return false;
 }
 
-bool pmix_net_samenetwork(const struct sockaddr *addr1, const struct sockaddr *addr2,
+bool pmix_net_samenetwork(const struct sockaddr_storage *addr1,
+                          const struct sockaddr_storage *addr2,
                           uint32_t prefixlen)
 {
     return false;
 }
 
-bool bool pmix_net_addr_isipv6linklocal(const struct sockaddr *addr)
+bool pmix_net_addr_isipv6linklocal(const struct sockaddr *addr)
 {
     return false;
 }
