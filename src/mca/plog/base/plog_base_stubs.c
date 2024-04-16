@@ -49,7 +49,6 @@ static void localcbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_mycount_t *mycount = (pmix_mycount_t *) cbdata;
 
-    PMIX_ACQUIRE_THREAD(&mycount->lock);
     mycount->nreqs--;
     if (PMIX_SUCCESS != status && PMIX_SUCCESS == mycount->status) {
         mycount->status = status;
@@ -59,11 +58,8 @@ static void localcbfunc(pmix_status_t status, void *cbdata)
         if (NULL != mycount->cbfunc) {
             mycount->cbfunc(mycount->status, mycount->cbdata);
         }
-        PMIX_RELEASE_THREAD(&mycount->lock);
-        PMIX_RELEASE(mycount);
         return;
     }
-    PMIX_RELEASE_THREAD(&mycount->lock);
 }
 
 pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
