@@ -269,7 +269,7 @@ pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
         PMIX_RELEASE_THREAD(&mycount->lock);
         PMIX_RELEASE(mycount);
         PMIX_RELEASE_THREAD(&pmix_plog_globals.lock);
-        return PMIX_OPERATION_SUCCEEDED;
+        return PMIX_SUCCESS;
     }
     PMIX_RELEASE_THREAD(&mycount->lock);
     PMIX_RELEASE_THREAD(&pmix_plog_globals.lock);
