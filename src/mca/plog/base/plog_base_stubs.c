@@ -35,7 +35,7 @@ static void mycon(pmix_mycount_t *p)
     PMIX_CONSTRUCT_LOCK(&p->lock);
     p->lock.active = false;
     p->nreqs = 0;
-    p->status = PMIX_ERR_NOT_AVAILABLE;
+    p->status = PMIX_SUCCESS;
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
