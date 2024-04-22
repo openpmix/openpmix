@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -62,14 +62,18 @@
 #include "ptl_client.h"
 #include "src/mca/ptl/base/base.h"
 
-static pmix_status_t connect_to_peer(struct pmix_peer_t *peer, pmix_info_t *info, size_t ninfo);
+static pmix_status_t connect_to_peer(struct pmix_peer_t *peer,
+                                     pmix_info_t *info, size_t ninfo,
+                                     char **suri);
 
 pmix_ptl_module_t pmix_ptl_client_module = {
     .name = "client",
     .connect_to_peer = connect_to_peer
 };
 
-static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, size_t ninfo)
+static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
+                                     pmix_info_t *info, size_t ninfo,
+                                     char **suriout)
 {
     char *evar = NULL, *suri = NULL;
     char *nspace = NULL;
@@ -215,13 +219,11 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, 
 
 complete:
     /* mark the connection as made */
-    pmix_ptl_base_complete_connection(peer, nspace, rank, suri);
+    pmix_ptl_base_complete_connection(peer, nspace, rank);
+    *suriout = suri;
 
     if (NULL != nspace) {
         free(nspace);
-    }
-    if (NULL != suri) {
-        free(suri);
     }
     return rc;
 }

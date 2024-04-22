@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -664,12 +664,8 @@ retry:
     return PMIX_SUCCESS;
 }
 
-void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace, pmix_rank_t rank,
-                                       char *suri)
+void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace, pmix_rank_t rank)
 {
-    pmix_kval_t *urikv;
-    pmix_status_t rc;
-
     pmix_globals.connected = true;
 
     /* setup the server info */
@@ -689,16 +685,6 @@ void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace, pmix_ran
     }
     peer->info->pname.nspace = strdup(peer->nptr->nspace);
     peer->info->pname.rank = rank;
-
-    /* store the URI for subsequent lookups */
-    PMIX_KVAL_NEW(urikv, PMIX_SERVER_URI);
-    urikv->value->type = PMIX_STRING;
-    pmix_asprintf(&urikv->value->data.string, "%s.%u;%s", nspace, rank, suri);
-    PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, urikv);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-    }
-    PMIX_RELEASE(urikv); // maintain accounting
 
     pmix_ptl_base_set_nonblocking(peer->sd);
 

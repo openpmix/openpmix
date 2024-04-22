@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -122,7 +122,8 @@ PMIX_CLASS_DECLARATION(pmix_connection_t);
 /* API stubs */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_notification_cbfunc(pmix_ptl_cbfunc_t cbfunc);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *peer,
-                                                        pmix_info_t info[], size_t ninfo);
+                                                        pmix_info_t info[], size_t ninfo,
+                                                        char **suri);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
                                                        bool optional,
                                                        pmix_list_t *connections);
@@ -167,7 +168,7 @@ PMIX_EXPORT pmix_rnd_flag_t pmix_ptl_base_set_flag(size_t *sz);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
                                                         pmix_info_t *iptr, size_t niptr);
 PMIX_EXPORT void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace,
-                                                   pmix_rank_t rank, char *uri);
+                                                   pmix_rank_t rank);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_timeout(pmix_peer_t *peer, struct timeval *save,
                                                     pmix_socklen_t *sz, bool *sockopt);
 PMIX_EXPORT void pmix_ptl_base_setup_socket(pmix_peer_t *peer);
@@ -175,8 +176,6 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer, pmix
 PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp);
 PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(const char *orig_str,
                                                    const char *name);
-PMIX_EXPORT pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info,
-                                                        size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar);
 PMIX_EXPORT char *pmix_ptl_base_get_cmd_line(void);
 

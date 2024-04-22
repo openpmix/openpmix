@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -433,7 +433,9 @@ static pmix_status_t trysearch(pmix_peer_t *peer, char **nspace,
     return rc;
 }
 
-pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr, pmix_info_t *info, size_t ninfo)
+pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
+                                            pmix_info_t *info, size_t ninfo,
+                                            char **suriout)
 {
     char *suri = NULL, *st, *evar;
     char *filename, *nspace = NULL;
@@ -796,9 +798,10 @@ complete:
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "tool_peer_try_connect: Connection across to server succeeded");
 
-    pmix_ptl_base_complete_connection(peer, nspace, rank, suri);
+    pmix_ptl_base_complete_connection(peer, nspace, rank);
 
 cleanup:
+    *suriout = suri;
     if (NULL != nspace) {
         free(nspace);
     }
@@ -807,9 +810,6 @@ cleanup:
     }
     if (NULL != rendfile) {
         free(rendfile);
-    }
-    if (NULL != suri) {
-        free(suri);
     }
     if (NULL != server_nspace) {
         free(server_nspace);
