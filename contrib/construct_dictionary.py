@@ -1,7 +1,7 @@
 #
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2020-2022 Cisco Systems, Inc.  All rights reserved
-# Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
@@ -363,15 +363,12 @@ const pmix_regattr_input_t pmix_dictionary[] = {
         return 1
 
     # mark the end of the array
-    constants.write(""",\n
-    {.index = UINT32_MAX, .name = "", .string = "", .type = PMIX_POINTER, .description = (char *[]){"NONE", NULL}}
-};
-""")
+    constants.write("""\n};""")
     constants.write("\n")
     constants.close()
 
     # write the header
-    return _write_header(options, build_src_include_dir, index + 1)
+    return _write_header(options, build_src_include_dir, index)
 
 
 if __name__ == '__main__':

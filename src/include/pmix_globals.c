@@ -203,7 +203,7 @@ static void keyindex_construct(pmix_keyindex_t *ki)
     ki->table = PMIX_NEW(pmix_pointer_array_t, tma);
     pmix_pointer_array_init(ki->table, 1024, INT_MAX, 128);
 
-    ki->next_id = PMIX_INDEX_BOUNDARY;
+    ki->next_id = 0;
 }
 
 static void keyindex_destruct(pmix_keyindex_t *ki)

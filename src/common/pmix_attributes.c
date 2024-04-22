@@ -4,7 +4,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -73,7 +73,8 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
 
         /* cycle across the dictionary and load a hash
          * table with translations of key -> index */
-        for (n=0; UINT32_MAX != pmix_dictionary[n].index; n++) {
+        pmix_pointer_array_set_size(pmix_globals.keyindex.table, PMIX_INDEX_BOUNDARY);  // minimize realloc's
+        for (n=0; n < PMIX_INDEX_BOUNDARY; n++) {
             p = (pmix_regattr_input_t*)pmix_malloc(sizeof(pmix_regattr_input_t));
             p->index = pmix_dictionary[n].index;
             p->name = strdup(pmix_dictionary[n].name);
@@ -82,6 +83,7 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
             p->description = PMIx_Argv_copy(pmix_dictionary[n].description);
             pmix_hash_register_key(p->index, p, &pmix_globals.keyindex);
         }
+        pmix_globals.keyindex.next_id = PMIX_INDEX_BOUNDARY;
         initialized = true;
     }
 }

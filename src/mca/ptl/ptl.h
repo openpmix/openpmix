@@ -16,7 +16,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -83,8 +83,10 @@ typedef pmix_status_t (*pmix_ptl_cancel_fn_t)(struct pmix_peer_t *peer, pmix_ptl
 
 /* connect to a peer - this is a blocking function
  * to establish a connection to a peer*/
-typedef pmix_status_t (*pmix_ptl_connect_to_peer_fn_t)(struct pmix_peer_t *peer, pmix_info_t info[],
-                                                       size_t ninfo);
+typedef pmix_status_t (*pmix_ptl_connect_to_peer_fn_t)(struct pmix_peer_t *peer,
+                                                       pmix_info_t info[],
+                                                       size_t ninfo,
+                                                       char **suri);
 
 /* query available servers on the local node */
 typedef void (*pmix_ptl_query_servers_fn_t)(char *dirname, pmix_list_t *servers);
