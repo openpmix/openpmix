@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -438,7 +438,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
 PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t ninfo)
 {
     pmix_status_t rc;
-    char *evar, *nspace = NULL;
+    char *evar, *nspace = NULL, *suri;
     pmix_rank_t rank = PMIX_RANK_UNDEF;
     bool do_not_connect = false;
     bool nspace_given = false;
@@ -460,6 +460,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     pmix_status_t code;
     pmix_value_t value;
     bool outputio = true;
+    pmix_kval_t *kptr;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -763,8 +764,22 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     } else {
         /* connect to the server */
         rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver, info,
-                                      ninfo);
-        if (PMIX_SUCCESS != rc) {
+                                      ninfo, &suri);
+        if (PMIX_SUCCESS == rc) {
+            /* store the URI for subsequent lookups */
+            PMIX_KVAL_NEW(kptr, PMIX_SERVER_URI);
+            kptr->value->type = PMIX_STRING;
+            pmix_asprintf(&kptr->value->data.string, "%s.%u;%s",
+                          pmix_client_globals.myserver->info->pname.nspace,
+                          pmix_client_globals.myserver->info->pname.rank, suri);
+            free(suri);
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+            PMIX_RELEASE(kptr); // maintain accounting
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                return rc;
+            }
+        } else {
             /* if connection wasn't optional, then error out */
             if (!connect_optional) {
                 PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -1590,6 +1605,7 @@ static void retry_attach(int sd, short args, void *cbdata)
     pmix_peer_t *peer;
     size_t n;
     pmix_status_t rc;
+    char *suri;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cb);
@@ -1614,7 +1630,7 @@ static void retry_attach(int sd, short args, void *cbdata)
     peer->nptr->compat.type = pmix_globals.mypeer->nptr->compat.type;
     peer->nptr->compat.gds = pmix_globals.mypeer->nptr->compat.gds;
 
-    cb->status = pmix_ptl.connect_to_peer((struct pmix_peer_t *) peer, cb->info, cb->ninfo);
+    cb->status = pmix_ptl.connect_to_peer((struct pmix_peer_t *) peer, cb->info, cb->ninfo, &suri);
 
     if (PMIX_SUCCESS == cb->status) {
         /* return the name */
@@ -1648,6 +1664,18 @@ static void retry_attach(int sd, short args, void *cbdata)
                 PMIX_ERROR_LOG(rc);
             }
             PMIX_RELEASE(kptr); // maintain accounting
+            /* store the URI for subsequent lookups */
+            PMIX_KVAL_NEW(kptr, PMIX_SERVER_URI);
+            kptr->value->type = PMIX_STRING;
+            pmix_asprintf(&kptr->value->data.string, "%s.%u;%s",
+                          peer->info->pname.nspace,
+                          peer->info->pname.rank, suri);
+            free(suri);
+            PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+            PMIX_RELEASE(kptr); // maintain accounting
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
         }
 
     } else {

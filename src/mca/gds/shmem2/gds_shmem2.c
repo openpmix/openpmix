@@ -1538,15 +1538,6 @@ out:
     return rc;
 }
 
-static inline int
-dictionary_nelems(
-    const pmix_regattr_input_t *dict
-) {
-    int i = 0;
-    for ( ; UINT32_MAX != dict[i].index; ++i) { }
-    return i;
-}
-
 static inline pmix_status_t
 pack_server_keyindex_info(
     pmix_gds_shmem2_job_t *job,
@@ -1577,12 +1568,11 @@ pack_server_keyindex_info(
         PMIX_DESTRUCT(&kv);
 
         // Pack the size of the server's keyindex table.
-        const int tabsize = dictionary_nelems(pmix_dictionary);
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
         kv.key = strdup(SHMEM2_KIDX_TAB_SIZE_KEY);
         kv.value = (pmix_value_t *)calloc(1, sizeof(pmix_value_t));
         kv.value->type = PMIX_UINT32;
-        kv.value->data.uint32 = (uint32_t)tabsize;
+        kv.value->data.uint32 = (uint32_t)PMIX_INDEX_BOUNDARY;
 
         PMIX_BFROPS_PACK(rc, peer, buffer, &kv, 1, PMIX_KVAL);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
@@ -1591,7 +1581,7 @@ pack_server_keyindex_info(
         }
         PMIX_DESTRUCT(&kv);
 
-        for (int i = 0; i < tabsize; ++i) {
+        for (int i = 0; i < PMIX_INDEX_BOUNDARY; ++i) {
             const pmix_regattr_input_t *p = &pmix_dictionary[i];
             PMIX_GDS_SHMEM2_VVVOUT(
                 "%s:keyindex=(index=%zd, type=%zd, name=%s string=%s, description=%s)",
@@ -1899,7 +1889,7 @@ client_update_global_keyindex_if_necessary(
             return rc;
         }
 
-       pmix_pointer_array_set_item(tmpindex.table, (int)tmpindex.next_id, ra);
+        pmix_pointer_array_set_item(tmpindex.table, (int)tmpindex.next_id, ra);
         ra->index = tmpindex.next_id;
         tmpindex.next_id += 1;
 
@@ -1918,9 +1908,6 @@ client_update_global_keyindex_if_necessary(
     // just yet
     for (i = 0; i < PMIX_INDEX_BOUNDARY; ++i) {
         ra = (pmix_regattr_input_t*)&pmix_dictionary[i];
-        if (UINT32_MAX == ra->index) {
-            break;
-        }
         // see if this entry is already present in the new keyindex
         found = false;
         for (m=0; m < tmpindex.table->size; m++) {
