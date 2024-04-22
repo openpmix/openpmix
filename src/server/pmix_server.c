@@ -494,7 +494,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     bool nspace_given = false, rank_given = false;
     bool share_topo = false;
     pmix_info_t ginfo, *iptr, evinfo[3];
-    char *evar, *nspace = NULL;
+    char *evar, *nspace = NULL, *suri;
     pmix_rank_t rank = PMIX_RANK_INVALID;
     pmix_rank_info_t *rinfo;
     pmix_proc_type_t ptype = PMIX_PROC_TYPE_STATIC_INIT;
@@ -507,6 +507,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_ptl_posted_recv_t *rcv;
     bool outputio;
     char *singleton = NULL;
+    pmix_data_array_t *mau = NULL;
+    pmix_kval_t *kptr;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -908,6 +910,26 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         /* wait for release to arrive */
         PMIX_WAIT_THREAD(&releaselock);
         PMIX_DESTRUCT_LOCK(&releaselock);
+    } else if (connect_directed) {
+        /* connect to another server, if the info's direct us to */
+        rc = pmix_ptl.connect_to_peer((struct pmix_peer_t *) pmix_client_globals.myserver,
+                                      info, ninfo, &suri);
+        if (PMIX_SUCCESS != rc && !connect_optional) {
+            return rc;
+        }
+        /* store the URI for subsequent lookups */
+        PMIX_KVAL_NEW(kptr, PMIX_SERVER_URI);
+        kptr->value->type = PMIX_STRING;
+        pmix_asprintf(&kptr->value->data.string, "%s.%u;%s",
+                      pmix_client_globals.myserver->info->pname.nspace,
+                      pmix_client_globals.myserver->info->pname.rank, suri);
+        free(suri);
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
+        PMIX_RELEASE(kptr); // maintain accounting
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
     }
     return PMIX_SUCCESS;
 }
