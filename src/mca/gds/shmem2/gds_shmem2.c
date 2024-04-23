@@ -1807,19 +1807,6 @@ unpack_shmem2_connection_info(
     return rc;
 }
 
-static inline int
-parray_nelem(
-    pmix_pointer_array_t *array
-) {
-    int i = 0;
-    for ( ; i < array->size; ++i) {
-        if (!pmix_pointer_array_get_item(array, i)) {
-            break;
-        }
-    }
-    return i;
-}
-
 static inline void
 regattr_list_free(
     pmix_regattr_input_t *ra,
