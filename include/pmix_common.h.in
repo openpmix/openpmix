@@ -938,6 +938,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //         of pmix_resource_unit_t structs.
 #define PMIX_ALLOC_CHILD_SEP                "pmix.alloc.sep"        // (bool) Treat the resulting allocation as independent from its parent - i.e.,
                                                                     //        do not terminate the allocation upon termination of the parent.
+#define PMIX_MEM_ALLOC_KIND                 "pmix.alloc.mkind"      // (char*) Comma-delimited list of memory kinds
+                                                                    //         being allocated (e.g., system,mpi,rocm:device)
 
 
 /* job control attributes */
