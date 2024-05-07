@@ -47,6 +47,12 @@ EOF
         echo "Debug build: yes" >&2
     fi
 
+    if test $WANT_PICKY_COMPILER = 0 ; then
+        echo "Devel check enabled: no" >& 2
+    else
+        echo "Devel check enabled: yes" >& 2
+    fi
+
     if test ! -z $with_pmix_platform ; then
         echo "Platform file: $with_pmix_platform" >&2
     else
