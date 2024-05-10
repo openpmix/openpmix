@@ -7,7 +7,7 @@
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -113,11 +113,10 @@ pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace, pmix_bu
      * store them in our GDS module */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, buff, &bo, &cnt, PMIX_BYTE_OBJECT);
-
     /* If the collect flag is set, we should have some data for unpacking */
-    if ((PMIX_COLLECT_YES == trk->collect_type)
-        && (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc)) {
-        goto exit;
+    if ((PMIX_COLLECT_YES == trk->collect_type) &&
+        (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc)) {
+       goto exit;
     }
 
     while (PMIX_SUCCESS == rc) {
