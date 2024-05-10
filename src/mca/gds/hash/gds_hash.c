@@ -1338,7 +1338,8 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *pro
     pmix_kval_t kv;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "[%s:%d] gds:hash:store_modex for nspace %s", pmix_globals.myid.nspace,
+                        "[%s:%d] gds:hash:store_modex for nspace %s",
+                        pmix_globals.myid.nspace,
                         pmix_globals.myid.rank, proc->nspace);
 
     PMIX_HIDE_UNUSED_PARAMS(ctx);

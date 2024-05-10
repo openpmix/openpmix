@@ -266,7 +266,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_names
  *
  * n - pointer to the pmix_namespace_t this blob is to be stored for
  *
- * b - pointer to pmix_byte_object_t containing the data
+ * b - pointer to pmix_buffer_t containing the data
  *
  * t - pointer to the modex server tracker
  */
