@@ -132,7 +132,7 @@ static pmix_status_t defer_response(char *nspace, pmix_rank_t rank, char *key,
     }
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s:%d TRACKER CREATED - WAITING TIMEOUT %d",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank, 
+                        pmix_globals.myid.nspace, pmix_globals.myid.rank,
                        (NULL == tv) ? -1 : (int)tv->tv_sec);
      /* if they specified a timeout, set it up now */
     if (NULL != tv && 0 < tv->tv_sec) {
@@ -579,7 +579,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         return PMIX_SUCCESS;
     }
 
-    pmix_output_verbose(2, pmix_server_globals.get_output, "%s:%d DATA NOT FOUND",
+    pmix_output_verbose(2, pmix_server_globals.get_output,
+                        "%s:%d DATA NOT FOUND",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
 
 request:
@@ -846,13 +847,12 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     pmix_byte_object_t bo;
     char *data = NULL;
     size_t sz = 0;
-    pmix_rank_info_t *rinfo;
-    pmix_peer_t *peer;
 
     pmix_output_verbose(2, pmix_server_globals.get_output,
-                        "%s:%d SATISFY REQUEST CALLED FOR %s:%d ON SCOPE %s",
+                        "%s:%d SATISFY REQUEST CALLED FOR %s:%d ON SCOPE %s KEY %s",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank,
-                        nptr->nspace, rank, PMIx_Scope_string(scope));
+                        nptr->nspace, rank, PMIx_Scope_string(scope),
+                        (NULL == key) ? "NULL" : key);
 
     PMIX_CONSTRUCT(&pbkt, pmix_buffer_t);
     PMIX_LOAD_NSPACE(proc.nspace, nptr->nspace);
@@ -865,35 +865,38 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
             PMIX_DESTRUCT(&pbkt);
             return rc;
         }
+        if (PMIX_RANK_WILDCARD == rank) {
+            // we are done
+            found = true;
+            goto complete;
+        }
     }
 
-    /* retrieve the data for the specific rank they are asking about */
     proc.rank = rank;
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
-    /* this is a local request, so give the gds the option
-     * of returning a copy of the data, or a pointer to
-     * local storage */
+
+    /* if they are asking for a reserved key, we only look for
+     * that one specific key. If they are looking for a
+     * non-reserved key - return all non-reserved keys for the
+     * specified proc. We do this as an optimization as we
+     * suspect that a request for one value for a proc will be
+     * followed by requests for additional values
+     */
+
+    if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+        cb.key = key;
+    }
+
     cb.proc = &proc;
-    cb.key = key;
     cb.scope = scope;
-    cb.copy = false;
     cb.info = cd->info;
     cb.ninfo = cd->ninfo;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
-    /* if we didn't find it on my peer, it could have
-     * been stored on their peer - so check there */
+    /* if we didn't find it on my peer, then it isn't found */
     if (PMIX_SUCCESS != rc) {
-        /* all procs in a given nspace must use
-         * the same GDS component */
-        peer = NULL;
-        rinfo = (pmix_rank_info_t*)pmix_list_get_first(&nptr->ranks);
-        while (NULL == peer && NULL != rinfo) {
-            peer = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, rinfo->peerid);
-            rinfo = (pmix_rank_info_t*)pmix_list_get_next(&rinfo->super);
-        }
-        if (NULL != peer) {
-            PMIX_GDS_FETCH_KV(rc, peer, &cb);
-        }
+        PMIX_DESTRUCT(&pbkt);
+        PMIX_DESTRUCT(&cb);
+        return PMIX_ERR_NOT_FOUND;
     }
     cb.info = NULL;
     cb.ninfo = 0;
@@ -937,14 +940,12 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
             }
             PMIX_DESTRUCT(&pkt);
         } else {
-            // Don't unload the buffer here. Since
-            // it gets repacked, we'll lose the base_ptr
-            // to destroy pkt later.
-            bo.bytes = (char *) pkt.unpack_ptr;
-            bo.size = pkt.bytes_used;
+            PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
+            PMIX_DESTRUCT(&pkt);
 
             /* pack it for transmission */
             PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+            PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_DESTRUCT(&pbkt);
@@ -955,14 +956,13 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     }
     PMIX_DESTRUCT(&cb);
 
+complete:
     PMIX_UNLOAD_BUFFER(&pbkt, data, sz);
     PMIX_DESTRUCT(&pbkt);
 
     if (found) {
         /* pass it back */
         cbfunc(rc, data, sz, cbdata, relfn, data);
-        // Safe to free pkt.
-        PMIX_DESTRUCT(&pkt);
         return rc;
     }
 
