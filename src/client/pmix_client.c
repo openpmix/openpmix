@@ -838,7 +838,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_init_result = rc;
 
     /* store our server's ID */
-    if (NULL != pmix_client_globals.myserver &&
+    if (!pmix_client_globals.singleton &&
+        NULL != pmix_client_globals.myserver &&
         NULL != pmix_client_globals.myserver->info) {
         kptr = PMIX_NEW(pmix_kval_t);
         kptr->key = strdup(PMIX_SERVER_NSPACE);
