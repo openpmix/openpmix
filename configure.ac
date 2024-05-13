@@ -23,7 +23,7 @@
 # Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -98,7 +98,7 @@ pmix_show_title "Configuring PMIx"
 AC_CANONICAL_TARGET
 
 # Init automake
-AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.13.4])
+AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.13.4 tar-pax])
 
 # SILENT_RULES is new in AM 1.11, but we require 1.13.4 or higher via
 # autogen.  Limited testing shows that calling SILENT_RULES directly
