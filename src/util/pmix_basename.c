@@ -13,7 +13,7 @@
  * Copyright (c) 2014      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -78,16 +78,18 @@ char *pmix_basename(const char *filename)
 
     /* Remove trailing sep's (note that we already know that strlen > 0) */
     tmp = strdup(filename);
-    for (i = strlen(tmp) - 1; i > 0; --i) {
-        if (sep == tmp[i]) {
-            tmp[i] = '\0';
-        } else {
-            break;
+    if (1 < strlen(tmp)) {
+        for (i = strlen(tmp) - 1; i > 0; --i) {
+            if (sep == tmp[i]) {
+                tmp[i] = '\0';
+            } else {
+                break;
+            }
         }
-    }
-    if (0 == i) {
-        tmp[0] = sep;
-        return tmp;
+        if (0 == i) {
+            tmp[0] = sep;
+            return tmp;
+        }
     }
 
     /* Look for the final sep */
