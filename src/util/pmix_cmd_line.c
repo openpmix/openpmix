@@ -17,7 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -99,9 +99,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
     pmix_cmd_line_store_fn_t mystore;
 
     /* the getopt_long parser reorders the input argv array, so
-     * we have to protect it here - remove all leading/trailing
-     * quotes to ensure we are looking at simple options/values */
-    argv = pmix_argv_copy_strip(pargv);
+     * we have to protect it here */
+    argv = PMIx_Argv_copy(pargv);
     argc = PMIx_Argv_count(argv);
     // assign a default store_fn if one isn't provided
     if (NULL == storefn) {
