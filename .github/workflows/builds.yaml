@@ -3,6 +3,53 @@ name: Build tests
 on: [pull_request]
 
 jobs:
+macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        path: ['non-vpath', 'vpath']
+        sphinx: ['no-sphinx', 'sphinx']
+    steps:
+    - name: Install dependencies
+      run: brew install libevent hwloc autoconf automake libtool
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v3
+      with:
+            submodules: recursive
+    - name: Build OpenPMIx
+      run: |
+        # Homebrew doesn't install Libevent's (or libev's) header or
+        # library files into a default search location.  Shrug.  So
+        # use pkg-config to get the location and explicitly pass it to
+        # configure.
+        libevent_cppflags=$(pkg-config libevent --cflags)
+        libevent_ldflags=$(pkg-config libevent --libs | perl -pe 's/^.*(-L[^ ]+).*$/\1/')
+
+        ./autogen.pl
+
+        sphinx=
+        if test "${{ matrix.sphinx }}" = sphinx; then
+            pip install -r docs/requirements.txt
+            sphinx=--enable-sphinx
+        fi
+
+        c=./configure
+        if test "${{ matrix.path }}" = vpath; then
+            mkdir build
+            cd build
+            c=../configure
+        fi
+
+        $c --prefix=${PWD}/install $sphinx \
+            CPPFLAGS=$libevent_cppflags \
+            LDFLAGS=$libevent_ldflags
+        make -j
+        make install
+        cd test
+        make check
+        cd ..
+        make uninstall
+
   ubuntu:
     runs-on: ubuntu-latest
     strategy:
