@@ -3,7 +3,7 @@ name: Build tests
 on: [pull_request]
 
 jobs:
-macos:
+  macos:
     runs-on: macos-latest
     strategy:
       matrix:
@@ -29,7 +29,12 @@ macos:
 
         sphinx=
         if test "${{ matrix.sphinx }}" = sphinx; then
-            pip install -r docs/requirements.txt
+            # The macos Github Action environment gets angry at us if
+            # we try to pip install into the global environment.  So
+            # make a virtual environment and install sphinx into that.
+            python -m venv venv
+            . ./venv/bin/activate
+            pip3 install -r docs/requirements.txt
             sphinx=--enable-sphinx
         fi
 
