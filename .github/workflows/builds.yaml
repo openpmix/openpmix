@@ -18,10 +18,22 @@ jobs:
             submodules: recursive
     - name: Build OpenPMIx
       run: |
+        # Homebrew doesn't install Libevent's (or libev's) header or
+        # library files into a default search location.  Shrug.  So
+        # use pkg-config to get the location and explicitly pass it to
+        # configure.
+        libevent_cppflags=$(pkg-config libevent --cflags)
+        libevent_ldflags=$(pkg-config libevent --libs | perl -pe 's/^.*(-L[^ ]+).*$/\1/')
+
         ./autogen.pl
 
         sphinx=
         if test "${{ matrix.sphinx }}" = sphinx; then
+            # The macos Github Action environment gets angry at us if
+            # we try to pip install into the global environment.  So
+            # make a virtual environment and install sphinx into that.
+            python -m venv venv
+            . ./venv/bin/activate
             pip3 install -r docs/requirements.txt
             sphinx=--enable-sphinx
         fi
@@ -33,12 +45,14 @@ jobs:
             c=../configure
         fi
 
-        $c --prefix=${PWD}/install $sphinx
+        $c --prefix=${PWD}/install $sphinx \
+            CPPFLAGS=$libevent_cppflags \
+            LDFLAGS=$libevent_ldflags
         make -j
+        make install
         cd test
         make check
         cd ..
-        make install
         make uninstall
 
   ubuntu:
