@@ -14,7 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1158,7 +1158,9 @@ pmix_status_t pmix_bfrops_base_print_pinfo(char **output, char *prefix,
                      "%sData type: PMIX_PROC_INFO\tValue:\n%s\n%sHostname: %s\tExecutable: "
                      "%s\n%sPid: %lu\tExit code: %d\tState: %s",
                      (NULL == prefix) ? " " : prefix, tmp, p2,
-                     src->hostname, src->executable_name, p2,
+                     (NULL == src->hostname) ? "NULL" : src->hostname,
+                     (NULL == src->executable_name) ? "NULL" : src->executable_name,
+                     p2,
                      (unsigned long) src->pid, src->exit_code,
                      PMIx_Proc_state_string(src->state))) {
         free(p2);

@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -100,11 +100,14 @@ static pmix_value_cmp_t cmp_proc_info(pmix_proc_info_t *pi1,
     } else if (NULL != pi1->hostname && NULL == pi2->hostname) {
         return PMIX_VALUE1_GREATER;
     }
-    ret = strcmp(pi1->hostname, pi2->hostname);
-    if (ret < 0) {
-        return PMIX_VALUE2_GREATER;
-    } else if (0 < ret) {
-        return PMIX_VALUE1_GREATER;
+    // both can be NULL
+    if (NULL != pi1->hostname && NULL != pi2->hostname) {
+        ret = strcmp(pi1->hostname, pi2->hostname);
+        if (ret < 0) {
+            return PMIX_VALUE2_GREATER;
+        } else if (0 < ret) {
+            return PMIX_VALUE1_GREATER;
+        }
     }
     /* hostnames match */
 
@@ -113,11 +116,14 @@ static pmix_value_cmp_t cmp_proc_info(pmix_proc_info_t *pi1,
     } else if (NULL != pi1->executable_name && NULL == pi2->executable_name) {
         return PMIX_VALUE1_GREATER;
     }
-    ret = strcmp(pi1->executable_name, pi2->executable_name);
-    if (ret < 0) {
-        return PMIX_VALUE2_GREATER;
-    } else if (0 < ret) {
-        return PMIX_VALUE1_GREATER;
+    // both can be NULL
+    if (NULL != pi1->executable_name && NULL != pi2->executable_name) {
+        ret = strcmp(pi1->executable_name, pi2->executable_name);
+        if (ret < 0) {
+            return PMIX_VALUE2_GREATER;
+        } else if (0 < ret) {
+            return PMIX_VALUE1_GREATER;
+        }
     }
     /* executables match */
 
