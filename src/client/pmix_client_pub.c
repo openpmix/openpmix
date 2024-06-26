@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -615,17 +615,17 @@ static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t nda
 
     PMIX_ACQUIRE_OBJECT(cb);
     cb->status = status;
-    if (PMIX_SUCCESS == status) {
-        /* find the matching key in the provided info array - error if not found */
+    if (PMIX_SUCCESS == status || PMIX_ERR_PARTIAL_SUCCESS == status) {
+        /* find the matching key in the provided info array - okay
+         * if not found as it might just be a partial return */
         for (i = 0; i < ndata; i++) {
             for (j = 0; j < cb->nvals; j++) {
                 if (0 == strcmp(pdata[i].key, tgt[j].key)) {
                     /* transfer the publishing proc id */
-                    pmix_strncpy(tgt[j].proc.nspace, pdata[i].proc.nspace, PMIX_MAX_NSLEN);
-                    tgt[j].proc.rank = pdata[i].proc.rank;
+                    memcpy(&tgt[j].proc, &pdata[i].proc, sizeof(pmix_proc_t));
                     /* transfer the value to the pmix_info_t */
-                    PMIX_BFROPS_VALUE_XFER(cb->status, pmix_client_globals.myserver, &tgt[j].value,
-                                           &pdata[i].value);
+                    PMIX_BFROPS_VALUE_XFER(cb->status, pmix_client_globals.myserver,
+                                           &tgt[j].value, &pdata[i].value);
                     break;
                 }
             }
