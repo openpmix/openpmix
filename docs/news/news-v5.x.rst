@@ -4,6 +4,26 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.3 -- 8 Jul 2024
+-------------------
+Detailed changes include:
+ - PR #3369: Update NEWS and VERSION for release
+ - PR #3366: Transfer results from partial success of lookup
+ - PR #3363: Multiple commits
+   - Fix singletons
+   - Protect against NULL fields
+ - PR #3361: Remove unused function in shmem2
+ - PR #3357: Github action: bring back MacOS builds
+ - PR #3354: Multiple commits
+   - Don't strip quotes from cmd line entries
+   - Handle single character filenames
+   - Update tar format to tar-pax
+   - Perform some cleanup
+   - Include devel-check status in configure summary
+   - Turn off MacOS CI
+ - PR #3334: Fix function declaration
+ - PR #3332: Fixes for PR3329
+
 5.0.2 -- 21 Mar 2024
 --------------------
 .. important:: Cross-version incompatibility
