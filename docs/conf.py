@@ -37,9 +37,8 @@ with open("../VERSION") as fp:
 
 opmix_data = dict()
 for opmix_line in opmix_lines:
-    if '#' in opmix_line:
-        parts = opmix_line.split("#")
-        opmix_line = parts[0]
+    if '#' in opmix_line or 0 == len(opmix_line):
+        continue
     opmix_line = opmix_line.strip()
 
     if '=' not in opmix_line:
