@@ -319,14 +319,22 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         // adjust the cmd prefix if required
         if (NULL != prefix) {
             // prefix the command
-            pmix_asprintf(&tmp, "%s/%s", prefix, aptr->cmd);
-            free(aptr->cmd);
-            aptr->cmd = tmp;
+            pmix_asprintf(&tmp, "%s/%s", prefix, appsptr[n].cmd);
+            free(appsptr[n].cmd);
+            appsptr[n].cmd = tmp;
+            // prefix argv[0]
+            pmix_asprintf(&tmp, "%s/%s", prefix, appsptr[n].argv[0]);
+            free(appsptr[n].argv[0]);
+            appsptr[n].argv[0] = tmp;
         } else if (NULL != defprefix) {
             // prefix the command
-            pmix_asprintf(&tmp, "%s/%s", defprefix, aptr->cmd);
-            free(aptr->cmd);
-            aptr->cmd = tmp;
+            pmix_asprintf(&tmp, "%s/%s", defprefix, appsptr[n].cmd);
+            free(appsptr[n].cmd);
+            appsptr[n].cmd = tmp;
+            // prefix argv[0]
+            pmix_asprintf(&tmp, "%s/%s", defprefix, appsptr[n].argv[0]);
+            free(appsptr[n].argv[0]);
+            appsptr[n].argv[0] = tmp;
         }
 
         if (!jobenvars) {
