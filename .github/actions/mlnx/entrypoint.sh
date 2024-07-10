@@ -3,6 +3,8 @@
 rel_path=$(dirname $0)
 abs_path=$(readlink -f $rel_path)
 
+git config --global --add safe.directory /github/workspace
+
 if [ "$1" = "build" ]; then
     jenkins_test_build="yes"
     jenkins_test_check="no"
@@ -167,12 +169,9 @@ if [ "$jenkins_test_src_rpm" = "yes" ]; then
         echo "Do not support PMIX on debian"
     else
         # Install Sphinx so that we can "make dist"
-        virtualenv --python=python3 venv
+        python3 -m venv venv
         . ./venv/bin/activate
-        # This job runs in a CentOS 7 docker container, which does not
-        # understand the "--use-feature" pip CLI argument.
-        grep -v use-feature docs/requirements.txt > docs/r2.txt
-        pip install -r docs/r2.txt
+        pip install -r docs/requirements.txt
 
         echo ./configure --prefix=$pmix_dir $configure_args | bash -xeE || exit 11
         echo "Building PMIX src.rpm"
