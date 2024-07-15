@@ -1,4 +1,4 @@
-sphinx>=4.2.0
+sphinx>=5.0.0
 recommonmark
-docutils
+docutils<0.19
 sphinx-rtd-theme
