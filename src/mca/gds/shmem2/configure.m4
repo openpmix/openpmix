@@ -18,7 +18,7 @@ AC_DEFUN([MCA_pmix_gds_shmem2_CONFIG], [
     dnl address space is probably too small for the 'virtual memory hole'
     dnl finding that we do here. Below assumes support for only 32- and 64-bit
     dnl architectures.
-    AS_IF([test $ac_cv_sizeof_void_p -ne 4 && test $oac_have_apple == 0],
+    AS_IF([test $ac_cv_sizeof_void_p -ne 4 && test $oac_have_apple = 0],
           [$1
            pmix_gds_shmem2=yes],
           [$2
