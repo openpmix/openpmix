@@ -1328,15 +1328,15 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     AC_SUBST([PMIX_PYTHON_EGG_PATH], [$pmix_pythondir], [Path to installed Python egg])
 fi
 
-# If we didn't find a good Python and we don't have dictionary.h, then
+# If we didn't find a good Python and we don't have pmix_dictionary.h, then
 # see if we can find an older Python (because construct_dictionary.py
 # can use an older Python).
-AS_IF([test "$PYTHON" = "" && test ! -f $srcdir/include/dictionary.h],
+AS_IF([test "$PYTHON" = "" && test ! -f $srcdir/src/include/pmix_dictionary.h],
       [AC_MSG_CHECKING([python])
        PYTHON=
        AM_PATH_PYTHON
        # If we still can't find Python (and we don't have
-       # dictionary.h), then give up.
+       # pmix_dictionary.h), then give up.
        AC_MSG_RESULT([$PYTHON])
        AS_IF([test "$PYTHON" = ""],
              [AC_MSG_WARN([Could not find a modern enough Python])
