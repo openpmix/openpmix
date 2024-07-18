@@ -14,6 +14,7 @@
 # Copyright (c) 2015-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2019      Amazon.com, Inc. or its affiliates.  All Rights
 #                         reserved.
+# Copyright (c) 2024      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -94,13 +95,30 @@ Valid arguments:
   --distdir       Move the tarball(s) to this directory when done
   --dirtyok       Ok if the source tree is dirty
   --verok         Ignore result of autotools version checking
-  --macosx        Executing on Mac OSX, so do not check libtool version
+  --macosx        Allow execution on Mac OSX
 EOF
             exit 1
             ;;
     esac
     shift
 done
+
+# check for OS type - we do not allow building tarballs on
+# MacOSX by default as it can create problems when unpacking
+# the tarball on Linux. See
+# for details.
+if [[ $mac != 1 ]]; then
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "\n*** Building a tarball on MacOSX results in a"
+        echo "*** tarball that includes undesirable artifacts"
+        echo "*** when unpacked on Linux systems. We therefore"
+        echo "*** do not support this operation by default.\n"
+        echo "*** If you do need to execute this on MacOSX, then"
+        echo "*** you can override this warning by setting the"
+        echo "*** --macosx option on the cmd line\n"
+        exit 1
+    fi
+fi
 
 # pmix needs libevent to build.  If $LIBEVENT is set in the
 # environment, automatically add it to the config_args.
