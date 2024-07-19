@@ -2,7 +2,7 @@ dnl -*- shell-script -*-
 dnl
 dnl Copyright (c) 2021 IBM Corporation.  All rights reserved.
 dnl
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -39,4 +39,15 @@ AC_MSG_CHECKING(if $CC supports ([$1]))
             else
                 AC_MSG_RESULT([yes])
             fi
+])
+
+AC_DEFUN([_PMIX_CHECK_LTO_FLAG], [
+    chkflg=`echo $1 | grep -- -flto`
+    if test -n "$chkflg"; then
+        AC_MSG_WARN([Configure has detected the presence of the -flto])
+        AC_MSG_WARN([compiler directive in $2. PMIx does not currently])
+        AC_MSG_WARN([support this flag as it conflicts with the])
+        AC_MSG_WARN([plugin architecture of the PMIx library.])
+        AC_MSG_ERROR([Please remove this directive and re-run configure.])
+    fi
 ])
