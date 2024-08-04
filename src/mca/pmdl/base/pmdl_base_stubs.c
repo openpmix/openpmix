@@ -6,7 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -212,17 +212,23 @@ bool pmix_pmdl_base_check_prte_param(char *param)
 {
     char *p;
     size_t n;
-    int len;
-
-    setup_prte_frameworks();
+    int len, len2;
 
     p = strchr(param, '_');
-    len = (int)(p - param);
+    if (NULL == p) {
+        len = strlen(param);
+    } else {
+        len = (int)(p - param);
+    }
 
     if (0 == strncmp(param, "prte", len)) {
         return true;
     }
     for (n=0; NULL != prte_frameworks[n]; n++) {
+        len2 = strlen(prte_frameworks[n]);
+        if (len != len2) {
+            continue;
+        }
         if (0 == strncmp(param, prte_frameworks[n], len)) {
             return true;
         }
@@ -235,15 +241,23 @@ bool pmix_pmdl_base_check_pmix_param(char *param)
 {
     char *p;
     size_t n;
-    int len;
+    int len, len2;
 
     p = strchr(param, '_');
-    len = (int)(p - param);
+    if (NULL == p) {
+        len = strlen(param);
+    } else {
+        len = (int)(p - param);
+    }
 
     if (0 == strncmp(param, "pmix", len)) {
         return true;
     }
     for (n=0; NULL != pmix_framework_names[n]; n++) {
+        len2 = strlen(pmix_framework_names[n]);
+        if (len != len2) {
+            continue;
+        }
         if (0 == strncmp(param, pmix_framework_names[n], len)) {
             return true;
         }
