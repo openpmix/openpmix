@@ -214,6 +214,8 @@ bool pmix_pmdl_base_check_prte_param(char *param)
     size_t n;
     int len, len2;
 
+    setup_prte_frameworks();
+
     p = strchr(param, '_');
     if (NULL == p) {
         len = strlen(param);
