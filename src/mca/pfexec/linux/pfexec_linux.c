@@ -21,7 +21,7 @@
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -127,8 +127,7 @@
 /*
  * Module functions (function pointers used in a struct)
  */
-static pmix_status_t spawn_job(const pmix_info_t job_info[], size_t ninfo, const pmix_app_t apps[],
-                               size_t napps, pmix_spawn_cbfunc_t cbfunc, void *cbdata);
+static pmix_status_t spawn_job(pmix_pfexec_fork_caddy_t *fcd);
 static pmix_status_t kill_proc(pmix_proc_t *proc);
 static pmix_status_t signal_proc(pmix_proc_t *proc, int32_t signal);
 
@@ -630,8 +629,7 @@ static void wait_signal_callback(int fd, short event, void *arg)
  * Launch all processes allocated to the current node.
  */
 
-static pmix_status_t spawn_job(const pmix_info_t job_info[], size_t ninfo, const pmix_app_t apps[],
-                               size_t napps, pmix_spawn_cbfunc_t cbfunc, void *cbdata)
+static pmix_status_t spawn_job(pmix_pfexec_fork_caddy_t *fcd)
 {
      sigset_t unblock;
 
@@ -659,7 +657,8 @@ static pmix_status_t spawn_job(const pmix_info_t job_info[], size_t ninfo, const
         pmix_event_add(pmix_pfexec_globals.handler, NULL);
     }
 
-    PMIX_PFEXEC_SPAWN(job_info, ninfo, apps, napps, fork_proc, cbfunc, cbdata);
+    fcd->frkfn = fork_proc;
+    PMIX_PFEXEC_SPAWN(fcd);
 
     return PMIX_SUCCESS;
 }

@@ -16,7 +16,7 @@
  * Copyright (c) 2014-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -194,16 +194,31 @@ PMIX_CLASS_INSTANCE(pmix_pfexec_child_t,
 
 static void fccon(pmix_pfexec_fork_caddy_t *p)
 {
+    p->peer = NULL;
     p->jobinfo = NULL;
     p->njinfo = 0;
     p->apps = NULL;
     p->napps = 0;
+    p->channels = PMIX_FWD_NO_CHANNELS;
+    memset(&p->flags, 0, sizeof(pmix_iof_flags_t));
     p->frkfn = NULL;
     p->cbfunc = NULL;
     p->cbdata = NULL;
 }
+static void fcdes(pmix_pfexec_fork_caddy_t *p)
+{
+   if (NULL != p->peer) {
+        PMIX_RELEASE(p->peer);
+    }
+    if (NULL != p->jobinfo) {
+        PMIX_INFO_FREE(p->jobinfo, p->njinfo);
+    }
+    if (NULL != p->apps) {
+        PMIX_APP_FREE(p->apps, p->napps);
+    }
+}
 PMIX_CLASS_INSTANCE(pmix_pfexec_fork_caddy_t,
-                    pmix_object_t, fccon, NULL);
+                    pmix_object_t, fccon, fcdes);
 
 PMIX_CLASS_INSTANCE(pmix_pfexec_signal_caddy_t,
                     pmix_object_t, NULL, NULL);
