@@ -12,7 +12,7 @@
  * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,6 +34,7 @@
 #include "src/common/pmix_iof.h"
 #include "src/mca/mca.h"
 #include "src/mca/pfexec/pfexec.h"
+#include "src/mca/pfexec/pfexec_types.h"
 
 BEGIN_C_DECLS
 
@@ -47,31 +48,6 @@ PMIX_EXPORT extern pmix_mca_base_framework_t pmix_pfexec_base_framework;
 PMIX_EXPORT pmix_status_t pmix_pfexec_base_select(void);
 
 typedef struct {
-    int usepty;
-    bool connect_stdin;
-
-    /* private - callers should not modify these fields */
-    int p_stdin[2];
-    int p_stdout[2];
-    int p_stderr[2];
-} pmix_pfexec_base_io_conf_t;
-
-typedef struct {
-    pmix_list_item_t super;
-    pmix_event_t ev;
-    pmix_proc_t proc;
-    pid_t pid;
-    bool completed;
-    int exitcode;
-    int keepalive[2];
-    pmix_pfexec_base_io_conf_t opts;
-    pmix_iof_sink_t stdinsink;
-    pmix_iof_read_event_t *stdoutev;
-    pmix_iof_read_event_t *stderrev;
-} pmix_pfexec_child_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_child_t);
-
-typedef struct {
     pmix_event_t *handler;
     bool active;
     pmix_list_t children;
@@ -81,26 +57,6 @@ typedef struct {
 } pmix_pfexec_globals_t;
 
 PMIX_EXPORT extern pmix_pfexec_globals_t pmix_pfexec_globals;
-
-/* define a function that will fork/exec a local proc */
-typedef pmix_status_t (*pmix_pfexec_base_fork_proc_fn_t)(pmix_app_t *app,
-                                                         pmix_pfexec_child_t *child, char **env);
-
-/* define a function type for signaling a local proc */
-typedef pmix_status_t (*pmix_pfexec_base_signal_local_fn_t)(pid_t pd, int signum);
-
-typedef struct {
-    pmix_object_t super;
-    pmix_event_t ev;
-    const pmix_info_t *jobinfo;
-    size_t njinfo;
-    const pmix_app_t *apps;
-    size_t napps;
-    pmix_pfexec_base_fork_proc_fn_t frkfn;
-    pmix_spawn_cbfunc_t cbfunc;
-    void *cbdata;
-} pmix_pfexec_fork_caddy_t;
-PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_pfexec_fork_caddy_t);
 
 typedef struct {
     pmix_object_t super;
@@ -120,17 +76,8 @@ PMIX_EXPORT void pmix_pfexec_base_signal_proc(int sd, short args, void *cbdata);
 
 PMIX_EXPORT void pmix_pfexec_check_complete(int sd, short args, void *cbdata);
 
-#define PMIX_PFEXEC_SPAWN(j, nj, a, na, fn, cbf, cbd)                    \
+#define PMIX_PFEXEC_SPAWN(fcd)                    \
     do {                                                                 \
-        pmix_pfexec_fork_caddy_t *fcd;                                   \
-        fcd = PMIX_NEW(pmix_pfexec_fork_caddy_t);                        \
-        fcd->jobinfo = (j);                                              \
-        fcd->njinfo = (nj);                                              \
-        fcd->apps = (a);                                                 \
-        fcd->napps = (na);                                               \
-        fcd->frkfn = (fn);                                               \
-        fcd->cbfunc = (cbf);                                             \
-        fcd->cbdata = (cbd);                                             \
         pmix_event_assign(&(fcd->ev), pmix_globals.evbase, -1, EV_WRITE, \
                           pmix_pfexec_base_spawn_proc, fcd);             \
         PMIX_POST_OBJECT((fcd));                                         \
