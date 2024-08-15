@@ -11,7 +11,7 @@
 #                         All rights reserved.
 # Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2019      Intel, Inc.  All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2024 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -27,7 +27,8 @@ libmca_pfexec_la_SOURCES =
 dist_pmixdata_DATA =
 
 # local files
-headers = pfexec.h
+headers = pfexec.h \
+		  pfexec_types.h
 libmca_pfexec_la_SOURCES += $(headers)
 
 # install the header files

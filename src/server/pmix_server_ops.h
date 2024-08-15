@@ -272,7 +272,15 @@ PMIX_EXPORT pmix_status_t pmix_server_unpublish(pmix_peer_t *peer, pmix_buffer_t
 
 PMIX_EXPORT pmix_status_t pmix_server_spawn(pmix_peer_t *peer, pmix_buffer_t *buf,
                                             pmix_spawn_cbfunc_t cbfunc, void *cbdata);
-PMIX_EXPORT void pmix_server_spawn_parser(pmix_peer_t *peer, pmix_setup_caddy_t *cd);
+PMIX_EXPORT void pmix_server_spawn_parser(pmix_peer_t *peer,
+                                          pmix_iof_channel_t *channels,
+                                          pmix_iof_flags_t *flags,
+                                          pmix_info_t *info,
+                                          size_t ninfo);
+PMIX_EXPORT pmix_status_t pmix_server_process_iof(pmix_peer_t *peer,
+                                                  char nspace[],
+                                                  pmix_iof_channel_t channels);
+
 PMIX_EXPORT void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata);
 
 PMIX_EXPORT pmix_status_t pmix_server_connect(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
