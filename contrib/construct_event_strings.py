@@ -1,7 +1,7 @@
-#
+#!/usr/bin/env python3
 # Copyright (c) 2020      Intel, Inc.  All rights reserved.
 # Copyright (c) 2020-2022 Cisco Systems, Inc.  All rights reserved
-# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
