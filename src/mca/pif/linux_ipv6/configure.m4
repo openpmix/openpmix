@@ -5,6 +5,8 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2016      Intel, Inc.  All rights reserved.
 # Copyright (c) 2023      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2024      Amazon.com, Inc. or its affiliates.
+#                         All Rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -29,7 +31,7 @@ AC_DEFUN([MCA_pmix_pif_linux_ipv6_CONFIG], [
     AC_MSG_CHECKING([if we are on Linux with TCP])
     # If we have struct sockaddr and we're on Linux, then we're
     # happy.
-    AS_IF([test "$pmix_found_sockaddr" = "yes" && test "$pmix_found_linux" = "yes"],
+    AS_IF([test "$pmix_found_sockaddr" = "yes" && test "$oac_found_linux" = "yes"],
           [AC_MSG_RESULT([yes])
            $1],
           [AC_MSG_RESULT([no])
