@@ -34,8 +34,16 @@ SPHINX_OPTS       ?= -W --keep-going -j auto
 # Note: it is significantly more convenient to list all the source
 # files here using wildcards (vs. listing every single .rst file).
 # However, it is necessary to list $(srcdir) when using wildcards.
-TEXT_SOURCE_FILES = # if you have any .txt files, list them here
-IMAGE_SOURCE_FILES = # if you have any, list them here
+
+# if you have any .txt files, list them here
+TEXT_SOURCE_FILES =
+
+# list image files here
+IMAGE_SOURCE_FILES  = \
+        $(srcdir)/images/*.png \
+        $(srcdir)/images/*.jpg
+
+
 RST_SOURCE_FILES   = \
         $(srcdir)/*.rst \
         $(srcdir)/building-apps/*.rst \
