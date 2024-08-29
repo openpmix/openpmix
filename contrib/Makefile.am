@@ -16,6 +16,8 @@
 #                         reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2022-2023 Nanook Consulting  All rights reserved.
+# Copyright (c) 2024      Research Organization for Information Science
+#                         and Technology (RIST).  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -24,9 +26,10 @@
 #
 
 EXTRA_DIST = \
-	make_dist_tarball \
-	buildrpm.sh \
+    make_dist_tarball \
+    buildrpm.sh \
     construct_dictionary.py \
+    construct_event_strings.py \
     pmix_jenkins.sh \
     pmix-release.sh \
     pmix.spec \
