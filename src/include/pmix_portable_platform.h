@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
  *                         reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -14,13 +14,6 @@
 
 #ifndef PMIX_PORTABLE_PLATFORM_H
 #define PMIX_PORTABLE_PLATFORM_H 1
-
-#ifndef _PORTABLE_PLATFORM_H
-#define _PORTABLE_PLATFORM_H 0
-#endif
-#ifndef PLATFORM_HEADER_VERSION
-#define PLATFORM_HEADER_VERSION 0
-#endif
 
 #include "src/include/pmix_portable_platform_real.h"
 
