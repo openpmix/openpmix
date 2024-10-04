@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -25,7 +25,6 @@
 
 #include "src/common/pmix_attributes.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/pstrg/pstrg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
@@ -361,50 +360,6 @@ static void _local_relcb(void *cbdata)
     PMIX_RELEASE(cd);
 }
 
-static void nxtcbfunc(pmix_status_t status, pmix_list_t *results, void *cbdata)
-{
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
-    size_t n;
-    pmix_kval_t *kv, *kvnxt;
-    pmix_status_t rc;
-
-    /* if they return success, then all queries were locally
-     * resolved, so construct the results for return */
-    if (PMIX_SUCCESS == status) {
-        cd->status = status;
-        cd->ninfo = pmix_list_get_size(results);
-        PMIX_INFO_CREATE(cd->info, cd->ninfo);
-        n = 0;
-        PMIX_LIST_FOREACH_SAFE (kv, kvnxt, results, pmix_kval_t) {
-            PMIX_LOAD_KEY(cd->info[n].key, kv->key);
-            rc = PMIx_Value_xfer(&cd->info[n].value, kv->value);
-            if (PMIX_SUCCESS != rc) {
-                cd->status = rc;
-                PMIX_INFO_FREE(cd->info, cd->ninfo);
-                break;
-            }
-            ++n;
-        }
-
-        if (NULL != cd->cbfunc) {
-            cd->cbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
-        }
-    } else {
-        /* need to ask our host */
-        rc = request_help(cd);
-        if (PMIX_SUCCESS != rc) {
-            /* we have to return the error to the caller */
-            if (NULL != cd->cbfunc) {
-                cd->cbfunc(rc, NULL, 0, cd->cbdata, NULL, NULL);
-            }
-        }
-        cd->queries = NULL;
-        cd->nqueries = 0;
-        PMIX_RELEASE(cd);
-        return;
-    }
-}
-
 void pmix_parse_localquery(int sd, short args, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
@@ -489,7 +444,7 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
                 if (PMIX_SUCCESS != rc) {
                     /* not in our gds */
                     PMIX_DESTRUCT(&cb);
-                    goto nextstep;
+                    goto complete;
                 }
             }
             /* need to retain this result */
@@ -502,12 +457,8 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
         }
     }
 
-nextstep:
-    /* pass the queries thru our active plugins with query
-     * interfaces to see if someone can resolve it */
-    rc = pmix_pstrg.query(queries, nqueries, &results, nxtcbfunc, cd);
-    if (PMIX_OPERATION_SUCCEEDED == rc) {
 complete:
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
         /* if we get here, then all queries were locally
          * resolved, so construct the results for return */
         cd->status = PMIX_SUCCESS;
