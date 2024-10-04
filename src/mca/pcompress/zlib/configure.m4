@@ -3,7 +3,7 @@
 # Copyright (c) 2009-2015 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -42,24 +42,11 @@ AC_DEFUN([MCA_pmix_pcompress_zlib_CONFIG],[
     fi
 
     AC_MSG_CHECKING([will zlib support be built])
-    if test "$pmix_zlib_support" != "1"; then
-        AC_MSG_RESULT([no])
-        AC_MSG_WARN([*************************************************])
-        AC_MSG_WARN([* PMIx was unable to find a usable version      *])
-        AC_MSG_WARN([* of zlib and zlib-devel on the system. We will *])
-        AC_MSG_WARN([* be unable to compress large data streams.     *])
-        AC_MSG_WARN([* This may result in longer-than-normal startup *])
-        AC_MSG_WARN([* times and larger memory footprints. We will   *])
-        AC_MSG_WARN([* continue, but strongly recommend installing   *])
-        AC_MSG_WARN([* zlib for better user experience.              *])
-        AC_MSG_WARN([*************************************************])
-    else
-        AC_MSG_RESULT([yes])
-    fi
-
     AS_IF([test "$pmix_zlib_support" = "1"],
-          [$1],
-          [$2])
+          [$1
+           AC_MSG_RESULT([yes])],
+          [$2
+           AC_MSG_RESULT([no])])
 
     PMIX_SUMMARY_ADD([External Packages], [ZLIB], [], [${pcompress_zlib_SUMMARY}])
 
