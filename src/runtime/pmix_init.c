@@ -49,7 +49,6 @@
 #include "src/mca/prm/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/psquash/base/base.h"
-#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_net.h"
@@ -552,18 +551,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
     if (PMIX_SUCCESS != (ret = pmix_plog_base_select())) {
         error = "pmix_plog_base_select";
-        goto return_error;
-    }
-
-    /* open the pstrg framework */
-    ret = pmix_mca_base_framework_open(&pmix_pstrg_base_framework,
-                                       PMIX_MCA_BASE_OPEN_DEFAULT);
-    if (PMIX_SUCCESS != ret) {
-        error = "pmix_strg_base_open";
-        goto return_error;
-    }
-    if (PMIX_SUCCESS != (ret = pmix_pstrg_base_select())) {
-        error = "pmix_pstrg_base_select";
         goto return_error;
     }
 

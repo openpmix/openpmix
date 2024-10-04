@@ -38,8 +38,6 @@ this writing |date|:
   during transmission
 * ``pstat``: Statistics, including reporting resource usage at the
   process, node, and disk levels
-* ``pstrg``: Storage system support for querying availability and
-  characteristics of file systems
 * ``ptl``: Transport Layer for client-server and tool-server
   communication
 

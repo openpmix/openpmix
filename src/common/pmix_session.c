@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -25,7 +25,6 @@
 
 #include "src/common/pmix_attributes.h"
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/pstrg/pstrg.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
