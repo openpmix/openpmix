@@ -498,7 +498,6 @@ static void qcon(pmix_query_caddy_t *p)
     p->relcbfunc = NULL;
     p->credcbfunc = NULL;
     p->validcbfunc = NULL;
-    p->stqcbfunc = NULL;
 }
 static void qdes(pmix_query_caddy_t *p)
 {

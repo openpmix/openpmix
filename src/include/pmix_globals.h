@@ -470,8 +470,6 @@ typedef struct {
 } pmix_iof_req_t;
 PMIX_CLASS_DECLARATION(pmix_iof_req_t);
 
-typedef void (*pmix_pstrg_query_cbfunc_t)(pmix_status_t status, pmix_list_t *results, void *cbdata);
-
 /* caddy for query requests */
 typedef struct {
     pmix_object_t super;
@@ -496,7 +494,6 @@ typedef struct {
     pmix_release_cbfunc_t relcbfunc;
     pmix_credential_cbfunc_t credcbfunc;
     pmix_validation_cbfunc_t validcbfunc;
-    pmix_pstrg_query_cbfunc_t stqcbfunc;
     void *cbdata;
 } pmix_query_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_query_caddy_t);
