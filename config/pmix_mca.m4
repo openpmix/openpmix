@@ -12,7 +12,7 @@ dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl $COPYRIGHT$
@@ -55,7 +55,7 @@ AC_DEFUN([PMIX_MCA],[
     AC_ARG_ENABLE([mca-no-build],
         [AS_HELP_STRING([--enable-mca-no-build=LIST],
                         [Comma-separated list of <type>-<component> pairs
-                         that will not be built.  Example: "--enable-mca-no-build=pgpu,pcompress-zlib" will disable building all pgpu components and the "zlib" pcompress components.])])
+                         that will not be built.  Example: "--enable-mca-no-build=pgpu,pcompress-zlib" will disable building all pgpu components and the "zlib" pcompress component.])])
     AC_ARG_ENABLE(mca-dso,
         AS_HELP_STRING([--enable-mca-dso=LIST],
                        [Comma-separated list of types and/or
@@ -63,7 +63,7 @@ AC_DEFUN([PMIX_MCA],[
                         run-time loadable components (as opposed to
                         statically linked in), if supported on this
                         platform.]),
-                        [], [enable_mca_dso=pcompress-zlib,pnet-sshot,prm])
+                        [], [enable_mca_dso=pcompress,pnet-sshot,prm])
     AC_ARG_ENABLE(mca-static,
         AS_HELP_STRING([--enable-mca-static=LIST],
                        [Comma-separated list of types and/or
