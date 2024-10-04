@@ -64,7 +64,6 @@
 #include "src/mca/preg/preg.h"
 #include "src/mca/prm/base/base.h"
 #include "src/mca/psensor/base/base.h"
-#include "src/mca/pstrg/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -1088,8 +1087,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     (void) pmix_mca_base_framework_close(&pmix_psensor_base_framework);
     /* close the pnet framework */
     (void) pmix_mca_base_framework_close(&pmix_pnet_base_framework);
-    /* close the pstrg framework */
-    (void) pmix_mca_base_framework_close(&pmix_pstrg_base_framework);
 
     PMIX_RELEASE_THREAD(&pmix_global_lock);
     PMIX_DESTRUCT_LOCK(&pmix_global_lock);
