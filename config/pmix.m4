@@ -750,55 +750,16 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     ##################################
     # Libevent
     ##################################
-    pmix_show_title "Event libraries"
-
-    dnl Only one of Libev or Libevent can be used by OpenPMIX.  The
-    dnl selection logic for the two is:
-    dnl
-    dnl   * libev is used if explicitly requested
-    dnl   * libevent is used if explicitly requested
-    dnl   * if both are explicitly requested, then we report the error
-    dnl     and abort
-    dnl   * if neither is explicitly requested, then we default to
-    dnl     using libevent if it is available. If libevent isn't
-    dnl     available, then we see if libev is available.
-    dnl
-    dnl poking at $with_libevent and $with_libev is a bit of an
-    dnl abstraction break, but makes implementing this logic
-    dnl significantly easier.
-    pmix_libev_support=0
-    pmix_libevent_support=0
-
-    AS_IF([test ! -z "$with_libevent" -a "$with_libevent" != "no"],
-          [want_libevent=1])
-    AS_IF([test ! -z "$with_libev" -a "$with_libev" != "no"],
-          [want_libev=1])
-
-    AS_IF([test "$want_libevent" = "1" -a "$want_libev" = "1"],
-          [AC_MSG_WARN([Both libevent and libev support have been specified.])
-           AC_MSG_WARN([Only one can be configured against at a time. Please])
-           AC_MSG_WARN([remove one from the configure command line.])
-           AC_MSG_ERROR([Cannot continue])])
+    pmix_show_title "Event library"
 
     pmix_found_event_lib=0
-    dnl If libevent succeeds, then we don't need libev, but we skip
-    dnl libevent if libev was explicitly requested.
-    AS_IF([test "$want_libev" != "1"],
-          [PMIX_LIBEVENT_CONFIG([pmix_found_event_lib=1])])
-    AS_IF([test $pmix_found_event_lib -eq 0],
-          [PMIX_LIBEV_CONFIG([pmix_found_event_lib=1])])
-
-    dnl The following must _always_ be defined, regardless of which
-    dnl event library was selected/requested
-    AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEV], [$pmix_libev_support], [Whether we are building against libev])
-    AC_DEFINE_UNQUOTED([PMIX_HAVE_LIBEVENT], [$pmix_libevent_support], [Whether we are building against libevent])
+    PMIX_LIBEVENT_CONFIG([pmix_found_event_lib=1])
 
     AS_IF([test $pmix_found_event_lib -eq 0],
-          [AC_MSG_WARN([Either libevent or libev support is required, but neither])
-           AC_MSG_WARN([was found. Please use the configure options to point us])
-           AC_MSG_WARN([to where we can find one or the other library])
+          [AC_MSG_WARN([libevent support is required, but was not found.])
+           AC_MSG_WARN([Please use the configure options to point us])
+           AC_MSG_WARN([to where we can find that library])
            AC_MSG_ERROR([Cannot continue])])
-
 
     ##################################
     # HWLOC
