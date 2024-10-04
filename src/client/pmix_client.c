@@ -47,9 +47,7 @@
 #endif
 
 #include <event.h>
-#if !PMIX_HAVE_LIBEV
-#    include <event2/thread.h>
-#endif
+#include <event2/thread.h>
 
 #ifdef PMIX_GIT_REPO_BUILD
 static const char pmix_version_string[] = "OpenPMIx " PMIX_VERSION ", repo rev: " PMIX_REPO_REV

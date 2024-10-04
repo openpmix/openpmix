@@ -14,7 +14,7 @@
  *                         All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,9 +47,7 @@
 #    include <arpa/inet.h>
 #endif
 #include <event.h>
-#if !PMIX_HAVE_LIBEV
-#    include <event2/thread.h>
-#endif
+#include <event2/thread.h>
 
 #if PMIX_ENABLE_DEBUG
 #    include "src/util/pmix_output.h"
@@ -257,17 +255,10 @@ typedef struct event pmix_event_t;
 
 #define pmix_event_base_free(b) event_base_free(b)
 
-#if PMIX_HAVE_LIBEV
-#    define pmix_event_use_threads()
-#    define pmix_event_free(b)       free(b)
-#    define pmix_event_get_signal(x) (x)->ev_fd
-#else
-
 /* thread support APIs */
-#    define pmix_event_use_threads() evthread_use_pthreads()
-#    define pmix_event_free(x)       event_free(x)
-#    define pmix_event_get_signal(x) event_get_signal(x)
-#endif
+#define pmix_event_use_threads() evthread_use_pthreads()
+#define pmix_event_free(x)       event_free(x)
+#define pmix_event_get_signal(x) event_get_signal(x)
 
 /* Basic event APIs */
 #define pmix_event_enable_debug_mode() event_enable_debug_mode()
@@ -278,17 +269,10 @@ PMIX_EXPORT int pmix_event_assign(struct event *ev, pmix_event_base_t *evbase, i
 #define pmix_event_set(b, x, fd, fg, cb, arg) \
     pmix_event_assign((x), (b), (fd), (fg), (event_callback_fn)(cb), (arg))
 
-#if PMIX_HAVE_LIBEV
-PMIX_EXPORT int pmix_event_add(struct event *ev, struct timeval *tv);
-PMIX_EXPORT int pmix_event_del(struct event *ev);
-PMIX_EXPORT void pmix_event_active(struct event *ev, int res, short ncalls);
-PMIX_EXPORT void pmix_event_base_loopexit(pmix_event_base_t *b);
-#else
-#    define pmix_event_add(ev, tv)      event_add((ev), (tv))
-#    define pmix_event_del(ev)          event_del((ev))
-#    define pmix_event_active(x, y, z)  event_active((x), (y), (z))
-#    define pmix_event_base_loopexit(b) event_base_loopexit(b, NULL)
-#endif
+#define pmix_event_add(ev, tv)      event_add((ev), (tv))
+#define pmix_event_del(ev)          event_del((ev))
+#define pmix_event_active(x, y, z)  event_active((x), (y), (z))
+#define pmix_event_base_loopexit(b) event_base_loopexit(b, NULL)
 
 PMIX_EXPORT pmix_event_t *pmix_event_new(pmix_event_base_t *b, int fd, short fg,
                                          event_callback_fn cbfn, void *cbd);
