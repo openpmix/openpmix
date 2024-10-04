@@ -410,7 +410,7 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_query_t *queries = cd->queries;
     size_t nqueries = cd->nqueries;
-    pmix_status_t rc;
+    pmix_status_t rc = PMIX_SUCCESS;
     pmix_cb_t cb;
     size_t n, p;
     pmix_list_t results;
