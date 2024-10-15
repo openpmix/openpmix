@@ -60,9 +60,7 @@
 #include "pmix_common.h"
 
 #include "pmix_hwloc.h"
-#if HWLOC_API_VERSION >= 0x20000
-#    include <hwloc/shmem.h>
-#endif
+#include <hwloc/shmem.h>
 
 static bool topo_in_shmem = false;
 static bool passed_thru = false;
@@ -73,7 +71,6 @@ static char *testcpuset = NULL;
 static int pmix_hwloc_output = -1;
 static int pmix_hwloc_verbose = 0;
 
-#if HWLOC_API_VERSION >= 0x20000
 static size_t shmemsize = 0;
 static size_t shmemaddr;
 static char *shmemfile = NULL;
@@ -83,13 +80,10 @@ static uint64_t amount_space_avail = 0;
 
 static int enough_space(const char *filename, size_t space_req, uint64_t *space_avail,
                         bool *result);
-#endif
 static pmix_status_t load_xml(char *xml);
 static char *popstr(pmix_cb_t *cb);
-#if HWLOC_API_VERSION >= 0x20000
 static size_t popsize(pmix_cb_t *cb);
 static void print_maps(void);
-#endif
 static pmix_topology_t *popptr(pmix_cb_t *cb);
 static int get_locality_string_by_depth(int d, hwloc_cpuset_t cpuset, hwloc_cpuset_t result);
 static int set_flags(hwloc_topology_t topo, unsigned int flags);
@@ -141,7 +135,6 @@ pmix_status_t pmix_hwloc_register(void)
 
 void pmix_hwloc_finalize(void)
 {
-#if HWLOC_API_VERSION >= 0x20000
     if (NULL != shmemfile) {
         unlink(shmemfile);
         free(shmemfile);
@@ -149,7 +142,6 @@ void pmix_hwloc_finalize(void)
     if (0 <= shmemfd) {
         close(shmemfd);
     }
-#endif
     if (NULL != pmix_globals.topology.topology && !pmix_globals.external_topology
         && !topo_in_shmem) {
         hwloc_topology_destroy(pmix_globals.topology.topology);
@@ -229,7 +221,6 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
     PMIX_LOAD_PROCID(&wildcard, pmix_globals.myid.nspace, PMIX_RANK_WILDCARD);
 
     /* try to get it ourselves */
-#if HWLOC_API_VERSION >= 0x20000
     int fd;
     uint64_t addr, size;
 
@@ -285,11 +276,7 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s shmem adopted",
                             __FILE__, __func__);
         /* got it - we are done */
-#    ifdef HWLOC_VERSION
         pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
-#    else
-        pmix_globals.topology.source = strdup("hwloc");
-#    endif
         /* record locally in case someone does a PMIx_Get to retrieve it */
         kv.key = PMIX_TOPOLOGY2;
         kv.value = &val;
@@ -351,7 +338,6 @@ tryxml:
     }
 
 tryv1:
-#endif
 
     /* try to get the v1 XML string */
     pmix_output_verbose(2, pmix_hwloc_output,
@@ -439,11 +425,7 @@ tryself:
             hwloc_topology_destroy(pmix_globals.topology.topology);
             return PMIX_ERR_NOT_SUPPORTED;
         }
-#ifdef HWLOC_VERSION
         pmix_asprintf(&pmix_globals.topology.source, "hwloc:%s", HWLOC_VERSION);
-#else
-        pmix_globals.topology.source = strdup("hwloc");
-#endif
         pmix_output_verbose(2, pmix_hwloc_output,
                             "%s:%s discovery complete - source %s", __FILE__, __func__,
                             pmix_globals.topology.source);
@@ -469,33 +451,6 @@ sharetopo:
                         "%s:%s sharing topology",
                         __FILE__, __func__);
 
-#if HWLOC_API_VERSION < 0x20000
-    /* pass the topology string as we don't
-     * have HWLOC shared memory available - we do
-     * this so the procs won't read the topology
-     * themselves as this could overwhelm the local
-     * system on large-scale SMPs */
-    if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len)) {
-        pmix_output_verbose(2, pmix_hwloc_output,
-                            "%s:%s export v1 xml",
-                            __FILE__, __func__);
-        kptr = PMIX_NEW(pmix_kval_t);
-        kptr->key = strdup(PMIX_HWLOC_XML_V1);
-        kptr->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-        PMIX_VALUE_LOAD(kptr->value, xmlbuffer, PMIX_STRING);
-        pmix_list_append(&pmix_server_globals.gdata, &kptr->super);
-        /* save it with the deprecated key for older RMs */
-        kptr = PMIX_NEW(pmix_kval_t);
-        kptr->key = strdup(PMIX_LOCAL_TOPO);
-        kptr->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
-        PMIX_VALUE_LOAD(kptr->value, xmlbuffer, PMIX_STRING);
-        pmix_list_append(&pmix_server_globals.gdata, &kptr->super);
-        /* done with the buffer */
-        hwloc_free_xmlbuffer(pmix_globals.topology.topology, xmlbuffer);
-    }
-    /* we don't have the ability to do shared memory, so we are done */
-    return PMIX_SUCCESS;
-#else
     /* pass the topology as a v2 xml string */
     if (0 == hwloc_topology_export_xmlbuffer(pmix_globals.topology.topology, &xmlbuffer, &len, 0)) {
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s export v2 xml",
@@ -623,8 +578,6 @@ sharetopo:
     kptr->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
     PMIX_VALUE_LOAD(kptr->value, &shmemsize, PMIX_SIZE);
     pmix_list_append(&pmix_server_globals.gdata, &kptr->super);
-
-#endif
 
     return PMIX_SUCCESS;
 }
@@ -790,11 +743,7 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         type = hwloc_get_depth_type(pmix_globals.topology.topology, d);
         /* if it isn't one of interest, then ignore it */
         if (HWLOC_OBJ_NUMANODE != type && HWLOC_OBJ_PACKAGE != type &&
-#if HWLOC_API_VERSION < 0x20000
-            HWLOC_OBJ_CACHE != type &&
-#else
             HWLOC_OBJ_L1CACHE != type && HWLOC_OBJ_L2CACHE != type && HWLOC_OBJ_L3CACHE != type &&
-#endif
             HWLOC_OBJ_CORE != type && HWLOC_OBJ_PU != type) {
             continue;
         }
@@ -822,34 +771,6 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
                     }
                     locality = t2;
                     break;
-#if HWLOC_API_VERSION < 0x20000
-                case HWLOC_OBJ_CACHE: {
-                    unsigned cachedepth = hwloc_get_obj_by_depth(pmix_globals.topology.topology, d, 0)
-                    ->attr->cache.depth;
-                    if (3 == cachedepth) {
-                        pmix_asprintf(&t2, "%sL3%s:", (NULL == locality) ? "" : locality, tmp);
-                        if (NULL != locality) {
-                            free(locality);
-                        }
-                        locality = t2;
-                        break;
-                    } else if (2 == cachedepth) {
-                        pmix_asprintf(&t2, "%sL2%s:", (NULL == locality) ? "" : locality, tmp);
-                        if (NULL != locality) {
-                            free(locality);
-                        }
-                        locality = t2;
-                        break;
-                    } else {
-                        pmix_asprintf(&t2, "%sL1%s:", (NULL == locality) ? "" : locality, tmp);
-                        if (NULL != locality) {
-                            free(locality);
-                        }
-                        locality = t2;
-                        break;
-                    }
-                } break;
-#else
                 case HWLOC_OBJ_L3CACHE:
                     pmix_asprintf(&t2, "%sL3%s:", (NULL == locality) ? "" : locality, tmp);
                     if (NULL != locality) {
@@ -871,7 +792,6 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
                     }
                     locality = t2;
                     break;
-#endif
                 case HWLOC_OBJ_CORE:
                     pmix_asprintf(&t2, "%sCR%s:", (NULL == locality) ? "" : locality, tmp);
                     if (NULL != locality) {
@@ -895,7 +815,6 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         hwloc_bitmap_zero(result);
     }
 
-#if HWLOC_API_VERSION >= 0x20000
     if (get_locality_string_by_depth(HWLOC_TYPE_DEPTH_NUMANODE, cpuset->bitmap, result) == 0) {
         /* it should be impossible, but allow for the possibility
          * that we came up empty at this depth */
@@ -910,7 +829,6 @@ pmix_status_t pmix_hwloc_generate_locality_string(const pmix_cpuset_t *cpuset, c
         }
         hwloc_bitmap_zero(result);
     }
-#endif
 
     hwloc_bitmap_free(result);
 
@@ -1082,9 +1000,7 @@ static pmix_type_conversion_t table[] = {
     {.hwtype = HWLOC_OBJ_OSDEV_NETWORK, .pxtype = PMIX_DEVTYPE_NETWORK, .name = "NETWORK"},
     {.hwtype = HWLOC_OBJ_OSDEV_OPENFABRICS, .pxtype = PMIX_DEVTYPE_OPENFABRICS, .name = "OPENFABRICS"},
     {.hwtype = HWLOC_OBJ_OSDEV_DMA, .pxtype = PMIX_DEVTYPE_DMA, .name = "DMA"},
-#if HWLOC_API_VERSION >= 0x00010800
     {.hwtype = HWLOC_OBJ_OSDEV_COPROC, .pxtype = PMIX_DEVTYPE_COPROC, .name = "COPROCESSOR"},
-#endif
 };
 
 static int countcolons(char *str)
@@ -1189,9 +1105,7 @@ pmix_status_t pmix_hwloc_compute_distances(pmix_topology_t *topo, pmix_cpuset_t 
             continue;
         }
         if (HWLOC_OBJ_OSDEV_BLOCK == table[n].hwtype || HWLOC_OBJ_OSDEV_DMA == table[n].hwtype
-#if HWLOC_API_VERSION >= 0x00010800
             || HWLOC_OBJ_OSDEV_COPROC == table[n].hwtype
-#endif
             ) {
             continue;
         }
@@ -1394,29 +1308,20 @@ pmix_status_t pmix_hwloc_check_vendor(pmix_topology_t *topo,
 
 static int set_flags(hwloc_topology_t topo, unsigned int flags)
 {
-#if HWLOC_API_VERSION < 0x20000
-    flags = HWLOC_TOPOLOGY_FLAG_IO_DEVICES;
-#else
     int ret = hwloc_topology_set_io_types_filter(topo, HWLOC_TYPE_FILTER_KEEP_IMPORTANT);
-    if (0 != ret)
+    if (0 != ret) {
         return ret;
-#endif
+    }
     if (0 != hwloc_topology_set_flags(topo, flags)) {
         return PMIX_ERR_INIT;
     }
-#ifdef HWLOC_VERSION_MAJOR
     // Blacklist the "gl" component due to potential conflicts.
     // See "https://github.com/open-mpi/ompi/issues/10025" for
     // an explanation. Sadly, HWLOC doesn't define version numbers
     // until v2.0, so we cannot check versions here. Fortunately,
     // the blacklist ability was added in HWLOC v2.1, so we can't
     // do it for earlier versions anyway.
-#if HWLOC_VERSION_MAJOR > 2
     hwloc_topology_set_components(topo, HWLOC_TOPOLOGY_COMPONENTS_FLAG_BLACKLIST, "gl");
-#elif HWLOC_VERSION_MAJOR == 2 && HWLOC_VERSION_MINOR >= 1
-    hwloc_topology_set_components(topo, HWLOC_TOPOLOGY_COMPONENTS_FLAG_BLACKLIST, "gl");
-#endif
-#endif
 
     return PMIX_SUCCESS;
 }
@@ -1444,7 +1349,6 @@ static char *popstr(pmix_cb_t *cb)
     return str;
 }
 
-#if HWLOC_API_VERSION >= 0x20000
 static size_t popsize(pmix_cb_t *cb)
 {
     pmix_list_t *kvs = &cb->kvs;
@@ -1466,7 +1370,6 @@ static size_t popsize(pmix_cb_t *cb)
     }
     return sz;
 }
-#endif
 
 static pmix_topology_t *popptr(pmix_cb_t *cb)
 {
@@ -1517,7 +1420,6 @@ static pmix_status_t load_xml(char *xml)
     return PMIX_SUCCESS;
 }
 
-#if HWLOC_API_VERSION >= 0x20000
 static void print_maps(void)
 {
 
@@ -1535,7 +1437,6 @@ static void print_maps(void)
         fclose(maps_file);
     }
 }
-#endif
 
 static int get_locality_string_by_depth(int d, hwloc_cpuset_t cpuset, hwloc_cpuset_t result)
 {
@@ -1563,7 +1464,6 @@ static int get_locality_string_by_depth(int d, hwloc_cpuset_t cpuset, hwloc_cpus
     return 0;
 }
 
-#if HWLOC_API_VERSION >= 0x20000
 static int enough_space(const char *filename, size_t space_req, uint64_t *space_avail, bool *result)
 {
     uint64_t avail = 0;
@@ -1599,4 +1499,3 @@ out:
     *space_avail = avail;
     return rc;
 }
-#endif

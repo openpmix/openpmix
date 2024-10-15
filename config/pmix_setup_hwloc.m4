@@ -3,7 +3,7 @@
 # Copyright (c) 2009-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2013      Los Alamos National Security, LLC.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
 # Copyright (c) 2021-2022 Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -79,19 +79,6 @@ AC_DEFUN([PMIX_SETUP_HWLOC],[
                       [AC_MSG_RESULT(no)
                        AC_MSG_WARN([PMIx requires HWLOC v$pmix_hwloc_min_version or above.])
                        AC_MSG_ERROR([Please select a supported version and configure again])])
-
-    AC_MSG_CHECKING([if hwloc version is at least 2.0])
-    AC_PREPROC_IFELSE([AC_LANG_PROGRAM([
-                                        #include <hwloc.h>
-                                        #if HWLOC_VERSION_MAJOR < 2
-                                        #error "hwloc version is less than 2.0"
-                                        #endif
-                                       ], [])],
-                        [AC_MSG_RESULT([yes])
-                         pmix_version_high=1],
-                        [AC_MSG_RESULT([no])
-                         pmix_version_high=0])
-    AM_CONDITIONAL([PMIX_HWLOC_VERSION_HIGH], [test $pmix_version_high -eq 1])
 
     AC_MSG_CHECKING([if hwloc version is greater than 2.x])
     AC_PREPROC_IFELSE([AC_LANG_PROGRAM([

@@ -5,7 +5,7 @@
  * Copyright (c) 2015-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -38,29 +38,6 @@
 #include "src/server/pmix_server_ops.h"
 
 BEGIN_C_DECLS
-
-#if HWLOC_API_VERSION < 0x20000
-
-#    ifndef HAVE_HWLOC_TOPOLOGY_DUP
-#        define HAVE_HWLOC_TOPOLOGY_DUP 0
-#    endif
-
-#    define HWLOC_OBJ_L3CACHE HWLOC_OBJ_CACHE
-#    define HWLOC_OBJ_L2CACHE HWLOC_OBJ_CACHE
-#    define HWLOC_OBJ_L1CACHE HWLOC_OBJ_CACHE
-
-#    if HWLOC_API_VERSION < 0x10b00
-#        define HWLOC_OBJ_NUMANODE HWLOC_OBJ_NODE
-#        define HWLOC_OBJ_PACKAGE  HWLOC_OBJ_SOCKET
-#    endif
-
-#    define HAVE_DECL_HWLOC_OBJ_OSDEV_COPROC 0
-
-#else
-
-#    define HAVE_DECL_HWLOC_OBJ_OSDEV_COPROC 1
-
-#endif
 
 /**
  * Register params
