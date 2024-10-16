@@ -1130,11 +1130,14 @@ doget:
      * request will return _all_ data from that proc */
     PMIX_LIST_FOREACH (cbret, &pmix_client_globals.pending_requests, pmix_cb_t) {
         if (PMIX_CHECK_NAMES(&cbret->pname, &proc)) {
+            pmix_output_verbose(2, pmix_client_globals.get_output,
+                                "%s ADDING REQUEST TO PENDING %s:%s KEY %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid), cb->proc->nspace,
+                                PMIX_RANK_PRINT(proc.rank), cb->key);
             /* we do have a pending request, but we still need to track this
              * outstanding request so we can satisfy it once the data is returned */
             pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
-            cb->status = PMIX_SUCCESS; // indicate waiting for response
-            goto done;
+            return;
         }
     }
 
