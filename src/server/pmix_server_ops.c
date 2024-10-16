@@ -1484,7 +1484,7 @@ pmix_status_t pmix_server_process_iof(pmix_peer_t *peer,
     pmix_iof_cache_t *iof, *ionext;
 
     // if no channels to forward, just return success
-    if (PMIX_FWD_NO_CHANNELS != channels) {
+    if (PMIX_FWD_NO_CHANNELS == channels) {
         return PMIX_SUCCESS;
     }
 
