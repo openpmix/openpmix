@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,6 +30,7 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     pmix_status_t jobstatus = 0;
     pmix_proc_t affected;
     char *msg = NULL;
+    EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
     memset(&affected, 0, sizeof(pmix_proc_t));
 
@@ -91,10 +92,9 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
 int main(int argc, char **argv)
 {
     pmix_status_t rc;
-    pmix_info_t info;
+    pmix_info_t info[3];
     pmix_app_t *app;
-    size_t ninfo, napps;
-    bool flag;
+    size_t  napps;
     myrel_t myrel;
     mylock_t mylock;
     pmix_status_t code[6] = {PMIX_ERR_PROC_ABORTING,
@@ -104,16 +104,19 @@ int main(int argc, char **argv)
                              PMIX_ERR_UNREACH,
                              PMIX_ERR_LOST_CONNECTION_TO_SERVER};
     pmix_nspace_t appspace;
+    EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     /* we need to attach to a "system" PMIx server so we
      * can ask it to spawn applications for us. There can
      * only be one such connection on a node, so we will
      * instruct the tool library to only look for it */
-    flag = true;
-    PMIX_INFO_LOAD(&info, PMIX_CONNECT_TO_SYSTEM, &flag, PMIX_BOOL);
+
+    PMIX_INFO_LOAD(&info[0], PMIX_TOOL_DO_NOT_CONNECT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[1], PMIX_LAUNCHER, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&info[2], PMIX_IOF_LOCAL_OUTPUT, NULL, PMIX_BOOL);
 
     /* initialize the library and make the connection */
-    if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, &info, 1))) {
+    if (PMIX_SUCCESS != (rc = PMIx_tool_init(&myproc, info, 3))) {
         fprintf(stderr, "PMIx_tool_init failed: %d\n", rc);
         exit(rc);
     }
@@ -123,8 +126,8 @@ int main(int argc, char **argv)
     /* register an event handler so we can be notified when
      * our spawned job completes, or if it fails (even at launch) */
     DEBUG_CONSTRUCT_LOCK(&mylock);
-    PMIX_INFO_LOAD(&info, PMIX_EVENT_RETURN_OBJECT, &myrel, PMIX_POINTER);
-    PMIx_Register_event_handler(code, 6, &info, 1, notification_fn, evhandler_reg_callbk,
+    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_RETURN_OBJECT, &myrel, PMIX_POINTER);
+    PMIx_Register_event_handler(code, 6, info, 1, notification_fn, evhandler_reg_callbk,
                                 (void *) &mylock);
     DEBUG_WAIT_THREAD(&mylock);
     rc = mylock.status;
@@ -140,20 +143,12 @@ int main(int argc, char **argv)
     napps = 1;
     PMIX_APP_CREATE(app, napps);
     /* setup the executable */
-    app[0].cmd = strdup("app");
+    app[0].cmd = strdup("hello");
     app[0].argv = (char **) malloc(2 * sizeof(char *));
-    app[0].argv[0] = strdup("app");
+    app[0].argv[0] = strdup("hello");
     app[0].argv[1] = NULL;
-    app[0].maxprocs = 128;
+    app[0].maxprocs = 1;
     /* can also provide environmental params in the app.env field */
-
-    /* provide directives so the apps do what the user requested - just
-     * some random examples provided here*/
-    app[0].ninfo = 2;
-    PMIX_INFO_CREATE(app[0].info, app[0].ninfo);
-    PMIX_INFO_LOAD(&app[0].info[0], PMIX_MAPBY, "slot", PMIX_STRING);
-    /* include a directive that we be notified upon completion of the job */
-    PMIX_INFO_LOAD(&app[0].info[1], PMIX_NOTIFY_COMPLETION, &flag, PMIX_BOOL);
 
     /* spawn the application */
     PMIx_Spawn(NULL, 0, app, napps, appspace);
