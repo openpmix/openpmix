@@ -46,9 +46,9 @@
 #include <event.h>
 
 #include "src/class/pmix_list.h"
+#include "src/common/pmix_pfexec.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/gds.h"
-#include "src/mca/pfexec/pfexec.h"
 #include "src/mca/pmdl/pmdl.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/ptl/ptl.h"
@@ -120,7 +120,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
 static void localcbfunc(pmix_status_t status,
                         char nspace[], void *cbdata)
 {
-    pmix_pfexec_fork_caddy_t *fcd = (pmix_pfexec_fork_caddy_t*)cbdata;
+    pmix_setup_caddy_t *fcd = (pmix_setup_caddy_t*)cbdata;
     pmix_status_t rc;
 
     // set default status
@@ -131,8 +131,8 @@ static void localcbfunc(pmix_status_t status,
         rc = pmix_server_process_iof(fcd, nspace);
     }
 
-    if (NULL != fcd->cbfunc) {
-        fcd->cbfunc(rc, nspace, fcd->cbdata);
+    if (NULL != fcd->spcbfunc) {
+        fcd->spcbfunc(rc, nspace, fcd->cbdata);
     }
     // cleanup
     PMIX_RELEASE(fcd);
@@ -146,7 +146,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_cmd_t cmd = PMIX_SPAWNNB_CMD;
     pmix_status_t rc;
     size_t n, m;
-    pmix_pfexec_fork_caddy_t *fcd = NULL;
+    pmix_setup_caddy_t *fcd = NULL;
     pmix_app_t *aptr;
     bool jobenvars = false;
     bool forkexec = false;
@@ -184,8 +184,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     // setup the caddy
-    fcd = PMIX_NEW(pmix_pfexec_fork_caddy_t);
-    fcd->cbfunc = cbfunc;
+    fcd = PMIX_NEW(pmix_setup_caddy_t);
+    fcd->spcbfunc = cbfunc;
     fcd->cbdata = cbdata;
 
     /* check job info for directives */
@@ -232,8 +232,8 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             PMIX_RELEASE(fcd);
             return rc;
         }
-        fcd->jobinfo = darray.array;
-        fcd->njinfo = darray.size;
+        fcd->info = darray.array;
+        fcd->ninfo = darray.size;
     }
 
     /* sadly, we have to copy the apps array since we are
@@ -412,10 +412,10 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
          * to catch any early output - and a request for notification
          * of job termination so we can setup the event registration */
         pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
-                                 fcd->jobinfo, fcd->njinfo);
+                                 fcd->info, fcd->ninfo);
         /* call the local host */
         rc = pmix_host_server.spawn(&pmix_globals.myid,
-                                    fcd->jobinfo, fcd->njinfo,
+                                    fcd->info, fcd->ninfo,
                                     fcd->apps, fcd->napps,
                                     localcbfunc, fcd);
         if (PMIX_SUCCESS != rc) {
@@ -430,7 +430,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     PMIX_RETAIN(fcd->peer);
 
     if (forkexec) {
-        rc = pmix_pfexec.spawn_job(fcd);
+        rc = pmix_pfexec_base_spawn_job(fcd);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(fcd);
         }
@@ -448,15 +448,15 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     }
 
     /* pack the job-level directives */
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &fcd->njinfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &fcd->ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
         PMIX_RELEASE(fcd);
         return rc;
     }
-    if (0 < fcd->njinfo) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, fcd->jobinfo, fcd->njinfo, PMIX_INFO);
+    if (0 < fcd->ninfo) {
+        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, fcd->info, fcd->ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
@@ -485,7 +485,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
     /* check for IOF flags */
     pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
-                             fcd->jobinfo, fcd->njinfo);
+                             fcd->info, fcd->ninfo);
 
     /* push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, wait_cbfunc, (void *) fcd);
@@ -501,7 +501,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
                         void *cbdata)
 {
-    pmix_pfexec_fork_caddy_t *fcd = (pmix_pfexec_fork_caddy_t *) cbdata;
+    pmix_setup_caddy_t *fcd = (pmix_setup_caddy_t *) cbdata;
     char nspace[PMIX_MAX_NSLEN + 1];
     char *n2 = NULL;
     pmix_status_t rc, ret;
@@ -585,8 +585,8 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     }
 
 report:
-    if (NULL != fcd->cbfunc) {
-        fcd->cbfunc(ret, nspace, fcd->cbdata);
+    if (NULL != fcd->spcbfunc) {
+        fcd->spcbfunc(ret, nspace, fcd->cbdata);
     }
     PMIX_RELEASE(fcd);
 }
