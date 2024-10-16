@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,7 +32,7 @@
 #include "include/pmix_server.h"
 
 #include "src/mca/bfrops/bfrops.h"
-#include "src/mca/pfexec/base/base.h"
+#include "src/common/pmix_pfexec.h"
 #include "src/mca/ptl/ptl.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"

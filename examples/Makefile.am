@@ -27,7 +27,7 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
-                  group_bootstrap client3
+                  group_bootstrap client3 launcher
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -136,6 +136,10 @@ log_LDADD = $(top_builddir)/src/libpmix.la
 group_bootstrap_SOURCES = group_bootstrap.c examples.h
 group_bootstrap_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 group_bootstrap_LDADD = $(top_builddir)/src/libpmix.la
+
+launcher_SOURCES = launcher.c examples.h
+launcher_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+launcher_LDADD = $(top_builddir)/src/libpmix.la
 
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
