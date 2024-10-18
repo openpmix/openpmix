@@ -549,7 +549,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        separately. If false, then the final exit status reported will be
                                                                     //        zero if the primary job and all spawned jobs exit normally, or the
                                                                     //        first non-zero status returned by either primary or child jobs.
-
+#define PMIX_SPAWN_CHILD_SEP                "pmix.spchildsep"       // (bool) Treat the spawned job as independent from the parent - i.e, do not
+                                                                    //        terminate the spawned job if the parent terminates.
 
 /* query keys - value type shown is the type of the value that will be RETURNED by that key  */
 #define PMIX_QUERY_SUPPORTED_KEYS           "pmix.qry.keys"         // (char*) returns comma-delimited list of keys supported by the query
@@ -899,6 +900,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //         times like "now + count" time-units, where the time-units can be "seconds"
                                                                     //         (default), "minutes", "hours", days, or weeks, or you can ask that the
                                                                     //         allocation be made "today" or "tomorrow".
+#define PMIX_ALLOC_CHILD_SEP                "pmix.alloc.sep"        // (bool) Treat the resulting allocation as independent from its parent - i.e.,
+                                                                    //        do not terminate the allocation upon termination of the parent.
 
 
 /* job control attributes */
@@ -933,6 +936,10 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_CLEANUP_LEAVE_TOPDIR           "pmix.clnup.lvtop"      // (bool) when recursively cleaning subdirs, do not remove
                                                                     //        the top-level directory (the one given in the
                                                                     //        cleanup request)
+#define PMIX_JOB_CTRL_SEP                   "pmix.jctrl.sep"        // (bool) Separate the specified nspace from its parent - i.e., allow
+                                                                    //        the two to independently terminate.
+
+
 /* session control attributes */
 #define PMIX_SESSION_CTRL_ID                "pmix.ssnctrl.id"       // (char*) provide a string identifier for this request
 
