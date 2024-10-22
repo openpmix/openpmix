@@ -119,6 +119,7 @@ typedef struct {
     pmix_list_item_t super;
     pmix_status_t code;
     size_t nregs;
+    void *peer; // (pmix_peer_t *)
 } pmix_active_code_t;
 PMIX_CLASS_DECLARATION(pmix_active_code_t);
 

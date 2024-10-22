@@ -1460,6 +1460,7 @@ PMIX_CLASS_INSTANCE(pmix_event_hdlr_t, pmix_list_item_t, sevcon, sevdes);
 static void accon(pmix_active_code_t *p)
 {
     p->nregs = 0;
+    p->peer = NULL;
 }
 PMIX_CLASS_INSTANCE(pmix_active_code_t, pmix_list_item_t, accon, NULL);
 
