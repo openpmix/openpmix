@@ -66,7 +66,6 @@ struct pmix_ptl_base_t {
     pmix_list_t unexpected_msgs;
     pmix_listener_t listener;
     struct sockaddr_storage *connection;
-    uint32_t current_tag;
     size_t max_msg_size;
     char *session_tmpdir;
     char *system_tmpdir;

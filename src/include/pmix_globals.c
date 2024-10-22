@@ -274,6 +274,9 @@ static void pcon(pmix_peer_t *p)
     PMIX_CONSTRUCT(&p->epilog.cleanup_dirs, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.cleanup_files, pmix_list_t);
     PMIX_CONSTRUCT(&p->epilog.ignores, pmix_list_t);
+    p->dyn_tags_start = PMIX_PTL_TAG_DYNAMIC;
+    p->dyn_tags_current = PMIX_PTL_TAG_DYNAMIC;
+    p->dyn_tags_end = UINT32_MAX;
 }
 
 static void pdes(pmix_peer_t *p)

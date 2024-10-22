@@ -70,7 +70,6 @@ pmix_ptl_base_t pmix_ptl_base = {
     .unexpected_msgs = PMIX_LIST_STATIC_INIT,
     .listener = PMIX_LISTENER_STATIC_INIT,
     .connection = NULL,
-    .current_tag = 0,
     .max_msg_size = 0,
     .session_tmpdir = NULL,
     .system_tmpdir = NULL,
@@ -394,7 +393,6 @@ static pmix_status_t pmix_ptl_open(pmix_mca_base_open_flag_t flags)
     PMIX_CONSTRUCT(&pmix_ptl_base.posted_recvs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.unexpected_msgs, pmix_list_t);
     PMIX_CONSTRUCT(&pmix_ptl_base.listener, pmix_listener_t);
-    pmix_ptl_base.current_tag = PMIX_PTL_TAG_DYNAMIC;
     pmix_ptl_base.connection = (struct sockaddr_storage *)malloc(sizeof(struct sockaddr_storage));
     if (NULL == pmix_ptl_base.connection) {
         return PMIX_ERR_NOMEM;
