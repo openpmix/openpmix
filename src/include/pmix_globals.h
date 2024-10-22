@@ -462,6 +462,7 @@ typedef struct {
     size_t remote_id;
     pmix_proc_t *procs;
     size_t nprocs;
+    pmix_iof_flags_t flags;
     pmix_iof_channel_t channels;
     pmix_iof_cbfunc_t cbfunc;
     pmix_hdlr_reg_cbfunc_t regcbfunc;

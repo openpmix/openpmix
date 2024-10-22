@@ -967,12 +967,14 @@ void pmix_iof_check_flags(pmix_info_t *info, pmix_iof_flags_t *flags)
 
 pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_t *source,
                                    const pmix_byte_object_t *bo, const pmix_info_t *info,
-                                   size_t ninfo, const pmix_iof_req_t *req)
+                                   size_t ninfo, pmix_iof_req_t *req)
 {
     bool match;
     size_t m;
     pmix_buffer_t *msg;
     pmix_status_t rc;
+    pmix_byte_object_t *wbo;
+    pmix_proc_t proc;
 
     /* if the channel wasn't included, then ignore it */
     if (!(channels & req->channels)) {
@@ -1045,13 +1047,25 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
             return rc;
         }
     }
+
+    // process the data based on the request flags
+    PMIX_LOAD_PROCID(&proc, req->requestor->info->pname.nspace, req->requestor->info->pname.rank);
+    wbo = pmix_iof_prep_output(&proc, &req->flags, req->channels, bo);
+    if (NULL == wbo) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+        PMIX_RELEASE(msg);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
     /* pack the data */
-    PMIX_BFROPS_PACK(rc, req->requestor, msg, bo, 1, PMIX_BYTE_OBJECT);
+    PMIX_BFROPS_PACK(rc, req->requestor, msg, wbo, 1, PMIX_BYTE_OBJECT);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
+        PMIx_Byte_object_free(wbo, 1);
         PMIX_RELEASE(msg);
         return rc;
     }
+    PMIx_Byte_object_free(wbo, 1);
+
     /* send it to the requestor */
     PMIX_PTL_SEND_ONEWAY(rc, req->requestor, msg, PMIX_PTL_TAG_IOF);
     if (PMIX_SUCCESS != rc) {
@@ -1061,18 +1075,16 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     return PMIX_OPERATION_SUCCEEDED;
 }
 
-static pmix_status_t write_output_line(const pmix_proc_t *name,
-                                       pmix_iof_write_event_t *channel,
-                                       pmix_iof_flags_t *myflags,
-                                       pmix_iof_channel_t stream,
-                                       bool copystdout, bool copystderr,
-                                       const pmix_byte_object_t *bo)
+pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
+                                         pmix_iof_flags_t *myflags,
+                                         pmix_iof_channel_t stream,
+                                         const pmix_byte_object_t *bo)
 {
     char starttag[PMIX_IOF_BASE_TAG_MAX], endtag[PMIX_IOF_BASE_TAG_MAX], *suffix;
     char timestamp[PMIX_IOF_BASE_TAG_MAX], outtag[PMIX_IOF_BASE_TAG_MAX];
     char begintag[PMIX_IOF_BASE_TAG_MAX];
     char **segments = NULL;
-    pmix_iof_write_output_t *output, *copy;
+    pmix_byte_object_t *output;
     size_t offset, j, n, m, bufsize;
     char *buffer, qprint[15], *cptr;
     const char *usestring;
@@ -1085,7 +1097,16 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     pmix_status_t rc;
 
     /* setup output object */
-    output = PMIX_NEW(pmix_iof_write_output_t);
+    output = PMIx_Byte_object_create(1);
+
+    /* if 0 bytes, then just pass it so the fd can be closed
+     * after it writes everything out
+     */
+    if (0 == bo->size) {
+        // the byte object was initialized to empty
+        return output;
+    }
+
     memset(begintag, 0, PMIX_IOF_BASE_TAG_MAX);
     memset(starttag, 0, PMIX_IOF_BASE_TAG_MAX);
     memset(endtag, 0, PMIX_IOF_BASE_TAG_MAX);
@@ -1093,20 +1114,7 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     memset(outtag, 0, PMIX_IOF_BASE_TAG_MAX);
     PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
 
-    /* write output data to the corresponding tag */
-    if (PMIX_FWD_STDIN_CHANNEL & stream) {
-        /* copy over the data to be written */
-        if (0 < bo->size) {
-            /* don't copy 0 bytes - we just need to pass
-             * the zero bytes so the fd can be closed
-             * after it writes everything out
-             */
-            output->data = (char*)malloc(bo->size);
-            memcpy(output->data, bo->bytes, bo->size);
-        }
-        output->numbytes = bo->size;
-        goto process;
-    } else if (PMIX_FWD_STDOUT_CHANNEL & stream) {
+    if (PMIX_FWD_STDOUT_CHANNEL & stream) {
         /* write the bytes to stdout */
         suffix = "stdout";
     } else if (PMIX_FWD_STDERR_CHANNEL & stream) {
@@ -1120,25 +1128,19 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
         PMIX_ERROR_LOG(PMIX_ERR_VALUE_OUT_OF_BOUNDS);
         pmix_output_verbose(1, pmix_client_globals.iof_output, "%s stream %0x",
                              PMIX_NAME_PRINT(&pmix_globals.myid), stream);
-        return PMIX_ERR_VALUE_OUT_OF_BOUNDS;
+        PMIx_Byte_object_free(output, 1);
+        return NULL;
     }
 
-    /* if 0 bytes, then just pass it so the fd can be closed
-     * after it writes everything out
-     */
-    if (0 == bo->size) {
-        output->numbytes = 0;
-        goto process;
-    }
 
     if (!myflags->set) {
         /* the data is not to be tagged - just copy it
          * and move on to processing
          */
-        output->data = (char*)malloc(bo->size);
-        memcpy(output->data, bo->bytes, bo->size);
-        output->numbytes = bo->size;
-        goto process;
+        output->bytes = (char*)malloc(bo->size);
+        memcpy(output->bytes, bo->bytes, bo->size);
+        output->size = bo->size;
+        return output;
     }
 
     /* if this is to be xml tagged, create a tag with the correct syntax - we do not allow
@@ -1411,35 +1413,78 @@ static pmix_status_t write_output_line(const pmix_proc_t *name,
     /* assemble the output line */
     if (NULL != segments) {
         for (n=0; NULL != segments[n]; n++) {
-            output->numbytes += strlen(segments[n]);
+            output->size += strlen(segments[n]);
         }
     }
-    output->numbytes += bufsize;
-    output->numbytes += strlen(endtag);
+    output->size += bufsize;
+    output->size += strlen(endtag);
     if (myflags->xml) {
         // add a spot for a trailing newline
-        output->numbytes++;
+        output->size++;
     }
 
-    output->data = (char*)malloc(output->numbytes);
+    output->bytes = (char*)malloc(output->size);
     offset = 0;
     if (NULL != segments) {
         for (n=0; NULL != segments[n]; n++) {
-            memcpy(&output->data[offset], segments[n], strlen(segments[n]));
+            memcpy(&output->bytes[offset], segments[n], strlen(segments[n]));
             offset += strlen(segments[n]);
         }
     }
-    memcpy(&output->data[offset], buffer, bufsize);
+    memcpy(&output->bytes[offset], buffer, bufsize);
     offset += bufsize;
     if (0 < strlen(endtag)) {
-        memcpy(&output->data[offset], endtag, strlen(endtag));
+        memcpy(&output->bytes[offset], endtag, strlen(endtag));
     }
     if (myflags->xml) {
-        output->data[output->numbytes-1] = '\n';
+        output->bytes[output->size-1] = '\n';
     }
     if (bufcopy) {
         free(buffer);
     }
+    return output;
+}
+
+static pmix_status_t write_output_line(const pmix_proc_t *name,
+                                       pmix_iof_write_event_t *channel,
+                                       pmix_iof_flags_t *myflags,
+                                       pmix_iof_channel_t stream,
+                                       bool copystdout, bool copystderr,
+                                       const pmix_byte_object_t *bo)
+{
+    pmix_byte_object_t *wbo;
+    pmix_iof_write_output_t *copy;
+    pmix_iof_write_output_t *output;
+
+
+    /* write output data to the corresponding tag */
+    if (PMIX_FWD_STDIN_CHANNEL & stream) {
+        output = PMIX_NEW(pmix_iof_write_output_t);
+        /* copy over the data to be written */
+        if (0 < bo->size) {
+            /* don't copy 0 bytes - we just need to pass
+             * the zero bytes so the fd can be closed
+             * after it writes everything out
+             */
+            output->data = (char*)malloc(bo->size);
+            memcpy(output->data, bo->bytes, bo->size);
+        }
+        output->numbytes = bo->size;
+        goto process;
+    }
+
+    // process the stream for output formatting
+    wbo = pmix_iof_prep_output(name, myflags, stream, bo);
+    if (NULL == wbo) {
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+    output = PMIX_NEW(pmix_iof_write_output_t);
+    output->data = wbo->bytes;
+    output->numbytes = wbo->size;
+    // protect returned data region
+    wbo->bytes = NULL;
+    wbo->size = 0;
+    PMIx_Byte_object_free(wbo, 1);
 
 process:
     /* add this data to the write list for this fd */
@@ -1478,7 +1523,8 @@ process:
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_iof_write_output(const pmix_proc_t *name, pmix_iof_channel_t stream,
+pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
+                                    pmix_iof_channel_t stream,
                                     const pmix_byte_object_t *bo)
 {
     pmix_status_t rc;

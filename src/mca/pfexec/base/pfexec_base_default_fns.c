@@ -203,22 +203,6 @@ void pmix_pfexec_base_spawn_proc(int sd, short args, void *cbdata)
             goto complete;
         }
 
-        /* process any job-info */
-        if (NULL != fcd->jobinfo) {
-            for (k = 0; k < fcd->njinfo; k++) {
-                if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_SET_ENVAR)) {
-
-                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_ADD_ENVAR)) {
-
-                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_UNSET_ENVAR)) {
-                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_PREPEND_ENVAR)) {
-                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_APPEND_ENVAR)) {
-                } else if (PMIX_CHECK_KEY(&fcd->jobinfo[k], PMIX_NOHUP)) {
-                    nohup = PMIX_INFO_TRUE(&fcd->jobinfo[k]);
-                }
-            }
-        }
-
         /* check for a fork/exec agent we should use */
         if (NULL != app->info) {
             for (k = 0; k < app->ninfo; k++) {
