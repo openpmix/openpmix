@@ -660,6 +660,10 @@ retry:
         }
         return rc;
     }
+    /* Assign the lower half of the tag space for sendrecvs */
+    peer->dyn_tags_start    = PMIX_PTL_TAG_DYNAMIC;
+    peer->dyn_tags_current  = PMIX_PTL_TAG_DYNAMIC;
+    peer->dyn_tags_end      = PMIX_PTL_TAG_DYNAMIC + (UINT32_MAX - PMIX_PTL_TAG_DYNAMIC)/2;
 
     return PMIX_SUCCESS;
 }

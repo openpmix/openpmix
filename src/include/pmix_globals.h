@@ -453,6 +453,9 @@ typedef struct pmix_peer_t {
     int commit_cnt;
     pmix_epilog_t epilog; /**< things to be performed upon
                                termination of this peer */
+    uint32_t dyn_tags_start; // lower limit of valid tags for sendrecvs to this peer
+    uint32_t dyn_tags_current; // current tag for sendrecvs to this peer
+    uint32_t dyn_tags_end; // upper limit of valid tags for sendrecvs to this peer
 } pmix_peer_t;
 PMIX_CLASS_DECLARATION(pmix_peer_t);
 

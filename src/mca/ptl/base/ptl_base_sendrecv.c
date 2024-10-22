@@ -728,12 +728,12 @@ void pmix_ptl_base_send_recv(int fd, short args, void *cbdata)
         return;
     }
 
-    /* take the next tag in the sequence */
-    pmix_ptl_base.current_tag++;
-    if (UINT32_MAX == pmix_ptl_base.current_tag) {
-        pmix_ptl_base.current_tag = PMIX_PTL_TAG_DYNAMIC;
+    /* take the next tag in the sequence of tags for this peer */
+    ms->peer->dyn_tags_current++;
+    if (ms->peer->dyn_tags_current == ms->peer->dyn_tags_end) {
+        ms->peer->dyn_tags_current = ms->peer->dyn_tags_start;
     }
-    tag = pmix_ptl_base.current_tag;
+    tag = ms->peer->dyn_tags_current;
 
     if (NULL != ms->cbfunc) {
         /* if a callback msg is expected, setup a recv for it */
