@@ -275,9 +275,8 @@ PMIX_EXPORT void pmix_server_spawn_parser(pmix_peer_t *peer,
                                           pmix_iof_flags_t *flags,
                                           pmix_info_t *info,
                                           size_t ninfo);
-PMIX_EXPORT pmix_status_t pmix_server_process_iof(pmix_peer_t *peer,
-                                                  char nspace[],
-                                                  pmix_iof_channel_t channels);
+PMIX_EXPORT pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
+                                                  char nspace[]);
 
 PMIX_EXPORT void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata);
 

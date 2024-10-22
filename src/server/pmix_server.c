@@ -4318,9 +4318,9 @@ static void _iofreg(int sd, short args, void *cbdata)
                                                              cd->ncodes);
         if (NULL != req) {
             PMIX_LIST_FOREACH_SAFE (iof, inxt, &pmix_server_globals.iof, pmix_iof_cache_t) {
-                if (PMIX_OPERATION_SUCCEEDED
-                    == pmix_iof_process_iof(iof->channel, &iof->source, iof->bo, iof->info,
-                                            iof->ninfo, req)) {
+                rc = pmix_iof_process_iof(iof->channel, &iof->source, iof->bo, iof->info,
+                                            iof->ninfo, req);
+                if (PMIX_OPERATION_SUCCEEDED == rc) {
                     pmix_list_remove_item(&pmix_server_globals.iof, &iof->super);
                     PMIX_RELEASE(iof);
                 }

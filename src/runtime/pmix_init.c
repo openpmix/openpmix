@@ -227,6 +227,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_info_t *iptr;
     size_t minfo;
     bool keepfqdn = false;
+    pmix_iof_flags_t flags;
 
 #if PMIX_NO_LIB_DESTRUCTOR
     if (pmix_init_called) {
@@ -241,6 +242,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
 #endif
 
     pmix_init_called = true;
+    memset(&flags, 0, sizeof(pmix_iof_flags_t));
 
     if (PMIX_SUCCESS != pmix_init_util(info, ninfo, NULL)) {
         return PMIX_ERROR;
@@ -290,7 +292,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_BIND_REQUIRED)) {
                 pmix_bind_progress_thread_reqd = PMIX_INFO_TRUE(&info[n]);
             } else {
-                pmix_iof_check_flags(&info[n], &pmix_globals.iof_flags);
+                pmix_iof_check_flags(&info[n], &flags);
             }
         }
     }
@@ -344,7 +346,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_pointer_array_init(&pmix_globals.iof_requests, 128, INT_MAX, 128);
     /* setup the stdin forwarding target list */
     PMIX_CONSTRUCT(&pmix_globals.stdin_targets, pmix_list_t);
-    memset(&pmix_globals.iof_flags, 0, sizeof(pmix_iof_flags_t));
+    memcpy(&pmix_globals.iof_flags, &flags, sizeof(pmix_iof_flags_t));
 
     /* Setup client verbosities as all procs are allowed to
      * access client APIs */

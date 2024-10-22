@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -592,6 +592,8 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     PMIX_PROC_CREATE(req->procs, req->nprocs);
     PMIX_LOAD_PROCID(&req->procs[0], pmix_globals.myid.nspace, pmix_globals.myid.rank);
     req->channels = PMIX_FWD_STDOUT_CHANNEL | PMIX_FWD_STDERR_CHANNEL | PMIX_FWD_STDDIAG_CHANNEL;
+    // default to formatting output as we were directed to do
+    req->flags = pmix_globals.iof_flags;
     req->remote_id = 0; // default ID for tool during init
     req->local_id = pmix_pointer_array_add(&pmix_globals.iof_requests, req);
 
