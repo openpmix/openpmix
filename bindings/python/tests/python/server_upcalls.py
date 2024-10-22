@@ -2,10 +2,28 @@
 
 from pmix import *
 import signal, time
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 global killer
+
+# Our event loop
+event_loop = None
 
 # where local data is published for testing
 pmix_locdata = []
+
+def start_event_loop():
+    global event_loop
+    if None == event_loop:
+        event_loop = asyncio.new_event_loop()
+        ThreadPoolExecutor().submit(event_loop.run_forever)
+
+def stop_event_loop():
+    global event_loop
+    event_loop.call_soon_threadsafe(event_loop.stop)
+    while event_loop.is_running():
+        time.sleep(0.01)
+    event_loop.close()
 
 class GracefulKiller:
   kill_now = False
@@ -16,17 +34,27 @@ class GracefulKiller:
   def exit_gracefully(self,signum, frame):
     self.kill_now = True
 
-def clientconnected(proc:tuple is not None):
+def _clientconnected(proc:tuple is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
+    print("CLIENT CONNECTED SHIFTED", proc)
+    cbfunc(PMIX_SUCCESS, cbdata)
+
+def clientconnected(proc:tuple is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
     print("CLIENT CONNECTED", proc)
-    return PMIX_OPERATION_SUCCEEDED
+    event_loop.call_soon_threadsafe(_clientconnected, proc, cbfunc, cbdata)
+    return PMIX_SUCCESS
 
-def clientfinalized(proc:tuple is not None):
+def _clientfinalized(proc:tuple is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
+    print("CLIENT FINALIZED SHIFTED", proc)
+    cbfunc(PMIX_SUCCESS, cbdata)
+
+def clientfinalized(proc:tuple is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
     print("CLIENT FINALIZED", proc)
-    return PMIX_OPERATION_SUCCEEDED
+    event_loop.call_soon_threadsafe(_clientfinalized, proc, cbfunc, cbdata)
+    return PMIX_SUCCESS
 
-def clientfence(args:dict is not None):
+def _clientfence(args:dict is not None, cbfunc:pypmix_modex_cbfunc_t, cbdata:dict):
     # check directives
-    print("CLIENTFENCE")
+    print("CLIENTFENCE SHIFTED")
     output = bytearray(0)
     try:
         if args['directives'] is not None:
@@ -38,17 +66,23 @@ def clientfence(args:dict is not None):
                     try:
                         if d['flags'] & PMIX_INFO_REQD:
                             # return an error
-                            return PMIX_ERR_NOT_SUPPORTED, output
+                            return PMIX_ERR_NOT_SUPPORTED
                     except:
                         #it can be ignored
                         pass
     except:
         pass
     print("COMPLETE")
-    return PMIX_SUCCESS, output
+    cbfunc(PMIX_SUCCESS, output, cbdata)
 
-def clientpublish(args:dict is not None):
-    print("SERVER: PUBLISH")
+def clientfence(args:dict is not None, cbfunc:pypmix_modex_cbfunc_t, cbdata:dict):
+    # check directives
+    print("CLIENTFENCE")
+    event_loop.call_soon_threadsafe(_clientfence, args, cbfunc, cbdata)
+    return PMIX_SUCCESS
+
+def _clientpublish(args:dict is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
+    print("SERVER: PUBLISH SHIFTED")
     for d in args['directives']:
         pdata = {}
         pdata['proc'] = args['proc']
@@ -56,28 +90,44 @@ def clientpublish(args:dict is not None):
         pdata['value']          = d['value']
         pdata['val_type']       = d['val_type']
         pmix_locdata.append(pdata)
-    return PMIX_OPERATION_SUCCEEDED
+    cbfunc(PMIX_SUCCESS, cbdata)
 
-def clientunpublish(args:dict is not None):
-    print("SERVER: UNPUBLISH")
+
+def clientpublish(args:dict is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
+    print("SERVER: PUBLISH")
+    event_loop.call_soon_threadsafe(_clientpublish, args, cbfunc, cbdata)
+    return PMIX_SUCCESS
+
+def _clientunpublish(args:dict is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
+    print("SERVER: UNPUBLISH SHIFTED")
     for k in args['keys']:
         for d in pmix_locdata:
             if k == d['key']:
                 pmix_locdata.remove(d)
-    return PMIX_OPERATION_SUCCEEDED
+    cbfunc(PMIX_SUCCESS, cbdata)
 
-def clientlookup(args:dict is not None):
-    print("SERVER: LOOKUP")
+def clientunpublish(args:dict is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
+    print("SERVER: UNPUBLISH")
+    event_loop.call_soon_threadsafe(_clientunpublish, args, cbfunc, cbdata)
+    return PMIX_SUCCESS
+
+def _clientlookup(args:dict is not None, cbfunc:pypmix_lookup_cbfunc_t, cbdata:dict):
+    print("SERVER: LOOKUP SHIFTED")
     ret_pdata = []
     for k in args['keys']:
         for d in pmix_locdata:
             if k.decode('ascii') == d['key']:
                 ret_pdata.append(d)
     # return rc and pdata
-    return PMIX_SUCCESS, ret_pdata
+    cbfunc(PMIX_SUCCESS, ret_pdata, cbdata)
 
-def clientquery(args:dict is not None):
-    print("SERVER: QUERY")
+def clientlookup(args:dict is not None, cbfunc:pypmix_lookup_cbfunc_t, cbdata:dict):
+    print("SERVER: LOOKUP")
+    event_loop.call_soon_threadsafe(_clientlookup, args, cbfunc, cbdata)
+    return PMIX_SUCCESS
+
+def _clientquery(args:dict is not None, cbfunc:pypmix_info_cbfunc_t, cbdata:dict):
+    print("SERVER: QUERY SHIFTED")
     # return a python info list of dictionaries
     info = {}
     results = []
@@ -94,8 +144,19 @@ def clientquery(args:dict is not None):
                 info = {'key': find_str, 'value': 'PSET_NAME', 'val_type': PMIX_STRING}
                 results.append(info)
                 rc = PMIX_SUCCESS
-    return rc, results
+    cbfunc(rc, results, cbdata)
 
-def client_register_events(args:dict is not None):
-    print("CLIENT REGISTER EVENTS ", args['codes'])
-    return PMIX_OPERATION_SUCCEEDED
+def clientquery(args:dict is not None, cbfunc:pypmix_info_cbfunc_t, cbdata:dict):
+    print("SERVER: QUERY")
+    event_loop.call_soon_threadsafe(_clientquery, args, cbfunc, cbdata)
+    return PMIX_SUCCESS
+
+def _client_register_events(args:dict is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
+    print("CLIENT REGISTER EVENTS SHIFTED", args['codes'])
+    cbfunc(PMIX_SUCCESS, cbdata)
+
+
+def client_register_events(args:dict is not None, cbfunc:pypmix_op_cbfunc_t, cbdata:dict):
+    print("CLIENT REGISTER EVENTS", args['codes'])
+    event_loop.call_soon_threadsafe(_client_register_events, args, cbfunc, cbdata)
+    return PMIX_SUCCESS
