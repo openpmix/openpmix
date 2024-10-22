@@ -128,7 +128,7 @@ static void localcbfunc(pmix_status_t status,
 
     // process IOF requests
     if (PMIX_SUCCESS == status) {
-        rc = pmix_server_process_iof(fcd->peer, nspace, fcd->channels);
+        rc = pmix_server_process_iof(fcd, nspace);
     }
 
     if (NULL != fcd->spcbfunc) {
