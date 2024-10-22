@@ -160,6 +160,7 @@ cdef int pmix_load_argv(char **keys, argv:list):
 
 cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
     cdef pmix_info_t *infoptr;
+    cdef pmix_value_t *valptr;
     mysize = len(mylist)
     if PMIX_INFO == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(pmix_info_t))
@@ -167,6 +168,12 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
             return PMIX_ERR_NOMEM
         infoptr = <pmix_info_t*>array[0].array
         rc = pmix_load_info(infoptr, mylist)
+    elif PMIX_VALUE == mytype:
+        array[0].array = PyMem_Malloc(mysize * sizeof(pmix_value_t))
+        if not array[0].array:
+            return PMIX_ERR_NOMEM
+        valptr = <pmix_value_t*>array[0].array
+        rc = pmix_load_value(valptr, mylist)
     elif PMIX_BOOL == mytype:
         array[0].array = PyMem_Malloc(mysize * sizeof(int*))
         n = 0
@@ -492,7 +499,7 @@ cdef int pmix_load_darray(pmix_data_array_t *array, mytype, mylist:list):
             envptr[n].separator = pyseparator
             n += 1
     else:
-        print("UNRECOGNIZED DATA TYPE IN ARRAY")
+        print("UNRECOGNIZED DATA TYPE IN ARRAY "+str(array[0].type))
         return PMIX_ERR_NOT_SUPPORTED
     return PMIX_SUCCESS
 
@@ -504,7 +511,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
         infoptr = <pmix_info_t*>array[0].array
         rc = pmix_unload_info(infoptr, array.size, ilist)
         darray = {'type':array.type, 'array':ilist}
-        pmix_free_info(infoptr, array.size)
         return darray
     elif PMIX_BOOL == array.type:
         if not array[0].array:
@@ -516,7 +522,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(boolptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_BYTE == array.type:
         # byte val is uint8 type
@@ -529,7 +534,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(bptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_STRING == array.type:
         if not array[0].array:
@@ -544,7 +548,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             free(strptr[n])
             n += 1
         darray = {'type':array.type, 'array':strlist}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_SIZE == array.type:
         if not array[0].array:
@@ -556,7 +559,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(sptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_PID == array.type:
         if not array[0].array:
@@ -568,7 +570,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(pidptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_INT == array.type or PMIX_UINT == array.type:
         if not array[0].array:
@@ -580,7 +581,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(iptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_INT8 == array.type or PMIX_UINT8 == array.type:
         if not array[0].array:
@@ -592,7 +592,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(i8ptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_INT16 == array.type or PMIX_UINT16 == array.type:
         if not array[0].array:
@@ -604,7 +603,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(i16ptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_INT32 == array.type or PMIX_UINT32 == array.type:
         if not array[0].array:
@@ -616,7 +614,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(i32ptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_INT64 == array.type or PMIX_UINT64 == array.type:
         if not array[0].array:
@@ -628,7 +625,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(i64ptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_FLOAT == array.type:
         if not array[0].array:
@@ -640,7 +636,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(fptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_DOUBLE == array.type:
         if not array[0].array:
@@ -652,7 +647,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(dptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_TIMEVAL == array.type:
         # TODO: Not clear that "timeval" has the same size as
@@ -667,7 +661,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(d)
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_TIME == array.type:
         if not array[0].array:
@@ -679,7 +672,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(tmptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_STATUS == array.type:
         if not array[0].array:
@@ -691,7 +683,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(stptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_PROC_RANK == array.type:
         if not array[0].array:
@@ -703,7 +694,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(rkptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_PROC == array.type:
         if not array[0].array:
@@ -716,7 +706,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(d)
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_BYTE_OBJECT == array.type:
         if not array[0].array:
@@ -732,7 +721,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             PyMem_Free(boptr[n].bytes)
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_PERSISTENCE == array.type:
         if not array[0].array:
@@ -744,7 +732,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(perptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_SCOPE == array.type:
         if not array[0].array:
@@ -756,7 +743,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(scptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_RANGE == array.type:
         if not array[0].array:
@@ -768,7 +754,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(rgptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_PROC_STATE == array.type:
         if not array[0].array:
@@ -780,7 +765,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(psptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_PROC_INFO == array.type:
         if not array[0].array:
@@ -798,7 +782,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             free(piptr[n].executable_name)
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_DATA_ARRAY == array.type:
         if not array[0].array:
@@ -826,7 +809,6 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             list.append(aldptr[n])
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
         return darray
     elif PMIX_ENVAR == array.type:
         if not array[0].array:
@@ -844,10 +826,21 @@ cdef dict pmix_unload_darray(pmix_data_array_t *array):
             free(envptr[n].envar)
             n += 1
         darray = {'type':array.type, 'array':list}
-        PyMem_Free(array[0].array)
+        return darray
+    elif PMIX_VALUE == array.type:
+        if not array[0].array:
+            return PMIX_ERR_NOMEM
+        list = []
+        n = 0
+        valptr = <pmix_value_t*>array[0].array
+        while n < array.size:
+            d = pmix_unload_value(&valptr[n])
+            list.append(d)
+            n += 1
+        darray = {'type':array.type, 'array':list}
         return darray
     else:
-        print("UNRECOGNIZED DATA TYPE IN ARRAY")
+        print("UNRECOGNIZED DATA TYPE IN ARRAY: "+str(array[0].type))
         return PMIX_ERR_NOT_SUPPORTED
     return PMIX_SUCCESS
 
@@ -1232,7 +1225,7 @@ cdef int pmix_load_value(pmix_value_t *value, val:dict):
         pyptr = <char*>ba
         memcpy(value[0].data.bo.bytes, pyptr, value[0].data.bo.size)
     else:
-        print("UNRECOGNIZED VALUE TYPE")
+        print("UNRECOGNIZED VALUE TYPE: "+str(val['val_type']))
         return PMIX_ERR_NOT_SUPPORTED
     return PMIX_SUCCESS
 
@@ -1444,7 +1437,7 @@ cdef void pmix_free_info(pmix_info_t *array, size_t sz):
         n += 1
     free(array)
 
-# Convert a dictionary of key-value pairs into an
+# Convert list of python pmix_pdata_t dicts into an
 # array of pmix_pdata_t structs
 #
 # @array [INPUT]
@@ -1454,17 +1447,15 @@ cdef void pmix_free_info(pmix_info_t *array, size_t sz):
 #          - a list of dictionaries, where each
 #            dictionary has a key, value, val_type,
 #            and proc keys
-# @proc [INPUT]
-#          - a dictionary with nspace, rank as keys
-cdef int pmix_load_pdata(proc:dict, pmix_pdata_t *array, data:list):
+cdef int pmix_load_pdata(pmix_pdata_t *array, data:list):
     n = 0
     for d in data:
         pykey = str(d['key'])
         pmix_copy_key(array[n].key, pykey)
         val = {'value':d['value'], 'val_type':d['val_type']}
         rc = pmix_load_value(&array[n].value, val)
-        array[n].proc.rank = proc['rank']
-        pmix_copy_nspace(array[n].proc.nspace, proc['nspace'])
+        array[n].proc.rank = d['proc']['rank']
+        pmix_copy_nspace(array[n].proc.nspace, d['proc']['nspace'])
         if PMIX_SUCCESS != rc:
             return rc
         n += 1
@@ -1637,7 +1628,7 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
             return PMIX_ERR_TYPE_MISMATCH
 
         try:
-            if p['argv'] is not None:
+            if p['argv'] is not None and 0 < len(p['argv']):
                 m = len(p['argv']) + 1
             else:
                 m = 2
@@ -1645,7 +1636,7 @@ cdef int pmix_load_apps(pmix_app_t *apps, pyapps:list):
             if not argv:
                 return PMIX_ERR_NOMEM
             memset(argv, 0, m)
-            if p['argv'] is not None:
+            if p['argv'] is not None and 0 < len(p['argv']):
                 pmix_load_argv(argv, p['argv'])
             else:
                 pmix_load_argv(argv, [p['cmd']])

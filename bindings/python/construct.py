@@ -385,7 +385,10 @@ def harvest_constants(options, src, constants, definitions):
             defsrc = True
         definitions.write("\n    # TYPEDEFS\n")
         for t in typedefs:
-            definitions.write("    c" + t[0] + "\n")
+            if "cbfunc" in t[0] and len(t) == 1:
+                definitions.write("    c" + t[0] + " nogil\n")
+            else:
+                definitions.write("    c" + t[0] + "\n")
             if len(t) > 1:
                 # find the 2nd opening paren
                 idx = t[0].find("(") + 1
@@ -394,7 +397,10 @@ def harvest_constants(options, src, constants, definitions):
                     definitions.write("    ")
                     for m in range(idx):
                         definitions.write(" ")
-                    definitions.write(t[n] + "\n")
+                    if "cbfunc" in t[0] and n == len(t) - 1:
+                        definitions.write(t[n] + " nogil\n")
+                    else:
+                        definitions.write(t[n] + "\n")
             definitions.write("\n")
         # add some space
         definitions.write("\n")

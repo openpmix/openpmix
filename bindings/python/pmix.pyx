@@ -14,7 +14,7 @@ import threading, ctypes
 import queue
 import array
 import os
-#import time
+from typing import Callable
 from threading import Timer
 
 # pull in all the constant definitions - we
@@ -25,85 +25,232 @@ include "pmix.pxi"
 active = myLock()
 myhdlrs = []
 myname = {}
-eventQueue = queue.Queue(maxsize=1000)
-stop_progress = False
-
-def pyevhdlr(stop):
-    global eventQueue
-    global stop_progress
-
-    while True:
-        if stop_progress:
-            break
-        if not eventQueue.empty():
-            capsule = eventQueue.get()
-            try:
-                shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, NULL)
-            except:
-                # don't beat on the cpu
-                time.sleep(0.001)
-                continue
-            op = shifter[0].op.decode('ascii')
-            if "event_handler" == op:
-                shifter[0].event_handler(shifter[0].status, shifter[0].results, shifter[0].nresults,
-                                         shifter[0].op_cbfunc, shifter[0].cbdata,
-                                         shifter[0].notification_cbdata)
-                if 0 < shifter[0].nresults:
-                    pmix_free_info(shifter[0].results, shifter[0].nresults)
-            elif "fence" == op:
-                shifter = <pmix_pyshift_t*>PyCapsule_GetPointer(capsule, "fence")
-                shifter[0].modex(shifter[0].status, shifter[0].bo.bytes, shifter[0].bo.size,
-                                 shifter[0].cbdata, NULL, NULL)
-            elif "directmodex" == op:
-                shifter[0].modex(shifter[0].status, shifter[0].data, shifter[0].ndata,
-                                 shifter[0].cbdata, NULL, NULL)
-                if 0 < shifter[0].ndata:
-                    PyMem_Free(&(shifter[0].data))
-            elif "lookup" == op:
-                shifter[0].lookup(shifter[0].status, shifter[0].pdata, shifter[0].ndata, shifter[0].cbdata)
-                if 0 < shifter[0].ndata:
-                    pmix_free_pdata(shifter[0].pdata, shifter[0].ndata)
-            elif "spawn" == op:
-                shifter[0].spawn(shifter[0].status, shifter[0].nspace, shifter[0].cbdata)
-            elif "query" == op:
-                shifter[0].query(shifter[0].status, shifter[0].info, shifter[0].ndata, shifter[0].cbdata, NULL, NULL)
-                if 0 < shifter[0].ndata:
-                    pmix_free_info(shifter[0].info, shifter[0].ndata)
-            elif "toolconnected" == op:
-                shifter[0].toolconnected(shifter[0].status, shifter[0].proc, shifter[0].cbdata)
-            elif "allocate" == op:
-                shifter[0].allocate(shifter[0].status, shifter[0].info, shifter[0].ndata,
-                                    shifter[0].cbdata, shifter[0].release_fn,
-                                    shifter[0].notification_cbdata)
-                if 0 < shifter[0].ndata:
-                    pmix_free_info(shifter[0].info, shifter[0].ndata)
-            elif "getcredential" == op:
-                shifter[0].getcredential(shifter[0].status, shifter[0].cred, shifter[0].info,
-                                         shifter[0].ndata, shifter[0].cbdata)
-                if 0 < shifter[0].ndata:
-                    pmix_free_info(shifter[0].info, shifter[0].ndata)
-            elif "validationcredential" == op:
-                shifter[0].validationcredential(shifter[0].status, shifter[0].info, shifter[0].ndata,
-                                                shifter[0].cbdata)
-                if 0 < shifter[0].ndata:
-                    pmix_free_info(shifter[0].info, shifter[0].ndata)
-            elif "sessioncontrol" == op:
-                shifter[0].sessioncontrol(shifter[0].status, shifter[0].info, shifter[0].ndata,
-                                          shifter[0].cbdata, shifter[0].release_fn,
-                                          shifter[0].notification_cbdata)
-                if 0 < shifter[0].ndata:
-                    pmix_free_info(shifter[0].info, shifter[0].ndata)
-            else:
-                print("UNSUPPORTED OP", op)
-        # don't beat on the cpu
-        time.sleep(0.001)
-    return
 
 
-# create a progress thread for processing events - ensure the
-# thread dies at termination of main so we can exit
-# if we should terminate without finalizing
-progressThread = threading.Thread(target = pyevhdlr, daemon = True, args =(lambda : stop_progress, ))
+cdef struct icbd: 
+    pmix_info_t *info
+    size_t ninfo
+ctypedef icbd pypmix_info_cbdata_t
+
+cdef struct mcbd: 
+    char *data
+    size_t size
+ctypedef mcbd pypmix_modex_cbdata_t
+
+# Function to release pypmix_info_cbdata_t structure
+cdef void op_release(pmix_status_t status, void *cbdata) noexcept nogil:
+    if NULL == cbdata:
+        return
+    cdef pypmix_info_cbdata_t *icbd = <pypmix_info_cbdata_t *> cbdata
+    if NULL != icbd.info and icbd.ninfo > 0:
+        PMIx_Info_free(icbd.info, icbd.ninfo)
+    free(icbd)
+
+# Function to release pypmix_info_cbdata_t structure
+cdef void info_release(void *cbdata) noexcept nogil:
+    if NULL == cbdata:
+        return
+    cdef pypmix_info_cbdata_t *icbd = <pypmix_info_cbdata_t *> cbdata
+    if NULL != icbd.info and icbd.ninfo > 0:
+        PMIx_Info_free(icbd.info, icbd.ninfo)
+    free(icbd)
+
+# Function to release pypmix_modex_cbdata_t structure
+cdef void modex_release(void *cbdata) noexcept nogil:
+    if NULL == cbdata:
+        return
+    cdef pypmix_modex_cbdata_t *mcbd = <pypmix_modex_cbdata_t *> cbdata
+    if NULL != mcbd.data and mcbd.size > 0:
+        free(mcbd.data)
+    free(mcbd)
+
+
+
+###########################
+# Server Callback Functions
+###########################
+pypmix_op_cbfunc_t              =   Callable[[int, dict], int]
+pypmix_info_cbfunc_t            =   Callable[[int, list, dict], int]
+pypmix_modex_cbfunc_t           =   Callable[[int, bytearray, dict], int]
+pypmix_lookup_cbfunc_t          =   Callable[[int, list, dict], int]
+pypmix_spawn_cbfunc_t           =   Callable[[int, str, dict], int]
+pypmix_tool_connection_cbfunc_t =   Callable[[int, dict, dict], None]
+pypmix_credential_cbfunc_t      =   Callable[[int, dict, list, dict], None]
+pypmix_validation_cbfunc_t      =   Callable[[int, list], None]
+
+
+def pypmix_op_cbfunc(int rc, dict cbdata_dict):
+    cdef pmix_op_cbfunc_t cbfunc
+    cdef void* cbdata
+    cbfunc = <pmix_op_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+    
+    if NULL == cbfunc:
+        return
+
+    with nogil:
+        cbfunc(rc, cbdata)
+
+def pypmix_info_cbfunc(int rc, list refarginfo, dict cbdata_dict):
+    cdef pmix_info_cbfunc_t cbfunc = <pmix_info_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+    cdef pmix_info_t *info
+    cdef pmix_info_t **info_ptr
+    cdef pypmix_info_cbdata_t *icbd
+    cdef size_t ninfo = 0
+    info              = NULL
+    info_ptr          = &info
+
+    if NULL == cbfunc:
+        return
+
+    prc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
+    if PMIX_SUCCESS != prc:
+        print("Error transferring info to C:", prc)
+        return
+
+    icbd = <pypmix_info_cbdata_t *> malloc(sizeof(pypmix_info_cbdata_t))
+    if icbd == NULL:
+        print("Error allocating pypmix_info_cbdata_t")
+        return
+    icbd.info = info
+    icbd.ninfo = ninfo
+
+    with nogil:
+        cbfunc(rc, info, ninfo, cbdata, info_release, <void*> icbd) 
+
+def pypmix_modex_cbfunc(int status, bytearray ret_data, dict cbdata_dict):    
+    cdef char *data
+    cdef size_t size = len(ret_data)
+    cdef pmix_modex_cbfunc_t cbfunc = <pmix_modex_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+
+    if NULL == cbfunc:
+        return
+
+    data = strdup(ret_data)
+    mcbd = <pypmix_modex_cbdata_t *> malloc(sizeof(pypmix_modex_cbdata_t))
+    if mcbd == NULL:
+        print("Error allocating pypmix_modex_cbdata_t")
+        return
+    mcbd.data = data
+    mcbd.size = size
+
+    with nogil:
+        cbfunc(status, data, size, cbdata, modex_release, mcbd)   
+
+def pypmix_lookup_cbfunc(int rc, list pdata, dict cbdata_dict):
+    cdef pmix_lookup_cbfunc_t cbfunc = <pmix_lookup_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+    cdef pmix_pdata_t *pd;
+    cdef size_t ndata = 0;
+    cdef pypmix_modex_cbdata_t *pcbd = NULL
+
+    if NULL == cbfunc:
+        return
+
+    if pdata is not None:
+        ndata = len(pdata)
+        if 0 < ndata:
+            pd = <pmix_pdata_t*> malloc(ndata * sizeof(pmix_pdata_t))
+            if not pdata:
+                return
+            prc = pmix_load_pdata(pd, pdata)
+            if PMIX_SUCCESS != prc:
+                pmix_free_pdata(pd, ndata)
+                return
+        else:
+            pd = NULL
+    else:
+        pd = NULL
+    
+    with nogil:
+        cbfunc(rc, pd, ndata, cbdata)
+
+    PyMem_Free(pd)
+
+def pypmix_spawn_cbfunc(int rc, str nspace, dict cbdata_dict):
+    cdef pmix_spawn_cbfunc_t cbfunc = <pmix_spawn_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+    cdef pmix_nspace_t c_nspace
+
+    if NULL == cbfunc:
+        return
+
+    if PMIX_SUCCESS == rc:
+        strcpy(c_nspace, nspace)
+    
+    with nogil:
+        cbfunc(rc, c_nspace, cbdata)
+
+
+def pypmix_tool_connection_cbfunc(int rc, dict proc, dict cbdata_dict):
+    cdef pmix_tool_connection_cbfunc_t cbfunc = <pmix_tool_connection_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+    cdef pmix_proc_t c_proc
+
+    if NULL == cbfunc:
+        return
+
+    if PMIX_SUCCESS == rc:
+        pmix_copy_nspace(c_proc.nspace, proc['nspace'])
+        c_proc.rank = proc['rank']
+    
+    with nogil:
+        cbfunc(rc, &c_proc, cbdata)
+
+def pypmix_credential_cbfunc(int rc, dict byteobject, list info, dict cbdata_dict):
+    cdef pmix_credential_cbfunc_t cbfunc = <pmix_credential_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+    cdef int size = 0
+    cdef size_t ninfo = 0
+    cdef pmix_byte_object_t c_byteobject
+    cdef pmix_info_t *c_info = NULL
+
+    if NULL == cbfunc:
+        return
+
+    if PMIX_SUCCESS == rc:
+        c_byteobject.size = byteobject['size']
+        c_byteobject.bytes = <char *> malloc(byteobject['size'])
+        memcpy(c_byteobject.bytes, <void *> byteobject['bytes'], byteobject['size'])
+
+        prc = pmix_alloc_info(&c_info, &ninfo, info)
+        if PMIX_SUCCESS != prc:
+            print("Error transferring info to C:", prc)
+            return prc
+    
+    with nogil:
+        cbfunc(rc, &c_byteobject, c_info, ninfo, cbdata)
+
+    if 0 < size:
+        free(c_byteobject.bytes)
+    if 0 < ninfo:
+        pmix_free_info(c_info, ninfo)
+
+
+def pypmix_validation_cbfunc(int rc, dict byteobject, list info, dict cbdata_dict):
+    cdef pmix_validation_cbfunc_t cbfunc = <pmix_validation_cbfunc_t> <uintptr_t> cbdata_dict['cbfunc']
+    cdef void* cbdata = <void*> <uintptr_t> cbdata_dict['cbdata']
+    cdef size_t ninfo = 0
+    cdef pmix_info_t *c_info = NULL
+
+    if NULL == cbfunc:
+        return
+
+    if PMIX_SUCCESS == rc:
+
+        prc = pmix_alloc_info(&c_info, &ninfo, info)
+        if PMIX_SUCCESS != prc:
+            print("Error transferring info to C:", prc)
+            return prc
+    
+    with nogil:
+        cbfunc(rc, c_info, ninfo, cbdata)
+
+    if 0 < ninfo:
+        pmix_free_info(c_info, ninfo)
+
 
 cdef void dmodx_cbfunc(pmix_status_t status,
                        char *data, size_t sz,
@@ -217,7 +364,8 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
     cdef size_t nmyresults
     cdef char* kystr
     cdef pmix_nspace_t srcnspace
-    global eventQueue
+    cdef pmix_status_t ret_status
+    cdef pypmix_info_cbdata_t *icbd
 
     # convert the source to python
     pysource = {}
@@ -255,25 +403,19 @@ cdef void pyeventhandler(size_t evhdlr_registration_id,
             if evhdlr_registration_id == h['refid']:
                 found = True
                 # execute their handler
-                rc, pymyresults = h['hdlr'](pyev_id, status, pysource, pyinfo, pyresults)
+                ret_status, pymyresults = h['hdlr'](pyev_id, status, pysource, pyinfo, pyresults)
                 # allocate and load pmix info structs from python list of dictionaries
                 myresults_ptr = &myresults
                 prc = pmix_alloc_info(myresults_ptr, &nmyresults, pymyresults)
                 if PMIX_SUCCESS != prc:
                     print("Unable to load new results")
-                mycaddy    = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-                mycaddy.op = strdup("event_handler")
-                mycaddy.status              = rc
-                mycaddy.results             = myresults
-                mycaddy.nresults            = nmyresults
-                mycaddy.op_cbfunc           = NULL
-                mycaddy.cbdata              = NULL
-                mycaddy.notification_cbdata = cbdata
-                mycaddy.event_handler       = cbfunc
-                cb = PyCapsule_New(mycaddy, "event_handler", NULL)
-                # push the results into the queue to return them
-                # to the PMIx library
-                eventQueue.put(cb)
+                icbd = <pypmix_info_cbdata_t *> malloc(sizeof(pypmix_info_cbdata_t))
+                if icbd == NULL:
+                    print("Error allocating pypmix_info_cbdata_t")
+                icbd.info = myresults
+                icbd.ninfo = nmyresults
+                with nogil:
+                    cbfunc(ret_status, myresults, nmyresults, op_release, <void *>icbd, cbdata)
         except:
             pass
 
@@ -340,10 +482,7 @@ cdef class PMIxClient:
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         myname = {}
-        global progressThread
 
-        # start the event handler progress thread
-        progressThread.start()
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
         rc = pmix_alloc_info(info_ptr, &klen, dicts)
@@ -360,12 +499,6 @@ cdef class PMIxClient:
         cdef size_t klen
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
-        global stop_progress
-        global progressThread
-
-        # stop progress thread
-        stop_progress = True
-        progressThread.join()
 
         # allocate and load pmix info structs from python list of dictionaries
         info_ptr = &info
@@ -583,7 +716,8 @@ cdef class PMIxClient:
         val = None
 
         # pass it into the get API
-        rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
+        with nogil:
+            rc = PMIx_Get(&p, key, info, ninfo, &val_ptr)
         if PMIX_SUCCESS == rc:
             val = pmix_unload_value(val_ptr)
             pmix_free_value(self, val_ptr)
@@ -747,15 +881,18 @@ cdef class PMIxClient:
         if not apps:
             pmix_free_info(jinfo, ninfo)
             return PMIX_ERR_NOMEM, None
+
         rc = pmix_load_apps(apps, pyapps)
         if PMIX_SUCCESS != rc:
             pmix_free_apps(apps, napps)
             if 0 < ninfo:
                 pmix_free_info(jinfo, ninfo)
             return rc, None
+
         with nogil:
             rc = PMIx_Spawn(jinfo, ninfo, apps, napps, nspace)
         pmix_free_apps(apps, napps)
+
         if 0 < ninfo:
             pmix_free_info(jinfo, ninfo)
         if PMIX_SUCCESS != rc:
@@ -901,6 +1038,7 @@ cdef class PMIxClient:
         cdef pmix_info_t **results_ptr
         cdef size_t nresults
         cdef pmix_info_t **qual_ptr
+        cdef pmix_status_t _rc;
         nqueries   = 0
         nresults   = 0
         queries    = NULL
@@ -938,7 +1076,9 @@ cdef class PMIxClient:
             nqueries = 0
 
         # pass it into the query_info API
-        rc = PMIx_Query_info(queries, nqueries, &results, &nresults)
+        with nogil:
+            _rc = PMIx_Query_info(queries, nqueries, &results, &nresults)
+        rc = _rc
         if PMIX_SUCCESS == rc:
             rc = pmix_unload_info(results, nresults,  pyresults)
             # free results info structs
@@ -1392,6 +1532,8 @@ cdef class PMIxClient:
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t ninfo
+        cdef pmix_data_range_t crange = range
+        cdef pmix_status_t cstatus = status
 
         # convert the proc
         pmix_copy_nspace(proc.nspace, pysrc['nspace'])
@@ -1402,7 +1544,8 @@ cdef class PMIxClient:
         rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
 
         # call the library
-        rc = PMIx_Notify_event(status, &proc, range, info, ninfo, NULL, NULL)
+        with nogil:
+            rc = PMIx_Notify_event(cstatus, &proc, crange, info, ninfo, NULL, NULL)
         if 0 < ninfo:
             pmix_free_info(info, ninfo)
         return rc
@@ -1671,10 +1814,6 @@ cdef class PMIxServer(PMIxClient):
         cdef pmix_info_t *info
         cdef pmix_info_t **info_ptr
         cdef size_t sz
-        global progressThread
-
-        # start the event handler progress thread
-        progressThread.start()
 
         # setup server module
         self.server_module_init()
@@ -1752,12 +1891,6 @@ cdef class PMIxServer(PMIxClient):
         return PMIX_SUCCESS
 
     def finalize(self):
-        global stop_progress
-        global progressThread
-
-        # stop progress thread
-        stop_progress = True
-        progressThread.join()
         # finalize
         return PMIx_server_finalize()
 
@@ -2169,21 +2302,10 @@ cdef int clientconnected(pmix_proc_t *proc, void *server_object,
             return PMIX_ERR_BAD_PARAM
         myproc = []
         pmix_unload_procs(proc, 1, myproc)
-        rc = pmixservermodule['clientconnected'](myproc[0])
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['clientconnected'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
+    
+    return PMIX_ERR_NOT_FOUND
 
 cdef int clientfinalized(pmix_proc_t *proc, void *server_object,
                          pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
@@ -2193,21 +2315,10 @@ cdef int clientfinalized(pmix_proc_t *proc, void *server_object,
             return PMIX_ERR_BAD_PARAM
         myproc = []
         pmix_unload_procs(proc, 1, myproc)
-        rc = pmixservermodule['clientfinalized'](myproc[0])
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['clientfinalized'](myproc[0], pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
                        int status, const char msg[],
@@ -2230,22 +2341,11 @@ cdef int clientaborted(const pmix_proc_t *proc, void *server_object,
         if NULL != procs:
             pmix_unload_procs(procs, nprocs, myprocs)
             args['targets'] = myprocs
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
         # upcall it
-        rc = pmixservermodule['abort'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        return pmixservermodule['abort'](args, pypmix_op_cbfunc, cbdata_dict)
+    
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t info[], size_t ninfo,
@@ -2273,32 +2373,12 @@ cdef int fencenb(const pmix_proc_t procs[], size_t nprocs,
             pmix_unload_bytes(data, ndata, blist)
             barray = bytearray(blist)
             args['data'] = barray
-        rc, ret_data = pmixservermodule['fencenb'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    data  = strdup(ret_data)
-    ndata = len(ret_data)
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("fence")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.bo.bytes = data
-        mycaddy.bo.size = ndata
-        mycaddy.modex = cbfunc
-        mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['fencenb'](args, pypmix_modex_cbfunc, cbdata_dict)
+    
+    return PMIX_ERR_NOT_SUPPORTED
+
+
 
 cdef int directmodex(const pmix_proc_t *proc,
                      const pmix_info_t info[], size_t ninfo,
@@ -2313,35 +2393,10 @@ cdef int directmodex(const pmix_proc_t *proc,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
-        rc, ret_data = pmixservermodule['directmodex'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    cdef const char* data
-    cdef size_t ndata
-    data  = strdup(ret_data)
-    ndata = len(ret_data)
-    global eventQueue
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['directmodex'](args, pypmix_modex_cbfunc, cbdata_dict)
 
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("directmodex")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.data = data
-        mycaddy.ndata = ndata
-        mycaddy.modex = cbfunc
-        mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int publish(const pmix_proc_t *proc,
                  const pmix_info_t info[], size_t ninfo,
@@ -2356,21 +2411,10 @@ cdef int publish(const pmix_proc_t *proc,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
         args['directives'] = ilist
-        rc = pmixservermodule['publish'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['publish'](args, pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int lookup(const pmix_proc_t *proc, char **keys,
                 const pmix_info_t info[], size_t ninfo,
@@ -2392,50 +2436,10 @@ cdef int lookup(const pmix_proc_t *proc, char **keys,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
-        rc, pdata = pmixservermodule['lookup'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-
-    # convert the list of dictionaries to array of
-    # pmix_pdata_t structs
-    cdef pmix_pdata_t *pd;
-    cdef size_t ndata;
-    if pdata is not None:
-        ndata = len(pdata)
-        if 0 < ndata:
-            pd = <pmix_pdata_t*> PyMem_Malloc(ndata * sizeof(pmix_pdata_t))
-            if not pdata:
-                return PMIX_ERR_NOMEM
-            prc = pmix_load_pdata(myprocs[0], pd, pdata)
-            if PMIX_SUCCESS != prc:
-                pmix_free_pdata(pd, ndata)
-                return prc
-        else:
-            pd = NULL
-    else:
-        pd = NULL
-
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("lookup")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.pdata = pd
-        mycaddy.ndata = ndata
-        mycaddy.lookup = cbfunc
-        mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['lookup'](args, pypmix_lookup_cbfunc, cbdata_dict)
+        
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int unpublish(const pmix_proc_t *proc, char **keys,
                    const pmix_info_t info[], size_t ninfo,
@@ -2454,21 +2458,10 @@ cdef int unpublish(const pmix_proc_t *proc, char **keys,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
-        rc = pmixservermodule['unpublish'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['unpublish'](args, pypmix_op_cbfunc, cbdata_dict)
+    
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int spawn(const pmix_proc_t *proc,
                const pmix_info_t job_info[], size_t ninfo,
@@ -2487,30 +2480,11 @@ cdef int spawn(const pmix_proc_t *proc,
             args['jobinfo'] = ilist
         pmix_unload_apps(apps, napps, pyapps)
         args['apps'] = pyapps
-        rc, nspace = pmixservermodule['spawn'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['spawn'](args, pypmix_spawn_cbfunc, cbdata_dict)
 
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("spawn")
-        mycaddy.status = PMIX_SUCCESS
-        pmix_copy_nspace(mycaddy.nspace, nspace)
-        mycaddy.spawn  = cbfunc
-        mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
+    return PMIX_ERR_NOT_SUPPORTED
+
 
 cdef int connect(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t info[], size_t ninfo,
@@ -2526,21 +2500,10 @@ cdef int connect(const pmix_proc_t procs[], size_t nprocs,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
-        rc = pmixservermodule['connect'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['connect'](args, pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int disconnect(const pmix_proc_t procs[], size_t nprocs,
                     const pmix_info_t info[], size_t ninfo,
@@ -2556,21 +2519,10 @@ cdef int disconnect(const pmix_proc_t procs[], size_t nprocs,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
-        rc = pmixservermodule['disconnect'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['disconnect'](args, pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int registerevents(pmix_status_t *codes, size_t ncodes,
                         const pmix_info_t info[], size_t ninfo,
@@ -2589,21 +2541,10 @@ cdef int registerevents(pmix_status_t *codes, size_t ncodes,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
-        rc = pmixservermodule['registerevents'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['registerevents'](args, pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int deregisterevents(pmix_status_t *codes, size_t ncodes,
                           pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
@@ -2617,21 +2558,11 @@ cdef int deregisterevents(pmix_status_t *codes, size_t ncodes,
                 mycodes.append(codes[n])
                 n += 1
             args['codes'] = mycodes
-        rc = pmixservermodule['deregisterevents'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['deregisterevents'](args, pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
+
 
 cdef int notifyevent(pmix_status_t code,
                      const pmix_proc_t *source,
@@ -2650,21 +2581,11 @@ cdef int notifyevent(pmix_status_t code,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
-        rc = pmixservermodule['notifyevent'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['notifyevent'](args, pypmix_op_cbfunc, cbdata_dict)
+    
+    return PMIX_ERR_NOT_SUPPORTED
+
 
 cdef int query(pmix_proc_t *source,
                pmix_query_t *queries, size_t nqueries,
@@ -2681,51 +2602,10 @@ cdef int query(pmix_proc_t *source,
         args['queries'] = pyqueries
         pmix_unload_procs(source, 1, myproc)
         args['source'] = myproc[0]
-        rc,results = pmixservermodule['query'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-        results = []
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['query'](args, pypmix_info_cbfunc, cbdata_dict)
 
-    # convert the results list of dictionaries to array of
-    # pmix_info_t structs
-    cdef pmix_info_t *info;
-    cdef size_t ninfo
-    if results is not None and 0 < len(results):
-        ninfo = len(results)
-        if 0 < nqueries:
-            info = <pmix_info_t*> PyMem_Malloc(ninfo * sizeof(pmix_info_t))
-            if not info:
-                return PMIX_ERR_NOMEM
-            prc = pmix_load_info(info, results)
-            if PMIX_SUCCESS != prc:
-                pmix_free_info(info, ninfo)
-                return prc
-        else:
-            info = NULL
-    else:
-        info = NULL
-
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("query")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.info = info
-        mycaddy.ndata = nqueries
-        mycaddy.query = cbfunc
-        mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef void toolconnected(pmix_info_t *info, size_t ninfo,
                         pmix_tool_connection_cbfunc_t cbfunc,
@@ -2738,31 +2618,8 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
         if NULL != info:
             pmix_unload_info(info, ninfo, ilist)
             args['directives'] = ilist
-        rc, ret_proc = pmixservermodule['toolconnected'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("toolconnected")
-        mycaddy.status = PMIX_SUCCESS
-        pmix_copy_nspace(mycaddy.source.nspace, ret_proc['nspace'])
-        mycaddy.source.rank = ret_proc['rank']
-        mycaddy.proc = &mycaddy.source
-        mycaddy.toolconnected = cbfunc
-        mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-    return
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        pmixservermodule['toolconnected'](args, pypmix_tool_connection_cbfunc, cbdata_dict)
 
 cdef void log(const pmix_proc_t *client,
               const pmix_info_t data[], size_t ndata,
@@ -2784,21 +2641,8 @@ cdef void log(const pmix_proc_t *client,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        rc = pmixservermodule['log'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        pmixservermodule['log'](args, pypmix_op_cbfunc, cbdata_dict)
 
 cdef int allocate(const pmix_proc_t *client,
                   pmix_alloc_directive_t action,
@@ -2818,45 +2662,11 @@ cdef int allocate(const pmix_proc_t *client,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, keyvals)
             args['directives'] = keyvals
-        rc, refarginfo = pmixservermodule['allocate'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. So we start
-    # a new thread on a timer that should execute a
-    # callback after the function returns
-    cdef pmix_info_t *info
-    cdef pmix_info_t **info_ptr
-    cdef size_t ninfo = 0
-    info              = NULL
-    info_ptr          = &info
-    prc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
-    if PMIX_SUCCESS != prc:
-        print("Error transferring info to C:", prc)
-        return prc
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("allocate")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.info = info
-        mycaddy.ndata = ninfo
-        mycaddy.allocate = cbfunc
-        mycaddy.cbdata = cbdata
-        mycaddy.release_fn = NULL
-        mycaddy.notification_cbdata = NULL
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['allocate'](args, pypmix_info_cbfunc, cbdata_dict)
+    
+    return PMIX_ERR_NOT_SUPPORTED
+
 
 cdef int jobcontrol(const pmix_proc_t *requestor,
                     const pmix_proc_t targets[], size_t ntargets,
@@ -2877,21 +2687,10 @@ cdef int jobcontrol(const pmix_proc_t *requestor,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        rc = pmixservermodule['jobcontrol'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['jobcontrol'](args, pypmix_info_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int monitor(const pmix_proc_t *requestor,
                  const pmix_info_t *monitor, pmix_status_t error,
@@ -2915,21 +2714,10 @@ cdef int monitor(const pmix_proc_t *requestor,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        rc = pmixservermodule['monitor'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['monitor'](args, pypmix_info_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int getcredential(const pmix_proc_t *proc,
                        const pmix_info_t directives[], size_t ndirs,
@@ -2945,55 +2733,11 @@ cdef int getcredential(const pmix_proc_t *proc,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        status, pycred, pyinfo = pmixservermodule['getcredential'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. So we start
-    # a new thread on a timer that should execute a
-    # callback after the function returns
-    cdef pmix_info_t *info
-    cdef pmix_info_t **info_ptr
-    cdef size_t ninfo = 0
-    info              = NULL
-    info_ptr          = &info
-    rc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['getcredential'](args, pypmix_credential_cbfunc, cbdata_dict)
 
-    # convert pycred to pmix_byte_object_t
-    bo = <pmix_byte_object_t*>PyMem_Malloc(sizeof(pmix_byte_object_t))
-    if not bo:
-        return PMIX_ERR_NOMEM
-    cred = bytes(pycred['bytes'], 'ascii')
-    bo.size = sizeof(cred)
-    bo.bytes = <char*> PyMem_Malloc(bo.size)
-    if not bo.bytes:
-        return PMIX_ERR_NOMEM
-    pyptr = <const char*>cred
-    memcpy(bo.bytes, pyptr, bo.size)
-
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("getcredential")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.info = info
-        mycaddy.ndata = ninfo
-        mycaddy.cred = bo
-        mycaddy.getcredential = cbfunc
-        mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
-
+    return PMIX_ERR_NOT_SUPPORTED
+   
 cdef int validatecredential(const pmix_proc_t *proc,
                             const pmix_byte_object_t *cred,
                             const pmix_info_t directives[], size_t ndirs,
@@ -3018,44 +2762,10 @@ cdef int validatecredential(const pmix_proc_t *proc,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        status, pyinfo = pmixservermodule['validatecredential'](args)
-        rc = status
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. So we start
-    # a new thread on a timer that should execute a
-    # callback after the function returns
-    cdef pmix_info_t *info
-    cdef pmix_info_t **info_ptr
-    cdef size_t ninfo = 0
-    info              = NULL
-    info_ptr          = &info
-    prc = pmix_alloc_info(info_ptr, &ninfo, pyinfo)
-    if PMIX_SUCCESS != prc:
-        print("Error converting info to C:", prc)
-        return prc
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("validationcredential")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.info = info
-        mycaddy.ndata = ninfo
-        mycaddy.validationcredential = cbfunc
-        mycaddy.cbdata = cbdata
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['validatecredential'](args, pypmix_validation_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED       
 
 cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
                  const pmix_info_t directives[], size_t ndirs,
@@ -3075,21 +2785,10 @@ cdef int iofpull(const pmix_proc_t procs[], size_t nprocs,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        rc = pmixservermodule['iofpull'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['iofpull'](args, pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int pushstdin(const pmix_proc_t *source,
                    const pmix_proc_t targets[], size_t ntargets,
@@ -3120,21 +2819,11 @@ cdef int pushstdin(const pmix_proc_t *source,
             pyload['bytes'] = barray
             pyload['size'] = bo[0].size
             args['payload'] = pyload
-        rc = pmixservermodule['pushstdin'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # we return a PMIX_OPERATION_SUCCEEDED status
-    # that let's the underlying PMIx library know
-    # the situation so it can generate its own
-    # callback
-    if PMIX_SUCCESS == rc:
-        rc = PMIX_OPERATION_SUCCEEDED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['pushstdin'](args, pypmix_op_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
+    
 
 # TODO: This function requires that the server execute the
 # provided callback function to return the group info, and
@@ -3159,10 +2848,10 @@ cdef int group(pmix_group_operation_t op, char grp[],
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        rc = pmixservermodule['group'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['group'](args, pypmix_info_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int fabric(const pmix_proc_t *requestor,
                 pmix_fabric_operation_t op,
@@ -3180,10 +2869,10 @@ cdef int fabric(const pmix_proc_t *requestor,
         if NULL != directives:
             pmix_unload_info(directives, ndirs, mydirs)
             args['directives'] = mydirs
-        rc = pmixservermodule['fabric'](args)
-    else:
-        rc = PMIX_ERR_NOT_SUPPORTED
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['fabric'](args, pypmix_info_cbfunc, cbdata_dict)
+
+    return PMIX_ERR_NOT_SUPPORTED
 
 cdef int sessioncontrol(const pmix_proc_t *requestor,
                         uint32_t sessionID,
@@ -3207,46 +2896,10 @@ cdef int sessioncontrol(const pmix_proc_t *requestor,
             if PMIX_SUCCESS != rc:
                 return rc
             args['directives'] = ilist
-        rc, refarginfo = pmixservermodule['sessioncontrol'](args)
-    else:
-        return PMIX_ERR_NOT_SUPPORTED
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. So we start
-    # a new thread on a timer that should execute a
-    # callback after the function returns
-    cdef pmix_info_t *info
-    cdef pmix_info_t **info_ptr
-    cdef size_t ninfo = 0
-    info              = NULL
-    info_ptr          = &info
-    prc = pmix_alloc_info(info_ptr, &ninfo, refarginfo)
-    if PMIX_SUCCESS != prc:
-        print("Error transferring info to C:", prc)
-        return prc
-    # we cannot execute a callback function here as
-    # that would cause PMIx to lockup. Likewise, the
-    # Python function we called can't do it as it
-    # would require them to call a C-function. So
-    # if they succeeded in processing this request,
-    # threadshift so we can generate the callback safely
-    global eventQueue
-    if PMIX_SUCCESS == rc or PMIX_OPERATION_SUCCEEDED == rc:
-        mycaddy = <pmix_pyshift_t*> PyMem_Malloc(sizeof(pmix_pyshift_t))
-        mycaddy.op = strdup("sessioncontrol")
-        mycaddy.status = PMIX_SUCCESS
-        mycaddy.info = info
-        mycaddy.ndata = ninfo
-        mycaddy.sessioncontrol = cbfunc
-        mycaddy.cbdata = cbdata
-        mycaddy.release_fn = NULL
-        mycaddy.notification_cbdata = NULL
-        cb = PyCapsule_New(mycaddy, NULL, NULL)
-        # push the results into the queue to return them
-        # to the PMIx library
-        eventQueue.put(cb)
-        return PMIX_SUCCESS
-    return rc
+        cbdata_dict = {'cbdata' : <uintptr_t> cbdata, 'cbfunc' : <uintptr_t> cbfunc}
+        return pmixservermodule['sessioncontrol'](args, pypmix_info_cbfunc, cbdata_dict)
 
+    return PMIX_ERR_NOT_SUPPORTED
 
 
 cdef class PMIxTool(PMIxServer):
@@ -3266,10 +2919,6 @@ cdef class PMIxTool(PMIxServer):
         cdef pmix_info_t **info_ptr
         cdef size_t sz
         global myname
-        global progressThread
-
-        # start the event handler progress thread
-        progressThread.start()
 
         # init myname
         myname = {'nspace':'UNASSIGNED', 'rank':PMIX_RANK_UNDEF}
@@ -3296,11 +2945,6 @@ cdef class PMIxTool(PMIxServer):
 
     # Finalize the tool library
     def finalize(self):
-        global stop_progress
-
-        # stop progress thread
-        stop_progress = True
-        progressThread.join(timeout=1)
         # finalize
         rc = PMIx_tool_finalize()
         return rc
@@ -3347,7 +2991,9 @@ cdef class PMIxTool(PMIxServer):
             # convert the returned name
             myname = {'nspace': (<bytes>self.myproc.nspace).decode('UTF-8'), 'rank': self.myproc.rank}
             mysrvr = {'nspace': (<bytes>srvr.nspace).decode('UTF-8'), 'rank': srvr.rank}
-        return rc, myname, mysrvr
+            return PMIX_SUCCESS, myname, mysrvr
+        else:
+            return rc, None, None
 
     def get_servers(self):
         cdef pmix_proc_t *servers
@@ -3541,10 +3187,6 @@ cdef class PMIxScheduler(PMIxTool):
         cdef pmix_info_t **info_ptr
         cdef size_t sz
         global myname
-        global progressThread
-
-        # start the event handler progress thread
-        progressThread.start()
 
         # init myname
         myname = {'nspace':'UNASSIGNED', 'rank':PMIX_RANK_UNDEF}
@@ -3571,11 +3213,6 @@ cdef class PMIxScheduler(PMIxTool):
 
     # Finalize the tool library
     def finalize(self):
-        global stop_progress
-
-        # stop progress thread
-        stop_progress = True
-        progressThread.join(timeout=1)
         # finalize
         rc = PMIx_tool_finalize()
         return rc

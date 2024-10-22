@@ -99,4 +99,6 @@ def main():
 if __name__ == '__main__':
     global killer
     killer = GracefulKiller()
+    start_event_loop()
     main()
+    stop_event_loop()
