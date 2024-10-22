@@ -252,7 +252,8 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
     if (NULL == cd->codes) {
         registered = false;
         PMIX_LIST_FOREACH (active, &pmix_globals.events.actives, pmix_active_code_t) {
-            if (PMIX_MAX_ERR_CONSTANT == active->code) {
+            if (PMIX_MAX_ERR_CONSTANT == active->code && 
+                (NULL != active->peer && active->peer == pmix_client_globals.myserver)) {
                 /* we have registered a default */
                 registered = true;
                 ++active->nregs;
@@ -263,6 +264,7 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
             active = PMIX_NEW(pmix_active_code_t);
             active->code = PMIX_MAX_ERR_CONSTANT;
             active->nregs = 1;
+            active->peer = pmix_client_globals.myserver;
             pmix_list_append(&pmix_globals.events.actives, &active->super);
             /* ensure we register it */
             need_register = true;
@@ -271,7 +273,8 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
         for (n = 0; n < cd->ncodes; n++) {
             registered = false;
             PMIX_LIST_FOREACH (active, &pmix_globals.events.actives, pmix_active_code_t) {
-                if (active->code == cd->codes[n]) {
+                if (active->code == cd->codes[n] && 
+                    (NULL != active->peer && active->peer == pmix_client_globals.myserver)) {
                     registered = true;
                     ++active->nregs;
                     break;
@@ -281,6 +284,7 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
                 active = PMIX_NEW(pmix_active_code_t);
                 active->code = cd->codes[n];
                 active->nregs = 1;
+                active->peer = pmix_client_globals.myserver;
                 pmix_list_append(&pmix_globals.events.actives, &active->super);
                 /* ensure we register it */
                 need_register = true;
