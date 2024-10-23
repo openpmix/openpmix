@@ -63,11 +63,10 @@ static pmix_status_t hash_register_job_info(struct pmix_peer_t *pr, pmix_buffer_
 
 static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf);
 
-static pmix_status_t hash_store_modex(struct pmix_namespace_t *ns, pmix_buffer_t *buff,
+static pmix_status_t hash_store_modex(pmix_buffer_t *buff,
                                       void *cbdata);
 
-static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *proc,
-                                       pmix_gds_modex_key_fmt_t key_fmt, char **kmap,
+static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
                                        pmix_buffer_t *pbkt);
 
 static pmix_status_t setup_fork(const pmix_proc_t *peer, char ***env);
@@ -1323,26 +1322,28 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
  * host has received data from some other peer. It therefore
  * always contains data solely from remote procs, and we
  * shall store it accordingly */
-static pmix_status_t hash_store_modex(struct pmix_namespace_t *nspace, pmix_buffer_t *buf,
+static pmix_status_t hash_store_modex(pmix_buffer_t *buf,
                                       void *cbdata)
 {
-    return pmix_gds_base_store_modex(nspace, buf, NULL, _hash_store_modex, cbdata);
+    return pmix_gds_base_store_modex(buf, _hash_store_modex, cbdata);
 }
 
-static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *proc,
-                                       pmix_gds_modex_key_fmt_t key_fmt, char **kmap,
+static pmix_status_t _hash_store_modex(pmix_proc_t *proc,
                                        pmix_buffer_t *pbkt)
 {
     pmix_job_t *trk;
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_kval_t kv;
+    int32_t cnt;
+
+    if (NULL == pbkt) {
+        return PMIX_SUCCESS;
+    }
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "[%s:%d] gds:hash:store_modex for nspace %s",
                         pmix_globals.myid.nspace,
                         pmix_globals.myid.rank, proc->nspace);
-
-    PMIX_HIDE_UNUSED_PARAMS(ctx);
 
     /* find the hash table for this nspace */
     trk = pmix_gds_hash_get_tracker(proc->nspace, true);
@@ -1353,12 +1354,13 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *pro
     /* this is data returned via the PMIx_Fence call when
      * data collection was requested, so it only contains
      * REMOTE/GLOBAL data. The byte object contains
-     * the rank followed by pmix_kval_t's. The list of callbacks
-     * contains all local participants. */
+     * the pmix_kval_t's published by the given proc
+     */
 
-    /* unpack the remaining values until we hit the end of the buffer */
+    /* unpack the values until we hit the end of the buffer */
     PMIX_CONSTRUCT(&kv, pmix_kval_t);
-    rc = pmix_gds_base_modex_unpack_kval(key_fmt, pbkt, kmap, &kv);
+    cnt = 1;
+    PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, pbkt, &kv, &cnt, PMIX_KVAL);
 
     while (PMIX_SUCCESS == rc) {
         if (PMIX_RANK_UNDEF == proc->rank) {
@@ -1389,7 +1391,7 @@ static pmix_status_t _hash_store_modex(pmix_gds_base_ctx_t ctx, pmix_proc_t *pro
         PMIX_DESTRUCT(&kv);
         /* continue along */
         PMIX_CONSTRUCT(&kv, pmix_kval_t);
-        rc = pmix_gds_base_modex_unpack_kval(key_fmt, pbkt, kmap, &kv);
+        PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, pbkt, &kv, &cnt, PMIX_KVAL);
     }
     PMIX_DESTRUCT(&kv);
     if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc) {

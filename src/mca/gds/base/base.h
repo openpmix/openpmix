@@ -17,7 +17,7 @@
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -95,11 +95,8 @@ typedef uint8_t pmix_gds_modex_blob_info_t;
 
 typedef struct pmix_gds_globals_t pmix_gds_globals_t;
 
-typedef void *pmix_gds_base_ctx_t;
-typedef pmix_status_t (*pmix_gds_base_store_modex_cb_fn_t)(pmix_gds_base_ctx_t ctx,
-                                                           pmix_proc_t *proc,
-                                                           pmix_gds_modex_key_fmt_t key_fmt,
-                                                           char **kmap, pmix_buffer_t *pbkt);
+typedef pmix_status_t (*pmix_gds_base_store_modex_cb_fn_t)(pmix_proc_t *proc,
+                                                           pmix_buffer_t *pbkt);
 
 PMIX_EXPORT extern pmix_gds_globals_t pmix_gds_globals;
 
@@ -120,18 +117,10 @@ PMIX_EXPORT pmix_gds_base_module_t *pmix_gds_base_assign_module(pmix_info_t *inf
  */
 PMIX_EXPORT pmix_status_t pmix_gds_base_setup_fork(const pmix_proc_t *proc, char ***env);
 
-PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(struct pmix_namespace_t *nspace,
-                                                    pmix_buffer_t *buff, pmix_gds_base_ctx_t ctx,
+PMIX_EXPORT pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
                                                     pmix_gds_base_store_modex_cb_fn_t cb_fn,
                                                     void *cbdata);
 
-PMIX_EXPORT
-pmix_status_t pmix_gds_base_modex_pack_kval(pmix_gds_modex_key_fmt_t key_fmt, pmix_buffer_t *buf,
-                                            char ***kmap, pmix_kval_t *kv);
-
-PMIX_EXPORT
-pmix_status_t pmix_gds_base_modex_unpack_kval(pmix_gds_modex_key_fmt_t key_fmt, pmix_buffer_t *buf,
-                                              char **kmap, pmix_kval_t *kv);
 END_C_DECLS
 
 #endif

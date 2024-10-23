@@ -248,23 +248,22 @@ typedef pmix_status_t (*pmix_gds_base_module_store_fn_t)(const pmix_proc_t *proc
  * avoid repeatedly storing pmix_kval_t's for multiple local procs
  * from the same nspace.
  *
- * ranks - a list of pmix_rank_info_t for the local ranks from this
- *         nspace - this is to be used to filter the cbs list
+ * buff - packed modex data collected across the operation
  *
  * cbdata - pointer to modex callback data
  *
- * bo - pointer to the byte object containing the data
- *
  */
-typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_namespace_t *ns,
-                                                               pmix_buffer_t *buff, void *cbdata);
+typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(pmix_buffer_t *buff, void *cbdata);
 
 /**
  * define a convenience macro for storing modex byte objects
  *
  * r - return status code
  *
- * n - pointer to the pmix_namespace_t this blob is to be stored for
+ * n - pointer to the pmix_namespace_t this blob is to be stored. Note that
+ *     this is used solely to select the GDS component that should be used
+ *     to store the data. At this time, we are holding all modex data in the
+ *     server's HASH component, so this value is effectively not used.
  *
  * b - pointer to pmix_buffer_t containing the data
  *
@@ -276,7 +275,7 @@ typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(struct pmix_names
         pmix_output_verbose(1, pmix_gds_base_output,                        \
                             "[%s:%d] GDS STORE MODEX WITH %s", __FILE__,    \
                             __LINE__, _g->name);                            \
-        (r) = _g->store_modex((struct pmix_namespace_t *)n, b, t);          \
+        (r) = _g->store_modex(b, t);                                        \
     } while (0)
 
 typedef pmix_status_t (*pmix_gds_base_module_mark_modex_complete_fn_t)(struct pmix_peer_t *peer,
