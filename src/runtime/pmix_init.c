@@ -48,7 +48,6 @@
 #include "src/mca/preg/base/base.h"
 #include "src/mca/prm/base/base.h"
 #include "src/mca/psec/base/base.h"
-#include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_net.h"
@@ -439,28 +438,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             }
             pmix_globals.hostname = strdup(hostname);
         }
-    }
-
-    /* the choice of modules to use when communicating with a peer
-     * will be done by the individual init functions and at the
-     * time of connection to that peer */
-
-    ret = pmix_mca_base_framework_open(&pmix_psquash_base_framework,
-                                       PMIX_MCA_BASE_OPEN_DEFAULT);
-    if (PMIX_SUCCESS != ret) {
-        error = "pmix_psquash_base_open";
-        goto return_error;
-    }
-
-    if (PMIX_SUCCESS != (ret = pmix_psquash_base_select())) {
-        error = "pmix_psquash_base_select";
-        goto return_error;
-    }
-
-    ret = pmix_psquash.init();
-    if (PMIX_SUCCESS != ret) {
-        error = "psquash_init";
-        goto return_error;
     }
 
     /* open the bfrops and select the active plugins */
