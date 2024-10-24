@@ -16,7 +16,7 @@
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,7 +43,6 @@
 #include "src/mca/preg/base/base.h"
 #include "src/mca/prm/base/base.h"
 #include "src/mca/psec/base/base.h"
-#include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/pmix_tsd.h"
 #include "src/util/pmix_keyval_parse.h"
@@ -86,10 +85,6 @@ void pmix_rte_finalize(void)
 
     /* close bfrops */
     (void) pmix_mca_base_framework_close(&pmix_bfrops_base_framework);
-
-    /* close the psquash framework */
-    pmix_psquash.finalize();
-    pmix_mca_base_framework_close(&pmix_psquash_base_framework);
 
     /* close compress */
     (void) pmix_mca_base_framework_close(&pmix_pcompress_base_framework);
