@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -120,6 +120,57 @@ pmix_status_t pmix_bfrops_base_pack_bool(pmix_pointer_array_t *regtypes, pmix_bu
 }
 
 /*
+ * INT16, INT32, INT64, UIN16, UINT32, UINT64
+ */
+pmix_status_t pmix_bfrops_base_pack_general_int(pmix_pointer_array_t *regtypes,
+                                                pmix_buffer_t *buffer, const void *src,
+                                                int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_status_t rc;
+    int32_t i;
+    char *dst;
+    size_t val_size, max_size, pkg_size;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrops_base_pack_integer * %d\n", num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes);
+
+    PMIX_SQUASH_TYPE_SIZEOF(rc, type, val_size);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    rc = pmix_bfrops_base_get_max_size(type, &max_size);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* check to see if buffer needs extending */
+    if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals * max_size))) {
+        rc = PMIX_ERR_OUT_OF_RESOURCE;
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    for (i = 0; i < num_vals; ++i) {
+        rc = pmix_bfrops_base_encode_int(type, (uint8_t *) src + i * val_size, dst, &pkg_size);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        dst += pkg_size;
+        buffer->pack_ptr += pkg_size;
+        buffer->bytes_used += pkg_size;
+    }
+
+    return PMIX_SUCCESS;
+}
+
+
+/*
  * INT
  */
 pmix_status_t pmix_bfrops_base_pack_int(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
@@ -128,12 +179,6 @@ pmix_status_t pmix_bfrops_base_pack_int(pmix_pointer_array_t *regtypes, pmix_buf
     pmix_status_t ret;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* System types need to always be described so we can properly
-       unpack them */
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(regtypes, buffer, BFROP_TYPE_INT))) {
-        return ret;
-    }
 
     /* Turn around and pack the real type */
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, BFROP_TYPE_INT, regtypes);
@@ -149,12 +194,6 @@ pmix_status_t pmix_bfrops_base_pack_sizet(pmix_pointer_array_t *regtypes, pmix_b
     int ret;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* System types need to always be described so we can properly
-       unpack them. */
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(regtypes, buffer, BFROP_TYPE_SIZE_T))) {
-        return ret;
-    }
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, BFROP_TYPE_SIZE_T, regtypes);
     return ret;
@@ -209,99 +248,6 @@ pmix_status_t pmix_bfrops_base_pack_byte(pmix_pointer_array_t *regtypes, pmix_bu
     return PMIX_SUCCESS;
 }
 
-/*
- * INT16
- */
-pmix_status_t pmix_bfrops_base_pack_int16(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                          const void *src, int32_t num_vals, pmix_data_type_t type)
-{
-    int32_t i;
-    uint16_t tmp, *srctmp = (uint16_t *) src;
-    char *dst;
-
-    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrops_base_pack_int16 * %d\n", num_vals);
-
-    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
-
-    /* check to see if buffer needs extending */
-    if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals * sizeof(tmp)))) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-
-    for (i = 0; i < num_vals; ++i) {
-        tmp = pmix_htons(srctmp[i]);
-        memcpy(dst, &tmp, sizeof(tmp));
-        dst += sizeof(tmp);
-    }
-    buffer->pack_ptr += num_vals * sizeof(tmp);
-    buffer->bytes_used += num_vals * sizeof(tmp);
-
-    return PMIX_SUCCESS;
-}
-
-/*
- * INT32
- */
-pmix_status_t pmix_bfrops_base_pack_int32(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                          const void *src, int32_t num_vals, pmix_data_type_t type)
-{
-    int32_t i;
-    uint32_t tmp, *srctmp = (uint32_t *) src;
-    char *dst;
-
-    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrops_base_pack_int32 * %d\n", num_vals);
-
-    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
-
-    /* check to see if buffer needs extending */
-    if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, num_vals * sizeof(tmp)))) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-    for (i = 0; i < num_vals; ++i) {
-        tmp = htonl(srctmp[i]);
-        memcpy(dst, &tmp, sizeof(tmp));
-        dst += sizeof(tmp);
-    }
-    buffer->pack_ptr += num_vals * sizeof(tmp);
-    buffer->bytes_used += num_vals * sizeof(tmp);
-
-    return PMIX_SUCCESS;
-}
-
-/*
- * INT64
- */
-pmix_status_t pmix_bfrops_base_pack_int64(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                          const void *src, int32_t num_vals, pmix_data_type_t type)
-{
-    int32_t i;
-    uint64_t tmp, tmp2;
-    char *dst;
-    size_t bytes_packed = num_vals * sizeof(tmp);
-
-    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrops_base_pack_int64 * %d\n", num_vals);
-
-    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
-
-    /* check to see if buffer needs extending */
-    if (NULL == (dst = pmix_bfrop_buffer_extend(buffer, bytes_packed))) {
-        return PMIX_ERR_OUT_OF_RESOURCE;
-    }
-
-    for (i = 0; i < num_vals; ++i) {
-        memcpy(&tmp2, (char *) src + i * sizeof(uint64_t), sizeof(uint64_t));
-        tmp = pmix_hton64(tmp2);
-        memcpy(dst, &tmp, sizeof(tmp));
-        dst += sizeof(tmp);
-    }
-    buffer->pack_ptr += bytes_packed;
-    buffer->bytes_used += bytes_packed;
-
-    return PMIX_SUCCESS;
-}
 
 /*
  * STRING

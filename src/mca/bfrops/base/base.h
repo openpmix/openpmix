@@ -282,6 +282,41 @@ PMIX_EXPORT PMIX_CLASS_DECLARATION(pmix_bfrop_type_info_t);
         pmix_pointer_array_set_item((arr), (t), _info);               \
     } while (0)
 
+/**
+ * Sizeof by PMIx type integer values.
+ *
+ * r - return status code
+ * t - type (pmix_data_type_t) of integer value
+ * s - size of type in bytes
+ * (see a comment to `pmix_bfrops_pack_flex` for additional details)
+ */
+#define PMIX_SQUASH_TYPE_SIZEOF(r, t, s) \
+    do {                                 \
+        (r) = PMIX_SUCCESS;              \
+        switch (t) {                     \
+        case PMIX_INT16:                 \
+        case PMIX_UINT16:                \
+            (s) = SIZEOF_SHORT;          \
+            break;                       \
+        case PMIX_INT:                   \
+        case PMIX_INT32:                 \
+        case PMIX_UINT:                  \
+        case PMIX_UINT32:                \
+            (s) = SIZEOF_INT;            \
+            break;                       \
+        case PMIX_INT64:                 \
+        case PMIX_UINT64:                \
+            (s) = SIZEOF_LONG;           \
+            break;                       \
+        case PMIX_SIZE:                  \
+            (s) = SIZEOF_SIZE_T;         \
+            break;                       \
+        default:                         \
+            (r) = PMIX_ERR_BAD_PARAM;    \
+        }                                \
+    } while (0)
+
+
 /* API Stub functions */
 PMIX_EXPORT char *pmix_bfrops_stub_get_available_modules(void);
 PMIX_EXPORT pmix_status_t pmix_bfrops_stub_assign_module(struct pmix_peer_t *peer,
@@ -345,15 +380,10 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_pid(pmix_pointer_array_t *regtyp
                                                     pmix_buffer_t *buffer, const void *src,
                                                     int32_t num_vals, pmix_data_type_t type);
 
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_int16(pmix_pointer_array_t *regtypes,
-                                                      pmix_buffer_t *buffer, const void *src,
-                                                      int32_t num_vals, pmix_data_type_t type);
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_int32(pmix_pointer_array_t *regtypes,
-                                                      pmix_buffer_t *buffer, const void *src,
-                                                      int32_t num_vals, pmix_data_type_t type);
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_int64(pmix_pointer_array_t *regtypes,
-                                                      pmix_buffer_t *buffer, const void *src,
-                                                      int32_t num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_general_int(pmix_pointer_array_t *regtypes,
+                                                            pmix_buffer_t *buffer, const void *src,
+                                                            int32_t num_vals, pmix_data_type_t type);
+
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_pack_string(pmix_pointer_array_t *regtypes,
                                                        pmix_buffer_t *buffer, const void *src,
                                                        int32_t num_vals, pmix_data_type_t type);
@@ -553,19 +583,13 @@ PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_sizet(pmix_pointer_array_t *re
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_pid(pmix_pointer_array_t *regtypes,
                                                       pmix_buffer_t *buffer, void *dest,
                                                       int32_t *num_vals, pmix_data_type_t type);
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_int16(pmix_pointer_array_t *regtypes,
-                                                        pmix_buffer_t *buffer, void *dest,
-                                                        int32_t *num_vals, pmix_data_type_t type);
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_int32(pmix_pointer_array_t *regtypes,
-                                                        pmix_buffer_t *buffer, void *dest,
-                                                        int32_t *num_vals, pmix_data_type_t type);
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_general_int(pmix_pointer_array_t *regtypes,
+                                                              pmix_buffer_t *buffer, void *dest,
+                                                              int32_t *num_vals, pmix_data_type_t type);
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_datatype(pmix_pointer_array_t *regtypes,
                                                            pmix_buffer_t *buffer, void *dest,
                                                            int32_t *num_vals,
                                                            pmix_data_type_t type);
-PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_int64(pmix_pointer_array_t *regtypes,
-                                                        pmix_buffer_t *buffer, void *dest,
-                                                        int32_t *num_vals, pmix_data_type_t type);
 
 PMIX_EXPORT pmix_status_t pmix_bfrops_base_unpack_float(pmix_pointer_array_t *regtypes,
                                                         pmix_buffer_t *buffer, void *dest,
@@ -1042,6 +1066,37 @@ PMIX_EXPORT pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p, pmix_va
 PMIX_EXPORT void pmix_bfrops_base_value_destruct(pmix_value_t *v);
 
 PMIX_EXPORT void pmix_bfrops_base_darray_destruct(pmix_data_array_t *d);
+
+/**
+ *  Maximum size of the type.
+ *
+ * type - Type (PMIX_SIZE, PMIX_INT to PMIX_UINT64)
+ * size - size of the type
+ */
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_get_max_size(pmix_data_type_t type, size_t *size);
+
+/**
+ * Encode a basic integer type into a contiguous destination buffer.
+ *
+ * type     - Type of the 'src' pointer (PMIX_SIZE, PMIX_INT to PMIX_UINT64)
+ * src      - pointer to a single basic integer type
+ * dest     - pointer to buffer to store data
+ * dst_len  - pointer to the packed size of dest, in bytes
+ */
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_encode_int(pmix_data_type_t type, void *src,
+                                                      void *dest, size_t *dst_len);
+
+/**
+ * Decode a basic a contiguous destination buffer into a basic integer type.
+ *
+ * type     - Type of the 'dest' pointer (PMIX_SIZE, PMIX_INT to PMIX_UINT64)
+ * src      - pointer to buffer where data was stored
+ * src_len  - length, in bytes, of the src buffer
+ * dest     - pointer to a single basic integer type
+ * dst_len  - pointer to the unpacked size of dest, in bytes
+ */
+PMIX_EXPORT pmix_status_t pmix_bfrops_base_decode_int(pmix_data_type_t type, void *src,
+                                                      size_t src_len, void *dest, size_t *dst_len);
 
 END_C_DECLS
 
