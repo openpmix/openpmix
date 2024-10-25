@@ -15,7 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -191,6 +191,62 @@ pmix_status_t pmix_bfrops_base_unpack_bool(pmix_pointer_array_t *regtypes, pmix_
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_bfrops_base_unpack_general_int(pmix_pointer_array_t *regtypes,
+                                                  pmix_buffer_t *buffer, void *dest,
+                                                  int32_t *num_vals, pmix_data_type_t type)
+{
+    pmix_status_t rc;
+    size_t val_size, avail_size, unpack_size, max_size;
+    int32_t i;
+
+    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
+                        "pmix_bfrops_base_unpack_integer * %d\n", (int) *num_vals);
+
+    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
+
+    /* check to see if there's enough data in buffer */
+    if (buffer->pack_ptr == buffer->unpack_ptr) {
+        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
+    }
+
+    PMIX_SQUASH_TYPE_SIZEOF(rc, type, val_size);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    rc = pmix_bfrops_base_get_max_size(type, &max_size);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        return rc;
+    }
+
+    /* unpack the data */
+    for (i = 0; i < (*num_vals); ++i) {
+        avail_size = buffer->pack_ptr - buffer->unpack_ptr;
+        rc = pmix_bfrops_base_decode_int(type, buffer->unpack_ptr, avail_size,
+                                         (uint8_t *) dest + i * val_size, &unpack_size);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        /* sanity checks */
+        if (unpack_size > max_size) {
+            rc = PMIX_ERR_UNPACK_FAILURE;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        if (unpack_size > avail_size) {
+            rc = PMIX_ERR_FATAL;
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+        buffer->unpack_ptr += unpack_size;
+    }
+
+    return PMIX_SUCCESS;
+}
+
 /*
  * INT
  */
@@ -198,22 +254,9 @@ pmix_status_t pmix_bfrops_base_unpack_int(pmix_pointer_array_t *regtypes, pmix_b
                                           void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
     pmix_status_t ret;
-    pmix_data_type_t remote_type;
-
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_get_data_type(regtypes, buffer, &remote_type))) {
-        return ret;
-    }
-
-    if (remote_type == BFROP_TYPE_INT) {
-        /* fast path it if the sizes are the same */
-        /* Turn around and unpack the real type */
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, BFROP_TYPE_INT, regtypes);
-    } else {
-        /* slow path - types are different sizes */
-        PMIX_BFROP_UNPACK_SIZE_MISMATCH(regtypes, int, remote_type, ret);
-    }
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, BFROP_TYPE_INT, regtypes);
 
     return ret;
 }
@@ -225,29 +268,11 @@ pmix_status_t pmix_bfrops_base_unpack_sizet(pmix_pointer_array_t *regtypes, pmix
                                             void *dest, int32_t *num_vals, pmix_data_type_t type)
 {
     pmix_status_t ret;
-    pmix_data_type_t remote_type;
-
-    if (PMIX_SIZE != type) {
-        return PMIX_ERR_BAD_PARAM;
-    }
-
     PMIX_HIDE_UNUSED_PARAMS(type);
 
-    if (PMIX_SUCCESS != (ret = pmix_bfrop_get_data_type(regtypes, buffer, &remote_type))) {
+    PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, BFROP_TYPE_SIZE_T, regtypes);
+    if (PMIX_SUCCESS != ret) {
         PMIX_ERROR_LOG(ret);
-        return ret;
-    }
-
-    if (remote_type == BFROP_TYPE_SIZE_T) {
-        /* fast path it if the sizes are the same */
-        /* Turn around and unpack the real type */
-        PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, BFROP_TYPE_SIZE_T, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            PMIX_ERROR_LOG(ret);
-        }
-    } else {
-        /* slow path - types are different sizes */
-        PMIX_BFROP_UNPACK_SIZE_MISMATCH(regtypes, size_t, remote_type, ret);
     }
     return ret;
 }
@@ -306,60 +331,6 @@ pmix_status_t pmix_bfrops_base_unpack_byte(pmix_pointer_array_t *regtypes, pmix_
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_bfrops_base_unpack_int16(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
-{
-    int32_t i;
-    uint16_t tmp, *desttmp = (uint16_t *) dest;
-
-    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrop_unpack_int16 * %d\n", (int) *num_vals);
-
-    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
-
-    /* check to see if there's enough data in buffer */
-    if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(tmp))) {
-        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
-    }
-
-    /* unpack the data */
-    for (i = 0; i < (*num_vals); ++i) {
-        memcpy(&(tmp), buffer->unpack_ptr, sizeof(tmp));
-        tmp = pmix_ntohs(tmp);
-        memcpy(&desttmp[i], &tmp, sizeof(tmp));
-        buffer->unpack_ptr += sizeof(tmp);
-    }
-
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_unpack_int32(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
-{
-    int32_t i;
-    uint32_t tmp, *desttmp = (uint32_t *) dest;
-
-    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrop_unpack_int32 * %d\n", (int) *num_vals);
-
-    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
-
-    /* check to see if there's enough data in buffer */
-    if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(tmp))) {
-        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
-    }
-
-    /* unpack the data */
-    for (i = 0; i < (*num_vals); ++i) {
-        memcpy(&(tmp), buffer->unpack_ptr, sizeof(tmp));
-        tmp = ntohl(tmp);
-        memcpy(&desttmp[i], &tmp, sizeof(tmp));
-        buffer->unpack_ptr += sizeof(tmp);
-    }
-
-    return PMIX_SUCCESS;
-}
-
 pmix_status_t pmix_bfrops_base_unpack_datatype(pmix_pointer_array_t *regtypes,
                                                pmix_buffer_t *buffer, void *dest, int32_t *num_vals,
                                                pmix_data_type_t type)
@@ -370,33 +341,6 @@ pmix_status_t pmix_bfrops_base_unpack_datatype(pmix_pointer_array_t *regtypes,
 
     PMIX_BFROPS_UNPACK_TYPE(ret, buffer, dest, num_vals, PMIX_INT16, regtypes);
     return ret;
-}
-
-pmix_status_t pmix_bfrops_base_unpack_int64(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                            void *dest, int32_t *num_vals, pmix_data_type_t type)
-{
-    int32_t i;
-    uint64_t tmp, *desttmp = (uint64_t *) dest;
-
-    pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                        "pmix_bfrop_unpack_int64 * %d\n", (int) *num_vals);
-
-    PMIX_HIDE_UNUSED_PARAMS(regtypes, type);
-
-    /* check to see if there's enough data in buffer */
-    if (pmix_bfrop_too_small(buffer, (*num_vals) * sizeof(tmp))) {
-        return PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER;
-    }
-
-    /* unpack the data */
-    for (i = 0; i < (*num_vals); ++i) {
-        memcpy(&(tmp), buffer->unpack_ptr, sizeof(tmp));
-        tmp = pmix_ntoh64(tmp);
-        memcpy(&desttmp[i], &tmp, sizeof(tmp));
-        buffer->unpack_ptr += sizeof(tmp);
-    }
-
-    return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_bfrops_base_unpack_string(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,

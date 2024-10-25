@@ -90,16 +90,16 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_byte, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_int8, &pmix_mca_bfrops_v51_component.types);
 
-    PMIX_REGISTER_TYPE("PMIX_INT16", PMIX_INT16, pmix_bfrops_base_pack_int16,
-                       pmix_bfrops_base_unpack_int16, pmix_bfrops_base_std_copy,
+    PMIX_REGISTER_TYPE("PMIX_INT16", PMIX_INT16, pmix_bfrops_base_pack_general_int,
+                       pmix_bfrops_base_unpack_general_int, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_int16, &pmix_mca_bfrops_v51_component.types);
 
-    PMIX_REGISTER_TYPE("PMIX_INT32", PMIX_INT32, pmix_bfrops_base_pack_int32,
-                       pmix_bfrops_base_unpack_int32, pmix_bfrops_base_std_copy,
+    PMIX_REGISTER_TYPE("PMIX_INT32", PMIX_INT32, pmix_bfrops_base_pack_general_int,
+                       pmix_bfrops_base_unpack_general_int, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_int32, &pmix_mca_bfrops_v51_component.types);
 
-    PMIX_REGISTER_TYPE("PMIX_INT64", PMIX_INT64, pmix_bfrops_base_pack_int64,
-                       pmix_bfrops_base_unpack_int64, pmix_bfrops_base_std_copy,
+    PMIX_REGISTER_TYPE("PMIX_INT64", PMIX_INT64, pmix_bfrops_base_pack_general_int,
+                       pmix_bfrops_base_unpack_general_int, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_int64, &pmix_mca_bfrops_v51_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_UINT", PMIX_UINT, pmix_bfrops_base_pack_int,
@@ -110,16 +110,16 @@ static pmix_status_t init(void)
                        pmix_bfrops_base_unpack_byte, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_uint8, &pmix_mca_bfrops_v51_component.types);
 
-    PMIX_REGISTER_TYPE("PMIX_UINT16", PMIX_UINT16, pmix_bfrops_base_pack_int16,
-                       pmix_bfrops_base_unpack_int16, pmix_bfrops_base_std_copy,
+    PMIX_REGISTER_TYPE("PMIX_UINT16", PMIX_UINT16, pmix_bfrops_base_pack_general_int,
+                       pmix_bfrops_base_unpack_general_int, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_uint16, &pmix_mca_bfrops_v51_component.types);
 
-    PMIX_REGISTER_TYPE("PMIX_UINT32", PMIX_UINT32, pmix_bfrops_base_pack_int32,
-                       pmix_bfrops_base_unpack_int32, pmix_bfrops_base_std_copy,
+    PMIX_REGISTER_TYPE("PMIX_UINT32", PMIX_UINT32, pmix_bfrops_base_pack_general_int,
+                       pmix_bfrops_base_unpack_general_int, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_uint32, &pmix_mca_bfrops_v51_component.types);
 
-    PMIX_REGISTER_TYPE("PMIX_UINT64", PMIX_UINT64, pmix_bfrops_base_pack_int64,
-                       pmix_bfrops_base_unpack_int64, pmix_bfrops_base_std_copy,
+    PMIX_REGISTER_TYPE("PMIX_UINT64", PMIX_UINT64, pmix_bfrops_base_pack_general_int,
+                       pmix_bfrops_base_unpack_general_int, pmix_bfrops_base_std_copy,
                        pmix_bfrops_base_print_uint64, &pmix_mca_bfrops_v51_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_FLOAT", PMIX_FLOAT, pmix_bfrops_base_pack_float,
