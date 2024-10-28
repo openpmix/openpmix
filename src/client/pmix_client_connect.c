@@ -179,13 +179,13 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     }
 
     /* get our endpt info, if some was posted. We use
-     * the global scope here as connect may involve
-     * cross-nspace, and so the local endpts may
-     * be relevant */
+     * "remote" scope as all local procs have access
+     * to info posted by all other local procs, regardless
+     * of their namespace */
     PMIX_BYTE_OBJECT_CONSTRUCT(&bo);
     PMIX_CONSTRUCT(&cb2, pmix_cb_t);
     cb2.proc = &pmix_globals.myid;
-    cb2.scope = PMIX_GLOBAL;
+    cb2.scope = PMIX_REMOTE;
     cb2.copy = true;
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
     if (PMIX_SUCCESS == rc) {
