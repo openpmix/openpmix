@@ -4,6 +4,41 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.4 -- TBD
+------------
+Detailed changes include:
+ - PR #3419: Add some missing attributes
+ - PR #3417: Multiple commits
+   - Fix typo in equality check
+   - Fix delayed get
+   - avoid warn-as-error for variable init
+   - Add support for libz-ng
+ - PR #3408: Update pmix_portable_platform_real.h from upstream gasnet
+ - PR #3404: Path must start with "src"
+ - PR #3402: Remove unused yaml
+ - PR #3400: add contrib/construct_event_strings.py to the dist tarball
+ - PR #3397: Multiple commits
+   - Add missing files
+   - mca/pif: fix pmix_found_linux typo
+   - Add cross-version compatibility to docs
+ - PR #3393: Multiple commits
+   - Add python directive
+   - Cleanup pfexec spawn operations
+   - Add missing function call
+ - PR #3387: Update OAC to latest HEAD
+ - PR #3385: Correctly check MCA params
+ - PR #3383: Protect against LTO optimizer
+ - PR #3381: Read The Docs updates
+ - PR #3379: Multiple commits
+   - Revert Sphinx requirements
+   - Warn against building tarball on MacOSX
+   - configure: fix regression that caused python to be mandatory to build
+   - configure: fix broken bashisms resulting in logic failure
+   - Update the requirements for Sphinx
+ - PR #3372: Multiple commits
+   - Update MLNX CI
+   - Apply prefix to copied version of the app array
+
 5.0.3 -- 8 Jul 2024
 -------------------
 Detailed changes include:
