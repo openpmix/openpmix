@@ -378,12 +378,12 @@ static pmix_status_t construct_msg(pmix_buffer_t *msg,
     }
 
     /* get our endpt info, if some was posted. We use
-     * global in case the construct operation involves
-     * multiple nspaces and local connection
-     * between them is allowed. */
+     * "remote" scope as all local procs have access
+     * to info posted by all other local procs, regardless
+     * of their namespace */
     sz = ninfo;
     lclendpts = false;
-    rc = get_endpts(&local_endpts, PMIX_GLOBAL, &lclendpts);
+    rc = get_endpts(&local_endpts, PMIX_REMOTE, &lclendpts);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         return rc;
