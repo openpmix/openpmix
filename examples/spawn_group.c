@@ -324,7 +324,7 @@ int main(int argc, char **argv)
                                 myproc.nspace, (int)n, tmp, PMIx_Error_string(rc));
                 } else {
                     fprintf(stderr, "Client ns %s rank %d: Get modex for proc %s:%u returned %lu\n",
-                            myproc.nspace, myproc.rank, proc.nspace, proc.rank, val->data.uint64);
+                            myproc.nspace, myproc.rank, proc.nspace, proc.rank, (unsigned long)val->data.uint64);
                 }
             }
         }
