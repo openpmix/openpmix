@@ -1680,15 +1680,15 @@ static pmix_status_t process_grpinfo(size_t ctxid,
 static void _register_resources(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
-    pmix_kval_t *kv, kp;
+    pmix_kval_t *kv=NULL, kp;
     size_t n, m, ctxid;
     pmix_status_t rc = PMIX_SUCCESS;
     bool gotctxid = false;
     pmix_list_t grpinfo, endpts;
-    pmix_info_caddy_t *ept, *g;
+    pmix_info_caddy_t *ept=NULL, *g=NULL;
     pmix_info_t *iptr, *pinfo;
     size_t ninfo, npinfo;
-    pmix_byte_object_t *pbo, bo;
+    pmix_byte_object_t *pbo=NULL, bo;
     pmix_buffer_t jobinfo, bkt;
     int32_t cnt;
     char *nspace;
