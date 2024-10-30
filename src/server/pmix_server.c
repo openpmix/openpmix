@@ -3673,16 +3673,13 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
         goto finish_collective;
     }
 
-    PMIX_LIST_FOREACH (nptr, &nslist, pmix_nspace_caddy_t) {
-        /* pass the blobs being returned */
-        PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
-        PMIX_GDS_STORE_MODEX(rc, nptr->ns, &xfer, tracker);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            break;
-        }
-        /* do NOT destruct the xfer buffer as that would release the payload! */
+    /* pass the blobs being returned */
+    PMIX_LOAD_BUFFER_NON_DESTRUCT(pmix_globals.mypeer, &xfer, scd->data, scd->ndata);
+    PMIX_GDS_STORE_MODEX(rc, &xfer, tracker);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
     }
+    /* do NOT destruct the xfer buffer as that would release the payload! */
 
 finish_collective:
     /* loop across all procs in the tracker, sending them the reply */

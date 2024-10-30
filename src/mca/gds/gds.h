@@ -260,16 +260,11 @@ typedef pmix_status_t (*pmix_gds_base_module_store_modex_fn_t)(pmix_buffer_t *bu
  *
  * r - return status code
  *
- * n - pointer to the pmix_namespace_t this blob is to be stored. Note that
- *     this is used solely to select the GDS component that should be used
- *     to store the data. At this time, we are holding all modex data in the
- *     server's HASH component, so this value is effectively not used.
- *
  * b - pointer to pmix_buffer_t containing the data
  *
  * t - pointer to the modex server tracker
  */
-#define PMIX_GDS_STORE_MODEX(r, n, b, t)                                    \
+#define PMIX_GDS_STORE_MODEX(r, b, t)                                       \
     do {                                                                    \
         pmix_gds_base_module_t *_g = pmix_globals.mypeer->nptr->compat.gds; \
         pmix_output_verbose(1, pmix_gds_base_output,                        \
