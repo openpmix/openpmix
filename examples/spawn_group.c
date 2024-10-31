@@ -77,7 +77,7 @@ int main(int argc, char **argv)
     pmix_value_t value;
     mylock_t lock;
     pmix_info_t *results = NULL, info[3], tinfo;
-    size_t nresults, cid, n, m, psize, maxprocs = 2;
+    size_t nresults, cid, n, m, psize=0, maxprocs = 2;
     pmix_data_array_t dry;
     char hostname[1024], dir[1024];
     char tmp[1024];
