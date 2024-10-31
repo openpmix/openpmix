@@ -2609,7 +2609,7 @@ cdef int query(pmix_proc_t *source,
 
 cdef void toolconnected(pmix_info_t *info, size_t ninfo,
                         pmix_tool_connection_cbfunc_t cbfunc,
-                        void *cbdata) with gil:
+                        void *cbdata) noexcept with gil:
     keys = pmixservermodule.keys()
     ret_proc = {'nspace': "UNDEF", 'rank': PMIX_RANK_UNDEF}
     if 'toolconnected' in keys:
@@ -2624,7 +2624,7 @@ cdef void toolconnected(pmix_info_t *info, size_t ninfo,
 cdef void log(const pmix_proc_t *client,
               const pmix_info_t data[], size_t ndata,
               const pmix_info_t directives[], size_t ndirs,
-              pmix_op_cbfunc_t cbfunc, void *cbdata) with gil:
+              pmix_op_cbfunc_t cbfunc, void *cbdata) noexcept with gil:
     keys = pmixservermodule.keys()
     if 'log' in keys:
         args = {}
