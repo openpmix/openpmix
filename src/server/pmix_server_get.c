@@ -337,7 +337,8 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
     pmix_output_verbose(2, pmix_server_globals.get_output,
                         "%s EXECUTE GET FOR %s:%d WITH KEY %s ON BEHALF OF %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid), nspace, rank,
-                        (NULL == key) ? "NULL" : key, PMIX_PNAME_PRINT(&cd->peer->info->pname));
+                        (NULL == key) ? "NULL" : PMIx_Get_attribute_name(key),
+                        PMIX_PNAME_PRINT(&cd->peer->info->pname));
 
     /* This call flows upward from a local client. If we don't
      * know about this nspace, then it cannot refer to the
