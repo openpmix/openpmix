@@ -1525,8 +1525,8 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     /* if I am a client and my server is earlier than v3.2.x, then
      * I need to look for this data under rank=PMIX_RANK_WILDCARD
      * with a key equal to the nodename */
-    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)
-        && PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
+        PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
         proc.rank = PMIX_RANK_WILDCARD;
         iptr = NULL;
         ninfo = 0;
@@ -1546,7 +1546,16 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
             rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
             if (PMIX_SUCCESS != rc) {
-                continue;
+                if (PMIX_RANK_UNDEF == proc.rank) {
+                    // try again with wildcard
+                    proc.rank = PMIX_RANK_WILDCARD;
+                    rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
+                    if (PMIX_SUCCESS != rc) {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
             }
 
             /* sanity check */
@@ -1624,7 +1633,16 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
 
     rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
     if (PMIX_SUCCESS != rc) {
-        goto done;
+        if (PMIX_RANK_UNDEF == proc.rank) {
+            // try again with wildcard
+            proc.rank = PMIX_RANK_WILDCARD;
+            rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
+            if (PMIX_SUCCESS != rc) {
+                goto done;
+            }
+        } else {
+            goto done;
+        }
     }
 
     /* sanity check */
