@@ -1538,7 +1538,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
         ninfo = 2;
     }
 
-    if (NULL == nspace || 0 == pmix_nslen(nspace)) {
+    if (0 == pmix_nslen(nspace)) {
         rc = PMIX_ERR_NOT_FOUND;
         np = 0;
         /* cycle across all known nspaces and aggregate the results */
@@ -1629,7 +1629,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     }
 
     /* get the list of local peers for this nspace and node */
-    PMIX_LOAD_NSPACE(proc.nspace, nspace);
+    PMIX_LOAD_PROCID(&proc, nspace, PMIX_RANK_UNDEF);
 
     rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
     if (PMIX_SUCCESS != rc) {
