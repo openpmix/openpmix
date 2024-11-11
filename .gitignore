@@ -101,6 +101,7 @@ examples/abi_with_init
 examples/group_lcl_cid
 examples/nodeinfo
 examples/pset
+examples/resolve
 
 include/pmix_version.h
 include/pmix_rename.h
