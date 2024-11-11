@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -170,7 +170,8 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
     pmix_info_t *iptr;
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
-                        "FETCHING NODE INFO");
+                        "FETCHING NODE INFO WITH KEY %s",
+                        (NULL == key) ? "NULL" : key);
 
     /* scan for the nodeID or hostname to identify
      * which node they are asking about */
