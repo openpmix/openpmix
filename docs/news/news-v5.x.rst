@@ -4,9 +4,23 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.4 -- TBD
-------------
+5.0.4 -- 13 Nov 2024
+--------------------
+.. important:: This release represents the expected end of
+               the v5.0 series. Any follow-on bug fixes will
+               be committed to the release branch, but are
+               unlikely to generate an official release
+               tarball.
+
 Detailed changes include:
+ - PR #3441: Update NEWS and VERSION for final release
+ - PR #3440: Minor cleanups plus resolve peers example
+ - PR #3434: Collapse the pfexec framework
+ - PR #3432: Update VERSION for release
+ - PR #3430: Multiple commits
+   - Update NEWS to include v5.0 branch
+   - Drop the sphinx required level to match PRRTE
+   - Ensure IOF respects formatting requests
  - PR #3419: Add some missing attributes
  - PR #3417: Multiple commits
    - Fix typo in equality check
