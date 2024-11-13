@@ -352,7 +352,7 @@ fi
 echo "*** Removing old VERSION file..."
 rm -f VERSION
 echo "*** Restoring pristine VERSION file..."
-git checkout VERSION
+git checkout HEAD -- VERSION
 echo "*** Getting git version number..."
 repo_rev=git`git log -1 --oneline | head -1 | cut -d' ' -f1`
 echo "    Repo rev number: $repo_rev"
@@ -433,7 +433,7 @@ if test "$greekonly" = "0"; then
 fi
 
 # Put the VERSION file back the way it was
-git checkout VERSION
+git checkout HEAD -- VERSION
 
 echo " "
 echo "*** Start time:  $start"
