@@ -639,8 +639,18 @@ done:
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
             if (PMIX_OPERATION_SUCCEEDED == rc) {
                 rc = PMIX_SUCCESS;
+            } else if (PMIX_SUCCESS != rc && PMIX_RANK_UNDEF == cb->proc->rank) {
+                // try again with wildcard rank
+                pmix_rank_t saverank;
+                saverank = cb->proc->rank;
+                cb->proc->rank = PMIX_RANK_WILDCARD;
+                PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, cb);
+                if (PMIX_OPERATION_SUCCEEDED == rc) {
+                    rc = PMIX_SUCCESS;
+                }
+                cb->proc->rank = saverank;
             }
-            else if (PMIX_SUCCESS != rc) {
+            if (PMIX_SUCCESS != rc) {
                /* if we are both using the "hash" component, then the server's peer
                 * will simply be pointing at the same hash tables as my peer - no
                 * no point in checking there again */
@@ -651,6 +661,16 @@ done:
                     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
                     if (PMIX_OPERATION_SUCCEEDED == rc) {
                         rc = PMIX_SUCCESS;
+                    } else if (PMIX_SUCCESS != rc && PMIX_RANK_UNDEF == cb->proc->rank) {
+                        // try again with wildcard
+                        pmix_rank_t saverank;
+                        saverank = cb->proc->rank;
+                        cb->proc->rank = PMIX_RANK_WILDCARD;
+                        PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, cb);
+                        if (PMIX_OPERATION_SUCCEEDED == rc) {
+                            rc = PMIX_SUCCESS;
+                        }
+                        cb->proc->rank = saverank;
                     }
                }
             }
@@ -1152,7 +1172,7 @@ doget:
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "%s REQUESTING DATA FROM SERVER FOR %s:%s KEY %s",
                         PMIX_NAME_PRINT(&pmix_globals.myid), cb->proc->nspace,
-                        PMIX_RANK_PRINT(proc.rank), cb->key);
+                        PMIX_RANK_PRINT(proc.rank), PMIx_Get_attribute_string(cb->key));
 
     /* track the callback object */
     pmix_list_append(&pmix_client_globals.pending_requests, &cb->super);
