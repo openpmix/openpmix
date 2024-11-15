@@ -141,6 +141,7 @@ static void nscon(pmix_namespace_t *p)
     p->num_waiting = 0;
     p->all_registered = false;
     p->version_stored = false;
+    p->job_info_recvd = false;
     p->jobbkt = NULL;
     p->ndelivered = 0;
     p->nfinalized = 0;

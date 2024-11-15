@@ -1174,14 +1174,30 @@ static void _register_nspace(int sd, short args, void *cbdata)
                     for (m=1; m < ninfo; m++) {
                         PMIX_KVAL_NEW(kv, iptr[m].key);
                         PMIX_VALUE_XFER(rc, kv->value, &iptr[m].value);
-                        gds->store(&proc, PMIX_REMOTE, kv);
+                        rc = gds->store(&proc, PMIX_REMOTE, kv);
                         PMIX_RELEASE(kv); // maintain refcount
+                        if (PMIX_SUCCESS != rc) {
+                            goto release;
+                        }
                     }
                 } else if (PMIX_CHECK_KEY(&cd->info[i], PMIX_GROUP_CONTEXT_ID)) {
                     PMIX_KVAL_NEW(kv, cd->info[i].key);
                     PMIX_VALUE_XFER(rc, kv->value, &cd->info[i].value);
                     gds->store(&proc, PMIX_GLOBAL, kv);
                     PMIX_RELEASE(kv); // maintain refcount
+                    if (PMIX_SUCCESS != rc) {
+                        goto release;
+                    }
+                } else if (PMIX_CHECK_KEY(&cd->info[i], PMIX_JOB_INFO_ARRAY)) {
+                    if (nptr->job_info_recvd) {
+                        // already have the job-level info for this namespace
+                        continue;
+                    }
+                    // first entry is the nspace, followed by the job info
+                    rc = gds->cache_job_info((struct pmix_namespace_t*)nptr, cd->info, cd->ninfo);
+                    if (PMIX_SUCCESS != rc) {
+                        goto release;
+                    }
                 }
             }
         }
@@ -1218,6 +1234,8 @@ static void _register_nspace(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS != rc) {
         goto release;
     }
+    // record that we recvd the job-level info for this namespace
+    nptr->job_info_recvd = true;
 
     /* give the programming models a chance to add anything they need */
     rc = pmix_pmdl.register_nspace(nptr);

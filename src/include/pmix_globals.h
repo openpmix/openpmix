@@ -349,6 +349,7 @@ typedef struct {
     size_t num_waiting;    // number of local procs waiting for debugger attach/release
     bool all_registered;   // all local ranks have been defined
     bool version_stored;   // the version string used by this nspace has been stored
+    bool job_info_recvd;   // job-level info has been received
     pmix_buffer_t *jobbkt; // packed version of jobinfo
     size_t ndelivered;     // count of #local clients that have received the jobinfo
     size_t nfinalized;     // count of #local clients that have finalized
