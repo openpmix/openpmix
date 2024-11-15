@@ -444,7 +444,7 @@ xfer_sessioninfo(
             pmix_kval_t *kvi;
             PMIX_LIST_FOREACH(kvi, sessionlist, pmix_kval_t) {
                 pmix_kval_t *kv = PMIX_NEW(pmix_kval_t);
-                kv->key = strdup(kv->key);
+                kv->key = strdup(kvi->key);
                 PMIX_VALUE_XFER(rc, kv->value, kvi->value);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_RELEASE(kv);
