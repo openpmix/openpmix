@@ -120,6 +120,10 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     void *ilist;
     pmix_data_array_t darray;
     bool found;
+    size_t n;
+    pmix_nspace_t nspace;
+    pmix_rank_t minrank;
+    pmix_proc_t proc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -228,6 +232,81 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     }
     PMIX_DESTRUCT(&cb2);
 
+    /* if this operation involves multiple namespaces, then we need to
+     * share job-level info between the participants. We only need to
+     * add it once per namespace, so have the lowest participating rank
+     * in each namespace add the info */
+    PMIX_LOAD_NSPACE(nspace, procs[0].nspace);
+    found = false;
+    for (n=1; n < nprocs; n++) {
+        if (!PMIX_CHECK_NSPACE(nspace, procs[n].nspace)) {
+            found = true;
+            break;
+        }
+    }
+    if (found) {
+        // see if I am the lowest participating rank from my namespace
+        minrank = UINT32_MAX;
+        for (n=0; n < nprocs; n++) {
+            if (PMIX_CHECK_NSPACE(pmix_globals.myid.nspace, procs[n].nspace)) {
+                // this is my nspace - check the rank
+                if (PMIX_RANK_WILDCARD == procs[n].rank) {
+                    // all ranks included, so see if I am rank 0
+                    if (0 == pmix_globals.myid.rank) {
+                        minrank = 0;
+                        break;
+                    }
+                } else {
+                    // see if I am the lowest
+                    if (procs[n].rank < minrank) {
+                        minrank = procs[n].rank;
+                    }
+                }
+            }
+        }
+        if (minrank == pmix_globals.myid.rank) {
+            // we will provide the job-level info for our nspace
+            PMIX_CONSTRUCT(&cb2, pmix_cb_t);
+            PMIX_LOAD_PROCID(&proc, pmix_globals.myid.nspace, PMIX_RANK_WILDCARD);
+            cb2.proc = &proc;
+            cb2.scope = PMIX_SCOPE_UNDEF;
+            cb2.copy = false;
+            PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb2);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_DESTRUCT(&cb2);
+                goto moveon;
+            }
+            if (0 < pmix_list_get_size(&cb2.kvs)) {
+                // pack to send it along
+                ilist = PMIx_Info_list_start();
+                // start with our namespace
+                PMIx_Info_list_add(ilist, PMIX_NSPACE, pmix_globals.myid.nspace, PMIX_PROC_NSPACE);
+                // now add the kvals
+                PMIX_LIST_FOREACH (kv, &cb2.kvs, pmix_kval_t) {
+                    PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value);
+                    found = true;
+                }
+                // convert to array
+                rc = PMIx_Info_list_convert(ilist, &darray);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_RELEASE(msg);
+                    PMIx_Info_list_release(ilist);
+                    return rc;
+                }
+                // insert into a pmix_info_t for packing
+                PMIX_INFO_LOAD(&xfer, PMIX_JOB_INFO_ARRAY, &darray, PMIX_DATA_ARRAY);
+                // pack the result
+                PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &xfer, 1, PMIX_INFO);
+                PMIX_DATA_ARRAY_DESTRUCT(&darray);
+                PMIX_INFO_DESTRUCT(&xfer);
+                PMIx_Info_list_release(ilist);
+            }
+        }
+    }
+
+moveon:
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
