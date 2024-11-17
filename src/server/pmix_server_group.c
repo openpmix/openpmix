@@ -85,6 +85,7 @@ typedef struct {
     int grpop;              // the group operation being tracked
     pmix_event_t ev;
     bool event_active;
+    bool need_cxtid;
     pmix_list_t mbrs;  // list of grp_trk_t
     pmix_list_t nslist;  // list of involved nspaces
 } grp_block_t;
@@ -93,6 +94,7 @@ static void gbcon(grp_block_t *p)
     p->id = NULL;
     p->grpop = PMIX_GROUP_NONE;
     p->event_active = false;
+    p->need_cxtid = false;
     PMIX_CONSTRUCT(&p->mbrs, pmix_list_t);
     PMIX_CONSTRUCT(&p->nslist, pmix_list_t);
 }
@@ -472,34 +474,28 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
         return;
     }
 
+    /* see if this group was assigned a context ID or collected data */
+    for (n = 0; n < scd->ninfo; n++) {
+        if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_CONTEXT_ID)) {
+            PMIX_VALUE_GET_NUMBER(ret, &scd->info[n].value, ctxid, size_t);
+            if (PMIX_SUCCESS != ret) {
+                PMIX_ERROR_LOG(ret);
+            } else {
+                ctxid_given = true;
+            }
+
+        } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_MEMBERSHIP)) {
+            members = (pmix_proc_t*)scd->info[n].value.data.darray->array;
+            nmembers = scd->info[n].value.data.darray->size;
+        }
+    }
+
     PMIX_LIST_FOREACH(trk, &blk->mbrs, grp_trk_t) {
         pmix_output_verbose(2, pmix_server_globals.group_output,
                             "server:grpcbfunc processing WITH %d CALLBACKS",
                             (int) pmix_list_get_size(&trk->local_cbs));
 
 
-        // if this is a destruct operation, there is nothing more to do
-        if (PMIX_GROUP_DESTRUCT == blk->grpop) {
-            goto release;
-        }
-
-        /* see if this group was assigned a context ID or collected data */
-        for (n = 0; n < scd->ninfo; n++) {
-            if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_VALUE_GET_NUMBER(ret, &scd->info[n].value, ctxid, size_t);
-                if (PMIX_SUCCESS != ret) {
-                    PMIX_ERROR_LOG(ret);
-                } else {
-                    ctxid_given = true;
-                }
-
-            } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_MEMBERSHIP)) {
-                members = (pmix_proc_t*)scd->info[n].value.data.darray->array;
-                nmembers = scd->info[n].value.data.darray->size;
-            }
-        }
-
-    release:
         /* loop across all procs in the tracker, sending them the reply */
         PMIX_LIST_FOREACH (cd, &trk->local_cbs, pmix_server_caddy_t) {
             reply = PMIX_NEW(pmix_buffer_t);
@@ -808,6 +804,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     bool bootstrap = false;
     struct timeval tv = {0, 0};
     pmix_info_caddy_t *ncd;
+    pmix_namespace_t *nptr, *ns;
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
                         "recvd grpconstruct cmd from %s",
@@ -877,7 +874,6 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             goto error;
         }
     }
-
     /* check directives */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_ASSIGN_CONTEXT_ID)) {
@@ -894,6 +890,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
             PMIX_VALUE_GET_NUMBER(rc, &info[n].value, tv.tv_sec, uint32_t);
             if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
                 PMIX_PROC_FREE(procs, nprocs);
                 PMIX_INFO_FREE(info, ninfo);
                 goto error;
@@ -919,7 +916,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         ncd->ninfo = ninfo;
         rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grpid, NULL, 0,
                                     ncd->info, ncd->ninfo, addmembercb, ncd);
-
+        PMIX_ERROR_LOG(rc);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
             PMIX_INFO_FREE(info, ninfo);
             PMIX_RELEASE(ncd);
@@ -941,6 +938,11 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     free(grpid);
     // mark as a construct op
     blk->grpop = PMIX_GROUP_CONSTRUCT;
+    // track ctx id request
+    if (!blk->need_cxtid) {
+        blk->need_cxtid = need_cxtid;
+    }
+
     /* see if this constructor only references local processes and isn't
      * requesting a context ID - if both conditions are met, then we
      * can just locally process the request without bothering the host.
@@ -948,7 +950,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
      * operation */
     if (force_local) {
         trk->local = true;
-    } else if (need_cxtid) {
+    } else if (blk->need_cxtid) {
         trk->local = false;
     } else {
         trk->local = true;
@@ -959,7 +961,41 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                 PMIX_RANK_LOCAL_NODE == procs[n].rank) {
                 continue;
             }
-            /* see if it references a specific local proc */
+
+            /* if this rank is wildcard, then see if #localprocs
+             * is equal to nprocs for this namespace- if so, then
+             * there are no remote participants for this entry */
+            if (PMIX_RANK_WILDCARD == procs[n].rank) {
+                // get the namespace object
+                nptr = NULL;
+                PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
+                    if (0 == strcmp(procs[n].nspace, ns->nspace)) {
+                        nptr = ns;
+                        break;
+                    }
+                }
+                if (NULL == nptr) {
+                    // must be nonlocal
+                    trk->local = false;
+                    break;
+                }
+                if (0 == nptr->nlocalprocs) {
+                    /* the host has informed us that this nspace has no local procs */
+                    pmix_output_verbose(5, pmix_server_globals.group_output,
+                                        "nspace %s has no local procs", procs[n].nspace);
+                    trk->local = false;
+                    break;
+                }
+                if (nptr->nlocalprocs != nptr->nprocs) {
+                    // at least some procs are nonlocal
+                    trk->local = false;
+                    break;
+                }
+                continue;
+            }
+
+            /* go thru all the local clients and see if this proc
+             * is on the list - if not, then it is non-local */
             match = false;
             for (m = 0; m < pmix_server_globals.clients.size; m++) {
                 pr = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, m);
@@ -1053,6 +1089,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             }
             rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, blk->id, trk->pcs, trk->npcs,
                                         trk->info, trk->ninfo, grpcbfunc, blk);
+            PMIX_ERROR_LOG(rc);
             if (PMIX_SUCCESS != rc) {
                 if (PMIX_OPERATION_SUCCEEDED == rc) {
                     /* let the grpcbfunc threadshift the result */
@@ -1062,6 +1099,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                 /* remove the tracker from the list */
                 pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
                 PMIX_RELEASE(blk);
+                pmix_list_remove_item(&trk->local_cbs, &cd->super);
                 return rc;
             }
             /* we will take care of the rest of the process when the
@@ -1105,7 +1143,7 @@ proceed:
     return PMIX_SUCCESS;
 
 error:
-    if (NULL != info) {
+   if (NULL != info) {
         PMIX_INFO_FREE(info, ninfo);
     }
     return rc;

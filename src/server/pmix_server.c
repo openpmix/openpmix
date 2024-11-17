@@ -5136,6 +5136,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
     if (PMIX_GROUP_CONSTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
         if (PMIX_SUCCESS != (rc = pmix_server_grpconstruct(cd, buf))) {
+            PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
         return rc;

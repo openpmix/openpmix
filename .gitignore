@@ -104,6 +104,7 @@ examples/pset
 examples/group_bootstrap
 examples/spawn_group
 examples/resolve
+examples/multi_nspace_group
 
 include/pmix_version.h
 include/pmix_rename.h
