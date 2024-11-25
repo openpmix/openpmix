@@ -1083,7 +1083,6 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             }
             rc = pmix_host_server.group(op, blk->id, trk->pcs, trk->npcs,
                                         trk->info, trk->ninfo, grpcbfunc, blk);
-            PMIX_ERROR_LOG(rc);
             if (PMIX_SUCCESS != rc) {
                 if (PMIX_OPERATION_SUCCEEDED == rc) {
                     /* let the grpcbfunc threadshift the result */
