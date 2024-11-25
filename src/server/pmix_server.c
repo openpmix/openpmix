@@ -5135,7 +5135,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_GROUP_CONSTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_grpconstruct(cd, buf))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_group(cd, buf, PMIX_GROUP_CONSTRUCT))) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(cd);
         }
@@ -5144,7 +5144,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_GROUP_DESTRUCT_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_grpdestruct(cd, buf))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_group(cd, buf, PMIX_GROUP_DESTRUCT))) {
             PMIX_RELEASE(cd);
         }
         return rc;
