@@ -3,7 +3,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -77,7 +77,9 @@ static void rsdes(pmix_rshift_caddy_t *p)
         PMIX_RELEASE(p->cd);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_rshift_caddy_t, pmix_object_t, rscon, rsdes);
+PMIX_CLASS_INSTANCE(pmix_rshift_caddy_t,
+                    pmix_object_t,
+                    rscon, rsdes);
 
 static void check_cached_events(pmix_rshift_caddy_t *cd);
 
@@ -252,7 +254,7 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
     if (NULL == cd->codes) {
         registered = false;
         PMIX_LIST_FOREACH (active, &pmix_globals.events.actives, pmix_active_code_t) {
-            if (PMIX_MAX_ERR_CONSTANT == active->code && 
+            if (PMIX_MAX_ERR_CONSTANT == active->code &&
                 (NULL != active->peer && active->peer == pmix_client_globals.myserver)) {
                 /* we have registered a default */
                 registered = true;
@@ -273,7 +275,7 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
         for (n = 0; n < cd->ncodes; n++) {
             registered = false;
             PMIX_LIST_FOREACH (active, &pmix_globals.events.actives, pmix_active_code_t) {
-                if (active->code == cd->codes[n] && 
+                if (active->code == cd->codes[n] &&
                     (NULL != active->peer && active->peer == pmix_client_globals.myserver)) {
                     registered = true;
                     ++active->nregs;

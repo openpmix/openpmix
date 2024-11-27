@@ -685,6 +685,11 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     pmix_event_hdlr_t *evhdlr;
     pmix_status_t rc = PMIX_SUCCESS;
     bool found;
+    pmix_group_t *grp, *gp;
+    pmix_proc_t *members = NULL;
+    size_t n, nmembers = 0;
+    char *grpid = NULL;
+    size_t ctxid = SIZE_MAX;
 
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "%s invoke_local_event_hdlr for status %s",
@@ -722,6 +727,48 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
     }
     pmix_output_verbose(8, pmix_client_globals.event_output, "%s %s:%d",
                         PMIX_NAME_PRINT(&pmix_globals.myid), __FILE__, __LINE__);
+
+    /* if this is the "group_complete" event, then we need to add
+     * the group definition to our list of known groups */
+    if (PMIX_GROUP_CONSTRUCT_COMPLETE == chain->status) {
+        // find the group ID and membership
+        for (n = 0; n < chain->ninfo; n++) {
+            if (PMIX_CHECK_KEY(&chain->info[n], PMIX_GROUP_MEMBERSHIP)) {
+                members = (pmix_proc_t*)chain->info[n].value.data.darray->array;
+                nmembers = chain->info[n].value.data.darray->size;
+
+            } else if (PMIX_CHECK_KEY(&chain->info[n], PMIX_GROUP_ID)) {
+                grpid = chain->info[n].value.data.string;
+
+            } else if (PMIX_CHECK_KEY(&chain->info[n], PMIX_GROUP_CONTEXT_ID)) {
+                PMIX_VALUE_GET_NUMBER(rc, &chain->info[n].value, ctxid, size_t);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                }
+            }
+        }
+        if (NULL != members && NULL != grpid) {
+            // see if we already know this group
+            grp = NULL;
+            PMIX_LIST_FOREACH(gp, &pmix_client_globals.groups, pmix_group_t) {
+                if (0 == strcmp(grpid, gp->grpid)) {
+                    grp = gp;
+                    break;
+                }
+            }
+            if (NULL == grp) {
+                // add the group
+                grp = PMIX_NEW(pmix_group_t);
+                PMIX_PROC_CREATE(grp->members, nmembers);
+                memcpy(grp->members, members, nmembers * sizeof(pmix_proc_t));
+                qsort(grp->members, nmembers, sizeof(pmix_proc_t), pmix_util_compare_proc);
+                grp->nmbrs = nmembers;
+                grp->grpid = strdup(grpid);
+                grp->ctxid = ctxid;
+                pmix_list_append(&pmix_client_globals.groups, &grp->super);
+            }
+        }
+    }
 
     /* if we registered a "first" handler, and it fits the given range,
      * then invoke it first */
