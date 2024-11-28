@@ -25,6 +25,28 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 
+static void append_unique(pmix_list_t *list, const pmix_proc_t *proc)
+{
+    pmix_proclist_t *nm;
+
+    // check for pre-existence
+    PMIX_LIST_FOREACH(nm, list, pmix_proclist_t) {
+        // require exact match
+        if (!PMIX_CHECK_NSPACE(nm->proc.nspace, proc->nspace)) {
+            continue;
+        }
+        if (nm->proc.rank != proc->rank) {
+            continue;
+        }
+        // already present
+        return;
+    }
+    // wasn't found, so add it
+    nm = PMIX_NEW(pmix_proclist_t);
+    memcpy(&nm->proc, proc, sizeof(pmix_proc_t));
+    pmix_list_append(list, &nm->super);
+}
+
 pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t insize,
                                               pmix_proc_t **outprocs, size_t *outsize)
 {
@@ -36,7 +58,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
     uint32_t jsize;
     pmix_status_t rc;
     pmix_kval_t *kv;
-    pmix_proc_t *procs;
+    pmix_proc_t *procs, proc;
     pmix_cb_t cb2;
 
     PMIX_CONSTRUCT(&cache, pmix_list_t);
@@ -53,9 +75,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                 if (PMIX_RANK_WILDCARD == inprocs[n].rank) {
                     /* we need to replace this proc with the grp members */
                     for (i=0; i < grp->nmbrs; i++) {
-                        nm = PMIX_NEW(pmix_proclist_t);
-                        memcpy(&nm->proc, &grp->members[i], sizeof(pmix_proc_t));
-                        pmix_list_append(&cache, &nm->super);
+                        append_unique(&cache, &grp->members[i]);
                     }
                     continue;
                 }
@@ -100,9 +120,9 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         }
                         if (cnt + jsize > inprocs[n].rank) {
                             /* the specified rank is within this job */
-                            nm = PMIX_NEW(pmix_proclist_t);
-                            PMIX_LOAD_NSPACE(nm->proc.nspace, grp->members[i].nspace);
-                            nm->proc.rank = inprocs[n].rank - cnt;
+                            PMIX_LOAD_NSPACE(proc.nspace, grp->members[i].nspace);
+                            proc.rank = inprocs[n].rank - cnt;
+                            append_unique(&cache, &proc);
                             break;
                         } else {
                             /* increment the count */
@@ -113,9 +133,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                         /* this is a single proc entry, so just see if
                          * it matches the one they asked for */
                         if (cnt == inprocs[n].rank) {
-                            nm = PMIX_NEW(pmix_proclist_t);
-                            memcpy(&nm->proc, &grp->members[i], sizeof(pmix_proc_t));
-                            pmix_list_append(&cache, &nm->super);
+                            append_unique(&cache, &grp->members[i]);
                             break;
                         } else {
                             /* increment the count */
@@ -131,9 +149,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
         }
         if (!match) {
             /* xfer the incoming proc across to the cache */
-            nm = PMIX_NEW(pmix_proclist_t);
-            memcpy(&nm->proc, &inprocs[n], sizeof(pmix_proc_t));
-            pmix_list_append(&cache, &nm->super);
+            append_unique(&cache, &inprocs[n]);
         }
     }
 

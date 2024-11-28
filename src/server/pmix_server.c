@@ -4939,7 +4939,6 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
     }
 
     if (PMIX_FINALIZE_CMD == cmd) {
-        pmix_output_verbose(2, pmix_server_globals.base_output, "recvd FINALIZE");
         peer->nptr->nfinalized++;
         /* purge events */
         pmix_server_purge_events(peer, NULL);

@@ -346,7 +346,7 @@ static void check_completion(grp_trk_t *trk,
         trk->def_complete = true;
     }
 }
-static pmix_status_t get_tracker(char *grpid, bool bootstrap,
+static pmix_status_t get_tracker(char *grpid, bool bootstrap, bool follower,
                                  pmix_proc_t *procs, size_t nprocs,
                                  pmix_info_t *info, size_t ninfo,
                                  grp_block_t **block, grp_trk_t **tracker)
@@ -360,26 +360,20 @@ static pmix_status_t get_tracker(char *grpid, bool bootstrap,
         if (0 == strcmp(grpid, blk->id)) {
             // we do - pass it back
             *block = blk;
-            if (NULL == procs) {
-                // setup a unique tracker for this op
+            // if this is part of a bootstrap, then it always gets its own tracker.
+            // we don't attempt to locally collect participants as we don't
+            // know who the other group construct leaders and/or add-members are - we
+            // only know how many leaders there will be
+            if (follower || bootstrap) {
                 trk = PMIX_NEW(grp_trk_t);
                 PMIX_RETAIN(blk);
                 trk->blk = blk;
-                trk->info = info;
-                trk->ninfo = ninfo;
-                trk->def_complete = true;
-                pmix_list_append(&blk->mbrs, &trk->super);
-                *tracker = trk;
-                return PMIX_SUCCESS;
-            }
-            // if this is a bootstrap, then it always gets its own tracker
-            if (bootstrap) {
-                trk = PMIX_NEW(grp_trk_t);
-                PMIX_RETAIN(blk);
-                trk->blk = blk;
+                // there can be only one proc in the array, but copy it anyway
                 trk->npcs = nprocs;
-                PMIX_PROC_CREATE(trk->pcs, trk->npcs);
-                memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
+                if (NULL != procs) {
+                    PMIX_PROC_CREATE(trk->pcs, trk->npcs);
+                    memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
+                }
                 trk->info = info;
                 trk->ninfo = ninfo;
                 // bootstraps are sent as separate participants
@@ -388,7 +382,7 @@ static pmix_status_t get_tracker(char *grpid, bool bootstrap,
                 *tracker = trk;
                 return PMIX_SUCCESS;
             }
-            // check if this signature is already present
+            // check if this participant's signature is already present
             PMIX_LIST_FOREACH(trk, &blk->mbrs, grp_trk_t) {
                 if (trk->npcs != nprocs) {
                     continue;
@@ -427,16 +421,18 @@ static pmix_status_t get_tracker(char *grpid, bool bootstrap,
     // setup a tracker for it
     trk = PMIX_NEW(grp_trk_t);
     PMIX_RETAIN(blk);
+    trk->npcs = nprocs;
+    if (NULL != procs) {
+        PMIX_PROC_CREATE(trk->pcs, trk->npcs);
+        memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
+    }
     trk->blk = blk;
     trk->info = info;
     trk->ninfo = ninfo;
     pmix_list_append(&blk->mbrs, &trk->super);
-    if (NULL == procs) {
+    if (follower || bootstrap) {
         trk->def_complete = true;
     } else {
-        trk->npcs = nprocs;
-        PMIX_PROC_CREATE(trk->pcs, trk->npcs);
-        memcpy(trk->pcs, procs, nprocs * sizeof(pmix_proc_t));
         check_completion(trk, procs, nprocs);
     }
     *tracker = trk;
@@ -765,19 +761,6 @@ static pmix_status_t aggregate_info(grp_trk_t *trk,
     return PMIX_SUCCESS;
 }
 
-static void addmembercb(pmix_status_t status,
-                        pmix_info_t *info, size_t ninfo, void *cbdata,
-                        pmix_release_cbfunc_t relfn, void *relcbd)
-{
-    pmix_info_caddy_t *ncd = (pmix_info_caddy_t*)cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(status, info, ninfo);
-
-    if (NULL != relfn) {
-        relfn(relcbd);
-    }
-    PMIX_RELEASE(ncd);
-}
-
 /* we are being called from the PMIx server's switchyard function,
  * which means we are in an event and can access global data */
 pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
@@ -788,7 +771,7 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     int32_t cnt, m;
     pmix_status_t rc;
     char *grpid;
-    pmix_proc_t *procs;
+    pmix_proc_t *procs = NULL;
     pmix_info_t *info = NULL;
     size_t n, ninfo, ninf, nprocs;
     grp_block_t *blk;
@@ -797,8 +780,8 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     bool match, force_local = false;
     bool locally_complete = false;
     bool bootstrap = false;
+    bool follower = false;
     struct timeval tv = {0, 0};
-    pmix_info_caddy_t *ncd;
     pmix_namespace_t *nptr, *ns;
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
@@ -824,6 +807,14 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         }
     }
 
+    // if the host doesn't support group ops, then
+    // just return an error
+    if (NULL == pmix_host_server.group) {
+        /* cannot support it */
+        free(grpid);
+        return PMIX_ERR_NOT_SUPPORTED;
+    }
+
     /* unpack the number of procs */
     cnt = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &nprocs, &cnt, PMIX_SIZE);
@@ -845,8 +836,8 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             goto error;
         }
     } else {
-        // this process is participating as an "add-member"
-        bootstrap = true;
+        // if no procs were given, then this must be a follower
+        follower = true;
     }
 
     /* unpack the number of directives */
@@ -878,7 +869,9 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             force_local = PMIX_INFO_TRUE(&info[n]);
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_BOOTSTRAP)) {
-             bootstrap = PMIX_INFO_TRUE(&info[n]);
+            // we don't care what the number is, we only care that
+            // bootstrap is being given
+            bootstrap = true;
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
             PMIX_VALUE_GET_NUMBER(rc, &info[n].value, tv.tv_sec, uint32_t);
@@ -892,34 +885,8 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
         }
     }
 
-    if (NULL == procs) {
-        // this is a group member participating as an "add-member".
-        // check if our host supports group operations
-        if (NULL == pmix_host_server.group) {
-            /* cannot support it */
-            PMIX_INFO_FREE(info, ninfo);
-            free(grpid);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        // this is an add-member, so pass it up - we don't
-        // create a tracker as the participant doesn't have
-        // a callback function (they are waiting on an event)
-        ncd = PMIX_NEW(pmix_info_caddy_t);
-        ncd->info = info;
-        ncd->ninfo = ninfo;
-        rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, grpid, NULL, 0,
-                                    ncd->info, ncd->ninfo, addmembercb, ncd);
-        PMIX_ERROR_LOG(rc);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            PMIX_INFO_FREE(info, ninfo);
-            PMIX_RELEASE(ncd);
-            return rc;
-        }
-        return rc;
-    }
-
     /* find/create the local tracker for this operation */
-    rc = get_tracker(grpid, bootstrap, procs, nprocs,
+    rc = get_tracker(grpid, bootstrap, follower, procs, nprocs,
                      info, ninfo, &blk, &trk);
     if (PMIX_EXISTS == rc) {
         // we extended the trk's info array
@@ -934,6 +901,32 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
     // track ctx id request
     if (!blk->need_cxtid) {
         blk->need_cxtid = need_cxtid;
+    }
+    // track the callback
+    pmix_list_append(&trk->local_cbs, &cd->super);
+
+    if (follower || bootstrap) {
+        /* this is an add-member, so pass it up by itself. We cannot
+         * know if there will be a group leader calling from this node,
+         * so we cannot aggregate info from this proc. We therefore pass
+         * everything up separately and rely on the host to properly
+         * deal with it */
+        rc = pmix_host_server.group(PMIX_GROUP_CONSTRUCT, blk->id, procs, nprocs,
+                                    trk->info, trk->ninfo, grpcbfunc, blk);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            // the host will not be calling back
+            /* let the grpcbfunc threadshift the result */
+            grpcbfunc(PMIX_SUCCESS, NULL, 0, blk, NULL, NULL);
+            return PMIX_SUCCESS;
+        }
+        if (PMIX_SUCCESS != rc) {
+            pmix_list_remove_item(&trk->local_cbs, &cd->super);
+            // the trk will be released when we release the blk
+            pmix_list_remove_item(&pmix_server_globals.grp_collectives, &blk->super);
+            PMIX_RELEASE(blk);
+            return rc;
+        }
+        return PMIX_SUCCESS;
     }
 
     /* see if this constructor only references local processes and isn't
@@ -1006,15 +999,6 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
                 break;
             }
         }
-    }
-
-    /* add this contributor to the tracker so they get
-     * notified when we are done */
-    pmix_list_append(&trk->local_cbs, &cd->super);
-
-    // if this is a bootstrap, then pass it up
-    if (bootstrap) {
-        goto proceed;
     }
 
     /* are we locally complete? */
@@ -1109,7 +1093,6 @@ pmix_status_t pmix_server_group(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
      * here if the operation is NOT completely local, and
      * we only activate the timeout if it IS local */
 
-proceed:
     /* check if our host supports group operations */
     if (NULL == pmix_host_server.group) {
         /* cannot support it */

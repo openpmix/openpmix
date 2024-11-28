@@ -72,10 +72,10 @@ int main(int argc, char **argv)
     int rc;
     pmix_value_t *val = NULL;
     uint32_t nprocs;
-    pmix_proc_t proc, *parray;
+    pmix_proc_t proc, *parray = NULL;
     mylock_t lock;
     pmix_info_t *results = NULL, info[3];
-    size_t nresults, cid, n, m, psize;
+    size_t nresults, cid, n, m, psize = 0;
     pmix_data_array_t dry;
     char hostname[1024];
 
@@ -157,6 +157,7 @@ int main(int argc, char **argv)
         }
     } else if (4 == myproc.rank || 5 == myproc.rank) {
         fprintf(stderr, "%d executing Group_construct\n", myproc.rank);
+        fflush(stderr);
         rc = PMIx_Group_construct("ourgroup", NULL, 0, NULL, 0, &results, &nresults);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
@@ -164,6 +165,8 @@ int main(int argc, char **argv)
             goto done;
         }
     }
+    fprintf(stderr, "%d GROUP CONSTRUCT COMPLETE\n", myproc.rank);
+    fflush(stderr);
 
     if (0 == myproc.rank || 3 == myproc.rank ||
         4 == myproc.rank || 5 == myproc.rank) {
@@ -184,9 +187,12 @@ int main(int argc, char **argv)
                     }
                 }
             }
-            PMIX_INFO_FREE(results, nresults);
         } else {
             fprintf(stderr, "%d Group construct complete, but no results returned\n", myproc.rank);
+        }
+        if (NULL == parray) {
+            fprintf(stderr, "%d NULL proc array\n", myproc.rank);
+            goto done;
         }
 
         fprintf(stderr, "%d Executing group fence\n", myproc.rank);
