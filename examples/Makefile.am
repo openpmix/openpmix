@@ -27,7 +27,8 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
-                  group_bootstrap client3 launcher spawn_group resolve multi_nspace_group
+                  group_bootstrap client3 launcher spawn_group resolve multi_nspace_group \
+                  pub2
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -153,10 +154,15 @@ multi_nspace_group_SOURCES = multi_nspace_group.c examples.h
 multi_nspace_group_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 multi_nspace_group_LDADD = $(top_builddir)/src/libpmix.la
 
+pub2_SOURCES = pub2.c examples.h
+pub2_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+pub2_LDADD = $(top_builddir)/src/libpmix.la
+
+
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
         debugger debuggerd dmodex dynamic fault group \
         hello jctrl launcher log pub pubi server tool \
         abi_no_init abi_with_init group_lcl_cid pset \
         async_group group_dmodex group_bootstrap client3 \
-        spawn_group resolve multi_nspace_group
+        spawn_group resolve multi_nspace_group pub2
