@@ -58,7 +58,6 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
 #include "src/mca/pinstalldirs/base/base.h"
-#include "src/mca/pgpu/base/base.h"
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/preg.h"
@@ -786,7 +785,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         }
     }
 
-    /* open the pnet and pgpu frameworks and select their active modules for this
+    /* open the pnet framework and select its active modules for this
      * environment Do this AFTER setting up the topology so the components can
      * check to see if they have any local assets */
     rc = pmix_mca_base_framework_open(&pmix_pnet_base_framework,
@@ -796,16 +795,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
         return rc;
     }
     if (PMIX_SUCCESS != (rc = pmix_pnet_base_select())) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    rc = pmix_mca_base_framework_open(&pmix_pgpu_base_framework,
-                                      PMIX_MCA_BASE_OPEN_DEFAULT);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return rc;
-    }
-    if (PMIX_SUCCESS != (rc = pmix_pgpu_base_select())) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
@@ -2862,12 +2851,6 @@ static void clct(int sd, short args, void *cbdata)
         goto report;
     }
 
-    /* collect the pgpu inventory */
-    rc = pmix_pgpu.collect_inventory(cd->directives, cd->ndirs, &inventory);
-    if (PMIX_SUCCESS != rc) {
-        goto report;
-    }
-
     /* convert list to an array of info */
     rc = PMIx_Info_list_convert((void*)&inventory, &darray);
     if (PMIX_ERR_EMPTY == rc) {
@@ -2920,13 +2903,7 @@ static void dlinv(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     rc = pmix_pnet.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
-    if (PMIX_SUCCESS != rc) {
-        goto report;
-    }
 
-    rc = pmix_pgpu.deliver_inventory(cd->info, cd->ninfo, cd->directives, cd->ndirs);
-
-report:
     if (NULL != cd->cbfunc.opcbfn) {
         cd->cbfunc.opcbfn(rc, cd->cbdata);
     }
