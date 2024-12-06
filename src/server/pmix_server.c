@@ -62,7 +62,6 @@
 #include "src/mca/pmdl/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/preg.h"
-#include "src/mca/prm/base/base.h"
 #include "src/mca/psensor/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/runtime/pmix_progress_threads.h"
@@ -344,10 +343,14 @@ static void debugger_aggregator(size_t evhdlr_registration_id, pmix_status_t sta
     /* track the number of waiting-for-notify alerts we get */
     nptr->num_waiting--;
 
-    if (nptr->num_waiting <= 0) {
+    /* if the server has provided the notify_event function
+     * entry, then pass it up */
+    if (nptr->num_waiting <= 0 && NULL != pmix_host_server.notify_event) {
         PMIX_LOAD_PROCID(&proc, source->nspace, PMIX_RANK_LOCAL_PEERS);
         /* pass an event to our host */
-        rc = pmix_prm.notify(status, &proc, PMIX_RANGE_RM, info, ninfo, NULL, NULL);
+        rc = pmix_host_server.notify_event(status, &proc, PMIX_RANGE_RM,
+                                           (pmix_info_t *) info, ninfo,
+                                           NULL, NULL);
         if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc &&
             PMIX_ERR_NOT_SUPPORTED != rc) {
             PMIX_ERROR_LOG(rc);

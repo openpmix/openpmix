@@ -41,7 +41,6 @@
 #include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
-#include "src/mca/prm/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/threads/pmix_tsd.h"
@@ -94,9 +93,6 @@ void pmix_rte_finalize(void)
 
     /* Finalize the network helper subsystem. */
     (void)pmix_net_finalize();
-
-    /* Finalize the prm framework */
-    (void) pmix_mca_base_framework_close(&pmix_prm_base_framework);
 
     /* finalize the mca */
     /* Clear out all the registered MCA params */
