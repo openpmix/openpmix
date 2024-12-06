@@ -18,7 +18,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -46,7 +46,6 @@
 #include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/base/base.h"
 #include "src/mca/preg/base/base.h"
-#include "src/mca/prm/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/psquash/base/base.h"
 #include "src/mca/ptl/base/base.h"
@@ -549,19 +548,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     }
     if (PMIX_SUCCESS != (ret = pmix_plog_base_select())) {
         error = "pmix_plog_base_select";
-        goto return_error;
-    }
-
-    /* open and initialize */
-    ret = pmix_mca_base_framework_open(&pmix_prm_base_framework, PMIX_MCA_BASE_OPEN_DEFAULT);
-    if (PMIX_SUCCESS != ret) {
-        error = "pmix_prm_base_open";
-        goto return_error;
-    }
-
-    ret = pmix_prm_base_select();
-    if (PMIX_SUCCESS != ret) {
-        error = "pmix_prm_base_select";
         goto return_error;
     }
 
