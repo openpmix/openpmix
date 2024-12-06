@@ -33,10 +33,14 @@
 #include "prm_slurm.h"
 
 static pmix_status_t get_remaining_time(uint32_t *timeleft);
+static pmix_status_t slurm_notify(pmix_status_t status, const pmix_proc_t *source,
+                               pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
+                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 pmix_prm_module_t pmix_prm_slurm_module = {
     .name = "slurm",
-    .get_remaining_time = get_remaining_time
+    .get_remaining_time = get_remaining_time,
+    .notify = slurm_notify
 };
 
 static pmix_status_t get_remaining_time(uint32_t *timeleft)
@@ -91,4 +95,12 @@ static pmix_status_t get_remaining_time(uint32_t *timeleft)
 
     *timeleft = tleft;
     return PMIX_SUCCESS;
+}
+
+static pmix_status_t slurm_notify(pmix_status_t status, const pmix_proc_t *source,
+                               pmix_data_range_t range, const pmix_info_t info[], size_t ninfo,
+                               pmix_op_cbfunc_t cbfunc, void *cbdata)
+{
+    PMIX_HIDE_UNUSED_PARAMS(status, source, range, info, ninfo, cbfunc, cbdata);
+    return PMIX_ERR_NOT_SUPPORTED;
 }
