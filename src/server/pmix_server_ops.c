@@ -65,7 +65,6 @@
 #include "src/mca/gds/base/base.h"
 #include "src/mca/plog/plog.h"
 #include "src/mca/pnet/pnet.h"
-#include "src/mca/prm/prm.h"
 #include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
@@ -2517,14 +2516,19 @@ static void intermed_step(pmix_status_t status, void *cbdata)
     }
 
     /* pass it to our host RM for distribution */
-    rc = pmix_prm.notify(cd->status, &cd->source, cd->range,
-                         cd->info, cd->ninfo, local_cbfunc, cd);
-    if (PMIX_SUCCESS == rc) {
-        /* let the callback function respond for us */
-        return;
-    }
-    if (PMIX_OPERATION_SUCCEEDED == rc ||
-        PMIX_ERR_NOT_SUPPORTED == rc) {
+    if (NULL != pmix_host_server.notify_event) {
+        rc = pmix_host_server.notify_event(cd->status, &cd->source, cd->range,
+                                           cd->info, cd->ninfo,
+                                           local_cbfunc, cd);
+        if (PMIX_SUCCESS == rc) {
+            /* let the callback function respond for us */
+            return;
+        }
+        if (PMIX_OPERATION_SUCCEEDED == rc ||
+            PMIX_ERR_NOT_SUPPORTED == rc) {
+            rc = PMIX_SUCCESS; // local_cbfunc will not be called
+        }
+    } else {
         rc = PMIX_SUCCESS; // local_cbfunc will not be called
     }
 
