@@ -66,7 +66,6 @@
 #include "src/mca/pcompress/pcompress.h"
 #include "src/mca/plog/plog.h"
 #include "src/mca/pnet/pnet.h"
-#include "src/mca/prm/prm.h"
 #include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
 #include "src/util/pmix_argv.h"
