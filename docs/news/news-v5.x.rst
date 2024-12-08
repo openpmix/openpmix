@@ -4,6 +4,20 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.5 -- TBD
+------------
+Detailed changes include:
+ - PR #3465: Update NEWS and VERSION
+ - PR #3463: Remove prm framework as not currently implemented
+ - PR #3462: Remove unused components from various frameworks
+ - PR #3461: Remove pgpu framework
+ - PR #3460: Remove pstrg framework
+ - PR #3452: .gitignore: add configure~
+ - PR #3449: Multiple commits
+   - Retry fetch with wildcard rank
+   - Fix typo in shmem2 fetch
+
+
 5.0.4 -- 13 Nov 2024
 --------------------
 .. important:: This release represents the expected end of
