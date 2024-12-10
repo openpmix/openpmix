@@ -809,21 +809,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
 
     ##################################
-    # JANSSON
-    ##################################
-    pmix_show_title "JANSSON"
-
-    PMIX_CHECK_JANSSON
-
-
-    ##################################
-    # CURL
-    ##################################
-    pmix_show_title "CURL"
-
-    PMIX_CHECK_CURL
-
-    ##################################
     # MCA
     ##################################
 
@@ -1436,8 +1421,6 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL([PMIX_WANT_SASL], [test "$pmix_sasl_support" = "1"])
         AM_CONDITIONAL([WANT_PRIMARY_HEADERS], [test "x$pmix_install_primary_headers" = "xyes"])
         AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
-        AM_CONDITIONAL([PMIX_HAVE_JANSSON], [test "x$pmix_check_jansson_happy" = "xyes"])
-        AM_CONDITIONAL([PMIX_HAVE_CURL], [test "x$pmix_check_curl_happy" = "xyes"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl
