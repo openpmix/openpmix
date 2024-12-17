@@ -16,7 +16,7 @@
 
 major=5
 minor=0
-release=5
+release=6
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
 # it will be appended to the version number.  It does not have to be
@@ -24,7 +24,7 @@ release=5
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=
+greek=a1
 
 # PMIx required dependency versions.
 # List in x.y.z format.
@@ -119,5 +119,5 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=15:5:13
+libpmix_so_version=15:6:13
 
