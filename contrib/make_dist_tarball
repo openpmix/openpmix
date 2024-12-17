@@ -63,6 +63,7 @@ else
 fi
 
 greekonly=0
+nogreek=0
 autogen_args=
 config_args=
 distdir=".."
@@ -70,6 +71,7 @@ for i in "$@"; do
     case $i in
         -greekonly) greekonly=1 ;;
         --greekonly) greekonly=1 ;;
+        --nogreek) nogreek=1 ;;
         -highok) highok=1 ;;
         --highok) highok=1 ;;
         -autogen-args=*) autogen_args="${i#*=}"; shift ;;
@@ -89,6 +91,7 @@ Unrecognized argument: $1
 
 Valid arguments:
   --greekonly     Only build the greek tarball (vs. both tarballs)
+  --nogreek       Only build the non-greek tarball
   --highok        Ok if Autotools versions are too high
   --autogen-args  Arguments to pass to autogen
   --config-args   Arguments to pass to configure (e.g., --with-libevent=<foo>)
@@ -415,8 +418,12 @@ done
 
 # First, make greek tarball
 
-echo "*** Making greek tarball"
-make_tarball
+if test "$nogreek" = "1"; then
+    echo "*** Skipping greek tarball"
+else
+    echo "*** Making greek tarball"
+    make_tarball
+fi
 
 # Now if ! --greekonly, make the non-greek tarball
 
