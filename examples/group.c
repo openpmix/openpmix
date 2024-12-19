@@ -124,7 +124,7 @@ static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, v
 
 int main(int argc, char **argv)
 {
-    int rc;
+    int rc, ret;
     pmix_value_t *val = NULL, value;
     pmix_proc_t proc, *procs, *parray;
     uint32_t nprocs;
@@ -155,7 +155,7 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
                 PMIx_Error_string(rc));
-        exit(0);
+        exit(1);
     }
     fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
 
@@ -174,12 +174,12 @@ int main(int argc, char **argv)
         if (0 == myproc.rank) {
             fprintf(stderr, "This example with add-members requires a minimum of 6 processes\n");
         }
-        goto done;
+        exit(1);
     } else if (nprocs < 4) {
         if (0 == myproc.rank) {
             fprintf(stderr, "This example requires a minimum of 4 processes\n");
         }
-        goto done;
+        exit(1);
     }
     fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
 
@@ -387,14 +387,15 @@ done:
     DEBUG_DESTRUCT_LOCK(&lock);
 
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
-    if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
+    if (PMIX_SUCCESS != (ret = PMIx_Finalize(NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
-                myproc.rank, PMIx_Error_string(rc));
+                myproc.rank, PMIx_Error_string(ret));
+        rc = ret;
     } else {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
                 myproc.nspace, myproc.rank);
     }
     fprintf(stderr, "%s:%d COMPLETE\n", myproc.nspace, myproc.rank);
     fflush(stderr);
-    return (0);
+    return (rc);
 }
