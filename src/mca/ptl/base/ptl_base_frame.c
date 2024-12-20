@@ -45,6 +45,7 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/mca.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_os_path.h"
@@ -84,6 +85,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .nspace_filename = NULL,
     .pid_filename = NULL,
     .rendezvous_filename = NULL,
+    .created_rendezvous_dir = false,
     .created_rendezvous_file = false,
     .created_session_tmpdir = false,
     .created_system_tmpdir = false,
@@ -250,6 +252,7 @@ static bool _check_file(const char *root, const char *path)
 static pmix_status_t pmix_ptl_close(void)
 {
     int rc;
+    char *tmp;
 
     if (!pmix_ptl_base.initialized) {
         return PMIX_SUCCESS;
@@ -341,6 +344,11 @@ static pmix_status_t pmix_ptl_close(void)
         free(pmix_ptl_base.pid_filename);
     }
     if (NULL != pmix_ptl_base.rendezvous_filename) {
+        if (pmix_ptl_base.created_rendezvous_dir) {
+            tmp = pmix_dirname(pmix_ptl_base.rendezvous_filename);
+            pmix_os_dirpath_destroy(tmp, true, _check_file);
+            free(tmp);
+        }
         if (pmix_ptl_base.created_rendezvous_file) {
             rc = remove(pmix_ptl_base.rendezvous_filename);
             if (0 != rc) {
