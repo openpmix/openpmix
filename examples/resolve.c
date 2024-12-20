@@ -210,7 +210,7 @@ int do_spawn(void)
         printf("[%s:%u] Spawning %d new processes.\n", own_proc.nspace, own_proc.rank, SPAWN_PROCS);
         pmix_app_t *apps = NULL;
         PMIX_APP_CREATE(apps, 1);
-        if (asprintf(&apps[0].cmd, "%s", "./node_map") < 0) {
+        if (asprintf(&apps[0].cmd, "%s", "./resolve") < 0) {
             return 1;
         }
         apps[0].maxprocs = SPAWN_PROCS;
