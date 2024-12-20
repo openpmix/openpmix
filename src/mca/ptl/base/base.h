@@ -79,6 +79,7 @@ struct pmix_ptl_base_t {
     char *nspace_filename;
     char *pid_filename;
     char *rendezvous_filename;
+    bool created_rendezvous_dir;
     bool created_rendezvous_file;
     bool created_session_tmpdir;
     bool created_system_tmpdir;
@@ -136,7 +137,6 @@ PMIX_EXPORT void pmix_ptl_base_cancel_recv(int sd, short args, void *cbdata);
 
 PMIX_EXPORT pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size_t ninfo);
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
-PMIX_EXPORT pmix_status_t pmix_base_write_rndz_file(char *filename, char *uri, bool *created);
 
 /* base support functions */
 PMIX_EXPORT pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **evar);
