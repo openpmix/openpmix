@@ -40,6 +40,7 @@
 
 #include "pmix_common.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/ptl/base/base.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
@@ -68,9 +69,14 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
 
     /* check the error */
     if (EEXIST == ret) {
-        // already exists - try to set the mode
+        // already exists - try to set the mode.
+        // Silently fail the chmod if it hits an error - we'll
+        // let us fail later when we try to actually create a
+        // file if we aren't allowed to do so
         chmod(path, mode);
-    } else if (ENOENT != ret) {
+        return PMIX_ERR_EXISTS;
+    }
+    if (ENOENT != ret) {
         // cannot create it
         pmix_show_help("help-pmix-util.txt", "mkdir-failed", true,
                        path, strerror(ret));
@@ -230,11 +236,17 @@ cleanup:
 
     /*
      * If the directory is empty, then remove it - but
-     * leave the system tmpdir alone!
+     * leave the system tmpdir alone unless we created it!
      */
     if (NULL == pmix_server_globals.system_tmpdir ||
         0 != strcmp(path, pmix_server_globals.system_tmpdir)) {
         rmdir(path);
+    } else if (NULL != pmix_server_globals.system_tmpdir &&
+               0 == strcmp(path, pmix_server_globals.system_tmpdir) &&
+               pmix_ptl_base.created_system_tmpdir) {
+        rmdir(path);
+        free(pmix_ptl_base.system_tmpdir);
+        pmix_ptl_base.system_tmpdir = NULL;
     }
 
     return exit_status;

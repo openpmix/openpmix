@@ -4464,6 +4464,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
                     return PMIX_SUCCESS;
                 }
                 /* remove the tracker from the list */
+                pmix_list_remove_item(&trk->local_cbs, &cd->super);
                 pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
                 PMIX_RELEASE(trk);
                 return rc;
@@ -4486,6 +4487,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
     /* check if our host supports group operations */
     if (NULL == pmix_host_server.group) {
         /* cannot support it */
+        pmix_list_remove_item(&trk->local_cbs, &cd->super);
         pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
         PMIX_RELEASE(trk);
         return PMIX_ERR_NOT_SUPPORTED;
@@ -4501,6 +4503,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
         rc = _collect_data(trk, &bucket);
         if (PMIX_SUCCESS != rc) {
             /* remove the tracker from the list */
+            pmix_list_remove_item(&trk->local_cbs, &cd->super);
             pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
             PMIX_RELEASE(trk);
             PMIX_DESTRUCT(&bucket);
@@ -4582,6 +4585,7 @@ pmix_status_t pmix_server_grpconstruct(pmix_server_caddy_t *cd, pmix_buffer_t *b
             return PMIX_SUCCESS;
         }
         /* remove the tracker from the list */
+        pmix_list_remove_item(&trk->local_cbs, &cd->super);
         pmix_list_remove_item(&pmix_server_globals.collectives, &trk->super);
         PMIX_RELEASE(trk);
         return rc;
