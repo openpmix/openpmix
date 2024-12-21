@@ -25,11 +25,11 @@ jobs:
       with:
             submodules: recursive
             repository: openpmix/prrte
-            path: prrte/master
-            ref: master
+            path: prrte/v3.0
+            ref: v3.0
     - name: Build PRRTE
       run: |
-        cd prrte/master
+        cd prrte/v3.0
         ./autogen.pl
         ./configure --prefix=$RUNNER_TEMP/prteinstall --with-pmix=$RUNNER_TEMP/pmixinstall
         make -j
