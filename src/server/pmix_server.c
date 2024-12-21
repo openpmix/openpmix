@@ -90,7 +90,6 @@ pmix_server_globals_t pmix_server_globals = {
     .gdata = PMIX_LIST_STATIC_INIT,
     .genvars = NULL,
     .events = PMIX_LIST_STATIC_INIT,
-    .failedgrps = NULL,
     .iof = PMIX_LIST_STATIC_INIT,
     .iof_residuals = PMIX_LIST_STATIC_INIT,
     .psets = PMIX_LIST_STATIC_INIT,
@@ -1067,9 +1066,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
          * abnormal termination, then the nspace object may not be
          * at zero refcount */
         pmix_execute_epilog(&ns->epilog);
-    }
-    if (NULL != pmix_server_globals.failedgrps) {
-        PMIX_ARGV_FREE(pmix_server_globals.failedgrps);
     }
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.iof_residuals);
