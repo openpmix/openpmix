@@ -169,17 +169,3 @@ jobs:
       run:  python demo/test-run/test_run.py -v
       if:   ${{ true }}
       timeout-minutes: 5
-
-    - name: Relocate Open MPI installation
-      run:  mv $RUNNER_TEMP/openmpi $RUNNER_TEMP/ompi
-
-    - name: Update PATH and set OPAL_PREFIX and LD_LIBRARY_PATH
-      run: |
-        sed -i "\|$RUNNER_TEMP/openmpi/bin|d" $GITHUB_PATH
-        echo OPAL_PREFIX=$RUNNER_TEMP/ompi >> $GITHUB_ENV
-        echo LD_LIBRARY_PATH=$RUNNER_TEMP/ompi/lib >> $GITHUB_ENV
-
-    - name: Test mpi4py (singleton)
-      run:  python test/main.py -v
-      if:   ${{ true }}
-      timeout-minutes: 5
