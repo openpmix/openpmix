@@ -1,0 +1,185 @@
+name: mpi4py
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'mpi4py repository'
+        default: 'mpi4py/mpi4py'
+        required: false
+        type: string
+      ref:
+        description: 'mpi4py branch/tag/SHA'
+        default: 'master'
+        required: false
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MPI4PY_TEST_SPAWN: true
+    steps:
+    - name: Configure hostname
+      run:  echo 127.0.0.1 `hostname` | sudo tee -a /etc/hosts > /dev/null
+      if:   ${{ runner.os == 'Linux' || runner.os == 'macOS' }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev
+
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        clean: false
+
+    - name: Build OpenPMIx
+      run: |
+        ./autogen.pl
+        ./configure --prefix=$RUNNER_TEMP/pmixinstall
+        make -j $(nproc)
+        make install
+
+    - name: Git clone PRRTE
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        repository: openpmix/prrte
+        path: prrte/master
+        ref: master
+
+    - name: Build PRRTE
+      run: |
+        cd prrte/master
+        ./autogen.pl
+        ./configure \
+            --prefix=$RUNNER_TEMP/prteinstall \
+            --with-pmix=$RUNNER_TEMP/pmixinstall \
+            --disable-sphinx
+        make -j $(nproc)
+        make install
+
+    - name: Checkout Open MPI
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        repository: open-mpi/ompi
+        path: mpi-build
+        ref: main
+        clean: false
+
+    - name: Bootstrap Open MPI
+      working-directory: mpi-build
+      run: ./autogen.pl
+
+    - name: Configure Open MPI
+      working-directory: mpi-build
+      run: |
+        ./configure \
+          --disable-dependency-tracking \
+          --enable-debug \
+          --enable-mem-debug \
+          --disable-sphinx \
+          --disable-mpi-fortran \
+          --disable-oshmem \
+          --with-pmix=$RUNNER_TEMP/pmixinstall \
+          --with-prrte=$RUNNER_TEMP/prteinstall \
+          --prefix=$RUNNER_TEMP/openmpi
+
+    - name: Build Open MPI
+      working-directory: mpi-build
+      run: |
+        make -j $(nproc) install
+
+    - name: Add Open MPI to PATH
+      run: echo $RUNNER_TEMP/openmpi/bin >> $GITHUB_PATH
+
+    - name: Tweak MPI default parameters
+      run:  |
+        # Tweak MPI
+        mca_params="$HOME/.openmpi/mca-params.conf"
+        mkdir -p "$(dirname "$mca_params")"
+        echo mpi_param_check = true >> "$mca_params"
+        echo mpi_show_handle_leaks = true >> "$mca_params"
+        mca_params="$HOME/.prte/mca-params.conf"
+        mkdir -p "$(dirname "$mca_params")"
+        echo rmaps_default_mapping_policy = :oversubscribe >> "$mca_params"
+
+    - name: Show MPI
+      run:  ompi_info
+
+    - name: Show MPICC
+      run:  mpicc -show
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3
+        architecture: x64
+
+    - name: Install Python packages (build)
+      run:  python -m pip install --upgrade
+              setuptools pip wheel
+
+    - name: Install Python packages (test)
+      run:  python -m pip install --upgrade
+              numpy cffi pyyaml
+
+    - name: Checkout mpi4py
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repository || 'mpi4py/mpi4py' }}
+        ref: ${{ inputs.ref }}
+
+    - name: Install mpi4py
+      run:  python -m pip install .
+      env:
+        CFLAGS: "-O0"
+
+    - name: Test mpi4py (singleton)
+      run:  python test/main.py -v
+      if:   ${{ true }}
+      timeout-minutes: 5
+    - name: Test mpi4py (np=1)
+      run:  mpiexec -n 1 python test/main.py -v
+      if:   ${{ true }}
+      timeout-minutes: 5
+    - name: Test mpi4py (np=2)
+      run:  mpiexec -n 2 python test/main.py -v -f
+      if:   ${{ true }}
+      timeout-minutes: 5
+    - name: Test mpi4py (np=3)
+      run:  mpiexec -n 3 python test/main.py -v -f
+      if:   ${{ true }}
+      timeout-minutes: 5
+    - name: Test mpi4py (np=4)
+      run:  mpiexec -n 4 python test/main.py -v -f
+      if:   ${{ true }}
+      timeout-minutes: 5
+    - name: Test mpi4py (np=5)
+      run:  mpiexec -n 5 python test/main.py -v -f
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: Test mpi4py.run
+      run:  python demo/test-run/test_run.py -v
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: Relocate Open MPI installation
+      run:  mv $RUNNER_TEMP/openmpi $RUNNER_TEMP/ompi
+
+    - name: Update PATH and set OPAL_PREFIX and LD_LIBRARY_PATH
+      run: |
+        sed -i "\|$RUNNER_TEMP/openmpi/bin|d" $GITHUB_PATH
+        echo OPAL_PREFIX=$RUNNER_TEMP/ompi >> $GITHUB_ENV
+        echo LD_LIBRARY_PATH=$RUNNER_TEMP/ompi/lib >> $GITHUB_ENV
+
+    - name: Test mpi4py (singleton)
+      run:  python test/main.py -v
+      if:   ${{ true }}
+      timeout-minutes: 5
