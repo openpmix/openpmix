@@ -4,6 +4,42 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.6 -- 06 Jan 2025
+--------------------
+.. warning:: This release contains a patch required for all
+             servers that enable tool connections. Minus
+             the patch, PMIx may over-aggressively cleanup
+             files from the temporary directory that it did
+             not create. The precise timing of the bug's
+             introduction to the release series is unclear.
+             Thus, all users are advised to update to this
+             version as soon as possible.
+
+Detailed changes include:
+ - PR #3479: Multiple commits
+    - Cleanup a segfault when the host refuses group construct support
+    - Update PRRTE CI to point at PRRTE v3.0 branch
+    - Add a --nogreek option to make tarball
+    - Repair the file removal code
+
+
+5.0.5 -- 15 Dec 2024
+--------------------
+Detailed changes include:
+ - PR #3469: Final update for release
+ - PR #3468: Remove remnants of unsupported capability
+ - PR #3467: Remove stale configure.m4 scripts
+ - PR #3465: Update NEWS and VERSION
+ - PR #3463: Remove prm framework as not currently implemented
+ - PR #3462: Remove unused components from various frameworks
+ - PR #3461: Remove pgpu framework
+ - PR #3460: Remove pstrg framework
+ - PR #3452: .gitignore: add configure~
+ - PR #3449: Multiple commits
+    - Retry fetch with wildcard rank
+    - Fix typo in shmem2 fetch
+
+
 5.0.4 -- 13 Nov 2024
 --------------------
 .. important:: This release represents the expected end of
@@ -18,40 +54,40 @@ Detailed changes include:
  - PR #3434: Collapse the pfexec framework
  - PR #3432: Update VERSION for release
  - PR #3430: Multiple commits
-   - Update NEWS to include v5.0 branch
-   - Drop the sphinx required level to match PRRTE
-   - Ensure IOF respects formatting requests
+    - Update NEWS to include v5.0 branch
+    - Drop the sphinx required level to match PRRTE
+    - Ensure IOF respects formatting requests
  - PR #3419: Add some missing attributes
  - PR #3417: Multiple commits
-   - Fix typo in equality check
-   - Fix delayed get
-   - avoid warn-as-error for variable init
-   - Add support for libz-ng
+    - Fix typo in equality check
+    - Fix delayed get
+    - avoid warn-as-error for variable init
+    - Add support for libz-ng
  - PR #3408: Update pmix_portable_platform_real.h from upstream gasnet
  - PR #3404: Path must start with "src"
  - PR #3402: Remove unused yaml
  - PR #3400: add contrib/construct_event_strings.py to the dist tarball
  - PR #3397: Multiple commits
-   - Add missing files
-   - mca/pif: fix pmix_found_linux typo
-   - Add cross-version compatibility to docs
+    - Add missing files
+    - mca/pif: fix pmix_found_linux typo
+    - Add cross-version compatibility to docs
  - PR #3393: Multiple commits
-   - Add python directive
-   - Cleanup pfexec spawn operations
-   - Add missing function call
+    - Add python directive
+    - Cleanup pfexec spawn operations
+    - Add missing function call
  - PR #3387: Update OAC to latest HEAD
  - PR #3385: Correctly check MCA params
  - PR #3383: Protect against LTO optimizer
  - PR #3381: Read The Docs updates
  - PR #3379: Multiple commits
-   - Revert Sphinx requirements
-   - Warn against building tarball on MacOSX
-   - configure: fix regression that caused python to be mandatory to build
-   - configure: fix broken bashisms resulting in logic failure
-   - Update the requirements for Sphinx
+    - Revert Sphinx requirements
+    - Warn against building tarball on MacOSX
+    - configure: fix regression that caused python to be mandatory to build
+    - configure: fix broken bashisms resulting in logic failure
+    - Update the requirements for Sphinx
  - PR #3372: Multiple commits
-   - Update MLNX CI
-   - Apply prefix to copied version of the app array
+    - Update MLNX CI
+    - Apply prefix to copied version of the app array
 
 5.0.3 -- 8 Jul 2024
 -------------------
@@ -59,17 +95,17 @@ Detailed changes include:
  - PR #3369: Update NEWS and VERSION for release
  - PR #3366: Transfer results from partial success of lookup
  - PR #3363: Multiple commits
-   - Fix singletons
-   - Protect against NULL fields
+    - Fix singletons
+    - Protect against NULL fields
  - PR #3361: Remove unused function in shmem2
  - PR #3357: Github action: bring back MacOS builds
  - PR #3354: Multiple commits
-   - Don't strip quotes from cmd line entries
-   - Handle single character filenames
-   - Update tar format to tar-pax
-   - Perform some cleanup
-   - Include devel-check status in configure summary
-   - Turn off MacOS CI
+    - Don't strip quotes from cmd line entries
+    - Handle single character filenames
+    - Update tar format to tar-pax
+    - Perform some cleanup
+    - Include devel-check status in configure summary
+    - Turn off MacOS CI
  - PR #3334: Fix function declaration
  - PR #3332: Fixes for PR3329
 
