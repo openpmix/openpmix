@@ -14,7 +14,7 @@
 # major, minor, and release are generally combined in the form
 # <major>.<minor>.<release>.
 
-major=6
+major=7
 minor=0
 release=0
 
