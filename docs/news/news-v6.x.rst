@@ -23,5 +23,11 @@ series, in reverse chronological order.
                found in the :ref:`Group Construction <group-construction-label>`
                section of the documentation.
 
+               Note that proper execution of the various group construction
+               modes requires that the host provide the necessary backend
+               support. Please check with your host provider to ensure it
+               is available, or feel free to use the PMIx Reference
+               RunTime Environment (`PRRTE <https://github.com/openpmix/prrte/releases>`_) - you will require v4.0 or above.
+
 A full list of individual changes will not be provided here,
 but will commence with the v6.0.1 release.
