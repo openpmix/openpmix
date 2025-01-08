@@ -1,3 +1,5 @@
+.. _group-construction-label:
+
 Group Construction
 ==================
 
