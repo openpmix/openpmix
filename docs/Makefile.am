@@ -2,7 +2,7 @@
 # Copyright (c) 2022 Cisco Systems, Inc.  All rights reserved.
 #
 # Copyright (c) 2022-2023 Intel, Inc.  All rights reserved.
-# Copyright (c) 2023-2024 Nanook Consulting  All rights reserved.
+# Copyright (c) 2023-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -38,6 +38,12 @@ SPHINX_OPTS       ?= -W --keep-going -j auto
 # if you have any .txt files, list them here
 TEXT_SOURCE_FILES =
 
+
+# list source example files here
+CODE_SOURCE_FILES = \
+        $(srcdir)/how-things-work/sets_groups/*.c
+
+
 # list image files here
 IMAGE_SOURCE_FILES  = \
         $(srcdir)/images/*.png \
@@ -66,7 +72,9 @@ EXTRA_DIST         = \
         $(SPHINX_CONFIG) \
         $(TEXT_SOURCE_FILES) \
         $(IMAGE_SOURCE_FILES) \
-        $(RST_SOURCE_FILES)
+        $(RST_SOURCE_FILES) \
+        $(CODE_SOURCE_FILES)
+
 
 ###########################################################################
 
