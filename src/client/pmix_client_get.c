@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1150,7 +1150,7 @@ doget:
         pmix_output_verbose(2, pmix_client_globals.get_output,
                             "PMIx_Get key=%s for rank = %u, namespace = %s was not found - request was optional",
                             cb->key, cb->pname.rank, cb->pname.nspace);
-        cb->status = PMIX_ERR_NOT_FOUND;
+        cb->status = rc;
         goto done;
     }
 

@@ -1,0 +1,21 @@
+Resolving Peers and Nodes
+=========================
+
+PMIx provides two functions (``PMIx_Resolve_peers`` and ``PMIx_Resolve_nodes``) for discovering information about a given namespace. These are considered "convenience routines" as they are simple wrappers around basic PMIx APIs, desinged to simplify access to commonly requested queries. However, providing that simplification results in a corresponding loss of clarity in the interpretation of any returned error code. Understanding the return status from these functions therefore requires a little knowledge of the underlying implementation.
+
+The PMIx library is architected around the concept of organizing data by level - i.e., session-level information is collected in a corresponding session object, job-level information in a job object, etc. Both of the "resolve" functions address job-level information:
+
+* ``PMIx_Resolve_peers`` - return the array of processes within the specified namespace that are executing on a given node.
+* ``PMIx_Resolve_nodes`` - return a list of nodes hosting processes within the given namespace.
+
+Responding to either of these requests therefore begins by finding the job object corresponding to the provided namespace. There is no parameter by which one can specify a session within which the job should be found, so the APIs are restricted to searching within the current session (remember, namespaces are only required to be unique within a session). If the namespace cannot be found, then the API will return the ``PMIX_ERR_INVALID_NAMESPACE`` status.
+
+If the namespace is found, then the search progresses to the node level. The PMIx library stores a list of nodes assigned to a given namespace on the corresponding job object. Only nodes assigned to that namespace are on the list. Thus, the response for ``PMIx_Resolve_nodes`` is constructed by simply collecting the hostnames from the nodes on the job object's list. In the event that the namespace has not currently been assigned any nodes, then ``PMIX_SUCCESS`` will be returned (to indicate that the request was successfully executed) and a ``NULL`` will be returned in the `nodelist` argument.
+
+Likewise, ``PMIx_Resolve_peers`` scans the list of nodes attached to the job object to find the specified node. If that node isn't found on the list, then the specified node is not currently assigned to the given namespace. In this case, the internal "fetch" operation will return a "not found" status to indicate that the node was not found on the list, and the ``PMIx_Resolve_peers`` function shall interpret this appropriately by returning ``PMIX_SUCCESS`` to the caller, with the `procs` array argument set to ``NULL`` and the `nprocs` argument set to zero.
+
+Note that it is possible that the specified node is not known to this PMIx server (e.g., the host didn't include it in any provided information, or the caller made a simple typo in the nspace parameter). There currently is no way for the library to return an error status indicating this situation. It will be treated as in the preceding paragraph.
+
+Once the node has been found on the list, the next step of the procedure is to scan the node-level values for that node to find the ``PMIX_LOCAL_PEERS`` attribute. This is the value the function is actually attempting to return to the caller. If the host provided it, then the function will return ``PMIX_SUCCESS`` and an array of the process IDs will be returned to the caller. Note that the host may have indicated that the node has been assigned to the namespace, but no processes are currently mapped to it. In this case, the ``PMIX_LOCAL_PEERS`` attribute will have a ``NULL`` value, and so the process ID array will be ``NULL``.
+
+If the host failed to provide the ``PMIX_LOCAL_PEERS`` attribute, then the function will return ``PMIX_ERR_DATA_VALUE_NOT_FOUND`` to indicate that the local peer information was not provided. It is possible that the PMIx library could reconstruct the local peers from other provided data. For example, the host may have provided a map of the individual process locations and not bothered with the specific ``PMIX_LOCAL_PEERS`` attribute for each node. While this might be an interesting extension to the current support, it is not presently available.

@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1502,7 +1502,7 @@ PMIX_EXPORT pmix_status_t PMIx_Commit(void)
 PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_nspace_t nspace,
                                              pmix_proc_t **procs, size_t *nprocs)
 {
-    pmix_info_t info[2], *iptr;
+    pmix_info_t info[3];
     pmix_status_t rc;
     pmix_proc_t proc;
     pmix_value_t *val;
@@ -1510,6 +1510,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     pmix_proc_t *pa;
     size_t m, n, np, ninfo;
     pmix_namespace_t *ns;
+    const char *key;
 
     /* set default response */
     *procs = NULL;
@@ -1522,34 +1523,39 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     }
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
+    // restrict our search to already available info - do
+    // not allow the search to call up to the server. This
+    // avoids a threadlock situation
+    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, NULL, PMIX_BOOL);
+
     /* if I am a client and my server is earlier than v3.2.x, then
      * I need to look for this data under rank=PMIX_RANK_WILDCARD
      * with a key equal to the nodename */
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
         PMIX_PEER_IS_EARLIER(pmix_client_globals.myserver, 3, 1, 100)) {
         proc.rank = PMIX_RANK_WILDCARD;
-        iptr = NULL;
-        ninfo = 0;
+        key = nodename;
+        ninfo = 1;
     } else {
         proc.rank = PMIX_RANK_UNDEF;
-        PMIX_INFO_LOAD(&info[0], PMIX_NODE_INFO, NULL, PMIX_BOOL);
-        PMIX_INFO_LOAD(&info[1], PMIX_HOSTNAME, nodename, PMIX_STRING);
-        iptr = info;
-        ninfo = 2;
+        key = PMIX_LOCAL_PEERS;
+        PMIX_INFO_LOAD(&info[1], PMIX_NODE_INFO, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&info[2], PMIX_HOSTNAME, nodename, PMIX_STRING);
+        ninfo = 3;
     }
 
     if (0 == pmix_nslen(nspace)) {
-        rc = PMIX_ERR_NOT_FOUND;
+        rc = PMIX_ERR_DATA_VALUE_NOT_FOUND;
         np = 0;
         /* cycle across all known nspaces and aggregate the results */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
             PMIX_LOAD_NSPACE(proc.nspace, ns->nspace);
-            rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
+            rc = PMIx_Get(&proc, key, info, ninfo, &val);
             if (PMIX_SUCCESS != rc) {
                 if (PMIX_RANK_UNDEF == proc.rank) {
                     // try again with wildcard
                     proc.rank = PMIX_RANK_WILDCARD;
-                    rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
+                    rc = PMIx_Get(&proc, key, info, ninfo, &val);
                     if (PMIX_SUCCESS != rc) {
                         continue;
                     }
@@ -1560,7 +1566,6 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
 
             /* sanity check */
             if (NULL == val) {
-                rc = PMIX_ERR_NOT_FOUND;
                 continue;
             }
             if (PMIX_STRING != val->type) {
@@ -1631,23 +1636,48 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     /* get the list of local peers for this nspace and node */
     PMIX_LOAD_PROCID(&proc, nspace, PMIX_RANK_UNDEF);
 
-    rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
-    if (PMIX_SUCCESS != rc) {
-        if (PMIX_RANK_UNDEF == proc.rank) {
-            // try again with wildcard
-            proc.rank = PMIX_RANK_WILDCARD;
-            rc = PMIx_Get(&proc, PMIX_LOCAL_PEERS, iptr, ninfo, &val);
-            if (PMIX_SUCCESS != rc) {
-                goto done;
-            }
-        } else {
-            goto done;
+    rc = PMIx_Get(&proc, key, info, ninfo, &val);
+    if (PMIX_SUCCESS == rc) {
+        goto process;
+    }
+    if (PMIX_ERR_INVALID_NAMESPACE == rc) {
+        // this namespace is unknown
+        goto done;
+    }
+    if (PMIX_ERR_NOT_FOUND == rc) {
+        // found the namespace, but the node is
+        // not present on that namespace - the
+        // default response is correct
+        rc = PMIX_SUCCESS;
+        goto done;
+    }
+    if (PMIX_ERR_DATA_VALUE_NOT_FOUND == rc) {
+        // found the namespace and node, but the
+        // host did not provide the information
+        goto done;
+    }
+    // get here if we see a different error
+    if (PMIX_RANK_UNDEF == proc.rank) {
+        // try again with wildcard
+        proc.rank = PMIX_RANK_WILDCARD;
+        rc = PMIx_Get(&proc, key, info, ninfo, &val);
+        if (PMIX_SUCCESS == rc) {
+            goto process;
         }
+        if (PMIX_ERR_NOT_FOUND == rc) {
+            // found the namespace, but the node is
+            // not present on that namespace - the
+            // default response is correct
+            rc = PMIX_SUCCESS;
+        }
+        // couldn't find it
+        goto done;
     }
 
+process:
     /* sanity check */
     if (NULL == val) {
-        rc = PMIX_ERR_NOT_FOUND;
+        rc = PMIX_ERR_INVALID_VAL;
         goto done;
     }
     if (PMIX_STRING != val->type || NULL == val->data.string) {
@@ -1678,9 +1708,8 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     *nprocs = np;
 
 done:
-    if (NULL != iptr) {
-        PMIX_INFO_DESTRUCT(&info[0]);
-        PMIX_INFO_DESTRUCT(&info[1]);
+    for (n=0; n < ninfo; n++) {
+        PMIX_INFO_DESTRUCT(&info[n]);
     }
     return rc;
 }
