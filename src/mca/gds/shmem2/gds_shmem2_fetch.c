@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -224,10 +224,10 @@ fetch_nodeinfo(
     }
 
     if (NULL == nodeinfo) {
-        if (!found) {
-            // They didn't specify, so it is optional.
-            return PMIX_ERR_DATA_VALUE_NOT_FOUND;
-        }
+        // the node is not present in the job, which means
+        // there were no procs on that node - or the node
+        // is unknown, which would indicate an error in
+        // specifying it
         return PMIX_ERR_NOT_FOUND;
     }
     // If they want it all, give it to them.
@@ -259,7 +259,7 @@ fetch_nodeinfo(
     }
     // If we are here, then they want a specific key/value pair. So, scan the
     // info list of this node to find the key they want.
-    rc = PMIX_ERR_NOT_FOUND;
+    rc = PMIX_ERR_DATA_VALUE_NOT_FOUND;
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, nodeinfo->info, pmix_kval_t) {
         if (!PMIX_CHECK_KEY(kvi, key)) {
@@ -398,7 +398,8 @@ fetch_appinfo(
     rc = fetch_nodeinfo(
         key, job, app->nodeinfo, info, ninfo, kvs
     );
-    if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc) {
+    if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc &&
+        PMIX_ERR_NOT_FOUND != rc) {
         return rc;
     }
     // Scan the info list of this app to generate the results.
@@ -697,7 +698,9 @@ pmix_gds_shmem2_fetch(
             rc = fetch_nodeinfo(
                 key, job, job->smdata->nodeinfo, qualifiers, nqual, kvs
             );
-            if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
+            if (PMIX_SUCCESS != rc &&
+                PMIX_ERR_NOT_FOUND != rc &&
+                PMIX_RANK_WILDCARD == proc->rank) {
                 // Let hash deal with this one.
                 rc = PMIX_ERR_NOT_FOUND;
             }

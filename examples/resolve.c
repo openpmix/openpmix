@@ -379,13 +379,18 @@ int create_node_map(void)
             }
             pmix_proc_t * node_procs = NULL;
             size_t nnode_procs = 0;
-
             rc = PMIx_Resolve_peers(node, nspace,  &node_procs, &nnode_procs);
-            if (rc == PMIX_ERR_NOT_FOUND) {
+            if (rc == PMIX_ERR_INVALID_NAMESPACE) {
+                printf("[%s:%d] resolving peers: nspace %s is unknown\n",
+                        own_proc.nspace, own_proc.rank, nspace);
+            } else if (rc == PMIX_ERR_NOT_FOUND || NULL == node_procs) {
                 printf("[%s:%d] resolving peers: nspace %s has no procs on node %s\n",
                         own_proc.nspace, own_proc.rank, nspace, node);
             } else if (rc != PMIX_SUCCESS) {
                 CHECK_PMIX_ERR(rc, "PMIx_Resolve_peers", own_proc);
+            } else {
+                printf("[%s:%d] resolving peers: nspace %s has %lu procs on node %s\n",
+                        own_proc.nspace, own_proc.rank, nspace, nnode_procs, node);
             }
 
             if (nnode_procs > 0) {
