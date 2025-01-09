@@ -72,7 +72,8 @@ with the array of process IDs. However, the array does not need
 to be ordered - i.e., the order of IDs in the array does not need to
 be the same across leaders.
 
-An example of the collective method can be seen in the `group.c <https://github.com/openpmix/openpmix/blob/master/examples/group.c>`_ code from the PMIx library.
+An example of the collective method can be seen in the
+:ref:`group.c <group-example-label>` example taken from the PMIx library.
 
 Library responsibilities
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -148,7 +149,8 @@ belong to the final group - each of those processes will also call the group
 construct, but with a ``NULL`` process ID to indicate they are joining
 as "add members" and not leaders.
 
-An example of the bootstrap method can be seen in `group_bootstrap.c <https://github.com/openpmix/openpmix/blob/master/examples/group_bootstrap.c>`_ from the PMIx library.
+An example of the bootstrap method can be seen in the
+:ref:`group_bootstrap.c <group-bootstrap-example-label>` example taken from the PMIx library.
 
 
 Library responsibilities
@@ -204,7 +206,8 @@ any collective operation. Instead, it relies solely on the event notification
 subsystem (e.g., ``PMIx_Notify``) for its underlying execution.
 
 Applications wishing to utilize this method must first register two
-event handlers to receive (see the `asyncgroup.c <https://github.com/openpmix/openpmix/blob/master/examples/asyncgroup.c>`_ example from the PMIx library for details):
+event handlers to receive (see the :ref:`asyncgroup.c <group-async-example-label>`
+example from the PMIx library for details):
 
 * the ``PMIX_GROUP_INVITED`` event. This will be triggered in
   a process when someone calls ``PMIx_Group_invite`` and includes that
