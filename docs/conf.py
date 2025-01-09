@@ -129,6 +129,7 @@ if key in os.environ and os.environ[key] == 'True':
 # ones.
 import sphinx_rtd_theme
 extensions = ['recommonmark', "sphinx_rtd_theme"]
+pygments_style = 'sphinx'
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
