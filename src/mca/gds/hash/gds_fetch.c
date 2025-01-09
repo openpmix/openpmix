@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -276,10 +276,10 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
         nd = pmix_gds_hash_check_nodename(tgt, hostname);
     }
     if (NULL == nd) {
-        if (!found) {
-            /* they didn't specify, so it is optional */
-            return PMIX_ERR_DATA_VALUE_NOT_FOUND;
-        }
+        // the node is not present in the job, which means
+        // there were no procs on that node - or the node
+        // is unknown, which would indicate an error in
+        // specifying it
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -350,7 +350,7 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(const char *key, pmix_job_t *trk, pmi
     }
 
     /* scan the info list of this node to find the key they want */
-    rc = PMIX_ERR_NOT_FOUND;
+    rc = PMIX_ERR_DATA_VALUE_NOT_FOUND;
     PMIX_LIST_FOREACH (kp2, &nd->info, pmix_kval_t) {
         if (PMIX_CHECK_KEY(kp2, key)) {
             pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
@@ -463,7 +463,8 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(const char *key, pmix_job_t *trk, pmix
     /* see if they wanted to know something about a node that
      * is associated with this app */
     rc = pmix_gds_hash_fetch_nodeinfo(key, trk, &app->nodeinfo, info, ninfo, kvs);
-    if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc) {
+    if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc &&
+        PMIX_ERR_NOT_FOUND != rc) {
         return rc;
     }
 
@@ -633,7 +634,9 @@ pmix_status_t pmix_gds_hash_fetch(const pmix_proc_t *proc, pmix_scope_t scope, b
     if (!PMIX_RANK_IS_VALID(proc->rank)) {
         if (nodeinfo) {
             rc = pmix_gds_hash_fetch_nodeinfo(key, trk, &trk->nodeinfo, qualifiers, nqual, kvs);
-            if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
+            if (PMIX_SUCCESS != rc &&
+                PMIX_ERR_NOT_FOUND != rc &&
+                PMIX_RANK_WILDCARD == proc->rank) {
                 /* need to check internal as we might have an older peer */
                 ht = &trk->internal;
                 goto doover;
