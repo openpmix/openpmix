@@ -6,7 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -77,7 +77,8 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
-    if (PMIX_SUCCESS != results->status) {
+    if (PMIX_SUCCESS != results->status &&
+        PMIX_ERR_PARTIAL_SUCCESS != results->status) {
         goto complete;
     }
 
