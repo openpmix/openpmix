@@ -18,7 +18,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -547,6 +547,12 @@ return_error:
     if (PMIX_ERR_SILENT != ret) {
         pmix_show_help("help-pmix-runtime.txt", "pmix_init:startup:internal-failure", true, error,
                        ret);
+    }
+    if (NULL != flags.file) {
+        free(flags.file);
+    }
+    if (NULL != flags.directory) {
+        free(flags.directory);
     }
     return ret;
 }

@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -340,12 +340,12 @@ pmix_status_t pmix_hwloc_copy_topology(pmix_topology_t *dest, pmix_topology_t *s
     if (NULL == src->source || 0 != strncasecmp(src->source, "hwloc", 5)) {
         return PMIX_ERR_NOT_SUPPORTED;
     }
-    dest->source = strdup("hwloc");
 
     /* use the hwloc dup function */
     if (0 != hwloc_topology_dup((hwloc_topology_t *) &dest->topology, src->topology)) {
         return PMIX_ERROR;
     }
+    dest->source = strdup("hwloc");
 
     return PMIX_SUCCESS;
 }
