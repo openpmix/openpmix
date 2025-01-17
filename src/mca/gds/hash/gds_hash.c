@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -611,6 +611,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
                             kv.key = strdup(info[n].key);
                             kv.value = &info[n].value;
                             PMIX_BFROPS_PACK(rc, peer, reply, &kv, 1, PMIX_KVAL);
+                            PMIX_DESTRUCT(&kv);
                         }
                     }
                 }
