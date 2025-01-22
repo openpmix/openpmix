@@ -321,12 +321,16 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
             } while (retries < pmix_ptl_base.max_retries);
             /* otherwise, mark it as unreachable */
         }
+        pmix_show_help("help-ptl-base.txt", "file-not-found", true,
+                       filename, "could not be found");
         return PMIX_ERR_UNREACH;
     }
 
 process:
     fp = fopen(filename, "r");
     if (NULL == fp) {
+        pmix_show_help("help-ptl-base.txt", "file-not-found", true,
+                       filename, "could not be opened");
         return PMIX_ERR_UNREACH;
     }
     /* get the URI - might seem crazy, but there is actually
@@ -353,7 +357,8 @@ process:
         }
     }
     if (NULL == srvr) {
-        PMIX_ERROR_LOG(PMIX_ERR_FILE_READ_FAILURE);
+        pmix_show_help("help-ptl-base.txt", "file-not-found", true,
+                       filename, "could not be read");
         fclose(fp);
         return PMIX_ERR_UNREACH;
     }
