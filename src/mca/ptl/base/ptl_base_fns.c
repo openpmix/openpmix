@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -360,6 +360,7 @@ process:
         fclose(fp);
         tv.tv_sec = 0;
         tv.tv_usec = 10000; // use 0.01 sec as default
+        PMIX_CONSTRUCT_LOCK(&lock);
         pmix_event_evtimer_set(pmix_globals.evbase, &ev, timeout, &lock);
         PMIX_POST_OBJECT(&ev);
         pmix_event_evtimer_add(&ev, &tv);
