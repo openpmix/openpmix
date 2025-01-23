@@ -59,7 +59,7 @@ static pmix_status_t component_register(void)
 {
     pmix_mca_base_component_t *component = &pmix_mca_pmdl_ompi_component.super;
 
-    pmix_mca_pmdl_ompi_component.incparms = "OMPI_*";
+    pmix_mca_pmdl_ompi_component.incparms = "OMPI_*,OPAL_*";
     (void) pmix_mca_base_component_var_register(
         component, "include_envars",
         "Comma-delimited list of envars to harvest (\'*\' and \'?\' supported)",
