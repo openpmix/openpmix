@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -566,43 +566,33 @@ pmix_gds_shmem2_store_local_job_data_in_shmem2(
     pmix_kval_t *kvi;
     PMIX_LIST_FOREACH (kvi, job_data, pmix_kval_t) {
         PMIX_GDS_SHMEM2_VVOUT("%s: key=%s", __func__, kvi->key);
-        if (PMIX_DATA_ARRAY == kvi->value->type) {
-            // We support the following data array keys.
-            if (PMIX_CHECK_KEY(kvi, PMIX_APP_INFO_ARRAY)) {
-                rc = store_app_array(job, kvi->value);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
+        // We support the following data array keys.
+        if (PMIX_CHECK_KEY(kvi, PMIX_APP_INFO_ARRAY)) {
+            rc = store_app_array(job, kvi->value);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
             }
-            else if (PMIX_CHECK_KEY(kvi, PMIX_NODE_INFO_ARRAY)) {
-                rc = store_node_array(
-                    kvi->value, job->smdata->nodeinfo
-                );
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
+        }
+        else if (PMIX_CHECK_KEY(kvi, PMIX_NODE_INFO_ARRAY)) {
+            rc = store_node_array(
+                kvi->value, job->smdata->nodeinfo
+            );
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
             }
-            else if (PMIX_CHECK_KEY(kvi, PMIX_PROC_INFO_ARRAY)) {
-                rc = store_proc_data(job, kvi);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
+        }
+        else if (PMIX_CHECK_KEY(kvi, PMIX_PROC_INFO_ARRAY)) {
+            rc = store_proc_data(job, kvi);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
+                PMIX_ERROR_LOG(rc);
+                break;
             }
-            else if (PMIX_CHECK_KEY(kvi, PMIX_SESSION_INFO_ARRAY)) {
-                rc = store_session_array(job, kvi->value);
-                if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                    PMIX_ERROR_LOG(rc);
-                    break;
-                }
-            }
-            else {
-                PMIX_GDS_SHMEM2_VVOUT(
-                    "%s: ERROR unsupported array type=%s", __func__, kvi->key
-                );
-                rc = PMIX_ERR_NOT_SUPPORTED;
+        }
+        else if (PMIX_CHECK_KEY(kvi, PMIX_SESSION_INFO_ARRAY)) {
+            rc = store_session_array(job, kvi->value);
+            if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 break;
             }
