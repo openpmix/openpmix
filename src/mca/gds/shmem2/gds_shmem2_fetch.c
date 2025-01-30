@@ -788,7 +788,11 @@ doover:
             rc = PMIX_ERR_NOT_FOUND;
         }
     }
-
+    if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+        // there is no need to check other scopes for
+        // reserved keys - they are always on "internal"
+        return rc;
+    }
     if (PMIX_SUCCESS == rc) {
         if (PMIX_GLOBAL == scope) {
             if (ht == local_ht) {
@@ -809,9 +813,49 @@ doover:
     }
 
     if (0 == pmix_list_get_size(kvs)) {
-        // If we didn't find it and the rank was
-        // valid, then let hash deal with it.
-        rc = PMIX_ERR_NOT_FOUND;
+        /* if we didn't find it and the rank was valid, then
+         * check to see if the data exists in a different scope.
+         * This is done to avoid having the process go into a
+         * timeout wait when the data will never appear within
+         * the specified scope */
+        if (PMIX_RANK_IS_VALID(proc->rank)) {
+            pmix_kval_t *kv;
+            if (PMIX_LOCAL == scope) {
+                if (NULL != remote_ht) {
+                    /* check the remote scope */
+                    rc = pmix_hash_fetch(remote_ht, proc->rank, key, qualifiers, nqual, kvs, NULL);
+                    if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
+                        while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
+                            PMIX_RELEASE(kv);
+                        }
+                        rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
+                    } else {
+                        rc = PMIX_ERR_NOT_FOUND;
+                    }
+                } else {
+                    rc = PMIX_ERR_NOT_FOUND;
+                }
+            } else if (PMIX_REMOTE == scope) {
+                /* check the local scope */
+                rc = pmix_hash_fetch(local_ht, proc->rank, key, qualifiers, nqual, kvs, NULL);
+                if (PMIX_SUCCESS == rc || 0 < pmix_list_get_size(kvs)) {
+                    while (NULL != (kv = (pmix_kval_t *) pmix_list_remove_first(kvs))) {
+                        PMIX_RELEASE(kv);
+                    }
+                    rc = PMIX_ERR_EXISTS_OUTSIDE_SCOPE;
+                } else {
+                    rc = PMIX_ERR_NOT_FOUND;
+                }
+            }
+        } else {
+            rc = PMIX_ERR_NOT_FOUND;
+        }
+    } else {
+        // since we found something, the fetch is a success.
+        // We need to set the status here because the fetch on the
+        // last scope we tried might not have succeeded, but
+        // we found things in an earlier scope we tried
+        rc = PMIX_SUCCESS;
     }
     return rc;
 }
