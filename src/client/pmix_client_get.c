@@ -1093,7 +1093,7 @@ doget:
     /* we didn't find the data in either the server or the internal hash
      * components. If this is a NULL or reserved key, then we do NOT go
      * up to the server unless special circumstances require it */
-    if (NULL == cb->key || PMIX_CHECK_RESERVED_KEY(cb->key)) {
+    if (NULL == cb->key) {
         /* if the server is pre-v3.2, or we are asking about the
          * job-level info from another namespace, then we have to
          * request the data */
@@ -1101,18 +1101,18 @@ doget:
             !PMIX_CHECK_NSPACE(lg->p.nspace, pmix_globals.myid.nspace)) {
             /* flag that we want all of the job-level info */
             proc.rank = PMIX_RANK_WILDCARD;
-        } else if (NULL != cb->key) {
-            /* this is a reserved key - we should have had this info, but
-             * it is possible that some system don't provide it, thereby
-             * causing the app to manually distribute it. We will therefore
-             * request it from the server, but do so under the "immediate"
-             * use-case, adding that flag if they didn't already include it
-             */
-            pmix_output_verbose(5, pmix_client_globals.get_output,
-                                "pmix:client reserved key not locally found");
-            if (!lg->immediate) {
-                lg->add_immediate = true;
-            }
+        }
+    } else if (PMIX_CHECK_RESERVED_KEY(cb->key)) {
+        /* this is a reserved key - we should have had this info, but
+         * it is possible that some system don't provide it, thereby
+         * causing the app to manually distribute it. We will therefore
+         * request it from the server, but do so under the "immediate"
+         * use-case, adding that flag if they didn't already include it
+         */
+        pmix_output_verbose(5, pmix_client_globals.get_output,
+                            "pmix:client reserved key not locally found");
+        if (!lg->immediate) {
+            lg->add_immediate = true;
         }
     }
 

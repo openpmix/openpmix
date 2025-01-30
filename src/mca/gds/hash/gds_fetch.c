@@ -709,6 +709,11 @@ doover:
     } else {
         rc = pmix_hash_fetch(ht, proc->rank, key, qualifiers, nqual, kvs, NULL);
     }
+    if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+        // there is no need to check other scopes for
+        // reserved keys - they are always on "internal"
+        return rc;
+    }
     if (PMIX_SUCCESS == rc) {
         if (PMIX_GLOBAL == scope) {
             if (ht == &trk->local) {
@@ -767,6 +772,12 @@ doover:
         } else {
             rc = PMIX_ERR_NOT_FOUND;
         }
+    } else {
+        // since we found something, the fetch is a success.
+        // We need to set the status here because the fetch on the
+        // last scope we tried might not have succeeded, but
+        // we found things in an earlier scope we tried
+        rc = PMIX_SUCCESS;
     }
 
     return rc;
