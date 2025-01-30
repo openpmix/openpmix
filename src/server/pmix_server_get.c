@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -479,10 +479,14 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
         cb.proc = &proc;
         if (scope_given) {
             cb.scope = scope;
-        } else if (local) {
-            cb.scope = PMIX_LOCAL;
         } else {
-            cb.scope = PMIX_REMOTE;
+            if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+                cb.scope = PMIX_INTERNAL;
+            } else if (local) {
+                cb.scope = PMIX_LOCAL;
+            } else {
+                cb.scope = PMIX_REMOTE;
+            }
         }
         cb.copy = false;
         cb.info = cd->info;
