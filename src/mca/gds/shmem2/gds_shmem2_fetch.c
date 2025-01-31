@@ -700,7 +700,8 @@ pmix_gds_shmem2_fetch(
             );
             if (PMIX_SUCCESS != rc &&
                 PMIX_ERR_NOT_FOUND != rc &&
-                PMIX_RANK_WILDCARD == proc->rank) {
+                (PMIX_RANK_WILDCARD == proc->rank ||
+                 PMIX_RANK_UNDEF == proc->rank)) {
                 // Let hash deal with this one.
                 rc = PMIX_ERR_NOT_FOUND;
             }
