@@ -46,7 +46,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -638,6 +638,14 @@ typedef uint32_t pmix_rank_t;
                                                                     //         may optionally specify the session using
                                                                     //         the PMIX_SESSION_ID attribute - default
                                                                     //         is the session of the requestor
+#define PMIX_QUERY_RESOLVE_PEERS            "pmix.qry.peers"        // (pmix_data_array_t*) Return an array of pmix_proc_t containing the process IDs
+                                                                    //         of procs from the given nspace that are executing on the specified node.
+                                                                    //         Effectively asking the host respond to a PMIx_Resolve_peers request on the
+                                                                    //         caller's behalf
+#define PMIX_QUERY_RESOLVE_NODE             "pmix.qry.node"         // (char*) Return a comma-delimited string of nodes where procs from the specified
+                                                                    //         nspace have been placed (may or may not be executing at the time of request).
+                                                                    //         Effectively asking the host respond to a PMIx_Resolve_node request on the
+                                                                    //         caller's behalf
 
 
 /* query qualifiers - these are used to provide information to narrow/modify the query. Value type shown is the type of data expected

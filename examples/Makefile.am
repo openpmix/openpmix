@@ -27,7 +27,7 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
-                  client3 launcher resolve toolqry
+                  client3 launcher resolve toolqry simple_resolve
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -145,9 +145,14 @@ toolqry_SOURCES = toolqry.c examples.h
 toolqry_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 toolqry_LDADD = $(top_builddir)/src/libpmix.la
 
+simple_resolve_SOURCES = simple_resolve.c examples.h
+simple_resolve_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simple_resolve_LDADD = $(top_builddir)/src/libpmix.la
+
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
         debugger debuggerd dmodex dynamic fault group \
         hello jctrl launcher log pub pubi server tool \
         abi_no_init abi_with_init group_lcl_cid pset \
-        async_group group_dmodex client3 resolve toolqry
+        async_group group_dmodex client3 resolve toolqry \
+        simple_resolve

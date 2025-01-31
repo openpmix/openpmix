@@ -104,6 +104,7 @@ examples/nodeinfo
 examples/pset
 examples/resolve
 examples/toolqry
+examples/simple_resolve
 
 include/pmix_version.h
 include/pmix_rename.h

@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -36,7 +36,7 @@ pmix_gds_shmem2_get_job_tracker(
     // If we didn't find the requested target and we aren't asked
     // to create a new one, then the request cannot be fulfilled.
     if (!ijob && !create) {
-        rc = PMIX_ERR_NOT_FOUND;
+        rc = PMIX_ERR_INVALID_NAMESPACE;
         goto out;
     }
     // Create one if not found and asked to create one.
