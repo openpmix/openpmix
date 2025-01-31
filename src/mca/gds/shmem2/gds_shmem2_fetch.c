@@ -697,7 +697,10 @@ pmix_gds_shmem2_fetch(
             rc = fetch_nodeinfo(
                 key, job, job->smdata->nodeinfo, qualifiers, nqual, kvs
             );
-            if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
+            if (PMIX_SUCCESS != rc &&
+                PMIX_ERR_NOT_FOUND != rc &&
+                (PMIX_RANK_WILDCARD == proc->rank ||
+                 PMIX_RANK_UNDEF == proc->rank)) {
                 // Let hash deal with this one.
                 rc = PMIX_ERR_NOT_FOUND;
             }

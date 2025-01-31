@@ -1,3 +1,14 @@
+/*
+ * Copyright (c) 2025      Nanook Consulting  All rights reserved.
+ * $COPYRIGHT$
+ *
+ * Additional copyrights may follow
+ *
+ * $HEADER$
+ *
+ */
+
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <libgen.h>
 

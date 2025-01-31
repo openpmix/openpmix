@@ -4,6 +4,7 @@
 # Copyright (c) 2014      Artem Y. Polyakov <artpol84@gmail.com>.
 #                         All rights reserved.
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2024-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -19,4 +20,9 @@ headers += \
 sources += \
         server/pmix_server.c \
         server/pmix_server_ops.c \
-        server/pmix_server_get.c
+        server/pmix_server_get.c \
+        server/pmix_server_group.c \
+        server/pmix_server_fence.c \
+        server/pmix_server_connect.c
+        server/pmix_server_get.c \
+        server/pmix_server_resolve.c

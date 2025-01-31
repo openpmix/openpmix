@@ -4840,6 +4840,22 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
         return rc;
     }
 
+    if (PMIX_RESOLVE_PEERS_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_resolve_peers(cd, buf))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
+    if (PMIX_RESOLVE_NODE_CMD == cmd) {
+        PMIX_GDS_CADDY(cd, peer, tag);
+        if (PMIX_SUCCESS != (rc = pmix_server_resolve_node(cd, buf))) {
+            PMIX_RELEASE(cd);
+        }
+        return rc;
+    }
+
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
