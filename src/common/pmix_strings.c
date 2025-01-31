@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -292,6 +292,10 @@ PMIX_EXPORT const char *pmix_command_string(pmix_cmd_t cmd)
         return "SESSION CONTROL";
     case PMIX_REQ_SYSINFO_CMD:
         return "REQUEST SYSTEM INFO";
+    case PMIX_RESOLVE_PEERS_CMD:
+        return "RESOLVE PEERS";
+    case PMIX_RESOLVE_NODE_CMD:
+        return "RESOLVE NODE";
     default:
         return "UNKNOWN";
     }
