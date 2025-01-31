@@ -375,6 +375,13 @@ PMIX_EXPORT pmix_status_t pmix_server_session_ctrl(pmix_server_caddy_t *cd,
                                                    pmix_buffer_t *buf,
                                                    pmix_info_cbfunc_t cbfunc);
 
+PMIX_EXPORT pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
+                                                    pmix_buffer_t *buf);
+
+PMIX_EXPORT pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
+                                                   pmix_buffer_t *buf);
+
+
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;
 

@@ -15,7 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -243,6 +243,9 @@ typedef uint8_t pmix_cmd_t;
 #define PMIX_RESBLK_CMD                   34
 #define PMIX_SESSION_CTRL_CMD             35
 #define PMIX_REQ_SYSINFO_CMD              36
+#define PMIX_RESOLVE_PEERS_CMD            37
+#define PMIX_RESOLVE_NODE_CMD             38
+
 
 /* provide a "pretty-print" function for cmds */
 const char *pmix_command_string(pmix_cmd_t cmd);
