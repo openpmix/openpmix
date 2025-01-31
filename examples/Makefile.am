@@ -28,7 +28,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
                   group_bootstrap client3 launcher spawn_group resolve multi_nspace_group \
-                  pub2 toolqry
+                  pub2 toolqry simple_resolve
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -161,6 +161,10 @@ pub2_LDADD = $(top_builddir)/src/libpmix.la
 toolqry_SOURCES = toolqry.c examples.h
 toolqry_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 toolqry_LDADD = $(top_builddir)/src/libpmix.la
+
+simple_resolve_SOURCES = simple_resolve.c examples.h
+simple_resolve_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simple_resolve_LDADD = $(top_builddir)/src/libpmix.la
 
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
