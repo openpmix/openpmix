@@ -103,6 +103,7 @@ examples/group_lcl_cid
 examples/nodeinfo
 examples/pset
 examples/resolve
+examples/toolqry
 
 include/pmix_version.h
 include/pmix_rename.h

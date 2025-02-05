@@ -47,3 +47,11 @@ jobs:
          prte --daemonize --no-ready-msg
          prun -n 4 ./examples/hello
          pterm
+    - name: Run tool check
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prte --system-server --daemonize --no-ready-msg
+         prun -n 1 --system-server sleep 10000 &
+         ./examples/toolqry --system-server
+         pterm --system-server
