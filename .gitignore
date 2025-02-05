@@ -107,6 +107,7 @@ examples/spawn_group
 examples/resolve
 examples/multi_nspace_group
 examples/pub2
+examples/toolqry
 
 include/pmix_version.h
 include/pmix_rename.h

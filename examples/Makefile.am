@@ -12,7 +12,7 @@
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      IBM Corporation. All rights reserved.
 # $COPYRIGHT$
 #
@@ -28,7 +28,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
                   group_bootstrap client3 launcher spawn_group resolve multi_nspace_group \
-                  pub2
+                  pub2 toolqry
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -158,6 +158,9 @@ pub2_SOURCES = pub2.c examples.h
 pub2_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 pub2_LDADD = $(top_builddir)/src/libpmix.la
 
+toolqry_SOURCES = toolqry.c examples.h
+toolqry_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+toolqry_LDADD = $(top_builddir)/src/libpmix.la
 
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
@@ -165,4 +168,4 @@ distclean-local:
         hello jctrl launcher log pub pubi server tool \
         abi_no_init abi_with_init group_lcl_cid pset \
         async_group group_dmodex group_bootstrap client3 \
-        spawn_group resolve multi_nspace_group pub2
+        spawn_group resolve multi_nspace_group pub2 toolqry
