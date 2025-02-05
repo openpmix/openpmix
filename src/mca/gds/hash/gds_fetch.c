@@ -709,12 +709,12 @@ doover:
     } else {
         rc = pmix_hash_fetch(ht, proc->rank, key, qualifiers, nqual, kvs, NULL);
     }
-    if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
-        // there is no need to check other scopes for
-        // reserved keys - they are always on "internal"
-        return rc;
-    }
     if (PMIX_SUCCESS == rc) {
+        if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
+            // there is no need to check other scopes for
+            // reserved keys
+            return PMIX_SUCCESS;
+        }
         if (PMIX_GLOBAL == scope) {
             if (ht == &trk->local) {
                 /* need to do this again for the remote data */
@@ -723,7 +723,7 @@ doover:
             } else if (ht == &trk->internal) {
                 /* check local */
                 ht = &trk->local;
-                goto doover;
+               goto doover;
             }
         }
     } else {
