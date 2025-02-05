@@ -1,0 +1,72 @@
+name: GROUP
+
+on: [pull_request]
+
+jobs:
+  group-testsuite:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y --no-install-recommends wget software-properties-common hwloc libhwloc-dev libevent-2.1-7 libevent-dev
+    - name: Git clone PMIx
+      uses: actions/checkout@v3
+      with:
+            submodules: recursive
+    - name: Build PMIx
+      run: |
+        ./autogen.pl
+        ./configure --prefix=$RUNNER_TEMP/pmixinstall
+        make -j
+        make install
+    - name: Git clone PRRTE
+      uses: actions/checkout@v3
+      with:
+            submodules: recursive
+            repository: openpmix/prrte
+            path: prrte/master
+            ref: master
+    - name: Build PRRTE
+      run: |
+        cd prrte/master
+        ./autogen.pl
+        ./configure --prefix=$RUNNER_TEMP/prteinstall --with-pmix=$RUNNER_TEMP/pmixinstall
+        make -j
+        make install
+    - name: Tweak PRRTE
+      run:  |
+         # Tweak PRRTE
+         mca_params="$HOME/.prte/mca-params.conf"
+         mkdir -p "$(dirname "$mca_params")"
+         echo rmaps_default_mapping_policy = :oversubscribe >> "$mca_params"
+    - name: Run simple group
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prterun -n 4 ./examples/group >& /dev/null
+    - name: Run simple group with query
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prterun -n 4 ./examples/group --test-query >& /dev/null
+    - name: Run local CID group
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prterun -n 4 ./examples/group_lcl_cid >& /dev/null
+    - name: Run async group
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prterun -n 4 ./examples/asyncgroup >& /dev/null
+    - name: Run group dmodex
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prterun -n 4 ./examples/group_dmodex >& /dev/null
+    - name: Run spawn group
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prterun -n 2 ./examples/multi_nspace_group >& /dev/null
