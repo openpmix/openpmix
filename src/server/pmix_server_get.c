@@ -481,7 +481,7 @@ pmix_status_t pmix_server_get(pmix_buffer_t *buf, pmix_modex_cbfunc_t cbfunc, vo
             cb.scope = scope;
         } else {
             if (NULL != key && PMIX_CHECK_RESERVED_KEY(key)) {
-                cb.scope = PMIX_INTERNAL;
+                cb.scope = PMIX_SCOPE_UNDEF;
             } else if (local) {
                 cb.scope = PMIX_LOCAL;
             } else {
