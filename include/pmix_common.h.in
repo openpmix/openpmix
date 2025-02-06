@@ -46,7 +46,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -940,6 +940,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        do not terminate the allocation upon termination of the parent.
 #define PMIX_MEM_ALLOC_KIND                 "pmix.alloc.mkind"      // (char*) Comma-delimited list of memory kinds
                                                                     //         being allocated (e.g., system,mpi,rocm:device)
+#define PMIX_GPU_SUPPORT                    "pmix.gpu.support"      // (bool) Direct application to either enable (true) or
+                                                                    //        disable (false) its internal library's GPU support
 
 
 /* job control attributes */
