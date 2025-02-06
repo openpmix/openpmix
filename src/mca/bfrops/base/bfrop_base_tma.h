@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
@@ -596,10 +596,16 @@ pmix_boolean_t pmix_bfrops_base_tma_value_true(const pmix_value_t *value,
                 return PMIX_BOOL_TRUE;
             }
         } else if (0 == strncasecmp(ptr, "yes", 3) ||
-                   0 == strncasecmp(ptr, "true", 4)) {
+                   0 == strncasecmp(ptr, "true", 4) ||
+                   0 == strcasecmp(ptr, "y") ||
+                   0 == strcasecmp(ptr, "t") ||
+                   0 == strncasecmp(ptr, "enable", 6)) {
             return PMIX_BOOL_TRUE;
         } else if (0 == strncasecmp(ptr, "no", 2) ||
-                   0 == strncasecmp(ptr, "false", 5)) {
+                   0 == strncasecmp(ptr, "false", 5) ||
+                   0 == strcasecmp(ptr, "n") ||
+                   0 == strcasecmp(ptr, "f") ||
+                   0 == strncasecmp(ptr, "disable", 7)) {
             return PMIX_BOOL_FALSE;
         }
     }
