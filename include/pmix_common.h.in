@@ -948,6 +948,8 @@ typedef uint32_t pmix_rank_t;
                                                                     //        do not terminate the allocation upon termination of the parent.
 #define PMIX_MEM_ALLOC_KIND                 "pmix.alloc.mkind"      // (char*) Comma-delimited list of memory kinds
                                                                     //         being allocated (e.g., system,mpi,rocm:device)
+#define PMIX_GPU_SUPPORT                    "pmix.gpu.support"      // (bool) Direct application to either enable (true) or
+                                                                    //        disable (false) its internal library's GPU support
 
 
 /* job control attributes */
