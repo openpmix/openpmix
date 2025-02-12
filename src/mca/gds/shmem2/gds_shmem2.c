@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2022-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -2053,7 +2053,9 @@ unpack_srv_kindx_info(
             // size of the server's dictionary
             assert(kv.value->type == PMIX_UINT32);
             tabsize = kv.value->data.uint32;
-            tmpsrvdict = calloc(tabsize, sizeof(*tmpsrvdict));
+            if (NULL == tmpsrvdict) {
+                tmpsrvdict = calloc(tabsize, sizeof(*tmpsrvdict));
+            }
             if (NULL == tmpsrvdict) {
                 rc = PMIX_ERR_NOMEM;
                 PMIX_ERROR_LOG(rc);
