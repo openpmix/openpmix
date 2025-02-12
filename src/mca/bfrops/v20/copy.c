@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1382,12 +1382,16 @@ pmix_status_t pmix20_bfrop_copy_darray(pmix_data_array_t **dest, pmix_data_array
             if (NULL != sk[n].value) {
                 PMIX_VALUE_CREATE(pk[n].value, 1);
                 if (NULL == pk[n].value) {
-                    PMIX_VALUE_FREE(pk[n].value, 1);
+                    for (m=0; m < n; m++) {
+                        PMIX_DESTRUCT(&pk[m]);
+                    }
                     free(p);
                     return PMIX_ERR_NOMEM;
                 }
                 if (PMIX_SUCCESS != (rc = pmix20_bfrop_value_xfer(pk[n].value, sk[n].value))) {
-                    PMIX_VALUE_FREE(pk[n].value, 1);
+                    for (m=0; m < n; m++) {
+                        PMIX_DESTRUCT(&pk[m]);
+                    }
                     free(p);
                     return rc;
                 }

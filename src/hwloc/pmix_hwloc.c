@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -159,8 +159,7 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
     pmix_kval_t kv, *kptr;
     pmix_value_t val;
     bool share = false;
-    bool found_dep = false;
-    bool found_new = false;
+    bool found = false;
     pmix_topology_t *topo;
     char *file;
     pmix_status_t rc;
@@ -179,21 +178,26 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
         if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SHARE_TOPOLOGY)) {
             share = PMIX_INFO_TRUE(&info[n]);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY2)) {
-            if (found_dep) {
-                /* must have come from PMIX_TOPOLOGY entry */
+            if (found) {
+                continue;
+            }
+            /* prefer this option */
+            if (NULL != pmix_globals.topology.source) {
                 free(pmix_globals.topology.source);
             }
             topo = info[n].value.data.topo;
             pmix_globals.topology.source = strdup(topo->source);
             pmix_globals.topology.topology = topo->topology;
             pmix_globals.external_topology = true;
-            found_new = true;
+            found = true;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY)) {
-            if (!found_new) { // prefer PMIX_TOPOLOGY2
+            if (!found) { // prefer PMIX_TOPOLOGY2
+                if (NULL != pmix_globals.topology.source) {
+                    free(pmix_globals.topology.source);
+                }
                 pmix_globals.topology.source = strdup("hwloc"); // we cannot know the version they used
                 pmix_globals.topology.topology = (hwloc_topology_t) info[n].value.data.ptr;
                 pmix_globals.external_topology = true;
-                found_dep = true;
             }
         }
     }
@@ -406,6 +410,9 @@ tryself:
             return PMIX_ERROR;
         }
         /* we don't know the version */
+        if (NULL != pmix_globals.topology.source) {
+            free(pmix_globals.topology.source);
+        }
         pmix_globals.topology.source = strdup("hwloc");
     } else {
         pmix_output_verbose(2, pmix_hwloc_output, "%s:%s doing discovery",
