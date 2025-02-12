@@ -7,7 +7,7 @@
  * Copyright (c) 2018-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -135,6 +135,10 @@ pmix_status_t pmix_gds_base_store_modex(pmix_buffer_t *buff,
             cnt = 1;
             PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &compressed, &cnt, PMIX_BOOL);
             if (PMIX_SUCCESS != rc) {
+                if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+                    // just indicates we reached the end, so silently break
+                    break;
+                }
                 PMIX_ERROR_LOG(rc);
                 goto exit;
             }
