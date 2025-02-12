@@ -16,7 +16,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -1031,7 +1031,6 @@ static int fixup_files(char **file_list, char *path, bool rel_path_search, char 
         pmix_argv_append(&argc, &argv, tmp_file);
 
         free(tmp_file);
-        tmp_file = NULL;
     }
 
     if (PMIX_SUCCESS == exit_status) {
