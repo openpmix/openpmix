@@ -52,13 +52,16 @@ static void cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *
 {
     mylock_t *lock = (mylock_t *) cbdata;
     size_t n;
+    char *tmp;
 
     lock->status = status;
 
     fprintf(stderr, "Query returned %d values status %s\n", (int) ninfo, PMIx_Error_string(status));
     /* print out the returned keys and pmix_info_t structs */
     for (n = 0; n < ninfo; n++) {
-        fprintf(stderr, "%s\n", PMIx_Info_string(&info[n]));
+        tmp = PMIx_Info_string(&info[n]);
+        fprintf(stderr, "%s\n", tmp);
+        free(tmp);
     }
 
     /* let the library release the data and cleanup from
@@ -148,7 +151,10 @@ int main(int argc, char **argv)
 
 done:
     /* finalize us */
-    PMIx_Finalize(NULL, 0);
+    rc = PMIx_Finalize(NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "Finalize failed: %s\n", PMIx_Error_string(rc));
+    }
     fflush(stderr);
     return (rc);
 }
