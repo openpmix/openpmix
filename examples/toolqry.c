@@ -43,7 +43,7 @@ int main(int argc, char **argv)
 	char *toolname;
     pmix_query_t *query;
     myquery_data_t mydata;
-    size_t nq, n, ninfo;
+    size_t nq, ninfo;
     pmix_data_array_t *darray, *dptr;
     int i;
     bool system_server;
@@ -59,7 +59,11 @@ int main(int argc, char **argv)
     ninfo = 2;
     gethostname(hostname, sizeof(hostname));
     toolname = basename(argv[0]);
-    asprintf(&kptr, "%s.%s.%lu", toolname, hostname, (unsigned long)getpid());
+    rc = asprintf(&kptr, "%s.%s.%lu", toolname, hostname, (unsigned long)getpid());
+    if (0 > rc) {
+        fprintf(stderr, "Failed to create name\n");
+        exit(1);
+    }
     PMIX_INFO_LOAD(&info[0], PMIX_TOOL_NSPACE, kptr, PMIX_STRING);
     free(kptr);
     PMIX_INFO_LOAD(&info[1], PMIX_TOOL_RANK, &rank, PMIX_PROC_RANK);
@@ -105,20 +109,17 @@ int main(int argc, char **argv)
                     rc = PMIX_ERROR;
                     goto done;
                 } else {
-                    for (n = 0; n < darray->size; n++) {
-                        dptr = ip[n].value.data.darray;
-                        if (NULL == dptr || 0 == dptr->size || NULL == dptr->array) {
-                            fprintf(stderr, "Error in array %s\n",
-                                    (NULL == dptr) ? "NULL" : "NON-NULL");
-                            rc = PMIX_ERROR;
-                            goto done;
-                        }
-                        iptr = (pmix_info_t *) dptr->array;
-                        // we just need the first result
-                        PMIX_LOAD_PROCID(&proc, iptr[0].value.data.string, 0);
-                        fprintf(stderr, "Received nspace %s\n", proc.nspace);
-                        break;
+                    dptr = ip[0].value.data.darray;
+                    if (NULL == dptr || 0 == dptr->size || NULL == dptr->array) {
+                        fprintf(stderr, "Error in array %s\n",
+                                (NULL == dptr) ? "NULL" : "NON-NULL");
+                        rc = PMIX_ERROR;
+                        goto done;
                     }
+                    iptr = (pmix_info_t *) dptr->array;
+                    // we just need the first result
+                    PMIX_LOAD_PROCID(&proc, iptr[0].value.data.string, 0);
+                    fprintf(stderr, "Received nspace %s\n", proc.nspace);
                 }
             }
         } else {
