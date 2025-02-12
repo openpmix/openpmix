@@ -633,6 +633,9 @@ done:
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
+        if (NULL != nodelist) {
+            free(nodelist);
+        }
         return rc;
     }
 
@@ -641,17 +644,20 @@ done:
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(msg);
+            if (NULL != nodelist) {
+                free(nodelist);
+            }
             return rc;
         }
+    }
+    if (NULL != nodelist) {
+        free(nodelist);
     }
 
     PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, msg);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
         return rc;
-    }
-    if (NULL != nodelist) {
-        free(nodelist);
     }
     return rc;
 }
