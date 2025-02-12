@@ -4,7 +4,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
@@ -62,15 +62,23 @@
  */
 pmix_status_t pmix_fd_read(int fd, int len, void *buffer)
 {
-    int rc;
+    size_t l2;
+    ssize_t rc;
     char *b = buffer;
 
-    while (len > 0) {
-        rc = read(fd, b, len);
+    if (0 > len) {
+        return PMIX_ERR_BAD_PARAM;
+    } else if (0 == len) {
+        return PMIX_SUCCESS;
+    }
+
+    l2 = len;
+    while (l2 > 0) {
+        rc = read(fd, b, l2);
         if (rc < 0 && (EAGAIN == errno || EINTR == errno)) {
             continue;
         } else if (rc > 0) {
-            len -= rc;
+            l2 -= rc;
             b += rc;
         } else if (0 == rc) {
             return PMIX_ERR_TIMEOUT;
@@ -86,15 +94,23 @@ pmix_status_t pmix_fd_read(int fd, int len, void *buffer)
  */
 pmix_status_t pmix_fd_write(int fd, int len, const void *buffer)
 {
-    int rc;
+    size_t l2;
+    ssize_t rc;
     const char *b = buffer;
 
-    while (len > 0) {
-        rc = write(fd, b, len);
+    if (0 > len) {
+        return PMIX_ERR_BAD_PARAM;
+    } else if (0 == len) {
+        return PMIX_SUCCESS;
+    }
+
+    l2 = len;
+    while (l2 > 0) {
+        rc = write(fd, b, l2);
         if (rc < 0 && (EAGAIN == errno || EINTR == errno)) {
             continue;
         } else if (rc > 0) {
-            len -= rc;
+            l2 -= rc;
             b += rc;
         } else {
             return PMIX_ERR_IN_ERRNO;
