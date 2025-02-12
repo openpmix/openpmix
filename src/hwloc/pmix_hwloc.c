@@ -198,6 +198,9 @@ pmix_status_t pmix_hwloc_setup_topology(pmix_info_t *info, size_t ninfo)
             found_new = true;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY)) {
             if (!found_new) { // prefer PMIX_TOPOLOGY2
+                if (NULL != pmix_globals.topology.source) {
+                    free(pmix_globals.topology.source);
+                }
                 pmix_globals.topology.source = strdup("hwloc"); // we cannot know the version they used
                 pmix_globals.topology.topology = (hwloc_topology_t) info[n].value.data.ptr;
                 pmix_globals.external_topology = true;

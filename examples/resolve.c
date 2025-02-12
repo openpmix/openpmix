@@ -301,24 +301,24 @@ int get_node_list(char ***nodelist)
 }
 
 static
-void get_proc_idx(pmix_proc_t p, int *idx)
+void get_proc_idx(pmix_proc_t *p, int *idx)
 {
     int id = -1;
 
     if (is_spawned) {
-        if(PMIX_CHECK_NSPACE(p.nspace, parent_proc.nspace)) {
-            id = p.rank;
+        if(PMIX_CHECK_NSPACE(p->nspace, parent_proc.nspace)) {
+            id = p->rank;
         } else {
             // p is a spawned proc, add parent job size
-            id = p.rank + parent_job_size;
+            id = p->rank + parent_job_size;
         }
 
     } else {
-        if (PMIX_CHECK_NSPACE(p.nspace, own_proc.nspace)) {
-            id = p.rank;
+        if (PMIX_CHECK_NSPACE(p->nspace, own_proc.nspace)) {
+            id = p->rank;
         } else {
             // p is a spawned proc, add job size
-            id = p.rank + job_size;
+            id = p->rank + job_size;
         }
     }
 
@@ -347,6 +347,7 @@ int create_node_map(void)
     nodecount = PMIx_Argv_count(nodelist);
     used = (int *) malloc(nodecount * sizeof(int));
     if (!used) {
+        free(map);
         goto fn_fail;
     }
 
@@ -393,7 +394,7 @@ int create_node_map(void)
                 /* Iterate over peers to set their node id */
                 for (unsigned j = 0; j < nnode_procs; j++) {
                     int idx = 0;
-                    get_proc_idx(node_procs[j], &idx);
+                    get_proc_idx(&node_procs[j], &idx);
                     map[idx] = i;
                 }
                 PMIX_PROC_FREE(node_procs, nnode_procs);
