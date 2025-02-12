@@ -14,7 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -44,14 +44,7 @@ char* PMIx_Info_string(const pmix_info_t *info)
     pmix_status_t rc;
     char *output = NULL;
 
-    if (pmix_globals.init_cntr <= 0) {
-        pmix_bfrops_base_print_info(&output, NULL, (void*)info, PMIX_INFO);
-        return output;
-    }
-
-    PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
-                      &output, NULL,
-                      (void*)info, PMIX_INFO);
+    rc = pmix_bfrops_base_print_info(&output, NULL, (void*)info, PMIX_INFO);
     if (PMIX_SUCCESS != rc) {
         return NULL;
     }
@@ -63,14 +56,7 @@ char* PMIx_Value_string(const pmix_value_t *value)
     pmix_status_t rc;
     char *output = NULL;
 
-    if (pmix_globals.init_cntr <= 0) {
-        pmix_bfrops_base_print_value(&output, NULL, (void*)value, PMIX_VALUE);
-        return output;
-    }
-
-    PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer,
-                      &output, NULL,
-                      (void*)value, PMIX_VALUE);
+    rc = pmix_bfrops_base_print_value(&output, NULL, (void*)value, PMIX_VALUE);
     if (PMIX_SUCCESS != rc) {
         return NULL;
     }
