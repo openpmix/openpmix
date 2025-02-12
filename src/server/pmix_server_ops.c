@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -2655,6 +2655,9 @@ cleanup:
     }
     if (NULL != cpuset.bitmap) {
         pmix_hwloc_destruct_cpuset(&cpuset);
+    }
+    if (NULL != cpuset.source) {
+        free(cpuset.source);
     }
     return rc;
 }
