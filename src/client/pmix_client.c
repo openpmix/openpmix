@@ -756,13 +756,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             if (PMIX_CHECK_KEY(&info[n], PMIX_GDS_MODULE)) {
                 PMIX_INFO_LOAD(&ginfo, PMIX_GDS_MODULE, info[n].value.data.string, PMIX_STRING);
                 found = true;
-            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOPOLOGY2)) {
-                /* adopt this as our topology */
-                pmix_topology_t *topo;
-                topo = info[n].value.data.topo;
-                pmix_globals.topology.source = strdup(topo->source);
-                pmix_globals.topology.topology = topo->topology;
-                pmix_globals.external_topology = true;
+                break;
             }
         }
     }
