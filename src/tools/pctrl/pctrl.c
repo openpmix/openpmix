@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -133,13 +133,13 @@ int main(int argc, char **argv)
                              NULL, &results, "help-pctrl.txt");
 
     if (PMIX_SUCCESS != rc) {
-        if (PMIX_ERR_SILENT == rc) {
-            exit(rc);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            exit(0);
         }
-        if (PMIX_OPERATION_SUCCEEDED != rc) {
+        if (PMIX_ERR_SILENT != rc) {
             fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
-            exit(rc);
         }
+        exit(rc);
     }
 
     // handle relevant MCA params
