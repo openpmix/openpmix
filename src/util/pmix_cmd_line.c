@@ -148,6 +148,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 mystore(myoptions[option_index].name, optarg, results);
                 break;
             case 'h':
+                mystore(myoptions[option_index].name, str, results);
                 /* the "help" option can optionally take an argument. Since
                  * the argument _is_ optional, getopt will _NOT_ increment
                  * optind, so argv[optind] is the potential argument */

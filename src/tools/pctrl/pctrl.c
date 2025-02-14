@@ -142,6 +142,14 @@ int main(int argc, char **argv)
         }
     }
 
+    // check for help command line option
+    if (NULL != (opt = pmix_cmd_line_get_param(&results, PMIX_CLI_HELP))) {
+        if (PMIX_OPERATION_SUCCEEDED == rc)
+            exit(0);
+        else
+            exit(rc);
+    }
+
     // handle relevant MCA params
     PMIX_LIST_FOREACH(opt, &results.instances, pmix_cli_item_t) {
         if (0 == strcmp(opt->key, PMIX_CLI_PMIXMCA)) {
