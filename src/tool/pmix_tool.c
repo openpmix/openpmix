@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -531,8 +531,14 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
                     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SCHEDULER);
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
+                if (NULL != pmix_server_globals.tmpdir) {
+                    free(pmix_server_globals.tmpdir);
+                }
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
+                if (NULL != pmix_server_globals.system_tmpdir) {
+                    free(pmix_server_globals.system_tmpdir);
+                }
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 connect_optional = PMIX_INFO_TRUE(&info[n]);

@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -172,6 +172,8 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         return PMIX_ERR_TAKE_NEXT_OPTION;
     }
 
+    PMIX_ENVAR_CONSTRUCT(&envar);
+
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_SETUP_APP_ENVARS)) {
             envars = PMIX_INFO_TRUE(&info[n]);
@@ -228,6 +230,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         PMIX_ENVAR_LOAD(&envar, "OMPI_MCA_orte_precondition_transports", string_key, ':');
         PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, &mydata, &envar, 1, PMIX_ENVAR);
         free(string_key);
+        PMIX_ENVAR_DESTRUCT(&envar);
     }
 
     if (envars) {

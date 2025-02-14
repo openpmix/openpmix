@@ -572,8 +572,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SYS_CTRLR);
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
+                if (NULL != pmix_server_globals.tmpdir) {
+                    free(pmix_server_globals.tmpdir);
+                }
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
+                if (NULL != pmix_server_globals.system_tmpdir) {
+                    free(pmix_server_globals.system_tmpdir);
+                }
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
                 nspace = info[n].value.data.string;
