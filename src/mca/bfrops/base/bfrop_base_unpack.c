@@ -15,7 +15,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,10 +54,9 @@ static pmix_status_t pmix_bfrops_base_unpack_buffer(pmix_pointer_array_t *regtyp
         }
         /* if the data types don't match, then return an error */
         if (type != local_type) {
-            pmix_output_verbose(20, pmix_bfrops_base_framework.framework_output,
-                                "PMIX bfrop:unpack: got type %s when expecting type %s",
-                                PMIx_Data_type_string(local_type),
-                                PMIx_Data_type_string(type));
+            pmix_output(0, "PMIx bfrop:unpack: got type %s when expecting type %s",
+                           PMIx_Data_type_string(local_type),
+                           PMIx_Data_type_string(type));
             return PMIX_ERR_PACK_MISMATCH;
         }
     }
