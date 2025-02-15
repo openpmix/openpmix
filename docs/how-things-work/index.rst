@@ -10,3 +10,4 @@ find information on that subject here.
    :maxdepth: 2
 
    session_dirs.rst
+   resolve.rst
