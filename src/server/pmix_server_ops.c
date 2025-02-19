@@ -2638,7 +2638,8 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_status_t rc;
     pmix_query_caddy_t *cd;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output,
+  //  pmix_output_verbose(2, pmix_server_globals.base_output,
+    pmix_output(0,
                         "recvd query from client");
 
     cd = PMIX_NEW(pmix_query_caddy_t);
