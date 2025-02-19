@@ -539,6 +539,7 @@ PMIX_EXPORT pmix_status_t pmix_register_tool_attrs(void)
 }
 
 /*****   PROCESS QUERY ATTRS    *****/
+
 static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
 {
     pmix_attribute_trk_t *trk, *tptr;
@@ -546,26 +547,35 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
     pmix_data_array_t *darray;
     pmix_regattr_t *regarray;
     size_t m, nattr;
-    char **fns;
+    char **fns = NULL;
     const pmix_regattr_input_t *dptr;
 
     /* the value in the info is a comma-delimited list of
      * functions whose attributes are being requested */
-    fns = PMIx_Argv_split(info->value.data.string, ',');
+    if (NULL != info) {
+        fns = PMIx_Argv_split(info->key, ',');
+    }
 
     /* search the list for these functions */
     PMIX_LIST_FOREACH (tptr, attrs, pmix_attribute_trk_t) {
-        trk = NULL;
-        for (m = 0; NULL != fns[m] && NULL == trk; m++) {
-            if (0 == strcmp(fns[m], tptr->function) || 0 == strcmp(fns[m], "all")) {
-                trk = tptr;
-                break;
+        if (NULL == fns) {
+            // want them all - ignore if no attrs
+            if (NULL == tptr->attrs) {
+                continue;
             }
-        }
-        if (NULL == trk || NULL == trk->attrs) {
-            /* function wasn't found - no attrs
-             * registered for it */
-            continue;
+        } else {
+            trk = NULL;
+            for (m = 0; NULL != fns[m]; m++) {
+                if (0 == strcmp(fns[m], tptr->function) || 0 == strcmp(fns[m], "all")) {
+                    trk = tptr;
+                    break;
+                }
+            }
+            if (NULL == trk || NULL == trk->attrs) {
+                /* function wasn't found - no attrs
+                 * registered for it */
+                continue;
+            }
         }
         /* add the found attrs to the results */
         ip = PMIX_NEW(pmix_infolist_t);
@@ -603,7 +613,7 @@ static void _get_attrs(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
     PMIx_Argv_free(fns);
 }
 
-static void _get_fns(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
+static void _get_fns(pmix_list_t *lst, char *key, pmix_list_t *attrs)
 {
     pmix_attribute_trk_t *tptr;
     pmix_infolist_t *ip;
@@ -616,254 +626,173 @@ static void _get_fns(pmix_list_t *lst, pmix_info_t *info, pmix_list_t *attrs)
     if (0 < PMIx_Argv_count(fns)) {
         ip = PMIX_NEW(pmix_infolist_t);
         tmp = PMIx_Argv_join(fns, ',');
-        PMIX_INFO_LOAD(&ip->info, info->key, tmp, PMIX_STRING);
+        PMIX_INFO_LOAD(&ip->info, key, tmp, PMIX_STRING);
         pmix_list_append(lst, &ip->super);
         PMIx_Argv_free(fns);
     }
 }
 
-static void _local_relcb(void *cbdata)
+PMIX_EXPORT void pmix_attrs_query_support(pmix_query_caddy_t *cd,
+                                          pmix_query_t *query,
+                                          pmix_list_t *unresolved)
 {
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
-    PMIX_RELEASE(cd);
-}
-
-static void relcbfunc(void *cbdata)
-{
-    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
-
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:query release callback");
-
-    if (NULL != cd->info) {
-        PMIX_INFO_FREE(cd->info, cd->ninfo);
-    }
-    PMIX_RELEASE(cd);
-}
-static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
-                         pmix_buffer_t *buf, void *cbdata)
-{
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
-    pmix_status_t rc;
-    pmix_shift_caddy_t *results;
-    int cnt;
-    PMIX_HIDE_UNUSED_PARAMS(hdr);
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:attrs:query cback from server");
-
-    results = PMIX_NEW(pmix_shift_caddy_t);
-
-    /* unpack the status */
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &results->status, &cnt, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        results->status = rc;
-        goto complete;
-    }
-    if (PMIX_SUCCESS != results->status &&
-        PMIX_ERR_PARTIAL_SUCCESS != results->status) {
-        goto complete;
-    }
-
-    /* unpack any returned data */
-    cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &results->ninfo, &cnt, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
-        results->status = rc;
-        goto complete;
-    }
-    if (0 < results->ninfo) {
-        PMIX_INFO_CREATE(results->info, results->ninfo);
-        cnt = results->ninfo;
-        PMIX_BFROPS_UNPACK(rc, peer, buf, results->info, &cnt, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
-            results->status = rc;
-            goto complete;
-        }
-    }
-
-complete:
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:query cback from server releasing");
-    /* release the caller */
-    if (NULL != cd->cbfunc) {
-        cd->cbfunc(results->status, results->info, results->ninfo, cd->cbdata, relcbfunc, results);
-    }
-    PMIX_RELEASE(cd);
-}
-
-PMIX_EXPORT void pmix_attrs_query_support(int sd, short args, void *cbdata)
-{
-    pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
-    pmix_infolist_t *info, *head;
+    pmix_querylist_t *qry;
     pmix_list_t kyresults;
+    pmix_infolist_t *info;
     size_t n, m, p;
     pmix_info_t *iptr;
     pmix_data_array_t *darray;
-    pmix_buffer_t *msg;
-    pmix_cmd_t cmd = PMIX_QUERY_CMD;
     pmix_status_t rc;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+    pmix_kval_t *kv;
+    char **cache = NULL;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    // this is called from within an event, so no need to lock
 
-    for (n = 0; n < cd->nqueries; n++) {
-        if (0 != strcmp(cd->queries[n].keys[0], PMIX_QUERY_ATTRIBUTE_SUPPORT)) {
-            /* skip this one */
-            continue;
+    // if the qualifiers are NULL, then they want it all
+    if (NULL == query->qualifiers) {
+        PMIX_CONSTRUCT(&kyresults, pmix_list_t);
+        /* everyone has access to the client attrs */
+        _get_attrs(&kyresults, NULL, &client_attrs);
+        /* everyone has access to the client functions */
+        _get_fns(&kyresults, PMIX_CLIENT_FUNCTIONS, &client_attrs);
+       /* if I am a server... */
+        if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+            // add in my attrs and fns
+            _get_attrs(&kyresults, NULL, &server_attrs);
+            _get_fns(&kyresults, PMIX_SERVER_FUNCTIONS, &server_attrs);
+            // and add in my hosts
+            _get_attrs(&kyresults, NULL, &host_attrs);
+            _get_fns(&kyresults, PMIX_HOST_FUNCTIONS, &host_attrs);
+        } else {
+            PMIx_Argv_append_nosize(&cache, PMIX_SERVER_ATTRIBUTES);
+            PMIx_Argv_append_nosize(&cache, PMIX_SERVER_FUNCTIONS);
+            PMIx_Argv_append_nosize(&cache, PMIX_HOST_ATTRIBUTES);
+            PMIx_Argv_append_nosize(&cache, PMIX_HOST_FUNCTIONS);
         }
-        head = NULL;
-        for (m = 0; m < cd->queries[n].nqual; m++) {
-            PMIX_CONSTRUCT(&kyresults, pmix_list_t);
-            if (NULL == cd->queries[n].qualifiers ||
-                PMIX_CHECK_KEY(&cd->queries[n].qualifiers[m], PMIX_CLIENT_ATTRIBUTES)) {
-                /* everyone has access to the client attrs */
-                _get_attrs(&kyresults, &cd->queries[n].qualifiers[m], &client_attrs);
-            }
-            if (NULL == cd->queries[n].qualifiers ||
-                PMIX_CHECK_KEY(&cd->queries[n].qualifiers[m], PMIX_CLIENT_FUNCTIONS)) {
-                /* everyone has access to the client functions */
-                _get_fns(&kyresults, &cd->queries[n].qualifiers[m], &client_attrs);
-            }
-            if (NULL == cd->queries[n].qualifiers ||
-                PMIX_CHECK_KEY(&cd->queries[n].qualifiers[m], PMIX_SERVER_ATTRIBUTES)) {
-                /* if I am a server, add in my attrs */
-                if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-                    _get_attrs(&kyresults, &cd->queries[n].qualifiers[m], &server_attrs);
-                } else {
-                    /* we need to ask our server for them */
-                    PMIX_LIST_DESTRUCT(&kyresults);
-                    goto query;
-                }
-            }
-            if (NULL == cd->queries[n].qualifiers ||
-                PMIX_CHECK_KEY(&cd->queries[n].qualifiers[m], PMIX_SERVER_FUNCTIONS)) {
-                /* if I am a server, add in my fns */
-                if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-                    _get_fns(&kyresults, &cd->queries[n].qualifiers[m], &server_attrs);
-                } else {
-                    /* we need to ask our server for them */
-                    PMIX_LIST_DESTRUCT(&kyresults);
-                    goto query;
-                }
-            }
-            if (NULL == cd->queries[n].qualifiers ||
-                PMIX_CHECK_KEY(&cd->queries[n].qualifiers[m], PMIX_TOOL_ATTRIBUTES)) {
-                if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-                    _get_attrs(&kyresults, &cd->queries[n].qualifiers[m], &tool_attrs);
-                }
-            }
-            if (NULL == cd->queries[n].qualifiers ||
-                PMIX_CHECK_KEY(&cd->queries[n].qualifiers[m], PMIX_TOOL_FUNCTIONS)) {
-                if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-                    _get_fns(&kyresults, &cd->queries[n].qualifiers[m], &tool_attrs);
-                }
-            }
-            if (NULL == cd->queries[n].qualifiers ||
-                PMIX_CHECK_KEY(&cd->queries[n].qualifiers[m], PMIX_HOST_ATTRIBUTES)) {
-
-                /* if I am a server, add in the host's */
-                if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-                    _get_attrs(&kyresults, &cd->queries[n].qualifiers[m], &host_attrs);
-                } else {
-                    /* we need to ask our server for them */
-                    PMIX_LIST_DESTRUCT(&kyresults);
-                    goto query;
-                }
-            }
-            if (NULL == cd->queries[n].qualifiers ||
-                PMIX_CHECK_KEY(&cd->queries[n].qualifiers[m], PMIX_HOST_FUNCTIONS)) {
-                /* if I am a server, add in the host's */
-                if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-                    _get_fns(&kyresults, &cd->queries[n].qualifiers[m], &host_attrs);
-                } else {
-                    /* we need to ask our server for them */
-                    PMIX_LIST_DESTRUCT(&kyresults);
-                    goto query;
-                }
-            }
-            if (0 < (p = pmix_list_get_size(&kyresults))) {
-                head = PMIX_NEW(pmix_infolist_t);
-                PMIX_LOAD_KEY(head->info.key, cd->queries[n].keys[m]);
-                head->info.value.type = PMIX_DATA_ARRAY;
-                /* create the data array to hold the results */
-                PMIX_DATA_ARRAY_CREATE(darray, p, PMIX_INFO);
-                head->info.value.data.darray = darray;
-                iptr = (pmix_info_t *) darray->array;
-                p = 0;
-                PMIX_LIST_FOREACH (info, &kyresults, pmix_infolist_t) {
-                    PMIX_INFO_XFER(&iptr[p], &info->info);
-                    ++p;
-                }
-                pmix_list_append(&cd->results, &head->super);
-            }
-            PMIX_LIST_DESTRUCT(&kyresults);
+        // if I am a tool...
+        if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+            // add in my attrs and fns
+            _get_attrs(&kyresults, NULL, &tool_attrs);
+            _get_fns(&kyresults, PMIX_TOOL_FUNCTIONS, &tool_attrs);
         }
-    }
-    /* prep the response by converting the list
-     * of results into an array */
-    if (0 < (cd->ninfo = pmix_list_get_size(&cd->results))) {
-        PMIX_INFO_CREATE(cd->info, cd->ninfo);
-        n = 0;
-        PMIX_LIST_FOREACH (info, &cd->results, pmix_infolist_t) {
-            PMIX_INFO_XFER(&cd->info[n], &info->info);
-            ++n;
+        // collect the results
+        if (0 < (p = pmix_list_get_size(&kyresults))) {
+            PMIX_KVAL_NEW(kv, PMIX_QUERY_ATTRIBUTE_SUPPORT);
+            kv->value->type = PMIX_DATA_ARRAY;
+            /* create the data array to hold the results */
+            PMIX_DATA_ARRAY_CREATE(darray, p, PMIX_INFO);
+            kv->value->data.darray = darray;
+            iptr = (pmix_info_t *) darray->array;
+            p = 0;
+            PMIX_LIST_FOREACH (info, &kyresults, pmix_infolist_t) {
+                PMIX_INFO_XFER(&iptr[p], &info->info);
+                ++p;
+            }
+            pmix_list_append(&cd->results, &kv->super);
         }
-        cd->status = PMIX_SUCCESS;
-    } else {
-        cd->status = PMIX_ERR_NOT_FOUND;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-    goto release;
-
-query:
-   /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        cd->status = PMIX_ERR_NOT_FOUND;
-        goto release;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
-    /* relay this request to the server */
-    msg = PMIX_NEW(pmix_buffer_t);
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(msg);
-        cd->status = rc;
-        goto release;
-    }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cd->nqueries, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(msg);
-        cd->status = rc;
-        goto release;
-    }
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, cd->queries, cd->nqueries, PMIX_QUERY);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(msg);
-        cd->status = rc;
-        goto release;
-    }
-
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:query sending to server");
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, query_cbfunc, (void *) cd);
-    if (PMIX_SUCCESS != rc) {
-        cd->status = rc;
-        goto release;
-    }
-    return;
-
-release:
-    pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:query releasing");
-    if (NULL != cd->cbfunc) {
-        cd->cbfunc(cd->status, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
+        PMIX_LIST_DESTRUCT(&kyresults);
+        if (NULL != cache) {
+            goto request;
+        }
         return;
     }
 
-    PMIX_RELEASE(cd);
+    // otherwise, search for the ones they want
+    for (m = 0; m < query->nqual; m++) {
+        PMIX_CONSTRUCT(&kyresults, pmix_list_t);
+        if (PMIX_CHECK_KEY(&query->qualifiers[m], PMIX_CLIENT_ATTRIBUTES)) {
+            /* everyone has access to the client attrs */
+            _get_attrs(&kyresults, &query->qualifiers[m], &client_attrs);
+
+        } else if (PMIX_CHECK_KEY(&query->qualifiers[m], PMIX_CLIENT_FUNCTIONS)) {
+            /* everyone has access to the client functions */
+            _get_fns(&kyresults, PMIX_CLIENT_FUNCTIONS, &client_attrs);
+
+        } else if (PMIX_CHECK_KEY(&query->qualifiers[m], PMIX_SERVER_ATTRIBUTES)) {
+            /* if I am a server, add in my attrs */
+            if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+                _get_attrs(&kyresults, &query->qualifiers[m], &server_attrs);
+            } else {
+                PMIx_Argv_append_nosize(&cache, PMIX_SERVER_ATTRIBUTES);
+            }
+
+        } else if (PMIX_CHECK_KEY(&query->qualifiers[m], PMIX_SERVER_FUNCTIONS)) {
+            /* if I am a server, add in my fns */
+            if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+                _get_fns(&kyresults, PMIX_SERVER_FUNCTIONS, &server_attrs);
+            } else {
+                PMIx_Argv_append_nosize(&cache, PMIX_SERVER_FUNCTIONS);
+            }
+
+        } else if (PMIX_CHECK_KEY(&query->qualifiers[m], PMIX_TOOL_ATTRIBUTES)) {
+            if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+                _get_attrs(&kyresults, &query->qualifiers[m], &tool_attrs);
+            }
+
+        } else if (PMIX_CHECK_KEY(&query->qualifiers[m], PMIX_TOOL_FUNCTIONS)) {
+            if (PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+                _get_fns(&kyresults, PMIX_TOOL_FUNCTIONS, &tool_attrs);
+            }
+
+        } else if (PMIX_CHECK_KEY(&query->qualifiers[m], PMIX_HOST_ATTRIBUTES)) {
+            /* if I am a server, add in the host's */
+            if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+                _get_attrs(&kyresults, &query->qualifiers[m], &host_attrs);
+            } else {
+                PMIx_Argv_append_nosize(&cache, PMIX_HOST_ATTRIBUTES);
+            }
+
+        } else if (PMIX_CHECK_KEY(&query->qualifiers[m], PMIX_HOST_FUNCTIONS)) {
+            /* if I am a server, add in the host's */
+            if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+                _get_fns(&kyresults, PMIX_HOST_FUNCTIONS, &host_attrs);
+            } else {
+                PMIx_Argv_append_nosize(&cache, PMIX_HOST_FUNCTIONS);
+            }
+        }
+
+        if (0 < (p = pmix_list_get_size(&kyresults))) {
+            PMIX_KVAL_NEW(kv, PMIX_QUERY_ATTRIBUTE_SUPPORT);
+            kv->value->type = PMIX_DATA_ARRAY;
+            /* create the data array to hold the results */
+            PMIX_DATA_ARRAY_CREATE(darray, p, PMIX_INFO);
+            kv->value->data.darray = darray;
+            iptr = (pmix_info_t *) darray->array;
+            p = 0;
+            PMIX_LIST_FOREACH (info, &kyresults, pmix_infolist_t) {
+                PMIX_INFO_XFER(&iptr[p], &info->info);
+                ++p;
+            }
+            pmix_list_append(&cd->results, &kv->super);
+        }
+        PMIX_LIST_DESTRUCT(&kyresults);
+    }
+
+request:
+    // if we don't need help then we are done
+    if (NULL == cache) {
+        if (NULL != cache) {
+            PMIx_Argv_free(cache);
+        }
+        return;
+    }
+
+    qry = PMIX_NEW(pmix_querylist_t);
+    PMIX_ARGV_APPEND(rc, qry->query.keys, PMIX_QUERY_ATTRIBUTE_SUPPORT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(qry);
+        return;
+    }
+    qry->query.nqual = PMIx_Argv_count(cache);
+    PMIX_INFO_CREATE(qry->query.qualifiers, qry->query.nqual);
+    for (n=0; NULL != cache[n]; n++) {
+        PMIX_INFO_LOAD(&qry->query.qualifiers[n], cache[n], NULL, PMIX_BOOL);
+    }
+    PMIx_Argv_free(cache);
+    pmix_list_append(unresolved, &qry->super);
+
+    return;
 }
 
 /*****   LOCATE A GIVEN ATTRIBUTE    *****/
