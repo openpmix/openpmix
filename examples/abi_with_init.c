@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2025      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,6 +17,26 @@
 #include <pmix.h>
 #include "examples.h"
 
+static void cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata,
+                   pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    myquery_data_t *q = (myquery_data_t*)cbdata;
+    size_t n;
+
+    q->status = status;
+    if (0 < ninfo) {
+        q->ninfo = ninfo;
+        PMIX_INFO_CREATE(q->info, q->ninfo);
+        for (n=0; n < ninfo; n++) {
+            PMIX_INFO_XFER(&q->info[n], &info[n]);
+        }
+    }
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+    DEBUG_WAKEUP_THREAD(&q->lock);
+}
+
 int main(int argc, char **argv) {
     int rc;
     size_t i;
@@ -23,6 +44,7 @@ int main(int argc, char **argv) {
     pmix_info_t *info = NULL;
     pmix_query_t *query = NULL;
     static pmix_proc_t myproc;
+    myquery_data_t q;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
@@ -59,6 +81,33 @@ int main(int argc, char **argv) {
                    info[i].value.data.string);
         }
     }
+
+    // now do it with the non-blocking form
+    DEBUG_CONSTRUCT_MYQUERY(&q);
+    rc = PMIx_Query_info_nb(query, nqueries, cbfunc, &q);
+    if (PMIX_SUCCESS != rc ) {
+        fprintf(stderr, "Error: PMIx_Query_info_nb failed: %d (%s)\n", rc, PMIx_Error_string(rc));
+        return rc;
+    }
+    DEBUG_WAIT_THREAD(&q.lock);
+
+    printf("--> Query_nb returned %s (ninfo %d)\n", PMIx_Error_string(q.status), (int)q.ninfo);
+    for(i = 0; i < q.ninfo; ++i) {
+        printf("--> KEY: %s\n", q.info[i].key);
+        if (PMIX_CHECK_KEY(&q.info[i], PMIX_QUERY_STABLE_ABI_VERSION)) {
+            printf("----> ABI (Stable): String: %s\n",
+                   q.info[i].value.data.string);
+        }
+        else if (PMIX_CHECK_KEY(&q.info[i], PMIX_QUERY_PROVISIONAL_ABI_VERSION)) {
+            printf("----> ABI (Provisional): String: %s\n",
+                   q.info[i].value.data.string);
+        }
+        else if (PMIX_CHECK_KEY(&q.info[i], PMIX_QUERY_NAMESPACES)) {
+            printf("----> Namespaces: String: %s\n",
+                   q.info[i].value.data.string);
+        }
+    }
+
 
     /*
      * Cleanup
