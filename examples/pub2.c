@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -91,7 +91,9 @@ int main(int argc, char **argv)
     for (n=0; n < iters; n++) {
         if (0 == myproc.rank) {
             /* publish something */
-            asprintf(&tmp, "FOOBAR:%s.%u:%d", myproc.nspace, myproc.rank, n);
+            if (0 > asprintf(&tmp, "FOOBAR:%s.%u:%d", myproc.nspace, myproc.rank, n)) {
+                goto done;
+            }
             PMIX_INFO_LOAD(&info[0], tmp, &n, PMIX_INT);
             free(tmp);
             if (PMIX_SUCCESS != (rc = PMIx_Publish(info, 2))) {
@@ -103,7 +105,9 @@ int main(int argc, char **argv)
 
             /* lookup other rank's value */
             PMIX_PDATA_CONSTRUCT(&pdata);
-            asprintf(&tmp, "BAZ:%s.%u:%d", myproc.nspace, 1, n);
+            if (0 > asprintf(&tmp, "BAZ:%s.%u:%d", myproc.nspace, 1, n)) {
+                goto done;
+            }
             PMIX_LOAD_KEY(pdata.key, tmp);
             free(tmp);
             // lookup value
@@ -137,7 +141,9 @@ int main(int argc, char **argv)
             fprintf(stderr, "PUBLISH-LOOKUP SUCCEEDED: %d\n", n);
         } else {
             /* publish something */
-            asprintf(&tmp, "BAZ:%s.%u:%d", myproc.nspace, myproc.rank, n);
+            if (0 > asprintf(&tmp, "BAZ:%s.%u:%d", myproc.nspace, myproc.rank, n)) {
+                goto done;
+            }
             PMIX_INFO_LOAD(&info[0], tmp, &n, PMIX_INT);
             free(tmp);
             if (PMIX_SUCCESS != (rc = PMIx_Publish(info, 2))) {
@@ -149,7 +155,9 @@ int main(int argc, char **argv)
 
             /* lookup other rank's value */
             PMIX_PDATA_CONSTRUCT(&pdata);
-            asprintf(&tmp, "FOOBAR:%s.%u:%d", myproc.nspace, 0, n);
+            if (0 > asprintf(&tmp, "FOOBAR:%s.%u:%d", myproc.nspace, 0, n)) {
+                goto done;
+            }
             PMIX_LOAD_KEY(pdata.key, tmp);
             free(tmp);
             // check value
