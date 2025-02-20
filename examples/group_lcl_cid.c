@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC.
  *                         All rights reserved.
  *
@@ -35,6 +35,7 @@
  * - MPI_Intercomm_create_from_groups
  */
 
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -72,32 +73,37 @@ static void errhandler_reg_callbk(pmix_status_t status, size_t errhandler_ref, v
 {
     mylock_t *lock = (mylock_t *) cbdata;
     EXAMPLES_HIDE_UNUSED_PARAMS(errhandler_ref);
-    
+
     lock->status = status;
     DEBUG_WAKEUP_THREAD(lock);
 }
 
 int main(int argc, char **argv)
 {
-    int rc;
+    int rc, ret;
     pmix_value_t *val = NULL;
     pmix_proc_t proc, *procs;
     uint32_t nprocs, n;
     mylock_t lock;
     pmix_info_t *results, *info, tinfo[2];
-    size_t nresults, cid, lcid, ninfo;
+    size_t nresults, cid, lcid, ninfo, m;
     pmix_data_array_t darray;
     void *grpinfo, *list;
-
+    char hostname[1024];
+    pmix_value_t value;
+    bool idassigned = false;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
+
+    gethostname(hostname, 1024);
 
     /* init us */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
                 PMIx_Error_string(rc));
-        exit(0);
+        exit(1);
     }
-    fprintf(stderr, "Client ns %s rank %d pid %lu: Running\n", myproc.nspace, myproc.rank, (unsigned long)getpid());
+    fprintf(stderr, "Client ns %s rank %d host %s pid %lu: Running\n",
+            myproc.nspace, myproc.rank, hostname, (unsigned long)getpid());
 
     PMIX_PROC_CONSTRUCT(&proc);
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
@@ -111,6 +117,13 @@ int main(int argc, char **argv)
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
 
+    if (nprocs < 4) {
+        if (0 == myproc.rank) {
+            fprintf(stderr, "This example requires a minimum of 4 processes\n");
+        }
+        exit(1);
+    }
+
     /* register our default errhandler */
     DEBUG_CONSTRUCT_LOCK(&lock);
     PMIx_Register_event_handler(NULL, 0, NULL, 0, notification_fn, errhandler_reg_callbk,
@@ -118,6 +131,31 @@ int main(int argc, char **argv)
     DEBUG_WAIT_THREAD(&lock);
     rc = lock.status;
     DEBUG_DESTRUCT_LOCK(&lock);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+
+    // put some "modex" data
+    if (0 > asprintf(&value.data.string, "btl-tcp-%u", myproc.rank)) {
+        goto done;
+    }
+    value.type = PMIX_STRING;
+    rc = PMIx_Put(PMIX_GLOBAL, "modex-btl", &value);
+    free(value.data.string);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+    if (0 > asprintf(&value.data.string, "btl-smcuda-%u", myproc.rank)) {
+        goto done;
+    }
+    rc = PMIx_Put(PMIX_GLOBAL, "modex-btl", &value);
+    free(value.data.string);
+    if (PMIX_SUCCESS != rc) {
+        goto done;
+    }
+
+    // commit it
+    rc = PMIx_Commit();
     if (PMIX_SUCCESS != rc) {
         goto done;
     }
@@ -184,12 +222,18 @@ int main(int argc, char **argv)
                 myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         goto done;
     }
-    /* we should have a single results object */
+    /* check the results for our global CID*/
     if (NULL != results) {
         cid = 0;
-        PMIX_VALUE_GET_NUMBER(rc, &results[0].value, cid, size_t);
-        fprintf(stderr, "Rank %d Group construct complete with status %s KEY %s CID %lu\n",
-                myproc.rank, PMIx_Error_string(rc), results[0].key, (unsigned long) cid);
+        for (m=0; m < nresults; m++) {
+            if (PMIX_CHECK_KEY(&results[m], PMIX_GROUP_CONTEXT_ID)) {
+                PMIX_VALUE_GET_NUMBER(rc, &results[m].value, cid, size_t);
+                idassigned = true;
+                break;
+            }
+        }
+        fprintf(stderr, "Rank %d Group construct complete with status %s KEY %s CID assigned: %s value: %lu\n",
+                myproc.rank, PMIx_Error_string(rc), results[0].key, idassigned ? "T" : "F", (unsigned long) cid);
     } else {
         fprintf(stderr, "Rank %d Group construct complete, but no CID returned\n", myproc.rank);
     }
@@ -242,12 +286,13 @@ done:
     DEBUG_WAIT_THREAD(&lock);
     DEBUG_DESTRUCT_LOCK(&lock);
 
-    if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
+    if (PMIX_SUCCESS != (ret = PMIx_Finalize(NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %s\n", myproc.nspace,
-                myproc.rank, PMIx_Error_string(rc));
+                myproc.rank, PMIx_Error_string(ret));
+        rc = ret;
     }
     fprintf(stderr, "%s:%d COMPLETE\n", myproc.nspace, myproc.rank);
     fflush(stderr);
-    return (0);
+    return (rc);
 }
 

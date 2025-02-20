@@ -259,16 +259,16 @@ int get_node_list(char ***nodelist)
         if (i == 0) {
             /* Resolve nodes of own/ parent nspace */
             if (is_spawned) {
-                strncpy(nspace, parent_proc.nspace, PMIX_MAX_NSLEN);
+                PMIX_LOAD_NSPACE(nspace, parent_proc.nspace);
             } else {
-                strncpy(nspace, own_proc.nspace, PMIX_MAX_NSLEN);
+                PMIX_LOAD_NSPACE(nspace, own_proc.nspace);
             }
         } else {
             /* Resolve nodes of child/ own nspace */
             if (is_spawned) {
-                strncpy(nspace, own_proc.nspace, PMIX_MAX_NSLEN);
+                PMIX_LOAD_NSPACE(nspace, own_proc.nspace);
             } else {
-                strncpy(nspace, child_nspace, PMIX_MAX_NSLEN);
+                PMIX_LOAD_NSPACE(nspace, child_nspace);
             }
         }
         rc = PMIx_Resolve_nodes(nspace, &nodes);
@@ -363,19 +363,19 @@ int create_node_map(void)
             if (n == 0) {
                 /* Resolve peers of own/ parent nspace on node*/
                 if (is_spawned) {
-                    strncpy(nspace, parent_proc.nspace, PMIX_MAX_NSLEN);
+                    PMIX_LOAD_NSPACE(nspace, parent_proc.nspace);
                 } else {
-                    strncpy(nspace, own_proc.nspace, PMIX_MAX_NSLEN);
+                    PMIX_LOAD_NSPACE(nspace, own_proc.nspace);
                 }
             } else {
                 /* Resolve peers of child/ own nspace on node*/
                 if (is_spawned) {
-                    strncpy(nspace, own_proc.nspace, PMIX_MAX_NSLEN);
+                    PMIX_LOAD_NSPACE(nspace, own_proc.nspace);
                 } else {
                     if (0 == strlen(child_nspace)) {
                         break;
                     }
-                    strncpy(nspace, child_nspace, PMIX_MAX_NSLEN);
+                    PMIX_LOAD_NSPACE(nspace, child_nspace);
                 }
             }
             pmix_proc_t * node_procs = NULL;
