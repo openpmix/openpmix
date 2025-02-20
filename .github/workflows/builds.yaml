@@ -47,7 +47,8 @@ jobs:
 
         $c --prefix=${PWD}/install $sphinx \
             CPPFLAGS=$libevent_cppflags \
-            LDFLAGS=$libevent_ldflags
+            LDFLAGS=$libevent_ldflags \
+            --enable-devel-check
         make -j
         make install
         cd test
@@ -87,7 +88,7 @@ jobs:
             c=../configure
         fi
 
-        $c --prefix=${PWD}/install $sphinx
+        $c --prefix=${PWD}/install $sphinx --enable-devel-check
         make -j
         cd test
         make check
@@ -110,5 +111,5 @@ jobs:
       run: |
         pip install -r docs/requirements.txt
         ./autogen.pl
-        ./configure --prefix=${PWD}/install --enable-sphinx
+        ./configure --prefix=${PWD}/install --enable-sphinx --enable-devel-check
         make distcheck AM_DISTCHECK_MAKEFLAGS=-j
