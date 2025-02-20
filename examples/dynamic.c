@@ -18,7 +18,7 @@
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -104,7 +104,9 @@ int main(int argc, char **argv)
             app->argv = (char **) malloc(4 * sizeof(char *));
             app->argv[0] = strdup(nsp);
             app->argv[1] = strdup(myproc.nspace);
-            asprintf(&app->argv[2], "%d", nprocs);
+            if (0 > asprintf(&app->argv[2], "%d", nprocs)) {
+                goto done;
+            }
             app->argv[3] = NULL;
             app->env = (char **) malloc(2 * sizeof(char *));
             app->env[0] = strdup("PMIX_ENV_VALUE=3");
