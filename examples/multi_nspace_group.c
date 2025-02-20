@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -87,7 +87,10 @@ int main(int argc, char **argv)
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     gethostname(hostname, 1024);
-    getcwd(dir, 1024);
+    if (NULL == getcwd(dir, 1024)) {
+        fprintf(stderr, "Getcwd failure\n");
+        exit(1);
+    }
     pid = getpid();
 
     if (1 < argc) {
@@ -310,6 +313,7 @@ int main(int argc, char **argv)
     /* we should have a single results object */
     if (NULL != results) {
         cid = 0;
+        pptr = NULL;
         for (n=0; n < nresults; n++) {
             if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_CONTEXT_ID)) {
                 PMIX_VALUE_GET_NUMBER(rc, &results[n].value, cid, size_t);
@@ -324,6 +328,13 @@ int main(int argc, char **argv)
                 }
             }
         }
+        if (NULL == pptr) {
+            fprintf(stderr, "%s:%d Membership not returned\n", myproc.nspace, myproc.rank);
+            goto done;
+        }
+    } else {
+        fprintf(stderr, "%s:%d No returned results\n", myproc.nspace, myproc.rank);
+        goto done;
     }
 
     // check for modex data to have been exchanged
