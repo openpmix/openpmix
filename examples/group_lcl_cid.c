@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC.
  *                         All rights reserved.
  *
@@ -136,14 +136,18 @@ int main(int argc, char **argv)
     }
 
     // put some "modex" data
-    asprintf(&value.data.string, "btl-tcp-%u", myproc.rank);
+    if (0 > asprintf(&value.data.string, "btl-tcp-%u", myproc.rank)) {
+        goto done;
+    }
     value.type = PMIX_STRING;
     rc = PMIx_Put(PMIX_GLOBAL, "modex-btl", &value);
     free(value.data.string);
     if (PMIX_SUCCESS != rc) {
         goto done;
     }
-    asprintf(&value.data.string, "btl-smcuda-%u", myproc.rank);
+    if (0 > asprintf(&value.data.string, "btl-smcuda-%u", myproc.rank)) {
+        goto done;
+    }
     rc = PMIx_Put(PMIX_GLOBAL, "modex-btl", &value);
     free(value.data.string);
     if (PMIX_SUCCESS != rc) {
