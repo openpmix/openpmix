@@ -146,9 +146,15 @@ int main(int argc, char **argv)
     DEBUG_DESTRUCT_MYQUERY(&mydata);
 
     rc = PMIx_Get(&proc, PMIX_APPNUM, NULL, 0, &val);
-    fprintf(stderr, "RETURN: %s\n", PMIx_Error_string(rc));
+    fprintf(stderr, "APPNUM RETURN: %s\n\n\n", PMIx_Error_string(rc));
     if (PMIX_SUCCESS == rc) {
     	fprintf(stderr, "\t%s\n", PMIx_Value_string(val));
+    }
+
+    rc = PMIx_Get(&proc, PMIX_LOCALLDR, NULL, 0, &val);
+    fprintf(stderr, "LOCALLDR RETURN: %s\n", PMIx_Error_string(rc));
+    if (PMIX_SUCCESS == rc) {
+        fprintf(stderr, "\t%s\n", PMIx_Value_string(val));
     }
 
 done:
