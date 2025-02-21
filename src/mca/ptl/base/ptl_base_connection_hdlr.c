@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -769,6 +769,10 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             return PMIX_ERR_NOMEM;
         }
+        /* save the version */
+        nptr->version.major = pnd->proc_type.major;
+        nptr->version.minor = pnd->proc_type.minor;
+        nptr->version.release = pnd->proc_type.release;
     }
     peer->nptr = nptr;
     /* select their bfrops compat module so we can unpack

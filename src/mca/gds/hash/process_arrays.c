@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -85,7 +85,8 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
     for (j = 0; j < size; j++) {
         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
                             "%s gds:hash:node_array for key %s",
-                            PMIX_NAME_PRINT(&pmix_globals.myid), iptr[j].key);
+                            PMIX_NAME_PRINT(&pmix_globals.myid),
+                            PMIx_Get_attribute_name(iptr[j].key));
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_NODEID)) {
             if (NULL == nd) {
                 nd = PMIX_NEW(pmix_nodeinfo_t);
@@ -252,7 +253,7 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
                             "%s gds:hash:app_array for key %s",
                             PMIX_NAME_PRINT(&pmix_globals.myid),
-                            iptr[j].key);
+                            PMIx_Get_attribute_name(iptr[j].key));
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_APPNUM)) {
             PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, appnum, uint32_t);
             if (PMIX_SUCCESS != rc) {
@@ -386,6 +387,10 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
     iptr = (pmix_info_t *) info->value.data.darray->array;
     PMIX_CONSTRUCT(&cache, pmix_list_t);
     for (j = 0; j < size; j++) {
+        pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                            "%s gds:hash:job_array for key %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid),
+                            PMIx_Get_attribute_name(iptr[j].key));
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_APP_INFO_ARRAY)) {
             if (PMIX_SUCCESS != (rc = pmix_gds_hash_process_app_array(&iptr[j].value, trk))) {
                 return rc;
@@ -484,10 +489,10 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
     PMIX_CONSTRUCT(&scache, pmix_list_t);
 
     for (j = 0; j < size; j++) {
-         pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
-                    "%s gds:hash:session_array for key %s",
-                    PMIX_NAME_PRINT(&pmix_globals.myid),
-                    iptr[j].key);
+        pmix_output_verbose(12, pmix_gds_base_framework.framework_output,
+                            "%s gds:hash:session_array for key %s",
+                            PMIX_NAME_PRINT(&pmix_globals.myid),
+                            PMIx_Get_attribute_name(iptr[j].key));
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_SESSION_ID)) {
             PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, sid, uint32_t);
             if (PMIX_SUCCESS != rc) {

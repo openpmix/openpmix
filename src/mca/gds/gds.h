@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -300,6 +300,11 @@ typedef pmix_status_t (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buff
  * scope. A NULL key returns all values committed by the given peer
  * for that scope.
  *
+ * @param peer    peer object of the proc requesting the info - needed
+ *                because the server can request info on behalf of another
+ *                process, and the fetch response has to be formatted
+ *                to match the _requesting_ process
+ *
  * @param proc    namespace and rank whose info is being requested
  *
  * @param key     key.
@@ -337,7 +342,8 @@ typedef pmix_status_t (*pmix_gds_base_module_recv_modex_complete_fn_t)(pmix_buff
  *
  * Data stored with PMIX_INTERNAL scope can be retrieved with that scope.
  */
-typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(const pmix_proc_t *proc,
+typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(struct pmix_peer_t *peer,
+                                                         const pmix_proc_t *proc,
                                                          pmix_scope_t scope, bool copy,
                                                          const char *key, pmix_info_t info[],
                                                          size_t ninfo, pmix_list_t *kvs);
@@ -347,10 +353,11 @@ typedef pmix_status_t (*pmix_gds_base_module_fetch_fn_t)(const pmix_proc_t *proc
 #define PMIX_GDS_FETCH_KV(s, p, c)                                                             \
     do {                                                                                       \
         pmix_gds_base_module_t *_g = (p)->nptr->compat.gds;                                    \
-        pmix_output_verbose(1, pmix_gds_base_output, "[%s:%d] GDS FETCH KV WITH %s", __FILE__, \
-                            __LINE__, _g->name);                                               \
-        (s) = _g->fetch((c)->proc, (c)->scope, (c)->copy, (c)->key, (c)->info, (c)->ninfo,     \
-                        &(c)->kvs);                                                            \
+        pmix_output_verbose(1, pmix_gds_base_output,                                           \
+                            "[%s:%d] GDS FETCH KV WITH %s",                                    \
+                            __FILE__,  __LINE__, _g->name);                                    \
+        (s) = _g->fetch((p), (c)->proc, (c)->scope, (c)->copy, (c)->key,                       \
+                        (c)->info, (c)->ninfo, &(c)->kvs);                                     \
     } while (0)
 
 /**
