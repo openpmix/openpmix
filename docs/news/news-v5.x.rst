@@ -4,6 +4,42 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.7 -- 25 Feb 2025
+--------------------
+.. important:: This release contains significant rewrite of
+               the PMIx_Query_info and PMIx_Resolve_xxx
+               functions to provide better, more complete
+               answers.
+
+Detailed changes include:
+ - PR #3547: Update NEWS and headers for release
+ - PR #3545: Multiple commits
+    - Exit with correct status after displaying help or version
+    - Revamp the query implementation
+    - Update CI workflows
+    - Silence warnings exposed by updated CI
+    - Fix format of fetch response for peer's version
+ - PR #3538: Multiple commits
+    - Correct the fetch procedure
+    - Propagate shmem fix and add new example plus test
+    - Silence Coverity warning in fd support
+    - Silence Coverity warnings
+    - Silence unnecessary error log
+    - Silence some more Coverity nits
+    - Cleanup the "resolve" functions
+    - Add resolve doc and minor cleanups
+ - PR #3523: Enable fetch of job-level data for another nspace
+ - PR #3520: Allow arbitrary keys to use data arrays
+ - PR #3518: v5.0: Add OPAL_* in the list of default envars
+ - PR #3512: Provide a better error message to user
+ - PR #3509: Multiple commits
+    - Delete stale markdown and update README
+    - Update issue templates
+ - PR #3506: Add missing lock construct
+ - PR #3501: Transfer the query response for partial complete
+ - PR #3491: Add missing function
+
+
 5.0.6 -- 06 Jan 2025
 --------------------
 .. warning:: This release contains a patch required for all
