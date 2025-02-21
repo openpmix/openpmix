@@ -558,7 +558,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
 
     /* get any session-level info for this job */
     PMIX_CONSTRUCT(&results, pmix_list_t);
-    rc = pmix_gds_hash_fetch_sessioninfo(NULL, trk, NULL, 0, &results);
+    rc = pmix_gds_hash_fetch_sessioninfo(peer, NULL, trk, NULL, 0, &results);
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
             PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
@@ -572,7 +572,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
         sptr = pmix_gds_hash_check_session(NULL, UINT32_MAX, false);
         if (NULL != sptr) {
             PMIX_CONSTRUCT(&results, pmix_list_t);
-            rc = pmix_gds_hash_xfer_sessioninfo(sptr, trk, NULL, &results);
+            rc = pmix_gds_hash_xfer_sessioninfo(peer, sptr, NULL, &results);
             if (PMIX_SUCCESS == rc) {
                 PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
                     PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
@@ -584,7 +584,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
 
     /* get any node-level info for this job */
     PMIX_CONSTRUCT(&results, pmix_list_t);
-    rc = pmix_gds_hash_fetch_nodeinfo(NULL, trk, &trk->nodeinfo, NULL, 0, &results);
+    rc = pmix_gds_hash_fetch_nodeinfo(peer, NULL, &trk->nodeinfo, NULL, 0, &results);
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
             /* if the peer is earlier than v3.2.x, it is expecting
@@ -624,7 +624,7 @@ static pmix_status_t register_info(pmix_peer_t *peer,
 
     /* get any app-level info for this job */
     PMIX_CONSTRUCT(&results, pmix_list_t);
-    rc = pmix_gds_hash_fetch_appinfo(NULL, trk, &trk->apps, NULL, 0, &results);
+    rc = pmix_gds_hash_fetch_appinfo(peer, NULL, &trk->apps, NULL, 0, &results);
     if (PMIX_SUCCESS == rc) {
         PMIX_LIST_FOREACH (kvptr, &results, pmix_kval_t) {
             PMIX_BFROPS_PACK(rc, peer, reply, kvptr, 1, PMIX_KVAL);
@@ -1167,7 +1167,8 @@ pmix_status_t pmix_gds_hash_store(const pmix_proc_t *proc,
 
     pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                         "%s gds:hash:hash_store for proc %s key %s type %s scope %s",
-                        PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(proc), kv->key,
+                        PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(proc),
+                        PMIx_Get_attribute_name(kv->key),
                         PMIx_Data_type_string(kv->value->type), PMIx_Scope_string(scope));
 
     if (NULL == kv->key) {
