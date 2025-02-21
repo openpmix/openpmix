@@ -16,7 +16,7 @@
 
 major=5
 minor=0
-release=6
+release=7
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
 # it will be appended to the version number.  It does not have to be
@@ -51,9 +51,9 @@ flex_min_version=2.5.4
 # include further extensions, then the extension
 # value would increment to "2" regardless of the
 # magnitude of the changes.
-std_major=4
-std_minor=2
-std_extension=5
+std_major=5
+std_minor=1
+std_extension=6
 
 # PMIx Standard ABI Compliance Level(s)
 # The major and minor numbers (MAJOR.MINOR) indicate the version
@@ -62,9 +62,8 @@ std_extension=5
 # if more than one PMIx Standard ABI level is supported.
 # The PMIx Standard defines a 'stable' and a 'provisional' ABI.
 # Therefore, there are two sets of major/minor values.
-# Since no PMIx Standard ABI exists at the moment, set to "0.0"
-std_abi_stable=0.0
-std_abi_provisional=0.0
+std_abi_stable=5.0
+std_abi_provisional=5.0
 
 # If repo_rev is empty, then the repository version number will be
 # obtained during "make dist" via the "git describe --tags --always"
@@ -119,5 +118,5 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=15:6:13
+libpmix_so_version=15:7:13
 
