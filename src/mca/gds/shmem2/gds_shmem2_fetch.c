@@ -18,6 +18,8 @@
 #include "gds_shmem2_utils.h"
 
 #include "src/util/pmix_hash.h"
+#include "src/mca/ptl/base/base.h"
+#include "src/mca/ptl/ptl_types.h"
 
 // TODO(skg) Avoid copies where appropriate.
 
@@ -129,7 +131,7 @@ fetch_all_node_info(
  */
 static pmix_status_t
 fetch_all_node_info_from_list(
-    pmix_gds_shmem2_job_t *job,
+    pmix_peer_t *peer,
     pmix_list_t *nodeinfos,
     pmix_list_t *kvs
 ) {
@@ -141,9 +143,7 @@ fetch_all_node_info_from_list(
         // If the proc's version is earlier than v3.1, then the info must be
         // provided as a data_array with a key of the node's name as earlier
         // versions don't understand node_info arrays.
-        if (job->nspace->version.major < 3 ||
-            (3 == job->nspace->version.major &&
-             0 == job->nspace->version.minor)) {
+        if (PMIX_PEER_IS_EARLIER(peer, 3, 1, 0)) {
             if (NULL == ni->hostname) {
                 // Skip this one.
                 continue;
@@ -165,8 +165,8 @@ fetch_all_node_info_from_list(
 
 static pmix_status_t
 fetch_nodeinfo(
+    pmix_peer_t *peer,
     const char *key,
-    pmix_gds_shmem2_job_t *job,
     pmix_list_t *nodeinfos,
     pmix_info_t *info,
     size_t ninfo,
@@ -203,7 +203,7 @@ fetch_nodeinfo(
     if (!found) {
         // If the key is NULL, then they want all the info from all nodes.
         if (NULL == key) {
-            return fetch_all_node_info_from_list(job, nodeinfos, kvs);
+            return fetch_all_node_info_from_list(peer, nodeinfos, kvs);
         }
         // Else assume they want it from this node.
         hostname = pmix_globals.hostname;
@@ -237,9 +237,7 @@ fetch_nodeinfo(
         // If the proc's version is earlier than v3.1, then the info must be
         // provided as a data_array with a key of the node's name as earlier
         // versions don't understand node_info arrays.
-        if (job->nspace->version.major < 3 ||
-            (3 == job->nspace->version.major &&
-             0 == job->nspace->version.minor)) {
+        if (PMIX_PEER_IS_EARLIER(peer, 3, 1, 0)) {
             if (NULL == nodeinfo->hostname) {
                 nikey = strdup(pmix_globals.hostname);
             }
@@ -340,8 +338,8 @@ fetch_all_app_info(
 
 static pmix_status_t
 fetch_appinfo(
+    pmix_peer_t *peer,
     const char *key,
-    pmix_gds_shmem2_job_t *job,
     pmix_list_t *target,
     pmix_info_t *info,
     size_t ninfo,
@@ -396,7 +394,7 @@ fetch_appinfo(
     // See if they wanted to know something about
     // a node that is associated with this app.
     rc = fetch_nodeinfo(
-        key, job, app->nodeinfo, info, ninfo, kvs
+        peer, key, app->nodeinfo, info, ninfo, kvs
     );
     if (PMIX_ERR_DATA_VALUE_NOT_FOUND != rc &&
         PMIX_ERR_NOT_FOUND != rc) {
@@ -428,8 +426,8 @@ fetch_appinfo(
 
 static pmix_status_t
 xfer_sessioninfo(
+    pmix_peer_t *peer,
     pmix_gds_shmem2_session_t *sesh,
-    pmix_gds_shmem2_job_t *job,
     const char *key,
     pmix_list_t *kvs
 ) {
@@ -438,9 +436,7 @@ xfer_sessioninfo(
     const uint32_t sid = sesh->smdata->id;
 
     if (NULL == key) {
-        if (job->nspace->version.major < 4 ||
-            (job->nspace->version.major == 4 &&
-             job->nspace->version.minor == 1)) {
+        if (PMIX_PEER_IS_EARLIER(peer, 4, 2, 0)) {
             // We can only transfer the data as independent values.
             pmix_kval_t *kvi;
             PMIX_LIST_FOREACH(kvi, sessionlist, pmix_kval_t) {
@@ -500,6 +496,7 @@ xfer_sessioninfo(
 
 static pmix_status_t
 fetch_sessioninfo(
+    pmix_peer_t *peer,
     const char *key,
     pmix_gds_shmem2_job_t *job,
     pmix_info_t *info,
@@ -528,12 +525,13 @@ fetch_sessioninfo(
         return PMIX_ERR_NOT_FOUND;
     }
 
-    return xfer_sessioninfo(sesh, job, key, kvs);
+    return xfer_sessioninfo(peer, sesh, key, kvs);
 }
 
 // TODO(skg) This needs plenty of work.
 pmix_status_t
 pmix_gds_shmem2_fetch(
+    struct pmix_peer_t *pr,
     const pmix_proc_t *proc,
     pmix_scope_t scope,
     bool copy,
@@ -544,6 +542,7 @@ pmix_gds_shmem2_fetch(
 ) {
     PMIX_GDS_SHMEM2_VVOUT_HERE();
 
+    pmix_peer_t *peer = (pmix_peer_t*)pr;
     pmix_status_t rc = PMIX_SUCCESS;
     bool sessioninfo = false;
     bool nodeinfo = false;
@@ -555,9 +554,10 @@ pmix_gds_shmem2_fetch(
     PMIX_HIDE_UNUSED_PARAMS(copy);
 
     PMIX_GDS_SHMEM2_VOUT(
-        "%s:%s key=%s for proc=%s on scope=%s", __func__,
+        "%s:%s key=%s for proc=%s on scope=%s on behalf of %s", __func__,
         PMIX_NAME_PRINT(&pmix_globals.myid), !key ? "NULL" : key,
-        PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope)
+        PMIX_NAME_PRINT(proc), PMIx_Scope_string(scope),
+        PMIX_PEER_PRINT(peer)
     );
 
     // Get the tracker for this job. We should have already created one, so
@@ -601,20 +601,20 @@ pmix_gds_shmem2_fetch(
             pmix_list_append(kvs, &kv->super);
         }
         // Collect all the relevant session-level info.
-        rc = fetch_sessioninfo(NULL, job, qualifiers, nqual, kvs);
+        rc = fetch_sessioninfo(peer, NULL, job, qualifiers, nqual, kvs);
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
         // Collect the relevant node-level info.
         rc = fetch_nodeinfo(
-            NULL, job, job->smdata->nodeinfo, qualifiers, nqual, kvs
+            peer, NULL, job->smdata->nodeinfo, qualifiers, nqual, kvs
         );
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
         }
         // Collect the relevant app-level info.
         rc = fetch_appinfo(
-            NULL, job, job->smdata->appinfo, qualifiers, nqual, kvs
+            peer, NULL, job->smdata->appinfo, qualifiers, nqual, kvs
         );
         if (PMIX_SUCCESS != rc && PMIX_ERR_NOT_FOUND != rc) {
             return rc;
@@ -690,13 +690,13 @@ pmix_gds_shmem2_fetch(
     }
 
     if (sessioninfo) {
-        return fetch_sessioninfo(key, job, qualifiers, nqual, kvs);
+        return fetch_sessioninfo(peer, key, job, qualifiers, nqual, kvs);
     }
 
     if (!PMIX_RANK_IS_VALID(proc->rank)) {
         if (nodeinfo) {
             rc = fetch_nodeinfo(
-                key, job, job->smdata->nodeinfo, qualifiers, nqual, kvs
+                peer, key, job->smdata->nodeinfo, qualifiers, nqual, kvs
             );
             if (PMIX_SUCCESS != rc &&
                 PMIX_ERR_NOT_FOUND != rc &&
@@ -709,7 +709,7 @@ pmix_gds_shmem2_fetch(
         }
         else if (appinfo) {
             rc = fetch_appinfo(
-                key, job, job->smdata->appinfo, qualifiers, nqual, kvs
+                peer, key, job->smdata->appinfo, qualifiers, nqual, kvs
             );
             if (PMIX_SUCCESS != rc && PMIX_RANK_WILDCARD == proc->rank) {
                 // Let hash deal with this one.

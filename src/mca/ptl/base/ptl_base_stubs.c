@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -33,6 +33,17 @@
 
 bool pmix_ptl_base_peer_is_earlier(pmix_peer_t *peer, uint8_t major, uint8_t minor, uint8_t release)
 {
+    if (0 == PMIX_PEER_MAJOR_VERSION(peer)) {
+        /* the peer's version was never assigned. This happens
+         * when the application never calls PMIx_Init - we
+         * cannot assign the version because the client never
+         * told us what they are using. Normally, this indicates
+         * that the application is not a PMIx one. All we can do
+         * is assume the peer is NOT earlier
+         */
+        return false;
+    }
+
     /* if they don't care, then don't check */
     if (PMIX_MAJOR_WILDCARD != major) {
         if (PMIX_PEER_MAJOR_VERSION(peer) == PMIX_MAJOR_WILDCARD) {
