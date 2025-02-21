@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2024      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2024-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -15,6 +15,7 @@
 
 PMIX_EXPORT pmix_status_t
 pmix_gds_shmem2_fetch(
+    struct pmix_peer_t *peer,
     const pmix_proc_t *proc,
     pmix_scope_t scope,
     bool copy,
