@@ -140,19 +140,6 @@ int main(int argc, char **argv)
             PMIX_PDATA_DESTRUCT(&pdata);
             fprintf(stderr, "PUBLISH-LOOKUP SUCCEEDED: %d\n", n);
         } else {
-            /* publish something */
-            if (0 > asprintf(&tmp, "BAZ:%s.%u:%d", myproc.nspace, myproc.rank, n)) {
-                goto done;
-            }
-            PMIX_INFO_LOAD(&info[0], tmp, &n, PMIX_INT);
-            free(tmp);
-            if (PMIX_SUCCESS != (rc = PMIx_Publish(info, 2))) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Publish failed: %d\n", myproc.nspace,
-                        myproc.rank, rc);
-                goto done;
-            }
-            PMIX_INFO_DESTRUCT(&info[0]);
-
             /* lookup other rank's value */
             PMIX_PDATA_CONSTRUCT(&pdata);
             if (0 > asprintf(&tmp, "FOOBAR:%s.%u:%d", myproc.nspace, 0, n)) {
@@ -188,6 +175,18 @@ int main(int argc, char **argv)
                 goto done;
             }
             PMIX_PDATA_DESTRUCT(&pdata);
+            /* publish something */
+            if (0 > asprintf(&tmp, "BAZ:%s.%u:%d", myproc.nspace, myproc.rank, n)) {
+                goto done;
+            }
+            PMIX_INFO_LOAD(&info[0], tmp, &n, PMIX_INT);
+            free(tmp);
+            if (PMIX_SUCCESS != (rc = PMIx_Publish(info, 2))) {
+                fprintf(stderr, "Client ns %s rank %d: PMIx_Publish failed: %d\n", myproc.nspace,
+                        myproc.rank, rc);
+                goto done;
+            }
+            PMIX_INFO_DESTRUCT(&info[0]);
         }
     }
 
