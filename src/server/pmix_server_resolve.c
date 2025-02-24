@@ -76,31 +76,9 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/server/pmix_server_ops.h"
 
-static void respeer(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata,
-                    pmix_release_cbfunc_t release_fn, void *release_cbdata)
-{
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    size_t n;
-
-    PMIX_ACQUIRE_OBJECT(cb);
-
-    cb->status = status;
-    if (PMIX_SUCCESS == status) {
-        cb->ninfo = ninfo;
-        PMIX_INFO_CREATE(cb->info, ninfo);
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&cb->info[n], &info[n]);
-        }
-    }
-    if (NULL != release_fn) {
-        release_fn(release_cbdata);
-    }
-    PMIX_WAKEUP_THREAD(&cb->lock);
-    PMIX_POST_OBJECT(cb);
-}
-
 pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
-                                        pmix_buffer_t *buf)
+                                        pmix_buffer_t *buf,
+                                        pmix_info_cbfunc_t cbfunc)
 {
     pmix_cb_t cb;
     int32_t cnt;
@@ -110,14 +88,12 @@ pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
     pmix_info_t info[3], *iptr;
     pmix_proc_t proc;
     pmix_kval_t *kv;
-    pmix_value_t *val;
     char **p, **tmp = NULL, *prs;
     pmix_proc_t *pa = NULL;
     size_t m, n, np = 0, ninfo = 3;
     pmix_namespace_t *ns;
     char *nd, *str;
-    pmix_buffer_t *msg;
-    pmix_query_t query;
+    pmix_data_array_t darray;
 
     /* unpack the nodename */
     cnt = 1;
@@ -150,54 +126,27 @@ pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
     // pass this up to the host for processing as it has
     // the latest information
     if (NULL != pmix_host_server.query) {
-        PMIX_QUERY_CONSTRUCT(&query);
-        PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_RESOLVE_PEERS);
+        PMIX_QUERY_CREATE(cd->query, 1);
+        PMIX_ARGV_APPEND(rc, cd->query->keys, PMIX_QUERY_RESOLVE_PEERS);
         PMIX_INFO_CREATE(iptr, 2);
         str = (char*)nspace;
         PMIX_INFO_LOAD(&iptr[0], PMIX_NSPACE, str, PMIX_STRING);
         PMIX_INFO_SET_QUALIFIER(&iptr[0]);
         PMIX_INFO_LOAD(&iptr[1], PMIX_HOSTNAME, nodename, PMIX_STRING);
         PMIX_INFO_SET_QUALIFIER(&iptr[1]);
-        query.qualifiers = iptr;
-        query.nqual = 2;
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        cd->query->qualifiers = iptr;
+        cd->query->nqual = 2;
         rc = pmix_host_server.query(&pmix_globals.myid,
-                                    &query, 1,
-                                    respeer, (void*)&cb);
+                                    cd->query, 1,
+                                    cbfunc, (void*)cd);
         if (PMIX_SUCCESS != rc) {
             // they either don't support this query, or have
             // nothing to contribute - so use what we know
-            PMIX_QUERY_DESTRUCT(&query);
+            PMIX_QUERY_FREE(cd->query, 1);
+            cd->query = NULL;
             goto local;
         }
-        // wait for the response
-        PMIX_WAIT_THREAD(&cb.lock);
-        PMIX_QUERY_DESTRUCT(&query);
-        rc = cb.status;
-        if (PMIX_SUCCESS == rc) {
-            // array return should be in first info
-            if (0 == cb.ninfo) {
-                // they didn't return anything
-                PMIX_DESTRUCT(&cb);
-                goto local;
-            }
-            val = &cb.info[0].value;
-            if (PMIX_DATA_ARRAY != val->type ||
-                PMIX_PROC != val->data.darray->type) {
-                PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
-                PMIX_DESTRUCT(&cb);
-                goto local;
-            }
-            pa = (pmix_proc_t*)val->data.darray->array;
-            np = val->data.darray->size;
-            // protect the returned data
-            cb.info = NULL;
-            cb.ninfo = 0;
-            PMIX_DESTRUCT(&cb);
-            goto done;
-        }
-        // let's do it ourselves
-        PMIX_DESTRUCT(&cb);
+        return PMIX_SUCCESS;
     }
 
 local:
@@ -414,80 +363,36 @@ done:
         free(nodename);
     }
 
-    // send the response
-    msg = PMIX_NEW(pmix_buffer_t);
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &rc, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
-        return rc;
-    }
-
     if (PMIX_SUCCESS == rc) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &np, 1, PMIX_SIZE);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            return rc;
-        }
-        if (0 < np) {
-            PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, pa, np, PMIX_PROC);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_RELEASE(msg);
-                return rc;
-            }
-        }
+        // put the answer in an info
+        cd->ninfo = 1;
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        // key doesn't matter here
+        darray.type = PMIX_PROC;
+        darray.array = pa;
+        darray.size = np;
+        PMIX_INFO_LOAD(&cd->info[0], PMIX_QUERY_RESOLVE_NODE, &darray, PMIX_DATA_ARRAY);
+        PMIX_PROC_FREE(pa, np);
     }
 
-    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, msg);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(msg);
-        return rc;
-    }
-    PMIX_RELEASE(cd);
-
+    cbfunc(rc, cd->info, cd->ninfo, cd, NULL, NULL);
     return PMIX_SUCCESS;
 }
 
-static void resnode(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata,
-                    pmix_release_cbfunc_t release_fn, void *release_cbdata)
-{
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    size_t n;
-
-    PMIX_ACQUIRE_OBJECT(cb);
-
-    cb->status = status;
-    if (PMIX_SUCCESS == status) {
-        cb->ninfo = ninfo;
-        PMIX_INFO_CREATE(cb->info, ninfo);
-        for (n=0; n < ninfo; n++) {
-            PMIX_INFO_XFER(&cb->info[n], &info[n]);
-        }
-    }
-    if (NULL != release_fn) {
-        release_fn(release_cbdata);
-    }
-    PMIX_WAKEUP_THREAD(&cb->lock);
-    PMIX_POST_OBJECT(cb);
-}
-
 pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
-                                       pmix_buffer_t *buf)
+                                       pmix_buffer_t *buf,
+                                       pmix_info_cbfunc_t cbfunc)
 {
     pmix_cb_t cb;
     int32_t cnt;
     pmix_status_t rc;
     pmix_nspace_t nspace;
-    pmix_info_t info;
+    pmix_info_t info, *iptr;
     pmix_proc_t proc;
     pmix_kval_t *kv;
     pmix_value_t *val;
     char **p, **tmp = NULL, *nodelist = NULL, *str;
     pmix_namespace_t *ns;
-    pmix_buffer_t *msg;
-    pmix_query_t query;
     size_t n;
 
     /* unpack the nspace */
@@ -504,50 +409,25 @@ pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
     // pass this up to the host for processing as it has
     // the latest information
     if (NULL != pmix_host_server.query) {
-        PMIX_QUERY_CONSTRUCT(&query);
-        PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_RESOLVE_NODE);
+        PMIX_QUERY_CREATE(cd->query, 1);
+        PMIX_ARGV_APPEND(rc, cd->query->keys, PMIX_QUERY_RESOLVE_NODE);
+        PMIX_INFO_CREATE(iptr, 1);
         str = (char*)nspace;
-        PMIX_INFO_LOAD(&info, PMIX_NSPACE, str, PMIX_STRING);
-        PMIX_INFO_SET_QUALIFIER(&info);
-        query.qualifiers = &info;
-        query.nqual = 1;
-        PMIX_CONSTRUCT(&cb, pmix_cb_t);
+        PMIX_INFO_LOAD(&iptr[0], PMIX_NSPACE, str, PMIX_STRING);
+        PMIX_INFO_SET_QUALIFIER(&iptr[0]);
+        cd->query->qualifiers = iptr;
+        cd->query->nqual = 1;
         rc = pmix_host_server.query(&pmix_globals.myid,
-                                    &query, 1,
-                                    resnode, (void*)&cb);
+                                    cd->query, 1,
+                                    cbfunc, (void*)cd);
         if (PMIX_SUCCESS != rc) {
             // they either don't support this query, or have
             // nothing to contribute - so use what we know
-            PMIX_QUERY_DESTRUCT(&query);
-            PMIX_DESTRUCT(&cb);
+            PMIX_QUERY_FREE(cd->query, 1);
+            cd->query = NULL;
             goto local;
         }
-        // wait for the response
-        PMIX_WAIT_THREAD(&cb.lock);
-        // protect the qualifier
-        query.qualifiers = NULL;
-        query.nqual = 0;
-        PMIX_QUERY_DESTRUCT(&query);
-        rc = cb.status;
-        if (PMIX_SUCCESS == rc) {
-            // string return should be in first info
-            if (0 == cb.ninfo) {
-                // they didn't return anything
-                PMIX_DESTRUCT(&cb);
-                goto local;
-            }
-            val = &cb.info[0].value;
-            if (PMIX_STRING != val->type) {
-                PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
-                PMIX_DESTRUCT(&cb);
-                goto local;
-            }
-            nodelist = strdup(val->data.string);
-            PMIX_DESTRUCT(&cb);
-            goto done;
-        }
-        // let's do it ourselves
-        PMIX_DESTRUCT(&cb);
+        return PMIX_SUCCESS;
     }
 
 local:
@@ -603,6 +483,7 @@ local:
             PMIx_Argv_free(tmp);
         }
         rc = PMIX_SUCCESS;
+        PMIX_DESTRUCT(&cb);
         goto done;
     }
 
@@ -610,54 +491,35 @@ local:
     PMIX_LOAD_NSPACE(proc.nspace, nspace);
     PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb);
     if (PMIX_SUCCESS != rc) {
+        PMIX_DESTRUCT(&cb);
         goto done;
     }
 
     /* sanity check */
     if (0 == pmix_list_get_size(&cb.kvs)) {
+        PMIX_DESTRUCT(&cb);
         goto done;
     }
     kv = (pmix_kval_t*)pmix_list_get_first(&cb.kvs);
     val = kv->value;
     if (PMIX_STRING != val->type || NULL == val->data.string) {
         PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+        rc = PMIX_ERR_INVALID_VAL;
+        PMIX_DESTRUCT(&cb);
         goto done;
     }
     nodelist = strdup(val->data.string);
+    PMIX_DESTRUCT(&cb);
 
 done:
-    // send the result to the client
-    msg = PMIX_NEW(pmix_buffer_t);
-
-    PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &rc, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(msg);
-        if (NULL != nodelist) {
-            free(nodelist);
-        }
-        return rc;
-    }
-
     if (PMIX_SUCCESS == rc) {
-        PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &nodelist, 1, PMIX_STRING);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_RELEASE(msg);
-            if (NULL != nodelist) {
-                free(nodelist);
-            }
-            return rc;
-        }
-    }
-    if (NULL != nodelist) {
-        free(nodelist);
+        // put the nodelist in an info
+        cd->ninfo = 1;
+        PMIX_INFO_CREATE(cd->info, cd->ninfo);
+        // key doesn't matter here
+        PMIX_INFO_LOAD(&cd->info[0], PMIX_QUERY_RESOLVE_NODE, &nodelist, PMIX_STRING);
     }
 
-    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, msg);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(msg);
-        return rc;
-    }
-    return rc;
+    cbfunc(rc, cd->info, cd->ninfo, cd, NULL, NULL);
+    return PMIX_SUCCESS;
 }
