@@ -2,7 +2,7 @@ dnl -*- shell-script -*-
 dnl
 dnl Copyright (c) 2021 IBM Corporation.  All rights reserved.
 dnl
-dnl Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+dnl Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -42,12 +42,20 @@ AC_MSG_CHECKING(if $CC supports ([$1]))
 ])
 
 AC_DEFUN([_PMIX_CHECK_LTO_FLAG], [
-    chkflg=`echo $1 | grep -- -flto`
+    chkflg=`echo $1 | grep -- lto`
     if test -n "$chkflg"; then
-        AC_MSG_WARN([Configure has detected the presence of the -flto])
-        AC_MSG_WARN([compiler directive in $2. PMIx does not currently])
-        AC_MSG_WARN([support this flag as it conflicts with the])
-        AC_MSG_WARN([plugin architecture of the PMIx library.])
-        AC_MSG_ERROR([Please remove this directive and re-run configure.])
+        AC_MSG_WARN([Configure has detected the presence of one or more])
+        AC_MSG_WARN([compiler directives involving the lto optimizer])
+        AC_MSG_WARN([$2. PMIx does not currently support such directives])
+        AC_MSG_WARN([as they conflict with the plugin architecture of the])
+        AC_MSG_WARN([PMIx library. The directive is being ignored.])
+        newflg=
+        for item in $1; do
+            chkflg=`echo $item | grep -- lto`
+            if test ! -n "$chkflg"; then
+                newflg+="$item "
+            fi
+        done
+        $2="$newflg"
     fi
 ])

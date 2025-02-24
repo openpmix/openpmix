@@ -23,7 +23,7 @@ dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
 dnl
-dnl Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+dnl Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 dnl Copyright (c) 2018-2022 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
@@ -226,6 +226,16 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     pmix_show_title "Compiler and preprocessor tests"
 
     PMIX_SETUP_CC
+    # We do not currently support the "lto" optimizer as it
+    # aggregates all the headers from our plugins, resulting
+    # in a configuration that generates warnings/errors when
+    # passed through their optimizer phase. We therefore check
+    # for the flag, and if found, output a message explaining
+    # the situation and aborting configure
+    _PMIX_CHECK_LTO_FLAG($CPPFLAGS, CPPFLAGS)
+    _PMIX_CHECK_LTO_FLAG($CFLAGS, CFLAGS)
+    _PMIX_CHECK_LTO_FLAG($LDFLAGS, LDFLAGS)
+    _PMIX_CHECK_LTO_FLAG($LIBS, LIBS)
 
     #
     # Check for some types
@@ -874,18 +884,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     fi
     CPP_INCLUDES="$(echo $cpp_includes | $SED 's/[[^ \]]* */'"$pmix_cc_iquote"'&/g')"
     CPPFLAGS="$CPP_INCLUDES -I$PMIX_top_srcdir/include $CPPFLAGS"
-
-
-    # We do not currently support the "lto" optimizer as it
-    # aggregates all the headers from our plugins, resulting
-    # in a configuration that generates warnings/errors when
-    # passed through their optimizer phase. We therefore check
-    # for the flag, and if found, output a message explaining
-    # the situation and aborting configure
-    _PMIX_CHECK_LTO_FLAG($CPPFLAGS, CPPFLAGS)
-    _PMIX_CHECK_LTO_FLAG($CFLAGS, CFLAGS)
-    _PMIX_CHECK_LTO_FLAG($LDFLAGS, LDFLAGS)
-    _PMIX_CHECK_LTO_FLAG($LIBS, LIBS)
 
 
     ############################################################################
