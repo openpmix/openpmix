@@ -5339,6 +5339,7 @@ static void cdcon(pmix_server_caddy_t *cd)
     cd->peer = NULL;
     cd->info = NULL;
     cd->ninfo = 0;
+    cd->query = NULL;
 }
 static void cddes(pmix_server_caddy_t *cd)
 {
@@ -5353,6 +5354,9 @@ static void cddes(pmix_server_caddy_t *cd)
     }
     if (NULL != cd->info) {
         PMIX_INFO_FREE(cd->info, cd->ninfo);
+    }
+    if (NULL != cd->query) {
+        PMIX_QUERY_FREE(cd->query, 1);
     }
 }
 PMIX_CLASS_INSTANCE(pmix_server_caddy_t,
