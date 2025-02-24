@@ -4814,6 +4814,143 @@ complete:
     }
 }
 
+static void respeers_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata,
+                            pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc, ret;
+    pmix_value_t *val;
+    pmix_proc_t *pa = NULL;
+    size_t np = 0;
+    PMIX_ACQUIRE_OBJECT(cb);
+
+    ret = status;
+    if (PMIX_SUCCESS == ret) {
+        // array return should be in first info
+        if (0 == ninfo) {
+            // they didn't return anything
+            ret = PMIX_ERR_NOT_FOUND;
+            goto done;
+        }
+        val = &info[0].value;
+        if (PMIX_DATA_ARRAY != val->type ||
+            PMIX_PROC != val->data.darray->type) {
+            PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+            ret = PMIX_ERR_INVALID_VAL;
+            goto done;
+        }
+        pa = (pmix_proc_t*)val->data.darray->array;
+        np = val->data.darray->size;
+    }
+
+done:
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ret, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+
+    if (PMIX_SUCCESS == ret) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, &np, 1, PMIX_SIZE);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto complete;
+        }
+        if (0 < np) {
+            PMIX_BFROPS_PACK(rc, cd->peer, reply, pa, np, PMIX_PROC);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                goto complete;
+            }
+        }
+    }
+
+complete:
+    // send reply
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+    PMIX_RELEASE(cd);
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+}
+
+static void resnodes_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata,
+                            pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc, ret;
+    pmix_value_t *val;
+    char *nodelist = NULL;
+
+    ret = status;
+    if (PMIX_SUCCESS == ret) {
+        // array return should be in first info
+        if (0 == ninfo) {
+            // they didn't return anything
+            ret = PMIX_ERR_NOT_FOUND;
+            goto done;
+        }
+        val = &info[0].value;
+        if (PMIX_STRING != val->type) {
+            PMIX_ERROR_LOG(PMIX_ERR_INVALID_VAL);
+            ret = PMIX_ERR_INVALID_VAL;
+            goto done;
+        }
+        nodelist = strdup(val->data.string);
+    }
+
+done:
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        PMIX_RELEASE(cd);
+        if (NULL != nodelist) {
+            free(nodelist);
+        }
+        PMIX_RELEASE(cd);
+        return;
+    }
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ret, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+
+    if (PMIX_SUCCESS == status) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, &nodelist, 1, PMIX_STRING);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto complete;
+        }
+    }
+
+complete:
+    // send reply
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+    if (NULL != nodelist) {
+        free(nodelist);
+    }
+    PMIX_RELEASE(cd);
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+}
+
+
 /* the switchyard is the primary message handling function. It's purpose
  * is to take incoming commands (packed into a buffer), unpack them,
  * and then call the corresponding host server's function to execute
@@ -5203,7 +5340,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_RESOLVE_PEERS_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_resolve_peers(cd, buf))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_resolve_peers(cd, buf, respeers_cbfunc))) {
             PMIX_RELEASE(cd);
         }
         return rc;
@@ -5211,7 +5348,7 @@ static pmix_status_t server_switchyard(pmix_peer_t *peer, uint32_t tag, pmix_buf
 
     if (PMIX_RESOLVE_NODE_CMD == cmd) {
         PMIX_GDS_CADDY(cd, peer, tag);
-        if (PMIX_SUCCESS != (rc = pmix_server_resolve_node(cd, buf))) {
+        if (PMIX_SUCCESS != (rc = pmix_server_resolve_node(cd, buf, resnodes_cbfunc))) {
             PMIX_RELEASE(cd);
         }
         return rc;

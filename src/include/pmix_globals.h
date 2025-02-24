@@ -571,6 +571,7 @@ typedef struct {
     pmix_peer_t *peer;
     pmix_info_t *info;
     size_t ninfo;
+    pmix_query_t *query;
 } pmix_server_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_server_caddy_t);
 
