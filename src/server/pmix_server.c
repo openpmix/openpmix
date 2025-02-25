@@ -4479,7 +4479,8 @@ static void respeers_cbfunc(pmix_status_t status, pmix_info_t info[], size_t nin
     pmix_value_t *val;
     pmix_proc_t *pa = NULL;
     size_t np = 0;
-    PMIX_ACQUIRE_OBJECT(cb);
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     ret = status;
     if (PMIX_SUCCESS == ret) {
@@ -4498,6 +4499,16 @@ static void respeers_cbfunc(pmix_status_t status, pmix_info_t info[], size_t nin
         }
         pa = (pmix_proc_t*)val->data.darray->array;
         np = val->data.darray->size;
+    } else {
+        /* we are in the host's progress thread, so we
+         * must threadshift to our own thread to
+         * attempt to locally resolve the request */
+        PMIX_THREADSHIFT(cd, pmix_server_locally_resolve_peers);
+        // give the host its release
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
+        return;
     }
 
 done:
@@ -4535,6 +4546,8 @@ complete:
         PMIX_RELEASE(reply);
     }
     PMIX_RELEASE(cd);
+
+    // give the host its release
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
@@ -4548,6 +4561,8 @@ static void resnodes_cbfunc(pmix_status_t status, pmix_info_t info[], size_t nin
     pmix_status_t rc, ret;
     pmix_value_t *val;
     char *nodelist = NULL;
+
+    PMIX_ACQUIRE_OBJECT(cd);
 
     ret = status;
     if (PMIX_SUCCESS == ret) {
@@ -4563,17 +4578,23 @@ static void resnodes_cbfunc(pmix_status_t status, pmix_info_t info[], size_t nin
             ret = PMIX_ERR_INVALID_VAL;
             goto done;
         }
-        nodelist = strdup(val->data.string);
+        nodelist = val->data.string;
+    } else {
+        /* we are in the host's progress thread, so we
+         * must threadshift to our own thread to
+         * attempt to locally resolve the request */
+        PMIX_THREADSHIFT(cd, pmix_server_locally_resolve_node);
+        // give the host its release
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
+        return;
     }
 
 done:
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        PMIX_RELEASE(cd);
-        if (NULL != nodelist) {
-            free(nodelist);
-        }
         PMIX_RELEASE(cd);
         return;
     }
@@ -4583,7 +4604,7 @@ done:
         goto complete;
     }
 
-    if (PMIX_SUCCESS == status) {
+    if (PMIX_SUCCESS == ret) {
         PMIX_BFROPS_PACK(rc, cd->peer, reply, &nodelist, 1, PMIX_STRING);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -4597,10 +4618,9 @@ complete:
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
     }
-    if (NULL != nodelist) {
-        free(nodelist);
-    }
     PMIX_RELEASE(cd);
+
+    // give the caller their release
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
