@@ -430,9 +430,31 @@ void pmix_parse_localquery(int sd, short args, void *cbdata)
     /* ask for help */
     rc = request_help(cd);
     if (PMIX_SUCCESS != rc) {
-        /* we have to return the error to the caller */
-        if (NULL != cd->cbfunc) {
-            cd->cbfunc(rc, NULL, 0, cd->cbdata, _local_relcb, cd);
+        /* if there are some results, then we return them
+         * as "partial success" */
+        cd->ninfo = pmix_list_get_size(&cd->results);
+        if (0 < cd->ninfo) {
+            rc = PMIX_ERR_PARTIAL_SUCCESS;
+            PMIX_INFO_CREATE(cd->info, cd->ninfo);
+            n = 0;
+            PMIX_LIST_FOREACH(kv, &cd->results, pmix_kval_t) {
+                PMIX_LOAD_KEY(cd->info[n].key, kv->key);
+                rc = PMIx_Value_xfer(&cd->info[n].value, kv->value);
+                if (PMIX_SUCCESS != rc) {
+                    cd->status = rc;
+                    PMIX_INFO_FREE(cd->info, cd->ninfo);
+                    break;
+                }
+                ++n;
+            }
+            if (NULL != cd->cbfunc) {
+                cd->cbfunc(rc, cd->info, cd->ninfo, cd->cbdata, _local_relcb, cd);
+            }
+        } else {
+            /* we have to return the error to the caller */
+            if (NULL != cd->cbfunc) {
+                cd->cbfunc(rc, NULL, 0, cd->cbdata, _local_relcb, cd);
+            }
         }
     }
     return;
