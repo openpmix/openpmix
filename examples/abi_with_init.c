@@ -48,8 +48,10 @@ int main(int argc, char **argv) {
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "PMIx_Init failed: %d\n", rc);
-        exit(rc);
+        if (PMIX_ERR_UNREACH != rc) {
+            fprintf(stderr, "PMIx_Init failed: %d\n", rc);
+            exit(rc);
+        }
     }
 
     nqueries = 3;

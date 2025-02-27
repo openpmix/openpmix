@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      ParTec AG.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -149,9 +149,15 @@ int main(int argc, char **argv)
      * is included, then the process will be stopped in this call until
      * the "debugger release" notification arrives */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
-                PMIx_Error_string(rc));
-        exit(0);
+        if (PMIX_ERR_UNREACH == rc) {
+            fprintf(stderr, "Client ns %s rank %d: Cannot operate as singleton\n",
+                    myproc.nspace, myproc.rank);
+        } else {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n",
+                    myproc.nspace, myproc.rank,
+                    PMIx_Error_string(rc));
+        }
+        exit(1);
     }
     fprintf(stderr, "Client ns %s rank %d pid %lu: Running\n", myproc.nspace, myproc.rank,
             (unsigned long) pid);
