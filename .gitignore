@@ -105,6 +105,7 @@ examples/pset
 examples/resolve
 examples/toolqry
 examples/simple_resolve
+examples/pubstress
 
 include/pmix_version.h
 include/pmix_rename.h
