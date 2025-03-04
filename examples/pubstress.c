@@ -307,6 +307,105 @@ int main(int argc, char **argv)
             fprintf(stderr, "Client ns %s rank %d: Purge succeeded: %s\n",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
         }
+        // now publish something on different persistences
+        firstread = PMIX_PERSIST_PROC;
+        PMIX_INFO_LOAD(&info[1], PMIX_PERSISTENCE, &firstread, PMIX_PERSIST);
+        if (0 > asprintf(&tmp, "RANGETEST:%s.%u:0", myproc.nspace, myproc.rank)) {
+            goto done;
+        }
+        bcount = 1;
+        PMIX_INFO_LOAD(&info[0], tmp, &bcount, PMIX_SIZE);
+        free(tmp);
+        if (PMIX_SUCCESS != (rc = PMIx_Publish(info, 2))) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Publish failed: %d\n", myproc.nspace,
+                    myproc.rank, rc);
+            goto done;
+        }
+        PMIX_INFO_DESTRUCT(&info[0]);
+        firstread = PMIX_PERSIST_APP;
+        PMIX_INFO_LOAD(&info[1], PMIX_PERSISTENCE, &firstread, PMIX_PERSIST);
+        if (0 > asprintf(&tmp, "RANGETEST:%s.%u:1", myproc.nspace, myproc.rank)) {
+            goto done;
+        }
+        bcount = 2;
+        PMIX_INFO_LOAD(&info[0], tmp, &bcount, PMIX_SIZE);
+        free(tmp);
+        if (PMIX_SUCCESS != (rc = PMIx_Publish(info, 2))) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Publish failed: %d\n", myproc.nspace,
+                    myproc.rank, rc);
+            goto done;
+        }
+        PMIX_INFO_DESTRUCT(&info[0]);
+        firstread = PMIX_PERSIST_SESSION;
+        PMIX_INFO_LOAD(&info[1], PMIX_PERSISTENCE, &firstread, PMIX_PERSIST);
+        if (0 > asprintf(&tmp, "RANGETEST:%s.%u:2", myproc.nspace, myproc.rank)) {
+            goto done;
+        }
+        bcount = 3;
+        PMIX_INFO_LOAD(&info[0], tmp, &bcount, PMIX_SIZE);
+        free(tmp);
+        if (PMIX_SUCCESS != (rc = PMIx_Publish(info, 2))) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Publish failed: %d\n", myproc.nspace,
+                    myproc.rank, rc);
+            goto done;
+        }
+        PMIX_INFO_DESTRUCT(&info[0]);
+
+        // unpublish only those on the app persistence
+        if (0 > asprintf(&keys[0], "RANGETEST:%s.%u:1", myproc.nspace, myproc.rank)) {
+            goto done;
+        }
+        keys[1] = NULL;
+        firstread = PMIX_PERSIST_APP;
+        PMIX_INFO_LOAD(&info[0], PMIX_PERSISTENCE, &firstread, PMIX_PERSIST);
+        if (PMIX_SUCCESS != (rc = PMIx_Unpublish(keys, info, 1))) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Unpublish of app persistence failed: %s\n", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
+            goto done;
+        } else {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Unpublish of app persistence succeeded\n", myproc.nspace,
+                    myproc.rank);
+        }
+
+        // verify the app persistence keys are gone
+        PMIX_PDATA_CONSTRUCT(&pdata);
+        if (0 > asprintf(&tmp, "RANGETEST:%s.%u:1", myproc.nspace, myproc.rank)) {
+            goto done;
+        }
+        PMIX_LOAD_KEY(pdata.key, tmp);
+        free(tmp);
+        // check value
+        rc = PMIx_Lookup(&pdata, 1, NULL, 0);
+        if (PMIX_SUCCESS == rc) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Lookup succeeded instead of failed\n", myproc.nspace,
+                    myproc.rank);
+            goto done;
+        } else {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Lookup of app persistence value correctly failed: %s\n", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
+        }
+
+        PMIX_PDATA_DESTRUCT(&pdata);
+
+        // verify the session persistence key is still there
+        PMIX_PDATA_CONSTRUCT(&pdata);
+        if (0 > asprintf(&tmp, "RANGETEST:%s.%u:2", myproc.nspace, myproc.rank)) {
+            goto done;
+        }
+        PMIX_LOAD_KEY(pdata.key, tmp);
+        free(tmp);
+        // check value
+        rc = PMIx_Lookup(&pdata, 1, NULL, 0);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Lookup failed: %s\n", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
+            goto done;
+        } else {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Lookup of session persistence value succeeded\n", myproc.nspace,
+                    myproc.rank);
+        }
+        PMIX_PDATA_DESTRUCT(&pdata);
+
     }
 
 done:

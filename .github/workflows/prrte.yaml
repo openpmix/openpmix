@@ -55,3 +55,10 @@ jobs:
          prun -n 1 --system-server sleep 10000 &
          ./examples/toolqry --system-server
          pterm --system-server
+    - name: Run pubstress check
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prterun -n 5 ./examples/pubstress 30
+      if:   ${{ true }}
+      timeout-minutes: 10
