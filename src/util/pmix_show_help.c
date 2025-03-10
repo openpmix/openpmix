@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -151,7 +151,7 @@ static char **search_dirs = NULL;
 
 static pmix_status_t match(const char *a, const char *b)
 {
-    int rc = PMIX_ERROR; 
+    int rc = PMIX_ERROR;
     char *p1, *p2, *tmp1 = NULL, *tmp2 = NULL;
     size_t min;
 
@@ -160,11 +160,11 @@ static pmix_status_t match(const char *a, const char *b)
         return PMIX_SUCCESS;
 
     if (NULL != strchr(a, '*') || NULL != strchr(b, '*')) {
-        tmp1 = strdup(a); 
+        tmp1 = strdup(a);
         if (NULL == tmp1) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
-        tmp2 = strdup(b); 
+        tmp2 = strdup(b);
         if (NULL == tmp2) {
             free(tmp1);
             return PMIX_ERR_OUT_OF_RESOURCE;
@@ -415,7 +415,8 @@ static pmix_status_t open_file(const char *base,
                                FILE **fptr)
 {
     char *filename;
-    char *err_msg = NULL;
+    char **err_msg = NULL;
+    char *tmp;
     size_t base_len;
     int i;
     FILE *fp = NULL;
@@ -437,18 +438,18 @@ static pmix_status_t open_file(const char *base,
             filename = pmix_os_path(false, search_dirs[i], base, NULL);
             fp = fopen(filename, "r");
             if (NULL == fp) {
-                if (NULL != err_msg) {
-                    free(err_msg);
-                }
-                if (0 > asprintf(&err_msg, "%s: %s", filename, strerror(errno))) {
+                if (0 > asprintf(&tmp, "    %s: %s", filename, strerror(errno))) {
                     free(filename);
+                    PMIx_Argv_free(err_msg);
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
+                PMIx_Argv_append_nosize(&err_msg, tmp);
+                free(tmp);
                 base_len = strlen(base);
                 if (4 > base_len || 0 != strcmp(base + base_len - 4, ".txt")) {
                     free(filename);
                     if (0 > asprintf(&filename, "%s%s%s.txt", search_dirs[i], PMIX_PATH_SEP, base)) {
-                        free(err_msg);
+                        PMIx_Argv_free(err_msg);
                         return PMIX_ERR_OUT_OF_RESOURCE;
                     }
                     fp = fopen(filename, "r");
@@ -464,10 +465,12 @@ static pmix_status_t open_file(const char *base,
     /* If we still couldn't open it, then something is wrong */
     if (NULL == fp) {
         char *msg;
+        tmp = PMIx_Argv_join(err_msg, '\n');
+        PMIx_Argv_free(err_msg);
         pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
-                    "the help file:\n    %s.  Sorry!\n%s", dash_line, topic, err_msg, dash_line);
-        local_delivery(err_msg, topic, msg);
-        free(err_msg);
+                    "the help file:\n%s.\nSorry!\n%s", dash_line, topic, tmp, dash_line);
+        local_delivery(tmp, topic, msg);
+        free(tmp);
         return PMIX_ERR_NOT_FOUND;
     }
 
