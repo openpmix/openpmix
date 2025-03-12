@@ -2,7 +2,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  *
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,9 +38,11 @@
 #include "src/include/pmix_socket_errno.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/base/pmix_mca_base_vari.h"
+#include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "src/mca/preg/preg.h"
 #include "src/util/pmix_alfg.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_os_path.h"
@@ -226,9 +228,9 @@ static pmix_status_t harvest_envars(pmix_namespace_t *nptr,
     uint32_t uid = UINT32_MAX;
     const char *home;
     pmix_mca_base_var_file_value_t *fv;
-    pmix_kval_t *kv;
+    pmix_kval_t *kv, *kptr;
     size_t n;
-    char *file, *evar;
+    char *file, *evar, *tmp;
 
     pmix_output_verbose(2, pmix_pmdl_base_framework.framework_output,
                         "pmdl:ompi:harvest envars");
@@ -358,6 +360,24 @@ harvest:
                                       pmix_mca_pmdl_ompi_component.exclude, ilist);
         if (PMIX_SUCCESS != rc) {
             return rc;
+        }
+    }
+
+    /* check if one of the envars is OPAL_PREFIX as we need to
+     * do more to set that up */
+    PMIX_LIST_FOREACH(kptr, ilist, pmix_kval_t) {
+        if (0 == strcmp(kptr->value->data.envar.envar, "OPAL_PREFIX")) {
+            // need to modify LD_LIBRARY_PATH as well - can only assume
+            // that they used the same libdir name as we did
+            evar = pmix_basename(pmix_pinstall_dirs.libdir);
+            PMIX_KVAL_NEW(kv, PMIX_PREPEND_ENVAR);
+            kv->value->type = PMIX_ENVAR;
+            pmix_asprintf(&tmp, "%s/%s", kptr->value->data.envar.value, evar);
+            free(evar);
+            PMIX_ENVAR_LOAD(&kv->value->data.envar, "LD_LIBRARY_PATH", tmp, ':');
+            free(tmp);
+            pmix_list_append(ilist, &kv->super);
+            break;
         }
     }
 
