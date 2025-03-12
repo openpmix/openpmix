@@ -480,7 +480,9 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_HOSTFILE                       "pmix.hostfile"         // (char*) hostfile to use for spawned procs
 #define PMIX_ADD_HOST                       "pmix.addhost"          // (char*) comma-delimited list of hosts to add to allocation
 #define PMIX_ADD_HOSTFILE                   "pmix.addhostfile"      // (char*) hostfile to add to existing allocation
-#define PMIX_PREFIX                         "pmix.prefix"           // (char*) prefix to use for starting spawned procs
+#define PMIX_PREFIX                         "pmix.prefix"           // (char*) prefix to be used by an app to look for its
+                                                                    //         PMIx installation on remote nodes. A NULL
+                                                                    //         value indicates that no prefix is to be given
 #define PMIX_WDIR                           "pmix.wdir"             // (char*) working directory for spawned procs
 #define PMIX_WDIR_USER_SPECIFIED            "pmix.wdir.user"        // (bool) User specified the working directory
 #define PMIX_DISPLAY_MAP                    "pmix.dispmap"          // (bool) display placement map upon spawn
