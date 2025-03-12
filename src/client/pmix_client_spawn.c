@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -153,10 +153,10 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_kval_t *kv;
     pmix_list_t ilist;
     char cwd[PMIX_PATH_MAX];
-    char *tmp, *t2, *prefix, *defprefix = NULL;
+    char *tmp, *t2;
     bool proxy = false;
-    pmix_proc_t parent;
     void *xlist;
+    pmix_proc_t parent;
     pmix_data_array_t darray;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
@@ -213,10 +213,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PARENT_ID)) {
                 PMIX_XFER_PROCID(&parent, job_info[n].value.data.proc);
                 proxy = true;
-            } else if (PMIX_CHECK_KEY(&job_info[n], PMIX_PREFIX)) {
-                defprefix = job_info[n].value.data.string;
-                // do not transfer this key - we will handle it here
-                continue;
             }
             rc = PMIx_Info_list_xfer(xlist, &job_info[n]);
             if (PMIX_SUCCESS != rc) {
@@ -290,7 +286,6 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             free(t2);
         }
 
-
         // copy the env array
         fcd->apps[n].env = PMIx_Argv_copy(aptr->env);
 
@@ -314,52 +309,12 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
         }
 
         // copy the info array
-        prefix = NULL;
         if (0 < aptr->ninfo) {
-            xlist = PMIx_Info_list_start();
+            fcd->apps[n].ninfo = aptr->ninfo;
+            PMIX_INFO_CREATE(fcd->apps[n].info, fcd->apps[n].ninfo);
             for (m=0; m < aptr->ninfo; m++) {
-                if (PMIX_CHECK_KEY(&aptr->info[m], PMIX_PREFIX)) {
-                    prefix = aptr->info[m].value.data.string;
-                    // do not transfer this key
-                    continue;
-                }
-                rc = PMIx_Info_list_xfer(xlist, &aptr->info[m]);
-                if (PMIX_SUCCESS != rc) {
-                    PMIx_Info_list_release(xlist);
-                    PMIX_RELEASE(fcd);
-                    return rc;
-                }
+                PMIX_INFO_XFER(&fcd->apps[n].info[m], &aptr->info[m]);
             }
-            rc = PMIx_Info_list_convert(xlist, &darray);
-            if (PMIX_SUCCESS != rc) {
-                PMIx_Info_list_release(xlist);
-                PMIX_RELEASE(fcd);
-                return rc;
-            }
-            fcd->apps[n].info = darray.array;
-            fcd->apps[n].ninfo = darray.size;
-            PMIx_Info_list_release(xlist);
-        }
-
-        // adjust the cmd prefix if required
-        if (NULL != prefix) {
-            // prefix the command
-            pmix_asprintf(&tmp, "%s/%s", prefix, fcd->apps[n].cmd);
-            free(fcd->apps[n].cmd);
-            fcd->apps[n].cmd = tmp;
-            // prefix argv[0]
-            pmix_asprintf(&tmp, "%s/%s", prefix, fcd->apps[n].argv[0]);
-            free(fcd->apps[n].argv[0]);
-            fcd->apps[n].argv[0] = tmp;
-        } else if (NULL != defprefix) {
-            // prefix the command
-            pmix_asprintf(&tmp, "%s/%s", defprefix, fcd->apps[n].cmd);
-            free(fcd->apps[n].cmd);
-            fcd->apps[n].cmd = tmp;
-            // prefix argv[0]
-            pmix_asprintf(&tmp, "%s/%s", defprefix, fcd->apps[n].argv[0]);
-            free(fcd->apps[n].argv[0]);
-            fcd->apps[n].argv[0] = tmp;
         }
 
         if (!jobenvars) {
@@ -407,12 +362,14 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             fcd->peer = pmix_globals.mypeer;
         }
         PMIX_RETAIN(fcd->peer);
+
         /* run a quick check of the directives to see if any IOF
          * requests were included so we can set that up now - helps
          * to catch any early output - and a request for notification
          * of job termination so we can setup the event registration */
         pmix_server_spawn_parser(fcd->peer, &fcd->channels, &fcd->flags,
                                  fcd->info, fcd->ninfo);
+
         /* call the local host */
         rc = pmix_host_server.spawn(&pmix_globals.myid,
                                     fcd->info, fcd->ninfo,
