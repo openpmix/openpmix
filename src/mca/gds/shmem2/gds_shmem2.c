@@ -1053,7 +1053,6 @@ shmem2_attach(
             );
             rc = PMIX_ERROR;
         }
-        PMIX_ERROR_LOG(rc);
         goto out;
     }
     PMIX_GDS_SHMEM2_VOUT(
@@ -1062,6 +1061,9 @@ shmem2_attach(
 out:
     if (PMIX_SUCCESS != rc) {
         (void)pmix_shmem_segment_detach(shmem2);
+        // remove the job from the tracker
+        pmix_list_remove_item(&pmix_mca_gds_shmem2_component.jobs, &job->super);
+        PMIX_RELEASE(job);
     }
     else {
         pmix_gds_shmem2_set_status(
@@ -1126,7 +1128,6 @@ shmem2_segment_attach_and_init(
     const uintptr_t req_addr = (uintptr_t)seginfo->seg_hadr;
     rc = shmem2_attach(job, seginfo->smid, req_addr);
     if (PMIX_UNLIKELY(rc != PMIX_SUCCESS)) {
-        PMIX_ERROR_LOG(rc);
         return rc;
     }
     // Now we can safely initialize our shared data structures.
@@ -2518,7 +2519,6 @@ unpack_shmem2_seg_blob_and_attach_if_necessary(
         // Looks like we have to attach and initialize it.
         rc = shmem2_segment_attach_and_init(job, &usb);
         if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-            PMIX_ERROR_LOG(rc);
             break;
         }
     } while (false);
@@ -2550,7 +2550,6 @@ client_connect_to_shmem2_from_buffi(
         if (PMIX_CHECK_KEY(&kval, SHMEM2_SEG_BLOB_KEY)) {
             rc = unpack_shmem2_seg_blob_and_attach_if_necessary(&kval);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
-                PMIX_ERROR_LOG(rc);
                 break;
             }
         }
@@ -2575,9 +2574,7 @@ client_connect_to_shmem2_from_buffi(
     PMIX_DESTRUCT(&kval);
 
     if (PMIX_UNLIKELY(PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER != rc)) {
-        PMIX_ERROR_LOG(rc);
         rc = PMIX_ERR_UNPACK_FAILURE;
-        PMIX_ERROR_LOG(rc);
         return rc;
     }
     return PMIX_SUCCESS;
@@ -2642,7 +2639,7 @@ server_store_modex_cb(pmix_proc_t *proc,
     int32_t cnt;
     pmix_kval_t kv;
     pmix_gds_shmem2_job_t *job;
-    
+
     rc = pmix_gds_shmem2_get_job_tracker(proc->nspace, false, &job);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
