@@ -3,7 +3,7 @@
 # Copyright (c) 2009 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017      Intel, Inc.  All rights reserved.
 # Copyright (c) 2021      Oak Ridge National Laboratory.  All rights reserved.
-# Copyright (c) 2023-2024 Nanook Consulting  All rights reserved.
+# Copyright (c) 2023-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -75,3 +75,13 @@ We attempted to remove a file, but were unable to do so:
 
   Path:  %s
   Error: %s
+#
+[failed-file-open]
+An attempt was made to open a shared memory backing file, but the
+attempt failed:
+
+  File:  %s
+  Error: %s
+
+The PMIx shared memory subsystem will be disabled, but your job will
+continue by using the "hash" subsystem.
