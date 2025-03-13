@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -13,7 +13,9 @@
 #include "pmix_common.h"
 #include "pmix_output.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/gds/base/base.h"
 #include "src/util/pmix_error.h"
+#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_string_copy.h"
 
 #ifdef HAVE_FCNTL_H
@@ -62,6 +64,10 @@ segment_attach(
     const int fd = open(shmem->backing_path, O_RDWR);
     if (fd == -1) {
         rc = PMIX_ERR_FILE_OPEN_FAILURE;
+        if (0 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output)) {
+            pmix_show_help("help-pmix-util.txt", "failed-file-open", true,
+                           shmem->backing_path, strerror(errno));
+        }
         goto out;
     }
 
@@ -88,7 +94,6 @@ out:
     }
     if (PMIX_SUCCESS != rc) {
         (void)pmix_shmem_segment_detach(shmem);
-        PMIX_ERROR_LOG(rc);
     }
     else {
         shmem->attached = true;
