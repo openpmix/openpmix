@@ -4,7 +4,7 @@
  * Copyright (c) 2015       Los Alamos National Security, Inc.  All rights
  *                          reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -68,6 +68,7 @@ pmix_pdl_plibltpdl_component_t mca_pdl_plibltpdl_component = {
 
     /* Now fill in the plibltdl component-specific members */
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, pdl, plibltdl)
 
 static int plibltpdl_component_register(void)
 {

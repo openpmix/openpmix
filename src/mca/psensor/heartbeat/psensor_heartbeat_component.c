@@ -2,7 +2,7 @@
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012      Los Alamos National Security, Inc. All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -40,6 +40,7 @@ pmix_psensor_heartbeat_component_t pmix_mca_psensor_heartbeat_component = {
           heartbeat_query  /* component query */
     }
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, psensor, heartbeat)
 
 /**
  * component open/close/init function

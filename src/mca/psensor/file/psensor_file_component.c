@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -41,6 +41,7 @@ pmix_psensor_file_component_t pmix_mca_psensor_file_component = {
         psensor_file_query  /* component query */
     }
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, psensor, file)
 
 static int psensor_file_open(void)
 {

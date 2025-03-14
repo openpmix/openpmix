@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -61,6 +61,7 @@ pmix_gds_hash_component_t pmix_mca_gds_hash_component = {
     .mysessions = PMIX_LIST_STATIC_INIT,
     .myjobs = PMIX_LIST_STATIC_INIT
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, gds, hash)
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {

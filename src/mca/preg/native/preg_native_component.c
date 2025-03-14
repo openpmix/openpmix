@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,6 +54,7 @@ pmix_mca_base_component_t pmix_mca_preg_native_component = {
     .pmix_mca_close_component = component_close,
     .pmix_mca_query_component = component_query,
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, preg, native)
 
 static int component_open(void)
 {

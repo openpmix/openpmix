@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -68,6 +68,7 @@ pmix_pnet_usnic_component_t pmix_mca_pnet_usnic_component = {
     .tcp_static_ports = NULL,
     .tcp6_static_ports = NULL
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, pnet, usnic)
 
 static char *static_port_string = NULL;
 static char *static_port_string6 = NULL;
