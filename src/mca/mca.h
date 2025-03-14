@@ -14,7 +14,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -310,5 +310,23 @@ typedef struct pmix_mca_base_component_2_1_0_t pmix_mca_base_component_2_1_0_t;
 #define PMIX_MCA_BASE_VERSION_1_0_0(type, type_major, type_minor, type_release) \
     PMIX_MCA_BASE_VERSION_2_1_0("pmix", PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION, \
                                 PMIX_RELEASE_VERSION, type, type_major, type_minor, type_release)
+
+
+
+#define PMIX_MCA_BASE_COMPONENT_DECLARE_STAMP(project, framework, component, suffix) \
+    project ## _mca ## _ ## framework ## _ ## component ## _ ##suffix
+
+
+#define PMIX_MCA_BASE_COMPONENT_DECLARE_EXPANDER(project, framework, component, suffix) \
+    PMIX_MCA_BASE_COMPONENT_DECLARE_STAMP(project, framework, component, suffix)
+
+
+
+
+
+#define PMIX_MCA_BASE_COMPONENT_INIT(project, framework, comp_name)                                  \
+    const pmix_mca_base_component_t *PMIX_MCA_BASE_COMPONENT_DECLARE_EXPANDER(project, framework, comp_name, component_ptr)  =        \
+            (const pmix_mca_base_component_t *)&PMIX_MCA_BASE_COMPONENT_DECLARE_EXPANDER(project, framework, comp_name, component);
+
 
 #endif /* PMIX_MCA_H */

@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,6 +30,7 @@ pmix_plog_base_component_t pmix_mca_plog_stdfd_component = {
                           PMIX_RELEASE_VERSION),
     .pmix_mca_query_component = component_query,
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, plog, stdfd)
 
 static pmix_status_t component_query(pmix_mca_base_module_t **module, int *priority)
 {

@@ -5,7 +5,7 @@
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -72,6 +72,7 @@ pmix_pif_base_component_t pmix_mca_pif_posix_ipv4_component = {
     /* Component open and close functions */
     .pmix_mca_open_component = if_posix_open
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, pif, posix_ipv4)
 
 /* convert a netmask (in network byte order) to CIDR notation */
 static int prefix(uint32_t netmask)

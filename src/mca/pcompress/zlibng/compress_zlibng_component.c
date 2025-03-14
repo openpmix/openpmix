@@ -5,7 +5,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,6 +48,7 @@ PMIX_EXPORT pmix_mca_base_component_t pmix_mca_pcompress_zlibng_component = {
     /* Component open and close functions */
     .pmix_mca_query_component = compress_zlibng_query
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, pcompress, zlibng)
 
 static int compress_zlibng_query(pmix_mca_base_module_t **module, int *priority)
 {

@@ -17,7 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -60,6 +60,7 @@ PMIX_EXPORT pmix_ptl_base_component_t pmix_mca_ptl_tool_component = {
     .priority = 40,
     .uri = NULL
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, ptl, tool)
 
 static int component_query(pmix_mca_base_module_t **module, int *priority)
 {

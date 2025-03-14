@@ -1,7 +1,7 @@
 /* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,6 +53,7 @@ pmix_pnet_tcp_component_t pmix_mca_pnet_tcp_component = {
     .include = NULL,
     .exclude = NULL
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, pnet, tcp)
 
 static pmix_status_t component_register(void)
 {
