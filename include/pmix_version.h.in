@@ -5,7 +5,7 @@
  * Copyright (c) 2018      Intel, Inc. All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2023      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2023-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,12 +38,14 @@
 
 /* Individual capability flags */
 #define PMIX_CAP_BASE            1
+#define PMIX_CAP_LTO             2
+
 
 /* These are the capabilities that this version of OpenPMIx has.
  * For now, we just define/use a "base" marker as a starting
  * point
  */
 #define PMIX_CAPABILITIES \
-    (PMIX_CAP_BASE)
+    (PMIX_CAP_BASE | PMIX_CAP_LTO)
 
 #endif

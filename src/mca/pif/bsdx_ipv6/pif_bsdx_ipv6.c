@@ -2,7 +2,7 @@
  * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -75,6 +75,7 @@ pmix_pif_base_component_t pmix_mca_pif_bsdx_ipv6_component = {
     /* Component open and close functions */
     .pmix_mca_open_component = if_bsdx_ipv6_open
 };
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, pif, bsdx_ipv6)
 
 /* configure using getifaddrs(3) */
 static int if_bsdx_ipv6_open(void)

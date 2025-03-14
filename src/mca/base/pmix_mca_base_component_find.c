@@ -17,7 +17,7 @@
  * Copyright (c) 2014-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -98,7 +98,7 @@ static bool use_component(const bool include_mode, const char **requested_compon
 int pmix_mca_base_component_find(const char *directory, pmix_mca_base_framework_t *framework,
                                  bool ignore_requested, bool open_dso_components)
 {
-    const pmix_mca_base_component_t **static_components = framework->framework_static_components;
+    const pmix_mca_base_component_t ***static_components = framework->framework_static_components;
     char **requested_component_names = NULL;
     pmix_mca_base_component_list_item_t *cli;
     bool include_mode = true;
@@ -122,13 +122,13 @@ int pmix_mca_base_component_find(const char *directory, pmix_mca_base_framework_
     if (static_components) {
         for (int i = 0; NULL != static_components[i]; ++i) {
             if (use_component(include_mode, (const char **) requested_component_names,
-                              static_components[i]->pmix_mca_component_name)) {
+                              (*static_components[i])->pmix_mca_component_name)) {
                 cli = PMIX_NEW(pmix_mca_base_component_list_item_t);
                 if (NULL == cli) {
                     ret = PMIX_ERR_OUT_OF_RESOURCE;
                     goto component_find_out;
                 }
-                cli->cli_component = static_components[i];
+                cli->cli_component = (*static_components[i]);
                 pmix_list_append(&framework->framework_components, (pmix_list_item_t *) cli);
             }
         }

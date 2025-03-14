@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -96,6 +96,7 @@ gds_shmem2_component_register(void)
     }
     return PMIX_SUCCESS;
 }
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, gds, shmem2)
 
 /*
  * vim: ft=cpp ts=4 sts=4 sw=4 expandtab

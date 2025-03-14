@@ -12,7 +12,7 @@ dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2010-2015 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
-dnl Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+dnl Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 dnl Copyright (c) 2018-2021 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl $COPYRIGHT$
@@ -395,7 +395,7 @@ extern "C" {
 
 `cat $outfile.extern`
 
-const pmix_mca_base_component_t *pmix_mca_$1_base_static_components[[]] = {
+const pmix_mca_base_component_t **pmix_mca_$1_base_static_components[[]] = {
 `cat $outfile.struct`
   NULL
 };
@@ -684,8 +684,8 @@ AC_DEFUN([MCA_PROCESS_COMPONENT],[
             # $FRAMEWORK_LIB_PREFIX prefix.
             $6="mca/$1/$2/libpmix_mca_$1_$2.la $$6"
         fi
-        echo "extern const pmix_mca_base_component_t pmix_mca_$1_$2_component;" >> $outfile.extern
-        echo "  &pmix_mca_$1_$2_component, " >> $outfile.struct
+        echo "extern const pmix_mca_base_component_t *pmix_mca_$1_$2_component_ptr;" >> $outfile.extern
+        echo "  &pmix_mca_$1_$2_component_ptr, " >> $outfile.struct
         $4="$$4 $2"
     fi
 

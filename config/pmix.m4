@@ -226,16 +226,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     pmix_show_title "Compiler and preprocessor tests"
 
     PMIX_SETUP_CC
-    # We do not currently support the "lto" optimizer as it
-    # aggregates all the headers from our plugins, resulting
-    # in a configuration that generates warnings/errors when
-    # passed through their optimizer phase. We therefore check
-    # for the flag, and if found, output a message explaining
-    # the situation and aborting configure
-    _PMIX_CHECK_LTO_FLAG($CPPFLAGS, CPPFLAGS)
-    _PMIX_CHECK_LTO_FLAG($CFLAGS, CFLAGS)
-    _PMIX_CHECK_LTO_FLAG($LDFLAGS, LDFLAGS)
-    _PMIX_CHECK_LTO_FLAG($LIBS, LIBS)
 
     #
     # Check for some types
