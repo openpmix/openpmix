@@ -15,7 +15,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -26,7 +26,7 @@
 #include "pmix_config.h"
 #include "pmix_common.h"
 
-/* This component will only be compiled on Linux, where we are
+/* This component will only be compiled on Plinux, where we are
    guaranteed to have <unistd.h> and friends */
 #include <ctype.h>
 #include <errno.h>
@@ -42,7 +42,7 @@
 
 #include <sys/param.h> /* for HZ to convert jiffies to actual time */
 
-#include "pstat_linux.h"
+#include "pstat_plinux.h"
 #include "src/include/pmix_globals.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_printf.h"
@@ -50,16 +50,19 @@
 /*
  * API functions
  */
-static int linux_module_init(void);
+static int plinux_module_init(void);
 static int query(pid_t pid, pmix_proc_stats_t *stats, pmix_node_stats_t *nstats);
-static int linux_module_fini(void);
+static int plinux_module_fini(void);
 
 /*
- * Linux pstat module
+ * Plinux pstat module
  */
-const pmix_pstat_base_module_t pmix_pstat_linux_module = {
+const pmix_pstat_base_module_t pmix_pstat_plinux_module = {
     /* Initialization function */
-    linux_module_init, query, linux_module_fini};
+    .init = plinux_module_init,
+    .query = query,
+    .finalize = plinux_module_fini
+};
 
 #define PMIX_STAT_MAX_LENGTH 1024
 
@@ -84,12 +87,12 @@ static void local_getfields(char *data, char ***fields);
 /* Local data */
 static char input[PMIX_STAT_MAX_LENGTH];
 
-static int linux_module_init(void)
+static int plinux_module_init(void)
 {
     return PMIX_SUCCESS;
 }
 
-static int linux_module_fini(void)
+static int plinux_module_fini(void)
 {
     return PMIX_SUCCESS;
 }

@@ -33,44 +33,44 @@
 #include "pmix_config.h"
 
 #include "pmix_common.h"
-#include "pstat_linux.h"
+#include "pstat_plinux.h"
 #include "src/mca/pstat/pstat.h"
 
 /*
- * Public string showing the pstat ompi_linux component version number
+ * Public string showing the pstat ompi_plinux component version number
  */
-const char *pmix_pstat_linux_component_version_string
-    = "PMIX linux pstat MCA component version " PMIX_VERSION;
+const char *pmix_pstat_plinux_component_version_string
+    = "PMIX plinux pstat MCA component version " PMIX_VERSION;
 
 /*
  * Local function
  */
-static int pstat_linux_component_query(pmix_mca_base_module_t **module, int *priority);
+static int pstat_plinux_component_query(pmix_mca_base_module_t **module, int *priority);
 
 /*
  * Instantiate the public struct with all of our public information
  * and pointers to our public functions in it
  */
 
-const pmix_pstat_base_component_t pmix_mca_pstat_linux_component = {
+const pmix_pstat_base_component_t pmix_mca_pstat_plinux_component = {
 
     PMIX_PSTAT_BASE_VERSION_1_0_0,
 
     /* Component name and version */
-    .pmix_mca_component_name = "linux",
+    .pmix_mca_component_name = "plinux",
     PMIX_MCA_BASE_MAKE_VERSION(component,
                                PMIX_MAJOR_VERSION,
                                PMIX_MINOR_VERSION,
                                PMIX_RELEASE_VERSION),
 
-    .pmix_mca_query_component = pstat_linux_component_query,
+    .pmix_mca_query_component = pstat_plinux_component_query,
 };
-PMIX_MCA_BASE_COMPONENT_INIT(pmix, pstat, linux)
+PMIX_MCA_BASE_COMPONENT_INIT(pmix, pstat, plinux)
 
-static int pstat_linux_component_query(pmix_mca_base_module_t **module, int *priority)
+static int pstat_plinux_component_query(pmix_mca_base_module_t **module, int *priority)
 {
     *priority = 20;
-    *module = (pmix_mca_base_module_t *) &pmix_pstat_linux_module;
+    *module = (pmix_mca_base_module_t *) &pmix_pstat_plinux_module;
 
     return PMIX_SUCCESS;
 }

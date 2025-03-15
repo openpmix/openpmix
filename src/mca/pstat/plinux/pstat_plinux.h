@@ -13,7 +13,7 @@
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -28,8 +28,8 @@
  *
  */
 
-#ifndef pmix_pstat_LINUX_EXPORT_H
-#define pmix_pstat_LINUX_EXPORT_H
+#ifndef pmix_pstat_PLINUX_EXPORT_H
+#define pmix_pstat_PLINUX_EXPORT_H
 
 #include "pmix_config.h"
 
@@ -41,9 +41,9 @@ BEGIN_C_DECLS
 /**
  * Globally exported variable
  */
-PMIX_EXPORT extern const pmix_pstat_base_component_t pmix_mca_pstat_linux_component;
+PMIX_EXPORT extern const pmix_pstat_base_component_t pmix_mca_pstat_plinux_component;
 
-PMIX_EXPORT extern const pmix_pstat_base_module_t pmix_pstat_linux_module;
+PMIX_EXPORT extern const pmix_pstat_base_module_t pmix_pstat_plinux_module;
 
 END_C_DECLS
-#endif /* pmix_pstat_LINUX_EXPORT_H */
+#endif /* pmix_pstat_PLINUX_EXPORT_H */
