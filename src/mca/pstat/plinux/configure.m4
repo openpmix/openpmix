@@ -12,39 +12,39 @@
 #                         All rights reserved.
 # Copyright (c) 2010-2020 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2019      Intel, Inc.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
 #
 # $HEADER$
 #
-AC_DEFUN([MCA_pmix_pstat_linux_PRIORITY], [60])
+AC_DEFUN([MCA_pmix_pstat_plinux_PRIORITY], [60])
 
 # MCA_pstat_linux_CONFIG(action-if-can-compile,
 #                        [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_pmix_pstat_linux_CONFIG],[
-    AC_CONFIG_FILES([src/mca/pstat/linux/Makefile])
+AC_DEFUN([MCA_pmix_pstat_plinux_CONFIG],[
+    AC_CONFIG_FILES([src/mca/pstat/plinux/Makefile])
 
    case "${host}" in
    i?86-*linux*|x86_64*linux*|ia64-*linux*|powerpc-*linux*|powerpc64-*linux*|powerpc64le-*linux*|powerpcle-*linux*|sparc*-*linux*)
               AS_IF([test -r "/proc/cpuinfo"],
-                     [pstat_linux_happy="yes"],
-                     [pstat_linux_happy="no"])
+                     [pstat_plinux_happy="yes"],
+                     [pstat_plinux_happy="no"])
         ;;
    *)
-        pstat_linux_happy="no"
+        pstat_plinux_happy="no"
         ;;
    esac
 
-   AS_IF([test "$pstat_linux_happy" = "yes"],
+   AS_IF([test "$pstat_plinux_happy" = "yes"],
          [AC_CHECK_DECLS([HZ],
-            [], [pstat_linux_happy="no"], [AC_INCLUDES_DEFAULT
+            [], [pstat_plinux_happy="no"], [AC_INCLUDES_DEFAULT
 #include <sys/param.h>
 ])])
 
-   AS_IF([test "$pstat_linux_happy" = "yes"],
+   AS_IF([test "$pstat_plinux_happy" = "yes"],
          [$1],
          [$2])
 ])
