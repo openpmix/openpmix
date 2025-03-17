@@ -1,6 +1,5 @@
 /*
  * Copyright (c) 2025      NVIDIA Corporation.  All rights reserved.
- * Copyright (c) 2025      Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -17,7 +16,6 @@
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include <dlfcn.h>
 #include "src/util/pmix_basename.h"
-#include "src/include/pmix_globals.h"
 
 
 static void pinstalldirs_runtime_init(pmix_info_t info[], size_t ninfo);
@@ -53,13 +51,11 @@ pmix_pinstalldirs_base_component_t pmix_mca_pinstalldirs_runtime_component = {
     },
     .init = pinstalldirs_runtime_init
 };
-PMIX_MCA_BASE_COMPONENT_INIT(pmix, pinstalldirs, runtime)
 
 static void pinstalldirs_runtime_init(pmix_info_t unused[], size_t ninfo)
 {
     Dl_info info;
     void* pmix_fct;
-    PMIX_HIDE_UNUSED_PARAMS(unused, ninfo);
 
     /* Casting from void* to fct pointer according to POSIX.1-2001 and POSIX.1-2008 */
     *(void **)&pmix_fct = dlsym(RTLD_DEFAULT, "pmix_init_util");
