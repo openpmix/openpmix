@@ -4,7 +4,7 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.7 -- 25 Feb 2025
+5.0.7 -- 19 Mar 2025
 --------------------
 .. important:: This release contains significant rewrite of
                the PMIx_Query_info and PMIx_Resolve_xxx
@@ -12,7 +12,10 @@ series, in reverse chronological order.
                answers.
 
 Detailed changes include:
- - PR #3568: Update NEWS for release
+ - PR #3573: Update NEWS for release
+ - PR #3572: Multiple commits
+    - Fix segfault on error in shmem2
+    - Update NEWS
  - PR #3567: Multiple commits
     - Add new pub-lookup stress example
     - Just ignore any lto settings
