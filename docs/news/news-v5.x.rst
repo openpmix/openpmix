@@ -12,7 +12,19 @@ series, in reverse chronological order.
                answers.
 
 Detailed changes include:
- - PR #3547: Update NEWS and headers for release
+ - PR #3568: Update NEWS for release
+ - PR #3567: Multiple commits
+    - Add new pub-lookup stress example
+    - Just ignore any lto settings
+    - Have show_help output all directories tried
+    - Extend the pubstress test and add it to CI
+    - Cleanup spawn and clarify attribute comment
+    - Properly handle OPAL_PREFIX
+ - PR #3562: Update OAC submodule
+ - PR #3556: Multiple commits
+    - Do not block in query upcall
+    - Further cleanup of "resolve" functions
+    - Silence error output when running as singleton - PR #3547: Update NEWS and headers for release
  - PR #3545: Multiple commits
     - Exit with correct status after displaying help or version
     - Revamp the query implementation
