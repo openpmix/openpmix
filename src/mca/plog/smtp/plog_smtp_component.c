@@ -150,13 +150,15 @@ static pmix_status_t smtp_component_query(pmix_mca_base_module_t **module, int *
     if (NULL == pmix_mca_plog_smtp_component.to || '\0' == pmix_mca_plog_smtp_component.to[0]
         || NULL == pmix_mca_plog_smtp_component.from_addr
         || '\0' == pmix_mca_plog_smtp_component.from_addr[0]) {
-        pmix_show_help("help-pmix-plog-smtp.txt", "to/from not specified", true);
+        pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
+                            "SMTP - no to/from specified; disabled");
         return PMIX_ERR_NOT_FOUND;
     }
 
     /* Sanity checks */
     if (NULL == pmix_mca_plog_smtp_component.server || '\0' == pmix_mca_plog_smtp_component.server[0]) {
-        pmix_show_help("help-pmix-plog-smtp.txt", "server not specified", true);
+        pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
+                            "SMTP: mail server not specified; disabled");
         return PMIX_ERR_NOT_FOUND;
     }
 
@@ -165,8 +167,9 @@ static pmix_status_t smtp_component_query(pmix_mca_base_module_t **module, int *
        can't resolve it. */
     pmix_mca_plog_smtp_component.server_hostent = gethostbyname(pmix_mca_plog_smtp_component.server);
     if (NULL == pmix_mca_plog_smtp_component.server_hostent) {
-        pmix_show_help("help-pmix-plog-smtp.txt", "unable to resolve server", true,
-                       pmix_mca_plog_smtp_component.server);
+        pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
+                            "SMTP: unable to resolve server %s; disabled",
+                            pmix_mca_plog_smtp_component.server);
         return PMIX_ERR_NOT_FOUND;
     }
 

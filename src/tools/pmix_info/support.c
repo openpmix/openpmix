@@ -18,7 +18,7 @@
  * Copyright (c) 2017-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -143,7 +143,7 @@ int pmix_info_init(int argc, char **argv)
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
     if (PMIX_SUCCESS != pmix_mca_base_open(NULL)) {
-        pmix_show_help("help-pinfo.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
+        pmix_show_help("help-pmix-info.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
                        __LINE__);
         PMIX_RELEASE(pmix_info_cmd_line);
         exit(1);
@@ -258,7 +258,7 @@ int pmix_info_register_framework_params(void)
 
     /* Register mca/base parameters */
     if (PMIX_SUCCESS != pmix_mca_base_open(NULL)) {
-        pmix_show_help("help-pmix_info.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
+        pmix_show_help("help-pmix-info.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
                        __LINE__);
         return PMIX_ERROR;
     }
@@ -383,7 +383,7 @@ void pmix_info_do_path(bool want_all)
                 } else if (0 == strcmp(pmix_info_path_pkgincludedir, scope)) {
                     pmix_info_show_path(pmix_info_path_pkgincludedir, pmix_pinstall_dirs.pmixincludedir);
                 } else {
-                    pmix_show_help("help-pinfo.txt", "usage", true, "USAGE");
+                    pmix_show_help("help-pmix-info.txt", "usage", true, "USAGE");
                     exit(1);
                 }
             }
@@ -444,7 +444,7 @@ void pmix_info_do_params(bool want_all_in)
                     }
 
                     if (!found) {
-                        pmix_show_help("help-pinfo.txt", "not-found", true, type);
+                        pmix_show_help("help-pmix-info.txt", "not-found", true, type);
                         exit(1);
                     }
 
@@ -784,7 +784,7 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
             spaces = strdup("");
 #if PMIX_ENABLE_DEBUG
             if (centerpoint < (int) strlen(pretty_message)) {
-                pmix_show_help("help-pmix_info.txt", "developer warning: field too long", false,
+                pmix_show_help("help-pmix-info.txt", "developer warning: field too long", false,
                                pretty_message, centerpoint);
             }
 #endif

@@ -13,6 +13,7 @@
 # Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
 # Copyright (c) 2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
+# Copyright (c) 2025      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -31,15 +32,6 @@ PMIX developer):
 
   %s failed
   --> Returned value %d instead of PMIX_SUCCESS
-#
-[missingdata]
-PMIx has detected that the host RM failed to provide all the job-level
-information specified by the PMIx standard. This is not necessarily
-a fatal situation, but may negatively impact your launch performance.
-
-If you feel you have received this warning in error, or wish to ignore
-it in the future, you can disable it by setting the PMIx MCA parameter
-"pmix_suppress_missing_data_warning=1"
 #
 [no-plugins]
 We were unable to find any usable plugins for the %s framework. This PMIx

@@ -1,6 +1,7 @@
 # -*- text -*-
 #
 # Copyright (c) 2018      Intel, Inc.  All rights reserved.
+# Copyright (c) 2025      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -54,3 +55,11 @@ PMIx currently supports only the following designations:
     user          LOG_USER  (default)
 
 Please redefine the MCA parameter and try again.
+#
+[smtp:send_email failed]
+The PMIx smtp log component was unable to send an email:
+
+  Failure: %s
+  Issue: %s
+  Error: %s (%d)
+  Message: %s

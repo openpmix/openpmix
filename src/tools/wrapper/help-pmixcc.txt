@@ -13,6 +13,7 @@
 # Copyright (c) 2006-2010 Oracle and/or its affiliates.  All rights reserved.
 # Copyright (c) 2012-2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
+# Copyright (c) 2025      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -22,8 +23,16 @@
 # This is the US/English help file for Open MPI wrapper compiler error
 # messages.
 #
+[no-language-support]
+Unfortunately, this installation of PMIx was not compiled with
+%s support.  As such, the %s compiler is non-functional.
+#
+[no-compiler-specified]
+No underlying compiler was specified in the wrapper compiler data file
+(e.g., pmixcc-wrapper-data.txt)
+#
 [no-compiler-found]
-The Open MPI wrapper compiler was unable to find the specified compiler
+The PMIx wrapper compiler was unable to find the specified compiler
 %s in your PATH.
 
 Note that this compiler was either specified at configure time or in

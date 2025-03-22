@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -78,3 +78,12 @@ Please correct the option and try again.
   file: %s
 
 Please correct the option or the file and try again.
+#
+[bad-quals]
+%s was unable to parse the command line because it found a
+qualifier that is not correct:
+
+  Qualifier: %s
+
+Qualifiers must be of the form "[qual1=value1;qual2=val2;...]".
+Please correct the command line and try again.

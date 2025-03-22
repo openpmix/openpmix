@@ -12,7 +12,7 @@
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -286,7 +286,7 @@ error:
 
         e = smtp_errno();
         smtp_strerror(e, em, sizeof(em));
-        pmix_show_help("help-pmix-plog-smtp.txt", "send_email failed", true,
+        pmix_show_help("help-pmix-plog.txt", "smtp:send_email failed", true,
                        "libesmtp library call failed", errmsg, em, e, msg);
     }
     return err;
