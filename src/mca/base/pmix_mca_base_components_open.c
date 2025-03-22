@@ -15,7 +15,7 @@
  *                         All rights reserved.
  * Copyright (c) 2014      Hochschule Esslingen.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -141,7 +141,7 @@ int pmix_mca_base_show_load_errors_init(void)
                                             ',');
             if (values == NULL) {
                 ret = PMIX_ERROR;
-                pmix_show_help("help-mca-base.txt",
+                pmix_show_help("help-pmix-mca-base.txt",
                                "internal error during init", true,
                                __func__, __FILE__, __LINE__,
                                ret,
@@ -156,7 +156,7 @@ int pmix_mca_base_show_load_errors_init(void)
                 split = PMIx_Argv_split(values[i], '/');
                 if (NULL == split) {
                     ret = PMIX_ERROR;
-                    pmix_show_help("help-mca-base.txt",
+                    pmix_show_help("help-pmix-mca-base.txt",
                                    "internal error during init", true,
                                    __func__, __FILE__, __LINE__,
                                    ret,
@@ -168,7 +168,7 @@ int pmix_mca_base_show_load_errors_init(void)
                 if (0 == argc) {
                     // This should never happen
                     ret = PMIX_ERROR;
-                    pmix_show_help("help-mca-base.txt",
+                    pmix_show_help("help-pmix-mca-base.txt",
                                    "internal error during init", true,
                                    __func__, __FILE__, __LINE__,
                                    ret,
@@ -184,7 +184,7 @@ int pmix_mca_base_show_load_errors_init(void)
 
                 if (argc > 2) {
                     ret = PMIX_ERR_BAD_PARAM;
-                    pmix_show_help("help-mca-base.txt",
+                    pmix_show_help("help-pmix-mca-base.txt",
                                    "show_load_errors: too many /", true,
                                    values[i]);
                     return ret;
@@ -193,7 +193,7 @@ int pmix_mca_base_show_load_errors_init(void)
                 fcp = PMIX_NEW(fc_pair_t);
                 if (NULL == fcp) {
                     ret = PMIX_ERR_OUT_OF_RESOURCE;
-                    pmix_show_help("help-mca-base.txt",
+                    pmix_show_help("help-pmix-mca-base.txt",
                                    "internal error during init", true,
                                    __func__, __FILE__, __LINE__,
                                    ret,

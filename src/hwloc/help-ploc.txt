@@ -1,7 +1,7 @@
 # -*- text -*-
 #
 # Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -10,13 +10,24 @@
 #
 # This is a US/English help file
 #
-[no-actives]
-PMIx was not able to find any usable hardware topology
-components. This could be due to not finding a suitable
-supporting library such as HWLOC. PMIx requires access
-to topology information due to its increased role in
-providing information on critical areas such as device
-distances and fabric interfaces.
+#
+[target full]
+PMIx was unable to create a shared memory backing file due
+to inadequate available space:
 
-Please reconfigure PMIx with a hardware topology library
-of your choice.
+  File: %s
+  Node: %s
+  Shmem size: %lu
+  Space available: %llu
+
+Please set the "PMIX_MCA_gds=hash" environmental variable to
+disable the shared memory system and try again.
+#
+[sys call fail]
+
+  Node: %s
+  SysCall: %s
+  Error: %s (%d)
+
+Please set the "PMIX_MCA_gds=hash" environmental variable to
+disable the shared memory system and try again.

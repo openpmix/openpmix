@@ -14,7 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,8 +23,6 @@
 #
 
 AM_CPPFLAGS = $(pmix_check_jansson_CPPFLAGS)
-
-dist_pmixdata_DATA = help-pnet-sshot.txt
 
 headers = pnet_sshot.h
 sources = \

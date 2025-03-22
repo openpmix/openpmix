@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -366,7 +366,7 @@ int main(int argc, char **argv)
             for (m = 0; NULL != qprs[m]; m++) {
                 /* break each pair */
                 if (NULL == (kptr = strchr(qprs[m], '='))) {
-                    str = pmix_show_help_string("help-pquery.txt", "bad-qual", true, qkeys[n],
+                    str = pmix_show_help_string("help-pquery.txt", "bad-quals", true, qkeys[n],
                                                 qprs[m]);
                     if (NULL != str) {
                         printf("%s", str);

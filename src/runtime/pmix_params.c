@@ -23,7 +23,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,7 +48,6 @@ bool pmix_timing_overhead = true;
 static bool pmix_register_done = false;
 char *pmix_net_private_ipv4 = NULL;
 int pmix_event_caching_window = 1;
-bool pmix_suppress_missing_data_warning = false;
 char *pmix_progress_thread_cpus = NULL;
 bool pmix_bind_progress_thread_reqd = false;
 int pmix_maxfd = 1024;
@@ -108,13 +107,6 @@ pmix_status_t pmix_register_params(void)
         "suppresses event cascades when processes abnormally terminate",
         PMIX_MCA_BASE_VAR_TYPE_INT,
         &pmix_event_caching_window);
-
-    (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "suppress_missing_data_warning",
-                                      "Suppress warning that PMIx is missing job-level data that "
-                                      "is supposed to be provided by the host RM.",
-                                      PMIX_MCA_BASE_VAR_TYPE_BOOL,
-                                      &pmix_suppress_missing_data_warning);
-
 
     /****   CLIENT: VERBOSE OUTPUT PARAMS   ****/
     (void) pmix_mca_base_var_register("pmix", "pmix", "client", "get_verbose",

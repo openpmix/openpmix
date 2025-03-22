@@ -19,7 +19,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      Mellanox Technologies Ltd. All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
  * $COPYRIGHT$
@@ -1034,7 +1034,7 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     */
     if (PMIX_SUCCESS != (i = pmix_pfexec_base_setup_child(child))) {
         PMIX_ERROR_LOG(i);
-        send_error_show_help(write_fd, 1, "help-pfexec-linux.txt", "iof setup failed",
+        send_error_show_help(write_fd, 1, "help-pfexec-base.txt", "iof setup failed",
                              pmix_globals.hostname, app->cmd);
         /* Does not return */
     }
@@ -1074,8 +1074,8 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     /* take us to the correct wdir */
     if (NULL != app->cwd) {
         if (0 != chdir(app->cwd)) {
-            send_error_show_help(write_fd, 1, "help-pfexec-linux.txt", "wdir-not-found", "pmixd",
-                                 app->cwd, pmix_globals.hostname);
+            send_error_show_help(write_fd, 1, "help-pfexec-base.txt", "wdir-not-found", "pmixd",
+                                 app->cwd, pmix_globals.hostname, child->proc.rank);
             /* Does not return */
         }
     }
@@ -1086,7 +1086,7 @@ static void do_child(pmix_app_t *app, char **env, pmix_pfexec_child_t *child, in
     if (0 != getcwd(dir, sizeof(dir))) {
         pmix_strncpy(dir, "GETCWD-FAILED", sizeof(dir));
     }
-    send_error_show_help(write_fd, 1, "help-pfexec-linux.txt", "execve error",
+    send_error_show_help(write_fd, 1, "help-pfexec-base.txt", "execve error",
                          pmix_globals.hostname, dir, app->cmd, strerror(errval));
     /* Does not return */
 }
@@ -1129,7 +1129,7 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
         if (msg.file_str_len > 0) {
             rc = pmix_fd_read(read_fd, msg.file_str_len, file);
             if (PMIX_SUCCESS != rc) {
-                pmix_show_help("help-pfexec-linux.txt", "syscall fail", true, pmix_globals.hostname,
+                pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
                                app->cmd, "pmix_fd_read", __FILE__, __LINE__);
                 return rc;
             }
@@ -1138,7 +1138,7 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
         if (msg.topic_str_len > 0) {
             rc = pmix_fd_read(read_fd, msg.topic_str_len, topic);
             if (PMIX_SUCCESS != rc) {
-                pmix_show_help("help-pfexec-linux.txt", "syscall fail", true, pmix_globals.hostname,
+                pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
                                app->cmd, "pmix_fd_read", __FILE__, __LINE__);
                 return rc;
             }
@@ -1147,13 +1147,13 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
         if (msg.msg_str_len > 0) {
             str = calloc(1, msg.msg_str_len + 1);
             if (NULL == str) {
-                pmix_show_help("help-pfexec-linux.txt", "syscall fail", true, pmix_globals.hostname,
+                pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
                                app->cmd, "calloc", __FILE__, __LINE__);
                 return PMIX_ERR_NOMEM;
             }
             rc = pmix_fd_read(read_fd, msg.msg_str_len, str);
             if (PMIX_SUCCESS != rc) {
-                pmix_show_help("help-pfexec-linux.txt", "syscall fail", true, pmix_globals.hostname,
+                pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
                                app->cmd, "pmix_fd_read", __FILE__, __LINE__);
                 free(str);
                 return rc;

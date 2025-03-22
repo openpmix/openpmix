@@ -528,7 +528,7 @@ sharetopo:
     }
     if (!space_available) {
         if (1 < pmix_output_get_verbosity(pmix_hwloc_output)) {
-            pmix_show_help("help-pmix-ploc-hwloc.txt", "target full", true, shmemfile,
+            pmix_show_help("help-ploc.txt", "target full", true, shmemfile,
                            pmix_globals.hostname, (unsigned long) shmemsize,
                            (unsigned long long) amount_space_avail);
         }
@@ -540,7 +540,7 @@ sharetopo:
     if (-1 == (shmemfd = open(shmemfile, O_CREAT | O_RDWR, 0600))) {
         int err = errno;
         if (1 < pmix_output_get_verbosity(pmix_hwloc_output)) {
-            pmix_show_help("help-pmix-ploc-hwloc-hwloc.txt", "sys call fail", true,
+            pmix_show_help("help-ploc.txt", "sys call fail", true,
                            pmix_globals.hostname, "open(2)", "", strerror(err), err);
         }
         free(shmemfile);
