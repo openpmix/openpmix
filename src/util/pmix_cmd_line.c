@@ -17,7 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -130,7 +130,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
             break;
         }
         opt = getopt_long(argc, argv, shorts, myoptions, &option_index);
-
         switch (opt) {
             case 0:
                 /* if this is an MCA param of some type, store it */
@@ -144,7 +143,21 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     ++optind;
                     break;
                 }
-                /* store actual option */
+                // if this is a "-env" option, then there can be three entries
+                // that describe what to do
+                if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_PREPEND_ENVAR) ||
+                    0 == strcmp(myoptions[option_index].name, PMIX_CLI_APPEND_ENVAR)) {
+                    mystore(myoptions[option_index].name, argv[optind-1], results);
+                    mystore(myoptions[option_index].name, argv[optind], results);
+                    ++optind;
+                    break;
+                }
+                if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_UNSET_ENVAR)) {
+                    // unset-env option only takes one argument
+                    mystore(myoptions[option_index].name, optarg, results);
+                    break;
+                }
+                /* otherwise, store actual option */
                 mystore(myoptions[option_index].name, optarg, results);
                 break;
             case 'h':
@@ -162,7 +175,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     if (0 == strcmp(ptr, "version") || 0 == strcmp(ptr, "V")) {
                         str = pmix_show_help_string("help-cli.txt", "version", false);
                         if (NULL != str) {
-                            printf("%s", str);
+                            fprintf(stderr, "%s", str);
+                            fflush(stderr);
                             free(str);
                         }
                         PMIx_Argv_free(argv);
@@ -171,7 +185,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     if (0 == strcmp(ptr, "verbose") || 0 == strcmp(ptr, "v")) {
                         str = pmix_show_help_string("help-cli.txt", "verbose", false);
                         if (NULL != str) {
-                            printf("%s", str);
+                            fprintf(stderr, "%s", str);
+                            fflush(stderr);
                             free(str);
                         }
                         PMIx_Argv_free(argv);
@@ -185,7 +200,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                                     pmix_tool_basename, pmix_tool_basename,
                                                     pmix_tool_basename, pmix_tool_basename);
                         if (NULL != str) {
-                            printf("%s", str);
+                            fprintf(stderr, "%s", str);
+                            fflush(stderr);
                             free(str);
                         }
                         PMIx_Argv_free(argv);
@@ -198,11 +214,13 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         str = pmix_show_help_string("help-cli.txt", "unknown-option", true,
                                                     ptr, pmix_tool_basename);
                         if (NULL != str) {
-                            printf("%s", str);
+                            fprintf(stderr, "%s", str);
+                            fflush(stderr);
                             free(str);
                         }
                     } else {
-                        printf("%s", str);
+                        fprintf(stderr, "%s", str);
+                        fflush(stderr);
                         free(str);
                     }
                     PMIx_Argv_free(argv);
@@ -215,7 +233,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                                 pmix_tool_basename,
                                                 pmix_tool_msg);
                     if (NULL != str) {
-                        printf("%s", str);
+                        fprintf(stderr, "%s", str);
+                        fflush(stderr);
                         free(str);
                     }
                     PMIx_Argv_free(argv);
@@ -224,7 +243,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     str = pmix_show_help_string("help-cli.txt", "unrecognized-option", true,
                                                 pmix_tool_basename, optarg);
                     if (NULL != str) {
-                        printf("%s", str);
+                        fprintf(stderr, "%s", str);
+                        fflush(stderr);
                         free(str);
                     }
                 }
@@ -236,7 +256,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                             pmix_tool_version,
                                             pmix_tool_msg);
                 if (NULL != str) {
-                    printf("%s", str);
+                    fprintf(stderr, "%s", str);
+                    fflush(stderr);
                     free(str);
                 }
                 // if they ask for the version, that is all we do
@@ -302,7 +323,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                         str = pmix_show_help_string("help-cli.txt", "short-arg-error", true,
                                                                     pmix_tool_basename, shorts[n], ptr);
                                         if (NULL != str) {
-                                            printf("%s", str);
+                                            fprintf(stderr, "%s", str);
+                                            fflush(stderr);
                                             free(str);
                                         }
                                         PMIx_Argv_free(argv);
@@ -339,7 +361,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                         str = pmix_show_help_string("help-cli.txt", "short-no-long", true,
                                                     pmix_tool_basename, shorts[n]);
                         if (NULL != str) {
-                            printf("%s", str);
+                            fprintf(stderr, "%s", str);
+                            fflush(stderr);
                             free(str);
                         }
                         PMIx_Argv_free(argv);
@@ -362,7 +385,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                                     pmix_tool_basename, argv[optind-1],
                                                     pmix_tool_basename, &argv[optind-1][2]);
                         if (NULL != str) {
-                            printf("%s", str);
+                            fprintf(stderr, "%s", str);
+                            fflush(stderr);
                             free(str);
                         }
                         PMIx_Argv_free(argv);
@@ -381,7 +405,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                 str = pmix_show_help_string("help-cli.txt", "unregistered-option", true,
                                             pmix_tool_basename, argv[optind-1], pmix_tool_basename);
                 if (NULL != str) {
-                    printf("%s", str);
+                    fprintf(stderr, "%s", str);
+                    fflush(stderr);
                     free(str);
                 }
                 PMIx_Argv_free(argv);
