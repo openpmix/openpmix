@@ -243,7 +243,7 @@ static int write_help_msg(int fd, pmix_pfexec_pipe_err_msg_t *msg, const char *f
         return PMIX_ERR_BAD_PARAM;
     }
 
-    str = pmix_show_help_vstring(file, topic, true, ap);
+    str = pmix_show_help_vstring("pmix", file, topic, true, ap);
 
     msg->file_str_len = (int) strlen(file);
     if (msg->file_str_len > PMIX_PFEXEC_MAX_FILE_LEN) {
@@ -493,7 +493,7 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
         }
 
         /* Print out what we got.  We already have a rendered string,
-           so use pmix_show_help_norender(). */
+           so just print it. */
         if (msg.msg_str_len > 0) {
             fprintf(stderr, "%s\n", str);
             free(str);

@@ -1387,6 +1387,7 @@ AC_DEFUN([PMIX_DO_AM_CONDITIONALS],[
         AM_CONDITIONAL(NEED_LIBPMIX, [test "$pmix_need_libpmix" = "1"])
         AM_CONDITIONAL([PMIX_HAVE_JANSSON], [test "x$pmix_check_jansson_happy" = "xyes"])
         AM_CONDITIONAL([PMIX_HAVE_CURL], [test "x$pmix_check_curl_happy" = "xyes"])
+        AM_CONDITIONAL([PMIX_PICKY_COMPILERS], [test "$WANT_PICKY_COMPILER" = "1"])
     ])
     pmix_did_am_conditionals=yes
 ])dnl

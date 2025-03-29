@@ -1046,10 +1046,9 @@ shmem2_attach(
         // This type of error occurs when we
         // didn't map to the requested address.
         if (PMIX_ERR_NOT_AVAILABLE == rc) {
-            pmix_show_help(
-                "help-gds-shmem2.txt",
-                "shmem2-segment-attach:address-mismatch",
-                true, (size_t)req_addr, (size_t)shmem2->hdr_address
+            pmix_show_help("help-gds-shmem2.txt",
+                           "shmem2-segment-attach:address-mismatch",
+                           true, (size_t)req_addr, (size_t)shmem2->hdr_address
             );
             rc = PMIX_ERROR;
         }

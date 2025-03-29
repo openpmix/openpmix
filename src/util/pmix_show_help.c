@@ -44,10 +44,6 @@ static bool show_help_timer_set = false;
 static pmix_event_t show_help_timer_event;
 static int output_stream = -1;
 
-static pmix_status_t load_array(char ***array,
-                                const char *filename,
-                                const char *topic);
-
 /* How long to wait between displaying duplicate show_help notices */
 static struct timeval show_help_interval = {5, 0};
 
@@ -71,7 +67,7 @@ static void local_delivery(const char *file,
 {
     pmix_shift_caddy_t *cd;
 
-    if (!pmix_show_help_enabled) {
+    if (!pmix_show_help_enabled || NULL == pmix_globals.evbase) {
         /* the show help subsystem has not yet been enabled,
          * likely because we haven't gotten far enough thru
          * client/server/tool "init". In this case, we can
@@ -95,6 +91,28 @@ static void local_delivery(const char *file,
     PMIX_THREADSHIFT(cd, pmix_log_local_op);
 }
 
+/* List items for arrays to search */
+typedef struct {
+    pmix_list_item_t super;
+    char *project;
+    pmix_show_help_file_t *array;
+} tuple_array_item_t;
+static void tacon(tuple_array_item_t *p)
+{
+    p->project = NULL;
+}
+static void tades(tuple_array_item_t *p)
+{
+    if (NULL != p->project) {
+        free(p->project);
+    }
+}
+static PMIX_CLASS_INSTANCE(tuple_array_item_t,
+                           pmix_list_item_t,
+                           tacon, tades);
+
+// list of arrays to search
+static pmix_list_t data_arrays;
 
 /* List items for holding (filename, topic) tuples */
 typedef struct {
@@ -134,7 +152,9 @@ static void tuple_list_item_destructor(tuple_list_item_t *obj)
     }
     PMIX_LIST_DESTRUCT(&(obj->tli_processes));
 }
-static PMIX_CLASS_INSTANCE(tuple_list_item_t, pmix_list_item_t, tuple_list_item_constructor,
+static PMIX_CLASS_INSTANCE(tuple_list_item_t,
+                           pmix_list_item_t,
+                           tuple_list_item_constructor,
                            tuple_list_item_destructor);
 
 /* List of (filename, topic) tuples that have already been displayed */
@@ -144,10 +164,8 @@ static pmix_list_t abd_tuples;
 /*
  * Private variables
  */
-static const char *default_filename = "help-messages";
 static const char *dash_line
     = "--------------------------------------------------------------------------\n";
-static char **search_dirs = NULL;
 
 static pmix_status_t match(const char *a, const char *b)
 {
@@ -327,35 +345,44 @@ pmix_status_t pmix_help_check_dups(const char *filename, const char *topic)
 /*
  * Local functions
  */
-pmix_status_t pmix_show_help_init(char *helpdir)
+pmix_status_t pmix_show_help_init(void)
 {
     pmix_output_stream_t lds;
+    tuple_array_item_t *da;
+
+    if (pmix_show_help_enabled) {
+        return PMIX_SUCCESS;
+    }
 
     PMIX_CONSTRUCT(&lds, pmix_output_stream_t);
     lds.lds_want_stderr = true;
     output_stream = pmix_output_open(&lds);
     PMIX_CONSTRUCT(&abd_tuples, pmix_list_t);
 
-    PMIx_Argv_append_nosize(&search_dirs, pmix_pinstall_dirs.pmixdatadir);
-    if(NULL != helpdir) {
-        PMIx_Argv_append_nosize(&search_dirs, helpdir);
-    }
+    PMIX_CONSTRUCT(&data_arrays, pmix_list_t);
+    da = PMIX_NEW(tuple_array_item_t);
+    da->project = strdup("pmix");
+    da->array = pmix_show_help_data;
+    pmix_list_append(&data_arrays, &da->super);
+
+    pmix_show_help_enabled = true;
 
     return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_show_help_finalize(void)
 {
+    if (!pmix_show_help_enabled) {
+        return PMIX_SUCCESS;
+    }
+
     pmix_output_close(output_stream);
     output_stream = -1;
 
-    /* destruct the search list */
-    if (NULL != search_dirs) {
-        PMIx_Argv_free(search_dirs);
-        search_dirs = NULL;
-    };
-
     PMIX_LIST_DESTRUCT(&abd_tuples);
+    PMIX_LIST_DESTRUCT(&data_arrays);
+    pmix_show_help_enabled = false;
+
     return PMIX_SUCCESS;
 }
 
@@ -364,7 +391,9 @@ pmix_status_t pmix_show_help_finalize(void)
  * efficient method in the world, but we're going for clarity here --
  * not optimization.  :-)
  */
-static pmix_status_t array2string(char **outstring, int want_error_header, char **lines)
+static pmix_status_t array2string(char **outstring,
+                                  int want_error_header,
+                                  const char **lines)
 {
     int i, count;
     size_t len;
@@ -372,7 +401,7 @@ static pmix_status_t array2string(char **outstring, int want_error_header, char 
     /* See how much space we need */
 
     len = want_error_header ? 2 * strlen(dash_line) : 0;
-    count = PMIx_Argv_count(lines);
+    count = PMIx_Argv_count((char**)lines);
     for (i = 0; i < count; ++i) {
         if (NULL == lines[i]) {
             break;
@@ -407,253 +436,44 @@ static pmix_status_t array2string(char **outstring, int want_error_header, char 
     return PMIX_SUCCESS;
 }
 
-/*
- * Find the right file to open
- */
-static pmix_status_t open_file(const char *base,
-                               const char *topic,
-                               FILE **fptr)
+static const char **get_content(const char *filename,
+                                const char* topic)
 {
-    char *filename;
-    char **err_msg = NULL;
-    char *tmp;
-    size_t base_len;
-    int i;
-    FILE *fp = NULL;
+    tuple_array_item_t *da;
+    pmix_show_help_file_t *fe;
+    pmix_show_help_entry_t *ie;
+    int i, j;
 
-    /* If no filename was supplied, use the default */
-
-    if (NULL == base) {
-        base = default_filename;
-    }
-
-    /* if this is called prior to someone initializing the system,
-     * then don't try to look
-     */
-    if (NULL != search_dirs) {
-        /* Try to open the file.  If we can't find it, try it with a .txt
-         * extension.
-         */
-        for (i = 0; NULL != search_dirs[i]; i++) {
-            filename = pmix_os_path(false, search_dirs[i], base, NULL);
-            fp = fopen(filename, "r");
-            if (NULL == fp) {
-                if (0 > asprintf(&tmp, "    %s: %s", filename, strerror(errno))) {
-                    free(filename);
-                    PMIx_Argv_free(err_msg);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
-                }
-                PMIx_Argv_append_nosize(&err_msg, tmp);
-                free(tmp);
-                base_len = strlen(base);
-                if (4 > base_len || 0 != strcmp(base + base_len - 4, ".txt")) {
-                    free(filename);
-                    if (0 > asprintf(&filename, "%s%s%s.txt", search_dirs[i], PMIX_PATH_SEP, base)) {
-                        PMIx_Argv_free(err_msg);
-                        return PMIX_ERR_OUT_OF_RESOURCE;
+    if (!pmix_show_help_enabled) {
+        // restrict to local array
+        for (i = 0; NULL != pmix_show_help_data[i].filename; ++i) {
+            fe = &(pmix_show_help_data[i]);
+            if (0 == strcmp(fe->filename, filename)) {
+                for (j = 0; NULL != fe->entries[j].topic; ++j) {
+                    ie = &(fe->entries[j]);
+                    if (0 == strcmp(ie->topic, topic)) {
+                        return ie->content;
                     }
-                    fp = fopen(filename, "r");
                 }
             }
-            free(filename);
-            if (NULL != fp) {
-                break;
+        }
+        return NULL;
+    }
+
+    PMIX_LIST_FOREACH(da, &data_arrays, tuple_array_item_t) {
+        for (i = 0; NULL != da->array[i].filename; ++i) {
+            fe = &(da->array[i]);
+            if (0 == strcmp(fe->filename, filename)) {
+                for (j = 0; NULL != fe->entries[j].topic; ++j) {
+                    ie = &(fe->entries[j]);
+                    if (0 == strcmp(ie->topic, topic)) {
+                        return ie->content;
+                    }
+                }
             }
         }
     }
-
-    /* If we still couldn't open it, then something is wrong */
-    if (NULL == fp) {
-        char *msg;
-        tmp = PMIx_Argv_join(err_msg, '\n');
-        PMIx_Argv_free(err_msg);
-        pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n    %s\nBut I couldn't open "
-                    "the help file:\n%s.\nSorry!\n%s", dash_line, topic, tmp, dash_line);
-        local_delivery(tmp, topic, msg);
-        free(tmp);
-        return PMIX_ERR_NOT_FOUND;
-    }
-
-    if (NULL != err_msg) {
-        free(err_msg);
-    }
-
-    *fptr = fp;
-    /* Happiness */
-    return PMIX_SUCCESS;
-}
-
-#define PMIX_MAX_LINE_LENGTH 1024
-
-static char *localgetline(FILE *fp)
-{
-    char *ret, *buff;
-    char input[PMIX_MAX_LINE_LENGTH];
-    int i = 0;
-
-    ret = fgets(input, PMIX_MAX_LINE_LENGTH, fp);
-    if (NULL != ret) {
-        if ('\0' != input[0]) {
-            input[strlen(input) - 1] = '\0'; /* remove newline */
-        }
-        buff = strdup(&input[i]);
-        return buff;
-    }
-
     return NULL;
-}
-
-/*
- * In the file that has already been opened, find the topic that we're
- * supposed to output
- */
-static pmix_status_t find_topic(FILE *fp,
-                                const char *base,
-                                const char *topic)
-{
-    char *line, *cptr;
-    PMIX_HIDE_UNUSED_PARAMS(base);
-
-    /* Examine every topic */
-
-    while (NULL != (line = localgetline(fp))) {
-        /* topics start with a '[' in the first position */
-        if ('[' != line[0]) {
-            free(line);
-            continue;
-        }
-        /* find the end of the topic name */
-        cptr = strchr(line, ']');
-        if (NULL == cptr) {
-            /* this is not a valid topic */
-            free(line);
-            continue;
-        }
-        *cptr = '\0';
-        if (0 == strcmp(&line[1], topic)) {
-            /* this is the topic */
-            free(line);
-            return PMIX_SUCCESS;
-        }
-        /* not the topic we want */
-        free(line);
-    }
-
-    return PMIX_ERR_NOT_FOUND;
-}
-
-/*
- * We have an open file, and we're pointed at the right topic.  So
- * read in all the lines in the topic and make a list of them.
- */
-static pmix_status_t read_topic(FILE *fp, char ***array)
-{
-    int rc;
-    char *line, *file, *tp;
-    char **tmparray = NULL;
-
-    while (NULL != (line = localgetline(fp))) {
-        /* the topic ends when we see either the end of
-         * the file (indicated by a NULL return) or the
-         * beginning of the next topic */
-        if (0 == strncmp(line, "#include#", strlen("#include#"))) {
-            /* keyword "include" found - check for file/topic */
-            file = &line[strlen("#include#")];
-            if (0 == strlen(file)) {
-                /* missing filename */
-                free(line);
-                return PMIX_ERR_BAD_PARAM;
-            }
-            /* see if they provided a topic */
-            tp = strchr(file, '#');
-            if (NULL != tp) {
-                *tp = '\0';  // NULL-terminate the filename
-                ++tp;
-            }
-            rc = load_array(&tmparray, file, tp);
-            if (PMIX_SUCCESS != rc) {
-                free(line);
-                return rc;
-            }
-        }
-        if ('#' == line[0]) {
-            /* skip comments */
-            free(line);
-            continue;
-        }
-        if ('[' == line[0]) {
-            /* start of the next topic */
-            free(line);
-
-            /* Fall through to strip out leading / trailing blank
-               lines */
-            break;
-        }
-        /* save the line */
-        rc = PMIx_Argv_append_nosize(&tmparray, line);
-        free(line);
-        if (rc != PMIX_SUCCESS) {
-            return rc;
-        }
-    }
-
-    /* Strip off empty lines at the beginning and end of the resulting
-       array, because RST/Sphinx requires us to have blank lines to
-       separate paragraphs.
-
-       This algorithm is neither clever nor efficient, but it's
-       simple.  First, find the first and last non-blank lines. */
-    int first_nonblank = -1;
-    int last_nonblank = -1;
-    for (int i = 0; NULL != tmparray[i]; ++i) {
-        if (tmparray[i][0] != '\0') {
-            if (-1 == first_nonblank) {
-                first_nonblank = i;
-            }
-            last_nonblank = i;
-        }
-    }
-
-    /* If there were no non-blank lines, that's an error */
-    if (-1 == first_nonblank) {
-        PMIx_Argv_free(tmparray);
-        return PMIX_ERR_NOT_FOUND;
-    }
-
-    /* Copy the range of [first_nonblank, last_nonblank] to the output
-       array */
-    for (int i = first_nonblank; i <= last_nonblank; ++i) {
-        PMIx_Argv_append_nosize(array, tmparray[i]);
-    }
-    PMIx_Argv_free(tmparray);
-
-    return PMIX_SUCCESS;
-}
-
-static pmix_status_t load_array(char ***array,
-                                const char *filename,
-                                const char *topic)
-{
-    int ret;
-    FILE *fp;
-
-    ret = open_file(filename, topic, &fp);
-    if (PMIX_SUCCESS != ret) {
-        return ret;
-    }
-
-    ret = find_topic(fp, filename, topic);
-    if (PMIX_SUCCESS == ret) {
-        ret = read_topic(fp, array);
-    }
-
-    fclose(fp);
-
-    if (PMIX_SUCCESS != ret) {
-        PMIx_Argv_free(*array);
-    }
-
-    return ret;
 }
 
 char *pmix_show_help_vstring(const char *filename,
@@ -662,15 +482,22 @@ char *pmix_show_help_vstring(const char *filename,
                              va_list arglist)
 {
     int rc;
-    char *single_string, *output, **array = NULL;
+    char *single_string, *output;
+    const char **content;
+    char *msg;
 
     /* Load the message */
-    if (PMIX_SUCCESS != (rc = load_array(&array, filename, topic))) {
+    content = get_content(filename, topic);
+    if (NULL == content) {
+        pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n\n    Filename: %s\n    Topic: %s\n\nBut I couldn't find "
+                    "that help reference.\n\nSorry!\n%s", dash_line, filename, topic, dash_line);
+        local_delivery(filename, topic, msg);
+        free(msg);
         return NULL;
-    }
+   }
 
     /* Convert it to a single raw string */
-    rc = array2string(&single_string, want_error_header, array);
+    rc = array2string(&single_string, want_error_header, content);
 
     if (PMIX_SUCCESS == rc) {
         /* Apply the formatting to make the final output string */
@@ -680,46 +507,34 @@ char *pmix_show_help_vstring(const char *filename,
         free(single_string);
     }
 
-    PMIx_Argv_free(array);
     return (PMIX_SUCCESS == rc) ? output : NULL;
 }
 
-char *pmix_show_help_string(const char *filename, const char *topic, int want_error_handler, ...)
+char *pmix_show_help_string(const char *filename,
+                            const char *topic,
+                            int want_error_handler, ...)
 {
     char *output;
     va_list arglist;
 
     va_start(arglist, want_error_handler);
-    output = pmix_show_help_vstring(filename, topic, want_error_handler, arglist);
+    output = pmix_show_help_vstring(filename, topic,
+                                    want_error_handler, arglist);
     va_end(arglist);
 
     return output;
 }
 
-pmix_status_t pmix_show_vhelp(const char *filename, const char *topic,
-                              int want_error_header, va_list arglist)
-{
-    char *output;
-
-    /* Convert it to a single string */
-    output = pmix_show_help_vstring(filename, topic, want_error_header, arglist);
-
-    /* If we got a single string, output it with formatting */
-    if (NULL != output) {
-        local_delivery(filename, topic, output);
-    }
-
-    return (NULL == output) ? PMIX_ERROR : PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_show_help(const char *filename, const char *topic,
+pmix_status_t pmix_show_help(const char *filename,
+                             const char *topic,
                              int want_error_header, ...)
 {
     va_list arglist;
     char *output;
 
     va_start(arglist, want_error_header);
-    output = pmix_show_help_vstring(filename, topic, want_error_header, arglist);
+    output = pmix_show_help_vstring(filename, topic,
+                                    want_error_header, arglist);
     va_end(arglist);
 
     /* If nothing came back, there's nothing to do */
@@ -731,10 +546,38 @@ pmix_status_t pmix_show_help(const char *filename, const char *topic,
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_show_help_add_data(const char *project,
+                                      pmix_show_help_file_t *array)
+{
+    tuple_array_item_t *da;
+    pmix_show_help_file_t *fe;
+    int i, j;
+
+    // check for duplicate entries
+    PMIX_LIST_FOREACH(da, &data_arrays, tuple_array_item_t) {
+        for (i = 0; NULL != da->array[i].filename; ++i) {
+            fe = &(da->array[i]);
+            for (j=0; NULL != array[j].filename; j++) {
+                if (0 == strcmp(fe->filename, array[j].filename)) {
+                    // complain
+                    pmix_show_help("help-pmix-util.txt", "duplicate-filename", true,
+                                   project, da->project, fe->filename);
+                    return PMIX_ERROR;
+                }
+            }
+        }
+    }
+    da = PMIX_NEW(tuple_array_item_t);
+    da->project = strdup(project);
+    da->array = array;
+    pmix_list_append(&data_arrays, &da->super);
+    return PMIX_SUCCESS;
+}
+
 pmix_status_t pmix_show_help_add_dir(const char *directory)
 {
-    PMIx_Argv_append_nosize(&search_dirs, directory);
-    return PMIX_SUCCESS;
+    PMIX_HIDE_UNUSED_PARAMS(directory);
+    return PMIX_ERR_NOT_SUPPORTED;
 }
 
 pmix_status_t pmix_show_help_norender(const char *filename,

@@ -60,3 +60,11 @@ attempt failed:
 
 The PMIx shared memory subsystem will be disabled, but your job will
 continue by using the "hash" subsystem.
+#
+[duplicate-filename]
+The provided project show-help data array cannot be added as it
+contains a filename that matches one already in the system:
+
+  Project1: %s
+  Project2: %s
+  Filename: %s

@@ -14,7 +14,7 @@
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2022-2024 Nanook Consulting  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
@@ -25,7 +25,7 @@
 
 AM_CPPFLAGS = $(gds_shmem2_CPPFLAGS)
 
-dist_pmixdata_DATA = help-gds-shmem2.txt
+EXTRA_DIST = help-gds-shmem2.txt
 
 headers = \
         gds_shmem2.h \

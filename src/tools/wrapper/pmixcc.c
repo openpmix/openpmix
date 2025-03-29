@@ -18,7 +18,7 @@
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -554,6 +554,33 @@ static void load_env_data_argv(const char *project, const char *flag, char ***da
     *data = PMIx_Argv_split(envvalue, ' ');
 }
 
+#define PMIX_CLI_SHOWME_CMD     "showme:command"
+#define PMIX_CLI_SHOWME_CMPILE  "showme:compile"
+#define PMIX_CLI_SHOWME_LINK    "showme:link"
+#define PMIX_CLI_SHOWME_INC     "showme:incdirs"
+#define PMIX_CLI_SHOWME_LIBD    "showme:libdirs"
+#define PMIX_CLI_SHOWME_LIB     "showme:libs"
+#define PMIX_CLI_SHOWME_VERS    "showme:version"
+#define PMIX_CLI_SHOWME_HELP    "showme:help"
+
+static struct option options[] = {
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
+    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
+
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_CMD, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_CMPILE, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LINK, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_INC, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIBD, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIB, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_VERS, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_HELP, PMIX_ARG_NONE),
+
+    PMIX_OPTION_END
+};
+static char *shorts = "h::vV";
+
 int main(int argc, char *argv[])
 {
     int exit_status = 0, ret, flags = 0, i;
@@ -562,45 +589,32 @@ int main(int argc, char *argv[])
     char *exec_command, *base_argv0 = NULL;
     bool disable_flags = true;
     bool real_flag = false;
+    char hostname[PMIX_PATH_MAX];
+    pmix_cli_result_t results;
+    pmix_status_t rc;
 
-    /* initialize the output system */
-    if (!pmix_output_init()) {
+    /* init globals */
+    pmix_tool_basename = "pmixcc";
+    gethostname(hostname, sizeof(hostname));
+
+    // setup the base infrastructure
+    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
         return PMIX_ERROR;
     }
 
-    /* initialize install dirs code */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
-                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
-        fprintf(stderr,
-                "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
-                "returned %d instead of PMIX_SUCCESS)\n",
-                __FILE__, __LINE__, ret);
-        return ret;
-    }
+    /* Parse the command line options */
+    PMIX_CONSTRUCT(&results, pmix_cli_result_t);
+    rc = pmix_cmd_line_parse(argv, shorts, options,
+                             NULL, &results, "help-pmixcc.txt");
 
-    if (PMIX_SUCCESS != (ret = pmix_pinstall_dirs_base_init(NULL, 0))) {
-        fprintf(stderr,
-                "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, "
-                "returned %d instead of PMIX_SUCCESS)\n",
-                __FILE__, __LINE__, ret);
-        return ret;
-    }
-
-    /* initialize the help system */
-    pmix_show_help_init(NULL);
-
-    /* keyval lex-based parser */
-    if (PMIX_SUCCESS != (ret = pmix_util_keyval_parse_init())) {
-        pmix_show_help("help-pmix-runtime.txt", "pmix_init:startup:internal-failure", true,
-                       "pmix_util_keyval_parse_init", ret);
-        return ret;
-    }
-
-    /* initialize the mca */
-    if (PMIX_SUCCESS != (ret = pmix_mca_base_open(NULL))) {
-        pmix_show_help("help-pmix-runtime.txt", "pmix_init:startup:internal-failure", true,
-                       "pmix_mca_base_open", ret);
-        return ret;
+    if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_SILENT != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
+        }
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            rc = PMIX_SUCCESS;
+        }
+        exit(rc);
     }
 
     /****************************************************
@@ -706,6 +720,13 @@ int main(int argc, char *argv[])
     user_argc = PMIx_Argv_count(user_argv);
 
     for (i = 0; i < user_argc; ++i) {
+        if (0 == strcmp(user_argv[i], "--help") ||
+            0 == strcmp(user_argv[i], "-h")) {
+            pmix_show_help("help-pmixcc.txt", "usage", false,
+                            "pmixcc");
+            exit_status = 0;
+            goto cleanup;
+        }
         if (0 == strncmp(user_argv[i], "-showme", strlen("-showme"))
             || 0 == strncmp(user_argv[i], "--showme", strlen("--showme"))
             || 0 == strncmp(user_argv[i], "-show", strlen("-show"))

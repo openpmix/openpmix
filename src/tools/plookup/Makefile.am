@@ -12,7 +12,7 @@
 # Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -40,7 +40,7 @@ if PMIX_INSTALL_BINARIES
 
 bin_PROGRAMS = plookup
 
-dist_pmixdata_DATA = help-plookup.txt
+EXTRA_DIST = help-plookup.txt
 
 endif # PMIX_INSTALL_BINARIES
 

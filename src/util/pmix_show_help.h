@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -96,6 +96,8 @@
 
 #include <stdarg.h>
 
+#include "src/include/pmix_globals.h"
+
 BEGIN_C_DECLS
 
 /**
@@ -103,7 +105,7 @@ BEGIN_C_DECLS
  *
  * Initialization of show_help subsystem
  */
-PMIX_EXPORT pmix_status_t pmix_show_help_init(char *helpdir);
+PMIX_EXPORT pmix_status_t pmix_show_help_init(void);
 
 /**
  * \internal
@@ -139,15 +141,6 @@ PMIX_EXPORT pmix_status_t pmix_show_help(const char *filename,
                                          int want_error_header, ...);
 
 /**
- * This function does the same thing as pmix_show_help(), but accepts
- * a va_list form of varargs.
- */
-PMIX_EXPORT pmix_status_t pmix_show_vhelp(const char *filename,
-                                          const char *topic,
-                                          int want_error_header,
-                                          va_list ap);
-
-/**
  * This function does the same thing as pmix_show_help(), but returns
  * its output in a string (that must be freed by the caller).
  */
@@ -168,19 +161,18 @@ PMIX_EXPORT char *pmix_show_help_vstring(const char *filename,
  * back show_help messages. Locations will be searched starting
  * with the prefix installation directory, then cycled through
  * any additional directories in the order they were added
- *
- * This interface allows libraries that use OMPI to take advantage
- * of the show_help functionality. OMPI defines the show_help directory
- * based on where OMPI was installed. However, if the library wants to
- * use show_help to provide error output specific to itself, then it
- * needs to tell pmix_show_help.how to find its own show_help files - without
- * interfering with the linked ORTE libs when they need to do show_help.
  */
+PMIX_EXPORT pmix_status_t pmix_show_help_add_data(const char *project,
+                                                  pmix_show_help_file_t *array);
+
+// DEPRECATED
 PMIX_EXPORT pmix_status_t pmix_show_help_add_dir(const char *directory);
 
+// check for duplicate entries
 PMIX_EXPORT pmix_status_t pmix_help_check_dups(const char *filename,
                                                const char *topic);
 
+// output a previously rendered show-help message
 PMIX_EXPORT pmix_status_t pmix_show_help_norender(const char *filename,
                                                   const char *topic,
                                                   const char *output);

@@ -14,7 +14,7 @@
 # Copyright (c) 2007-2022 Cisco Systems, Inc.  All rights reserved
 # Copyright (c) 2017      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
@@ -41,6 +41,8 @@
 #    parallel).  But this simple solution to avoid a devious potential
 #    file corruption issue is an acceptable tradeoff.
 .NOTPARALLEL:
+
+include $(top_srcdir)/Makefile.openpmix-rules
 
 AM_CFLAGS = \
             -DPMIX_PROXY_VERSION_STRING="\"@PMIX_VERSION@\"" \
@@ -85,14 +87,17 @@ libpmixglobal_gen = \
     pmix_event_strings.h \
     pmix_event_strings.c
 
+
 # Need to ensure that pmix_dictionary.h and pmix_dictionary.c are built first --
 # before any other targets.
 BUILT_SOURCES = $(libpmixglobal_gen)
 
-$(libpmixglobal_gen): $(top_srcdir)/include/pmix_common.h.in \
-                      $(top_srcdir)/include/pmix_deprecated.h \
-                      $(top_srcdir)/src/common/pmix_attributes.c
-	        $(PYTHON) $(top_srcdir)/contrib/construct_dictionary.py
-	        $(PYTHON) $(top_srcdir)/contrib/construct_event_strings.py
+$(libpmixglobal_gen): $(abs_top_srcdir)/include/pmix_common.h.in \
+                      $(abs_top_srcdir)/include/pmix_deprecated.h \
+                      $(abs_top_srcdir)/src/common/pmix_attributes.c
+	        $(PMIX_V_GEN) $(PYTHON) $(abs_top_srcdir)/contrib/construct_dictionary.py \
+                        --root $(abs_top_srcdir) \
+                        --out .
+	        $(PMIX_V_GEN) $(PYTHON) $(abs_top_srcdir)/contrib/construct_event_strings.py
 
 MAINTAINERCLEANFILES = $(libpmixglobal_gen)

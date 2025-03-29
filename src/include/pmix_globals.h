@@ -95,6 +95,20 @@ typedef struct {
 } pmix_namelist_t;
 PMIX_CLASS_DECLARATION(pmix_namelist_t);
 
+/* define structs for holding entries in the
+ * show-help matrix */
+typedef struct {
+    const char *topic;
+    const char **content;
+} pmix_show_help_entry_t;
+
+typedef struct {
+    const char *filename;
+    pmix_show_help_entry_t *entries;
+} pmix_show_help_file_t;
+
+PMIX_EXPORT extern pmix_show_help_file_t pmix_show_help_data[];
+
 /* define a struct for holding entries in the
  * dictionary of attributes */
 typedef struct {

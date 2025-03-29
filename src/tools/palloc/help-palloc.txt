@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -81,12 +81,23 @@ PMIx Allocation Request tool
    --do-not-wait                     Submit the allocation request to the scheduler, but do not wait for the allocation
                                      to be assigned. Intended for use when submitting a job for batch execution.
 
-The command returns the string session ID of the resulting allocation, or if executed with the "--do-not-wait" option, the
+The command returns the string session ID of the resulting allocation, or if executed with the "do-not-wait" option, the
 string session ID of the allocation request as assigned by the scheduler. Any command line arguments following the provided
 options are taken as the job script or executable to be run within the allocation (once assigned) and its attendant
 argv array. In this case, the allocation will terminate once the provide job script or executable completes.
 
 The user is responsible for free'ing the returned string session ID.
+
+Report bugs to %s
+#
+[pmixmca]
+
+Pass a PMIx MCA parameter
+
+Syntax: "pmixmca <key> <value>", where "key" is the parameter name
+and "value" is the parameter value.
+
+
 #
 [bad-option-input]
 %s was given an option that expected a string argument:
@@ -285,7 +296,7 @@ the allocation be made "today" or "tomorrow".
 [immediate]
 Exit if resources are not available within the time period specified. If no argument
 is given, resources must be available immediately for the request to succeed. By
-default, --immediate is off, and the command will block until resources become
+default, "immediate" is off, and the command will block until resources become
 available. Since this
 option's argument is optional, for proper parsing the single
 letter option must be followed by an equal sign and the value - e.g., "-I=60"

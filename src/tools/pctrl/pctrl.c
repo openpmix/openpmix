@@ -63,6 +63,7 @@ static struct option pctrlptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
 
+    PMIX_OPTION_DEFINE(PMIX_CLI_SIGNAL, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_REQ_ID, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_PAUSE, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_RESUME, PMIX_ARG_NONE),
@@ -127,6 +128,11 @@ int main(int argc, char **argv)
     pmix_tool_basename = "pctrl";
     gethostname(hostname, sizeof(hostname));
 
+    // setup the base infrastructure
+    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
+        return PMIX_ERROR;
+    }
+
     /* Parse the command line options */
     PMIX_CONSTRUCT(&results, pmix_cli_result_t);
     rc = pmix_cmd_line_parse(argv, pctrlshorts, pctrlptions,
@@ -149,11 +155,6 @@ int main(int argc, char **argv)
                 pmix_expose_param(opt->values[n]);
             }
         }
-    }
-
-    // setup the base infrastructure
-    if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
-        return PMIX_ERROR;
     }
 
     // check for common required command line option

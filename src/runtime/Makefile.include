@@ -14,7 +14,7 @@
 #                         All rights reserved.
 # Copyright (c) 2014-2017 Intel, Inc. All rights reserved.
 # Copyright (c) 2014      Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -24,7 +24,7 @@
 
 # This makefile.am does not stand on its own - it is included from src/Makefile.am
 
-dist_pmixdata_DATA += runtime/help-pmix-runtime.txt
+EXTRA_DIST += runtime/help-pmix-runtime.txt
 
 headers += \
         runtime/pmix_rte.h \

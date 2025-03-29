@@ -39,6 +39,7 @@
 /* Individual capability flags */
 #define PMIX_CAP_BASE            1
 #define PMIX_CAP_LTO             2
+#define PMIX_CAP_INMEMHELP       3
 
 
 /* These are the capabilities that this version of OpenPMIx has.
@@ -46,6 +47,8 @@
  * point
  */
 #define PMIX_CAPABILITIES \
-    (PMIX_CAP_BASE | PMIX_CAP_LTO)
+    (PMIX_CAP_BASE | \
+     PMIX_CAP_LTO | \
+     PMIX_CAP_INMEMHELP)
 
 #endif

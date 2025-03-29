@@ -13,6 +13,7 @@
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2018 Intel, Inc. All rights reserved.
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2025      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -23,7 +24,7 @@
 # This makefile.am does not stand on its own - it is included from
 # src/Makefile.am
 
-dist_pmixdata_DATA = base/help-pmix-plog.txt
+EXTRA_DIST = base/help-pmix-plog.txt
 
 headers += \
          base/base.h

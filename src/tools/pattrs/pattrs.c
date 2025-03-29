@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -138,6 +138,15 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
     PMIX_WAKEUP_THREAD(&lock->lock);
 }
 
+#define PMIX_CLI_CLIENT         "client"
+#define PMIX_CLI_SERVER         "server"
+#define PMIX_CLI_TOOL           "tool"
+#define PMIX_CLI_HOST           "host"
+#define PMIX_CLI_CLIENT_FNS     "client-fns"
+#define PMIX_CLI_SERVER_FNS     "server-fns"
+#define PMIX_CLI_TOOL_FNS       "tool-fns"
+#define PMIX_CLI_HOST_FNS       "host-fns"
+
 static struct option pattroptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
@@ -154,15 +163,15 @@ static struct option pattroptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
 
-    PMIX_OPTION_DEFINE("client", PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("server", PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("tool", PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("host", PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_CLIENT, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SERVER, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_TOOL, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_HOST, PMIX_ARG_REQD),
 
-    PMIX_OPTION_DEFINE("client-fns", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("server-fns", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("tool-fns", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("host-fns", PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_CLIENT_FNS, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SERVER_FNS, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_TOOL_FNS, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_HOST_FNS, PMIX_ARG_NONE),
 
     PMIX_OPTION_END
 };
@@ -217,7 +226,7 @@ int main(int argc, char **argv)
     }
 
     /* initialize the help system */
-    pmix_show_help_init(NULL);
+    pmix_show_help_init();
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (rc = pmix_util_keyval_parse_init())) {
@@ -261,14 +270,14 @@ int main(int argc, char **argv)
         return PMIX_ERROR;
     }
 
-    client = pmix_cmd_line_get_nth_instance(&results, "client", 0);
-    server = pmix_cmd_line_get_nth_instance(&results, "server", 0);
-    tool = pmix_cmd_line_get_nth_instance(&results, "tool", 0);
-    host = pmix_cmd_line_get_nth_instance(&results, "host", 0);
-    clientfns = pmix_cmd_line_is_taken(&results, "client-fns");
-    serverfns = pmix_cmd_line_is_taken(&results, "server-fns");
-    toolfns = pmix_cmd_line_is_taken(&results, "tool-fns");
-    hostfns = pmix_cmd_line_is_taken(&results, "host-fns");
+    client = pmix_cmd_line_get_nth_instance(&results, PMIX_CLI_CLIENT, 0);
+    server = pmix_cmd_line_get_nth_instance(&results, PMIX_CLI_SERVER, 0);
+    tool = pmix_cmd_line_get_nth_instance(&results, PMIX_CLI_TOOL, 0);
+    host = pmix_cmd_line_get_nth_instance(&results, PMIX_CLI_HOST, 0);
+    clientfns = pmix_cmd_line_is_taken(&results, PMIX_CLI_CLIENT_FNS);
+    serverfns = pmix_cmd_line_is_taken(&results, PMIX_CLI_SERVER_FNS);
+    toolfns = pmix_cmd_line_is_taken(&results, PMIX_CLI_TOOL_FNS);
+    hostfns = pmix_cmd_line_is_taken(&results, PMIX_CLI_HOST_FNS);
 
     /* cannot list functions and get attributes at same time */
     if ((clientfns || serverfns || toolfns || hostfns) &&
