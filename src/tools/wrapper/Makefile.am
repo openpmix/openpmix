@@ -15,7 +15,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
 # Copyright (c) 2020      IBM Corporation.  All rights reserved.
-# Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -31,7 +31,7 @@ bin_PROGRAMS = pmixcc
 
 nodist_pmixdata_DATA = pmixcc-wrapper-data.txt
 
-dist_pmixdata_DATA = help-pmixcc.txt
+EXTRA_DIST = help-pmixcc.txt
 
 pmixcc_SOURCES = \
         pmixcc.c

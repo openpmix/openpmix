@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -62,6 +62,14 @@ PMIx Supported Attributes and Functions tool
    --host-fns                        List the functions supported by this host environment
 
 Report bugs to %s
+#
+[pmixmca]
+
+Pass a PMIx MCA parameter
+
+Syntax: "pmixmca <key> <value>", where "key" is the parameter name
+and "value" is the parameter value.
+
 #
 [do-not-connect]
 Do not attempt to connect to a PMIx server

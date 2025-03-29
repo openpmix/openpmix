@@ -12,7 +12,7 @@
 # Copyright (c) 2009-2010 Cisco Systems, Inc. All rights reserved.
 # Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2017      IBM Corporation.  All rights reserved.
-# Copyright (c) 2022      Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -22,7 +22,7 @@
 
 AM_CPPFLAGS = $(plog_smtp_CPPFLAGS)
 
-dist_pmixdata_DATA = \
+EXTRA_DIST = \
         help-pmix-plog-smtp.txt
 
 sources = \

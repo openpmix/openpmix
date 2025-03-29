@@ -22,7 +22,7 @@
 # $HEADER$
 #
 
-dist_pmixdata_DATA = help-pnet-simptest.txt
+EXTRA_DIST = help-pnet-simptest.txt
 
 headers = pnet_simptest.h
 sources = \

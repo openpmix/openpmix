@@ -18,7 +18,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -105,6 +105,8 @@ static char *pretty_node_state(pmix_node_state_t state);
 static int parseable_print(pmix_ps_mpirun_info_t *hnpinfo);
 #endif
 
+#define PMIX_CLI_NODES  "nodes"
+
 static struct option ppsoptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
@@ -117,7 +119,7 @@ static struct option ppsoptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_PID, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_NAMESPACE, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("nodes", PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_NODES, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
 
     PMIX_OPTION_END
@@ -242,7 +244,7 @@ int main(int argc, char *argv[])
     }
 
     /* initialize the help system */
-    pmix_show_help_init(NULL);
+    pmix_show_help_init();
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (rc = pmix_util_keyval_parse_init())) {

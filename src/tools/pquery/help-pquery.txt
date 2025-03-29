@@ -51,6 +51,47 @@ Keys passed to pquery may optionally include one or more qualifiers, with the
 individual qualifiers delimited by semi-colons. For example:
 
 PMIX_STORAGE_XFER_SIZE[PMIX_STORAGE_ID=lustre1,lustre2;PMIX_STORAGE_PATH=foo]
+
+Report bugs to %s
+#
+[pmixmca]
+
+Pass a PMIx MCA parameter
+
+Syntax: "pmixmca <key> <value>", where "key" is the parameter name
+and "value" is the parameter value.
+#
+[uri]
+
+Specify the URI of the server to which we are to connect, or
+the name of the file (specified as file:filename) that contains that info
+#
+[namespace]
+
+Namespace of the daemon to which we should connect
+#
+[system-server-first]
+
+First look for a system server and connect to it if found
+#
+[system-server]
+
+Connect to a system server if a local server isn't found
+#
+[pid]
+PID of the daemon to which we should connect (int => PID or file:<file>
+for file containing the PID
+#
+[wait-to-connect]
+
+Delay specified number of seconds before trying to connect
+#
+[num-connect-retries]
+
+Max number of times to try to connect
+#
+[tmpdir]
+Set the root for the session directory tree
 #
 [bad-option-input]
 %s was given an option that expected a string argument:

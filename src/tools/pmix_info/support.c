@@ -51,7 +51,7 @@
 #include "src/include/pmix_frameworks.h"
 #include "src/include/pmix_portable_platform.h"
 
-#include "pinfo.h"
+#include "pmix_info.h"
 #include "src/mca/base/pmix_mca_base_component_repository.h"
 #include "src/mca/pinstalldirs/pinstalldirs.h"
 #include "support.h"
@@ -114,73 +114,6 @@ PMIX_CLASS_INSTANCE(pmix_info_component_map_t, pmix_list_item_t, component_map_c
 
 static void pmix_info_show_failed_component(const pmix_mca_base_component_repository_item_t *ri,
                                             const char *error_msg);
-
-static struct option poptions[] = {
-    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
-    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
-    PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
-
-    PMIX_OPTION_SHORT_DEFINE("all", PMIX_ARG_NONE, 'a'),
-    PMIX_OPTION_DEFINE("arch", PMIX_ARG_NONE),
-    PMIX_OPTION_SHORT_DEFINE("config", PMIX_ARG_NONE, 'c'),
-    PMIX_OPTION_DEFINE("hostname", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("param", PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("path", PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("show-version", PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("pretty-print", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("parsable", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("parseable", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("show-failed", PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE("selected-only", PMIX_ARG_NONE),
-
-    PMIX_OPTION_END
-};
-static char *pshorts = "h::vVac";
-
-int pmix_info_init(int argc, char **argv)
-{
-    int ret;
-    PMIX_HIDE_UNUSED_PARAMS(argc);
-
-    if (PMIX_SUCCESS != pmix_mca_base_open(NULL)) {
-        pmix_show_help("help-pmix-info.txt", "lib-call-fail", true, "mca_base_open", __FILE__,
-                       __LINE__);
-        PMIX_RELEASE(pmix_info_cmd_line);
-        exit(1);
-    }
-
-    /* Do the parsing */
-    ret = pmix_cmd_line_parse(argv, pshorts, poptions,
-                              NULL, pmix_info_cmd_line, "help-pmix-info.txt");
-    if (PMIX_SUCCESS != ret) {
-        if (PMIX_ERR_SILENT != ret && PMIX_OPERATION_SUCCEEDED != ret) {
-            fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(ret));
-        }
-        if (PMIX_OPERATION_SUCCEEDED == ret) {
-            ret = PMIX_SUCCESS;
-        }
-        exit(ret);
-    }
-
-    /* set the flags */
-    if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "pretty-print")) {
-        pmix_info_pretty = true;
-    } else if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "parsable") ||
-               pmix_cmd_line_is_taken(pmix_info_cmd_line, "parseable")) {
-        pmix_info_pretty = false;
-    }
-
-    if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "selected-only")) {
-        /* register only selected components */
-        pmix_info_register_flags = PMIX_MCA_BASE_REGISTER_DEFAULT;
-    }
-
-    if (pmix_cmd_line_is_taken(pmix_info_cmd_line, "show-failed")) {
-        pmix_mca_base_component_track_load_errors = true;
-    }
-
-    return PMIX_SUCCESS;
-}
 
 void pmix_info_finalize(void)
 {
@@ -312,7 +245,7 @@ void pmix_info_do_path(bool want_all)
     pmix_cli_item_t *opt;
 
     /* Check bozo case */
-    opt = pmix_cmd_line_get_param(pmix_info_cmd_line, "path");
+    opt = pmix_cmd_line_get_param(pmix_info_cmd_line, PMIX_CLI_PATH);
     if (NULL != opt) {
         for (i=0; NULL != opt->values[i]; i++) {
             scope = opt->values[i];

@@ -53,6 +53,7 @@ but has no matching long option:
   Short option: %c
 
 This might require help from the developers.
+#
 [unregistered-option]
 An unrecognized option was included on the %s command line:
 

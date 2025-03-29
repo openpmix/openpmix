@@ -1162,7 +1162,7 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
         }
 
         /* Print out what we got.  We already have a rendered string,
-           so use pmix_show_help_norender(). */
+           so just print it. */
         if (msg.msg_str_len > 0) {
             fprintf(stderr, "%s\n", str);
             free(str);

@@ -15,7 +15,7 @@
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
@@ -29,11 +29,14 @@
 AM_CPPFLAGS = \
     $(LTDLINCL)
 
+include $(top_srcdir)/Makefile.openpmix-rules
+
 noinst_LTLIBRARIES = libpmix_util.la
 
-dist_pmixdata_DATA = \
+EXTRA_DIST = \
     help-pmix-util.txt \
-    help-cli.txt
+    help-cli.txt \
+    convert-help.py
 
 headers = \
         pmix_alfg.h \
@@ -81,6 +84,7 @@ sources = \
         pmix_basename.c \
         pmix_keyval_parse.c \
         pmix_show_help.c \
+        pmix_show_help_content.c \
         pmix_path.c \
         pmix_getid.c \
         pmix_shmem.c \
@@ -96,6 +100,20 @@ sources = \
         pmix_string_copy.c \
         pmix_getcwd.c
 
+pmix_show_help_content.c: FORCE
+if PMIX_PICKY_COMPILERS
+	$(PMIX_V_GEN) $(PYTHON) $(abs_srcdir)/convert-help.py \
+		--root $(abs_top_srcdir) \
+		--out pmix_show_help_content.c \
+		--purge
+else
+	$(PMIX_V_GEN) $(PYTHON) $(abs_srcdir)/convert-help.py \
+		--root $(abs_top_srcdir) \
+		--out pmix_show_help_content.c
+endif
+
+FORCE:
+
 libpmix_util_la_SOURCES = $(headers) $(sources)
 
 libpmix_util_la_LIBADD = \
@@ -107,3 +125,9 @@ libpmix_util_la_DEPENDENCIES = \
 
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)
+
+MAINTAINERCLEANFILES = \
+	pmix_show_help_content.c
+
+distclean-local:
+	rm -f pmix_show_help_content.c

@@ -15,7 +15,7 @@
 # Copyright (c) 2013-2016 Los Alamos National Security, Inc.  All rights
 #                         reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022-2023 Nanook Consulting  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # Copyright (c) 2024      Research Organization for Information Science
 #                         and Technology (RIST).  All rights reserved.
 # $COPYRIGHT$

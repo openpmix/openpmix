@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022-2023 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -62,6 +62,15 @@ PMIx Job control tool
    --targets <arg0>                  Comma-delimited list of target processes for the requested
                                      job-control operation
 
+Report bugs to %s
+
+#
+[pmixmca]
+
+Pass a PMIx MCA parameter
+
+Syntax: "pmixmca <key> <value>", where "key" is the parameter name
+and "value" is the parameter value.
 #
 # CONNECTION OPTIONS
 #

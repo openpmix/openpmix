@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -88,6 +88,8 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
     PMIX_WAKEUP_THREAD(&lock->lock);
 }
 
+#define PMIX_CLI_RANGE  "range"
+
 static struct option peventoptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
@@ -103,8 +105,7 @@ static struct option peventoptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
 
-    PMIX_OPTION_DEFINE("event", PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("range", PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_RANGE, PMIX_ARG_REQD),
 
     PMIX_OPTION_END
 };
@@ -166,7 +167,7 @@ int main(int argc, char **argv)
     }
 
     /* initialize the help system */
-    pmix_show_help_init(NULL);
+    pmix_show_help_init();
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (rc = pmix_util_keyval_parse_init())) {
@@ -248,7 +249,7 @@ int main(int argc, char **argv)
         status = (pmix_status_t) strtoul(results.tail[0], NULL, 10);
     }
 
-    opt = pmix_cmd_line_get_param(&results, "range");
+    opt = pmix_cmd_line_get_param(&results, PMIX_CLI_RANGE);
     if (NULL == opt) {
         char *str;
         str = pmix_show_help_string("help-pevent.txt", "usage", false,

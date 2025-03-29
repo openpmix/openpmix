@@ -173,7 +173,7 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *libdir)
     }
 
     /* initialize the help system */
-    pmix_show_help_init(NULL);
+    pmix_show_help_init();
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (ret = pmix_util_keyval_parse_init())) {

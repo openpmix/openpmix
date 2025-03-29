@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -54,11 +54,12 @@ static struct option pallocptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_PMIXMCA, PMIX_ARG_REQD),
 
     PMIX_OPTION_DEFINE(PMIX_CLI_SYS_SERVER_FIRST, PMIX_ARG_NONE),
-    PMIX_OPTION_DEFINE(PMIX_CLI_SYSTEM_SERVER, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SYS_SERVER_ONLY, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_WAIT_TO_CONNECT, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_NUM_CONNECT_RETRIES, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_PID, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_NAMESPACE, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_NSPACE, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_URI, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_CONNECTION_ORDER, PMIX_ARG_REQD),
@@ -245,7 +246,7 @@ int main(int argc, char **argv)
             param = strchr(opt->values[0], ':');
             if (NULL == param) {
                 /* malformed input */
-                pmix_show_help("help-pquery.txt", "bad-option-input", true, pmix_tool_basename,
+                pmix_show_help("help-palloc.txt", "bad-option-input", true, pmix_tool_basename,
                                "--pid", opt->values[0], "file:path");
                 PMIX_INFO_FREE(info, n);
                 return PMIX_ERR_BAD_PARAM;
@@ -253,7 +254,7 @@ int main(int argc, char **argv)
             ++param;
             fp = fopen(param, "r");
             if (NULL == fp) {
-                pmix_show_help("help-pquery.txt", "file-open-error", true, pmix_tool_basename,
+                pmix_show_help("help-palloc.txt", "file-open-error", true, pmix_tool_basename,
                                "--pid", opt->values[0], param);
                 return PMIX_ERR_BAD_PARAM;
             }
@@ -261,7 +262,7 @@ int main(int argc, char **argv)
             if (1 != rc) {
                 /* if we were unable to obtain the single conversion we
                  * require, then error out */
-                pmix_show_help("help-pquery.txt", "bad-file", true, pmix_tool_basename,
+                pmix_show_help("help-palloc.txt", "bad-file", true, pmix_tool_basename,
                                "--pid", opt->values[0], param);
                 fclose(fp);
                 PMIX_INFO_FREE(info, n);
@@ -270,7 +271,7 @@ int main(int argc, char **argv)
             fclose(fp);
             PMIX_INFO_LOAD(&info[0], PMIX_SERVER_PIDINFO, &pid, PMIX_PID);
         } else { /* a string that's neither an integer nor starts with 'file:' */
-            pmix_show_help("help-pquery.txt", "bad-option-input", true,
+            pmix_show_help("help-palloc.txt", "bad-option-input", true,
                            pmix_tool_basename, "--pid",
                            opt->values[0], "file:path");
             PMIX_INFO_FREE(info, n);

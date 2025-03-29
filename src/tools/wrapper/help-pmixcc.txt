@@ -23,6 +23,33 @@
 # This is the US/English help file for Open MPI wrapper compiler error
 # messages.
 #
+[usage]
+%s (%s) %s
+
+Usage: %s [OPTION] <args>
+PMIx wrapper compiler
+
+
+/*****      General Options      *****/
+
+  --showme:command    Show command used to invoke real compiler
+  --showme:compile    Show flags added when compiling
+  --showme:link       Show flags added when linking
+  --showme:incdirs    Show list of include dirs added when compiling
+  --showme:libdirs    Show list of library dirs added when linking
+  --showme:libs       Show list of libraries added when linking
+  --showme:version    Show version of %s
+  --showme:help       This help message
+
+where "args" consists of compiler flags and sources that are to
+be compiled
+
+Report bugs to %s
+
+#
+[version]
+%s: %s %s (Language: %s)
+#
 [no-language-support]
 Unfortunately, this installation of PMIx was not compiled with
 %s support.  As such, the %s compiler is non-functional.
@@ -38,21 +65,37 @@ The PMIx wrapper compiler was unable to find the specified compiler
 Note that this compiler was either specified at configure time or in
 one of several possible environment variables.
 #
-[version]
-%s: %s %s (Language: %s)
-#
-[usage]
-%s [-showme[:<command,compile,link,incdirs,
-              libdirs,libs,version,help>]] args
+[showme:command]
 
-  -showme:command    Show command used to invoke real compiler
-  -showme:compile    Show flags added when compiling
-  -showme:link       Show flags added when linking
-  -showme:incdirs    Show list of include dirs added when compiling
-  -showme:libdirs    Show list of library dirs added when linking
-  -showme:libs       Show list of libraries added when linking
-  -showme:version    Show version of %s
-  -showme:help       This help message
+Show command used to invoke real compiler
+#
+[showme:compile]
+
+Show flags added when compiling
+#
+[showme:link]
+
+Show flags added when linking
+#
+[showme:incdirs]
+
+Show list of include dirs added when compiling
+#
+[showme:libdirs]
+
+Show list of library dirs added when linking
+#
+[showme:libs]
+
+Show list of libraries added when linking
+#
+[showme:version]
+
+Show version of wrapper compiler
+#
+[showme:help]
+
+Show usage message
 #
 [file-not-found]
 %s could not find the file %s, needed for %s support.

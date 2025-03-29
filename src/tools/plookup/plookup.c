@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -85,6 +85,8 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
     PMIX_WAKEUP_THREAD(&lock->lock);
 }
 
+#define PMIX_CLI_WAIT "wait"
+
 static struct option plkoptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
@@ -93,7 +95,7 @@ static struct option plkoptions[] = {
 
     PMIX_OPTION_DEFINE(PMIX_CLI_PID, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TMPDIR, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE("wait", PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_WAIT, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_TIMEOUT, PMIX_ARG_REQD),
 
     PMIX_OPTION_END
@@ -146,7 +148,7 @@ int main(int argc, char **argv)
     }
 
     /* initialize the help system */
-    pmix_show_help_init(NULL);
+    pmix_show_help_init();
 
     /* keyval lex-based parser */
     if (PMIX_SUCCESS != (rc = pmix_util_keyval_parse_init())) {
@@ -190,7 +192,7 @@ int main(int argc, char **argv)
         return PMIX_ERROR;
     }
 
-    if (pmix_cmd_line_is_taken(&results, "wait")) {
+    if (pmix_cmd_line_is_taken(&results, PMIX_CLI_WAIT)) {
         ++ninfo;
         if (pmix_cmd_line_is_taken(&results, PMIX_CLI_TIMEOUT)) {
             ++ninfo;
