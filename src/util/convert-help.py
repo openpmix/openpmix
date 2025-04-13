@@ -56,9 +56,9 @@ def find_files(root, verbose=False):
     source_files = []
     tool_help_files = []
     tool_source_files = []
-    # the tools need special treatment, so skip them here
+    # skip infrastructure directories
     skip_dirs = ['.git', '.libs', '.deps']
-    # there are some help files we want to ignore
+    # there may also be some help files we want to ignore
     skip_files = []
     for root_dir, dirs, files in os.walk(root):
         for sd in skip_dirs:
@@ -121,8 +121,12 @@ def parse_help_files(file_paths, data, citations, verbose=False):
                     continue
                 if current_section is None and not stripped:
                     continue
-                if stripped.startswith('[') and stripped.endswith(']'):
-                    current_section = stripped[1:-1]
+                if stripped.startswith('['):
+                    # find the end of the section name
+                    end = stripped.find(']', 1)
+                    if -1 == end:
+                        continue
+                    current_section = stripped[1:end]
                     sections[current_section] = list()
                 elif current_section is not None:
                     line = line.rstrip()

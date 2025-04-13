@@ -165,9 +165,6 @@ PMIX_EXPORT char *pmix_show_help_vstring(const char *filename,
 PMIX_EXPORT pmix_status_t pmix_show_help_add_data(const char *project,
                                                   pmix_show_help_file_t *array);
 
-// DEPRECATED
-PMIX_EXPORT pmix_status_t pmix_show_help_add_dir(const char *directory);
-
 // check for duplicate entries
 PMIX_EXPORT pmix_status_t pmix_help_check_dups(const char *filename,
                                                const char *topic);

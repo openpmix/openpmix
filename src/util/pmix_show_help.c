@@ -574,12 +574,6 @@ pmix_status_t pmix_show_help_add_data(const char *project,
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_show_help_add_dir(const char *directory)
-{
-    PMIX_HIDE_UNUSED_PARAMS(directory);
-    return PMIX_ERR_NOT_SUPPORTED;
-}
-
 pmix_status_t pmix_show_help_norender(const char *filename,
                                       const char *topic,
                                       const char *output)
