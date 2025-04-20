@@ -27,7 +27,7 @@ AM_CPPFLAGS = -I$(top_builddir)/src -I$(top_builddir)/src/include -I$(top_buildd
 noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
-                  group_bootstrap client3 launcher spawn_group resolve multi_nspace_group \
+                  group_bootstrap client3 client4 launcher spawn_group resolve multi_nspace_group \
                   pub2 toolqry simple_resolve pubstress
 
 if !WANT_HIDDEN
@@ -47,6 +47,10 @@ client2_LDADD =  $(top_builddir)/src/libpmix.la
 client3_SOURCES = client3.c examples.h
 client3_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 client3_LDADD =  $(top_builddir)/src/libpmix.la
+
+client4_SOURCES = client4.c examples.h
+client4_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+client4_LDADD =  $(top_builddir)/src/libpmix.la
 
 debugger_SOURCES = debugger.c examples.h
 debugger_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
