@@ -77,6 +77,7 @@ examples/alloc
 examples/client
 examples/client2
 examples/client3
+examples/client4
 examples/debugger
 examples/debuggerd
 examples/dmodex
