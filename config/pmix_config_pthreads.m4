@@ -13,6 +13,7 @@ dnl Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2014-2016 Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
+dnl Copyright (c) 2025      Nanook Consulting  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -154,22 +155,13 @@ AC_DEFUN([PMIX_INTL_POSIX_THREADS_SPECIAL_FLAGS],[
 # -Kthread:
 # -kthread:  FreeBSD kernel threads
 # -pthread:  Modern GCC (most all platforms)
-# -pthreads: GCC on solaris
 # -mthreads:
-# -mt:       Solaris native compilers / HP-UX aCC
 #
 # Put -mt before -mthreads because HP-UX aCC will properly compile
 # with -mthreads (reading as -mt), but emit a warning about unknown
-# flags hreads.  Stupid compilers.
+# flags threads.  Stupid compilers.
 
-case "${host_cpu}-${host_os}" in
-  *solaris*)
-    pflags="-pthread -pthreads -mt"
-  ;;
-  *)
-    pflags="-Kthread -kthread -pthread -pthreads -mt -mthreads"
-  ;;
-esac
+pflags="-Kthread -kthread -pthread -pthreads -mt -mthreads"
 
 AC_PROVIDE_IFELSE([AC_PROG_CC],
                   [PMIX_INTL_POSIX_THREADS_SPECIAL_FLAGS_C],
