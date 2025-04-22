@@ -15,7 +15,7 @@
  *                         All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,8 +53,8 @@
  *
  **********************************************************************/
 
-/* Do we have posix or solaris thread lib */
-#define PMIX_HAVE_THREADS (PMIX_HAVE_POSIX_THREADS || OAC_HAVE_SOLARIS_THREADS)
+/* Do we have posix thread lib */
+#define PMIX_HAVE_THREADS (PMIX_HAVE_POSIX_THREADS)
 
 /*
  * BEGIN_C_DECLS should be used at the beginning of your declarations,
@@ -187,11 +187,7 @@
 #endif
 
 #if PMIX_HAVE_ATTRIBUTE_FORMAT
-    #if OAC_HAVE_SOLARIS
-    #    define __pmix_attribute_format__(a, b, c)
-    #else
     #    define __pmix_attribute_format__(a, b, c) __attribute__((__format__(a, b, c)))
-    #endif
 #else
 #    define __pmix_attribute_format__(a, b, c)
 #endif
@@ -300,11 +296,7 @@
 #endif
 
 #if PMIX_HAVE_ATTRIBUTE_SENTINEL
-    #if OAC_HAVE_SOLARIS
-    #    define __pmix_attribute_sentinel__
-    #else
     #    define __pmix_attribute_sentinel__ __attribute__((__sentinel__))
-    #endif
 #else
 #    define __pmix_attribute_sentinel__
 #endif
