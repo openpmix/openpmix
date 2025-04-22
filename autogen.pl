@@ -9,7 +9,7 @@
 #                         and Technology (RIST). All rights reserved.
 # Copyright (c) 2015      IBM Corporation.  All rights reserved.
 #
-# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -75,12 +75,6 @@ my $full_hostname;
 
 # Patch program
 my $patch_prog = "patch";
-# Solaris "patch" doesn't understand unified diffs, and will cause
-# autogen.pl to hang with a "File to patch:" prompt. Default to Linux
-# "patch", but use "gpatch" on Solaris.
-if ($^O eq "solaris") {
-    $patch_prog = "gpatch";
-}
 
 $username = getpwuid($>);
 $full_hostname = `hostname`;
