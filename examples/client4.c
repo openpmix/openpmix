@@ -172,7 +172,7 @@ int main(int argc, char **argv)
     // rank=0 is in appnum 0, rank=1 is in appnum 1
     if (val->data.uint32 != proc.rank) {
         fprintf(stderr, "%s: Get peer's appnum returned wrong value - %u instead of %u\n",
-                PMIx_Proc_string(&myproc), val->data.uint32, myproc.rank);
+                PMIx_Proc_string(&myproc), val->data.uint32, proc.rank);
         fflush(stderr);
         goto done;
     }
