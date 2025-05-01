@@ -51,6 +51,106 @@ static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata);
 static void _check_cached_events(pmix_peer_t *peer);
 static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd, char *mg, size_t cnt);
 
+// Local objects
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_status_t status;
+    pmix_status_t reply;
+    pmix_pending_connection_t *pnd;
+    char *blob;
+    pmix_peer_t *peer;
+} cnct_hdlr_t;
+static void chcon(cnct_hdlr_t *p)
+{
+    memset(&p->ev, 0, sizeof(pmix_event_t));
+    p->pnd = NULL;
+    p->blob = NULL;
+    p->peer = NULL;
+}
+static void chdes(cnct_hdlr_t *p)
+{
+    if (NULL != p->pnd) {
+        PMIX_RELEASE(p->pnd);
+    }
+    if (NULL != p->blob) {
+        free(p->blob);
+    }
+}
+static PMIX_CLASS_INSTANCE(cnct_hdlr_t,
+                           pmix_object_t,
+                           chcon, chdes);
+
+static void _cnct_complete(int sd, short args, void *cbdata)
+{
+    cnct_hdlr_t *ch = (cnct_hdlr_t *) cbdata;
+    uint32_t u32;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    /* tell the client all is good */
+    u32 = htonl(ch->reply);
+    rc = pmix_ptl_base_send_blocking(ch->pnd->sd, (char *) &u32, sizeof(uint32_t));
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+    /* If needed, perform the handshake. The macro will update reply */
+    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(ch->reply, ch->peer);
+
+    /* It is possible that connection validation failed */
+    if (PMIX_SUCCESS != ch->reply) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "validation of client connection failed");
+        goto error;
+    }
+
+    /* send the client's array index */
+    u32 = htonl(ch->peer->index);
+    rc = pmix_ptl_base_send_blocking(ch->pnd->sd, (char *) &u32, sizeof(uint32_t));
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto error;
+    }
+
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "connect-ack from client completed");
+
+    pmix_ptl_base_set_nonblocking(ch->pnd->sd);
+
+    /* start the events for this client */
+    pmix_event_assign(&ch->peer->recv_event, pmix_globals.evbase, ch->pnd->sd, EV_READ | EV_PERSIST,
+                      pmix_ptl_base_recv_handler, ch->peer);
+    pmix_event_add(&ch->peer->recv_event, NULL);
+    ch->peer->recv_ev_active = true;
+    pmix_event_assign(&ch->peer->send_event, pmix_globals.evbase, ch->pnd->sd, EV_WRITE | EV_PERSIST,
+                      pmix_ptl_base_send_handler, ch->peer);
+    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                        "pmix:server client %s:%u has connected on socket %d",
+                        ch->peer->info->pname.nspace, ch->peer->info->pname.rank, ch->peer->sd);
+
+    /* check the cached events and update the client */
+    _check_cached_events(ch->peer);
+    PMIX_RELEASE(ch);
+    return;
+
+error:
+    if (NULL != ch->peer) {
+        pmix_pointer_array_set_item(&pmix_server_globals.clients, ch->peer->index, NULL);
+        PMIX_RELEASE(ch->peer);
+    }
+    CLOSE_THE_SOCKET(ch->pnd->sd);
+    PMIX_RELEASE(ch);
+}
+
+static void _connect_complete(pmix_status_t status, void *cbdata)
+{
+    cnct_hdlr_t *ch = (cnct_hdlr_t *) cbdata;
+    /* need to thread-shift this response */
+    ch->status = status;
+    PMIX_THREADSHIFT(ch, _cnct_complete);
+}
+
 void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
 {
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cbdata;
@@ -58,7 +158,6 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
     char *msg = NULL, *mg, *p, *blob = NULL;
-    uint32_t u32;
     size_t cnt;
     size_t len = 0;
     pmix_namespace_t *nptr, *tmp;
@@ -67,6 +166,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_info_t ginfo;
     pmix_byte_object_t cred;
     uint8_t major, minor, release;
+    cnct_hdlr_t *ch;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -374,72 +474,47 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         goto error;
     }
 
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output, "client connection validated");
-
-    /* tell the client all is good */
-    u32 = htonl(reply);
-    if (PMIX_SUCCESS
-        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
-        PMIX_ERROR_LOG(rc);
-        goto error;
-    }
-    /* If needed, perform the handshake. The macro will update reply */
-    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(reply, peer, NULL, 0, NULL, NULL, &cred);
-
-    /* It is possible that connection validation failed */
-    if (PMIX_SUCCESS != reply) {
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of client connection failed");
-        goto error;
-    }
-
-    /* send the client's array index */
-    u32 = htonl(peer->index);
-    if (PMIX_SUCCESS
-        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
-        PMIX_ERROR_LOG(rc);
-        goto error;
-    }
-
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "connect-ack from client completed");
+                        "client connection validated");
+
+
+    // prep for processing
+    ch = PMIX_NEW(cnct_hdlr_t);
+    ch->peer = peer;
+    ch->pnd = pnd;
+    ch->reply = reply;
+    ch->blob = blob;
 
     /* let the host server know that this client has connected */
     if (NULL != pmix_host_server.client_connected2) {
         PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        rc = pmix_host_server.client_connected2(&proc, peer->info->server_object, NULL, 0, NULL,
-                                                NULL);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            PMIX_ERROR_LOG(rc);
+        rc = pmix_host_server.client_connected2(&proc, peer->info->server_object, NULL, 0,
+                                                _connect_complete, ch);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            ch->status = PMIX_SUCCESS;
+            _cnct_complete(0, 0, ch);
+            return;
         }
-    } else if (NULL != pmix_host_server.client_connected) {
-        PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        rc = pmix_host_server.client_connected(&proc, peer->info->server_object, NULL, NULL);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto error;
         }
-    }
-
-    pmix_ptl_base_set_nonblocking(pnd->sd);
-
-    /* start the events for this client */
-    pmix_event_assign(&peer->recv_event, pmix_globals.evbase, pnd->sd, EV_READ | EV_PERSIST,
-                      pmix_ptl_base_recv_handler, peer);
-    pmix_event_add(&peer->recv_event, NULL);
-    peer->recv_ev_active = true;
-    pmix_event_assign(&peer->send_event, pmix_globals.evbase, pnd->sd, EV_WRITE | EV_PERSIST,
-                      pmix_ptl_base_send_handler, peer);
-    pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                        "pmix:server client %s:%u has connected on socket %d",
-                        peer->info->pname.nspace, peer->info->pname.rank, peer->sd);
-    PMIX_RELEASE(pnd);
-
-    /* check the cached events and update the client */
-    _check_cached_events(peer);
-    if (NULL != blob) {
-        free(blob);
-        blob = NULL;
+    } else if (NULL != pmix_host_server.client_connected) {
+        PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
+        rc = pmix_host_server.client_connected(&proc, peer->info->server_object, _connect_complete, ch);
+        if (PMIX_OPERATION_SUCCEEDED == rc) {
+            ch->status = PMIX_SUCCESS;
+            _cnct_complete(0, 0, ch);
+            return;
+        }
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            goto error;
+        }
+    } else {
+        // if neither of those conditions are met, then we simply assume the host is ready
+        ch->status = PMIX_SUCCESS;
+        _cnct_complete(0, 0, ch);
     }
 
     return;
@@ -451,9 +526,6 @@ error:
     }
     if (NULL != msg) {
         free(msg);
-    }
-    if (NULL != blob) {
-        free(blob);
     }
     if (NULL != peer) {
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
@@ -614,7 +686,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     }
 
     /* If needed perform the handshake. The macro will update reply */
-    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(reply, peer, NULL, 0, NULL, NULL, &cred);
+    PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(reply, peer);
 
     /* If verification wasn't successful - stop here */
     if (PMIX_SUCCESS != reply) {
