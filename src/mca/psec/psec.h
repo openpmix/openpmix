@@ -6,7 +6,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -164,7 +164,7 @@ PMIX_EXPORT pmix_psec_module_t *pmix_psec_base_assign_module(const char *options
         }                                                                                          \
     } while (0)
 
-#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(r, p, d, nd, in, nin, c)                    \
+#define PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(r, p)                                       \
     if (PMIX_ERR_READY_FOR_HANDSHAKE == r) {                                          \
         int _r;                                                                       \
         /* execute the handshake if the security mode calls for it */                 \

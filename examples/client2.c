@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -76,9 +76,10 @@ int main(int argc, char **argv)
 {
     pmix_status_t rc;
     pmix_value_t value;
-    pmix_value_t *val, *vptr;
+    pmix_value_t *val;
     pmix_proc_t proc;
     uint32_t nprocs, n, k;
+    uint64_t *u64;
     pmix_info_t *info;
     bool flag;
     mylock_t mylock;
@@ -130,14 +131,13 @@ int main(int argc, char **argv)
     fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
 
     /* put a data array of pmix_value's */
-    val = (pmix_value_t *) malloc(32 * sizeof(pmix_value_t));
+    u64 = (uint64_t *) malloc(32 * sizeof(uint64_t));
     for (n = 0; n < 32; n++) {
-        val[n].type = PMIX_UINT64;
-        val[n].data.uint64 = 2 * n;
+        u64[n] = 2 * n;
     }
-    da.type = PMIX_VALUE;
+    da.type = PMIX_UINT64;
     da.size = 32;
-    da.array = val;
+    da.array = u64;
     value.type = PMIX_DATA_ARRAY;
     value.data.darray = &da;
     rc = PMIx_Put(PMIX_GLOBAL, "test-key", &value);
@@ -189,7 +189,7 @@ int main(int argc, char **argv)
             PMIX_VALUE_RELEASE(val);
             goto done;
         }
-        if (PMIX_VALUE != dptr->type) {
+        if (PMIX_UINT64 != dptr->type) {
             fprintf(stderr,
                     "Client ns %s rank %d: PMIx_Get %d returned wrong array value type %d\n",
                     myproc.nspace, myproc.rank, proc.rank, dptr->type);
@@ -203,17 +203,12 @@ int main(int argc, char **argv)
             PMIX_VALUE_RELEASE(val);
             goto done;
         }
-        vptr = (pmix_value_t *) dptr->array;
+        u64 = (uint64_t *) dptr->array;
         for (k = 0; k < 32; k++) {
-            if (PMIX_UINT64 != vptr[k].type) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Get %d returned wrong type: %d\n",
-                        myproc.nspace, myproc.rank, proc.rank, vptr[k].type);
-                PMIX_VALUE_RELEASE(val);
-                goto done;
-            }
-            if (2 * k != vptr[k].data.uint64) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Get %d returned wrong value: %lu\n",
-                        myproc.nspace, myproc.rank, proc.rank, (unsigned long) vptr[k].data.uint64);
+            if ((2 * k) != u64[k]) {
+            fprintf(stderr,
+                    "Client ns %s rank %d: PMIx_Get %d returned wrong value: %lu\n",
+                    myproc.nspace, myproc.rank, proc.rank, (unsigned long) u64[k]);
                 PMIX_VALUE_RELEASE(val);
                 goto done;
             }
