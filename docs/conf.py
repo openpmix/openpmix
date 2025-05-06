@@ -27,7 +27,7 @@ year = mydate.year
 month = mydate.strftime("%B")
 
 project = 'OpenPMIx'
-copyright = f'2014-{year}, The OpenPMIx Community'
+copyright = f'2014-{year}, OpenPMIx Community'
 author = 'The OpenPMIx Community'
 
 # The full version, including alpha/beta/rc tags
@@ -151,6 +151,9 @@ html_theme = 'sphinx_rtd_theme'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 #html_static_path = ['_static']
+
+# Put a "Last updated on:" timestamp at the bottom of each page.
+html_last_updated_fmt = '%Y-%m-%d %H:%M:%S %Z'
 
 # -- Options for MAN output -------------------------------------------------
 
