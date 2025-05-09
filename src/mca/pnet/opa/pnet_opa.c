@@ -261,6 +261,14 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         }
     }
 
+    // unload the buffer
+    PMIX_UNLOAD_BUFFER(&mydata, bo.bytes, bo.size);
+    // if nothing was packed, then we have nothing to send
+    if (0 == bo.size) {
+        PMIX_DESTRUCT(&mydata);
+        return PMIX_SUCCESS;
+    }
+
     /* load all our results into a buffer for xmission to the backend */
     PMIX_KVAL_NEW(kv, PMIX_PNET_OPA_BLOB);
     if (NULL == kv || NULL == kv->value) {
@@ -268,7 +276,6 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
         return PMIX_ERR_NOMEM;
     }
     kv->value->type = PMIX_BYTE_OBJECT;
-    PMIX_UNLOAD_BUFFER(&mydata, bo.bytes, bo.size);
     /* to help scalability, compress this blob */
     if (pmix_compress.compress((uint8_t *) bo.bytes, bo.size,
                                (uint8_t **) &kv->value->data.bo.bytes, &kv->value->data.bo.size)) {
@@ -353,6 +360,9 @@ static pmix_status_t setup_local_network(pmix_nspace_env_cache_t *ns,
                 ev = PMIX_NEW(pmix_envar_list_item_t);
                 cnt = 1;
                 PMIX_BFROPS_UNPACK(rc, pmix_globals.mypeer, &bkt, &ev->envar, &cnt, PMIX_ENVAR);
+            }
+            if (PMIX_ERR_UNPACK_READ_PAST_END_OF_BUFFER == rc) {
+                rc = PMIX_SUCCESS;
             }
             // we will have created one more envar than we want
             PMIX_RELEASE(ev);
