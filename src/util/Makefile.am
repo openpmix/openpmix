@@ -100,7 +100,7 @@ sources = \
         pmix_string_copy.c \
         pmix_getcwd.c
 
-pmix_show_help_content.c: FORCE
+pmix_show_help_content.c: convert-help.py
 if PMIX_PICKY_COMPILERS
 	$(PMIX_V_GEN) $(PYTHON) $(abs_srcdir)/convert-help.py \
 		--root $(abs_top_srcdir) \
@@ -111,8 +111,6 @@ else
 		--root $(abs_top_srcdir) \
 		--out pmix_show_help_content.c
 endif
-
-FORCE:
 
 libpmix_util_la_SOURCES = $(headers) $(sources)
 
