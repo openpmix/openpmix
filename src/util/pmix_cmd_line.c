@@ -174,9 +174,10 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     // check for standard options
                     if (0 == strcmp(ptr, "version") || 0 == strcmp(ptr, "V")) {
                         str = pmix_show_help_string("help-cli.txt", "version", false);
+                        pmix_output(0, "HELP VERSION");
                         if (NULL != str) {
-                            fprintf(stderr, "%s", str);
-                            fflush(stderr);
+                            printf("%s\n", str);
+                            fflush(stdout);
                             free(str);
                         }
                         PMIx_Argv_free(argv);
@@ -185,8 +186,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     if (0 == strcmp(ptr, "verbose") || 0 == strcmp(ptr, "v")) {
                         str = pmix_show_help_string("help-cli.txt", "verbose", false);
                         if (NULL != str) {
-                            fprintf(stderr, "%s", str);
-                            fflush(stderr);
+                            printf("%s\n", str);
+                            fflush(stdout);
                             free(str);
                         }
                         PMIx_Argv_free(argv);
@@ -200,8 +201,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                                     pmix_tool_basename, pmix_tool_basename,
                                                     pmix_tool_basename, pmix_tool_basename);
                         if (NULL != str) {
-                            fprintf(stderr, "%s", str);
-                            fflush(stderr);
+                            printf("%s\n", str);
+                            fflush(stdout);
                             free(str);
                         }
                         PMIx_Argv_free(argv);
@@ -219,8 +220,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                             free(str);
                         }
                     } else {
-                        fprintf(stderr, "%s", str);
-                        fflush(stderr);
+                        printf("%s\n", str);
+                        fflush(stdout);
                         free(str);
                     }
                     PMIx_Argv_free(argv);
@@ -233,8 +234,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                                 pmix_tool_basename,
                                                 pmix_tool_msg);
                     if (NULL != str) {
-                        fprintf(stderr, "%s", str);
-                        fflush(stderr);
+                        printf("%s\n", str);
+                        fflush(stdout);
                         free(str);
                     }
                     PMIx_Argv_free(argv);
@@ -256,8 +257,8 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                             pmix_tool_version,
                                             pmix_tool_msg);
                 if (NULL != str) {
-                    fprintf(stderr, "%s", str);
-                    fflush(stderr);
+                    printf("%s\n", str);
+                    fflush(stdout);
                     free(str);
                 }
                 // if they ask for the version, that is all we do
