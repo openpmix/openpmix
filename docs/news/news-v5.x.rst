@@ -4,6 +4,23 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.8 -- 10 May 2025
+--------------------
+Detailed changes include:
+ - PR #3596: Update NEWS for release
+ - PR #3595: Multiple commits
+    - Remove stale solaris components
+    - Correct client4 error output
+    - Provide callback function for client_connected2
+    - docs: Add a "Last updated on:" HTML footer
+    - Eliminate stale pnet/opa component
+    - Use stdout instead of stderr for help output
+ - PR #3582: Multiple commits
+    - Extend cmd line processor to deal with envar ops
+    - Roll version to v5.0.8
+ - PR #3581: Add a new client example
+
+
 5.0.7 -- 19 Mar 2025
 --------------------
 .. important:: This release contains significant rewrite of
