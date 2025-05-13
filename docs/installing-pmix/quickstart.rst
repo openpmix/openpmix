@@ -25,6 +25,9 @@ to support its `autoconf` logic. You can, however, omit the explicit
 submodule update step `if` you cloned the Git repository with the
 ``--recursive`` flag.
 
+OpenPMIx requires Perl and Python >= |python_min_version| to build
+from a Git clone.
+
 You will need very recent versions of GNU Autoconf, Automake, and
 Libtool.  If ``autogen.pl`` fails, read the :doc:`Developer's Guide
 </developers/index>`.  If anything else fails, read the

@@ -23,7 +23,7 @@
 # Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -53,6 +53,11 @@ AC_CONFIG_AUX_DIR(./config)
 AC_CONFIG_MACRO_DIRS([./config config/oac])
 
 AC_PROG_SED
+
+AC_CHECK_PROG([PERL],[perl],[perl],[no])
+AS_IF([test "X$PERL" = "Xno"],
+      [AC_MSG_ERROR([OpenPMIx requires perl to build. Aborting.])])
+
 
 # autotools expects to perform tests without interference
 # from user-provided CFLAGS, particularly -Werror flags.

@@ -749,6 +749,11 @@ sub get_and_define_min_versions() {
                   export_version("FLEX", $fields[1]);
               }
           }
+          elsif($fields[0] eq "python_min_version") {
+              if ($fields[1] ne "\n") {
+                  export_version("PYTHON", $fields[1]);
+              }
+          }
     }
     close(IN);
 }
