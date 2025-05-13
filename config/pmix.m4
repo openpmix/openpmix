@@ -1232,6 +1232,7 @@ AC_ARG_ENABLE(python-bindings,
 if test "$enable_python_bindings" != "yes"; then
     AC_MSG_RESULT([no])
     WANT_PYTHON_BINDINGS=0
+    pmix_want_python_bindings=no
 else
     AC_MSG_RESULT([yes])
     # cannot build Python bindings if we are doing a purely static build
@@ -1243,18 +1244,36 @@ else
         AC_MSG_ERROR([Cannot continue])
     fi
     WANT_PYTHON_BINDINGS=1
-    AM_PATH_PYTHON([3.4], [pmix_python_good=yes], [pmix_python_good=no])
+    pmix_want_python_bindings=yes
 fi
-
 AM_CONDITIONAL([WANT_PYTHON_BINDINGS], [test $WANT_PYTHON_BINDINGS -eq 1])
-PYTHON=
-if test "$WANT_PYTHON_BINDINGS" = "1"; then
-    if test "$pmix_python_good" = "no"; then
-        AC_MSG_WARN([Python bindings were enabled, but no suitable])
-        AC_MSG_WARN([interpreter was found. PMIx requires at least])
-        AC_MSG_WARN([Python v3.4 to provide Python bindings])
-        AC_MSG_ERROR([Cannot continue])
-    fi
+
+# We need Python if either of these are true:
+# - we are building in a git clone (not a distribution tarball)
+# - we want the Python bindings to be built
+AC_MSG_CHECKING([if we need Python])
+pmix_need_python=no
+AS_IF([test "$pmix_want_python_bindings" = "yes"], [pmix_need_python=yes],
+           [test "$pmix_git_repo_build" = "yes"], [pmix_need_python=yes],
+           [pmix_need_python=no])
+AC_MSG_RESULT([$pmix_need_python])
+# if we need it, then check the min version
+pmix_have_good_python=0
+pmix_python_min_version=PMIX_PYTHON_MIN_VERSION
+AS_IF([test "$pmix_need_python" = "yes"],
+      [AM_PATH_PYTHON([$pmix_python_min_version],
+                      [pmix_have_good_python=1],
+                      [AC_MSG_ERROR([OpenPMIx requires Python >= $pmix_python_min_version to build. Aborting.])])
+      ])
+
+AS_IF([test "$pmix_want_python_bindings" = "yes" && test $pmix_have_good_python -eq 0],
+      [AC_MSG_WARN([Python bindings were enabled, but no suitable])
+       AC_MSG_WARN([interpreter was found. PMIx requires Python >= $pmix_python_min_version])
+       AC_MSG_WARN([to provide Python bindings])
+       AC_MSG_ERROR([Cannot continue])])
+
+# if we want the Python bindings, then we also require Cython
+if test "$pmix_want_python_bindings" = "yes"; then
     pyvers=`python3 --version`
     python_version=${pyvers#"Python "}
 
@@ -1289,23 +1308,6 @@ if test "$WANT_PYTHON_BINDINGS" = "1"; then
     pmix_pythondir=`eval echo $pythondir`
     AC_SUBST([PMIX_PYTHON_EGG_PATH], [$pmix_pythondir], [Path to installed Python egg])
 fi
-
-# If we didn't find a good Python and we don't have pmix_dictionary.h, then
-# see if we can find an older Python (because construct_dictionary.py
-# can use an older Python).
-AS_IF([test "$PYTHON" = "" && test ! -f $srcdir/src/include/pmix_dictionary.h],
-      [AC_MSG_CHECKING([python])
-       PYTHON=
-       AM_PATH_PYTHON
-       # If we still can't find Python (and we don't have
-       # pmix_dictionary.h), then give up.
-       AC_MSG_RESULT([$PYTHON])
-       AS_IF([test "$PYTHON" = ""],
-             [AC_MSG_WARN([Could not find a modern enough Python])
-              AC_MSG_WARN([Developer builds (e.g., git clones) of OpenPMIx must have Python available])
-              AC_MSG_ERROR([Cannot continue])
-             ])
-       ])
 
 # see if they want to disable non-RTLD_GLOBAL dlopen
 AC_MSG_CHECKING([if want to support dlopen of non-global namespaces])

@@ -43,6 +43,24 @@ build them manually, see the :ref:`how to build and install GNU
 Autotools section <developers-installing-autotools-label>` for much
 more detail.
 
+Python
+------
+
+When building from a Git clone, Python >= |python_min_version| is
+required for several tasks during the PMIx build, such as (but not
+limited to):
+
+  * Generating the "show help" messages
+
+  * Generating the attribute dictionary
+
+  * Building the Open MPI documentation and man pages
+
+All of these are necessary when building from a Git clone.  Most of
+these can be accomplished with core Python; only building the full
+OpenPMIx documentation and man pages requires additional Python
+packages (:ref:`see below <developers-requirements-sphinx-label>`).
+
 Perl
 ----
 
@@ -84,8 +102,10 @@ MacPorts on MacOS), see `the Flex Github repository
 <https://github.com/westes/flex>`_.
 
 
-Sphinx (and therefore Python)
------------------------------
+.. _developers-requirements-sphinx-label:
+
+Sphinx
+------
 
 `Sphinx <https://www.sphinx-doc.org/>`_ is a Python-based tool used to
 generate both the HTML version of the documentation (that you are

@@ -35,6 +35,7 @@ automake_min_version=1.13.4
 autoconf_min_version=2.69.0
 libtool_min_version=2.4.2
 flex_min_version=2.5.4
+python_min_version=3.7
 
 # PMIx Standard Compliance Level
 # The major and minor numbers indicate the version
