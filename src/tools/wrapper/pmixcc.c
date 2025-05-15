@@ -559,6 +559,7 @@ static void load_env_data_argv(const char *project, const char *flag, char ***da
 #define PMIX_CLI_SHOWME_LINK    "showme:link"
 #define PMIX_CLI_SHOWME_INC     "showme:incdirs"
 #define PMIX_CLI_SHOWME_LIBD    "showme:libdirs"
+#define PMIX_CLI_SHOWME_LIBDS   "showme:libdirs_static"
 #define PMIX_CLI_SHOWME_LIB     "showme:libs"
 #define PMIX_CLI_SHOWME_VERS    "showme:version"
 #define PMIX_CLI_SHOWME_HELP    "showme:help"
@@ -573,6 +574,7 @@ static struct option options[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LINK, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_INC, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIBD, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIBDS, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIB, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_VERS, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_HELP, PMIX_ARG_NONE),
@@ -799,10 +801,10 @@ int main(int argc, char *argv[])
                               == strncmp(user_argv[i], "--showme:version",
                                          strlen("--showme:version"))) {
                 char *str;
-                str = pmix_show_help_string("help-pmixcc.txt", "version", false, argv[0],
+                str = pmix_show_help_string("help-pmixcc.txt", "version", false, base_argv0,
                                             options_data[user_data_idx].project,
                                             options_data[user_data_idx].version,
-                                            options_data[user_data_idx].language, NULL);
+                                            options_data[user_data_idx].language);
                 if (NULL != str) {
                     printf("%s", str);
                     free(str);
@@ -811,8 +813,12 @@ int main(int argc, char *argv[])
             } else if (0 == strncmp(user_argv[i], "-showme:help", strlen("-showme:help"))
                        || 0 == strncmp(user_argv[i], "--showme:help", strlen("--showme:help"))) {
                 char *str;
-                str = pmix_show_help_string("help-pmixcc.txt", "usage", false, argv[0],
-                                            options_data[user_data_idx].project, NULL);
+                fprintf(stderr, "BUG %s\n", PMIX_PROXY_BUGREPORT);
+                str = pmix_show_help_string("help-pmixcc.txt", "usage", false, base_argv0,
+                                            options_data[user_data_idx].project,
+                                            options_data[user_data_idx].version,
+                                            base_argv0, options_data[parse_options_idx].compiler,
+                                            pmix_tool_msg);
                 if (NULL != str) {
                     printf("%s", str);
                     free(str);

@@ -32,14 +32,15 @@ PMIx wrapper compiler
 
 /*****      General Options      *****/
 
-  --showme:command    Show command used to invoke real compiler
-  --showme:compile    Show flags added when compiling
-  --showme:link       Show flags added when linking
-  --showme:incdirs    Show list of include dirs added when compiling
-  --showme:libdirs    Show list of library dirs added when linking
-  --showme:libs       Show list of libraries added when linking
-  --showme:version    Show version of %s
-  --showme:help       This help message
+  --showme:command         Show command used to invoke real compiler
+  --showme:compile         Show flags added when compiling
+  --showme:link            Show flags added when linking
+  --showme:incdirs         Show list of include dirs added when compiling
+  --showme:libdirs         Show list of library dirs added when linking
+  --showme:libdirs_static  Show list of static library dirs added when linking
+  --showme:libs            Show list of libraries added when linking
+  --showme:version         Show version of %s
+  --showme:help            This help message
 
 where "args" consists of compiler flags and sources that are to
 be compiled
@@ -84,6 +85,10 @@ Show list of include dirs added when compiling
 [showme:libdirs]
 
 Show list of library dirs added when linking
+#
+[showme:libdirs_static]
+
+Show list of static library dirs added when linking
 #
 [showme:libs]
 
