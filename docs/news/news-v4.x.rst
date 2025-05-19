@@ -4,6 +4,92 @@ PMIx v4.x series
 This file contains all the NEWS updates for the PMIx v4.x
 series, in reverse chronological order.
 
+4.2.9 -- 4 Feb 2024
+-------------------
+ - PR #3278: Multiple commits
+    - Fix test builds with picky compiler options
+    - Update the Python regex for doc build
+ - PR #3274: Multiple commits
+    - Restore default to enable-devel-check in Git repos
+    - Protect against empty envar definition for mca_base_param_files
+ - PR #3268: PMIx_Query_info: removed duplicated PMIX_RELEASE
+ - PR #3265: Do not add no-unused-parameter for non-devel-check builds
+ - PR #3262: Cast a few parameters when translating macros to functions
+ - PR #3261: Fix one more spot for "get" from rank undefined
+ - PR #3260: Fix "get" of key with undefined rank
+ - PR #3256: Multiple commits
+    - Resolve problem of stack variables and realloc
+    - Restore support for detecting shared file systems
+    - Fix broken link in README
+
+4.2.8 -- 19 Dec 2023
+--------------------
+ - PR #3233: Multiple commits
+    - Protect a variable
+    - Check for stdatomic.h
+ - PR #3230: Assign NULL to free'd pointer
+ - PR #3226: avoid loopback in resolve_nspace_requests
+ - PR #3223: Fix backport issue in client get
+ - PR #3220: Delay registering top-level MCA params
+ - PR #3218: Update VERSION and NEWS for release
+ - PR #3216: Multiple commits
+    - Remove unused function
+    - Add the ability to retrieve the PMIx library version
+ - PR #3209: Adjust preg component priorities
+ - PR #3206: Resolve a problem with updated "put" key-value pairs
+ - PR #3200: Multiple commits
+    - Error out of attempts for 32-bit builds
+    - Remove static version of global function
+    - Fix handling of "--" in cmd lines
+
+4.2.7 -- 23 Oct 2023
+--------------------
+ - PR #3183: Update VERSION and NEWS for release
+ - PR #3178: Multiple commits
+    - Fix couple of bugs in cmd line parser
+    - Fix typo in cmd line processor
+ - PR #3172: Multiple commits
+    - Make checking min versions consistent
+    - Add an action to test older HWLOC version
+    - Touchup the OMPI integration
+ - PR #3170: Remove spurious "error log"
+ - PR #3167: Blacklist the HWLOC GL component to avoid deadlock
+ - PR #3161: Add a new Github Action
+ - PR #3159: Update the "group" example
+
+4.2.6 -- 9 Sep 2023
+----------------------
+.. warning:: CVE-2023-41915
+
+    A security issue was reported by François Diakhate (CEA)
+    which is addressed in the PMIx v4.2.6 and v5.0.1 releases.
+    (Older PMIx versions may be vulnerable, but are no longer
+    supported.)
+
+    A filesystem race condition could permit a malicious user
+    to obtain ownership of an arbitrary file on the filesystem
+    when parts of the PMIx library are called by a process
+    running as uid 0. This may happen under the default
+    configuration of certain workload managers, including Slurm.
+
+Detailed changes include:
+ - PR #3150 Do not follow links when doing `chown`
+ - PR #3147 Multiple commits
+    - Retrieve pset names upon PMIx_Get request
+    - Add a new "pctrl" tool for requesting job control ops
+ - PR #3143 Multiple commits
+    - Properly support the "log" example
+    - Enable building of tarball
+    - show_help: strip leading/trailing blank lines
+    - docs: fix some leftover "Open MPI" references
+    - docs: fix HTML word wapping in table cells
+    - Improve error handling in setup_topology
+    - Minor cleanups for disable-dlopen
+    - Fix Python bindings
+ - PR #3132 Multiple commits
+    - Switch to using event lib for connections
+    - Roll to v4.2.6
+
 4.2.5 -- 6 Aug 2023
 ----------------------
  - PR #3121 Multiple commits
