@@ -45,7 +45,7 @@ def find_files(root, verbose=False):
     # Check for existence of root directory - otherwise, we just
     # fall through with no error output
     if not os.path.isdir(root):
-        sys.stderr.write("Root directory " + root + " does not exist\nCannot continue")
+        sys.stderr.write("Root directory " + root + " does not exist\nCannot continue\n")
         exit(1)
 
     # Search for help-*.txt files across the source tree, skipping
@@ -133,7 +133,7 @@ def parse_help_files(file_paths, data, citations, verbose=False):
                     sections[current_section].append(line)
 
         if file_path in data:
-            sys.stderr.write("ERROR: path", file_path, "already exists in data dictionary")
+            sys.stderr.write("ERROR: path " + file_path + " already exists in data dictionary\n")
         else:
             data[file_path] = sections
         if verbose:
@@ -197,7 +197,7 @@ def parse_src_files(source_files, citations, verbose=False):
                             continue
                         else:
                             cont_filename = False
-                            sys.stderr.write("ERROR: Missing end of filename")
+                            sys.stderr.write("ERROR: Missing end of filename\n")
                             continue
 
                 if "pmix_show_help(" in line or "pmix_show_help_string(" in line:
@@ -312,7 +312,7 @@ def parse_tool_files(help_files, source_files, cli_options, citations, verbose=F
                             cli.append(lsrc[start:end])
 
         if not found:
-            sys.stderr.write("WARNING: No corresponding source code found for help file ", hlp)
+            sys.stderr.write("WARNING: No corresponding source code found for help file " + hlp + "\n")
             exit(1)
 
         # convert the CLI to strings so we can check the options and topics
@@ -334,7 +334,7 @@ def parse_tool_files(help_files, source_files, cli_options, citations, verbose=F
                         break
             if not found:
                 # unrecognized option
-                sys.stderr.write("WARNING: Unrecognized command line option ", c, "in source code", os.path.basename(src))
+                sys.stderr.write("WARNING: Unrecognized command line option " + c + " in source code " + os.path.basename(src) + "\n")
                 exit(1)
 
         # check the cli and options to ensure they match
@@ -346,7 +346,7 @@ def parse_tool_files(help_files, source_files, cli_options, citations, verbose=F
                     found = True
                     break
             if not found:
-                sys.stderr.write("WARNING: Option", option, "has no corresponding CLI defined for", tool)
+                sys.stderr.write("WARNING: Option " + option + " has no corresponding CLI defined for " + tool + "\n")
                 exit(1)
 
         # reverse must also be true
@@ -362,7 +362,7 @@ def parse_tool_files(help_files, source_files, cli_options, citations, verbose=F
                     found = True
                     break
             if not found:
-                sys.stderr.write("WARNING: CLI definition", c, "has no corresponding help entry in", os.path.basename(hlp))
+                sys.stderr.write("WARNING: CLI definition " + c + " has no corresponding help entry in " + os.path.basename(hlp) + "\n")
                 exit(1)
 
         # also require that there be a topic for each option so that
@@ -382,7 +382,7 @@ def parse_tool_files(help_files, source_files, cli_options, citations, verbose=F
                     citations.append((os.path.basename(hlp), option))
                     break
             if not found:
-                sys.stderr.write("WARNING: Option", option, "has no topic entry in", os.path.basename(hlp))
+                sys.stderr.write("WARNING: Option " + option + " has no topic entry in " + os.path.basename(hlp) + "\n")
 
 
 def purge(parsed_data, citations):
@@ -408,11 +408,11 @@ def purge(parsed_data, citations):
                     if sec == section:
                         if content == cnt:
                             # these are the same
-                            sys.stderr.write("DUPLICATE FOUND - SECTION: ", section, "FILES: ", filename, file2)
+                            sys.stderr.write("DUPLICATE FOUND - SECTION: " + section + "\nFILES: " + filename + "\n       " + file2 + "\n")
                             errorFound = True
                         else:
                             # same topic, different content
-                            sys.stderr.write("DUPLICATE SECTION WITH DIFFERENT CONTENT: ", section, "FILES: ", filename, file2)
+                            sys.stderr.write("DUPLICATE SECTION WITH DIFFERENT CONTENT: " + section, "\nFILES: " + filename + "\n       " + file2 + "\n")
                             errorFound = True
             # search code files for usage
             # protect special values
@@ -429,16 +429,16 @@ def purge(parsed_data, citations):
                     used = True
                     break;
             if not used:
-                sys.stderr.write("** WARNING: Unused help topic")
-                sys.stderr.write("    File: ", filename)
-                sys.stderr.write("    Section: ", section)
+                sys.stderr.write("** WARNING: Unused help topic\n")
+                sys.stderr.write("    File: " + filename + "\n")
+                sys.stderr.write("    Section: " + section + "\n")
                 errorFound = True
         # see if anything is left
         if 0 < len(result_sections):
             # don't retain the file if no citations for it are left
             result_data[filename] = result_sections
         else:
-            sys.stderr.write("File ", filename, "has no used topics - omitting")
+            sys.stderr.write("File " + filename + "has no used topics - omitting\n")
             errorFound = True
 
     if errorFound:
@@ -510,7 +510,7 @@ def main():
     # the options are in root/util/pmix_cmd_line.h
     path = os.path.join(rootdir, "util", "pmix_cmd_line.h")
     if not os.path.exists(path):
-        sys.stderr.write("File " + path + " does not exist\nCannot continue")
+        sys.stderr.write("File " + path + " does not exist\nCannot continue\n")
         exit(1)
     # obtain a list of (option name, string) tuples
     cli_options = parse_cmd_line_options(path, args.verbose)
