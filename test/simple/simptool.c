@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 {
     pmix_status_t rc;
     pmix_query_t *query;
-    size_t nq;
+    size_t nq, n;
     pmix_info_t *results = NULL;
     size_t nresults = 0;
     PMIX_HIDE_UNUSED_PARAMS(argc, argv);
@@ -67,7 +67,7 @@ int main(int argc, char **argv)
                     myproc.rank, rc);
         goto done;
     }
-    if (2 != nresults || NULL == results) {
+    if (3 != nresults || NULL == results) {
         pmix_output(0, "Client ns %s rank %d: PMIx_Query_info returned incorrect results: %d",
                     myproc.nspace, myproc.rank, (int) nresults);
         goto done;
@@ -96,8 +96,10 @@ int main(int argc, char **argv)
         pmix_output(0, "Client ns %s rank %d: PMIx_Query_info key[1] wrong value: %s vs 1",
                     myproc.nspace, myproc.rank, results[1].value.data.string);
     }
-    pmix_output(0, "Client received result %s:%s", results[0].key, results[0].value.data.string);
-    pmix_output(0, "Client received result %s:%s", results[1].key, results[1].value.data.string);
+
+    for (n=0; n < nresults; n++) {
+        pmix_output(0, "Client received result[%u]: %s", (unsigned)n, PMIx_Info_string(&results[n]));
+    }
 
 done:
     /* finalize us */
