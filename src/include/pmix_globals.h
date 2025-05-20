@@ -626,6 +626,7 @@ typedef struct {
         pmix_info_cbfunc_t infocbfunc;
     } cbfunc;
     void *cbdata;
+    void *relcbdata;
     size_t ref;
 } pmix_shift_caddy_t;
 PMIX_CLASS_DECLARATION(pmix_shift_caddy_t);

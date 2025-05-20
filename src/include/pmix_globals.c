@@ -8,7 +8,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -369,6 +369,7 @@ static void scon(pmix_shift_caddy_t *p)
     p->enviro = false;
     p->cbfunc.relfn = NULL;
     p->cbdata = NULL;
+    p->relcbdata = NULL;
     p->ref = 0;
 }
 static void scdes(pmix_shift_caddy_t *p)
