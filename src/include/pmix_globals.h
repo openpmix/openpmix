@@ -609,6 +609,8 @@ typedef struct {
     size_t ninfo;
     pmix_info_t *directives;
     size_t ndirs;
+    pmix_pdata_t *pdata;
+    size_t npdata;
     pmix_notification_fn_t evhdlr;
     pmix_iof_req_t *iofreq;
     pmix_kval_t *kv;
