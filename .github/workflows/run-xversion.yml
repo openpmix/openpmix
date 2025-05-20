@@ -1,59 +1,213 @@
 name: OpenPMIx Cross Version Testing
 
-on:
-  pull_request:
-    # We don't need this to be run on all types of PR behavior
-    # See
-    #  - https://docs.github.com/en/actions/reference/events-that-trigger-workflows#pull_request
-    #  - https://frontside.com/blog/2020-05-26-github-actions-pull_request
-    types:
-      - opened
-      - synchronize
-      - edited
-      - reopened
-
-env:
-  # Use docker.io for Docker Hub if empty
-  REGISTRY: docker.io
-  # github.repository as <account>/<repo>
-  IMAGE_NAME: jjhursey/pmix-xver-tester
+on: [pull_request]
 
 jobs:
-  xversion-client:
+  xversion:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        versions: ['master', 'v5.0', 'v4.2', 'v4.1', 'v3.2']
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - name: Check out the code
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      # Run the container tester
-      - name: Cross-version Client
-        run: docker run --rm -v ${GITHUB_WORKSPACE}:/home/pmixer/pmix-pr-to-test --env PR_TARGET_BRANCH=${GITHUB_BASE_REF} ${{ env.IMAGE_NAME }}:latest /bin/bash -c "/home/pmixer/bin/run-xversion.sh --path /home/pmixer/pmix-pr-to-test -- --skip-tool"
-        shell: bash
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev
 
-  xversion-tool:
-    runs-on: ubuntu-latest
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - name: Check out the code
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      # Run the container tester
-      - name: Cross-version Tool
-        run: docker run --rm -v ${GITHUB_WORKSPACE}:/home/pmixer/pmix-pr-to-test --env PR_TARGET_BRANCH=${GITHUB_BASE_REF} ${{ env.IMAGE_NAME }}:latest /bin/bash -c "/home/pmixer/bin/run-xversion.sh --path /home/pmixer/pmix-pr-to-test -- --skip-client"
-        shell: bash
+    - name: Git clone PR
+      uses: actions/checkout@v3
+      with:
+            submodules: recursive
+            path: pr
+    - name: Build PR
+      run: |
+        cd pr
+        ./autogen.pl
+        ./configure --prefix=$RUNNER_TEMP/prinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files
+        make -j
+        make install
+        cd test
+        make
+        cd simple
+        make
 
-  xversion-check:
-    runs-on: ubuntu-latest
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - name: Check out the code
-        uses: actions/checkout@v3
-        with:
-          submodules: recursive
-      # Run the container tester
-      - name: Cross-version Make Check
-        run: docker run --rm -v ${GITHUB_WORKSPACE}:/home/pmixer/pmix-pr-to-test --env PR_TARGET_BRANCH=${GITHUB_BASE_REF} ${{ env.IMAGE_NAME }}:latest /bin/bash -c "/home/pmixer/bin/run-xversion.sh --path /home/pmixer/pmix-pr-to-test -- --skip-client --skip-tool --make-check"
-        shell: bash
+    - name: Git clone branch
+      uses: actions/checkout@v3
+      with:
+            submodules: recursive
+            repository: openpmix/openpmix
+            path: checkbranch
+            ref: ${{ matrix.versions }}
+    - name: Build branch
+      run: |
+        cd checkbranch
+        ./autogen.pl
+        ./configure --prefix=$RUNNER_TEMP/branchinstall --disable-debug --enable-static --disable-shared --disable-dlopen --disable-per-user-config-files
+        make -j
+        make install
+        cd test
+        make
+        cd simple
+        make
+
+    - name: PR-to-branch simple
+      run:  pr/test/simple/simptest -n 2 -xversion -e checkbranch/test/simple/simpclient
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch tool
+      run:  pr/test/simple/simptest -n 1 -xversion -e checkbranch/test/simple/simptool
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check0
+      run:  pr/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:0-2;1:0]" -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check1
+      run:  pr/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:0-2;1:0]" -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check2
+      run:  pr/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:0]" -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check3
+      run:  pr/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:]" -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check4
+      run:  pr/test/pmix_test -n 4 --ns-dist 3:1 --fence "[0:]" -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check5
+      run:  pr/test/pmix_test -n 4 --ns-dist 3:1 --fence "[b | 0:]" -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check6
+      run:  pr/test/pmix_test -n 4 --job-fence -c -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check7
+      run:  pr/test/pmix_test -n 4 --job-fence -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check8
+      run:  pr/test/pmix_test -n 2 --test-publish -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check9
+      run:  pr/test/pmix_test -n 2 --test-spawn -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check10
+      run:  pr/test/pmix_test -n 2 --test-connect -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check11
+      run:  pr/test/pmix_test -n 5 --test-resolve-peers --ns-dist "1:2:2" -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check12
+      run:  pr/test/pmix_test -n 5 --test-replace 100:0,1,10,50,99 -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: PR-to-branch check13
+      run:  pr/test/pmix_test -n 5 --test-internal 10 -e checkbranch/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR simple
+      run:  checkbranch/test/simple/simptest -n 2 -xversion -e pr/test/simple/simpclient
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR tool
+      run:  checkbranch/test/simple/simptest -n 1 -xversion -e pr/test/simple/simptool
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check0
+      run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:0-2;1:0]" -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check1
+      run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:0-2;1:0]" -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check2
+      run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:0]" -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check3
+      run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[db | 0:;1:]" -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check4
+      run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[0:]" -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check5
+      run:  checkbranch/test/pmix_test -n 4 --ns-dist 3:1 --fence "[b | 0:]" -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check6
+      run:  checkbranch/test/pmix_test -n 4 --job-fence -c -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check7
+      run:  checkbranch/test/pmix_test -n 4 --job-fence -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check8
+      run:  checkbranch/test/pmix_test -n 2 --test-publish -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check9
+      run:  checkbranch/test/pmix_test -n 2 --test-spawn -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check10
+      run:  checkbranch/test/pmix_test -n 2 --test-connect -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check11
+      run:  checkbranch/test/pmix_test -n 5 --test-resolve-peers --ns-dist "1:2:2" -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check12
+      run:  checkbranch/test/pmix_test -n 5 --test-replace 100:0,1,10,50,99 -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+    - name: branch-to-PR check13
+      run:  checkbranch/test/pmix_test -n 5 --test-internal 10 -e pr/test/pmix_client
+      if:   ${{ true }}
+      timeout-minutes: 5
+
+
