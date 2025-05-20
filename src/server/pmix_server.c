@@ -3369,27 +3369,26 @@ pmix_status_t PMIx_server_delete_process_set(char *pset_name)
  ****    IMMEDIATELY. THUS ANYTHING THAT ACCESSES A GLOBAL ENTITY        ****
  ****    MUST BE PUSHED INTO AN EVENT FOR PROTECTION                     ****/
 
-static void op_cbfunc(pmix_status_t status, void *cbdata)
+static void _opcbfunc(int sd, short args, void *cbdata)
 {
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)scd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    /* no need to thread-shift here as no global data is
-     * being accessed */
+    PMIX_ACQUIRE_OBJECT(scd);
 
     /* setup the reply with the returned status */
     if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-        PMIX_RELEASE(cd);
-        return;
+        goto cleanup;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(reply);
-        PMIX_RELEASE(cd);
-        return;
+        goto cleanup;
     }
 
     /* the function that created the server_caddy did a
@@ -3401,60 +3400,72 @@ static void op_cbfunc(pmix_status_t status, void *cbdata)
         PMIX_RELEASE(reply);
     }
 
+    if (scd->enviro) {
+        /* ensure that we know the peer has finalized else we
+         * will generate an event when the socket closes - yes,
+         * it should have been done, but it is REALLY important
+         * that it be set */
+        cd->peer->finalized = true;
+    }
+
+cleanup:
     /* cleanup */
     PMIX_RELEASE(cd);
+    PMIX_RELEASE(scd);
+}
+
+static void op_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_shift_caddy_t *scd;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:op_cbfunc called with %s status",
+                        PMIx_Error_string(status));
+
+    /* need to thread-shift this callback */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return;
+    }
+    scd->status = status;
+    scd->cbdata = cbdata;
+    scd->enviro = false;  // flag that we are not finalizing the peer
+    PMIX_THREADSHIFT(scd, _opcbfunc);
 }
 
 static void op_cbfunc2(pmix_status_t status, void *cbdata)
 {
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
-    pmix_buffer_t *reply;
-    pmix_status_t rc;
+    pmix_shift_caddy_t *scd;
 
-    /* no need to thread-shift here as no global data is
-     * being accessed */
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:op_cbfunc2 called with %s status",
+                        PMIx_Error_string(status));
 
-    /* setup the reply with the returned status */
-    if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
-        PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-        PMIX_RELEASE(cd);
+    /* need to thread-shift this callback */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(reply);
-        PMIX_RELEASE(cd);
-        return;
-    }
-
-    /* the function that created the server_caddy did a
-     * retain on the peer, so we don't have to worry about
-     * it still being present - send a copy to the originator */
-    PMIX_PTL_SEND_ONEWAY(rc, cd->peer, reply, cd->hdr.tag);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(reply);
-    }
-
-    /* ensure that we know the peer has finalized else we
-     * will generate an event when the socket closes - yes,
-     * it should have been done, but it is REALLY important
-     * that it be set */
-    cd->peer->finalized = true;
-    /* cleanup the caddy */
-    PMIX_RELEASE(cd);
+    scd->status = status;
+    scd->cbdata = cbdata;
+    scd->enviro = true;  // flag that we are finalizing this peer
+    PMIX_THREADSHIFT(scd, _opcbfunc);
 }
 
-static void resop_cbfunc(pmix_status_t status, void *cbdata)
+static void _resopcbfunc(int sd, short args, void *cbdata)
 {
-    pmix_setup_caddy_t *scd = (pmix_setup_caddy_t *) cbdata;
+    pmix_shift_caddy_t *scdwrapper = (pmix_shift_caddy_t *) cbdata;
+    pmix_setup_caddy_t *scd = (pmix_setup_caddy_t*)scdwrapper->cbdata;
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) scd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    /* no need to thread-shift here as no global data is
-     * being accessed */
+    PMIX_ACQUIRE_OBJECT(scdwrapper);
 
     /* setup the reply with the returned status */
     if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
@@ -3462,7 +3473,7 @@ static void resop_cbfunc(pmix_status_t status, void *cbdata)
         PMIX_RELEASE(cd);
         return;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scdwrapper->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(reply);
@@ -3486,6 +3497,25 @@ static void resop_cbfunc(pmix_status_t status, void *cbdata)
     }
     PMIX_RELEASE(scd);
 }
+static void resop_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_shift_caddy_t *scd;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:resop_cbfunc called with %s status",
+                        PMIx_Error_string(status));
+
+    /* need to thread-shift this callback */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return;
+    }
+    scd->status = status;
+    scd->cbdata = cbdata;
+    PMIX_THREADSHIFT(scd, _resopcbfunc);
+}
 
 static void _spcb(int sd, short args, void *cbdata)
 {
@@ -3495,9 +3525,9 @@ static void _spcb(int sd, short args, void *cbdata)
     pmix_proc_t proc;
     pmix_cb_t cb;
     pmix_kval_t *kv;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cd);
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* setup the reply with the returned status */
     if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
@@ -3571,39 +3601,43 @@ static void spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata)
     PMIX_THREADSHIFT(cd, _spcb);
 }
 
-static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t ndata, void *cbdata)
+static void _lkupcbfunc(int sd, short args, void *cbdata)
 {
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *) cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) scd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(scd);
 
     /* no need to thread-shift as no global data is accessed */
     /* setup the reply with the returned status */
     if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-        PMIX_RELEASE(cd);
-        return;
+        goto cleanup;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(reply);
-        return;
+        goto cleanup;
     }
-    if (PMIX_SUCCESS == status) {
+    if (NULL != scd->pdata) {
         /* pack the returned data objects */
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, &ndata, 1, PMIX_SIZE);
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->ndata, 1, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(reply);
-            return;
+            goto cleanup;
         }
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, pdata, ndata, PMIX_PDATA);
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->pdata, scd->ndata, PMIX_PDATA);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(reply);
-            return;
+            goto cleanup;
         }
+        PMIX_PDATA_FREE(scd->pdata, scd->npdata);
     }
 
     /* the function that created the server_caddy did a
@@ -3613,8 +3647,38 @@ static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t nda
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
     }
+
+cleanup:
     /* cleanup */
     PMIX_RELEASE(cd);
+    PMIX_RELEASE(scd);
+}
+
+static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t ndata, void *cbdata)
+{
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
+    pmix_shift_caddy_t *scd;
+    size_t n;
+    pmix_status_t rc;
+
+    /* need to thread-shift this request */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    scd->status = status;
+    if (NULL != pdata) {
+        scd->ndata = ndata;
+        PMIX_PDATA_CREATE(scd->pdata, scd->ndata);
+        for (n=0; n < scd->ndata; n++) {
+            memcpy(&scd->pdata[n].proc, &pdata[n].proc, sizeof(pmix_proc_t));
+            memcpy(scd->pdata[n].key, pdata[n].key, sizeof(pmix_key_t));
+            PMIX_BFROPS_VALUE_XFER(rc, cd->peer, &scd->pdata[n].value, &pdata[n].value);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+        }
+    }
+    scd->cbdata = cbdata;
+
+    PMIX_THREADSHIFT(scd, _lkupcbfunc);
 }
 
 /* fence modex calls return here when the host RM has completed
