@@ -554,6 +554,7 @@ static void load_env_data_argv(const char *project, const char *flag, char ***da
     *data = PMIx_Argv_split(envvalue, ' ');
 }
 
+// include these definitions so convert-help is happy
 #define PMIX_CLI_SHOWME_CMD     "showme:command"
 #define PMIX_CLI_SHOWME_CMPILE  "showme:compile"
 #define PMIX_CLI_SHOWME_LINK    "showme:link"
@@ -561,6 +562,7 @@ static void load_env_data_argv(const char *project, const char *flag, char ***da
 #define PMIX_CLI_SHOWME_LIBD    "showme:libdirs"
 #define PMIX_CLI_SHOWME_LIBDS   "showme:libdirs_static"
 #define PMIX_CLI_SHOWME_LIB     "showme:libs"
+#define PMIX_CLI_SHOWME_LIBS    "showme:libs_static"
 #define PMIX_CLI_SHOWME_VERS    "showme:version"
 #define PMIX_CLI_SHOWME_HELP    "showme:help"
 
@@ -576,12 +578,12 @@ static struct option options[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIBD, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIBDS, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIB, PMIX_ARG_NONE),
+    PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_LIBS, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_VERS, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_SHOWME_HELP, PMIX_ARG_NONE),
 
     PMIX_OPTION_END
 };
-static char *shorts = "h::vV";
 
 int main(int argc, char *argv[])
 {
@@ -592,8 +594,7 @@ int main(int argc, char *argv[])
     bool disable_flags = true;
     bool real_flag = false;
     char hostname[PMIX_PATH_MAX];
-    pmix_cli_result_t results;
-    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(options);
 
     /* init globals */
     pmix_tool_basename = "pmixcc";
@@ -602,21 +603,6 @@ int main(int argc, char *argv[])
     // setup the base infrastructure
     if (PMIX_SUCCESS != pmix_init_util(NULL, 0, NULL)) {
         return PMIX_ERROR;
-    }
-
-    /* Parse the command line options */
-    PMIX_CONSTRUCT(&results, pmix_cli_result_t);
-    rc = pmix_cmd_line_parse(argv, shorts, options,
-                             NULL, &results, "help-pmixcc.txt");
-
-    if (PMIX_SUCCESS != rc) {
-        if (PMIX_ERR_SILENT != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            fprintf(stderr, "%s: command line error (%s)\n", argv[0], PMIx_Error_string(rc));
-        }
-        if (PMIX_OPERATION_SUCCEEDED == rc) {
-            rc = PMIX_SUCCESS;
-        }
-        exit(rc);
     }
 
     /****************************************************
@@ -729,43 +715,41 @@ int main(int argc, char *argv[])
             exit_status = 0;
             goto cleanup;
         }
-        if (0 == strncmp(user_argv[i], "-showme", strlen("-showme"))
-            || 0 == strncmp(user_argv[i], "--showme", strlen("--showme"))
-            || 0 == strncmp(user_argv[i], "-show", strlen("-show"))
-            || 0 == strncmp(user_argv[i], "--show", strlen("--show"))) {
+        if (0 == strncmp(user_argv[i], "-showme", strlen("-showme")) ||
+            0 == strncmp(user_argv[i], "--showme", strlen("--showme")) ||
+            0 == strncmp(user_argv[i], "-show", strlen("-show")) ||
+            0 == strncmp(user_argv[i], "--show", strlen("--show"))) {
             bool done_now = false;
 
             /* check for specific things we want to see.  First three
                still invoke all the building routines.  Last set want
                to parse out certain flags, so we don't go through the
                normal build routine - skip to cleanup. */
-            if (0 == strncmp(user_argv[i], "-showme:command", strlen("-showme:command"))
-                || 0 == strncmp(user_argv[i], "--showme:command", strlen("--showme:command"))) {
+            if (0 == strncmp(user_argv[i], "-showme:command", strlen("-showme:command")) ||
+                0 == strncmp(user_argv[i], "--showme:command", strlen("--showme:command"))) {
                 flags = COMP_WANT_COMMAND;
                 /* we know what we want, so don't process any more args */
                 done_now = true;
-            } else if (0 == strncmp(user_argv[i], "-showme:compile", strlen("-showme:compile"))
-                       || 0
-                              == strncmp(user_argv[i], "--showme:compile",
-                                         strlen("--showme:compile"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:compile", strlen("-showme:compile")) ||
+                       0 == strncmp(user_argv[i], "--showme:compile", strlen("--showme:compile"))) {
                 flags = COMP_WANT_PREPROC | COMP_WANT_COMPILE;
                 /* we know what we want, so don't process any more args */
                 done_now = true;
-            } else if (0 == strncmp(user_argv[i], "-showme:link", strlen("-showme:link"))
-                       || 0 == strncmp(user_argv[i], "--showme:link", strlen("--showme:link"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:link", strlen("-showme:link")) ||
+                       0 == strncmp(user_argv[i], "--showme:link", strlen("--showme:link"))) {
                 flags = COMP_WANT_COMPILE | COMP_WANT_LINK;
                 /* we know what we want, so don't process any more args */
                 done_now = true;
-            } else if (0 == strncmp(user_argv[i], "-showme:incdirs", strlen("-showme:incdirs"))
-                       || 0
-                              == strncmp(user_argv[i], "--showme:incdirs",
-                                         strlen("--showme:incdirs"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:incdirs", strlen("-showme:incdirs")) ||
+                       0 == strncmp(user_argv[i], "--showme:incdirs", strlen("--showme:incdirs"))) {
                 print_flags(options_data[user_data_idx].preproc_flags, PMIX_INCLUDE_FLAG);
                 goto cleanup;
-            } else if (0 == strncmp(user_argv[i], "-showme:libdirs_static", strlen("-showme:libdirs_static"))
-                       || 0
-                              == strncmp(user_argv[i], "--showme:libdirs_static",
-                                         strlen("--showme:libdirs_static"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:libdirs_static", strlen("-showme:libdirs_static")) ||
+                       0 == strncmp(user_argv[i], "--showme:libdirs_static", strlen("--showme:libdirs_static"))) {
                 char **all_args = NULL;
                 int args_count;
 
@@ -775,14 +759,14 @@ int main(int argc, char *argv[])
                 print_flags(all_args, PMIX_LIBDIR_FLAG);
                 PMIx_Argv_free(all_args);
                 goto cleanup;
-            } else if (0 == strncmp(user_argv[i], "-showme:libdirs", strlen("-showme:libdirs"))
-                       || 0
-                              == strncmp(user_argv[i], "--showme:libdirs",
-                                         strlen("--showme:libdirs"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:libdirs", strlen("-showme:libdirs")) ||
+                       0 == strncmp(user_argv[i], "--showme:libdirs", strlen("--showme:libdirs"))) {
                 print_flags(options_data[user_data_idx].link_flags, PMIX_LIBDIR_FLAG);
                 goto cleanup;
-            } else if (0 == strncmp(user_argv[i], "-showme:libs_static", strlen("-showme:libs_static"))
-                       || 0 == strncmp(user_argv[i], "--showme:libs_static", strlen("--showme:libs_static"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:libs_static", strlen("-showme:libs_static")) ||
+                       0 == strncmp(user_argv[i], "--showme:libs_static", strlen("--showme:libs_static"))) {
                 char **all_args = NULL;
                 int args_count;
 
@@ -792,14 +776,14 @@ int main(int argc, char *argv[])
                 print_flags(all_args, "-l");
                 PMIx_Argv_free(all_args);
                 goto cleanup;
-            } else if (0 == strncmp(user_argv[i], "-showme:libs", strlen("-showme:libs"))
-                       || 0 == strncmp(user_argv[i], "--showme:libs", strlen("--showme:libs"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:libs", strlen("-showme:libs")) ||
+                       0 == strncmp(user_argv[i], "--showme:libs", strlen("--showme:libs"))) {
                 print_flags(options_data[user_data_idx].libs, "-l");
                 goto cleanup;
-            } else if (0 == strncmp(user_argv[i], "-showme:version", strlen("-showme:version"))
-                       || 0
-                              == strncmp(user_argv[i], "--showme:version",
-                                         strlen("--showme:version"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:version", strlen("-showme:version")) ||
+                       0 == strncmp(user_argv[i], "--showme:version", strlen("--showme:version"))) {
                 char *str;
                 str = pmix_show_help_string("help-pmixcc.txt", "version", false, base_argv0,
                                             options_data[user_data_idx].project,
@@ -810,8 +794,9 @@ int main(int argc, char *argv[])
                     free(str);
                 }
                 goto cleanup;
-            } else if (0 == strncmp(user_argv[i], "-showme:help", strlen("-showme:help"))
-                       || 0 == strncmp(user_argv[i], "--showme:help", strlen("--showme:help"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:help", strlen("-showme:help")) ||
+                       0 == strncmp(user_argv[i], "--showme:help", strlen("--showme:help"))) {
                 char *str;
                 fprintf(stderr, "BUG %s\n", PMIX_PROXY_BUGREPORT);
                 str = pmix_show_help_string("help-pmixcc.txt", "usage", false, base_argv0,
@@ -826,8 +811,9 @@ int main(int argc, char *argv[])
 
                 exit_status = 0;
                 goto cleanup;
-            } else if (0 == strncmp(user_argv[i], "-showme:", strlen("-showme:"))
-                       || 0 == strncmp(user_argv[i], "--showme:", strlen("--showme:"))) {
+
+            } else if (0 == strncmp(user_argv[i], "-showme:", strlen("-showme:")) ||
+                       0 == strncmp(user_argv[i], "--showme:", strlen("--showme:"))) {
                 fprintf(stderr, "%s: unrecognized option: %s\n", argv[0], user_argv[i]);
                 fprintf(stderr, "Type '%s --showme:help' for usage.\n", argv[0]);
                 exit_status = 1;
@@ -847,28 +833,36 @@ int main(int argc, char *argv[])
         } else if (0 == strcmp(user_argv[i], "-c")) {
             flags &= ~COMP_WANT_LINK;
             real_flag = true;
+
         } else if (0 == strcmp(user_argv[i], "-E") || 0 == strcmp(user_argv[i], "-M")) {
             flags &= ~(COMP_WANT_COMPILE | COMP_WANT_LINK);
             real_flag = true;
+
         } else if (0 == strcmp(user_argv[i], "-S")) {
             flags &= ~COMP_WANT_LINK;
             real_flag = true;
-        } else if (0 == strcmp(user_argv[i], "-static") || 0 == strcmp(user_argv[i], "--static")
-                   || 0 == strcmp(user_argv[i], "-Bstatic")
-                   || 0 == strcmp(user_argv[i], "-Wl,-static")
-                   || 0 == strcmp(user_argv[i], "-Wl,--static")
-                   || 0 == strcmp(user_argv[i], "-Wl,-Bstatic")) {
+
+        } else if (0 == strcmp(user_argv[i], "-static") ||
+                   0 == strcmp(user_argv[i], "--static") ||
+                   0 == strcmp(user_argv[i], "-Bstatic") ||
+                   0 == strcmp(user_argv[i], "-Wl,-static") ||
+                   0 == strcmp(user_argv[i], "-Wl,--static") ||
+                   0 == strcmp(user_argv[i], "-Wl,-Bstatic")) {
             flags |= COMP_WANT_STATIC;
-        } else if (0 == strcmp(user_argv[i], "-dynamic") || 0 == strcmp(user_argv[i], "--dynamic")
-                   || 0 == strcmp(user_argv[i], "-Bdynamic")
-                   || 0 == strcmp(user_argv[i], "-Wl,-dynamic")
-                   || 0 == strcmp(user_argv[i], "-Wl,--dynamic")
-                   || 0 == strcmp(user_argv[i], "-Wl,-Bdynamic")) {
+
+        } else if (0 == strcmp(user_argv[i], "-dynamic") ||
+                   0 == strcmp(user_argv[i], "--dynamic") ||
+                   0 == strcmp(user_argv[i], "-Bdynamic") ||
+                   0 == strcmp(user_argv[i], "-Wl,-dynamic") ||
+                   0 == strcmp(user_argv[i], "-Wl,--dynamic") ||
+                   0 == strcmp(user_argv[i], "-Wl,-Bdynamic")) {
             flags &= ~COMP_WANT_STATIC;
+
         } else if ('-' != user_argv[i][0]) {
             disable_flags = false;
             flags |= COMP_SHOW_ERROR;
             real_flag = true;
+
         } else {
             /* if the option flag is one that we use to determine
                which set of compiler data to use, don't count it as a

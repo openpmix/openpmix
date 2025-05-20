@@ -39,6 +39,7 @@ PMIx wrapper compiler
   --showme:libdirs         Show list of library dirs added when linking
   --showme:libdirs_static  Show list of static library dirs added when linking
   --showme:libs            Show list of libraries added when linking
+  --showme:libs_static     Show list of static libraries added when linking
   --showme:version         Show version of %s
   --showme:help            This help message
 
@@ -93,6 +94,10 @@ Show list of static library dirs added when linking
 [showme:libs]
 
 Show list of libraries added when linking
+#
+[showme:libs_static]
+
+Show list of static libraries added when linking
 #
 [showme:version]
 
