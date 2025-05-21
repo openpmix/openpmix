@@ -4429,37 +4429,37 @@ static void query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
     PMIX_THREADSHIFT(scd, _qrycbfunc);
 }
 
-static void sessctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
-                            pmix_release_cbfunc_t release_fn, void *release_cbdata)
+static void _sctrl_cbfunc(int sd, short args, void *cbdata)
 {
-    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *) cbdata;
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) scd->cbdata;
+    pmix_shift_caddy_t *scdwrapper = (pmix_shift_caddy_t*)cbdata;
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *)scdwrapper->cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)scd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:session_ctrl callback with status %s",
-                        PMIx_Error_string(status));
+                        PMIx_Error_string(scdwrapper->status));
 
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        PMIX_RELEASE(cd);
-        return;
+        goto cleanup;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scdwrapper->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
     /* pack the returned data */
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scdwrapper->ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
+    if (0 < scdwrapper->ninfo) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, scdwrapper->info, scdwrapper->ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -4472,170 +4472,188 @@ complete:
         PMIX_RELEASE(reply);
     }
 
-    // cleanup
+cleanup:
     if (NULL != scd->info) {
         PMIX_INFO_FREE(scd->info, scd->ninfo);
     }
+    if (NULL != scdwrapper->cbfunc.relfn) {
+        scdwrapper->cbfunc.relfn(scdwrapper->relcbdata);
+    }
     PMIX_RELEASE(scd);
     PMIX_RELEASE(cd);
-    if (NULL != release_fn) {
-        release_fn(release_cbdata);
+    PMIX_RELEASE(scdwrapper);
+}
+
+static void sessctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                            pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_shift_caddy_t *scd;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:sessctrl_cbfunc called");
+
+    /* need to thread-shift this callback as it accesses global data */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        return;
     }
+    scd->status = status;
+    scd->info = info;
+    scd->ninfo = ninfo;
+    scd->cbdata = cbdata;
+    scd->cbfunc.relfn = release_fn;
+    scd->relcbdata = release_cbdata;
+    PMIX_THREADSHIFT(scd, _sctrl_cbfunc);
+}
+
+static void _jmon_cbfunc(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) scd->cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:_jmon_cbfunc callback with status %s",
+                        PMIx_Error_string(scd->status));
+
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        goto cleanup;
+    }
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    /* pack the returned data */
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->ninfo, 1, PMIX_SIZE);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        goto complete;
+    }
+    if (0 < scd->ninfo) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->info, scd->ninfo, PMIX_INFO);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+        }
+    }
+
+complete:
+    // send reply
+    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+
+cleanup:
+    if (NULL != qcd->queries) {
+        PMIX_QUERY_FREE(qcd->queries, qcd->nqueries);
+    }
+    if (NULL != qcd->info) {
+        PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+    }
+    if (NULL != scd->cbfunc.relfn) {
+        scd->cbfunc.relfn(scd->relcbdata);
+    }
+
+    PMIX_RELEASE(qcd);
+    PMIX_RELEASE(cd);
+    PMIX_RELEASE(scd);
 }
 
 static void jctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                          pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
-    pmix_buffer_t *reply;
-    pmix_status_t rc;
+    pmix_shift_caddy_t *scd;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:jctrl callback with status %d",
-                        status);
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:jctrl_cbfunc called");
 
-    reply = PMIX_NEW(pmix_buffer_t);
-    if (NULL == reply) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        PMIX_RELEASE(cd);
+    /* need to thread-shift this callback as it accesses global data */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
         return;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto complete;
-    }
-    /* pack the returned data */
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto complete;
-    }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-    }
-
-complete:
-    // send reply
-    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(reply);
-    }
-
-    // cleanup
-    if (NULL != qcd->queries) {
-        PMIX_QUERY_FREE(qcd->queries, qcd->nqueries);
-    }
-    if (NULL != qcd->info) {
-        PMIX_INFO_FREE(qcd->info, qcd->ninfo);
-    }
-    PMIX_RELEASE(qcd);
-    PMIX_RELEASE(cd);
-    if (NULL != release_fn) {
-        release_fn(release_cbdata);
-    }
+    scd->status = status;
+    scd->info = info;
+    scd->ninfo = ninfo;
+    scd->cbdata = cbdata;
+    scd->cbfunc.relfn = release_fn;
+    scd->relcbdata = release_cbdata;
+    PMIX_THREADSHIFT(scd, _jmon_cbfunc);
 }
 
 static void monitor_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                            pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
-    pmix_buffer_t *reply;
-    pmix_status_t rc;
+    pmix_shift_caddy_t *scd;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:monitor callback with status %d",
-                        status);
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:monitor_cbfunc called");
 
-    reply = PMIX_NEW(pmix_buffer_t);
-    if (NULL == reply) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        PMIX_RELEASE(cd);
+    /* need to thread-shift this callback as it accesses global data */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
         return;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto complete;
-    }
-    /* pack the returned data */
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        goto complete;
-    }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-    }
-
-complete:
-    // send reply
-    PMIX_SERVER_QUEUE_REPLY(rc, cd->peer, cd->hdr.tag, reply);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(reply);
-    }
-
-    // cleanup
-    if (NULL != qcd->queries) {
-        PMIX_QUERY_FREE(qcd->queries, qcd->nqueries);
-    }
-    if (NULL != qcd->info) {
-        PMIX_INFO_FREE(qcd->info, qcd->ninfo);
-    }
-    PMIX_RELEASE(qcd);
-    PMIX_RELEASE(cd);
-    if (NULL != release_fn) {
-        release_fn(release_cbdata);
-    }
+    scd->status = status;
+    scd->info = info;
+    scd->ninfo = ninfo;
+    scd->cbdata = cbdata;
+    scd->cbfunc.relfn = release_fn;
+    scd->relcbdata = release_cbdata;
+    PMIX_THREADSHIFT(scd, _jmon_cbfunc);
 }
 
-static void cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credential, pmix_info_t info[],
-                        size_t ninfo, void *cbdata)
+static void _cred_cbfunc(int sd, short args, void *cbdata)
 {
-    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) scd->cbdata;
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:get credential callback with status %d",
-                        status);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:get credential callback with status %s",
+                        PMIx_Error_string(scd->status));
 
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        PMIX_RELEASE(cd);
-        return;
+        goto cleanup;
     }
 
     /* pack the status */
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
 
-    if (PMIX_SUCCESS == status) {
+    if (PMIX_SUCCESS == scd->status) {
         /* pack the returned credential */
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, credential, 1, PMIX_BYTE_OBJECT);
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->bo, 1, PMIX_BYTE_OBJECT);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto complete;
         }
 
         /* pack any returned data */
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->ninfo, 1, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto complete;
         }
-        if (0 < ninfo) {
-            PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
+        if (0 < scd->ninfo) {
+            PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->info, scd->ninfo, PMIX_INFO);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
@@ -4649,43 +4667,82 @@ complete:
         PMIX_RELEASE(reply);
     }
 
-    // cleanup
+cleanup:
     if (NULL != qcd->info) {
         PMIX_INFO_FREE(qcd->info, qcd->ninfo);
     }
+    if (NULL != scd->bo) {
+        PMIX_BYTE_OBJECT_FREE(scd->bo, 1);
+    }
     PMIX_RELEASE(qcd);
     PMIX_RELEASE(cd);
+    PMIX_RELEASE(scd);
 }
 
-static void validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata)
+static void cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credential,
+                        pmix_info_t info[], size_t ninfo, void *cbdata)
 {
+    pmix_shift_caddy_t *scd;
     pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
+    pmix_status_t rc;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:cred_cbfunc called");
+
+    /* need to thread-shift this callback as it accesses global data */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        return;
+    }
+    scd->status = status;
+    scd->info = info;
+    scd->ninfo = ninfo;
+    // need to copy this as they may not hold it for us
+    PMIX_BFROPS_COPY(rc, cd->peer, (void**)&scd->bo, credential, PMIX_BYTE_OBJECT);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        PMIX_RELEASE(scd);
+        return;
+    }
+    scd->cbdata = cbdata;
+    PMIX_THREADSHIFT(scd, _cred_cbfunc);
+}
+
+static void _valcbfunc(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) scd->cbdata;
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:validate credential callback with status %d", status);
+                        "pmix:validate credential callback with status %s",
+                        PMIx_Error_string(scd->status));
 
     reply = PMIX_NEW(pmix_buffer_t);
     if (NULL == reply) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        PMIX_RELEASE(cd);
-        return;
+        goto cleanup;
     }
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &status, 1, PMIX_STATUS);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
     /* pack any returned data */
-    PMIX_BFROPS_PACK(rc, cd->peer, reply, &ninfo, 1, PMIX_SIZE);
+    PMIX_BFROPS_PACK(rc, cd->peer, reply, &scd->ninfo, 1, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto complete;
     }
-    if (0 < ninfo) {
-        PMIX_BFROPS_PACK(rc, cd->peer, reply, info, ninfo, PMIX_INFO);
+    if (0 < scd->ninfo) {
+        PMIX_BFROPS_PACK(rc, cd->peer, reply, scd->info, scd->ninfo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
         }
@@ -4697,12 +4754,51 @@ complete:
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(reply);
     }
-    // cleanup
+
+cleanup:
     if (NULL != qcd->info) {
         PMIX_INFO_FREE(qcd->info, qcd->ninfo);
     }
+    if (NULL != scd->info) {
+        PMIX_INFO_FREE(scd->info, scd->ninfo);
+    }
     PMIX_RELEASE(qcd);
     PMIX_RELEASE(cd);
+    PMIX_RELEASE(scd);
+}
+
+static void validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata)
+{
+    pmix_shift_caddy_t *scd;
+    pmix_status_t rc;
+    size_t n;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:validate_cbfunc called");
+
+    /* need to thread-shift this callback as it accesses global data */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        return;
+    }
+    scd->status = status;
+    // need to copy the info as they may not hold it for us
+    if (NULL != info) {
+        scd->ninfo = ninfo;
+        PMIX_INFO_CREATE(scd->info, scd->ninfo);
+        for (n=0; n < scd->ninfo; n++) {
+            rc = PMIx_Info_xfer(&scd->info[n], &info[n]);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+                PMIX_INFO_FREE(scd->info, scd->ninfo);
+                PMIX_RELEASE(scd);
+                return;
+            }
+        }
+    }
+    scd->cbdata = cbdata;
+    PMIX_THREADSHIFT(scd, _valcbfunc);
 }
 
 static void _iofreg(int sd, short args, void *cbdata)
@@ -4788,43 +4884,6 @@ cleanup:
     PMIX_RELEASE(cd);
 }
 
-static void iofdereg(pmix_status_t status, void *cbdata)
-{
-    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
-    pmix_server_caddy_t *scd = (pmix_server_caddy_t *) cd->cbdata;
-    pmix_buffer_t *reply;
-    pmix_status_t rc;
-
-    PMIX_ACQUIRE_OBJECT(cd);
-    PMIX_HIDE_UNUSED_PARAMS(status);
-
-    /* setup the reply to the requestor */
-    reply = PMIX_NEW(pmix_buffer_t);
-    if (NULL == reply) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
-        rc = PMIX_ERR_NOMEM;
-        goto cleanup;
-    }
-    /* its just the status */
-    PMIX_BFROPS_PACK(rc, scd->peer, reply, &cd->status, 1, PMIX_STATUS);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(reply);
-        goto cleanup;
-    }
-
-    pmix_output_verbose(2, pmix_server_globals.iof_output,
-                        "server:_iofreg reply being sent to %s:%u", scd->peer->info->pname.nspace,
-                        scd->peer->info->pname.rank);
-    PMIX_SERVER_QUEUE_REPLY(rc, scd->peer, scd->hdr.tag, reply);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_RELEASE(reply);
-    }
-
-cleanup:
-    PMIX_RELEASE(cd);
-}
-
 static void iof_cbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
@@ -4840,6 +4899,67 @@ static void iof_cbfunc(pmix_status_t status, void *cbdata)
 
     /* need to thread-shift this callback as it accesses global data */
     PMIX_THREADSHIFT(cd, _iofreg);
+}
+
+static void _iofdreg(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scdwrapper = (pmix_shift_caddy_t*)cbdata;
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) scdwrapper->cbdata;
+    pmix_server_caddy_t *scd = (pmix_server_caddy_t *) cd->cbdata;
+    pmix_buffer_t *reply;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    PMIX_ACQUIRE_OBJECT(cd);
+
+    /* setup the reply to the requestor */
+    reply = PMIX_NEW(pmix_buffer_t);
+    if (NULL == reply) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        rc = PMIX_ERR_NOMEM;
+        goto cleanup;
+    }
+    /* its just the status */
+    PMIX_BFROPS_PACK(rc, scd->peer, reply, &scdwrapper->status, 1, PMIX_STATUS);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(reply);
+        goto cleanup;
+    }
+
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "server:_iofreg reply being sent to %s:%u",
+                        scd->peer->info->pname.nspace,
+                        scd->peer->info->pname.rank);
+    PMIX_SERVER_QUEUE_REPLY(rc, scd->peer, scd->hdr.tag, reply);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(reply);
+    }
+
+cleanup:
+    PMIX_RELEASE(scd);
+    PMIX_RELEASE(cd);
+    PMIX_RELEASE(scdwrapper);
+}
+
+static void iofdereg(pmix_status_t status, void *cbdata)
+{
+    pmix_shift_caddy_t *scd;
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "server:_iofdereg called with %s status",
+                        PMIx_Error_string(status));
+
+    /* need to thread-shift this callback */
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        /* nothing we can do */
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return;
+    }
+    scd->status = status;
+    scd->cbdata = cbdata;
+    PMIX_THREADSHIFT(scd, _iofdreg);
 }
 
 static void fabric_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
