@@ -101,3 +101,6 @@ $(libpmixglobal_gen): $(abs_top_srcdir)/include/pmix_common.h.in \
 	        $(PMIX_V_GEN) $(PYTHON) $(abs_top_srcdir)/contrib/construct_event_strings.py
 
 MAINTAINERCLEANFILES = $(libpmixglobal_gen)
+
+clean-local:
+	rm -f pmix_dictionary.h pmix_dictionary.c pmix_event_strings.h pmix_event_strings.c
