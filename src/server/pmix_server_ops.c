@@ -2185,7 +2185,8 @@ pmix_status_t pmix_server_iofdereg(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_iof_req_t *req;
     size_t ninfo, refid;
 
-    pmix_output_verbose(2, pmix_server_globals.iof_output, "recvd IOF DEREGISTER from client");
+    pmix_output_verbose(2, pmix_server_globals.iof_output,
+                        "recvd IOF DEREGISTER from client");
 
     if (NULL == pmix_host_server.iof_pull) {
         return PMIX_ERR_NOT_SUPPORTED;

@@ -360,6 +360,7 @@ static void scon(pmix_shift_caddy_t *p)
     p->ndirs = 0;
     p->pdata = NULL;
     p->npdata = 0;
+    p->bo = NULL;
     p->evhdlr = NULL;
     p->iofreq = NULL;
     p->kv = NULL;
