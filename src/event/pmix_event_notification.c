@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
  *
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -33,6 +33,67 @@ static void progress_local_event_hdlr(pmix_status_t status, pmix_info_t *results
                                       pmix_op_cbfunc_t cbfunc, void *thiscbdata,
                                       void *notification_cbdata);
 
+static void _ntfy_done(pmix_status_t status, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+
+    if (NULL != scd->cbfunc.opcbfn) {
+        scd->cbfunc.opcbfn(status, scd->cbdata);
+    }
+    PMIX_RELEASE(scd);
+}
+
+static void _notify_event(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    int rc;
+    pmix_proc_t *source = scd->proc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+
+        pmix_output_verbose(2, pmix_server_globals.event_output,
+                            "pmix_server_notify_event source = %s:%d event_status = %s",
+                            (NULL == source) ? "UNKNOWN" : source->nspace,
+                            (NULL == source) ? PMIX_RANK_WILDCARD : source->rank,
+                            PMIx_Error_string(scd->status));
+
+        rc = pmix_server_notify_client_of_event(scd->status, source, scd->range,
+                                                scd->info, scd->ninfo,
+                                                _ntfy_done, scd);
+
+        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+            PMIX_ERROR_LOG(rc);
+            _ntfy_done(rc, scd);
+            return;
+        }
+        if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+            !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+            // let the completion function cleanup
+            return;
+        }
+    }
+
+    /* if we aren't connected, don't attempt to send */
+    if (!pmix_globals.connected && PMIX_RANGE_PROC_LOCAL != scd->range) {
+        _ntfy_done(PMIX_ERR_UNREACH, scd);
+        return;
+    }
+    PMIX_RELEASE_THREAD(&pmix_global_lock);
+    pmix_output_verbose(2, pmix_client_globals.event_output,
+                        "pmix_client_notify_event source = %s:%d event_status =%d",
+                        (NULL == source) ? pmix_globals.myid.nspace : source->nspace,
+                        (NULL == source) ? pmix_globals.myid.rank : source->rank, scd->status);
+
+    rc = pmix_notify_server_of_event(scd->status, source, scd->range,
+                                     scd->info, scd->ninfo, _ntfy_done, scd, true);
+    if (PMIX_SUCCESS != rc) {
+        _ntfy_done(rc, scd);
+    }
+    return;
+}
+
 /* if we are a client, we call this function to notify the server of
  * an event. If we are a server, our host RM will call this function
  * to notify us of an event */
@@ -40,52 +101,23 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
                                             pmix_data_range_t range, const pmix_info_t info[],
                                             size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
-    int rc;
+    pmix_shift_caddy_t *scd;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scd) {
+        PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+        return PMIX_ERR_NOMEM;
     }
+    scd->status = status;
+    scd->proc = (pmix_proc_t*)source;
+    scd->range = range;
+    scd->info = (pmix_info_t*)info;
+    scd->ninfo = ninfo;
+    scd->cbfunc.opcbfn = cbfunc;
+    scd->cbdata = cbdata;
+    PMIX_THREADSHIFT(scd, _notify_event);
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
-        PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-
-        pmix_output_verbose(2, pmix_server_globals.event_output,
-                            "pmix_server_notify_event source = %s:%d event_status = %s",
-                            (NULL == source) ? "UNKNOWN" : source->nspace,
-                            (NULL == source) ? PMIX_RANK_WILDCARD : source->rank,
-                            PMIx_Error_string(status));
-
-        rc = pmix_server_notify_client_of_event(status, source, range, info, ninfo, cbfunc, cbdata);
-
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-        if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-            return rc;
-        }
-        PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    }
-
-    /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected && PMIX_RANGE_PROC_LOCAL != range) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_UNREACH;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-    pmix_output_verbose(2, pmix_client_globals.event_output,
-                        "pmix_client_notify_event source = %s:%d event_status =%d",
-                        (NULL == source) ? pmix_globals.myid.nspace : source->nspace,
-                        (NULL == source) ? pmix_globals.myid.rank : source->rank, status);
-
-    rc = pmix_notify_server_of_event(status, source, range, info, ninfo, cbfunc, cbdata, true);
-    if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
-    }
-    return rc;
+    return PMIX_SUCCESS;
 }
 
 static void notify_event_cbfunc(struct pmix_peer_t *pr,
