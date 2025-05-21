@@ -1264,6 +1264,7 @@ AS_IF([test "$pmix_need_python" = "yes"],
       [AM_PATH_PYTHON([$pmix_python_min_version],
                       [pmix_have_good_python=1],
                       [AC_MSG_ERROR([OpenPMIx requires Python >= $pmix_python_min_version to build. Aborting.])])
+       PMIX_SUMMARY_ADD([[Required Packages]], [Python], [], [yes ($[PYTHON_VERSION])])
       ])
 
 AS_IF([test "$pmix_want_python_bindings" = "yes" && test $pmix_have_good_python -eq 0],
