@@ -124,6 +124,9 @@ libpmix_util_la_DEPENDENCIES = \
 pmixdir = $(pmixincludedir)/$(subdir)
 pmix_HEADERS = $(headers)
 
+clean-local:
+	rm -f pmix_show_help_content.c pmix_show_help_content.lo
+
 MAINTAINERCLEANFILES = \
 	pmix_show_help_content.c
 
