@@ -19,7 +19,12 @@
 #ifdef HAVE_UNISTD_H
 #    include <unistd.h>
 #endif
+
 #include <pthread.h>
+#if (defined(__FreeBSD__) || defined(__OpenBSD__)) && defined(HAVE_PTHREAD_SETAFFINITY_NP)
+#    include <pthread_np.h>
+#endif
+    
 #include <string.h>
 #include <event.h>
 
