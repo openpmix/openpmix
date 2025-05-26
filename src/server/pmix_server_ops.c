@@ -522,24 +522,39 @@ pmix_status_t pmix_server_process_iof(pmix_setup_caddy_t *cd,
     return PMIX_SUCCESS;
 }
 
-void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
+static void _spcbfunc(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     // pass along default status
-    rc = status;
+    rc = cd->status;
 
     /* if it was successful, and there are IOF requests, then
      * register them now */
-    if (PMIX_SUCCESS == status) {
-        rc = pmix_server_process_iof(cd, nspace);
+    if (PMIX_SUCCESS == cd->status) {
+        rc = pmix_server_process_iof(cd, cd->nspace);
     }
 
     if (NULL != cd->spcbfunc) {
-        cd->spcbfunc(rc, nspace, cd->cbdata);
+        cd->spcbfunc(rc, cd->nspace, cd->cbdata);
+    }
+    if (NULL != cd->nspace) {
+        free(cd->nspace);
     }
     PMIX_RELEASE(cd);
+}
+
+void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+
+    cd->status = status;
+    if (NULL != nspace) {
+        cd->nspace = strdup(nspace);
+    }
+    PMIX_THREADSHIFT(cd, _spcbfunc);
 }
 
 void pmix_server_spawn_parser(pmix_peer_t *peer,
@@ -849,7 +864,8 @@ static void regevopcbfunc(pmix_status_t status, void *cbdata)
 
     /* if the registration succeeded, then check local cache */
     if (PMIX_SUCCESS == status) {
-        _check_cached_events(0, 0, cd);
+        cd->status = status;
+        PMIX_THREADSHIFT(cd, _check_cached_events);
         return;
     }
 

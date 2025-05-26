@@ -3,7 +3,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017-2018 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -144,14 +144,16 @@ static void regevents_cbfunc(struct pmix_peer_t *peer,
     PMIX_RELEASE(rb);
 }
 
-static void reg_cbfunc(pmix_status_t status, void *cbdata)
+static void _regcbfunc(int sd, short args, void *cbdata)
 {
-    pmix_rshift_caddy_t *rb = (pmix_rshift_caddy_t *) cbdata;
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_rshift_caddy_t *rb = (pmix_rshift_caddy_t *) scd->cbdata;
     pmix_rshift_caddy_t *cd = (pmix_rshift_caddy_t *) rb->cd;
-    pmix_status_t rc = status;
+    pmix_status_t rc = scd->status;
     size_t index = rb->index;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    if (PMIX_SUCCESS != status) {
+    if (PMIX_SUCCESS != scd->status) {
         /* if we failed to register, then remove this event */
         if (NULL == rb->list) {
             if (NULL != rb->hdlr) {
@@ -183,7 +185,19 @@ static void reg_cbfunc(pmix_status_t status, void *cbdata)
     if (NULL != rb->codes) {
         free(rb->codes);
     }
+    // cd is released by the rb destructor
     PMIX_RELEASE(rb);
+    PMIX_RELEASE(scd);
+}
+
+static void reg_cbfunc(pmix_status_t status, void *cbdata)
+{
+    pmix_shift_caddy_t *scd;
+
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    scd->status = status;
+    scd->cbdata = cbdata;
+    PMIX_THREADSHIFT(scd, _regcbfunc);
 }
 
 static pmix_status_t _send_to_server(pmix_rshift_caddy_t *rcd)
