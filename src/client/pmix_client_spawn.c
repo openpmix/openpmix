@@ -117,25 +117,40 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     return rc;
 }
 
+static void _lclcbfunc(int sd, short args, void *cbdata)
+{
+    pmix_setup_caddy_t *fcd = (pmix_setup_caddy_t*)cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    // set default status
+    rc = fcd->status;
+
+    // process IOF requests
+    if (PMIX_SUCCESS == fcd->status) {
+        rc = pmix_server_process_iof(fcd, fcd->nspace);
+    }
+
+    if (NULL != fcd->spcbfunc) {
+        fcd->spcbfunc(rc, fcd->nspace, fcd->cbdata);
+    }
+    // cleanup
+    if (NULL != fcd->nspace) {
+        free(fcd->nspace);
+    }
+    PMIX_RELEASE(fcd);
+}
+
 static void localcbfunc(pmix_status_t status,
                         char nspace[], void *cbdata)
 {
     pmix_setup_caddy_t *fcd = (pmix_setup_caddy_t*)cbdata;
-    pmix_status_t rc;
 
-    // set default status
-    rc = status;
-
-    // process IOF requests
-    if (PMIX_SUCCESS == status) {
-        rc = pmix_server_process_iof(fcd, nspace);
+    fcd->status = status;
+    if (NULL != nspace) {
+        fcd->nspace = strdup(nspace);
     }
-
-    if (NULL != fcd->spcbfunc) {
-        fcd->spcbfunc(rc, nspace, fcd->cbdata);
-    }
-    // cleanup
-    PMIX_RELEASE(fcd);
+    PMIX_THREADSHIFT(fcd, _lclcbfunc);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t ninfo,
