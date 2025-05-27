@@ -14,6 +14,7 @@ dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
 dnl Copyright (c) 2014-2019 Intel, Inc.  All rights reserved.
 dnl Copyright (c) 2015      Research Organization for Information Science
 dnl                         and Technology (RIST). All rights reserved.
+dnl Copyright (c) 2025      Nanook Consulting  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -62,7 +63,22 @@ THREAD_LIBS="$PTHREAD_LIBS"
 
 PMIX_CHECK_PTHREAD_PIDS
 
-AC_DEFINE_UNQUOTED([PMIX_ENABLE_MULTI_THREADS], [1],
-                   [Whether we should enable thread support within the PMIX code base])
+#update the flags
+CFLAGS="$CFLAGS $THREAD_CFLAGS"
+CPPFLAGS="$CPPFLAGS $THREAD_CPPFLAGS"
+LDFLAGS="$LDFLAGS $THREAD_LDFLAGS"
+LIBS="$LIBS $THREAD_LIBS"
+
+PMIX_WRAPPER_FLAGS_ADD([CFLAGS], [$THREAD_CFLAGS])
+PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$THREAD_LDFLAGS])
+
+# Check for the setaffinity function - must come after
+# we update the flags
+AC_CHECK_FUNCS([pthread_setaffinity_np])
+
+# Some folks apparently split that function definition
+# into a separate header, even though they leave the
+# function in pthreads.h. Go figure.
+AC_CHECK_HEADERS([pthread_np.h])
 
 ])dnl
