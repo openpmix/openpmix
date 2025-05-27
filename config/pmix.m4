@@ -703,14 +703,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     #
     PMIX_CONFIG_THREADS
 
-    CFLAGS="$CFLAGS $THREAD_CFLAGS"
-    CPPFLAGS="$CPPFLAGS $THREAD_CPPFLAGS"
-    LDFLAGS="$LDFLAGS $THREAD_LDFLAGS"
-    LIBS="$LIBS $THREAD_LIBS"
-
-    PMIX_WRAPPER_FLAGS_ADD([CFLAGS], [$THREAD_CFLAGS])
-    PMIX_WRAPPER_FLAGS_ADD([LDFLAGS], [$THREAD_LDFLAGS])
-
     #
     # What is the local equivalent of "ln -s"
     #
@@ -720,9 +712,6 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # Check for some common system programs that we need
     AC_PROG_GREP
     AC_PROG_EGREP
-
-    # This check must come after PMIX_CONFIG_THREADS
-    AC_CHECK_FUNCS([pthread_setaffinity_np])
 
     # Setup HTML and man page processing
     OAC_SETUP_SPHINX([$srcdir/docs/_build/html/index.html], [],
