@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -20,6 +20,9 @@
 #    include <unistd.h>
 #endif
 #include <pthread.h>
+#ifdef HAVE_PTHREAD_NP_H
+#    include <pthread_np.h>
+#endif
 #include <string.h>
 #include <event.h>
 
