@@ -22,6 +22,7 @@
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/bfrops.h"
 #include "src/mca/gds/base/base.h"
+#include "src/server/pmix_server_ops.h"
 #include "src/threads/pmix_threads.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_hash.h"
@@ -88,10 +89,15 @@ PMIX_EXPORT void pmix_init_registered_attrs(void)
     }
 }
 
-static pmix_status_t process_reg(char *level, char *function, char **attrs)
+static void process_reg(int sd, short args, void *cbdata)
 {
+    pmix_setup_caddy_t *scd = (pmix_setup_caddy_t*)cbdata;
+    char *level = (char*)scd->cbdata;
+    char *function = scd->nspace;
+    char **attrs = scd->keys;
     pmix_attribute_trk_t *fnptr;
     pmix_list_t *lst;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     /* select the list this will appear on */
     if (0 == strcmp(level, PMIX_CLIENT_ATTRIBUTES)) {
@@ -103,7 +109,9 @@ static pmix_status_t process_reg(char *level, char *function, char **attrs)
     } else if (0 == strcmp(level, PMIX_TOOL_ATTRIBUTES)) {
         lst = &tool_attrs;
     } else {
-        return PMIX_ERR_BAD_PARAM;
+        scd->status = PMIX_ERR_BAD_PARAM;
+        PMIX_WAKEUP_THREAD(&scd->lock);
+        return;
     }
 
     /* see if we already have this function */
@@ -111,7 +119,9 @@ static pmix_status_t process_reg(char *level, char *function, char **attrs)
         if (0 == strcmp(function, fnptr->function)) {
             /* we already have this function at this level
              * so we must return an error */
-            return PMIX_ERR_REPEAT_ATTR_REGISTRATION;
+            scd->status = PMIX_ERR_REPEAT_ATTR_REGISTRATION;
+            PMIX_WAKEUP_THREAD(&scd->lock);
+            return;
         }
     }
 
@@ -121,11 +131,16 @@ static pmix_status_t process_reg(char *level, char *function, char **attrs)
     if (NULL != attrs) {
         fnptr->attrs = PMIx_Argv_copy(attrs);
     }
-    return PMIX_SUCCESS;
+    scd->status = PMIX_SUCCESS;
+    if (scd->copied) {
+        PMIX_WAKEUP_THREAD(&scd->lock);
+    }
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[])
 {
+    pmix_setup_caddy_t *scd;
+
     pmix_status_t rc;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
@@ -133,9 +148,17 @@ PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[]
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
     }
-
-    rc = process_reg(PMIX_HOST_ATTRIBUTES, function, attrs);
     PMIX_RELEASE_THREAD(&pmix_global_lock);
+
+    scd = PMIX_NEW(pmix_setup_caddy_t);
+    scd->nspace = function;
+    scd->keys = attrs;
+    scd->cbdata = PMIX_HOST_ATTRIBUTES;
+    scd->copied = true;
+    PMIX_THREADSHIFT(scd, process_reg);
+    PMIX_WAIT_THREAD(&scd->lock);
+    rc = scd->status;
+    PMIX_RELEASE(scd);
     return rc;
 }
 
@@ -316,8 +339,11 @@ static pmix_attr_init_t client_fns[] = {
 /*****    REGISTER CLIENT ATTRS    *****/
 static bool client_attrs_regd = false;
 
+/* this is executed by "pmix_init" prior to an event base
+ * being available, so we cannot threadshift it */
 PMIX_EXPORT pmix_status_t pmix_register_client_attrs(void)
 {
+    pmix_setup_caddy_t cd;
     size_t n;
     pmix_status_t rc = PMIX_SUCCESS;
 
@@ -326,13 +352,18 @@ PMIX_EXPORT pmix_status_t pmix_register_client_attrs(void)
     }
     client_attrs_regd = true;
 
+    PMIX_CONSTRUCT(&cd, pmix_setup_caddy_t);
+    cd.cbdata = PMIX_CLIENT_ATTRIBUTES;
     for (n = 0; 0 != strlen(client_fns[n].function); n++) {
-        rc = process_reg(PMIX_CLIENT_ATTRIBUTES, client_fns[n].function, client_fns[n].attrs);
+        cd.nspace = client_fns[n].function;
+        cd.keys = client_fns[n].attrs;
+        process_reg(0, 0, &cd);
+        rc = cd.status;
         if (PMIX_SUCCESS != rc) {
             break;
         }
     }
-
+    PMIX_DESTRUCT(&cd);
     return rc;
 }
 
@@ -428,8 +459,11 @@ static pmix_attr_init_t server_fns[] = {
 /*****    REGISTER SERVER ATTRS    *****/
 static bool server_attrs_regd = false;
 
+/* this is executed by "server_init" prior to an event base
+ * being available, so we cannot threadshift it */
 PMIX_EXPORT pmix_status_t pmix_register_server_attrs(void)
 {
+    pmix_setup_caddy_t cd;
     pmix_status_t rc = PMIX_SUCCESS;
     size_t n;
 
@@ -438,13 +472,19 @@ PMIX_EXPORT pmix_status_t pmix_register_server_attrs(void)
     }
     server_attrs_regd = true;
 
+    PMIX_CONSTRUCT(&cd, pmix_setup_caddy_t);
+    cd.cbdata = PMIX_SERVER_ATTRIBUTES;
     for (n = 0; 0 != strlen(server_fns[n].function); n++) {
-        rc = process_reg(PMIX_SERVER_ATTRIBUTES, server_fns[n].function, server_fns[n].attrs);
+        cd.nspace = server_fns[n].function;
+        cd.keys = server_fns[n].attrs;
+        process_reg(0, 0, &cd);
+        rc = cd.status;
         if (PMIX_SUCCESS != rc) {
             break;
         }
     }
 
+    PMIX_DESTRUCT(&cd);
     return rc;
 }
 
@@ -518,8 +558,11 @@ static pmix_attr_init_t tool_fns[]
 /*****    REGISTER TOOL ATTRS    *****/
 static bool tool_attrs_regd = false;
 
+/* this is executed by "tool_init" prior to an event base
+ * being available, so we cannot threadshift it */
 PMIX_EXPORT pmix_status_t pmix_register_tool_attrs(void)
 {
+    pmix_setup_caddy_t cd;
     pmix_status_t rc = PMIX_SUCCESS;
     size_t n;
 
@@ -528,13 +571,18 @@ PMIX_EXPORT pmix_status_t pmix_register_tool_attrs(void)
     }
     tool_attrs_regd = true;
 
+    PMIX_CONSTRUCT(&cd, pmix_setup_caddy_t);
+    cd.cbdata = PMIX_TOOL_ATTRIBUTES;
     for (n = 0; 0 != strlen(tool_fns[n].function); n++) {
-        rc = process_reg(PMIX_TOOL_ATTRIBUTES, tool_fns[n].function, tool_fns[n].attrs);
+        cd.nspace = tool_fns[n].function;
+        cd.keys = tool_fns[n].attrs;
+        process_reg(0, 0, &cd);
+        rc = cd.status;
         if (PMIX_SUCCESS != rc) {
             break;
         }
     }
-
+    PMIX_DESTRUCT(&cd);
     return rc;
 }
 
@@ -632,6 +680,7 @@ static void _get_fns(pmix_list_t *lst, char *key, pmix_list_t *attrs)
     }
 }
 
+// called from within an event
 PMIX_EXPORT void pmix_attrs_query_support(pmix_query_caddy_t *cd,
                                           pmix_query_t *query,
                                           pmix_list_t *unresolved)
