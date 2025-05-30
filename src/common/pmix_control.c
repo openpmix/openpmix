@@ -36,14 +36,11 @@
 
 static void relcbfunc(void *cbdata)
 {
-    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
+    pmix_cb_t *cd = (pmix_cb_t *) cbdata;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:job_ctrl release callback");
 
-    if (NULL != cd->info) {
-        PMIX_INFO_FREE(cd->info, cd->ninfo);
-    }
     PMIX_RELEASE(cd);
 }
 
@@ -52,7 +49,7 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
     pmix_status_t rc;
-    pmix_shift_caddy_t *results;
+    pmix_cb_t *results;
     int cnt;
     PMIX_HIDE_UNUSED_PARAMS(hdr);
 
@@ -71,7 +68,7 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         return;
     }
 
-    results = PMIX_NEW(pmix_shift_caddy_t);
+    results = PMIX_NEW(pmix_cb_t);
 
     /* unpack the status */
     cnt = 1;
@@ -93,6 +90,7 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
         goto complete;
     }
     if (0 < results->ninfo) {
+        results->infocopy = true;
         PMIX_INFO_CREATE(results->info, results->ninfo);
         cnt = results->ninfo;
         PMIX_BFROPS_UNPACK(rc, peer, buf, results->info, &cnt, PMIX_INFO);
@@ -122,6 +120,9 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
 
     cb->status = status;
     if (0 < ninfo) {
+        // we ignore the info that was provided as that data belongs
+        // to the original caller
+        cb->infocopy = true;
         PMIX_INFO_CREATE(cb->info, ninfo);
         cb->ninfo = ninfo;
         for (n = 0; n < ninfo; n++) {
@@ -131,7 +132,12 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
     if (NULL != release_fn) {
         release_fn(release_cbdata);
     }
-    PMIX_WAKEUP_THREAD(&cb->lock);
+    if (NULL == cb->cbfunc.infofn) {
+        PMIX_WAKEUP_THREAD(&cb->lock);
+    } else {
+        cb->cbfunc.infofn(cb->status, cb->info, cb->ninfo, cb->cbdata,
+                          relcbfunc, (void*)cb);
+    }
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t ntargets,
@@ -180,6 +186,23 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t n
     return rc;
 }
 
+static void _jctrlnb(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    rc = pmix_host_server.job_control(&pmix_globals.myid, cb->procs, cb->nprocs,
+                                      cb->info, cb->ninfo, acb, (void*)cb);
+    if (PMIX_SUCCESS != rc) {
+        if (NULL != cb->cbfunc.infofn) {
+            cb->cbfunc.infofn(rc, NULL, 0, cb->cbdata, relcbfunc, (void*)cb);
+        } else {
+            PMIX_RELEASE(cb);
+        }
+    }
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_t ntargets,
                                               const pmix_info_t directives[], size_t ndirs,
                                               pmix_info_cbfunc_t cbfunc, void *cbdata)
@@ -187,11 +210,13 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_JOB_CONTROL_CMD;
     pmix_status_t rc;
-    pmix_query_caddy_t *cb;
+    pmix_query_caddy_t *qcd;
+    pmix_cb_t *cb;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: job control called with %d directives",
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: job control called with %d directives",
                         (int) ndirs);
 
     if (pmix_globals.init_cntr <= 0) {
@@ -200,17 +225,26 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
     }
 
     /* if we are the server, then we just issue the request and
-     * return the response */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+     * return the response - must do it in our progress thread */
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.job_control) {
             /* nothing we can do */
             return PMIX_ERR_NOT_SUPPORTED;
         }
-        pmix_output_verbose(2, pmix_globals.debug_output, "pmix:job_control handed to RM");
-        rc = pmix_host_server.job_control(&pmix_globals.myid, targets, ntargets, directives, ndirs,
-                                          cbfunc, cbdata);
-        return rc;
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:job_control handed to RM");
+        cb = PMIX_NEW(pmix_cb_t);
+        cb->procs = (pmix_proc_t*)targets;
+        cb->nprocs = ntargets;
+        cb->info = (pmix_info_t*)directives;
+        cb->ninfo = ndirs;
+        cb->cbfunc.infofn = cbfunc;
+        cb->cbdata = cbdata;
+        PMIX_THREADSHIFT(cb, _jctrlnb);
+        return PMIX_SUCCESS;
     }
 
     /* we need to send, so check for connection */
@@ -268,15 +302,15 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = PMIX_NEW(pmix_query_caddy_t);
-    cb->cbfunc = cbfunc;
-    cb->cbdata = cbdata;
+    qcd = PMIX_NEW(pmix_query_caddy_t);
+    qcd->cbfunc = cbfunc;
+    qcd->cbdata = cbdata;
 
-    /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, query_cbfunc, (void *) cb);
+    /* threadshift the message into our event base to send to the server */
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, query_cbfunc, (void *) qcd);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
-        PMIX_RELEASE(cb);
+        PMIX_RELEASE(qcd);
     }
 
     return rc;
@@ -326,6 +360,24 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_
     return rc;
 }
 
+static void _mntrnb(int sd, short args, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    rc = pmix_host_server.monitor(&pmix_globals.myid, cb->info, cb->status,
+                                  cb->directives, cb->ndirs, cb->cbfunc.infofn,
+                                  cb->cbdata);
+    if (PMIX_SUCCESS != rc) {
+        if (NULL != cb->cbfunc.infofn) {
+            cb->cbfunc.infofn(rc, NULL, 0, cb->cbdata, relcbfunc, (void*)cb);
+        } else {
+            PMIX_RELEASE(cb);
+        }
+    }
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t error,
                                                   const pmix_info_t directives[], size_t ndirs,
                                                   pmix_info_cbfunc_t cbfunc, void *cbdata)
@@ -333,11 +385,13 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_MONITOR_CMD;
     pmix_status_t rc;
-    pmix_query_caddy_t *cb;
+    pmix_query_caddy_t *qcd;
+    pmix_cb_t *cb;
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: monitor called");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: monitor called");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
@@ -352,16 +406,26 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
 
     /* if we are the server, then we just issue the request and
      * return the response */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.monitor) {
             /* nothing we can do */
             return PMIX_ERR_NOT_SUPPORTED;
         }
-        pmix_output_verbose(2, pmix_globals.debug_output, "pmix:monitor handed to RM");
-        rc = pmix_host_server.monitor(&pmix_globals.myid, monitor, error, directives, ndirs, cbfunc,
-                                      cbdata);
-        return rc;
+        pmix_output_verbose(2, pmix_globals.debug_output,
+                            "pmix:monitor handed to RM");
+        cb = PMIX_NEW(pmix_cb_t);
+        cb->info = (pmix_info_t*)monitor;
+        cb->ninfo = 1;
+        cb->status = error;
+        cb->directives = (pmix_info_t*)directives;
+        cb->ndirs = ndirs;
+        cb->cbfunc.infofn = cbfunc;
+        cb->cbdata = cbdata;
+        PMIX_THREADSHIFT(cb, _mntrnb);
+        return PMIX_SUCCESS;
     }
 
     /* we need to send, so check for connection */
@@ -377,6 +441,7 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
         if (NULL == msg) {
             return PMIX_ERR_NOMEM;
         }
+        // threadshift to push msg into our event base for transmission
         PMIX_PTL_SEND_ONEWAY(rc, pmix_client_globals.myserver, msg, PMIX_PTL_TAG_HEARTBEAT);
         if (PMIX_SUCCESS != rc) {
             PMIX_RELEASE(msg);
@@ -429,15 +494,15 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
-    cb = PMIX_NEW(pmix_query_caddy_t);
-    cb->cbfunc = cbfunc;
-    cb->cbdata = cbdata;
+    qcd = PMIX_NEW(pmix_query_caddy_t);
+    qcd->cbfunc = cbfunc;
+    qcd->cbdata = cbdata;
 
-    /* push the message into our event base to send to the server */
-    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, query_cbfunc, (void *) cb);
+    /* threadshift to push the message into our event base to send to the server */
+    PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, query_cbfunc, (void *) qcd);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
-        PMIX_RELEASE(cb);
+        PMIX_RELEASE(qcd);
     }
 
     return rc;

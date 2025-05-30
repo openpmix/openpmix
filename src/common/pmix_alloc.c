@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -35,6 +35,35 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/include/pmix_globals.h"
 #include "src/server/pmix_server_ops.h"
+
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_alloc_directive_t directive;
+    pmix_info_t *info;
+    size_t ninfo;
+    pmix_info_t *results;
+    size_t nresults;
+    pmix_info_cbfunc_t cbfunc;
+    void *cbdata;
+} pmix_alloc_caddy_t;
+static void acon(pmix_alloc_caddy_t *p)
+{
+    PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->results = NULL;
+    p->nresults = 0;
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
+}
+static void ades(pmix_alloc_caddy_t *p)
+{
+    PMIX_DESTRUCT_LOCK(&p->lock);
+}
+static PMIX_CLASS_INSTANCE(pmix_alloc_caddy_t,
+                           pmix_object_t,
+                           acon, ades);
+
 
 static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                 pmix_release_cbfunc_t release_fn, void *release_cbdata)
@@ -192,9 +221,50 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request(pmix_alloc_directive_t directi
     }
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:allocate completed");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:allocate completed");
 
     return rc;
+}
+
+static void myrel(void *cbdata)
+{
+    pmix_alloc_caddy_t *acd = (pmix_alloc_caddy_t*)cbdata;
+    PMIX_RELEASE(acd);
+}
+
+static void mycbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                     pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_alloc_caddy_t *acd = (pmix_alloc_caddy_t*)cbdata;
+
+    if (NULL != acd->cbfunc) {
+        acd->cbfunc(status, info, ninfo, acd->cbdata, myrel, acd);
+    } else {
+        PMIX_RELEASE(acd);
+    }
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+}
+
+static void _allocreq(int sd, short args, void *cbdata)
+{
+    pmix_alloc_caddy_t *acd = (pmix_alloc_caddy_t*)cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    rc = pmix_host_server.allocate(&pmix_globals.myid, acd->directive,
+                                   acd->info, acd->ninfo, mycbfunc, acd);
+    if (PMIX_SUCCESS != rc) {
+        // must not be supported - cannot return OPERATION_SUCCEEDED as there
+        // is no way to return the results
+        if (NULL != acd->cbfunc) {
+            acd->cbfunc(rc, NULL, 0, acd->cbdata, myrel, acd);
+        } else {
+            PMIX_RELEASE(acd);
+        }
+    }
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t directive,
@@ -205,8 +275,10 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
     pmix_cmd_t cmd = PMIX_ALLOC_CMD;
     pmix_status_t rc;
     pmix_query_caddy_t *cb;
+    pmix_alloc_caddy_t *acd;
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: allocate called");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: allocate called");
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
@@ -242,8 +314,15 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:allocate handed to host");
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        rc = pmix_host_server.allocate(&pmix_globals.myid, directive, info, ninfo, cbfunc, cbdata);
-        return rc;
+        // need to be in our thread context to perform the upcall
+        acd = PMIX_NEW(pmix_alloc_caddy_t);
+        acd->directive = directive;
+        acd->info = info;
+        acd->ninfo = ninfo;
+        acd->cbfunc = cbfunc;
+        acd->cbdata = cbdata;
+        PMIX_THREADSHIFT(acd, _allocreq);
+        return PMIX_SUCCESS;
     }
 
 sendit:
@@ -297,7 +376,7 @@ sendit:
     cb->cbfunc = cbfunc;
     cb->cbdata = cbdata;
 
-    /* push the message into our event base to send to the server */
+    /* threadshift to push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, alloc_cbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);
@@ -307,6 +386,27 @@ sendit:
     return rc;
 }
 
+
+typedef struct {
+    pmix_object_t super;
+    pmix_event_t ev;
+    pmix_resource_block_directive_t directive;
+    char *block;
+    const pmix_resource_unit_t *units;
+    size_t nunits;
+    const pmix_info_t *info;
+    size_t ninfo;
+    pmix_op_cbfunc_t cbfunc;
+    void *cbdata;
+} pmix_rb_caddy_t;
+static void rbcon(pmix_rb_caddy_t *p)
+{
+    p->cbfunc = NULL;
+    p->cbdata = NULL;
+}
+static PMIX_CLASS_INSTANCE(pmix_rb_caddy_t,
+                           pmix_object_t,
+                           rbcon, NULL);
 
 static void blkcbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                       pmix_buffer_t *buf, void *cbdata)
@@ -391,6 +491,23 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t di
     return rc;
 }
 
+static void _rbreq(int sd, short args, void *cbdata)
+{
+    pmix_rb_caddy_t *cd = (pmix_rb_caddy_t*)cbdata;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    rc = pmix_host_server.resource_block(&pmix_globals.myid, cd->directive, cd->block,
+                                         cd->units, cd->nunits, cd->info, cd->ninfo,
+                                         cd->cbfunc, cd->cbdata);
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    }
+    if (NULL != cd->cbfunc) {
+        cd->cbfunc(rc, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
+}
 
 PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t directive,
                                                  char *block,
@@ -402,6 +519,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
     pmix_cmd_t cmd = PMIX_RESBLK_CMD;
     pmix_status_t rc;
     pmix_shift_caddy_t *cb;
+    pmix_rb_caddy_t *cd;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: allocate called");
@@ -440,9 +558,17 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:resource_block handed to host");
         PMIX_RELEASE_THREAD(&pmix_global_lock);
-        rc = pmix_host_server.resource_block(&pmix_globals.myid, directive, block,
-                                             units, nunits, info, ninfo, cbfunc, cbdata);
-        return rc;
+        cd = PMIX_NEW(pmix_rb_caddy_t);
+        cd->directive = directive;
+        cd->block = block;
+        cd->units = units;
+        cd->nunits = nunits;
+        cd->info = info;
+        cd->ninfo = ninfo;
+        cd->cbfunc = cbfunc;
+        cd->cbdata = cbdata;
+        PMIX_THREADSHIFT(cd, _rbreq);
+        return PMIX_SUCCESS;
     }
 
 sendit:
@@ -519,7 +645,7 @@ sendit:
     cb->cbfunc.opcbfn = cbfunc;
     cb->cbdata = cbdata;
 
-    /* push the message into our event base to send to the server */
+    /* threadshift to push the message into our event base to send to the server */
     PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, blkcbfunc, (void *) cb);
     if (PMIX_SUCCESS != rc) {
         PMIX_RELEASE(msg);

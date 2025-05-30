@@ -687,6 +687,8 @@ typedef struct {
     size_t nprocs;
     pmix_info_t *info;
     size_t ninfo;
+    pmix_info_t *directives;
+    size_t ndirs;
     pmix_device_distance_t *dist;
     bool infocopy;
     size_t nvals;
