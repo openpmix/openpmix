@@ -964,8 +964,8 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
     } else {
         cd->evregcbfn = mycbfn;
         cd->cbdata = cd;
-        PMIX_RETAIN(cd);
-        reg_event_hdlr(0, 0, (void *) cd);
+        PMIX_RETAIN(cd); // so reg_event_hdlr doesn't wind up releasing it
+        PMIX_THREADSHIFT(cd, reg_event_hdlr);
         PMIX_WAIT_THREAD(&cd->lock);
         rc = cd->status;
         PMIX_RELEASE(cd);
@@ -1145,7 +1145,7 @@ static void dereg_event_hdlr(int sd, short args, void *cbdata)
     pmix_deregister_event_hdlr(cd->ref, msg);
 
     if (NULL != msg) {
-        /* send to the server */
+        /* threadshift to send to the server */
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, NULL, NULL);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);

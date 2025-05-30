@@ -435,6 +435,8 @@ static void cbcon(pmix_cb_t *p)
     p->nprocs = 0;
     p->info = NULL;
     p->ninfo = 0;
+    p->directives = NULL;
+    p->ndirs = 0;
     p->dist = NULL;
     p->infocopy = false;
     p->nvals = 0;
