@@ -165,10 +165,16 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_bu
     pmix_peer_t *peer;
     pmix_shift_caddy_t scd;
 
+    // if the target is a member of my own nspace, then use our own peer
     if (NULL == target ||
         PMIx_Check_nspace(target->nspace, pmix_globals.myid.nspace)) {
-        // use our own peer
         peer = pmix_globals.mypeer;
+        goto execute;
+    }
+    // if the target is my server, use it
+    if (NULL != pmix_client_globals.myserver &&
+        PMIx_Check_nspace(target->nspace, pmix_client_globals.myserver->nptr->nspace)) {
+        peer = pmix_client_globals.myserver;
         goto execute;
     }
 
@@ -192,6 +198,14 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_bu
         // if I am a client or tool, then we can only talk to the
         // server, so use that peer
         peer = pmix_client_globals.myserver;
+        if (NULL == peer) {
+            // we don't have a server
+            return PMIX_ERR_NOT_FOUND;
+        }
+        if (!PMIx_Check_nspace(target->nspace, peer->nptr->nspace)) {
+            // trying to talk to someone we don't know
+            return PMIX_ERR_NOT_FOUND;
+        }
     }
 
 execute:
@@ -220,10 +234,16 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *target, pmix_data_
     pmix_peer_t *peer;
     pmix_shift_caddy_t scd;
 
+    // if the target is a member of my own nspace, then use our own peer
     if (NULL == target ||
         PMIx_Check_nspace(target->nspace, pmix_globals.myid.nspace)) {
-        // use our own peer
         peer = pmix_globals.mypeer;
+        goto execute;
+    }
+    // if the target is my server, use it
+    if (NULL != pmix_client_globals.myserver &&
+        PMIx_Check_nspace(target->nspace, pmix_client_globals.myserver->nptr->nspace)) {
+        peer = pmix_client_globals.myserver;
         goto execute;
     }
 
