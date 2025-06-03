@@ -12,7 +12,7 @@
  * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -68,109 +68,93 @@
         (b)->bytes_used = 0;                          \
     } while (0)
 
-static pmix_peer_t *find_peer(const pmix_proc_t *proc)
+static void _findpeer(int sd, short args, void *cbdata)
 {
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
     pmix_peer_t *peer;
-    pmix_proc_t wildcard;
-    pmix_value_t *value;
+    pmix_proc_t wildcard, *proc;
+    pmix_info_t optional;
+    pmix_cb_t cb;
+    pmix_kval_t *kv;
     int i;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    if (NULL == proc) {
-        return pmix_globals.mypeer;
-    }
+    proc = scd->proc;
 
-    /* if the target is someone in my nspace, then use my own peer */
-    if (0 == strncmp(proc->nspace, pmix_globals.myid.nspace, PMIX_MAX_NSLEN)) {
-        return pmix_globals.mypeer;
-    }
-
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-        /* see if we know this proc */
-        for (i = 0; i < pmix_server_globals.clients.size; i++) {
-            if (NULL
-                == (peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients,
-                                                                       i))) {
-                continue;
-            }
-            if (0 == strncmp(proc->nspace, peer->nptr->nspace, PMIX_MAX_NSLEN)) {
-                return peer;
-            }
-        }
-        /* didn't find it, so try to get the library version of the target
-         * from the host - the result will be cached, so we will only have
-         * to retrieve it once */
-        pmix_strncpy(wildcard.nspace, proc->nspace, PMIX_MAX_NSLEN);
-        wildcard.rank = PMIX_RANK_WILDCARD;
-        if (PMIX_SUCCESS != PMIx_Get(&wildcard, PMIX_BFROPS_MODULE, NULL, 0, &value)) {
-            /* couldn't get it - nothing we can do */
-            return NULL;
-        }
-        /* setup a peer for this nspace */
-        peer = PMIX_NEW(pmix_peer_t);
+    /* see if we know this proc */
+    for (i = 0; i < pmix_server_globals.clients.size; i++) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_server_globals.clients, i);
         if (NULL == peer) {
-            PMIX_RELEASE(value);
-            return NULL;
+            continue;
         }
-        peer->nptr = PMIX_NEW(pmix_namespace_t);
-        if (NULL == peer->nptr) {
-            PMIX_RELEASE(peer);
-            PMIX_RELEASE(value);
-            return NULL;
+        if (PMIx_Check_nspace(proc->nspace, peer->nptr->nspace)) {
+            scd->status = PMIX_SUCCESS;
+            scd->peer = peer;
+            PMIX_WAKEUP_THREAD(&scd->lock);
+            return;
         }
-        peer->nptr->nspace = strdup(proc->nspace);
-        /* assign a module to it based on the returned version */
-        peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(value->data.string);
-        PMIX_RELEASE(value);
-        if (NULL == peer->nptr->compat.bfrops) {
-            PMIX_RELEASE(peer);
-            return NULL;
-        }
-        /* cache the peer object */
-        pmix_pointer_array_add(&pmix_server_globals.clients, peer);
-        return peer;
     }
 
-    // we are a client or tool
-
-    /* If the target is for the server, then
-     * pack it using that peer. */
-    if (0
-        == strncmp(proc->nspace, pmix_client_globals.myserver->info->pname.nspace,
-                   PMIX_MAX_NSLEN)) {
-        return pmix_client_globals.myserver;
+    /* didn't find it, so try to get the library version of the target
+     * from the host - the result will be cached, so we will only have
+     * to retrieve it once */
+    PMIX_LOAD_PROCID(&wildcard, proc->nspace, PMIX_RANK_WILDCARD);
+    PMIX_INFO_LOAD(&optional, PMIX_OPTIONAL, NULL, PMIX_BOOL);
+    PMIX_CONSTRUCT(&cb, pmix_cb_t);
+    cb.proc = &wildcard;
+    cb.key = PMIX_BFROPS_MODULE;
+    cb.info = &optional;
+    cb.ninfo = 1;
+    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
+        // couldn't be found
+        scd->status = PMIX_ERR_NOT_FOUND;
+        PMIX_DESTRUCT(&cb);
+        PMIX_WAKEUP_THREAD(&scd->lock);
+        return;
     }
-
-    /* try to get the library version of this peer - the result will be
-     * cached, so we will only have to retrieve it once */
-    pmix_strncpy(wildcard.nspace, proc->nspace, PMIX_MAX_NSLEN);
-    wildcard.rank = PMIX_RANK_WILDCARD;
-    if (PMIX_SUCCESS != PMIx_Get(&wildcard, PMIX_BFROPS_MODULE, NULL, 0, &value)) {
-        /* couldn't get it - nothing we can do */
-        return NULL;
+    kv = (pmix_kval_t*)pmix_list_remove_first(&cb.kvs);
+    if (NULL == kv) {  // should never be NULL
+        scd->status = PMIX_ERR_NOT_FOUND;
+        PMIX_DESTRUCT(&cb);
+        PMIX_WAKEUP_THREAD(&scd->lock);
+        return;
     }
+    PMIX_DESTRUCT(&cb);
+
     /* setup a peer for this nspace */
     peer = PMIX_NEW(pmix_peer_t);
     if (NULL == peer) {
-        PMIX_RELEASE(value);
-        return NULL;
+        PMIX_RELEASE(kv);
+        scd->status = PMIX_ERR_NOMEM;
+        PMIX_WAKEUP_THREAD(&scd->lock);
+        return;
     }
     peer->nptr = PMIX_NEW(pmix_namespace_t);
     if (NULL == peer->nptr) {
         PMIX_RELEASE(peer);
-        PMIX_RELEASE(value);
-        return NULL;
+        PMIX_RELEASE(kv);
+        scd->status = PMIX_ERR_NOMEM;
+        PMIX_WAKEUP_THREAD(&scd->lock);
+        return;
     }
     peer->nptr->nspace = strdup(proc->nspace);
     /* assign a module to it based on the returned version */
-    peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(value->data.string);
-    PMIX_RELEASE(value);
+    peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(kv->value->data.string);
+    PMIX_RELEASE(kv);
     if (NULL == peer->nptr->compat.bfrops) {
+        scd->status = PMIX_ERR_NOMEM;
         PMIX_RELEASE(peer);
-        return NULL;
+        PMIX_WAKEUP_THREAD(&scd->lock);
+        return;
     }
-    /* need to cache the peer someplace so we can clean it
-     * up later */
-    return peer;
+    /* cache the peer object */
+    pmix_pointer_array_add(&pmix_server_globals.clients, peer);
+    scd->status = PMIX_SUCCESS;
+    scd->peer = peer;
+    PMIX_WAKEUP_THREAD(&scd->lock);
+    return;
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_buffer_t *buffer,
@@ -179,11 +163,38 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_bu
     pmix_status_t rc;
     pmix_buffer_t buf;
     pmix_peer_t *peer;
+    pmix_shift_caddy_t scd;
 
-    if (NULL == (peer = find_peer(target))) {
-        return PMIX_ERR_NOT_FOUND;
+    if (NULL == target ||
+        PMIx_Check_nspace(target->nspace, pmix_globals.myid.nspace)) {
+        // use our own peer
+        peer = pmix_globals.mypeer;
+        goto execute;
     }
 
+    // if I am a server, then we need to look for the peer
+    // corresponding to this target
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        // must threadshift this request as it accesses
+        // global data
+        PMIX_CONSTRUCT(&scd, pmix_shift_caddy_t);
+        scd.proc = (pmix_proc_t*)target;
+        PMIX_THREADSHIFT(&scd, _findpeer);
+        PMIX_WAIT_THREAD(&scd.lock);
+        rc = scd.status;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&scd);
+            return rc;
+        }
+        peer = scd.peer;
+        PMIX_DESTRUCT(&scd);
+    } else {
+        // if I am a client or tool, then we can only talk to the
+        // server, so use that peer
+        peer = pmix_client_globals.myserver;
+    }
+
+execute:
     /* setup the host */
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
 
@@ -200,18 +211,45 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_bu
     return rc;
 }
 
-PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *source, pmix_data_buffer_t *buffer,
+PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *target, pmix_data_buffer_t *buffer,
                                            void *dest, int32_t *max_num_values,
                                            pmix_data_type_t type)
 {
     pmix_status_t rc;
     pmix_buffer_t buf;
     pmix_peer_t *peer;
+    pmix_shift_caddy_t scd;
 
-    if (NULL == (peer = find_peer(source))) {
-        return PMIX_ERR_NOT_FOUND;
+    if (NULL == target ||
+        PMIx_Check_nspace(target->nspace, pmix_globals.myid.nspace)) {
+        // use our own peer
+        peer = pmix_globals.mypeer;
+        goto execute;
     }
 
+    // if I am a server, then we need to look for the peer
+    // corresponding to this target
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        // must threadshift this request as it accesses
+        // global data
+        PMIX_CONSTRUCT(&scd, pmix_shift_caddy_t);
+        scd.proc = (pmix_proc_t*)target;
+        PMIX_THREADSHIFT(&scd, _findpeer);
+        PMIX_WAIT_THREAD(&scd.lock);
+        rc = scd.status;
+        if (PMIX_SUCCESS != rc) {
+            PMIX_DESTRUCT(&scd);
+            return rc;
+        }
+        peer = scd.peer;
+        PMIX_DESTRUCT(&scd);
+    } else {
+        // if I am a client or tool, then we can only talk to the
+        // server, so use that peer
+        peer = pmix_client_globals.myserver;
+    }
+
+execute:
     /* setup the host */
     PMIX_CONSTRUCT(&buf, pmix_buffer_t);
 
