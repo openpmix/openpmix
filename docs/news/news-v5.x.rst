@@ -4,6 +4,15 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.9 -- TBD
+------------
+Detailed changes include:
+ - PR #: Multiple commits
+    - Check for pthread_np.h header
+    - Update VERSION and NEWS
+ - PR #3604: Update xversion CI
+
+
 5.0.8 -- 10 May 2025
 --------------------
 Detailed changes include:
