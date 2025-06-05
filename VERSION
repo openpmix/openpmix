@@ -15,7 +15,7 @@
 # <major>.<minor>.<release>.
 
 major=6
-minor=0
+minor=1
 release=0
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
@@ -35,7 +35,7 @@ automake_min_version=1.13.4
 autoconf_min_version=2.69.0
 libtool_min_version=2.4.2
 flex_min_version=2.5.4
-python_min_version=3.7
+python_min_version=3.6
 
 # PMIx Standard Compliance Level
 # The major and minor numbers indicate the version
@@ -120,7 +120,7 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=20:0:18
+libpmix_so_version=25:0:23
 
 # "Common" components install standalone libraries that are run-time
 # # linked by one or more components.  So they need to be versioned as
