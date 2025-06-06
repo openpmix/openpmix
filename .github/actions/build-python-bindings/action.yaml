@@ -44,6 +44,10 @@ runs:
         pip install -r bindings/python/requirements.txt
       shell: bash
 
+    - name: Display Cython version
+      run: cython --version
+      shell: bash
+
     - name: Build OpenPMIx
       run: |
         ./autogen.pl
