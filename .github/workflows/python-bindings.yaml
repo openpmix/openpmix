@@ -1,0 +1,42 @@
+#-----------------------------------------------------------------
+# File: python-bindings.yaml
+#
+# Descr: Tests for PMIx Python bindings across different python versions.
+#        Uses common actions to reduce repetition in this file.
+#
+# See also: .github/actions/build-python-bindings/action.yaml)
+#-----------------------------------------------------------------
+name: OpenPMIx-bindings Python Versions
+
+# Run only on pull-requests -or- via manual 'Run workflow' option.
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Add additional Python versions to test below:
+          # Each item should include 'name' and 'python-version'
+          # (Note: Make sure to quote versions to avoid 3.10 => 3.1)
+          - name: "CPython 3.9"
+            python-version: "3.9"
+          - name: "CPython 3.10"
+            python-version: "3.10"
+          - name: "CPython 3.11"
+            python-version: "3.11"
+          - name: "CPython 3.12"
+            python-version: "3.12"
+          - name: "CPython 3.13"
+            python-version: "3.13"
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/build-python-bindings
+        with:
+          python-version: ${{ matrix.python-version }}
+
