@@ -865,7 +865,10 @@ def pmix_bool_convert(f):
 
     return int_bool
 
-pmix_int_types = (int, long)
+# Tuple of integer types.
+#  Python 2.x distinguished int/long, but in
+#  Python 3.x dropped long and just uses int or width specific variants.
+pmix_int_types = (int,)
 
 # provide a safe way to copy a Python nspace into
 # the pmix_nspace_t structure that guarantees the
