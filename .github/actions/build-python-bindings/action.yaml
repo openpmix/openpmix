@@ -1,0 +1,58 @@
+#-----------------------------------------------------------------
+# File: build-python-bindings/action.yaml
+#
+# Descr: Actions file used by the workflow CI for reusable items
+#        performed across the different python-versions tested.
+#
+# See also: .github/workflows/python-bindings.yaml
+#-----------------------------------------------------------------
+name: Build PMIx Python Bindings
+description: Configure, build, and install OpenPMIx with Python bindings
+
+inputs:
+  python-version:
+    description: Python version to use
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev
+      shell: bash
+
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        clean: false
+
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Display Python version
+      run: python -c "import sys; print(sys.version)"
+      shell: bash
+
+    - name: Install python dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -r bindings/python/requirements.txt
+      shell: bash
+
+    - name: Display Cython version
+      run: cython --version
+      shell: bash
+
+    - name: Build OpenPMIx
+      run: |
+        ./autogen.pl
+        ./configure --enable-python-bindings --prefix=$RUNNER_TEMP/pmixinstall
+        make -j $(nproc)
+        make install
+      shell: bash
+
