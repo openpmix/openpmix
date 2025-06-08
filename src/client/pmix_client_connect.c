@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -273,9 +273,19 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
             cb2.copy = false;
             PMIX_GDS_FETCH_KV(rc, pmix_client_globals.myserver, &cb2);
             if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&cb2);
-                goto moveon;
+                if (!PMIX_GDS_CHECK_COMPONENT(pmix_client_globals.myserver, "hash")) {
+                    /* check the data in my hash module */
+                    PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        PMIX_DESTRUCT(&cb2);
+                        goto moveon;
+                    }
+                } else {
+                    PMIX_ERROR_LOG(rc);
+                    PMIX_DESTRUCT(&cb2);
+                    goto moveon;
+                }
             }
             if (0 < pmix_list_get_size(&cb2.kvs)) {
                 // pack to send it along
