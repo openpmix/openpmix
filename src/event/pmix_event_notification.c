@@ -39,8 +39,10 @@ static void _ntfy_done(pmix_status_t status, void *cbdata)
 
     if (NULL != scd->cbfunc.opcbfn) {
         scd->cbfunc.opcbfn(status, scd->cbdata);
+        PMIX_RELEASE(scd);
+    } else {
+        PMIX_WAKEUP_THREAD(&scd->lock);
     }
-    PMIX_RELEASE(scd);
 }
 
 static void _notify_event(int sd, short args, void *cbdata)
@@ -102,6 +104,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
                                             size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_status_t rc;
 
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
@@ -116,6 +119,12 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
     scd->cbfunc.opcbfn = cbfunc;
     scd->cbdata = cbdata;
     PMIX_THREADSHIFT(scd, _notify_event);
+    if (NULL == cbfunc) {
+        PMIX_WAIT_THREAD(&scd->lock);
+        rc = scd->status;
+        PMIX_RELEASE(scd);
+        return rc;
+    }
 
     return PMIX_SUCCESS;
 }
