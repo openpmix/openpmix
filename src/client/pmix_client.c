@@ -788,6 +788,13 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         /* set our server ID to be ourselves */
         pmix_client_globals.myserver->info->pname.nspace = strdup(pmix_globals.myid.nspace);
         pmix_client_globals.myserver->info->pname.rank = pmix_globals.myid.rank;
+        pmix_client_globals.myserver->nptr->nspace = strdup(pmix_globals.myid.nspace);
+        pmix_client_globals.myserver->info->uid = pmix_globals.uid;
+        pmix_client_globals.myserver->info->gid = pmix_globals.gid;
+        // set the compat entries to the same as mine
+        memcpy(&pmix_client_globals.myserver->nptr->compat,
+               &pmix_globals.mypeer->nptr->compat,
+               sizeof(pmix_personality_t));
         /* mark that the server is unreachable */
         rc = PMIX_ERR_UNREACH;
     } else if (PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
