@@ -79,21 +79,30 @@ static pmix_event_t stdinsig, parentdied;
 static pmix_iof_read_event_t stdinev;
 static pmix_proc_t myparent;
 
-static void pdiedfn(int sd, short args, void *cbdata)
+static void _pdiedcb(pmix_status_t status, void *cbdata)
 {
-    pmix_info_t info[2];
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+    PMIX_RELEASE(cb);
+}
+
+static void pdiedfn(int fd, short flags, void *arg)
+{
     pmix_proc_t keepalive;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args, cbdata);
+    pmix_cb_t *cb;
+    PMIX_HIDE_UNUSED_PARAMS(fd, flags, arg);
 
     PMIX_LOAD_PROCID(&keepalive, "PMIX_KEEPALIVE_PIPE", PMIX_RANK_UNDEF);
 
-    PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-    PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &keepalive, PMIX_PROC);
-
     /* generate a job-terminated event */
+    cb = PMIX_NEW(pmix_cb_t);
+    cb->ninfo = 2;
+    PMIX_INFO_CREATE(cb->info, cb->ninfo);
+    PMIX_INFO_LOAD(&cb->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+    PMIX_INFO_LOAD(&cb->info[1], PMIX_EVENT_AFFECTED_PROC, &keepalive, PMIX_PROC);
     PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid,
-                      PMIX_RANGE_PROC_LOCAL, info, 2,
-                      NULL, NULL);
+                      PMIX_RANGE_PROC_LOCAL, cb->info, cb->ninfo,
+                      _pdiedcb, (void*)cb);
 }
 
 static void _notify_complete(pmix_status_t status, void *cbdata)
