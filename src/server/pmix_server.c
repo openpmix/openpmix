@@ -147,6 +147,7 @@ static void pdiedfn(int fd, short flags, void *arg)
     PMIX_INFO_CREATE(cb->info, cb->ninfo);
     PMIX_INFO_LOAD(&cb->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
     PMIX_INFO_LOAD(&cb->info[1], PMIX_EVENT_AFFECTED_PROC, &keepalive, PMIX_PROC);
+    cb->infocopy = true; // ensure cleanup
     PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid,
                       PMIX_RANGE_PROC_LOCAL, cb->info, cb->ninfo,
                       _pdiedcb, (void*)cb);
