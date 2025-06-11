@@ -144,10 +144,11 @@ API, and are *required* to include the
 ``PMIX_GROUP_BOOTSTRAP`` attribute in their array of ``pmix_info_t``
 directives, with the value in that attribute set to equal the number
 of leaders in the group construct operation. They may also provide the
-``PMIX_ADD_MEMBERS`` attribute with an array of process IDs that are to
+``PMIX_GROUP_ADD_MEMBERS`` attribute with an array of process IDs that are to
 belong to the final group - each of those processes will also call the group
 construct, but with a ``NULL`` process ID to indicate they are joining
-as "add members" and not leaders.
+as "add members" and not leaders. Construction will complete once all
+leaders and "add members" have participated.
 
 An example of the bootstrap method can be seen in the
 :ref:`group_bootstrap.c <group-bootstrap-example-label>` example taken from the PMIx library.
