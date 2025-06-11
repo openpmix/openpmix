@@ -1151,10 +1151,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_GROUP_ADD_MEMBERS              "pmix.grp.add"          // (pmix_data_array_t*) Array of pmix_proc_t identifying procs that are not
                                                                     //        included in the membership specified in the procs array passed to
                                                                     //        the PMIx_Group_construct[_nb] call, but are to be included in the
-                                                                    //        final group. The identified procs will be sent an invitation to
-                                                                    //        join the group during the construction procedure. This is used when
-                                                                    //        some members of the proposed group do not know the full membership
-                                                                    //        and therefore cannot include all members in the call to construct.
+                                                                    //        final group. See PMIX_GROUP_BOOTSTRAP for description of this operation.
 #define PMIX_GROUP_BOOTSTRAP                "pmix.grp.btstrp"       // (size_t) Group construct call will not include all members as individual
                                                                     //        participants don't know the entire list. The provided number indicates
                                                                     //        the number of procs that will start the construction. Additional
