@@ -48,7 +48,7 @@ jobs:
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
          prte --daemonize --no-ready-msg
-         cd prrte/master/examples
+         cd prrte/master/examples/debugger
          ./direct
          pterm
       if:   ${{ true }}
