@@ -1,0 +1,54 @@
+name: PRRTE
+
+on: [pull_request]
+
+jobs:
+  dvm:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends software-properties-common libhwloc-dev libevent-dev
+    - name: Git clone OpenPMIx
+      uses: actions/checkout@v3
+      with:
+            submodules: recursive
+    - name: Build OpenPMIx
+      run: |
+        ./autogen.pl
+        ./configure --prefix=$RUNNER_TEMP/pmixinstall --enable-devel-check
+        make -j
+        make install
+    - name: Git clone PRRTE
+      uses: actions/checkout@v3
+      with:
+            submodules: recursive
+            repository: openpmix/prrte
+            path: prrte/master
+            ref: master
+    - name: Build PRRTE
+      run: |
+        cd prrte/master
+        ./autogen.pl
+        ./configure --prefix=$RUNNER_TEMP/prteinstall --with-pmix=$RUNNER_TEMP/pmixinstall
+        make -j
+        make install
+        cd examples
+        make
+    - name: Tweak PRRTE
+      run:  |
+         # Tweak PRRTE
+         mca_params="$HOME/.prte/mca-params.conf"
+         mkdir -p "$(dirname "$mca_params")"
+         echo rmaps_default_mapping_policy = :oversubscribe >> "$mca_params"
+    - name: Run simple test
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
+         prte --daemonize --no-ready-msg
+         cd prrte/master/examples
+         ./direct
+         pterm
+      if:   ${{ true }}
+      timeout-minutes: 5
