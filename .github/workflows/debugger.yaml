@@ -3,7 +3,7 @@ name: PRRTE
 on: [pull_request]
 
 jobs:
-  dvm:
+  debugger:
     runs-on: ubuntu-latest
     steps:
     - name: Install dependencies
@@ -35,6 +35,7 @@ jobs:
         make -j
         make install
         cd examples
+        export PATH=$RUNNER_TEMP/prteinstall/bin:$RUNNER_TEMP/pmixinstall/bin:${PATH}
         make
     - name: Tweak PRRTE
       run:  |
@@ -42,7 +43,7 @@ jobs:
          mca_params="$HOME/.prte/mca-params.conf"
          mkdir -p "$(dirname "$mca_params")"
          echo rmaps_default_mapping_policy = :oversubscribe >> "$mca_params"
-    - name: Run simple test
+    - name: Run direct debugger
       run: |
          export PATH=$RUNNER_TEMP/prteinstall/bin:${PATH}
          export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:${LD_LIBRARY_PATH}
