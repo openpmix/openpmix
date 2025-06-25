@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -225,6 +225,7 @@ PMIX_EXPORT bool PMIx_Check_procid(const pmix_proc_t *a,
                                    const pmix_proc_t *b);
 PMIX_EXPORT bool PMIx_Check_rank(pmix_rank_t a,
                                  pmix_rank_t b);
+PMIX_EXPORT bool PMIx_Rank_valid(pmix_rank_t a);
 PMIX_EXPORT bool PMIx_Procid_invalid(const pmix_proc_t *p);
 
 PMIX_EXPORT int PMIx_Argv_count(char **a);
@@ -260,7 +261,9 @@ PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
                                           const pmix_value_t *src);
 PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
                                                 pmix_value_t *v2);
-
+PMIX_EXPORT pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
+                                                void *dest,
+                                                pmix_data_type_t type);
 
 PMIX_EXPORT void PMIx_Info_construct(pmix_info_t *p);
 PMIX_EXPORT void PMIx_Info_destruct(pmix_info_t *p);
@@ -412,7 +415,13 @@ PMIX_EXPORT void PMIx_Pdata_construct(pmix_pdata_t *p);
 PMIX_EXPORT void PMIx_Pdata_destruct(pmix_pdata_t *p);
 PMIX_EXPORT pmix_pdata_t* PMIx_Pdata_create(size_t n);
 PMIX_EXPORT void PMIx_Pdata_free(pmix_pdata_t *p, size_t n);
-
+PMIX_EXPORT void PMIx_Pdata_load(pmix_pdata_t *dest,
+                                 const pmix_proc_t *p,
+                                 const char *key,
+                                 const void *data,
+                                 pmix_data_type_t type);
+PMIX_EXPORT void PMIx_Pdata_xfer(pmix_pdata_t *dest,
+                                 pmix_pdata_t *src);
 
 PMIX_EXPORT void PMIx_App_construct(pmix_app_t *p);
 PMIX_EXPORT void PMIx_App_destruct(pmix_app_t *p);
@@ -443,7 +452,7 @@ PMIX_EXPORT void PMIx_Regattr_xfer(pmix_regattr_t *dest,
                                    const pmix_regattr_t *src);
 
 
-PMIX_EXPORT void PMIx_Fabric_construct(pmix_regattr_t *p);
+PMIX_EXPORT void PMIx_Fabric_construct(pmix_fabric_t *p);
 
 
 PMIX_EXPORT void PMIx_Data_array_init(pmix_data_array_t *p,
@@ -609,6 +618,54 @@ PMIX_EXPORT size_t PMIx_Info_list_get_size(void *ptr);
 #define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
     (r) = PMIx_Value_xfer((v), (s))
 
+#define PMIX_VALUE_GET_NUMBER(r, m, n, t)                                   \
+do {                                                                        \
+        char* _s = #t ;                                                     \
+        (r) = PMIX_SUCCESS;                                                 \
+        if (0 == strcmp(_s, "size_t")) {                                    \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_SIZE);       \
+        } else if (0 == strcmp(_s, "int")) {                                \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT);        \
+        } else if (0 == strcmp(_s, "int8_t")) {                             \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT8);       \
+        } else if (0 == strcmp(_s, "int16_t")) {                            \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT16);      \
+        } else if (0 == strcmp(_s, "int32_t")) {                            \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT32);      \
+        } else if (0 == strcmp(_s, "int64_t")) {                            \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT64);      \
+        } else if (0 == strcmp(_s, "uint")) {                               \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT);       \
+        } else if (0 == strcmp(_s, "unsigned int")) {                       \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT);       \
+        } else if (0 == strcmp(_s, "uint8_t")) {                            \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT8);      \
+        } else if (0 == strcmp(_s, "uint16_t")) {                           \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT16);     \
+        } else if (0 == strcmp(_s, "uint32_t")) {                           \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT32);     \
+        } else if (0 == strcmp(_s, "uint64_t")) {                           \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT64);     \
+        } else if (0 == strcmp(_s, "float")) {                              \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_FLOAT);      \
+        } else if (0 == strcmp(_s, "double")) {                             \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_DOUBLE);     \
+        } else if (0 == strcmp(_s, "pid_t")) {                              \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_PID);        \
+        } else if (0 == strcmp(_s, "pmix_rank_t")) {                        \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_PROC_RANK);  \
+        } else if (0 == strcmp(_s, "pmix_status_t")) {                      \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_STATUS);     \
+        } else if (0 == strcmp(_s, "uid_t")) {                              \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT32);     \
+        } else if (0 == strcmp(_s, "gid_t")) {                              \
+            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT32);     \
+        } else {                                                            \
+            (r) = PMIX_ERR_BAD_PARAM;                                       \
+        }                                                                   \
+} while(0)
+
+
 #define PMIX_INFO_CONSTRUCT(m) \
     PMIx_Info_construct(m)
 
@@ -665,28 +722,6 @@ PMIX_EXPORT size_t PMIx_Info_list_get_size(void *ptr);
 
 #define PMIX_INFO_XFER(d, s)    \
     (void) PMIx_Info_xfer(d, s)
-
-#define PMIX_PDATA_LOAD(m, p, k, v, t)                                      \
-    do {                                                                    \
-        if (NULL != (m)) {                                                  \
-            memset((m), 0, sizeof(pmix_pdata_t));                           \
-            PMIX_LOAD_NSPACE((m)->proc.nspace, (p)->nspace);                \
-            (m)->proc.rank = (p)->rank;                                     \
-            PMIX_LOAD_KEY((m)->key, k);                                     \
-            PMIx_Value_load(&((m)->value), (v), (t));                       \
-        }                                                                   \
-    } while (0)
-
-#define PMIX_PDATA_XFER(d, s)                                                   \
-    do {                                                                        \
-        if (NULL != (d)) {                                                      \
-            memset((d), 0, sizeof(pmix_pdata_t));                               \
-            PMIX_LOAD_NSPACE((d)->proc.nspace, (s)->proc.nspace);               \
-            (d)->proc.rank = (s)->proc.rank;                                    \
-            PMIX_LOAD_KEY((d)->key, (s)->key);                                  \
-            PMIx_Value_xfer(&((d)->value), &((s)->value));                      \
-        }                                                                       \
-    } while (0)
 
 #define PMIX_INFO_TRUE(m)   \
     (PMIX_BOOL_TRUE == PMIx_Info_true(m) ? true : false)
@@ -1072,6 +1107,12 @@ do {                            \
     PMIx_Pdata_free(m, 1);      \
     (m) = NULL;                 \
 } while(0)
+
+#define PMIX_PDATA_LOAD(m, p, k, v, t) \
+    PMIx_Pdata_load(m, p, k, v, t)
+
+#define PMIX_PDATA_XFER(d, s)                                                   \
+    PMIx_Pdata_xfer(d, s)
 
 #define PMIX_APP_CONSTRUCT(m) \
     PMIx_App_construct(m)
