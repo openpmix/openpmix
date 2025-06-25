@@ -683,7 +683,8 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         return PMIX_ERR_NOMEM;
     }
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: init called");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: init called");
 
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
         /* if we are a client, then we need to pickup the
