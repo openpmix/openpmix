@@ -525,10 +525,6 @@ def main():
     definitions.write("\n\n")
     constants.write("\n\n")
     harvest_constants(options, "pmix_tool.h", constants, definitions)
-    # add some space
-    definitions.write("\n\n")
-    constants.write("\n\n")
-    harvest_constants(options, "pmix_deprecated.h", constants, definitions)
     # close the files to ensure all output is written
     constants.close()
     definitions.close()
