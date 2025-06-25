@@ -14,7 +14,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,7 +22,6 @@
  * $HEADER$
  */
 #include "pmix_config.h"
-#include "pmix_common.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +32,8 @@
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
 #endif
+
+#include "pmix.h"
 
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_output.h"
