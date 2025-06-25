@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -241,7 +241,8 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    pmix_output_verbose(2, pmix_client_globals.iof_output, "pmix:iof:PULL");
+    pmix_output_verbose(2, pmix_client_globals.iof_output,
+                        "pmix:iof:PULL");
 
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
