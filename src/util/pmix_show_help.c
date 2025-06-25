@@ -43,6 +43,7 @@ static time_t show_help_time_last_displayed = 0;
 static bool show_help_timer_set = false;
 static pmix_event_t show_help_timer_event;
 static int output_stream = -1;
+static bool pmix_show_help_initialized = false;
 
 /* How long to wait between displaying duplicate show_help notices */
 static struct timeval show_help_interval = {5, 0};
@@ -67,7 +68,9 @@ static void local_delivery(const char *file,
 {
     pmix_shift_caddy_t *cd;
 
-    if (!pmix_show_help_enabled || NULL == pmix_globals.evbase) {
+    if (!pmix_show_help_initialized ||
+        !pmix_show_help_enabled ||
+        NULL == pmix_globals.evbase) {
         /* the show help subsystem has not yet been enabled,
          * likely because we haven't gotten far enough thru
          * client/server/tool "init". In this case, we can
@@ -350,7 +353,7 @@ pmix_status_t pmix_show_help_init(void)
     pmix_output_stream_t lds;
     tuple_array_item_t *da;
 
-    if (pmix_show_help_enabled) {
+    if (pmix_show_help_initialized) {
         return PMIX_SUCCESS;
     }
 
@@ -365,14 +368,14 @@ pmix_status_t pmix_show_help_init(void)
     da->array = pmix_show_help_data;
     pmix_list_append(&data_arrays, &da->super);
 
-    pmix_show_help_enabled = true;
+    pmix_show_help_initialized = true;
 
     return PMIX_SUCCESS;
 }
 
 pmix_status_t pmix_show_help_finalize(void)
 {
-    if (!pmix_show_help_enabled) {
+    if (!pmix_show_help_initialized) {
         return PMIX_SUCCESS;
     }
 
@@ -381,7 +384,7 @@ pmix_status_t pmix_show_help_finalize(void)
 
     PMIX_LIST_DESTRUCT(&abd_tuples);
     PMIX_LIST_DESTRUCT(&data_arrays);
-    pmix_show_help_enabled = false;
+    pmix_show_help_initialized = false;
 
     return PMIX_SUCCESS;
 }
