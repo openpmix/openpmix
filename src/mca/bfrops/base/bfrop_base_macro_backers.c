@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -69,6 +69,11 @@ bool PMIx_Check_rank(pmix_rank_t a,
                      pmix_rank_t b)
 {
     return pmix_bfrops_base_tma_check_rank(a, b, NULL);
+}
+
+bool PMIx_Rank_valid(pmix_rank_t a)
+{
+    return pmix_bfrops_base_tma_rank_valid(a, NULL);
 }
 
 bool PMIx_Procid_invalid(const pmix_proc_t *p)
@@ -692,6 +697,21 @@ pmix_pdata_t* PMIx_Pdata_create(size_t n)
 void PMIx_Pdata_free(pmix_pdata_t *p, size_t n)
 {
     pmix_bfrops_base_tma_pdata_free(p, n, NULL);
+}
+
+void PMIx_Pdata_load(pmix_pdata_t *dest,
+                     const pmix_proc_t *p,
+                     const char *key,
+                     const void *data,
+                     pmix_data_type_t type)
+{
+    pmix_bfrops_base_tma_pdata_load(dest, p, key, data, type, NULL);
+}
+
+void PMIx_Pdata_xfer(pmix_pdata_t *dest,
+                     pmix_pdata_t *src)
+{
+    pmix_bfrops_base_tma_pdata_xfer(dest, src, NULL);
 }
 
 void PMIx_App_construct(pmix_app_t *p)
