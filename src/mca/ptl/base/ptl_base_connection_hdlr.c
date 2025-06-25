@@ -541,9 +541,9 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cd->cbdata;
-    pmix_namespace_t *nptr;
+    pmix_namespace_t *nptr = NULL;
     pmix_rank_info_t *info;
-    pmix_peer_t *peer;
+    pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
     uint32_t u32;
     pmix_info_t ginfo;
@@ -554,10 +554,6 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     PMIX_ACQUIRE_OBJECT(cd);
     // must use sd, args to avoid -Werror
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
-
-    /* shortcuts */
-    peer = (pmix_peer_t *) pnd->peer;
-    nptr = peer->nptr;
 
     /* send this status so they don't hang */
     u32 = ntohl(cd->status);
@@ -605,6 +601,10 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         PMIX_ERROR_LOG(rc);
         goto error;
     }
+
+    /* shortcuts */
+    peer = (pmix_peer_t *) pnd->peer;
+    nptr = peer->nptr;
 
     /* if this tool wasn't initially registered as a client,
      * then add some required structures */
@@ -723,9 +723,13 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 error:
     CLOSE_THE_SOCKET(pnd->sd);
     PMIX_RELEASE(pnd);
-    PMIX_RELEASE(peer);
-    pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
-    PMIX_RELEASE(nptr); // will release the info object
+    if (NULL != peer) {
+        PMIX_RELEASE(peer);
+    }
+    if (NULL != nptr) {
+        pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+        PMIX_RELEASE(nptr); // will release the info object
+    }
     PMIX_RELEASE(cd);
     if (NULL != req) {
         pmix_pointer_array_set_item(&pmix_globals.iof_requests, req->local_id, NULL);
@@ -750,7 +754,9 @@ static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata)
         return;
     }
     cd->status = status;
-    PMIX_LOAD_PROCID(&cd->proc, proc->nspace, proc->rank);
+    if (NULL != proc) {
+        PMIX_LOAD_PROCID(&cd->proc, proc->nspace, proc->rank);
+    }
     cd->cbdata = cbdata;
     PMIX_THREADSHIFT(cd, process_cbfunc);
 }
