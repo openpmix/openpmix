@@ -268,6 +268,18 @@ bool pmix_bfrops_base_tma_check_rank(pmix_rank_t a,
 }
 
 static inline
+bool pmix_bfrops_base_tma_rank_valid(pmix_rank_t a,
+                                     pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    if (a < PMIX_RANK_VALID) {
+        return true;
+    }
+    return false;
+}
+
+static inline
 bool pmix_bfrops_base_tma_check_procid(const pmix_proc_t *a,
                                        const pmix_proc_t *b,
                                        pmix_tma_t *tma)
@@ -1900,16 +1912,27 @@ pmix_pdata_t* pmix_bfrops_base_tma_pdata_create(size_t n,
 }
 
 static inline
+void pmix_bfrops_base_tma_pdata_load(pmix_pdata_t *dest,
+                                     const pmix_proc_t *p,
+                                     const char *key,
+                                     const void *data,
+                                     pmix_data_type_t type,
+                                     pmix_tma_t *tma)
+{
+    memset(dest, 0, sizeof(pmix_pdata_t));
+    pmix_bfrops_base_tma_load_procid(&dest->proc, p->nspace, p->rank, tma);
+    pmix_bfrops_base_tma_load_key(dest->key, key, tma);
+    pmix_bfrops_base_tma_value_load(&(dest->value), data, type, tma);
+}
+
+static inline
 void pmix_bfrops_base_tma_pdata_xfer(pmix_pdata_t *dest,
                                      const pmix_pdata_t *src,
                                      pmix_tma_t *tma)
 {
     if (NULL != dest) {
         memset(dest, 0, sizeof(*dest));
-        pmix_bfrops_base_tma_load_nspace(
-            dest->proc.nspace, src->proc.nspace, tma
-        );
-        dest->proc.rank = src->proc.rank;
+        pmix_bfrops_base_tma_load_procid(&dest->proc, src->proc.nspace, src->proc.rank, tma);
         pmix_bfrops_base_tma_load_key(dest->key, src->key, tma);
         pmix_bfrops_base_tma_value_xfer(&dest->value, &src->value, tma);
     }

@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,6 +53,15 @@
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
+
+void PMIx_Fabric_construct(pmix_fabric_t *p)
+{
+    p->name = NULL;
+    p->index = SIZE_MAX;
+    p->info = NULL;
+    p->ninfo = 0;
+    p->module = NULL;
+}
 
 static void fcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                 pmix_release_cbfunc_t release_fn, void *release_cbdata)

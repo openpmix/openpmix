@@ -1554,6 +1554,10 @@ typedef int pmix_status_t;
 #define PMIX_EVENT_ACTION_DEFERRED                  -333
 #define PMIX_EVENT_ACTION_COMPLETE                  -334
 
+/* conversion errors */
+#define PMIX_ERR_LOST_PRECISION                     -400
+#define PMIX_ERR_CHANGE_SIGN                        -401
+
 /* define a starting point for user-level defined error
  * constants - negative values larger than this are guaranteed
  * not to conflict with PMIx values. Definitions should always
@@ -2397,46 +2401,6 @@ typedef struct pmix_value {
     .type = PMIX_UNDEF,         \
     .data.ptr = NULL            \
 }
-
-#define PMIX_VALUE_GET_NUMBER(s, m, n, t)               \
-    do {                                                \
-        (s) = PMIX_SUCCESS;                             \
-        if (PMIX_SIZE == (m)->type) {                   \
-            (n) = (t)((m)->data.size);                  \
-        } else if (PMIX_INT == (m)->type) {             \
-            (n) = (t)((m)->data.integer);               \
-        } else if (PMIX_INT8 == (m)->type) {            \
-            (n) = (t)((m)->data.int8);                  \
-        } else if (PMIX_INT16 == (m)->type) {           \
-            (n) = (t)((m)->data.int16);                 \
-        } else if (PMIX_INT32 == (m)->type) {           \
-            (n) = (t)((m)->data.int32);                 \
-        } else if (PMIX_INT64 == (m)->type) {           \
-            (n) = (t)((m)->data.int64);                 \
-        } else if (PMIX_UINT == (m)->type) {            \
-            (n) = (t)((m)->data.uint);                  \
-        } else if (PMIX_UINT8 == (m)->type) {           \
-            (n) = (t)((m)->data.uint8);                 \
-        } else if (PMIX_UINT16 == (m)->type) {          \
-            (n) = (t)((m)->data.uint16);                \
-        } else if (PMIX_UINT32 == (m)->type) {          \
-            (n) = (t)((m)->data.uint32);                \
-        } else if (PMIX_UINT64 == (m)->type) {          \
-            (n) = (t)((m)->data.uint64);                \
-        } else if (PMIX_FLOAT == (m)->type) {           \
-            (n) = (t)((m)->data.fval);                  \
-        } else if (PMIX_DOUBLE == (m)->type) {          \
-            (n) = (t)((m)->data.dval);                  \
-        } else if (PMIX_PID == (m)->type) {             \
-            (n) = (t)((m)->data.pid);                   \
-        } else if (PMIX_PROC_RANK == (m)->type) {       \
-            (n) = (t)((m)->data.rank);                  \
-        } else if (PMIX_STATUS == (m)->type) {          \
-            (n) = (t)((m)->data.status);                \
-        } else {                                        \
-            (s) = PMIX_ERR_BAD_PARAM;                   \
-        }                                               \
-    } while(0)
 
 /****    PMIX INFO STRUCT    ****/
 typedef struct pmix_info {

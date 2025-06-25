@@ -507,3 +507,33 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
 
     return rc;
 }
+
+static void hcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status, info, ninfo);
+
+    if (NULL != release_fn) {
+        release_fn(release_cbdata);
+    }
+    PMIX_WAKEUP_THREAD(&cb->lock);
+}
+
+void PMIx_Heartbeat(void)
+{
+    pmix_cb_t *cb;
+    pmix_status_t rc;
+
+    cb = PMIX_NEW(pmix_cb_t);
+    cb->ninfo = 1;
+    cb->info = PMIx_Info_create(1);
+    PMIX_INFO_LOAD(&cb->info[0], PMIX_SEND_HEARTBEAT, NULL, PMIX_POINTER);
+    rc = PMIx_Process_monitor_nb(cb->info, PMIX_SUCCESS, NULL, 0, hcb, (void*)cb);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cb);
+        return;
+    }
+    PMIX_WAIT_THREAD(&cb->lock);
+    PMIX_RELEASE(cb);
+}

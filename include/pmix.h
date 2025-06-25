@@ -38,7 +38,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -579,15 +579,8 @@ PMIX_EXPORT pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pm
                                                   const pmix_info_t directives[], size_t ndirs,
                                                   pmix_info_cbfunc_t cbfunc, void *cbdata);
 
-/* define a special macro to simplify sending of a heartbeat */
-#define PMIx_Heartbeat()                                                    \
-    do {                                                                    \
-        pmix_info_t _in;                                                    \
-        PMIX_INFO_CONSTRUCT(&_in);                                          \
-        PMIX_INFO_LOAD(&_in, PMIX_SEND_HEARTBEAT, NULL, PMIX_POINTER);      \
-        PMIx_Process_monitor_nb(&_in, PMIX_SUCCESS, NULL, 0, NULL, NULL);   \
-        PMIX_INFO_DESTRUCT(&_in);                                           \
-    } while(0)
+/* define a special function to simplify sending of a heartbeat */
+PMIX_EXPORT void PMIx_Heartbeat(void);
 
 /* Request a credential from the PMIx server/SMS.
  * Input values include:
@@ -1675,6 +1668,8 @@ PMIX_EXPORT bool PMIx_Check_procid(const pmix_proc_t *a,
 PMIX_EXPORT bool PMIx_Check_rank(pmix_rank_t a,
                                  pmix_rank_t b);
 
+PMIX_EXPORT bool PMIx_Rank_valid(pmix_rank_t a);
+
 /* check if procID is invalid */
 PMIX_EXPORT bool PMIx_Procid_invalid(const pmix_proc_t *p);
 
@@ -1739,7 +1734,10 @@ PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
 PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
                                                 pmix_value_t *v2);
 
-
+/* extract a numerical value from a pmix_value_t */
+PMIX_EXPORT pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
+                                                void *dest,
+                                                pmix_data_type_t type);
 
 PMIX_EXPORT void PMIx_Data_array_init(pmix_data_array_t *p,
                                       pmix_data_type_t type);
@@ -2085,6 +2083,12 @@ PMIX_EXPORT pmix_pdata_t* PMIx_Pdata_create(size_t n);
  * not free the struct memory itself */
 PMIX_EXPORT void PMIx_Pdata_free(pmix_pdata_t *p, size_t n);
 
+PMIX_EXPORT void PMIx_Pdata_load(pmix_pdata_t *dest,
+                                 const pmix_proc_t *p,
+                                 const char *key,
+                                 const void *data,
+                                 pmix_data_type_t type);
+PMIX_EXPORT void PMIx_Pdata_xfer(pmix_pdata_t *dest,
 
 PMIX_EXPORT void PMIx_App_construct(pmix_app_t *p);
 PMIX_EXPORT void PMIx_App_destruct(pmix_app_t *p);
@@ -2092,6 +2096,38 @@ PMIX_EXPORT pmix_app_t* PMIx_App_create(size_t n);
 PMIX_EXPORT void PMIx_App_info_create(pmix_app_t *p, size_t n);
 PMIX_EXPORT void PMIx_App_free(pmix_app_t *p, size_t n);
 PMIX_EXPORT void PMIx_App_release(pmix_app_t *p);
+
+PMIX_EXPORT void PMIx_Query_construct(pmix_query_t *p);
+PMIX_EXPORT void PMIx_Query_destruct(pmix_query_t *p);
+PMIX_EXPORT pmix_query_t* PMIx_Query_create(size_t n);
+PMIX_EXPORT void PMIx_Query_qualifiers_create(pmix_query_t *p, size_t n);
+PMIX_EXPORT void PMIx_Query_free(pmix_query_t *p, size_t n);
+PMIX_EXPORT void PMIx_Query_release(pmix_query_t *p);
+
+
+PMIX_EXPORT void PMIx_Regattr_construct(pmix_regattr_t *p);
+PMIX_EXPORT void PMIx_Regattr_destruct(pmix_regattr_t *p);
+PMIX_EXPORT pmix_regattr_t* PMIx_Regattr_create(size_t n);
+PMIX_EXPORT void PMIx_Regattr_free(pmix_regattr_t *p, size_t n);
+PMIX_EXPORT void PMIx_Regattr_load(pmix_regattr_t *info,
+                                   const char *name,
+                                   const char *key,
+                                   pmix_data_type_t type,
+                                   const char *description);
+PMIX_EXPORT void PMIx_Regattr_xfer(pmix_regattr_t *dest,
+                                   const pmix_regattr_t *src);
+
+
+PMIX_EXPORT void PMIx_Fabric_construct(pmix_fabric_t *p);
+
+
+PMIX_EXPORT void PMIx_Data_array_init(pmix_data_array_t *p,
+                                      pmix_data_type_t type);
+PMIX_EXPORT void PMIx_Data_array_construct(pmix_data_array_t *p,
+                                           size_t num, pmix_data_type_t type);
+PMIX_EXPORT void PMIx_Data_array_destruct(pmix_data_array_t *d);
+PMIX_EXPORT pmix_data_array_t* PMIx_Data_array_create(size_t n, pmix_data_type_t type);
+PMIX_EXPORT void PMIx_Data_array_free(pmix_data_array_t *p);
 
 /* Constructing arrays of pmix_info_t for passing to an API can
  * be tedious since the pmix_info_t itself is not a "list object".

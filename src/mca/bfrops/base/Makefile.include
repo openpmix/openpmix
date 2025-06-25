@@ -13,7 +13,7 @@
 # Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2017 Intel, Inc. All rights reserved.
 # Copyright (c) 2016      Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2022-2024 Nanook Consulting  All rights reserved.
+# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
@@ -40,4 +40,5 @@ sources += \
         base/bfrop_base_unpack.c \
         base/bfrop_base_stubs.c \
         base/bfrop_base_macro_backers.c \
-        base/bfrop_base_squash.c
+        base/bfrop_base_squash.c \
+        base/bfrop_base_get_number.c
