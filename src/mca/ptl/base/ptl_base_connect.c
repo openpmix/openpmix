@@ -651,8 +651,23 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     if (NULL != order) {
         // cycle thru the requested order
         for (n=0; NULL != order[n]; n++) {
-            if (0 == strcmp(order[n], PMIX_CONNECT_TO_SYSTEM) ||
-                0 == strcmp(order[n], PMIX_CONNECT_SYSTEM_FIRST)) {
+            if (0 == strcmp(order[n], PMIX_CONNECT_SYSTEM_FIRST)) {
+                if (0 > asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
+                                 pmix_globals.hostname)) {
+                    rc = PMIX_ERR_NOMEM;
+                    goto cleanup;
+                }
+                pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                    "ptl:tool:tool looking for system server at %s", filename);
+                // this is always optional as we are going to fallback to non-system servers
+                rc = tryfile(peer, &nspace, &rank, &suri, true, filename);
+                free(filename);
+                if (PMIX_SUCCESS == rc) {
+                    PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
+                    goto complete;
+                }
+
+            } else if (0 == strcmp(order[n], PMIX_CONNECT_TO_SYSTEM)) {
                 if (0 > asprintf(&filename, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
                                  pmix_globals.hostname)) {
                     rc = PMIX_ERR_NOMEM;
@@ -666,11 +681,9 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                     PMIX_SET_PEER_TYPE(peer, PMIX_PROC_SERVER);
                     goto complete;
                 }
-                if (0 == strcmp(order[n], PMIX_CONNECT_TO_SYSTEM)) {
-                    if (!optional) {
-                        // not optional, so report error
-                        goto cleanup;
-                    }
+                if (!optional) {
+                    // not optional, so report error
+                    goto cleanup;
                 }
 
             } else if (0 == strcmp(order[n], PMIX_CONNECT_TO_SCHEDULER)) {

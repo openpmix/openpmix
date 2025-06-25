@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -119,7 +119,7 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
 
 
     PMIX_HIDE_UNUSED_PARAMS(directives, ndirs, cbfunc, cbdata);
-    
+
 #if 0
     /* check to see if there are any relevant directives */
     for (n = 0; n < ndirs; n++) {
