@@ -791,8 +791,8 @@ AC_DEFUN([PMIX_SETUP_CORE],[
                                 mca_base_component_show_load_errors (but
                                 can be overridden at run time by the usual
                                 MCA-variable-setting mechansism).
-                                (default: "all")])])
-
+                                (default: "none")])],
+                                [], [with_show_load_errors=no])
     if test -z "$with_show_load_errors" || \
        test "$with_show_load_errors" = "yes"; then
         with_show_load_errors=all
