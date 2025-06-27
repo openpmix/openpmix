@@ -114,8 +114,10 @@ static int process_repository_item(const char *filename, void *data)
     if (0 != strncmp(base, prefix, strlen(prefix)) &&
         0 != strncmp(base, type, strlen(type))) {
         if (pmix_mca_base_show_load_errors(NULL, NULL)) {
-            pmix_output(0, "mca:base:process_repository_item filename %s has bad prefix - expected:\n\t%s\nor\n\t%s",
-                        filename, prefix, type);
+            pmix_output_verbose(
+                PMIX_MCA_BASE_VERBOSE_INFO, 0,
+                "mca:base:process_repository_item filename %s has unexpected prefix - expected:\n\t%s\nor\n\t%s",
+                filename, prefix, type);
         }
         free(base);
         free(prefix);
