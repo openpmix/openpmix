@@ -515,6 +515,15 @@ cleanup:
     PMIX_BYTE_OBJECT_DESTRUCT(&bo);
 }
 
+static void nevcb(pmix_status_t status, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
+    PMIX_ACQUIRE_OBJECT(lock);
+    PMIX_WAKEUP_THREAD(lock);
+}
+
 pmix_status_t PMIx_Init(pmix_proc_t *proc,
                         pmix_info_t info[], size_t ninfo)
 {
@@ -527,7 +536,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_proc_t wildcard;
     pmix_info_t ginfo, evinfo[3];
     pmix_value_t *val = NULL;
-    pmix_lock_t reglock, releaselock;
+    pmix_lock_t reglock, releaselock, nevlock;
     size_t n;
     bool found;
     pmix_ptl_posted_recv_t *rcv;
@@ -905,6 +914,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         /* register for the debugger release notification */
         PMIX_CONSTRUCT_LOCK(&reglock);
         PMIX_CONSTRUCT_LOCK(&releaselock);
+        PMIX_CONSTRUCT_LOCK(&nevlock);
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_RETURN_OBJECT, &releaselock, PMIX_POINTER);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_EVENT_HDLR_NAME, "WAIT-FOR-DEBUGGER", PMIX_STRING);
         PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_ONESHOT, NULL, PMIX_BOOL);
@@ -919,13 +929,18 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_DESTRUCT_LOCK(&reglock);
         PMIX_INFO_DESTRUCT(&evinfo[0]);
         PMIX_INFO_DESTRUCT(&evinfo[1]);
+        PMIX_INFO_DESTRUCT(&evinfo[2]);
         /* notify the host that we are waiting */
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_BREAKPOINT, "pmix-init", PMIX_STRING);
+        PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_DO_NOT_CACHE, NULL, PMIX_BOOL);
         PMIx_Notify_event(PMIX_READY_FOR_DEBUG, &pmix_globals.myid, PMIX_RANGE_RM,
-                          evinfo, 2, NULL, NULL);
+                          evinfo, 3, nevcb, &nevlock);
+        PMIX_WAIT_THREAD(&nevlock);
+        PMIX_DESTRUCT_LOCK(&nevlock);
         PMIX_INFO_DESTRUCT(&evinfo[0]);
         PMIX_INFO_DESTRUCT(&evinfo[1]);
+        PMIX_INFO_DESTRUCT(&evinfo[2]);
         /* wait for release to arrive */
         PMIX_WAIT_THREAD(&releaselock);
         PMIX_DESTRUCT_LOCK(&releaselock);
