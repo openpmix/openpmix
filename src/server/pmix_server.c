@@ -330,8 +330,8 @@ static void debugger_aggregator(size_t evhdlr_registration_id, pmix_status_t sta
     pmix_namespace_t *ns, *nptr;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "[%s:%d] DEBUGGER AGGREGATOR CALLED FOR NSPACE %s",
-                        pmix_globals.myid.nspace, pmix_globals.myid.rank, source->nspace);
+                        "%s DEBUGGER AGGREGATOR CALLED FOR SOURCE %s",
+                        PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(source));
 
     PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, results, nresults);
 
