@@ -128,6 +128,9 @@ def harvest_constants(options, path, constants):
                             datatype = "TBD"
                         elif tokens[3] == "(time_t)":
                             datatype = "PMIX_TIME"
+                        elif tokens[3] == "(struct" and tokens[4] == "timeval)":
+                            datatype = "PMIX_TIMEVAL"
+                            dstart = 5
                         elif tokens[3] == "(pmix_envar_t*)":
                             datatype = "PMIX_ENVAR"
                         elif tokens[3] == "(pid_t)":
