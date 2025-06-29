@@ -518,9 +518,9 @@ cleanup:
 static void nevcb(pmix_status_t status, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t*)cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(status);
 
     PMIX_ACQUIRE_OBJECT(lock);
+    lock->status = status;
     PMIX_WAKEUP_THREAD(lock);
 }
 
@@ -934,13 +934,35 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_BREAKPOINT, "pmix-init", PMIX_STRING);
         PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_DO_NOT_CACHE, NULL, PMIX_BOOL);
-        PMIx_Notify_event(PMIX_READY_FOR_DEBUG, &pmix_globals.myid, PMIX_RANGE_RM,
-                          evinfo, 3, nevcb, &nevlock);
-        PMIX_WAIT_THREAD(&nevlock);
+        rc = PMIx_Notify_event(PMIX_READY_FOR_DEBUG, &pmix_globals.myid, PMIX_RANGE_RM,
+                               evinfo, 3, nevcb, &nevlock);
+        if (PMIX_SUCCESS != rc) {
+            if (PMIX_OPERATION_SUCCEEDED != rc) {
+                PMIX_DESTRUCT_LOCK(&nevlock);
+                PMIX_DESTRUCT_LOCK(&nevlock);
+                PMIX_INFO_DESTRUCT(&evinfo[0]);
+                PMIX_INFO_DESTRUCT(&evinfo[1]);
+                PMIX_INFO_DESTRUCT(&evinfo[2]);
+                PMIX_VALUE_FREE(val, 1); // cleanup memory
+                PMIX_INFO_DESTRUCT(&ginfo);
+                return rc;
+            }
+            rc = PMIX_SUCCESS;
+        } else {
+            PMIX_WAIT_THREAD(&nevlock);
+            rc = nevlock.status;
+        }
         PMIX_DESTRUCT_LOCK(&nevlock);
         PMIX_INFO_DESTRUCT(&evinfo[0]);
         PMIX_INFO_DESTRUCT(&evinfo[1]);
         PMIX_INFO_DESTRUCT(&evinfo[2]);
+        if (PMIX_SUCCESS != rc) {
+            // failed to notify ready-for-debug
+            PMIX_DESTRUCT_LOCK(&releaselock);
+            PMIX_VALUE_FREE(val, 1); // cleanup memory
+            PMIX_INFO_DESTRUCT(&ginfo);
+            return rc;
+        }
         /* wait for release to arrive */
         PMIX_WAIT_THREAD(&releaselock);
         PMIX_DESTRUCT_LOCK(&releaselock);
