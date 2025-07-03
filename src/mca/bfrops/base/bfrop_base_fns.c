@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
@@ -41,6 +41,24 @@
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/bfrops/base/bfrop_base_tma.h"
 
+char* pmix_bfrops_base_get_components(void)
+{
+    pmix_bfrops_base_active_module_t *mod;
+    char *ptr, **list=NULL, *tmp;
+
+    // cycle across the available components
+    PMIX_LIST_FOREACH(mod, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
+        ptr = strrchr(mod->component->base.pmix_mca_component_name, 'v');
+        ++ptr;
+        pmix_asprintf(&tmp, "PMIX_SERVER_URI%s", ptr);
+        PMIx_Argv_append_nosize(&list, tmp);
+        free(tmp);
+    }
+    tmp = PMIx_Argv_join(list, ':');
+    PMIx_Argv_free(list);
+    return tmp;
+}
+
 void pmix_bfrops_base_value_load(pmix_value_t *v,
                                  const void *data,
                                  pmix_data_type_t type)
@@ -61,10 +79,7 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
     pmix_device_distance_t *devdist;
     pmix_data_buffer_t *dbuf;
     pmix_nspace_t *nspace;
-    pmix_proc_stats_t *pstats;
-    pmix_disk_stats_t *dkstats;
-    pmix_net_stats_t *netstats;
-    pmix_node_stats_t *ndstats;
+    pmix_node_pid_t *ndpidptr;
 
     v->type = type;
     if (NULL == data) {
@@ -319,30 +334,9 @@ void pmix_bfrops_base_value_load(pmix_value_t *v,
                 PMIX_ERROR_LOG(rc);
             }
             break;
-        case PMIX_PROC_STATS:
-            pstats = (pmix_proc_stats_t *) data;
-            rc = pmix_bfrops_base_copy_pstats(&v->data.pstats, pstats, PMIX_PROC_STATS);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
-        case PMIX_DISK_STATS:
-            dkstats = (pmix_disk_stats_t *) data;
-            rc = pmix_bfrops_base_copy_dkstats(&v->data.dkstats, dkstats, PMIX_DISK_STATS);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
-        case PMIX_NET_STATS:
-            netstats = (pmix_net_stats_t *) data;
-            rc = pmix_bfrops_base_copy_netstats(&v->data.netstats, netstats, PMIX_NET_STATS);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-            }
-            break;
-        case PMIX_NODE_STATS:
-            ndstats = (pmix_node_stats_t *) data;
-            rc = pmix_bfrops_base_copy_ndstats(&v->data.ndstats, ndstats, PMIX_NODE_STATS);
+        case PMIX_NODE_PID:
+            ndpidptr = (pmix_node_pid_t*)data;
+            rc = pmix_bfrops_base_copy_nodepid(&v->data.nodepid, ndpidptr, PMIX_NODE_PID);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             }
@@ -362,6 +356,7 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
     pmix_envar_t *envar;
     pmix_data_array_t **darray;
     pmix_regattr_t *regattr, *r;
+    pmix_node_pid_t *ndpidptr, *ndpd;
 
     rc = PMIX_SUCCESS;
     if (NULL == data ||
@@ -636,34 +631,21 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
                 *sz = sizeof(pmix_data_buffer_t);
             }
             break;
-        case PMIX_PROC_STATS:
-            rc = pmix_bfrops_base_copy_pstats((pmix_proc_stats_t **) data, kv->data.pstats,
-                                              PMIX_PROC_STATS);
-            if (PMIX_SUCCESS == rc) {
-                *sz = sizeof(pmix_proc_stats_t);
+        case PMIX_NODE_PID:
+            ndpidptr = PMIx_Node_pid_create(1);
+            if (NULL == ndpidptr) {
+                return PMIX_ERR_NOMEM;
             }
-            break;
-        case PMIX_DISK_STATS:
-            rc = pmix_bfrops_base_copy_dkstats((pmix_disk_stats_t **) data, kv->data.dkstats,
-                                               PMIX_DISK_STATS);
-            if (PMIX_SUCCESS == rc) {
-                *sz = sizeof(pmix_disk_stats_t);
+            ndpd = (pmix_node_pid_t*)kv->data.nodepid;
+            if (NULL != ndpd->hostname) {
+                ndpidptr->hostname = strdup(ndpd->hostname);
             }
+            ndpidptr->nodeid = ndpd->nodeid;
+            ndpidptr->pid = ndpd->pid;
+            *data = ndpidptr;
+            *sz = sizeof(pmix_node_pid_t);
             break;
-        case PMIX_NET_STATS:
-            rc = pmix_bfrops_base_copy_netstats((pmix_net_stats_t **) data, kv->data.netstats,
-                                                PMIX_NET_STATS);
-            if (PMIX_SUCCESS == rc) {
-                *sz = sizeof(pmix_net_stats_t);
-            }
-            break;
-        case PMIX_NODE_STATS:
-            rc = pmix_bfrops_base_copy_ndstats((pmix_node_stats_t **) data, kv->data.ndstats,
-                                               PMIX_NODE_STATS);
-            if (PMIX_SUCCESS == rc) {
-                *sz = sizeof(pmix_node_stats_t);
-            }
-            break;
+
         default:
             /* silence warnings */
             rc = PMIX_ERROR;
@@ -966,11 +948,8 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
     pmix_endpoint_t *endpt;
     pmix_regattr_t *rg;
     pmix_data_buffer_t *db;
-    pmix_proc_stats_t *ps;
-    pmix_disk_stats_t *ds;
-    pmix_net_stats_t *nts;
-    pmix_node_stats_t *nds;
     pmix_info_t *iptr;
+    pmix_node_pid_t *ndpd;
 
     switch (array->type) {
         case PMIX_UNDEF:
@@ -1267,61 +1246,12 @@ static pmix_status_t get_darray_size(pmix_data_array_t *array,
                 *sz += db[n].bytes_used;
             }
             break;
-        case PMIX_PROC_STATS:
-            *sz = array->size * sizeof(pmix_proc_stats_t);
-            ps = (pmix_proc_stats_t*)array->array;
+        case PMIX_NODE_PID:
+            *sz = array->size * sizeof(pmix_node_pid_t);
+            ndpd = (pmix_node_pid_t*)array->array;
             for (n=0; n < array->size; n++) {
-                *sz += 1;
-                if (NULL != ps[n].node) {
-                    *sz += strlen(ps[n].node);
-                }
-                *sz += 1;
-                if (NULL != ps[n].cmd) {
-                    *sz += strlen(ps[n].cmd);
-                }
-            }
-            break;
-        case PMIX_DISK_STATS:
-            *sz = array->size * sizeof(pmix_disk_stats_t);
-            ds = (pmix_disk_stats_t*)array->array;
-            for (n=0; n < array->size; n++) {
-                *sz += 1;
-                if (NULL != ds[n].disk) {
-                    *sz += strlen(ds[n].disk);
-                }
-            }
-            break;
-        case PMIX_NET_STATS:
-            *sz = array->size * sizeof(pmix_net_stats_t);
-            nts = (pmix_net_stats_t*)array->array;
-            for (n=0; n < array->size; n++) {
-                *sz += 1;
-                if (NULL != nts[n].net_interface) {
-                    *sz += strlen(nts[n].net_interface);
-                }
-            }
-            break;
-        case PMIX_NODE_STATS:
-            *sz = array->size * sizeof(pmix_node_stats_t);
-            nds = (pmix_node_stats_t*)array->array;
-            for (n=0; n < array->size; n++) {
-                *sz += 1;
-                if (NULL != nds[n].node) {
-                    *sz += strlen(nds[n].node);
-                }
-                for (m=0; m < nds[n].ndiskstats; m++) {
-                    *sz += sizeof(pmix_disk_stats_t);
-                    *sz += 1;
-                    if (NULL != nds[n].diskstats[m].disk) {
-                        *sz += strlen(nds[n].diskstats[m].disk);
-                    }
-                }
-                for (m=0; m < nds[n].nnetstats; m++) {
-                    *sz += sizeof(pmix_net_stats_t);
-                    *sz += 1;
-                    if (NULL != nds[n].netstats[m].net_interface) {
-                        *sz += strlen(nds[n].netstats[m].net_interface);
-                    }
+                if (NULL != ndpd[n].hostname) {
+                    *sz += strlen(ndpd[n].hostname) + 1;  // account for NULL
                 }
             }
             break;
@@ -1339,6 +1269,7 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
     pmix_status_t rc = PMIX_SUCCESS;
     size_t n;
     pmix_regattr_t *regattr;
+    pmix_node_pid_t *ndpd;
 
     switch (v->type) {
         case PMIX_UNDEF:
@@ -1573,50 +1504,11 @@ pmix_status_t PMIx_Value_get_size(const pmix_value_t *v,
             *sz = sizeof(pmix_data_buffer_t);
             *sz += v->data.dbuf->bytes_used;
             break;
-        case PMIX_PROC_STATS:
-            *sz = sizeof(pmix_proc_stats_t);
-            *sz += 1;
-            if (NULL != v->data.pstats->node) {
-                *sz += strlen(v->data.pstats->node);
-            }
-            *sz += 1;
-            if (NULL != v->data.pstats->cmd) {
-                *sz += strlen(v->data.pstats->cmd);
-            }
-            break;
-        case PMIX_DISK_STATS:
-            *sz = sizeof(pmix_disk_stats_t);
-            *sz += 1;
-            if (NULL != v->data.dkstats->disk) {
-                *sz += strlen(v->data.dkstats->disk);
-            }
-            break;
-        case PMIX_NET_STATS:
-            *sz = sizeof(pmix_net_stats_t);
-            *sz += 1;
-            if (NULL != v->data.netstats->net_interface) {
-                *sz += strlen(v->data.netstats->net_interface);
-            }
-            break;
-        case PMIX_NODE_STATS:
-            *sz = sizeof(pmix_node_stats_t);
-            *sz += 1;
-            if (NULL != v->data.ndstats->node) {
-                *sz += strlen(v->data.ndstats->node);
-            }
-            for (n=0; n < v->data.ndstats->ndiskstats; n++) {
-                *sz += sizeof(pmix_disk_stats_t);
-                *sz += 1;
-                if (NULL != v->data.ndstats->diskstats[n].disk) {
-                    *sz += strlen(v->data.ndstats->diskstats[n].disk);
-                }
-            }
-            for (n=0; n < v->data.ndstats->nnetstats; n++) {
-                *sz += sizeof(pmix_net_stats_t);
-                *sz += 1;
-                if (NULL != v->data.ndstats->netstats[n].net_interface) {
-                    *sz += strlen(v->data.ndstats->netstats[n].net_interface);
-                }
+        case PMIX_NODE_PID:
+            *sz = sizeof(pmix_node_pid_t);
+            ndpd = (pmix_node_pid_t*)v->data.nodepid;
+            if (NULL != ndpd->hostname) {
+                *sz += strlen(ndpd->hostname) + 1;  // account for NULL
             }
             break;
 

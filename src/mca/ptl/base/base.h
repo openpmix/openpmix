@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -139,7 +139,6 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 
 /* base support functions */
-PMIX_EXPORT pmix_status_t pmix_ptl_base_check_server_uris(pmix_peer_t *peer, char **evar);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env);
 PMIX_EXPORT void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata);
@@ -175,7 +174,7 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_client_handshake(pmix_peer_t *peer, pmix
 PMIX_EXPORT pmix_status_t pmix_ptl_base_tool_handshake(pmix_peer_t *peer, pmix_status_t rp);
 PMIX_EXPORT char **pmix_ptl_base_split_and_resolve(const char *orig_str,
                                                    const char *name);
-PMIX_EXPORT pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char *evar);
+PMIX_EXPORT pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar);
 PMIX_EXPORT char *pmix_ptl_base_get_cmd_line(void);
 
 END_C_DECLS

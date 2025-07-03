@@ -1257,6 +1257,75 @@ pmix_status_t pmix_bfrops_base_tma_copy_device(pmix_device_t **dest,
 }
 
 static inline
+void pmix_bfrops_base_tma_node_pid_construct(pmix_node_pid_t *d,
+                                             pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(tma);
+
+    d->hostname = NULL;
+    d->nodeid = UINT32_MAX;
+    d->pid = -1;
+}
+
+static inline
+void pmix_bfrops_base_tma_node_pid_destruct(pmix_node_pid_t *d,
+                                            pmix_tma_t *tma)
+{
+    if (NULL != d->hostname) {
+        pmix_tma_free(tma, d->hostname);
+    }
+}
+
+static inline
+pmix_node_pid_t* pmix_bfrops_base_tma_node_pid_create(size_t n,
+                                                      pmix_tma_t *tma)
+{
+    if (0 == n) {
+        return NULL;
+    }
+    pmix_node_pid_t *d = (pmix_node_pid_t *)pmix_tma_malloc(tma, n * sizeof(pmix_node_pid_t));
+    if (PMIX_LIKELY(NULL != d)) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_node_pid_construct(&d[m], tma);
+        }
+    }
+    return d;
+}
+
+static inline
+void pmix_bfrops_base_tma_node_pid_free(pmix_node_pid_t *d, size_t n,
+                                        pmix_tma_t *tma)
+{
+    if (NULL != d) {
+        for (size_t m = 0; m < n; m++) {
+            pmix_bfrops_base_tma_node_pid_destruct(&d[m], tma);
+        }
+        pmix_tma_free(tma, d);
+    }
+}
+
+static inline
+pmix_status_t pmix_bfrops_base_tma_copy_nodepid(pmix_node_pid_t **dest,
+                                                pmix_node_pid_t *src,
+                                                pmix_data_type_t type,
+                                                pmix_tma_t *tma)
+{
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    pmix_node_pid_t *p = pmix_bfrops_base_tma_node_pid_create(1, tma);
+    if (PMIX_UNLIKELY(NULL == p)) {
+        return PMIX_ERR_NOMEM;
+    }
+    *dest = p;
+    if (NULL != src->hostname) {
+        p->hostname = pmix_tma_strdup(tma, src->hostname);
+    }
+    p->nodeid = src->nodeid;
+    p->pid = src->pid;
+    return PMIX_SUCCESS;
+}
+
+static inline
 void pmix_bfrops_base_tma_resource_unit_destruct(pmix_resource_unit_t *d,
                                                  pmix_tma_t *tma)
 {
@@ -2425,386 +2494,6 @@ void pmix_bfrops_base_tma_envar_load(pmix_envar_t *e,
 }
 
 static inline
-void pmix_bfrops_base_tma_proc_stats_construct(pmix_proc_stats_t *p,
-                                               pmix_tma_t *tma)
-{
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-
-    memset(p, 0, sizeof(pmix_proc_stats_t));
-}
-
-static inline
-void pmix_bfrops_base_tma_proc_stats_destruct(pmix_proc_stats_t *p,
-                                              pmix_tma_t *tma)
-{
-    if (NULL != p->node) {
-        pmix_tma_free(tma, p->node);
-        p->node = NULL;
-    }
-    if (NULL != p->cmd) {
-        pmix_tma_free(tma, p->cmd);
-        p->cmd = NULL;
-    }
-}
-
-static inline
-pmix_proc_stats_t* pmix_bfrops_base_tma_proc_stats_create(size_t n,
-                                                          pmix_tma_t *tma)
-{
-    if (0 == n) {
-        return NULL;
-    }
-    pmix_proc_stats_t *p = (pmix_proc_stats_t*)pmix_tma_malloc(tma, n * sizeof(pmix_proc_stats_t));
-    if (PMIX_LIKELY(NULL != p)) {
-        for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_tma_proc_stats_construct(&p[m], tma);
-        }
-    }
-    return p;
-}
-
-static inline
-void pmix_bfrops_base_tma_proc_stats_free(pmix_proc_stats_t *p,
-                                          size_t n,
-                                          pmix_tma_t *tma)
-{
-    if (NULL != p && 0 < n) {
-        for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_tma_proc_stats_destruct(&p[m], tma);
-        }
-        pmix_tma_free(tma, p);
-    }
-}
-
-static inline
-void pmix_bfrops_base_tma_populate_pstats(pmix_proc_stats_t *p,
-                                          pmix_proc_stats_t *src,
-                                          pmix_tma_t *tma)
-{
-    /* copy the individual fields */
-    if (NULL != src->node) {
-        p->node = pmix_tma_strdup(tma, src->node);
-    }
-    memcpy(&p->proc, &src->proc, sizeof(pmix_proc_t));
-    p->pid = src->pid;
-    if (NULL != src->cmd) {
-        p->cmd = pmix_tma_strdup(tma, src->cmd);
-    }
-    p->state = src->state;
-    p->time = src->time;
-    p->priority = src->priority;
-    p->num_threads = src->num_threads;
-    p->pss = src->pss;
-    p->vsize = src->vsize;
-    p->rss = src->rss;
-    p->peak_vsize = src->peak_vsize;
-    p->processor = src->processor;
-    p->sample_time.tv_sec = src->sample_time.tv_sec;
-    p->sample_time.tv_usec = src->sample_time.tv_usec;
-}
-
-static inline
-pmix_status_t pmix_bfrops_base_tma_copy_pstats(pmix_proc_stats_t **dest,
-                                               pmix_proc_stats_t *src,
-                                               pmix_data_type_t type,
-                                               pmix_tma_t *tma)
-{
-    PMIX_HIDE_UNUSED_PARAMS(type);
-    /* create the new object */
-    pmix_proc_stats_t *p = pmix_bfrops_base_tma_proc_stats_create(1, tma);
-    if (PMIX_UNLIKELY(NULL == p)) {
-        return PMIX_ERR_NOMEM;
-    }
-    *dest = p;
-    pmix_bfrops_base_tma_populate_pstats(p, src, tma);
-    return PMIX_SUCCESS;
-}
-
-static inline
-void pmix_bfrops_base_tma_disk_stats_construct(pmix_disk_stats_t *p,
-                                               pmix_tma_t *tma)
-{
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-
-    memset(p, 0, sizeof(pmix_disk_stats_t));
-}
-
-static inline
-void pmix_bfrops_base_tma_disk_stats_destruct(pmix_disk_stats_t *p,
-                                              pmix_tma_t *tma)
-{
-    if (NULL != p->disk) {
-        pmix_tma_free(tma, p->disk);
-        p->disk = NULL;
-    }
-}
-
-static inline
-pmix_disk_stats_t* pmix_bfrops_base_tma_disk_stats_create(size_t n,
-                                                          pmix_tma_t *tma)
-{
-    if (0 == n) {
-        return NULL;
-    }
-    pmix_disk_stats_t *p = (pmix_disk_stats_t *)pmix_tma_malloc(tma, n * sizeof(pmix_disk_stats_t));
-    if (PMIX_LIKELY(NULL != p)) {
-        for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_tma_disk_stats_construct(&p[m], tma);
-        }
-    }
-    return p;
-}
-
-static inline
-void pmix_bfrops_base_tma_disk_stats_free(pmix_disk_stats_t *p,
-                                          size_t n,
-                                          pmix_tma_t *tma)
-{
-    if (NULL != p && 0 < n) {
-        for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_tma_disk_stats_destruct(&p[m], tma);
-        }
-        pmix_tma_free(tma, p);
-    }
-}
-
-static inline
-void pmix_bfrops_base_tma_populate_dkstats(pmix_disk_stats_t *p,
-                                           pmix_disk_stats_t *src,
-                                           pmix_tma_t *tma)
-{
-    if (NULL != src->disk) {
-        p->disk = pmix_tma_strdup(tma, src->disk);
-    }
-    p->num_reads_completed = src->num_reads_completed;
-    p->num_reads_merged = src->num_reads_merged;
-    p->num_sectors_read = src->num_sectors_read;
-    p->milliseconds_reading = src->milliseconds_reading;
-    p->num_writes_completed = src->num_writes_completed;
-    p->num_writes_merged = src->num_writes_merged;
-    p->num_sectors_written = src->num_sectors_written;
-    p->milliseconds_writing = src->milliseconds_writing;
-    p->num_ios_in_progress = src->num_ios_in_progress;
-    p->milliseconds_io = src->milliseconds_io;
-    p->weighted_milliseconds_io = src->weighted_milliseconds_io;
-}
-
-static inline
-pmix_status_t pmix_bfrops_base_tma_copy_dkstats(pmix_disk_stats_t **dest,
-                                                pmix_disk_stats_t *src,
-                                                pmix_data_type_t type,
-                                                pmix_tma_t *tma)
-{
-    PMIX_HIDE_UNUSED_PARAMS(type);
-    /* create the new object */
-    pmix_disk_stats_t *p = pmix_bfrops_base_tma_disk_stats_create(1, tma);
-    if (PMIX_UNLIKELY(NULL == p)) {
-        return PMIX_ERR_NOMEM;
-    }
-    *dest = p;
-    pmix_bfrops_base_tma_populate_dkstats(p, src, tma);
-    return PMIX_SUCCESS;
-}
-
-static inline
-void pmix_bfrops_base_tma_net_stats_construct(pmix_net_stats_t *p,
-                                              pmix_tma_t *tma)
-{
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-
-    memset(p, 0, sizeof(pmix_net_stats_t));
-}
-
-static inline
-void pmix_bfrops_base_tma_net_stats_destruct(pmix_net_stats_t *p,
-                                             pmix_tma_t *tma)
-{
-    if (NULL != p->net_interface) {
-        pmix_tma_free(tma, p->net_interface);
-        p->net_interface = NULL;
-    }
-}
-
-static inline
-void pmix_bfrops_base_tma_net_stats_free(pmix_net_stats_t *p,
-                                         size_t n,
-                                         pmix_tma_t *tma)
-{
-    if (NULL != p && 0 < n) {
-        for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_tma_net_stats_destruct(&p[m], tma);
-        }
-        pmix_tma_free(tma, p);
-    }
-}
-
-static inline
-pmix_net_stats_t* pmix_bfrops_base_tma_net_stats_create(size_t n,
-                                                        pmix_tma_t *tma)
-{
-    if (0 == n) {
-        return NULL;
-    }
-    pmix_net_stats_t *p = (pmix_net_stats_t*)pmix_tma_malloc(tma, n * sizeof(pmix_net_stats_t));
-    if (PMIX_LIKELY(NULL != p)) {
-        for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_tma_net_stats_construct(&p[m], tma);
-        }
-    }
-    return p;
-}
-
-static inline
-void pmix_bfrops_base_tma_populate_netstats(pmix_net_stats_t *p,
-                                            pmix_net_stats_t *src,
-                                            pmix_tma_t *tma)
-{
-    if (NULL != src->net_interface) {
-        p->net_interface = pmix_tma_strdup(tma, src->net_interface);
-    }
-    p->num_bytes_recvd = src->num_bytes_recvd;
-    p->num_packets_recvd = src->num_packets_recvd;
-    p->num_recv_errs = src->num_recv_errs;
-    p->num_bytes_sent = src->num_bytes_sent;
-    p->num_packets_sent = src->num_packets_sent;
-    p->num_send_errs = src->num_send_errs;
-}
-
-static inline
-pmix_status_t pmix_bfrops_base_tma_copy_netstats(pmix_net_stats_t **dest,
-                                                 pmix_net_stats_t *src,
-                                                 pmix_data_type_t type,
-                                                 pmix_tma_t *tma)
-{
-    PMIX_HIDE_UNUSED_PARAMS(type);
-    /* create the new object */
-    pmix_net_stats_t *p = pmix_bfrops_base_tma_net_stats_create(1, tma);
-    if (PMIX_UNLIKELY(NULL == p)) {
-        return PMIX_ERR_NOMEM;
-    }
-    *dest = p;
-    pmix_bfrops_base_tma_populate_netstats(p, src, tma);
-    return PMIX_SUCCESS;
-}
-
-static inline
-void pmix_bfrops_base_tma_node_stats_construct(pmix_node_stats_t *p,
-                                               pmix_tma_t *tma)
-{
-    PMIX_HIDE_UNUSED_PARAMS(tma);
-
-    memset(p, 0, sizeof(pmix_node_stats_t));
-}
-
-static inline
-void pmix_bfrops_base_tma_node_stats_destruct(pmix_node_stats_t *p,
-                                              pmix_tma_t *tma)
-{
-    if (NULL != p->node) {
-        pmix_tma_free(tma, p->node);
-        p->node = NULL;
-    }
-    if (NULL != p->diskstats) {
-        pmix_bfrops_base_tma_disk_stats_free(p->diskstats, p->ndiskstats, tma);
-        p->diskstats = NULL;
-        p->ndiskstats = 0;
-    }
-    if (NULL != p->netstats) {
-        pmix_bfrops_base_tma_net_stats_free(p->netstats, p->nnetstats, tma);
-        p->netstats = NULL;
-        p->nnetstats = 0;
-    }
-}
-
-static inline
-pmix_node_stats_t* pmix_bfrops_base_tma_node_stats_create(size_t n,
-                                                          pmix_tma_t *tma)
-{
-    if (0 == n) {
-        return NULL;
-    }
-    pmix_node_stats_t *p = (pmix_node_stats_t *)pmix_tma_malloc(tma, n * sizeof(pmix_node_stats_t));
-    if (PMIX_LIKELY(NULL != p)) {
-        for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_tma_node_stats_construct(&p[m], tma);
-        }
-    }
-    return p;
-}
-
-static inline
-void pmix_bfrops_base_tma_node_stats_free(pmix_node_stats_t *p,
-                                          size_t n,
-                                          pmix_tma_t *tma)
-{
-    if (NULL != p && 0 < n) {
-        for (size_t m = 0; m < n; m++) {
-            pmix_bfrops_base_tma_node_stats_destruct(&p[m], tma);
-        }
-        pmix_tma_free(tma, p);
-    }
-}
-
-static inline
-void pmix_bfrops_base_tma_populate_ndstats(pmix_node_stats_t *p,
-                                           pmix_node_stats_t *src,
-                                           pmix_tma_t *tma)
-{
-    /* copy the individual fields */
-    if (NULL != src->node) {
-        p->node = pmix_tma_strdup(tma, src->node);
-    }
-    p->la = src->la;
-    p->la5 = src->la5;
-    p->la15 = src->la15;
-    p->total_mem = src->total_mem;
-    p->free_mem = src->free_mem;
-    p->buffers = src->buffers;
-    p->cached = src->cached;
-    p->swap_cached = src->swap_cached;
-    p->swap_total = src->swap_total;
-    p->swap_free = src->swap_free;
-    p->mapped = src->mapped;
-    p->sample_time.tv_sec = src->sample_time.tv_sec;
-    p->sample_time.tv_usec = src->sample_time.tv_usec;
-    p->ndiskstats = src->ndiskstats;
-    if (0 < p->ndiskstats) {
-        p->diskstats = pmix_bfrops_base_tma_disk_stats_create(p->ndiskstats, tma);
-        for (size_t n = 0; n < p->ndiskstats; n++) {
-            pmix_bfrops_base_tma_populate_dkstats(
-                &p->diskstats[n], &src->diskstats[n], tma
-            );
-        }
-    }
-    p->nnetstats = src->nnetstats;
-    if (0 < p->nnetstats) {
-        p->netstats = pmix_bfrops_base_tma_net_stats_create(p->nnetstats, tma);
-        for (size_t n = 0; n < p->nnetstats; n++) {
-            pmix_bfrops_base_tma_populate_netstats(
-                &p->netstats[n], &src->netstats[n], tma
-            );
-        }
-    }
-}
-
-static inline
-pmix_status_t pmix_bfrops_base_tma_copy_ndstats(pmix_node_stats_t **dest,
-                                                pmix_node_stats_t *src,
-                                                pmix_data_type_t type,
-                                                pmix_tma_t *tma)
-{
-    PMIX_HIDE_UNUSED_PARAMS(type);
-    /* create the new object */
-    pmix_node_stats_t *p = pmix_bfrops_base_tma_node_stats_create(1, tma);
-    if (PMIX_UNLIKELY(NULL == p)) {
-        return PMIX_ERR_NOMEM;
-    }
-    *dest = p;
-    pmix_bfrops_base_tma_populate_ndstats(p, src, tma);
-    return PMIX_SUCCESS;
-}
-
-static inline
 pmix_value_cmp_t pmix_bfrops_base_tma_value_compare(pmix_value_t *v1,
                                                     pmix_value_t *v2,
                                                     pmix_tma_t *tma)
@@ -3442,58 +3131,6 @@ pmix_status_t pmix_bfrops_base_tma_copy_darray(pmix_data_array_t **dest,
         }
         break;
     }
-    case PMIX_PROC_STATS: {
-        p->array = pmix_bfrops_base_tma_proc_stats_create(src->size, tma);
-        if (PMIX_UNLIKELY(NULL == p->array)) {
-            rc = PMIX_ERR_NOMEM;
-            break;
-        }
-        pmix_proc_stats_t *const pstats = (pmix_proc_stats_t *)p->array;
-        pmix_proc_stats_t *const sstats = (pmix_proc_stats_t *)src->array;
-        for (size_t n = 0; n < src->size; n++) {
-            pmix_bfrops_base_tma_populate_pstats(&pstats[n], &sstats[n], tma);
-        }
-        break;
-    }
-    case PMIX_DISK_STATS: {
-        p->array = pmix_bfrops_base_tma_disk_stats_create(src->size, tma);
-        if (PMIX_UNLIKELY(NULL == p->array)) {
-            rc = PMIX_ERR_NOMEM;
-            break;
-        }
-        pmix_disk_stats_t *const dkdest = (pmix_disk_stats_t *)p->array;
-        pmix_disk_stats_t *const dksrc = (pmix_disk_stats_t *)src->array;
-        for (size_t n = 0; n < src->size; n++) {
-            pmix_bfrops_base_tma_populate_dkstats(&dkdest[n], &dksrc[n], tma);
-        }
-        break;
-    }
-    case PMIX_NET_STATS: {
-        p->array = pmix_bfrops_base_tma_net_stats_create(src->size, tma);
-        if (PMIX_UNLIKELY(NULL == p->array)) {
-            rc = PMIX_ERR_NOMEM;
-            break;
-        }
-        pmix_net_stats_t *const ntdest = (pmix_net_stats_t *)p->array;
-        pmix_net_stats_t *const ntsrc = (pmix_net_stats_t *)src->array;
-        for (size_t n = 0; n < src->size; n++) {
-            pmix_bfrops_base_tma_populate_netstats(&ntdest[n], &ntsrc[n], tma);
-        }
-        break;
-    }
-    case PMIX_NODE_STATS: {
-        p->array = pmix_bfrops_base_tma_node_stats_create(src->size, tma);
-        if (PMIX_UNLIKELY(NULL == p->array)) {
-            rc = PMIX_ERR_NOMEM;
-            break;
-        }
-        pmix_node_stats_t *const nddest = (pmix_node_stats_t *)p->array;
-        pmix_node_stats_t *const ndsrc = (pmix_node_stats_t *)src->array;
-        for (size_t n = 0; n < src->size; n++) {
-            pmix_bfrops_base_tma_populate_ndstats(&nddest[n], &ndsrc[n], tma);
-        }
-        break;
-    }
     default:
         rc = PMIX_ERR_UNKNOWN_DATA_TYPE;
     }
@@ -3701,15 +3338,6 @@ pmix_status_t pmix_bfrops_base_tma_value_xfer(pmix_value_t *p,
                                                  PMIX_REGATTR, tma);
     case PMIX_DATA_BUFFER:
         return pmix_bfrops_base_tma_copy_dbuf(&p->data.dbuf, src->data.dbuf, PMIX_DATA_BUFFER, tma);
-    case PMIX_PROC_STATS:
-        return pmix_bfrops_base_tma_copy_pstats(&p->data.pstats, src->data.pstats, PMIX_PROC_STATS, tma);
-    case PMIX_DISK_STATS:
-        return pmix_bfrops_base_tma_copy_dkstats(&p->data.dkstats, src->data.dkstats, PMIX_DISK_STATS, tma);
-    case PMIX_NET_STATS:
-        return pmix_bfrops_base_tma_copy_netstats(&p->data.netstats, src->data.netstats,
-                                                  PMIX_NET_STATS, tma);
-    case PMIX_NODE_STATS:
-        return pmix_bfrops_base_tma_copy_ndstats(&p->data.ndstats, src->data.ndstats, PMIX_NODE_STATS, tma);
     default:
         pmix_output(0, "PMIX-XFER-VALUE: UNSUPPORTED TYPE %d", (int) src->type);
         return PMIX_ERROR;
@@ -3857,18 +3485,6 @@ void pmix_bfrops_base_tma_data_array_destruct(pmix_data_array_t *d,
             pmix_tma_free(tma, d->array);
             break;
         }
-        case PMIX_PROC_STATS:
-            pmix_bfrops_base_tma_proc_stats_free(d->array, d->size, tma);
-            break;
-        case PMIX_DISK_STATS:
-            pmix_bfrops_base_tma_disk_stats_free(d->array, d->size, tma);
-            break;
-        case PMIX_NET_STATS:
-            pmix_bfrops_base_tma_net_stats_free(d->array, d->size, tma);
-            break;
-        case PMIX_NODE_STATS:
-            pmix_bfrops_base_tma_node_stats_free(d->array, d->size, tma);
-            break;
         default:
             if (NULL != d->array) {
                 pmix_tma_free(tma, d->array);
@@ -4016,18 +3632,6 @@ void pmix_bfrops_base_tma_data_array_construct(pmix_data_array_t *p,
             p->array = pmix_tma_malloc(tma, num * sizeof(pmix_nspace_t));
             memset(p->array, 0, num * sizeof(pmix_nspace_t));
 
-        } else if (PMIX_PROC_STATS == type) {
-            p->array = pmix_bfrops_base_tma_proc_stats_create(num, tma);
-
-        } else if (PMIX_DISK_STATS == type) {
-            p->array = pmix_bfrops_base_tma_disk_stats_create(num, tma);
-
-        } else if (PMIX_NET_STATS == type) {
-            p->array = pmix_bfrops_base_tma_net_stats_create(num, tma);
-
-        } else if (PMIX_NODE_STATS == type) {
-            p->array = pmix_bfrops_base_tma_node_stats_create(num, tma);
-
         } else if (PMIX_DEVICE == type) {
             p->array = pmix_bfrops_base_tma_device_create(num, tma);
 
@@ -4172,30 +3776,6 @@ void pmix_bfrops_base_tma_value_destruct(pmix_value_t *v,
         case PMIX_DATA_BUFFER:
             if (NULL != v->data.dbuf) {
                 pmix_bfrops_base_tma_data_buffer_release(v->data.dbuf, tma);
-            }
-            break;
-        case PMIX_PROC_STATS:
-            if (NULL != v->data.pstats) {
-                pmix_bfrops_base_tma_proc_stats_free(v->data.pstats, 1, tma);
-                v->data.pstats = NULL;
-            }
-            break;
-        case PMIX_DISK_STATS:
-            if (NULL != v->data.dkstats) {
-                pmix_bfrops_base_tma_disk_stats_free(v->data.dkstats, 1, tma);
-                v->data.dkstats = NULL;
-            }
-            break;
-        case PMIX_NET_STATS:
-            if (NULL != v->data.netstats) {
-                pmix_bfrops_base_tma_net_stats_free(v->data.netstats, 1, tma);
-                v->data.netstats = NULL;
-            }
-            break;
-        case PMIX_NODE_STATS:
-            if (NULL != v->data.ndstats) {
-                pmix_bfrops_base_tma_node_stats_free(v->data.ndstats, 1, tma);
-                v->data.ndstats = NULL;
             }
             break;
 

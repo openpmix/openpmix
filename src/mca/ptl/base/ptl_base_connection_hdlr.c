@@ -58,7 +58,6 @@ typedef struct {
     pmix_status_t status;
     pmix_status_t reply;
     pmix_pending_connection_t *pnd;
-    char *blob;
     pmix_peer_t *peer;
     pmix_info_t *info;
     size_t ninfo;
@@ -67,7 +66,6 @@ static void chcon(cnct_hdlr_t *p)
 {
     memset(&p->ev, 0, sizeof(pmix_event_t));
     p->pnd = NULL;
-    p->blob = NULL;
     p->peer = NULL;
     p->info = NULL;
     p->ninfo = 0;
@@ -76,9 +74,6 @@ static void chdes(cnct_hdlr_t *p)
 {
     if (NULL != p->pnd) {
         PMIX_RELEASE(p->pnd);
-    }
-    if (NULL != p->blob) {
-        free(p->blob);
     }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
@@ -169,13 +164,15 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
     char *msg = NULL, *mg, *p, *blob = NULL;
-    size_t cnt;
+    size_t cnt, n;
     size_t len = 0;
+    int32_t i32;
     pmix_namespace_t *nptr, *tmp;
     pmix_rank_info_t *info = NULL, *iptr;
     pmix_proc_t proc;
-    pmix_info_t ginfo;
+    pmix_info_t ginfo, *iblob;
     pmix_byte_object_t cred;
+    pmix_buffer_t buf;
     uint8_t major, minor, release;
     cnct_hdlr_t *ch;
 
@@ -472,6 +469,29 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         nptr->version_stored = true;
     }
 
+
+    // if a blob was provided, then unpack it
+    if (NULL != blob) {
+        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+        PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, blob, len); // allocates no memory
+        i32 = 1;
+        PMIX_BFROPS_UNPACK(rc, peer, &buf, &cnt, &i32, PMIX_SIZE);
+        if (0 < cnt) {
+            PMIX_INFO_CREATE(iblob, cnt);
+            i32 = cnt;
+            PMIX_BFROPS_UNPACK(rc, peer, &buf, iblob, &i32, PMIX_INFO);
+            // process the data
+            for (n=0; n < cnt; n++) {
+                if (PMIx_Check_key(iblob[n].key, PMIX_PROC_PID)) {
+                    info->pid = iblob[n].value.data.pid;
+                }
+            }
+            PMIX_INFO_FREE(iblob, cnt);
+        }
+        free(blob);
+
+    }
+
     free(msg); // can now release the data buffer
     msg = NULL;
 
@@ -494,7 +514,6 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     ch->peer = peer;
     ch->pnd = pnd;
     ch->reply = reply;
-    ch->blob = blob;
 
     /* let the host server know that this client has connected */
     if (NULL != pmix_host_server.client_connected2) {

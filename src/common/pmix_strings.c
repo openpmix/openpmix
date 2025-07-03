@@ -37,6 +37,7 @@
 
 #include "src/common/pmix_attributes.h"
 #include "src/include/pmix_globals.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_printf.h"
 
@@ -428,6 +429,7 @@ char* PMIx_App_string(const pmix_app_t *app)
     char **ans = NULL;
     char *tmp, *str;
     size_t n;
+    pmix_status_t rc;
 
     /* add the command */
     pmix_asprintf(&tmp, "CMD: %s", app->cmd);
@@ -478,7 +480,11 @@ char* PMIx_App_string(const pmix_app_t *app)
     } else {
         PMIx_Argv_append_nosize(&ans, "    INFO:");
         for (n=0; n < app->ninfo; n++) {
-            str = PMIx_Info_string(&app->info[n]);
+            rc = pmix_bfrops_base_print_info(&str, NULL, (void*)&app->info[n], PMIX_INFO);
+            if (PMIX_SUCCESS != rc) {
+                PMIx_Argv_free(ans);
+                return NULL;
+            }
             pmix_asprintf(&tmp, "        INFO[%d]: %s", (int)n, str);
             PMIx_Argv_append_nosize(&ans, tmp);
             free(tmp);

@@ -69,7 +69,7 @@ PMIX_MCA_BASE_COMPONENT_INIT(pmix, pstat, plinux)
 
 static int pstat_plinux_component_query(pmix_mca_base_module_t **module, int *priority)
 {
-    *priority = 20;
+    *priority = 80;
     *module = (pmix_mca_base_module_t *) &pmix_pstat_plinux_module;
 
     return PMIX_SUCCESS;

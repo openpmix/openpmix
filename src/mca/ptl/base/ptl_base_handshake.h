@@ -1,7 +1,7 @@
 /* -*- C -*-
  *
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -134,18 +134,18 @@ typedef uint8_t pmix_rnd_flag_t;
 
 #define PMIX_PTL_GET_PROCID(p)              \
     do {                                    \
-        char *n;                            \
+        char *_n;                           \
         uint32_t _r;                        \
         pmix_status_t _rc;                  \
-        PMIX_PTL_GET_STRING(n);             \
+        PMIX_PTL_GET_STRING(_n);            \
         PMIX_PTL_GET_U32_NOERROR(_rc, _r);  \
         if (PMIX_SUCCESS != _rc) {          \
             PMIX_ERROR_LOG(_rc);            \
-            free(n);                        \
+            free(_n);                       \
             goto error;                     \
         }                                   \
-        PMIX_LOAD_PROCID(&(p), n, _r);      \
-        free(n);                            \
+        PMIX_LOAD_PROCID(&(p), _n, _r);     \
+        free(_n);                           \
     } while (0)
 
 /* The following macros are for use in the ptl_base_fns.c

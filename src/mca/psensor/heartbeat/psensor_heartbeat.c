@@ -4,7 +4,7 @@
  *                         reserved.
  *
  * Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,8 +43,10 @@ static pmix_status_t heartbeat_start(pmix_peer_t *requestor, pmix_status_t error
 static pmix_status_t heartbeat_stop(pmix_peer_t *requestor, char *id);
 
 /* instantiate the module */
-pmix_psensor_base_module_t pmix_psensor_heartbeat_module = {.start = heartbeat_start,
-                                                            .stop = heartbeat_stop};
+pmix_psensor_base_module_t pmix_psensor_heartbeat_module = {
+    .start = heartbeat_start,
+    .stop = heartbeat_stop
+};
 
 /* tracker object */
 typedef struct {

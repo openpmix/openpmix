@@ -42,12 +42,14 @@
 char* PMIx_Info_string(const pmix_info_t *info)
 {
     pmix_status_t rc;
-    char *output = NULL;
+    char *output , *tmp;
 
-    rc = pmix_bfrops_base_print_info(&output, NULL, (void*)info, PMIX_INFO);
+    rc = pmix_bfrops_base_print_info(&tmp, NULL, (void*)info, PMIX_INFO);
     if (PMIX_SUCCESS != rc) {
         return NULL;
     }
+    pmix_asprintf(&output, "%s\n", tmp);
+    free(tmp);
     return output;
 }
 
@@ -550,6 +552,7 @@ int pmix_bfrops_base_print_time(char **output, char *prefix, time_t *src, pmix_d
 {
     char *t;
     int ret;
+    struct tm *local;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
@@ -564,7 +567,8 @@ int pmix_bfrops_base_print_time(char **output, char *prefix, time_t *src, pmix_d
         }
     }
 
-    t = ctime(src);
+    local = localtime(src);
+    t = asctime(local);
     t[strlen(t) - 1] = '\0'; // remove trailing newline
 
     ret = asprintf(output, "%sData type: PMIX_TIME\tValue: %s",
@@ -581,7 +585,6 @@ int pmix_bfrops_base_print_timeval(char **output, char *prefix, struct timeval *
                                    pmix_data_type_t type)
 {
     int ret;
-
     PMIX_HIDE_UNUSED_PARAMS(type);
 
     /* if src is NULL, just print data type and return */
@@ -595,9 +598,10 @@ int pmix_bfrops_base_print_timeval(char **output, char *prefix, struct timeval *
         }
     }
 
-    ret = asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: %ld.%06ld",
-                   (NULL == prefix) ? " " : prefix, (long) src->tv_sec,
-                   (long) src->tv_usec);
+    ret = asprintf(output, "%sData type: PMIX_TIMEVAL\tValue: %lu.%lu",
+                   (NULL == prefix) ? " " : prefix,
+                   (unsigned long)src->tv_sec,
+                   (unsigned long)src->tv_usec);
 
     if (0 > ret) {
         return PMIX_ERR_OUT_OF_RESOURCE;
@@ -792,6 +796,9 @@ static int print_val(char **output, pmix_value_t *src)
             break;
         case PMIX_STOR_ACCESS_TYPE:
             rc = pmix_bfrops_base_print_satyp(&tp, NULL, &src->data.uint16, PMIX_STOR_ACCESS_TYPE);
+            break;
+        case PMIX_NODE_PID:
+            rc = pmix_bfrops_base_print_nodepid(&tp, NULL, src->data.nodepid, PMIX_NODE_PID);
             break;
         default:
             pmix_asprintf(&tp, " Data type: %s(%d)\tValue: UNPRINTABLE",
@@ -1221,6 +1228,7 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
     pmix_storage_accessibility_t *saptr;
     pmix_storage_persistence_t *spptr;
     pmix_storage_access_type_t *satptr;
+    pmix_node_pid_t *ndpidptr;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
@@ -1430,6 +1438,10 @@ pmix_status_t pmix_bfrops_base_print_darray(char **output, char *prefix,
             case PMIX_STOR_ACCESS_TYPE:
                 satptr = (pmix_storage_access_type_t*)src->array;
                 rc = pmix_bfrops_base_print_satyp(&tp, prefix, &satptr[n], PMIX_STOR_ACCESS_TYPE);
+                break;
+            case PMIX_NODE_PID:
+                ndpidptr = (pmix_node_pid_t*)src->array;
+                rc = pmix_bfrops_base_print_nodepid(&tp, prefix, &ndpidptr[n], PMIX_NODE_PID);
                 break;
             default:
                 pmix_asprintf(&tp, " Data type: %s(%d)\tValue: UNPRINTABLE",
@@ -1982,115 +1994,6 @@ pmix_status_t pmix_bfrops_base_print_nspace(char **output, char *prefix, pmix_ns
     }
 }
 
-pmix_status_t pmix_bfrops_base_print_pstats(char **output, char *prefix, pmix_proc_stats_t *src,
-                                            pmix_data_type_t type)
-{
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* if src is NULL, just print data type and return */
-    if (NULL == src) {
-        pmix_asprintf(output, "%sData type: PMIX_PROC_STATS\tValue: NULL pointer",
-                      (NULL == prefix) ? " " : prefix);
-        return PMIX_SUCCESS;
-    }
-    pmix_asprintf(output,
-                  "%sPMIX_PROC_STATS SAMPLED AT: %ld.%06ld\n%snode: %s proc: %s"
-                  " pid: %d cmd: %s state: %c pri: %d #threads: %d Processor: %d\n"
-                  "%s\ttime: %ld.%06ld cpu: %5.2f  PSS: %8.2f  VMsize: %8.2f PeakVMSize: %8.2f RSS: %8.2f\n",
-                  (NULL == prefix) ? " " : prefix, (long) src->sample_time.tv_sec,
-                  (long) src->sample_time.tv_usec, (NULL == prefix) ? " " : prefix, src->node,
-                  PMIX_NAME_PRINT(&src->proc), src->pid, src->cmd, src->state, src->priority,
-                  src->num_threads, src->processor, (NULL == prefix) ? " " : prefix,
-                  (long) src->time.tv_sec, (long) src->time.tv_usec,
-                  src->percent_cpu, src->pss, src->vsize, src->peak_vsize, src->rss);
-
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_print_dkstats(char **output, char *prefix, pmix_disk_stats_t *src,
-                                             pmix_data_type_t type)
-{
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* if src is NULL, just print data type and return */
-    if (NULL == src) {
-        pmix_asprintf(output, "%sData type: PMIX_DISK_STATS\tValue: NULL pointer",
-                      (NULL == prefix) ? " " : prefix);
-        return PMIX_SUCCESS;
-    }
-    pmix_asprintf(output,
-                  "%sPMIX_DISK_STATS Disk: %s\n"
-                  "%sNumReadsCompleted: %" PRIx64 " NumReadsMerged: %" PRIx64
-                  " NumSectorsRead: %" PRIx64 " MillisecReading: %" PRIx64 "\n"
-                  "%sNumWritesCompleted: %" PRIx64 " NumWritesMerged: %" PRIx64
-                  " NumSectorsWrote: %" PRIx64 " MillisecWriting: %" PRIx64 "\n"
-                  "%sNumIOsInProgress: %" PRIx64 " MillisecondsIO: %" PRIx64
-                  " WeightedMillisecsIO: %" PRIx64 "\n",
-                  (NULL == prefix) ? " " : prefix, src->disk,
-                  (NULL == prefix) ? " " : prefix, src->num_reads_completed, src->num_reads_merged,
-                  src->num_sectors_read, src->milliseconds_reading,
-                  (NULL == prefix) ? " " : prefix,
-                  src->num_writes_completed, src->num_writes_merged, src->num_sectors_written,
-                  src->milliseconds_writing,
-                  (NULL == prefix) ? " " : prefix, src->num_ios_in_progress, src->milliseconds_io,
-                  src->weighted_milliseconds_io);
-
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_print_netstats(char **output, char *prefix, pmix_net_stats_t *src,
-                                              pmix_data_type_t type)
-{
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* if src is NULL, just print data type and return */
-    if (NULL == src) {
-        pmix_asprintf(output, "%sData type: PMIX_NET_STATS\tValue: NULL pointer",
-                      (NULL == prefix) ? " " : prefix);
-        return PMIX_SUCCESS;
-    }
-    pmix_asprintf(output,
-                  "%sPMIX_NET_STATS Interface: %s\n"
-                  "%sNumBytesRecvd: %" PRIx64 " NumPacketsRecv: %" PRIx64 " NumRecvErrors: %" PRIx64
-                  "\n"
-                  "%sNumBytesSent: %" PRIx64 " NumPacketsSent: %" PRIx64 " NumSendErrors: %" PRIx64
-                  "\n",
-                  (NULL == prefix) ? " " : prefix, src->net_interface,
-                  (NULL == prefix) ? " " : prefix, src->num_bytes_recvd, src->num_packets_recvd,
-                  src->num_recv_errs,
-                  (NULL == prefix) ? " " : prefix, src->num_bytes_sent, src->num_packets_sent,
-                  src->num_send_errs);
-
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_print_ndstats(char **output, char *prefix, pmix_node_stats_t *src,
-                                             pmix_data_type_t type)
-{
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    /* if src is NULL, just print data type and return */
-    if (NULL == src) {
-        pmix_asprintf(output, "%sData type: PMIX_NODE_STATS\tValue: NULL pointer",
-                      (NULL == prefix) ? " " : prefix);
-        return PMIX_SUCCESS;
-    }
-    pmix_asprintf(output,
-                  "%sPMIX_NODE_STATS SAMPLED AT: %ld.%06ld\tNode: %s\n%sTotal Mem: %5.2f "
-                  "Free Mem: %5.2f Buffers: %5.2f Cached: %5.2f\n"
-                  "%sSwapCached: %5.2f SwapTotal: %5.2f SwapFree: %5.2f Mapped: %5.2f\n"
-                  "%s\tla: %5.2f\tla5: %5.2f\tla15: %5.2f\n",
-                  (NULL == prefix) ? " " : prefix, (long) src->sample_time.tv_sec,
-                  (long) src->sample_time.tv_usec, src->node,
-                  (NULL == prefix) ? " " : prefix, src->total_mem, src->free_mem,
-                  src->buffers, src->cached,
-                  (NULL == prefix) ? " " : prefix,
-                  src->swap_cached, src->swap_total, src->swap_free, src->mapped,
-                  (NULL == prefix) ? " " : prefix, src->la,
-                  src->la5, src->la15);
-
-    return PMIX_SUCCESS;
-}
 pmix_status_t pmix_bfrops_base_print_dbuf(char **output, char *prefix, pmix_data_buffer_t *src,
                                           pmix_data_type_t type)
 {
@@ -2267,4 +2170,18 @@ pmix_status_t pmix_bfrops_base_print_satyp(char **output, char *prefix,
     } else {
         return PMIX_SUCCESS;
     }
+}
+
+pmix_status_t pmix_bfrops_base_print_nodepid(char **output, char *prefix,
+                                             pmix_node_pid_t *src,
+                                             pmix_data_type_t type)
+{
+    int ret;
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    ret = asprintf(output, "%sData type: PMIX_NODE_PID\tValue: Host %s(%u) PID %d",
+                   (NULL == prefix) ? " " : prefix,
+                   (NULL == src->hostname) ? "NULL" : src->hostname,
+                   src->nodeid, src->pid);
+    return ret;
 }

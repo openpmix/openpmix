@@ -61,6 +61,7 @@
 #include "src/class/pmix_list.h"
 #include "src/common/pmix_attributes.h"
 #include "src/common/pmix_iof.h"
+#include "src/common/pmix_monitor.h"
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
@@ -1875,23 +1876,24 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
                                   void *cbdata)
 {
     int32_t cnt;
-    pmix_info_t monitor;
-    pmix_status_t rc, error;
-    pmix_query_caddy_t *cd;
-    pmix_proc_t proc;
+    pmix_status_t rc;
+    pmix_cb_t *cb;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "recvd monitor request from client");
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "recvd monitor request from client");
 
-    cd = PMIX_NEW(pmix_query_caddy_t);
-    if (NULL == cd) {
+    cb = PMIX_NEW(pmix_cb_t);
+    if (NULL == cb) {
         return PMIX_ERR_NOMEM;
     }
-    cd->cbdata = cbdata;
+    cb->cbdata = cbdata;
+    cb->cbfunc.infofn = cbfunc;
 
     /* unpack what is to be monitored */
-    PMIX_INFO_CONSTRUCT(&monitor);
+    cb->info = PMIx_Info_create(1);
+    cb->infocopy = true;
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &monitor, &cnt, PMIX_INFO);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, cb->info, &cnt, PMIX_INFO);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1899,7 +1901,7 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
 
     /* unpack the error code */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &error, &cnt, PMIX_STATUS);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
@@ -1907,56 +1909,28 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
 
     /* unpack the number of directives */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->ninfo, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cb->ndirs, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto exit;
     }
     /* unpack the directives */
-    if (0 < cd->ninfo) {
-        PMIX_INFO_CREATE(cd->info, cd->ninfo);
-        cnt = cd->ninfo;
-        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->info, &cnt, PMIX_INFO);
+    if (0 < cb->ndirs) {
+        PMIX_INFO_CREATE(cb->directives, cb->ndirs);
+        cnt = cb->ndirs;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cb->directives, &cnt, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto exit;
         }
     }
 
-    /* see if they are requesting one of the monitoring
-     * methods we internally support */
-    rc = pmix_psensor.start(peer, error, &monitor, cd->info, cd->ninfo);
-    if (PMIX_SUCCESS == rc) {
-        rc = PMIX_OPERATION_SUCCEEDED;
-        goto exit;
-    }
-    if (PMIX_ERR_NOT_SUPPORTED != rc) {
-        goto exit;
-    }
-
-    /* if we don't internally support it, see if
-     * our host does */
-    if (NULL == pmix_host_server.monitor) {
-        rc = PMIX_ERR_NOT_SUPPORTED;
-        goto exit;
-    }
-
-    /* setup the requesting peer name */
-    pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
-    proc.rank = peer->info->pname.rank;
-
-    /* ask the host to execute the request */
-    rc = pmix_host_server.monitor(&proc, &monitor, error,
-                                  cd->info, cd->ninfo,
-                                  cbfunc, cd);
-    if (PMIX_SUCCESS != rc) {
-        goto exit;
-    }
+    // pass this over to be processed
+    PMIX_THREADSHIFT(cb, pmix_monitor_processing);
     return PMIX_SUCCESS;
 
 exit:
-    PMIX_INFO_DESTRUCT(&monitor);
-    PMIX_RELEASE(cd);
+    PMIX_RELEASE(cb);
     return rc;
 }
 

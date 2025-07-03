@@ -50,6 +50,7 @@
 
 #include "src/class/pmix_list.h"
 #include "src/include/pmix_socket_errno.h"
+#include "src/mca/bfrops/base/base.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_basename.h"
 #include "src/util/pmix_error.h"
@@ -494,8 +495,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    lt->varname = strdup("PMIX_SERVER_URI51:PMIX_SERVER_URI41:PMIX_SERVER_URI4:PMIX_SERVER_URI3:"
-                         "PMIX_SERVER_URI2:PMIX_SERVER_URI21");
+    lt->varname = pmix_bfrops_base_get_components();
     lt->protocol = PMIX_PROTOCOL_V2;
     lt->cbfunc = pmix_ptl_base_connection_handler;
 

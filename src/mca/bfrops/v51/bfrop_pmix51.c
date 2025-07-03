@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -310,22 +310,6 @@ static pmix_status_t init(void)
     PMIX_REGISTER_TYPE("PMIX_PROC_NSPACE", PMIX_PROC_NSPACE, pmix_bfrops_base_pack_nspace,
                        pmix_bfrops_base_unpack_nspace, pmix_bfrops_base_copy_nspace,
                        pmix_bfrops_base_print_nspace, &pmix_mca_bfrops_v51_component.types);
-
-    PMIX_REGISTER_TYPE("PMIX_PROC_STATS", PMIX_PROC_STATS, pmix_bfrops_base_pack_pstats,
-                       pmix_bfrops_base_unpack_pstats, pmix_bfrops_base_copy_pstats,
-                       pmix_bfrops_base_print_pstats, &pmix_mca_bfrops_v51_component.types);
-
-    PMIX_REGISTER_TYPE("PMIX_DISK_STATS", PMIX_DISK_STATS, pmix_bfrops_base_pack_dkstats,
-                       pmix_bfrops_base_unpack_dkstats, pmix_bfrops_base_copy_dkstats,
-                       pmix_bfrops_base_print_dkstats, &pmix_mca_bfrops_v51_component.types);
-
-    PMIX_REGISTER_TYPE("PMIX_NET_STATS", PMIX_NET_STATS, pmix_bfrops_base_pack_netstats,
-                       pmix_bfrops_base_unpack_netstats, pmix_bfrops_base_copy_netstats,
-                       pmix_bfrops_base_print_netstats, &pmix_mca_bfrops_v51_component.types);
-
-    PMIX_REGISTER_TYPE("PMIX_NODE_STATS", PMIX_NODE_STATS, pmix_bfrops_base_pack_ndstats,
-                       pmix_bfrops_base_unpack_ndstats, pmix_bfrops_base_copy_ndstats,
-                       pmix_bfrops_base_print_ndstats, &pmix_mca_bfrops_v51_component.types);
 
     PMIX_REGISTER_TYPE("PMIX_DATA_BUFFER", PMIX_DATA_BUFFER, pmix_bfrops_base_pack_dbuf,
                        pmix_bfrops_base_unpack_dbuf, pmix_bfrops_base_copy_dbuf,

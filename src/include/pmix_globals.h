@@ -411,6 +411,7 @@ typedef struct pmix_rank_info_t {
     pmix_list_item_t super;
     int peerid; // peer object index into the local clients array on the server
     pmix_name_t pname;
+    pid_t pid;
     uid_t uid;
     gid_t gid;
     bool modex_recvd;
@@ -476,6 +477,21 @@ typedef struct pmix_peer_t {
     uint32_t dyn_tags_end; // upper limit of valid tags for sendrecvs to this peer
 } pmix_peer_t;
 PMIX_CLASS_DECLARATION(pmix_peer_t);
+
+typedef struct {
+    pmix_list_item_t super;
+    pmix_peer_t *peer;
+} pmix_peerlist_t;
+PMIX_CLASS_DECLARATION(pmix_peerlist_t);
+
+typedef struct {
+    pmix_object_t super;
+    struct timeval tv;
+    pmix_event_t ev;
+    bool active;
+    void *payload;
+} pmix_timer_t;
+PMIX_CLASS_DECLARATION(pmix_timer_t);
 
 /* tracker for IOF requests */
 typedef struct {
@@ -915,6 +931,26 @@ static inline bool pmix_check_special_key(const char *key)
     for (n = 0; NULL != keys[n]; n++) {
         if (0 == strncmp(key, keys[n], PMIX_MAX_KEYLEN)) {
             return true;
+        }
+    }
+    return false;
+}
+
+static inline bool pmix_check_local(const char *hostname)
+{
+    size_t n;
+
+    // first do simple check
+    if (0 == strcmp(pmix_globals.hostname, hostname)) {
+        return true;
+    }
+
+    // now check aliases
+    if (NULL != pmix_globals.aliases) {
+        for (n=0; NULL != pmix_globals.aliases[n]; n++) {
+            if (0 == strcmp(pmix_globals.aliases[n], hostname)) {
+                return true;
+            }
         }
     }
     return false;
