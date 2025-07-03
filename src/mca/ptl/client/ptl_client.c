@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -85,8 +85,8 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     char **tmp, *mycmd;
     void *ilist;
     pid_t mypid;
-    pmix_info_t *iptr;
-    size_t niptr;
+    pmix_info_t *iptr = NULL;
+    size_t niptr = 0;
     pmix_data_array_t darray;
     pmix_list_t connections;
     pmix_connection_t *cn;
@@ -109,7 +109,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             tmp = PMIx_Argv_split(evar, ':');
             rc = PMIX_ERR_BAD_PARAM;
             for (m = 0; NULL != tmp[m]; m++) {
-                rc = pmix_ptl_base_set_peer(peer, tmp[m]);
+                rc = pmix_ptl_base_set_peer(peer, &tmp[m]);
                 if (PMIX_SUCCESS == rc) {
                     break;
                 }
@@ -123,9 +123,33 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             break;
         }
     }
+
+    /* provide our cmd line and PID */
+    PMIX_INFO_LIST_START(ilist);
+    mypid = getpid();
+    PMIX_INFO_LIST_ADD(rc, ilist, PMIX_PROC_PID, &mypid, PMIX_PID);
+    mycmd = pmix_ptl_base_get_cmd_line();
+    if (NULL != mycmd) {
+        PMIX_INFO_LIST_ADD(rc, ilist, PMIX_CMD_LINE, mycmd, PMIX_STRING);
+    }
+    PMIX_INFO_LIST_CONVERT(rc, ilist, &darray);
+    if (PMIX_ERR_EMPTY == rc) {
+        iptr = NULL;
+        niptr = 0;
+    } else if (PMIX_SUCCESS != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_INFO_LIST_RELEASE(ilist);
+        PMIX_LIST_DESTRUCT(&connections);
+        return rc;
+    } else {
+        iptr = (pmix_info_t *) darray.array;
+        niptr = darray.size;
+    }
+    PMIX_INFO_LIST_RELEASE(ilist);
+
     if (NULL == evar) {
         /* check the environment */
-        rc = pmix_ptl_base_check_server_uris(peer, &evar);
+        rc = pmix_ptl_base_set_peer(peer, &evar);
         if (PMIX_SUCCESS != rc) {
             /* we must be a singleton */
             PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_SINGLETON);
@@ -137,6 +161,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             /* setup the system rendezvous file name */
             if (0 > asprintf(&rendfile, "%s/pmix.sys.%s", pmix_ptl_base.system_tmpdir,
                              pmix_globals.hostname)) {
+                if (NULL != iptr) {
+                    PMIX_INFO_FREE(iptr, niptr);
+                }
                 return PMIX_ERR_NOMEM;
             }
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
@@ -148,28 +175,6 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             rendfile = NULL;
             if (PMIX_SUCCESS == rc && 0 < pmix_list_get_size(&connections)) {
                 cn = (pmix_connection_t *) pmix_list_get_first(&connections);
-                /* provide our cmd line and PID */
-                PMIX_INFO_LIST_START(ilist);
-                mypid = getpid();
-                PMIX_INFO_LIST_ADD(rc, ilist, PMIX_PROC_PID, &mypid, PMIX_PID);
-                mycmd = pmix_ptl_base_get_cmd_line();
-                if (NULL != mycmd) {
-                    PMIX_INFO_LIST_ADD(rc, ilist, PMIX_CMD_LINE, mycmd, PMIX_STRING);
-                }
-                PMIX_INFO_LIST_CONVERT(rc, ilist, &darray);
-                if (PMIX_ERR_EMPTY == rc) {
-                    iptr = NULL;
-                    niptr = 0;
-                } else if (PMIX_SUCCESS != rc) {
-                    PMIX_ERROR_LOG(rc);
-                    PMIX_INFO_LIST_RELEASE(ilist);
-                    PMIX_LIST_DESTRUCT(&connections);
-                    return rc;
-                } else {
-                    iptr = (pmix_info_t *) darray.array;
-                    niptr = darray.size;
-                }
-                PMIX_INFO_LIST_RELEASE(ilist);
                 /* set our protocol to V2 as that is all we support */
                 pmix_globals.mypeer->protocol = PMIX_PROTOCOL_V2;
                 peer->protocol = PMIX_PROTOCOL_V2;
@@ -190,6 +195,9 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
             pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                                 "ptl:tcp:client is singleton");
             PMIX_LIST_DESTRUCT(&connections);
+            if (NULL != iptr) {
+                PMIX_INFO_FREE(iptr, niptr);
+            }
             return PMIX_ERR_UNREACH;
         }
     }
@@ -200,16 +208,22 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
      */
     rc = pmix_ptl_base_parse_uri(evar, &nspace, &rank, &suri);
     if (PMIX_SUCCESS != rc) {
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
+        }
         return rc;
     }
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tcp:client attempt connect to %s:%u at %s", nspace, rank, suri);
 
-    rc = pmix_ptl_base_make_connection(peer, suri, NULL, 0);
+    rc = pmix_ptl_base_make_connection(peer, suri, iptr, niptr);
     if (PMIX_SUCCESS != rc) {
         free(nspace);
         free(suri);
+        if (NULL != iptr) {
+            PMIX_INFO_FREE(iptr, niptr);
+        }
         return rc;
     }
 
@@ -224,6 +238,9 @@ complete:
 
     if (NULL != nspace) {
         free(nspace);
+    }
+    if (NULL != iptr) {
+        PMIX_INFO_FREE(iptr, niptr);
     }
     return rc;
 }

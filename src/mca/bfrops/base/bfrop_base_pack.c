@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -826,6 +826,12 @@ pmix_status_t pmix_bfrops_base_pack_darray(pmix_pointer_array_t *regtypes, pmix_
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
+    // handle the case of a NULL data array pointer
+    if (NULL == src) {
+        ret = pmix_bfrop_store_data_type(regtypes, buffer, PMIX_UNDEF);
+        return ret;
+    }
+
     for (i = 0; i < num_vals; i++) {
         /* pack the actual type in the array */
         if (PMIX_SUCCESS != (ret = pmix_bfrop_store_data_type(regtypes, buffer, p[i].type))) {
@@ -928,11 +934,8 @@ pmix_status_t pmix_bfrops_base_pack_val(pmix_pointer_array_t *regtypes, pmix_buf
     case PMIX_DEVICE_DIST:
     case PMIX_ENDPOINT:
     case PMIX_REGATTR:
-    case PMIX_PROC_STATS:
-    case PMIX_DISK_STATS:
-    case PMIX_NET_STATS:
-    case PMIX_NODE_STATS:
     case PMIX_RESOURCE_UNIT:
+    case PMIX_NODE_PID:
         PMIX_BFROPS_PACK_TYPE(ret, buffer, p->data.ptr, 1, p->type, regtypes);
         if (PMIX_SUCCESS != ret) {
             return ret;
@@ -1370,278 +1373,6 @@ pmix_status_t pmix_bfrops_base_pack_nspace(pmix_pointer_array_t *regtypes, pmix_
     return PMIX_SUCCESS;
 }
 
-pmix_status_t pmix_bfrops_base_pack_pstats(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                           const void *src, int32_t num_vals, pmix_data_type_t type)
-{
-    pmix_proc_stats_t *ptr = (pmix_proc_stats_t *) src;
-    int32_t i;
-    int ret;
-    char *cptr;
-
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    for (i = 0; i < num_vals; ++i) {
-        cptr = ptr[i].node;
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &cptr, 1, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].proc, 1, PMIX_PROC, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].pid, 1, PMIX_PID, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        cptr = ptr[i].cmd;
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &cptr, 1, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].state, 1, PMIX_BYTE, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].time, 1, PMIX_TIMEVAL, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].priority, 1, PMIX_INT32, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_threads, 1, PMIX_INT16, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].pss, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].vsize, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].rss, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].processor, 1, PMIX_INT16, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].sample_time, 1, PMIX_TIMEVAL, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-    }
-
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_pack_dkstats(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                            const void *src, int32_t num_vals,
-                                            pmix_data_type_t type)
-{
-    pmix_disk_stats_t *ptr = (pmix_disk_stats_t *) src;
-    int32_t i;
-    int ret;
-    char *cptr;
-
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    for (i = 0; i < num_vals; ++i) {
-        cptr = ptr[i].disk;
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &cptr, 1, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_reads_completed, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_reads_merged, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_sectors_read, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].milliseconds_reading, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_writes_completed, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_writes_merged, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_sectors_written, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].milliseconds_writing, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_ios_in_progress, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].milliseconds_io, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].weighted_milliseconds_io, 1, PMIX_UINT64,
-                              regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-    }
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_pack_netstats(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                             const void *src, int32_t num_vals,
-                                             pmix_data_type_t type)
-{
-    pmix_net_stats_t *ptr = (pmix_net_stats_t *) src;
-    int32_t i;
-    int ret;
-    char *cptr;
-
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    for (i = 0; i < num_vals; ++i) {
-        cptr = ptr[i].net_interface;
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &cptr, 1, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_bytes_recvd, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_packets_recvd, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_recv_errs, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_bytes_sent, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_packets_sent, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].num_send_errs, 1, PMIX_UINT64, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-    }
-    return PMIX_SUCCESS;
-}
-
-pmix_status_t pmix_bfrops_base_pack_ndstats(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
-                                            const void *src, int32_t num_vals,
-                                            pmix_data_type_t type)
-{
-    pmix_node_stats_t *ptr = (pmix_node_stats_t *) src;
-    int32_t i;
-    int ret;
-    char *cptr;
-
-    PMIX_HIDE_UNUSED_PARAMS(type);
-
-    for (i = 0; i < num_vals; ++i) {
-        cptr = ptr[i].node;
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &cptr, 1, PMIX_STRING, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].la, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].la5, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].la15, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].total_mem, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].free_mem, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].buffers, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].cached, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].swap_cached, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].swap_total, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].swap_free, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].mapped, 1, PMIX_FLOAT, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].sample_time, 1, PMIX_TIMEVAL, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].ndiskstats, 1, PMIX_SIZE, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        if (0 < ptr[i].ndiskstats) {
-            PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].diskstats, ptr[i].ndiskstats,
-                                  PMIX_DISK_STATS, regtypes);
-            if (PMIX_SUCCESS != ret) {
-                return ret;
-            }
-        }
-        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].nnetstats, 1, PMIX_SIZE, regtypes);
-        if (PMIX_SUCCESS != ret) {
-            return ret;
-        }
-        if (0 < ptr[i].nnetstats) {
-            PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].netstats, ptr[i].nnetstats, PMIX_NET_STATS,
-                                  regtypes);
-            if (PMIX_SUCCESS != ret) {
-                return ret;
-            }
-        }
-    }
-    return PMIX_SUCCESS;
-}
-
 pmix_status_t pmix_bfrops_base_pack_dbuf(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
                                          const void *src, int32_t num_vals, pmix_data_type_t type)
 {
@@ -1709,4 +1440,30 @@ pmix_status_t pmix_bfrops_base_pack_satyp(pmix_pointer_array_t *regtypes, pmix_b
 
     PMIX_BFROPS_PACK_TYPE(ret, buffer, src, num_vals, PMIX_UINT16, regtypes);
     return ret;
+}
+
+pmix_status_t pmix_bfrops_base_pack_nodepid(pmix_pointer_array_t *regtypes, pmix_buffer_t *buffer,
+                                            const void *src, int32_t num_vals, pmix_data_type_t type)
+{
+    pmix_node_pid_t *ptr = (pmix_node_pid_t *) src;
+    pmix_status_t ret;
+    int32_t i;
+
+    PMIX_HIDE_UNUSED_PARAMS(type);
+
+    for (i = 0; i < num_vals; ++i) {
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].hostname, 1, PMIX_STRING, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].nodeid, 1, PMIX_UINT32, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+        PMIX_BFROPS_PACK_TYPE(ret, buffer, &ptr[i].pid, 1, PMIX_PID, regtypes);
+        if (PMIX_SUCCESS != ret) {
+            return ret;
+        }
+    }
+    return PMIX_SUCCESS;
 }

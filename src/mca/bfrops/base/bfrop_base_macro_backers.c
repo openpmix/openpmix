@@ -392,6 +392,26 @@ void PMIx_Device_free(pmix_device_t *d, size_t n)
     pmix_bfrops_base_tma_device_free(d, n, NULL);
 }
 
+void PMIx_Node_pid_construct(pmix_node_pid_t *d)
+{
+    pmix_bfrops_base_tma_node_pid_construct(d, NULL);
+}
+
+void PMIx_Node_pid_destruct(pmix_node_pid_t *d)
+{
+    pmix_bfrops_base_tma_node_pid_destruct(d, NULL);
+}
+
+pmix_node_pid_t* PMIx_Node_pid_create(size_t n)
+{
+    return pmix_bfrops_base_tma_node_pid_create(n, NULL);
+}
+
+void PMIx_Node_pid_free(pmix_node_pid_t *d, size_t n)
+{
+    pmix_bfrops_base_tma_node_pid_free(d, n, NULL);
+}
+
 void PMIx_Resource_unit_construct(pmix_resource_unit_t *d)
 {
     pmix_bfrops_base_tma_resource_unit_construct(d, NULL);
@@ -597,86 +617,6 @@ pmix_proc_info_t* PMIx_Proc_info_create(size_t n)
 void PMIx_Proc_info_free(pmix_proc_info_t *p, size_t n)
 {
     pmix_bfrops_base_tma_proc_info_free(p, n, NULL);
-}
-
-void PMIx_Proc_stats_construct(pmix_proc_stats_t *p)
-{
-    pmix_bfrops_base_tma_proc_stats_construct(p, NULL);
-}
-
-void PMIx_Proc_stats_destruct(pmix_proc_stats_t *p)
-{
-    pmix_bfrops_base_tma_proc_stats_destruct(p, NULL);
-}
-
-pmix_proc_stats_t* PMIx_Proc_stats_create(size_t n)
-{
-    return pmix_bfrops_base_tma_proc_stats_create(n, NULL);
-}
-
-void PMIx_Proc_stats_free(pmix_proc_stats_t *p, size_t n)
-{
-    pmix_bfrops_base_tma_proc_stats_free(p, n, NULL);
-}
-
-void PMIx_Disk_stats_construct(pmix_disk_stats_t *p)
-{
-    pmix_bfrops_base_tma_disk_stats_construct(p, NULL);
-}
-
-void PMIx_Disk_stats_destruct(pmix_disk_stats_t *p)
-{
-    pmix_bfrops_base_tma_disk_stats_destruct(p, NULL);
-}
-
-pmix_disk_stats_t* PMIx_Disk_stats_create(size_t n)
-{
-    return pmix_bfrops_base_tma_disk_stats_create(n, NULL);
-}
-
-void PMIx_Disk_stats_free(pmix_disk_stats_t *p, size_t n)
-{
-    pmix_bfrops_base_tma_disk_stats_free(p, n, NULL);
-}
-
-void PMIx_Net_stats_construct(pmix_net_stats_t *p)
-{
-    pmix_bfrops_base_tma_net_stats_construct(p, NULL);
-}
-
-void PMIx_Net_stats_destruct(pmix_net_stats_t *p)
-{
-    pmix_bfrops_base_tma_net_stats_destruct(p, NULL);
-}
-
-pmix_net_stats_t* PMIx_Net_stats_create(size_t n)
-{
-    return pmix_bfrops_base_tma_net_stats_create(n, NULL);
-}
-
-void PMIx_Net_stats_free(pmix_net_stats_t *p, size_t n)
-{
-    pmix_bfrops_base_tma_net_stats_free(p, n, NULL);
-}
-
-void PMIx_Node_stats_construct(pmix_node_stats_t *p)
-{
-    pmix_bfrops_base_tma_node_stats_construct(p, NULL);
-}
-
-void PMIx_Node_stats_destruct(pmix_node_stats_t *p)
-{
-    pmix_bfrops_base_tma_node_stats_destruct(p, NULL);
-}
-
-pmix_node_stats_t* PMIx_Node_stats_create(size_t n)
-{
-    return pmix_bfrops_base_tma_node_stats_create(n, NULL);
-}
-
-void PMIx_Node_stats_free(pmix_node_stats_t *p, size_t n)
-{
-    pmix_bfrops_base_tma_node_stats_free(p, n, NULL);
 }
 
 void PMIx_Pdata_construct(pmix_pdata_t *p)
