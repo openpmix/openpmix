@@ -12,7 +12,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -508,32 +508,15 @@ pmix_status_t pmix_bfrops_base_copy_nspace(pmix_nspace_t **dest, pmix_nspace_t *
     return pmix_bfrops_base_tma_copy_nspace(dest, src, type, NULL);
 }
 
-pmix_status_t pmix_bfrops_base_copy_pstats(pmix_proc_stats_t **dest, pmix_proc_stats_t *src,
-                                           pmix_data_type_t type)
-{
-    return pmix_bfrops_base_tma_copy_pstats(dest, src, type, NULL);
-}
-
-pmix_status_t pmix_bfrops_base_copy_dkstats(pmix_disk_stats_t **dest, pmix_disk_stats_t *src,
-                                            pmix_data_type_t type)
-{
-    return pmix_bfrops_base_tma_copy_dkstats(dest, src, type, NULL);
-}
-
-pmix_status_t pmix_bfrops_base_copy_netstats(pmix_net_stats_t **dest, pmix_net_stats_t *src,
-                                             pmix_data_type_t type)
-{
-    return pmix_bfrops_base_tma_copy_netstats(dest, src, type, NULL);
-}
-
-pmix_status_t pmix_bfrops_base_copy_ndstats(pmix_node_stats_t **dest, pmix_node_stats_t *src,
-                                            pmix_data_type_t type)
-{
-    return pmix_bfrops_base_tma_copy_ndstats(dest, src, type, NULL);
-}
-
 pmix_status_t pmix_bfrops_base_copy_dbuf(pmix_data_buffer_t **dest, pmix_data_buffer_t *src,
                                          pmix_data_type_t type)
 {
     return pmix_bfrops_base_tma_copy_dbuf(dest, src, type, NULL);
+}
+
+pmix_status_t pmix_bfrops_base_copy_nodepid(pmix_node_pid_t **dest,
+                                            pmix_node_pid_t *src,
+                                            pmix_data_type_t type)
+{
+    return pmix_bfrops_base_tma_copy_nodepid(dest, src, type, NULL);
 }

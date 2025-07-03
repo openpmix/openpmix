@@ -56,7 +56,10 @@ static pmix_status_t start(pmix_peer_t *requestor, pmix_status_t error, const pm
 static pmix_status_t stop(pmix_peer_t *requestor, char *id);
 
 /* instantiate the module */
-pmix_psensor_base_module_t pmix_psensor_file_module = {.start = start, .stop = stop};
+pmix_psensor_base_module_t pmix_psensor_file_module = {
+    .start = start,
+    .stop = stop
+};
 
 /* define a tracking object */
 typedef struct {
@@ -121,7 +124,9 @@ static void ft_destructor(file_tracker_t *ft)
         PMIX_INFO_FREE(ft->info, ft->ninfo);
     }
 }
-PMIX_CLASS_INSTANCE(file_tracker_t, pmix_list_item_t, ft_constructor, ft_destructor);
+PMIX_CLASS_INSTANCE(file_tracker_t,
+                    pmix_list_item_t,
+                    ft_constructor, ft_destructor);
 
 /* define a local caddy */
 typedef struct {
