@@ -9,7 +9,7 @@
  *
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -42,12 +42,13 @@ BEGIN_C_DECLS
 /**
  * Module initialization function.  Should return PMIX_SUCCESS.
  */
-typedef int (*pmix_pstat_base_module_init_fn_t)(void);
+typedef pmix_status_t (*pmix_pstat_base_module_init_fn_t)(void);
 
-typedef int (*pmix_pstat_base_module_query_fn_t)(pid_t pid, pmix_proc_stats_t *stats,
-                                                 pmix_node_stats_t *nstats);
+typedef pmix_status_t (*pmix_pstat_base_module_query_fn_t)(const pmix_info_t *monitor, pmix_status_t error,
+                                                           const pmix_info_t directives[], size_t ndirs,
+                                                           pmix_info_t **results, size_t *nresults);
 
-typedef int (*pmix_pstat_base_module_fini_fn_t)(void);
+typedef pmix_status_t (*pmix_pstat_base_module_fini_fn_t)(void);
 
 /**
  * Structure for pstat components.

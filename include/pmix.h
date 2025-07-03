@@ -1984,6 +1984,19 @@ PMIX_EXPORT pmix_device_t* PMIx_Device_create(size_t n);
  * (frees the struct memory itself) */
 PMIX_EXPORT void PMIx_Device_free(pmix_device_t *d, size_t n);
 
+/* initialize a node_pid struct */
+PMIX_EXPORT void PMIx_Node_pid_construct(pmix_node_pid_t *d);
+
+/* free memory stored inside a node_pid struct */
+PMIX_EXPORT void PMIx_Node_pid_destruct(pmix_node_pid_t *d);
+
+/* create and initialize an array of node_pid structs */
+PMIX_EXPORT pmix_node_pid_t* PMIx_Node_pid_create(size_t n);
+
+/* free memory stored inside an array of node_pid structs
+ * (frees the struct memory itself) */
+PMIX_EXPORT void PMIx_Node_pid_free(pmix_node_pid_t *d, size_t n);
+
 /* initialize a resource unit struct */
 PMIX_EXPORT void PMIx_Resource_unit_construct(pmix_resource_unit_t *d);
 
@@ -2123,61 +2136,6 @@ PMIX_EXPORT pmix_proc_info_t* PMIx_Proc_info_create(size_t n);
 /* free memory stored inside an array of proc info structs
  * (frees the struct memory itself */
 PMIX_EXPORT void PMIx_Proc_info_free(pmix_proc_info_t *p, size_t n);
-
-
-/* initialize a proc stats struct */
-PMIX_EXPORT void PMIx_Proc_stats_construct(pmix_proc_stats_t *p);
-
-/* clear memory inside a proc stats struct */
-PMIX_EXPORT void PMIx_Proc_stats_destruct(pmix_proc_stats_t *p);
-
-/* create and initialize an array of proc stats structs */
-PMIX_EXPORT pmix_proc_stats_t* PMIx_Proc_stats_create(size_t n);
-
-/* free memory stored inside an array of proc stats structs
- * (frees the struct memory itself */
-PMIX_EXPORT void PMIx_Proc_stats_free(pmix_proc_stats_t *p, size_t n);
-
-
-/* initialize a disk stats struct */
-PMIX_EXPORT void PMIx_Disk_stats_construct(pmix_disk_stats_t *p);
-
-/* clear memory inside a disk stats struct */
-PMIX_EXPORT void PMIx_Disk_stats_destruct(pmix_disk_stats_t *p);
-
-/* create and initialize an array of disk stats structs */
-PMIX_EXPORT pmix_disk_stats_t* PMIx_Disk_stats_create(size_t n);
-
-/* free memory stored inside an array of disk stats structs
- * (frees the struct memory itself */
-PMIX_EXPORT void PMIx_Disk_stats_free(pmix_disk_stats_t *p, size_t n);
-
-
-/* initialize a net stats struct */
-PMIX_EXPORT void PMIx_Net_stats_construct(pmix_net_stats_t *p);
-
-/* clear memory inside a net stats struct */
-PMIX_EXPORT void PMIx_Net_stats_destruct(pmix_net_stats_t *p);
-
-/* create and initialize an array of net stats structs */
-PMIX_EXPORT pmix_net_stats_t* PMIx_Net_stats_create(size_t n);
-
-/* free memory stored inside an array of net stats structs
- * (frees the struct memory itself */
-PMIX_EXPORT void PMIx_Net_stats_free(pmix_net_stats_t *p, size_t n);
-
-/* initialize a node status struct */
-PMIX_EXPORT void PMIx_Node_stats_construct(pmix_node_stats_t *p);
-
-/* clear memory inside a node stats struct */
-PMIX_EXPORT void PMIx_Node_stats_destruct(pmix_node_stats_t *p);
-
-/* create and initialize an array of node stats structs */
-PMIX_EXPORT pmix_node_stats_t* PMIx_Node_stats_create(size_t n);
-
-/* free memory stored inside an array of node stats structs
- * (frees the struct memory itself */
-PMIX_EXPORT void PMIx_Node_stats_free(pmix_node_stats_t *p, size_t n);
 
 
 /* initialize a pdata struct */
