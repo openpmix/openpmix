@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -528,389 +528,6 @@ static pmix_value_cmp_t cmp_endpoint(pmix_endpoint_t *e1,
     return rc;
 }
 
-static pmix_value_cmp_t cmp_procstats(pmix_proc_stats_t *pcs1,
-                                      pmix_proc_stats_t *pcs2)
-{
-    int ret;
-
-    if (NULL == pcs1->node && NULL == pcs2->node) {
-        return PMIX_VALUE_COMPARISON_NOT_AVAIL;
-    }
-    if (NULL != pcs1->node) {
-        if (NULL == pcs2->node) {
-            return PMIX_VALUE1_GREATER;
-        }
-        ret = strcmp(pcs1->node, pcs2->node);
-        if (ret < 0) {
-            return PMIX_VALUE2_GREATER;
-        } else if (0 < ret) {
-            return PMIX_VALUE1_GREATER;
-        }
-    } else if (NULL != pcs2->node) {
-        /* we know pcs1->node had to be NULL */
-        return PMIX_VALUE2_GREATER;
-    }
-    /* both are non-NULL */
-
-    ret = memcmp(&pcs1->proc, &pcs2->proc, sizeof(pmix_proc_t));
-    if (ret < 0) {
-        return PMIX_VALUE2_GREATER;
-    } else if (0 < ret) {
-        return PMIX_VALUE1_GREATER;
-    }
-    if (pcs1->pid > pcs2->pid) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->pid < pcs2->pid) {
-        return PMIX_VALUE2_GREATER;
-    }
-
-    if (NULL != pcs1->cmd) {
-        if (NULL == pcs2->cmd) {
-            return PMIX_VALUE1_GREATER;
-        }
-        ret = strcmp(pcs1->cmd, pcs2->cmd);
-        if (ret < 0) {
-            return PMIX_VALUE2_GREATER;
-        } else if (0 < ret) {
-            return PMIX_VALUE1_GREATER;
-        }
-    } else if (NULL != pcs2->cmd) {
-        /* we know pcs1->cmd had to be NULL */
-        return PMIX_VALUE2_GREATER;
-    }
-    /* cmds match or are both NULL */
-
-    if (pcs1->state > pcs2->state) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->state < pcs2->state) {
-        return PMIX_VALUE2_GREATER;
-    }
-
-    ret = memcmp(&pcs1->time, &pcs2->time, sizeof(struct timeval));
-    if (ret < 0) {
-        return PMIX_VALUE2_GREATER;
-    } else if (0 < ret) {
-        return PMIX_VALUE1_GREATER;
-    }
-
-    if (pcs1->percent_cpu > pcs2->percent_cpu) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->percent_cpu < pcs2->percent_cpu) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (pcs1->priority > pcs2->priority) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->priority < pcs2->priority) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (pcs1->num_threads > pcs2->num_threads) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->num_threads < pcs2->num_threads) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (pcs1->pss > pcs2->pss) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->pss < pcs2->pss) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (pcs1->vsize > pcs2->vsize) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->vsize < pcs2->vsize) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (pcs1->rss > pcs2->rss) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->rss < pcs2->rss) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (pcs1->peak_vsize > pcs2->peak_vsize) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->peak_vsize < pcs2->peak_vsize) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (pcs1->processor > pcs2->processor) {
-        return PMIX_VALUE1_GREATER;
-    } else if (pcs1->processor < pcs2->processor) {
-        return PMIX_VALUE2_GREATER;
-    }
-
-    ret = memcmp(&pcs1->sample_time, &pcs2->sample_time, sizeof(struct timeval));
-    if (ret < 0) {
-        return PMIX_VALUE2_GREATER;
-    } else if (0 < ret) {
-        return PMIX_VALUE1_GREATER;
-    }
-    return PMIX_EQUAL;
-}
-
-static pmix_value_cmp_t cmp_diskstats(pmix_disk_stats_t *ds1,
-                                      pmix_disk_stats_t *ds2)
-{
-    int ret;
-
-    if (NULL == ds1->disk && NULL == ds2->disk) {
-        return PMIX_VALUE_COMPARISON_NOT_AVAIL;
-    }
-    if (NULL != ds1->disk) {
-        if (NULL == ds2->disk) {
-            return PMIX_VALUE1_GREATER;
-        }
-        ret = strcmp(ds1->disk, ds2->disk);
-        if (ret < 0) {
-            return PMIX_VALUE2_GREATER;
-        } else if (0 < ret) {
-            return PMIX_VALUE1_GREATER;
-        }
-    } else if (NULL != ds2->disk) {
-        /* we know ds1->disk had to be NULL */
-        return PMIX_VALUE2_GREATER;
-    }
-    /* both are non-NULL */
-
-    if (ds1->num_reads_completed > ds2->num_reads_completed) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->num_reads_completed < ds2->num_reads_completed) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->num_reads_merged > ds2->num_reads_merged) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->num_reads_merged < ds2->num_reads_merged) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->num_sectors_read > ds2->num_sectors_read) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->num_sectors_read < ds2->num_sectors_read) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->milliseconds_reading > ds2->milliseconds_reading) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->milliseconds_reading < ds2->milliseconds_reading) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->num_writes_completed > ds2->num_writes_completed) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->num_writes_completed < ds2->num_writes_completed) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->num_writes_merged > ds2->num_writes_merged) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->num_writes_merged < ds2->num_writes_merged) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->num_sectors_written > ds2->num_sectors_written) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->num_sectors_written < ds2->num_sectors_written) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->milliseconds_writing > ds2->milliseconds_writing) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->milliseconds_writing < ds2->milliseconds_writing) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->num_ios_in_progress > ds2->num_ios_in_progress) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->num_ios_in_progress < ds2->num_ios_in_progress) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->milliseconds_io > ds2->milliseconds_io) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->milliseconds_io < ds2->milliseconds_io) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ds1->weighted_milliseconds_io > ds2->weighted_milliseconds_io) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ds1->weighted_milliseconds_io < ds2->weighted_milliseconds_io) {
-        return PMIX_VALUE2_GREATER;
-    }
-
-    return PMIX_EQUAL;
-}
-
-static pmix_value_cmp_t cmp_netstats(pmix_net_stats_t *ns1,
-                                     pmix_net_stats_t *ns2)
-{
-    int ret;
-
-    if (NULL == ns1->net_interface && NULL == ns2->net_interface) {
-        return PMIX_VALUE_COMPARISON_NOT_AVAIL;
-    }
-    if (NULL != ns1->net_interface) {
-        if (NULL == ns2->net_interface) {
-            return PMIX_VALUE1_GREATER;
-        }
-        ret = strcmp(ns1->net_interface, ns2->net_interface);
-        if (ret < 0) {
-            return PMIX_VALUE2_GREATER;
-        } else if (0 < ret) {
-            return PMIX_VALUE1_GREATER;
-        }
-    } else if (NULL != ns2->net_interface) {
-        /* we know ns1->disk had to be NULL */
-        return PMIX_VALUE2_GREATER;
-    }
-    /* both are non-NULL */
-
-    if (ns1->num_bytes_recvd > ns2->num_bytes_recvd) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ns1->num_bytes_recvd < ns2->num_bytes_recvd) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ns1->num_packets_recvd > ns2->num_packets_recvd) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ns1->num_packets_recvd < ns2->num_packets_recvd) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ns1->num_recv_errs > ns2->num_recv_errs) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ns1->num_recv_errs < ns2->num_recv_errs) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ns1->num_bytes_sent > ns2->num_bytes_sent) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ns1->num_bytes_sent < ns2->num_bytes_sent) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ns1->num_packets_sent > ns2->num_packets_sent) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ns1->num_packets_sent < ns2->num_packets_sent) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (ns1->num_send_errs > ns2->num_send_errs) {
-        return PMIX_VALUE1_GREATER;
-    } else if (ns1->num_send_errs < ns2->num_send_errs) {
-        return PMIX_VALUE2_GREATER;
-    }
-
-    return PMIX_EQUAL;
-}
-
-static pmix_value_cmp_t cmp_nodestats(pmix_node_stats_t *nds1,
-                                      pmix_node_stats_t *nds2)
-{
-    int ret;
-    pmix_value_cmp_t rc;
-    size_t n;
-
-    if (NULL == nds1->node && NULL == nds2->node) {
-        return PMIX_VALUE_COMPARISON_NOT_AVAIL;
-    }
-    if (NULL != nds1->node) {
-        if (NULL == nds2->node) {
-            return PMIX_VALUE1_GREATER;
-        }
-        ret = strcmp(nds1->node, nds2->node);
-        if (ret < 0) {
-            return PMIX_VALUE2_GREATER;
-        } else if (0 < ret) {
-            return PMIX_VALUE1_GREATER;
-        }
-    } else if (NULL != nds2->node) {
-        /* we know nds1->node had to be NULL */
-        return PMIX_VALUE2_GREATER;
-    }
-    /* both are non-NULL */
-
-    if (nds1->la > nds2->la) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->la < nds2->la) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->la5 > nds2->la5) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->la5 < nds2->la5) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->la15 > nds2->la15) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->la15 < nds2->la15) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->total_mem > nds2->total_mem) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->total_mem < nds2->total_mem) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->free_mem > nds2->free_mem) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->free_mem < nds2->free_mem) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->buffers > nds2->buffers) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->buffers < nds2->buffers) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->cached > nds2->cached) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->cached < nds2->cached) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->swap_cached > nds2->swap_cached) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->swap_cached < nds2->swap_cached) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->swap_total > nds2->swap_total) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->swap_total < nds2->swap_total) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->swap_free > nds2->swap_free) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->swap_free < nds2->swap_free) {
-        return PMIX_VALUE2_GREATER;
-    }
-    if (nds1->mapped > nds2->mapped) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->mapped < nds2->mapped) {
-        return PMIX_VALUE2_GREATER;
-    }
-
-    ret = memcmp(&nds1->sample_time, &nds2->sample_time, sizeof(struct timeval));
-    if (ret < 0) {
-        return PMIX_VALUE2_GREATER;
-    } else if (0 < ret) {
-        return PMIX_VALUE1_GREATER;
-    }
-
-    if (NULL != nds1->diskstats && NULL == nds2->diskstats) {
-        return PMIX_VALUE1_GREATER;
-    } else if (NULL == nds1->diskstats && NULL == nds2->diskstats) {
-        return PMIX_VALUE2_GREATER;
-    }
-    /* both are non-NULL */
-    if (nds1->ndiskstats > nds2->ndiskstats) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->ndiskstats < nds2->ndiskstats) {
-        return PMIX_VALUE2_GREATER;
-    }
-    for (n=0; n < nds1->ndiskstats; n++) {
-        rc = cmp_diskstats(&nds1->diskstats[n], &nds2->diskstats[n]);
-        if (PMIX_EQUAL != rc) {
-            return rc;
-        }
-    }
-    if (NULL != nds1->netstats && NULL == nds2->netstats) {
-        return PMIX_VALUE1_GREATER;
-    } else if (NULL == nds1->netstats && NULL == nds2->netstats) {
-        return PMIX_VALUE2_GREATER;
-    }
-    /* both are non-NULL */
-    if (nds1->nnetstats > nds2->nnetstats) {
-        return PMIX_VALUE1_GREATER;
-    } else if (nds1->nnetstats < nds2->nnetstats) {
-        return PMIX_VALUE2_GREATER;
-    }
-    for (n=0; n < nds1->nnetstats; n++) {
-        rc = cmp_netstats(&nds1->netstats[n], &nds2->netstats[n]);
-        if (PMIX_EQUAL != rc) {
-            return rc;
-        }
-    }
-
-    return PMIX_EQUAL;
-}
-
 static pmix_value_cmp_t cmp_regattr(pmix_regattr_t *r1,
                                     pmix_regattr_t *r2)
 {
@@ -1023,6 +640,41 @@ static pmix_value_cmp_t cmp_dbuf(pmix_data_buffer_t *db1,
     return PMIX_EQUAL;
 }
 
+static pmix_value_cmp_t cmp_nodepid(pmix_node_pid_t *r1,
+                                    pmix_node_pid_t *r2)
+{
+    int ret;
+
+    if (NULL != r1->hostname) {
+        if (NULL == r2->hostname) {
+            return PMIX_VALUE1_GREATER;
+        }
+        ret = strcmp(r1->hostname, r2->hostname);
+        if (ret < 0) {
+            return PMIX_VALUE2_GREATER;
+        } else if (0 < ret) {
+            return PMIX_VALUE1_GREATER;
+        }
+        // just drop through if they are equal
+    } else if (NULL != r2->hostname) {
+        return PMIX_VALUE2_GREATER;
+    }
+
+    // hostnames are the same
+    if (r1->nodeid > r2->nodeid) {
+        return PMIX_VALUE1_GREATER;
+    } else if (r2->nodeid > r1->nodeid) {
+        return PMIX_VALUE2_GREATER;
+    }
+    if (r1->pid > r2->pid) {
+        return PMIX_VALUE1_GREATER;
+    } else if (r2->pid > r1->pid) {
+        return PMIX_VALUE2_GREATER;
+    }
+
+    return PMIX_EQUAL;
+}
+
 static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
                                    pmix_data_array_t *d2)
 {
@@ -1041,13 +693,10 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
     pmix_resource_unit_t *rs1, *rs2;
     pmix_device_distance_t *dd1, *dd2;
     pmix_endpoint_t *end1, *end2;
-    pmix_proc_stats_t *pcs1, *pcs2;
-    pmix_disk_stats_t *ds1, *ds2;
-    pmix_net_stats_t *ns1, *ns2;
-    pmix_node_stats_t *nds1, *nds2;
     pmix_regattr_t *ra1, *ra2;
     pmix_info_t *i1, *i2;
     pmix_data_buffer_t *db1, *db2;
+    pmix_node_pid_t *ndpd1, *ndpd2;
 
     if (NULL == d1 && NULL == d2) {
         return PMIX_EQUAL;
@@ -1365,56 +1014,22 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
             }
             return PMIX_EQUAL;
             break;
-        case PMIX_PROC_STATS:
-            pcs1 = (pmix_proc_stats_t*)d1->array;
-            pcs2 = (pmix_proc_stats_t*)d2->array;
-            for (n=0; n < d1->size; n++) {
-                rc = cmp_procstats(&pcs1[n], &pcs2[n]);
-                if (PMIX_EQUAL != rc) {
-                    return rc;
-                }
-            }
-            return PMIX_EQUAL;
-            break;
-        case PMIX_DISK_STATS:
-            ds1 = (pmix_disk_stats_t*)d1->array;
-            ds2 = (pmix_disk_stats_t*)d2->array;
-            for (n=0; n < d1->size; n++) {
-                rc = cmp_diskstats(&ds1[n], &ds2[n]);
-                if (PMIX_EQUAL != rc) {
-                    return rc;
-                }
-            }
-            return PMIX_EQUAL;
-            break;
-        case PMIX_NET_STATS:
-            ns1 = (pmix_net_stats_t*)d1->array;
-            ns2 = (pmix_net_stats_t*)d2->array;
-            for (n=0; n < d1->size; n++) {
-                rc = cmp_netstats(&ns1[n], &ns2[n]);
-                if (PMIX_EQUAL != rc) {
-                    return rc;
-                }
-            }
-            return PMIX_EQUAL;
-            break;
-        case PMIX_NODE_STATS:
-            nds1 = (pmix_node_stats_t*)d1->array;
-            nds2 = (pmix_node_stats_t*)d2->array;
-            for (n=0; n < d1->size; n++) {
-                rc = cmp_nodestats(&nds1[n], &nds2[n]);
-                if (PMIX_EQUAL != rc) {
-                    return rc;
-                }
-            }
-            return PMIX_EQUAL;
-            break;
-
         case PMIX_REGATTR:
             ra1 = (pmix_regattr_t*)d1->array;
             ra2 = (pmix_regattr_t*)d2->array;
             for (n=0; n < d1->size; n++) {
                 rc = cmp_regattr(&ra1[n], &ra2[n]);
+                if (PMIX_EQUAL != rc) {
+                    return rc;
+                }
+            }
+            return PMIX_EQUAL;
+            break;
+        case PMIX_NODE_PID:
+            ndpd1 = (pmix_node_pid_t*)d1->array;
+            ndpd2 = (pmix_node_pid_t*)d2->array;
+            for (n=0; n < d1->size; n++) {
+                rc = cmp_nodepid(&ndpd1[n], &ndpd2[n]);
                 if (PMIX_EQUAL != rc) {
                     return rc;
                 }
@@ -1624,27 +1239,16 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p1,
         rc = cmp_dbuf(p1->data.dbuf, p2->data.dbuf);
         return rc;
         break;
-    case PMIX_PROC_STATS:
-        rc = cmp_procstats(p1->data.pstats, p2->data.pstats);
-        return rc;
-        break;
-    case PMIX_DISK_STATS:
-        rc = cmp_diskstats(p1->data.dkstats, p2->data.dkstats);
-        return rc;
-        break;
-    case PMIX_NET_STATS:
-        rc = cmp_netstats(p1->data.netstats, p2->data.netstats);
-        return rc;
-        break;
-    case PMIX_NODE_STATS:
-        rc = cmp_nodestats(p1->data.ndstats, p2->data.ndstats);
-        return rc;
-        break;
 
     /* account for types that don't use a specific field
      * in the union */
     case PMIX_REGATTR:
         rc = cmp_regattr(p1->data.ptr, p2->data.ptr);
+        return rc;
+        break;
+
+    case PMIX_NODE_PID:
+        rc = cmp_nodepid(p1->data.nodepid, p2->data.nodepid);
         return rc;
         break;
 

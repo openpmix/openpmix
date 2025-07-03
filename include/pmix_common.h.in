@@ -673,6 +673,22 @@ typedef uint32_t pmix_rank_t;
                                                                     //         nspace have been placed (may or may not be executing at the time of request).
                                                                     //         Effectively asking the host respond to a PMIx_Resolve_node request on the
                                                                     //         caller's behalf
+#define PMIX_QUERY_PROC_RESOURCE_USAGE      "pmix.qry.pres"         // (pmix_proc_t*) Return the resource usage statistics for the specified process in a
+                                                                    //         PMIX_PROC_RESOURCE_USAGE assembly. If a namespace is combined with
+                                                                    //         PMIX_RANK_WILDCARD,then results for all processes in the given job shall be
+                                                                    //         returned in a pmix_data_array_t, each element containing a
+                                                                    //         PMIX_PROC_RESOURCE_USAGE assembly for one of the processes. OPTIONAL QUALIFIERS:
+                                                                    //         PMIX_SESSION_ID to identify the session of the namespace whose statistics are being
+                                                                    //         requested; PMIX_NODEID or PMIX_HOSTNAME to restrict a wildcard request to processes
+                                                                    //         on a given node
+#define PMIX_QUERY_NODE_RESOURCE_USAGE      "pmix.qry.nres"         // (char*) Return the resource usage statistics for the specified node in a
+                                                                    //         PMIX_NODE_RESOURCE_USAGE assembly. If no node is specified, then results for all
+                                                                    //         nodes hosting processes with the job of the requestor will be returned in a
+                                                                    //         pmix_data_array_t, each element containing a PMIX_NODE_RESOURCE_USAGE assembly for
+                                                                    //         one of the nodes. OPTIONAL QUALIFIERS: PMIX_SESSION_ID to identify the session of
+                                                                    //         the job whose node statistics are being requested; PMIX_NSPACE or PMIX_JOBID to
+                                                                    //         identify the job whose node usage is being requested (if other than the job of
+                                                                    //         the requestor)
 
 
 /* query qualifiers - these are used to provide information to narrow/modify the query. Value type shown is the type of data expected
@@ -1063,6 +1079,143 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_MONITOR_FILE_CHECK_TIME        "pmix.monitor.ftime"    // (uint32_t) time in seconds between checking file
 #define PMIX_MONITOR_FILE_DROPS             "pmix.monitor.fdrop"    // (uint32_t) number of file checks that can be missed before
                                                                     //            generating the event
+#define PMIX_MONITOR_RESOURCE_RATE          "pmix.monitor.resrate"  // (uint32_t) Monitor resource usage every N seconds, where N is the value provided
+                                                                    //            by the attribute.
+#define PMIX_MONITOR_TARGET_PROCS           "pmix.monitor.tgtproc"  // (pmix_data_array_t*) Arrray of process IDs specifying the processes to be monitored.
+                                                                    //            Can include a PMIX_RANK_WILDCARD to indicate that all processes from a given
+                                                                    //            namespace are to be included. If omitted, then all processesin the session will
+                                                                    //            be monitored. May be included multiple times to fully specify all processes to
+                                                                    //            be included.
+#define PMIX_MONITOR_TARGET_PIDS            "pmix.monitor.tgtpid"   // (pmix_data_array_t*) Array of pmix_node_pid_t structures to be monitored. Can include a
+                                                                    //            structure containing a hostname with a pid value of -1 to indicate all
+                                                                    //            processes on that node are to be included. May be included multiple times to
+                                                                    //            fully specify all processes to be included.
+#define PMIX_MONITOR_TARGET_NODES           "pmix.monitor.tgtnode"  // (pmix_data_array_t*) Array of string host names to be monitored
+#define PMIX_MONITOR_TARGET_NODEIDS         "pmix.monitor.tgtndids" // (pmix_data_array_t*) Array of uint32_t node IDs to be monitored
+#define PMIX_MONITOR_TARGET_DISKS           "pmix.monitor.tgtdks"   // (pmix_data_array_t*) Array of strings representing PMIX_DISK_IDs to be monitored
+#define PMIX_MONITOR_TARGET_NETS            "pmix.monitor.tgtnets"  // (pmix_data_array_t*) Array of strings representing PMIX_NETWORK_IDs to be monitored
+#define PMIX_MONITOR_PROC_RESOURCE_USAGE    "pmix.monitor.presuse"  // (pmix_data_array_t*) Monitor the resources specified in the provided array of pmix_info_t.
+                                                                    //            If the provided array is NULL, then all resources shall be monitored. If no
+                                                                    //            targets are provided in the associated directives array, then all processes in
+                                                                    //            the session will be monitored.  Note that the values in the provided structures
+                                                                    //            will be ignored (i.e., only the attribute keys are relevant) except where noted,
+                                                                    //            and that the PMIX_PROC_SAMPLE_TIME will always be included in the returned data
+                                                                    //            (there is no need to include it in the request)
+#define PMIX_MONITOR_NODE_RESOURCE_USAGE    "pmix.monitor.ndresuse" // (pmix_data_array_t*) Monitor the resources specified in the provided array of pmix_info_t.
+                                                                    //            If the provided array is NULL, then all resources shall be monitored. If no
+                                                                    //            targets are provided in the associated directives array, then all nodes in
+                                                                    //            the session will be monitored.  Note that the values in the provided structures
+                                                                    //            will be ignored (i.e., only the attribute keys are relevant) except where noted,
+                                                                    //            and that the PMIX_NODE_SAMPLE_TIME will always be included in the returned data
+                                                                    //            (there is no need to include it in the request)
+#define PMIX_MONITOR_DISK_RESOURCE_USAGE    "pmix.monitor.dkresuse" // (pmix_data_array_t*) Monitor the resources specified in the provided array of pmix_info_t.
+                                                                    //            If the provided array is NULL, then all resources shall be monitored. If no
+                                                                    //            PMIX_DISK_ID targets are provided in the associated directives array, then all
+                                                                    //            disks on the local node (or on the specified target nodes, if given) will be monitored.
+                                                                    //            Note that the values in the provided structures will be ignored (i.e., only the
+                                                                    //            attribute keys are relevant) except where noted, and that the
+                                                                    //            PMIX_DISK_SAMPLE_TIME will always be included in the returned data
+                                                                    //            (there is no need to include it in the request)
+#define PMIX_MONITOR_NET_RESOURCE_USAGE     "pmix.monitor.netresuse" // (pmix_data_array_t*) Monitor the resources specified in the provided array of pmix_info_t.
+                                                                    //            If the provided array is NULL, then all resources shall be monitored. If no
+                                                                    //            PMIX_NETWORK_ID targets are provided in the associated directives array, then all
+                                                                    //            networks on the local node (or on the specified target nodes, if given) will be monitored.
+                                                                    //            Note that the values in the provided structures will be ignored (i.e., only the
+                                                                    //            attribute keys are relevant) except where noted, and that the
+                                                                    //            PMIX_NET_SAMPLE_TIME will always be included in the returned data
+                                                                    //            (there is no need to include it in the request)
+
+/* resource usage attributes */
+#define PMIX_PROC_RESOURCE_USAGE            "pmix.proc.res"         // (pmix_data_array_t*) An array of pmix_info_t describing the resource usage
+                                                                    //          of the specified process, with the first element containing the ID
+                                                                    //          of the process (marked by the PMIX_PROCID key) whose usage is reported
+                                                                    //          in the array. The list of included information may vary across
+                                                                    //          implementations and OSs, depending upon availability and access
+                                                                    //          restrictions. Except for the process ID as the first element, ordering
+                                                                    //          of information in the array is arbitrary.
+#define PMIX_PROC_OS_STATE                  "pmix.proc.osstate"     // (char*) The state of the process as reported by the OS - for Linux, this is
+                                                                    //         expressed as a single character
+#define PMIX_PROC_TIME                      "pmix.proc.time"        // (struct timeval) Cumulative CPU time
+#define PMIX_PROC_PERCENT_CPU               "pmix.proc.pcpu"        // (float) Percent cpu utilization by the process. Often, it is the CPU time used
+                                                                    //         divided by the time the process has been running (cputime/realtime ratio),
+                                                                    //         expressed as a percentage.
+#define PMIX_PROC_PRIORITY                  "pmix.proc.pri"         // (int32_t) Priority of the process. Higher number means higher priority
+#define PMIX_PROC_NUM_THREADS               "pmix.proc.nthr"        // (uint16_t) Number of threads operating in the process
+#define PMIX_PROC_PSS                       "pmix.proc.pss"         // (float) Proportional share size, the non-swapped physical memory, with
+                                                                    //         shared memory proportionally accounted to all tasks mappint it (MBytes)
+#define PMIX_PROC_VSIZE                     "pmix.proc.vsize"       // (float) Virtual memory size of the process (MBytes)
+#define PMIX_PROC_RSS                       "pmix.proc.rss"         // (float) Resident set size, the non-swapped physical memory that a task
+                                                                    //         has used (MBytes)
+#define PMIX_PROC_PEAK_VSIZE                "pmix.proc.pkvsize"     // (float) Peak virtual memory size of the process (MBytes)
+#define PMIX_PROC_CPU                       "pmix.proc.cpu"         // (uint16_t) Processor that process last executed on
+#define PMIX_PROC_SAMPLE_TIME               "pmix.proc.samptime"    // (time_t) Time when sample was taken
+
+#define PMIX_DISK_RESOURCE_USAGE            "pmix.disk.res"         // (pmix_data_array_t*) An array of pmix_info_t describing the resource usage of
+                                                                    //          the specified disk, with the first element containing the string name
+                                                                    //          of the disk (marked by the PMIX_DISK_ID key) whose usage is reported in
+                                                                    //          the array. The list of included information may vary across implementations
+                                                                    //          and OSs, depending upon availability and access restrictions. Except for
+                                                                    //          the disk ID as the first element, ordering of information in the array
+                                                                    //          is arbitrary.
+#define PMIX_DISK_ID                        "pmix.disk.id"          // (char*) String identifier of a disk
+#define PMIX_DISK_READ_COMPLETED            "pmix.disk.rdscomp"     // (uint64_t) Number of completed read operations
+#define PMIX_DISK_READ_MERGED               "pmix.disk.rdsmrgd"     // (uint64_t) Number of merged reads
+#define PMIX_DISK_READ_SECTORS              "pmix.disk.rdsct"       // (uint64_t) Number of sectors read
+#define PMIX_DISK_READ_MILLISEC             "pmix.disk.rdms"        // (uint64_t) Number of milliseconds spent reading the disk
+#define PMIX_DISK_WRITE_COMPLETED           "pmix.disk.wtscomp"     // (uint64_t) Number of completed write operations
+#define PMIX_DISK_WRITE_MERGED              "pmix.disk.wtsmrgd"     // (uint64_t) Number of merged writes
+#define PMIX_DISK_WRITE_SECTORS             "pmix.disk.wtsct"       // (uint64_t) Number of sectors written
+#define PMIX_DISK_WRITE_MILLISEC            "pmix.disk.wtms"        // (uint64_t) Number of milliseconds spent writing to the disk
+#define PMIX_DISK_IO_IN_PROGRESS            "pmix.disk.ios"         // (uint64_t) Number of disk IO operations in progress
+#define PMIX_DISK_IO_MILLISEC               "pmix.disk.ioms"        // (uint64_t) Number of milliseconds spent in IO operations
+#define PMIX_DISK_IO_WEIGHTED               "pmix.disk.iowght"      // (uint64_t) Number of IOs in progress times the number of milliseconds spent
+                                                                    //            doing IO since last update of the field - indicator of backlog that
+                                                                    //            may be accumulating
+#define PMIX_DISK_SAMPLE_TIME               "pmix.disk.samptime"    // (time_t) Time when sample was taken
+
+
+#define PMIX_NETWORK_RESOURCE_USAGE         "pmix.net.res"          // (pmix_data_array_t*) An array of pmix_info_t describing the resource usage of
+                                                                    //          the specified network, with the first element containing the string name
+                                                                    //          of the interface (marked by the PMIX_NETWORK_ID key) whose usage is reported in
+                                                                    //          the array. The list of included information may vary across implementations
+                                                                    //          and OSs, depending upon availability and access restrictions. Except for
+                                                                    //          the network ID as the first element, ordering of information in the array
+                                                                    //          is arbitrary.
+#define PMIX_NETWORK_ID                     "pmix.net.id"           // (char*) String identifier of a network interface
+#define PMIX_NET_RECVD_BYTES                "pmix.net.rcb"          // (uint64_t) Number of bytes received
+#define PMIX_NET_RECVD_PCKTS                "pmix.net.rcp"          // (uint64_t) Number of packets received
+#define PMIX_NET_RECVD_ERRS                 "pmix.net.rcerr"        // (uint64_t) Number of receive errors
+#define PMIX_NET_SENT_BYTES                 "pmix.net.sntb"         // (uint64_t) Number of bytes sent
+#define PMIX_NET_SENT_PCKTS                 "pmix.net.sntp"         // (uint64_t) Number of packets sent
+#define PMIX_NET_SENT_ERRS                  "pmix.net.snterr"       // (uint64_t) Number of send errors
+#define PMIX_NET_SAMPLE_TIME                "pmix.net.samptime"     // (time_t) Time when sample was taken
+
+
+#define PMIX_NODE_RESOURCE_USAGE            "pmix.node.res"         // (pmix_data_array_t*) An array of pmix_info_t describing the resource usage of
+                                                                    //          the specified node, with the first element containing the ID of the node
+                                                                    //          (marked by the PMIX_HOSTNAME or PMIX_NODEID key) whose usage is reported in
+                                                                    //          the array. The list of included information may vary across implementations
+                                                                    //          and OSs, depending upon availability and access restrictions. Except for
+                                                                    //          the node ID as the first element, ordering of information in the array
+                                                                    //          is arbitrary.
+#define PMIX_NODE_LOAD_AVG                  "pmix.node.la"          // (float) Load average of last minute
+#define PMIX_NODE_LOAD_AVG5                 "pmix.node.la5"         // (float) Load average of last five minutes
+#define PMIX_NODE_LOAD_AVG15                "pmix.node.la15"        // (float) Load average of last fifteen minutes
+#define PMIX_NODE_MEM_TOTAL                 "pmix.node.mtot"        // (float) Total usable RAM - i.e., physical RAM minus reserved bits and kernel
+                                                                    //         binary code (MBytes)
+#define PMIX_NODE_MEM_FREE                  "pmix.node.mfree"       // (float) Total free RAM (MBytes)
+#define PMIX_NODE_MEM_BUFFERS               "pmix.node.mbuf"        // (float) Temporary storage for raw disk blocks (MBytes)
+#define PMIX_NODE_MEM_CACHED                "pmix.node.mcache"      // (float) In-memory cache for files read from disk (the pagecache) as well as tmpfs
+                                                                    //         and shmem. Doesn't include PMIX_NODE_MEM_SWAP_CACHED. (MBytes)
+#define PMIX_NODE_MEM_SWAP_CACHED           "pmix.node.mswpc"       // (float) Memory that once was swapped out, is swapped back in but still also in the
+                                                                    //         swapfile (MBytes)
+#define PMIX_NODE_SWAP_TOTAL                "pmix.node.mswpt"       // (float) Total amount of swap space available (MBytes)
+#define PMIX_NODE_MEM_SWAP_FREE             "pmix.node.mswpfree"    // (float) Memory which has been evicted from RA<M and is temporarily on the disk (MBytes)
+#define PMIX_NODE_MEM_MAPPED                "pmix.node.mmap"        // (float) Files which have been mmapped, such as libraries. Note that some kernel
+                                                                    //         configurations might consider all pages part of a larger allocation (e.g., THP)
+                                                                    //         as mapped, as soon as a single page is mapped (MBytes)
+#define PMIX_NODE_SAMPLE_TIME               "pmix.node.samptime"    // (time_t) Time when sample was taken
+
 
 /* security attributes */
 #define PMIX_CRED_TYPE                      "pmix.sec.ctype"        // (char*) when passed in PMIx_Get_credential, a prioritized,
@@ -1474,6 +1627,7 @@ typedef int pmix_status_t;
 #define PMIX_MONITOR_HEARTBEAT_ALERT                -109
 #define PMIX_MONITOR_FILE_ALERT                     -110
 #define PMIX_PROC_TERMINATED                        -111
+#define PMIX_MONITOR_RESUSAGE_UPDATE                -112
 
 /* operational */
 #define PMIX_ERR_EVENT_REGISTRATION                 -144
@@ -1643,10 +1797,6 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_LOCTYPE                    58
 #define PMIX_COMPRESSED_BYTE_OBJECT     59
 #define PMIX_PROC_NSPACE                60
-#define PMIX_PROC_STATS                 61
-#define PMIX_DISK_STATS                 62
-#define PMIX_NET_STATS                  63
-#define PMIX_NODE_STATS                 64
 #define PMIX_DATA_BUFFER                65
 #define PMIX_STOR_MEDIUM                66
 #define PMIX_STOR_ACCESS                67
@@ -1655,6 +1805,7 @@ typedef uint16_t pmix_data_type_t;
 #define PMIX_DEVICE                     70
 #define PMIX_RESBLOCK_DIRECTIVE         71
 #define PMIX_RESOURCE_UNIT              72
+#define PMIX_NODE_PID                   73
 /********************/
 
 /* define a boundary for implementers so they can add their own data types */
@@ -2059,6 +2210,21 @@ typedef struct pmix_device_distance {
 }
 
 
+/****    PMIX NODE PID    ****/
+typedef struct pmix_node_pid {
+    char *hostname;
+    uint32_t nodeid;
+    pid_t pid;
+} pmix_node_pid_t;
+
+#define PMIX_NODE_PID_STATIC_INIT   \
+{                                   \
+    .hostname = NULL,               \
+    .nodeid = UINT32_MAX,           \
+    .pid = -1                       \
+}
+
+
 /****    PMIX BYTE OBJECT    ****/
 typedef struct pmix_byte_object {
     char *bytes;
@@ -2192,149 +2358,6 @@ typedef struct pmix_data_array {
  * will utilize the void* entry of the pmix_value_t to
  * hold the pointer to pmix_regattr_t */
 
-/****   STATISTICS STRUCTURES  ****/
-typedef struct pmix_proc_stats {
-    /* process ident info */
-    char *node;
-    pmix_proc_t proc;
-    pid_t pid;
-    char *cmd;
-    /* process stats */
-    char state;
-    struct timeval time;
-    float percent_cpu;
-    int32_t priority;
-    uint16_t num_threads;
-    float pss;   /* in MBytes */
-    float vsize;  /* in MBytes */
-    float rss;  /* in MBytes */
-    float peak_vsize;  /* in MBytes */
-    uint16_t processor;
-    /* time at which sample was taken */
-    struct timeval sample_time;
-} pmix_proc_stats_t;
-
-#define PMIX_PROC_STATS_STATIC_INIT     \
-{                                       \
-    .node = NULL,                       \
-    .proc = PMIX_PROC_STATIC_INIT,      \
-    .pid = 0,                           \
-    .cmd = NULL,                        \
-    .state = '\0',                      \
-    .time = {0, 0},                     \
-    .percent_cpu = 0.0,                 \
-    .priority = 0,                      \
-    .num_threads = 0,                   \
-    .pss = 0.0,                         \
-    .vsize = 0.0,                       \
-    .rss = 0.0,                         \
-    .peak_vsize = 0.0                   \
-    .processor = 0,                     \
-    .sample_time = {0, 0}               \
-}
-
-
-typedef struct {
-    char *disk;
-    uint64_t num_reads_completed;
-    uint64_t num_reads_merged;
-    uint64_t num_sectors_read;
-    uint64_t milliseconds_reading;
-    uint64_t num_writes_completed;
-    uint64_t num_writes_merged;
-    uint64_t num_sectors_written;
-    uint64_t milliseconds_writing;
-    uint64_t num_ios_in_progress;
-    uint64_t milliseconds_io;
-    uint64_t weighted_milliseconds_io;
-} pmix_disk_stats_t;
-
-#define PMIX_DISK_STATS_STATIC_INIT     \
-{                                       \
-    .disk = NULL,                       \
-    .num_reads_completed = 0,           \
-    .num_reads_merged = 0,              \
-    .num_sectors_read = 0,              \
-    .milliseconds_reading = 0,          \
-    .num_writes_completed = 0,          \
-    .num_writes_merged = 0,             \
-    .num_sectors_written = 0,           \
-    .milliseconds_writing = 0,          \
-    .num_ios_in_progress = 0,           \
-    .milliseconds_io = 0,               \
-    .weighted_milliseconds_io = 0       \
-}
-
-
-typedef struct {
-    char *net_interface;
-    uint64_t num_bytes_recvd;
-    uint64_t num_packets_recvd;
-    uint64_t num_recv_errs;
-    uint64_t num_bytes_sent;
-    uint64_t num_packets_sent;
-    uint64_t num_send_errs;
-} pmix_net_stats_t;
-
-#define PMIX_NET_STATS_STATIC_INIT  \
-{                                   \
-    .net_interface = NULL,          \
-    .num_bytes_recvd = 0,           \
-    .num_packets_recvd = 0,         \
-    .num_recv_errs = 0,             \
-    .num_bytes_sent = 0,            \
-    .num_packets_sent = 0,          \
-    .num_send_errs = 0              \
-}
-
-
-typedef struct {
-    char *node;
-    /* node-level load averages */
-    float la;
-    float la5;
-    float la15;
-    /* memory usage */
-    float total_mem;  /* in MBytes */
-    float free_mem;  /* in MBytes */
-    float buffers;  /* in MBytes */
-    float cached;   /* in MBytes */
-    float swap_cached;  /* in MBytes */
-    float swap_total;   /* in MBytes */
-    float swap_free;    /* in MBytes */
-    float mapped;       /* in MBytes */
-    /* time at which sample was taken */
-    struct timeval sample_time;
-    /* array of disk stats, one per disk */
-    pmix_disk_stats_t *diskstats;
-    size_t ndiskstats;
-    /* array of net stats, one per interface */
-    pmix_net_stats_t *netstats;
-    size_t nnetstats;
-} pmix_node_stats_t;
-
-#define PMIX_NODE_STATS_STATIC_INIT     \
-{                                       \
-    .node = NULL,                       \
-    .la = 0,                            \
-    .la5 = 0,                           \
-    .la15 = 0,                          \
-    .total_mem = 0.0,                   \
-    .free_mem = 0.0,                    \
-    .buffers = 0.0,                     \
-    .cached = 0.0,                      \
-    .swap_cached = 0.0,                 \
-    .swap_total = 0.0,                  \
-    .swap_free = 0.0,                   \
-    .mapped = 0.0,                      \
-    .sample_time = {0, 0},              \
-    .diskstats = NULL,                  \
-    .ndiskstats = 0,                    \
-    .netstats = NULL,                   \
-    .nnetstats = 0                      \
-}
-
-
 /****    PMIX VALUE STRUCT    ****/
 
 /* NOTE: operations can supply a collection of values under
@@ -2391,11 +2414,8 @@ typedef struct pmix_value {
         pmix_device_distance_t *devdist;
         pmix_endpoint_t *endpoint;
         pmix_data_buffer_t *dbuf;
-        pmix_proc_stats_t *pstats;
-        pmix_disk_stats_t *dkstats;
-        pmix_net_stats_t *netstats;
-        pmix_node_stats_t *ndstats;
         pmix_resource_unit_t *resunit;
+        pmix_node_pid_t *nodepid;
     } data;
 } pmix_value_t;
 

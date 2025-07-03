@@ -768,7 +768,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     }
 
     /* see if we are a client of some server */
-    rc = pmix_ptl_base_check_server_uris(peer, &evar);
+    rc = pmix_ptl_base_set_peer(peer, &evar);
     if (PMIX_SUCCESS == rc) {
         PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_CLIENT_TOOL);
         rc = pmix_ptl_base_parse_uri(evar, &nspace, &rank, &suri);

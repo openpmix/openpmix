@@ -236,7 +236,9 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_keyindex_t,
 static void info_con(pmix_rank_info_t *info)
 {
     info->peerid = -1;
-    info->gid = info->uid = 0;
+    info->pid = -1;
+    info->gid = 0;
+    info->uid = 0;
     info->pname.nspace = NULL;
     info->pname.rank = PMIX_RANK_UNDEF;
     info->modex_recvd = false;
@@ -431,6 +433,7 @@ static void cbcon(pmix_cb_t *p)
     p->scope = PMIX_SCOPE_UNDEF;
     p->key = NULL;
     p->value = NULL;
+    p->proc = NULL;
     p->procs = NULL;
     p->nprocs = 0;
     p->info = NULL;
@@ -469,6 +472,10 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_cb_t,
                                 cbcon, cbdes);
 
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_info_caddy_t,
+                                pmix_list_item_t,
+                                NULL, NULL);
+
+PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_peerlist_t,
                                 pmix_list_item_t,
                                 NULL, NULL);
 
@@ -777,6 +784,22 @@ pmix_event_t *pmix_event_new(pmix_event_base_t *b, int fd, short fg, event_callb
     ev = event_new(b, fd, fg, (event_callback_fn) cbfn, cbd);
     return ev;
 }
+
+static void tcon(pmix_timer_t *p)
+{
+    p->active = false;
+    p->payload = NULL;
+}
+static void tdes(pmix_timer_t *p)
+{
+    if (p->active) {
+        pmix_event_del(&p->ev);
+        p->active = false;
+    }
+}
+PMIX_CLASS_INSTANCE(pmix_timer_t,
+                    pmix_object_t,
+                    tcon, tdes);
 
 #if PMIX_PICKY_COMPILERS
 void pmix_hide_unused_params(int x, ...)
