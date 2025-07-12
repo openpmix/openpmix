@@ -447,7 +447,7 @@ static const char **get_content(const char *filename,
     pmix_show_help_entry_t *ie;
     int i, j;
 
-    if (!pmix_show_help_enabled) {
+    if (!pmix_show_help_initialized) {
         // restrict to local array
         for (i = 0; NULL != pmix_show_help_data[i].filename; ++i) {
             fe = &(pmix_show_help_data[i]);
