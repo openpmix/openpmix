@@ -6,7 +6,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -106,8 +106,7 @@ pmix_status_t pmix_pmdl_base_harvest_envars(char *nspace, const pmix_info_t info
         pmix_list_append(ilist, &kv->super);
     }
 
-    if (NULL != nspace) {
-        nptr = NULL;
+    if (NULL != nspace && 0 < strlen(nspace)) {
         /* find this nspace - note that it may not have
          * been registered yet */
         PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
