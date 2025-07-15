@@ -563,6 +563,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_SPAWN_CHILD_SEP                "pmix.spchildsep"       // (bool) Treat the spawned job as independent from the parent - i.e, do not
                                                                     //        terminate the spawned job if the parent terminates.
 #define PMIX_FWD_ENVIRONMENT                "pmix.fwdenv"           // (bool) Forward the local environment to each spawned process
+#define PMIX_SPAWN_PTY                      "pmix.spawn.pty"        // (bool) Spawn a pseudo-terminal
 
 
 /* query keys - value type shown is the type of the value that will be RETURNED by that key  */

@@ -1657,56 +1657,51 @@ pmix_status_t pmix_iof_write_output(const pmix_proc_t *name,
         return rc;
     }
 
-    /* see if we have some residual for this name/stream */
-    inputdata = bo->bytes;
-    inputsize = bo->size;
-    copied = false;
-    PMIX_LIST_FOREACH(res, &pmix_server_globals.iof_residuals, pmix_iof_residual_t) {
-        if (PMIX_CHECK_PROCID(name, &res->name) || (stream & res->stream)) {
-            /* we need to pre-pend the residual data to the new
-             * data so any lines can be completed */
-            inputdata = (char*)malloc(inputsize + res->bo.size);
-            memcpy(inputdata, res->bo.bytes, res->bo.size);
-            memcpy(&inputdata[res->bo.size], bo->bytes, bo->size);
-            inputsize += res->bo.size;
-            copied = true;
-            pmix_list_remove_item(&pmix_server_globals.iof_residuals, &res->super);
-            PMIX_RELEASE(res);
-            break;
-        }
-    }
+    if (myflags.raw) {
+        rc = write_output_line(name, channel, &myflags, stream,
+                               copystdout, copystderr, bo);
+        return rc;
 
-    /* search the input data stream for '\n' */
-    start = 0;
-    for (n=0; n < inputsize; n++) {
-        if ('\n' == inputdata[n]) {
-            bopass.bytes = &inputdata[start];
-            bopass.size = n - start + 1;
-            rc = write_output_line(name, channel, &myflags, stream,
-                                   copystdout, copystderr, &bopass);
-            if (PMIX_SUCCESS != rc) {
-                if (copied) {
-                    free(inputdata);
-                }
-                return rc;
-            }
-            start = n + 1;
-        }
-    }
+    } else {
 
-    if (start < inputsize) {
-        if (myflags.raw) {
-            bopass.bytes = &inputdata[start];
-            bopass.size = inputsize - start;
-            rc = write_output_line(name, channel, &myflags, stream,
-                                   copystdout, copystderr, &bopass);
-            if (PMIX_SUCCESS != rc) {
-                if (copied) {
-                    free(inputdata);
-                }
-                return rc;
+        /* see if we have some residual for this name/stream */
+        inputdata = bo->bytes;
+        inputsize = bo->size;
+        copied = false;
+        PMIX_LIST_FOREACH(res, &pmix_server_globals.iof_residuals, pmix_iof_residual_t) {
+            if (PMIX_CHECK_PROCID(name, &res->name) || (stream & res->stream)) {
+                /* we need to pre-pend the residual data to the new
+                 * data so any lines can be completed */
+                inputdata = (char*)malloc(inputsize + res->bo.size);
+                memcpy(inputdata, res->bo.bytes, res->bo.size);
+                memcpy(&inputdata[res->bo.size], bo->bytes, bo->size);
+                inputsize += res->bo.size;
+                copied = true;
+                pmix_list_remove_item(&pmix_server_globals.iof_residuals, &res->super);
+                PMIX_RELEASE(res);
+                break;
             }
-        } else {
+        }
+
+        /* search the input data stream for '\n' */
+        start = 0;
+        for (n=0; n < inputsize; n++) {
+            if ('\n' == inputdata[n]) {
+                bopass.bytes = &inputdata[start];
+                bopass.size = n - start + 1;
+                rc = write_output_line(name, channel, &myflags, stream,
+                                       copystdout, copystderr, &bopass);
+                if (PMIX_SUCCESS != rc) {
+                    if (copied) {
+                        free(inputdata);
+                    }
+                    return rc;
+                }
+                start = n + 1;
+            }
+        }
+
+        if (start < inputsize) {
             /* we have some residual that needs to be cached until
              * the rest of the line is seen */
             res = PMIX_NEW(pmix_iof_residual_t);
