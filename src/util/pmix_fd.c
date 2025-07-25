@@ -282,3 +282,31 @@ slow:
         }
     }
 }
+
+int pmix_fd_dup2(int src, int target)
+{
+    int ret;
+
+#ifdef HAVE_FILENO_UNLOCKED
+    if (0 == target) {
+        ret = dup2(src, fileno_unlocked(stdin));
+    } else if (1 == target) {
+        ret = dup2(src, fileno_unlocked(stdout));
+    } else if (2 == target) {
+        ret = dup2(src, fileno_unlocked(stderr));
+    } else {
+        ret = dup2(src, target);
+    }
+#else
+    if (0 == target) {
+        ret = dup2(src, fileno(stdin));
+    } else if (1 == target) {
+        ret = dup2(src, fileno(stdout));
+    } else if (2 == target) {
+        ret = dup2(src, fileno(stderr));
+    } else {
+        ret = dup2(src, target);
+    }
+#endif
+    return ret;
+}

@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -105,6 +105,8 @@ PMIX_EXPORT bool pmix_fd_is_blkdev(int fd);
 PMIX_EXPORT void pmix_close_open_file_descriptors(int protected_fd);
 
 PMIX_EXPORT const char *pmix_fd_get_peer_name(int fd);
+
+PMIX_EXPORT int pmix_fd_dup2(int src, int target);
 
 END_C_DECLS
 
