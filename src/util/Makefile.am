@@ -67,7 +67,8 @@ headers = \
         pmix_pty.h \
         pmix_few.h \
         pmix_string_copy.h \
-        pmix_getcwd.h
+        pmix_getcwd.h \
+        pmix_tty.h
 
 sources = \
         pmix_alfg.c \
@@ -98,7 +99,8 @@ sources = \
         pmix_pty.c \
         pmix_few.c \
         pmix_string_copy.c \
-        pmix_getcwd.c
+        pmix_getcwd.c \
+        pmix_tty.c
 
 pmix_show_help_content.c: convert-help.py
 if PMIX_PICKY_COMPILERS

@@ -18,18 +18,12 @@
  * $HEADER$
  */
 
-#ifndef PMIX_UTIL_PTY_H
-#define PMIX_UTIL_PTY_H
+#ifndef PMIX_UTIL_TTY_H
+#define PMIX_UTIL_TTY_H
 
 #include "src/include/pmix_config.h"
 #include "pmix_common.h"
 
-#ifdef HAVE_UTIL_H
-#    include <util.h>
-#endif
-#ifdef HAVE_LIBUTIL_H
-#    include <libutil.h>
-#endif
 #ifdef HAVE_TERMIOS_H
 #    include <termios.h>
 #else
@@ -37,36 +31,22 @@
 #        include <termio.h>
 #    endif
 #endif
+#ifdef HAVE_SYS_IOCTL_H
+#    include <sys/ioctl.h>
+#endif
 
 BEGIN_C_DECLS
 
-#if PMIX_ENABLE_PTY_SUPPORT
+PMIX_EXPORT pmix_status_t pmix_gettermios(int fd, struct termios *terms);
 
-PMIX_EXPORT int pmix_openpty(int *amaster, int *aslave, char *name,
-                             struct termios *termp, struct winsize *winp);
+PMIX_EXPORT pmix_status_t pmix_getwinsz(int fd, struct winsize *ws);
 
-PMIX_EXPORT int pmix_ptymopen(char *pts_name, size_t maxlen);
+PMIX_EXPORT pmix_status_t pmix_settermios(int fd, struct termios *terms);
 
-PMIX_EXPORT int pmix_ptysopen(int fdm, char *pts_name);
+PMIX_EXPORT pmix_status_t pmix_setwinsz(int fd, struct winsize *ws);
 
-PMIX_EXPORT pid_t pmix_forkpty(int *master, char *slave,
-                               const struct termios *sterm,
-                               const struct winsize *sws);
-
-#else
-
-PMIX_EXPORT int pmix_openpty(int *amaster, int *aslave, char *name,
-                             void *termp, void *winpp);
-
-PMIX_EXPORT int pmix_ptymopen(char *pts_name, size_t maxlen);
-
-PMIX_EXPORT int pmix_ptysopen(int fdm, char *pts_name);
-
-PMIX_EXPORT pid_t pmix_forkpty(int *master, char *slave,
-                               const void *sterm, const void *sws);
-
-#endif
+PMIX_EXPORT pmix_status_t pmix_setraw(int fd, struct termios *prior);
 
 END_C_DECLS
 
-#endif /* PMIX_UTIL_PTY_H */
+#endif /* PMIX_UTIL_TTY_H */

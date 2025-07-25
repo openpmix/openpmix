@@ -66,10 +66,10 @@
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
+#include "src/util/pmix_environ.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_output.h"
-#include "src/util/pmix_environ.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
