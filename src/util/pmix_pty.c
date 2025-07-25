@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -96,40 +96,200 @@
 #    include <util.h>
 #endif
 
+#include "src/util/pmix_output.h"
 #include "src/util/pmix_pty.h"
 
-/* The only public interface is openpty - all others are to support
-   openpty() */
 
 #if PMIX_ENABLE_PTY_SUPPORT == 0
 
-int pmix_openpty(int *amaster, int *aslave, char *name, void *termp, void *winpp)
+PMIX_EXPORT int pmix_ptymopen(char *pts_name)
 {
+    PMIX_HIDE_UNUSED_PARAMS(pts_name);
+    return -1
+}
+
+PMIX_EXPORT int pmix_ptysopen(int fdm, char *pts_name)
+{
+    PMIX_HIDE_UNUSED_PARAMS(fdm, pts_name);
     return -1;
 }
 
+#else
+
+int pmix_ptymopen(char *pts_name, size_t maxlen)
+{
+    int fdm;
+    int errsave;
+
+#    ifdef HAVE_PTSNAME
+    char *ptr;
+
+#        ifdef _AIX
+    strncpy(pts_name, "/dev/ptc", maxlen);
+#        else
+    strncpy(pts_name, "/dev/ptmx", maxlen);
+#        endif
+    fdm = open(pts_name, O_RDWR);
+    if (fdm < 0) {
+        return -1;
+    }
+    if (grantpt(fdm) < 0) { /* grant access to slave */
+        errsave = errno;
+        close(fdm);  // might change errno
+        errno = errsave;
+        return -2;
+    }
+    if (unlockpt(fdm) < 0) { /* clear slave's lock flag */
+        errsave = errno;
+        close(fdm);  // might change errno
+        errno = errsave;
+        return -3;
+    }
+    ptr = ptsname(fdm);
+    if (ptr == NULL) { /* get slave's name */
+        errsave = errno;
+        close(fdm);  // might change errno
+        errno = errsave;
+        return -4;
+    }
+    if (strlen(ptr) < maxlen) {
+        strncpy(pts_name, ptr, maxlen); /* return name of slave */
+        return fdm;            /* return fd of master */
+    } else {
+        close(fdm);
+        errno = EOVERFLOW;
+        return -5;
+    }
+
+#    else  // HAVE_PTSNAME
+
+    char *ptr1, *ptr2;
+
+    if (strlen("/dev/ptyXY") < maxlen-1) {
+        strcpy(pts_name, "/dev/ptyXY");
+    } else {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    /* array index: 012345689 (for references in following code) */
+    for (ptr1 = "pqrstuvwxyzPQRST"; *ptr1 != 0; ptr1++) {
+        pts_name[8] = *ptr1;
+        for (ptr2 = "0123456789abcdef"; *ptr2 != 0; ptr2++) {
+            pts_name[9] = *ptr2;
+            /* try to open master */
+            fdm = open(pts_name, O_RDWR);
+            if (fdm < 0) {
+                if (errno == ENOENT) { /* different from EIO */
+                    return -1;         /* out of pty devices */
+                } else {
+                    continue; /* try next pty device */
+                }
+            }
+            pts_name[5] = 't'; /* change "pty" to "tty" */
+            return fdm;        /* got it, return fd of master */
+        }
+    }
+    return -1; /* out of pty devices */
+
+#    endif
+}
+
+int pmix_ptysopen(int fdm, char *pts_name)
+{
+    int fds;
+    int errsave;
+
+#    ifdef HAVE_PTSNAME
+    /* following should allocate controlling terminal */
+    fds = open(pts_name, O_RDWR);
+    if (fds < 0) {
+        pmix_output(0, "FAILED WITH %s", strerror(errno));
+        errsave = errno;
+        close(fdm);  // might change errno
+        errno = errsave;
+        return -5;
+    }
+#        if defined(__SVR4) && defined(__sun)
+    if (ioctl(fds, I_PUSH, "ptem") < 0) {
+        errsave = errno;
+        close(fdm);  // might change errno
+        close(fds);  // might change errno
+        errno = errsave;
+        return -6;
+    }
+    if (ioctl(fds, I_PUSH, "ldterm") < 0) {
+        errsave = errno;
+        close(fdm);  // might change errno
+        close(fds);  // might change errno
+        errno = errsave;
+        return -7;
+    }
+#        endif
+
+#ifdef TIOCSCTTY                        /* Acquire controlling tty on BSD */
+        // just make the attempt - don't worry if it fails
+        ioctl(fds, TIOCSCTTY, 0);
+#endif
+
+    return fds;
+
+#    else
+
+    int gid;
+    struct group *grptr;
+
+    grptr = getgrnam("tty");
+    if (grptr != NULL) {
+        gid = grptr->gr_gid;
+    } else {
+        gid = -1; /* group tty is not in the group file */
+    }
+    /* following two functions don't work unless we're root */
+    lchown(pts_name, getuid(), gid);  // DO NOT FOLLOW LINKS
+    chmod(pts_name, S_IRUSR | S_IWUSR | S_IWGRP);
+    fds = open(pts_name, O_RDWR);
+    if (fds < 0) {
+        errsave = errno;
+        close(fdm);  // might change errno
+        errno = errsave;
+        return -1;
+    }
+    return fds;
+#    endif
+}
+
+#endif
+
+#if PMIX_ENABLE_PTY_SUPPORT == 0
+
+int pmix_openpty(int *amaster, int *aslave, char *name,
+                 void *termp, void *winpp)
+{
+    PMIX_HIDE_UNUSED_PARAMS(amaster, aslave, name, termp, winpp);
+    return -1;
+}
+
+
 #elif defined(HAVE_OPENPTY)
 
-int pmix_openpty(int *amaster, int *aslave, char *name, struct termios *termp, struct winsize *winp)
+int pmix_openpty(int *amaster, int *aslave, char *name,
+                 struct termios *termp, struct winsize *winp)
 {
     return openpty(amaster, aslave, name, termp, winp);
 }
 
 #else
 
-/* implement openpty in terms of ptym_open and ptys_open */
+/* implement openpty in terms of pmix_ptymopen and pmix_ptysopen */
 
-static int ptym_open(char *pts_name);
-static int ptys_open(int fdm, char *pts_name);
-
-int pmix_openpty(int *amaster, int *aslave, char *name, struct termios *termp, struct winsize *winp)
+int pmix_openpty(int *amaster, int *aslave, char *name,
+                 struct termios *termp, struct winsize *winp)
 {
     char line[20];
-    *amaster = ptym_open(line);
+    *amaster = pmix_ptymopen(line);
     if (*amaster < 0) {
         return -1;
     }
-    *aslave = ptys_open(*amaster, line);
+    *aslave = pmix_ptysopen(*amaster, line);
     if (*aslave < 0) {
         close(*amaster);
         return -1;
@@ -153,106 +313,38 @@ int pmix_openpty(int *amaster, int *aslave, char *name, struct termios *termp, s
     return 0;
 }
 
-static int ptym_open(char *pts_name)
-{
-    int fdm;
-#    ifdef HAVE_PTSNAME
-    char *ptr;
-
-#        ifdef _AIX
-    strcpy(pts_name, "/dev/ptc");
-#        else
-    strcpy(pts_name, "/dev/ptmx");
-#        endif
-    fdm = open(pts_name, O_RDWR);
-    if (fdm < 0) {
-        return -1;
-    }
-    if (grantpt(fdm) < 0) { /* grant access to slave */
-        close(fdm);
-        return -2;
-    }
-    if (unlockpt(fdm) < 0) { /* clear slave's lock flag */
-        close(fdm);
-        return -3;
-    }
-    ptr = ptsname(fdm);
-    if (ptr == NULL) { /* get slave's name */
-        close(fdm);
-        return -4;
-    }
-    strcpy(pts_name, ptr); /* return name of slave */
-    return fdm;            /* return fd of master */
-#    else
-    char *ptr1, *ptr2;
-
-    strcpy(pts_name, "/dev/ptyXY");
-    /* array index: 012345689 (for references in following code) */
-    for (ptr1 = "pqrstuvwxyzPQRST"; *ptr1 != 0; ptr1++) {
-        pts_name[8] = *ptr1;
-        for (ptr2 = "0123456789abcdef"; *ptr2 != 0; ptr2++) {
-            pts_name[9] = *ptr2;
-            /* try to open master */
-            fdm = open(pts_name, O_RDWR);
-            if (fdm < 0) {
-                if (errno == ENOENT) { /* different from EIO */
-                    return -1;         /* out of pty devices */
-                } else {
-                    continue; /* try next pty device */
-                }
-            }
-            pts_name[5] = 't'; /* change "pty" to "tty" */
-            return fdm;        /* got it, return fd of master */
-        }
-    }
-    return -1; /* out of pty devices */
-#    endif
-}
-
-static int ptys_open(int fdm, char *pts_name)
-{
-    int fds;
-#    ifdef HAVE_PTSNAME
-    /* following should allocate controlling terminal */
-    fds = open(pts_name, O_RDWR);
-    if (fds < 0) {
-        close(fdm);
-        return -5;
-    }
-#        if defined(__SVR4) && defined(__sun)
-    if (ioctl(fds, I_PUSH, "ptem") < 0) {
-        close(fdm);
-        close(fds);
-        return -6;
-    }
-    if (ioctl(fds, I_PUSH, "ldterm") < 0) {
-        close(fdm);
-        close(fds);
-        return -7;
-    }
-#        endif
-
-    return fds;
-#    else
-    int gid;
-    struct group *grptr;
-
-    grptr = getgrnam("tty");
-    if (grptr != NULL) {
-        gid = grptr->gr_gid;
-    } else {
-        gid = -1; /* group tty is not in the group file */
-    }
-    /* following two functions don't work unless we're root */
-    lchown(pts_name, getuid(), gid);  // DO NOT FOLLOW LINKS
-    chmod(pts_name, S_IRUSR | S_IWUSR | S_IWGRP);
-    fds = open(pts_name, O_RDWR);
-    if (fds < 0) {
-        close(fdm);
-        return -1;
-    }
-    return fds;
-#    endif
-}
-
 #endif /* #ifdef HAVE_OPENPTY */
+
+
+#if PMIX_ENABLE_PTY_SUPPORT == 0
+
+pid_t pmix_forkpty(int *master, char *slave, size_t len,
+                   const struct termios *sterm,
+                   const struct winsize *sws)
+{
+    PMIX_HIDE_UNUSED_PARAMS(master, slave, len, sterm, sws);
+    return -1;
+}
+
+
+#elif defined(HAVE_FORKPTY)
+
+pid_t pmix_forkpty(int *master, char *slave,
+                   const struct termios *sterm,
+                   const struct winsize *sws)
+{
+    // some OS don't have the "const" in the above declaration
+    return forkpty(master, slave, (struct termios *)sterm, (struct winsize *)sws);
+}
+
+#else
+
+pid_t pmix_forkpty(int *master, char *slave,
+                   const struct termios *sterm,
+                   const struct winsize *sws)
+{
+    PMIX_HIDE_UNUSED_PARAMS(master, slave, sterm, sws);
+    return -1;
+}
+
+#endif

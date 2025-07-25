@@ -630,6 +630,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
 
     # Darwin doesn't need -lutil, as it's something other than this -lutil.
     PMIX_SEARCH_LIBS_CORE([openpty], [util])
+    PMIX_SEARCH_LIBS_CORE([forkpty], [util])
 
     PMIX_SEARCH_LIBS_CORE([gethostbyname], [nsl])
 
@@ -644,7 +645,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # -lrt might be needed for clock_gettime
     PMIX_SEARCH_LIBS_CORE([clock_gettime], [rt])
 
-    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred strnlen posix_fallocate tcgetpgrp setpgid ptsname openpty setenv fork execve waitpid atexit])
+    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred strnlen posix_fallocate tcgetpgrp setpgid ptsname openpty setenv fork execve waitpid atexit forkpty posix_openpt fileno_unlocked])
 
     # On some hosts, htonl is a define, so the AC_CHECK_FUNC will get
     # confused.  On others, it's in the standard library, but stubbed with
