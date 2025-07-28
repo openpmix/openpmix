@@ -1046,7 +1046,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
     pmix_status_t rc;
     size_t n;
     pmix_client_timeout_t tev;
-    struct timeval tv = {2, 0};
+    struct timeval tv;
     pmix_peer_t *peer;
     int i;
 
@@ -1104,6 +1104,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
         pmix_event_assign(&tev.ev, pmix_globals.evbase, -1, 0, fin_timeout, &tev);
         tev.active = true;
         PMIX_POST_OBJECT(&tev);
+        tv.tv_sec = pmix_server_client_fintime;
+        tv.tv_usec = 0;
         pmix_event_add(&tev.ev, &tv);
         /* send to the server */
         PMIX_PTL_SEND_RECV(rc, pmix_client_globals.myserver, msg, finwait_cbfunc, (void *) &tev);
