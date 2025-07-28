@@ -51,6 +51,7 @@ int pmix_event_caching_window = 1;
 char *pmix_progress_thread_cpus = NULL;
 bool pmix_bind_progress_thread_reqd = false;
 int pmix_maxfd = 1024;
+int pmix_server_client_fintime;
 
 pmix_status_t pmix_register_params(void)
 {
@@ -276,6 +277,12 @@ pmix_status_t pmix_register_params(void)
                                       "In non-Linux environments, use this value as a maximum number of file descriptors to close when forking a new child process",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_maxfd);
+
+    pmix_server_client_fintime = 10;
+    (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "finalize_timeout",
+                                      "Time in seconds to wait for server to ack client finalize request",
+                                      PMIX_MCA_BASE_VAR_TYPE_INT,
+                                      &pmix_server_client_fintime);
 
     pmix_hwloc_register();
     return PMIX_SUCCESS;
