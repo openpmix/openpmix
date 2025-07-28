@@ -84,11 +84,11 @@ pmix_status_t pmix_settermios(int fd, struct termios *terms)
         return PMIX_ERROR;
     }
 
-    rc = tcsetattr(fd, TCSAFLUSH, terms);
+    rc = tcsetattr(fd, TCSANOW, terms);
     if (0 != rc) {
         // attempt to reset it
         err = errno;  // preserve original error
-        tcsetattr(fd, TCSAFLUSH, &old);
+        tcsetattr(fd, TCSANOW, &old);
         errno = err;
 
     } else {
