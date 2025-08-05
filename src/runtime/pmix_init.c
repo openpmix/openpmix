@@ -36,6 +36,9 @@
 #endif
 
 #include "src/include/pmix_globals.h"
+#include "src/include/pmix_dictionary.h"
+#include "src/include/pmix_types.h"
+
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
@@ -48,6 +51,9 @@
 #include "src/mca/preg/base/base.h"
 #include "src/mca/psec/base/base.h"
 #include "src/mca/ptl/base/base.h"
+
+#include "src/util/pmix_error.h"
+#include "src/util/pmix_keyval_parse.h"
 #include "src/util/pmix_name_fns.h"
 #include "src/util/pmix_net.h"
 #include "src/util/pmix_output.h"
@@ -57,10 +63,6 @@
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
 #include "src/event/pmix_event.h"
-#include "src/include/pmix_dictionary.h"
-#include "src/include/pmix_types.h"
-#include "src/util/pmix_error.h"
-#include "src/util/pmix_keyval_parse.h"
 
 #include "src/runtime/pmix_progress_threads.h"
 #include "src/runtime/pmix_rte.h"
@@ -84,6 +86,7 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .uid = 0,
     .gid = 0,
     .hostname = NULL,
+    .aliases = NULL,
     .appnum = 0,
     .pid = 0,
     .nodeid = UINT32_MAX,
@@ -217,7 +220,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     char hostname[PMIX_MAXHOSTNAMELEN] = {0};
     pmix_info_t *iptr;
     size_t minfo;
-    bool keepfqdn = false;
     pmix_iof_flags_t flags;
 
 #if PMIX_NO_LIB_DESTRUCTOR
@@ -280,7 +282,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_EXTERNAL_AUX_EVENT_BASE)) {
                 pmix_globals.evauxbase = (pmix_event_base_t*)info[n].value.data.ptr;
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME_KEEP_FQDN)) {
-                keepfqdn = PMIX_INFO_TRUE(&info[n]);
+                pmix_keep_fqdn_hostnames = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_BIND_PROGRESS_THREAD)) {
                 if (NULL != pmix_progress_thread_cpus) {
                     free(pmix_progress_thread_cpus);
@@ -431,12 +433,9 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
             /* if we weren't previously given a hostname, then
              * use the OS one */
             gethostname(hostname, PMIX_MAXHOSTNAMELEN - 1);
-            /* strip the FQDN unless told to keep it */
-            if (!keepfqdn && !pmix_net_isaddr(hostname) && NULL != (evar = strchr(hostname, '.'))) {
-                *evar = '\0';
-            }
             pmix_globals.hostname = strdup(hostname);
         }
+        pmix_set_aliases(&pmix_globals.aliases, pmix_globals.hostname);
     }
 
     /* open the bfrops and select the active plugins */
@@ -561,4 +560,24 @@ int pmix_finalize_util(void)
 {
     util_initialized = false;
     return PMIX_SUCCESS;
+}
+
+void pmix_set_aliases(char ***aliases, char *hostname)
+{
+    char *ptr;
+
+    if (!pmix_net_isaddr(hostname) &&
+        NULL != (ptr = strchr(hostname, '.'))) {
+        if (pmix_keep_fqdn_hostnames) {
+            /* retain the non-fqdn name as an alias */
+            *ptr = '\0';
+            PMIx_Argv_append_unique_nosize(aliases, hostname);
+            *ptr = '.';
+        } else {
+            /* add the fqdn name as an alias */
+            PMIx_Argv_append_unique_nosize(aliases, hostname);
+            /* retain the non-fqdn name as the node's name */
+            *ptr = '\0';
+        }
+    }
 }
