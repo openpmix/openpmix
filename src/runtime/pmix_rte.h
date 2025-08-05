@@ -51,6 +51,7 @@ PMIX_EXPORT extern char *pmix_progress_thread_cpus;
 PMIX_EXPORT extern bool pmix_bind_progress_thread_reqd;
 PMIX_EXPORT extern int pmix_maxfd;
 PMIX_EXPORT extern int pmix_server_client_fintime;
+PMIX_EXPORT extern bool pmix_keep_fqdn_hostnames;
 
 /** version string of pmix */
 extern const char pmix_version_string[];
@@ -76,6 +77,8 @@ PMIX_EXPORT void pmix_rte_finalize(void);
  */
 PMIX_EXPORT pmix_status_t pmix_register_params(void);
 PMIX_EXPORT pmix_status_t pmix_deregister_params(void);
+
+PMIX_EXPORT void pmix_set_aliases(char ***aliases, char *hostname);
 
 END_C_DECLS
 
