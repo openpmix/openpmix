@@ -16,7 +16,7 @@
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -138,6 +138,10 @@ void pmix_rte_finalize(void)
     if (NULL != pmix_globals.hostname) {
         free(pmix_globals.hostname);
         pmix_globals.hostname = NULL;
+    }
+    if (NULL != pmix_globals.aliases) {
+        PMIx_Argv_free(pmix_globals.aliases);
+        pmix_globals.aliases = NULL;
     }
     PMIX_LIST_DESTRUCT(&pmix_globals.nspaces);
     PMIX_LIST_DESTRUCT(&pmix_client_globals.groups);

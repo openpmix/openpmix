@@ -177,10 +177,6 @@ void pmix_server_locally_resolve_peers(int sd, short args, void *cbdata)
     // second qualifier in the query has the nodename
     nd = cd->query->qualifiers[1].value.data.string;
 
-    // restrict our search to already available info
-    PMIX_INFO_LOAD(&info[0], PMIX_OPTIONAL, NULL, PMIX_BOOL);
-
-
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     proc.rank = PMIX_RANK_UNDEF;
     cb.proc = &proc;
