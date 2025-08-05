@@ -59,7 +59,6 @@ typedef struct {
     pmix_status_t status;
     pmix_status_t reply;
     pmix_pending_connection_t *pnd;
-    char *blob;
     pmix_peer_t *peer;
     pmix_info_t *info;
     size_t ninfo;
@@ -68,7 +67,6 @@ static void chcon(cnct_hdlr_t *p)
 {
     memset(&p->ev, 0, sizeof(pmix_event_t));
     p->pnd = NULL;
-    p->blob = NULL;
     p->peer = NULL;
     p->info = NULL;
     p->ninfo = 0;
@@ -77,9 +75,6 @@ static void chdes(cnct_hdlr_t *p)
 {
     if (NULL != p->pnd) {
         PMIX_RELEASE(p->pnd);
-    }
-    if (NULL != p->blob) {
-        free(p->blob);
     }
     if (NULL != p->info) {
         PMIX_INFO_FREE(p->info, p->ninfo);
@@ -553,7 +548,6 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     ch->peer = peer;
     ch->pnd = pnd;
     ch->reply = reply;
-    ch->blob = blob;
 
     PMIx_Info_list_add(ilist, PMIX_USERID, &info->uid, PMIX_UINT32);
     PMIx_Info_list_add(ilist, PMIX_GRPID, &info->gid, PMIX_UINT32);

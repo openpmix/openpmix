@@ -40,6 +40,7 @@
 #include "src/mca/pmdl/pmdl.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
@@ -380,6 +381,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             if (NULL == nd) {
                 nd = PMIX_NEW(pmix_nodeinfo_t);
                 nd->hostname = strdup(pmix_globals.hostname);
+                pmix_set_aliases(&nd->aliases, nd->hostname);
                 pmix_list_append(&trk->nodeinfo, &nd->super);
             }
             /* ensure the value isn't already on the node info */
