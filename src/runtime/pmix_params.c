@@ -53,6 +53,7 @@ char *pmix_progress_thread_cpus = NULL;
 bool pmix_bind_progress_thread_reqd = false;
 int pmix_maxfd = 1024;
 int pmix_server_client_fintime;
+bool pmix_keep_fqdn_hostnames = false;
 
 pmix_status_t pmix_register_params(void)
 {
@@ -286,6 +287,12 @@ pmix_status_t pmix_register_params(void)
                                       "Time in seconds to wait for server to ack client finalize request",
                                       PMIX_MCA_BASE_VAR_TYPE_INT,
                                       &pmix_server_client_fintime);
+
+    pmix_keep_fqdn_hostnames = false;
+    (void) pmix_mca_base_var_register("pmix", "pmix", NULL, "keep_fqdn_hostnames",
+                                      "Whether or not to keep FQDN hostnames [default: no]",
+                                      PMIX_MCA_BASE_VAR_TYPE_BOOL,
+                                      &pmix_keep_fqdn_hostnames);
 
     pmix_hwloc_register();
     return PMIX_SUCCESS;
