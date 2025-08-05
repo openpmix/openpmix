@@ -41,11 +41,13 @@
 #include "src/mca/pmdl/pmdl.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_hash.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_net.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
@@ -143,6 +145,10 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
         /* they forgot to pass us the ident for the node */
         PMIX_LIST_DESTRUCT(&cache);
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (NULL != nd->hostname) {
+        pmix_set_aliases(&nd->aliases, nd->hostname);
     }
 
     /* see if we already have this node on the

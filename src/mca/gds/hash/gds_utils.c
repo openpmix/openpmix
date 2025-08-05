@@ -6,7 +6,7 @@
  * Copyright (c) 2018-2020 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -40,11 +40,13 @@
 #include "src/mca/pmdl/pmdl.h"
 #include "src/mca/preg/preg.h"
 #include "src/mca/ptl/base/base.h"
+#include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_hash.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_net.h"
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_environ.h"
 
@@ -104,7 +106,8 @@ bool pmix_gds_hash_check_node(pmix_nodeinfo_t *n1, pmix_nodeinfo_t *n2)
 {
     int i, j;
 
-    if (UINT32_MAX != n1->nodeid && UINT32_MAX != n2->nodeid && n1->nodeid == n2->nodeid) {
+    if (UINT32_MAX != n1->nodeid && UINT32_MAX != n2->nodeid &&
+        n1->nodeid == n2->nodeid) {
         return true;
     }
 
@@ -334,6 +337,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
         if (NULL == nd) {
             nd = PMIX_NEW(pmix_nodeinfo_t);
             nd->hostname = strdup(nodes[n]);
+            pmix_set_aliases(&nd->aliases, nd->hostname);
             nd->nodeid = n;
             pmix_list_append(&trk->nodeinfo, &nd->super);
         }
@@ -430,7 +434,7 @@ pmix_status_t pmix_gds_hash_store_map(pmix_job_t *trk, char **nodes, char **ppn,
             kp2->key = strdup(PMIX_HOSTNAME);
             kp2->value = (pmix_value_t *) malloc(sizeof(pmix_value_t));
             kp2->value->type = PMIX_STRING;
-            kp2->value->data.string = strdup(nodes[n]);
+            kp2->value->data.string = strdup(nd->hostname);
             rank = strtol(procs[m], NULL, 10);
             pmix_output_verbose(2, pmix_gds_base_framework.framework_output,
                                 "[%s:%d] gds:hash:store_map for [%s:%u]: key %s",
