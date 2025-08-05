@@ -794,6 +794,7 @@ typedef struct {
     uid_t uid;           // my effective uid
     gid_t gid;           // my effective gid
     char *hostname;      // my hostname
+    char **aliases;      // aliases for my hostname
     uint32_t appnum;     // my appnum
     pid_t pid;           // my local pid
     uint32_t nodeid;     // my nodeid, if given
