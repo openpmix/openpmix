@@ -60,6 +60,8 @@ typedef struct {
     pmix_pending_connection_t *pnd;
     char *blob;
     pmix_peer_t *peer;
+    pmix_info_t *info;
+    size_t ninfo;
 } cnct_hdlr_t;
 static void chcon(cnct_hdlr_t *p)
 {
@@ -67,6 +69,8 @@ static void chcon(cnct_hdlr_t *p)
     p->pnd = NULL;
     p->blob = NULL;
     p->peer = NULL;
+    p->info = NULL;
+    p->ninfo = 0;
 }
 static void chdes(cnct_hdlr_t *p)
 {
@@ -75,6 +79,9 @@ static void chdes(cnct_hdlr_t *p)
     }
     if (NULL != p->blob) {
         free(p->blob);
+    }
+    if (NULL != p->info) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
     }
 }
 static PMIX_CLASS_INSTANCE(cnct_hdlr_t,
@@ -87,6 +94,10 @@ static void _cnct_complete(int sd, short args, void *cbdata)
     uint32_t u32;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (PMIX_SUCCESS != ch->status) {
+        goto error;
+    }
 
     /* tell the client all is good */
     u32 = htonl(ch->reply);
@@ -488,7 +499,12 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* let the host server know that this client has connected */
     if (NULL != pmix_host_server.client_connected2) {
         PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        rc = pmix_host_server.client_connected2(&proc, peer->info->server_object, NULL, 0,
+        ch->ninfo = 2;
+        PMIX_INFO_CREATE(ch->info, ch->ninfo);
+        PMIX_INFO_LOAD(&ch->info[0], PMIX_USERID, &peer->info->uid, PMIX_UINT32);
+        PMIX_INFO_LOAD(&ch->info[1], PMIX_GRPID, &peer->info->gid, PMIX_UINT32);
+        rc = pmix_host_server.client_connected2(&proc, peer->info->server_object,
+                                                ch->info, ch->ninfo,
                                                 _connect_complete, ch);
         if (PMIX_OPERATION_SUCCEEDED == rc) {
             ch->status = PMIX_SUCCESS;
@@ -497,6 +513,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(ch);
             goto error;
         }
     } else if (NULL != pmix_host_server.client_connected) {
@@ -509,6 +526,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         }
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(ch);
             goto error;
         }
     } else {
