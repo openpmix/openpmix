@@ -594,7 +594,7 @@ static void invite_handler(size_t evhdlr_registration_id, pmix_status_t status,
             affected = info[n].value.data.proc;
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, contextid, size_t);
+            rc = PMIx_Value_get_number(&info[n].value, &contextid, PMIX_SIZE);
             gotctxid = true;
         }
     }
@@ -816,7 +816,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                 PMIX_DESTRUCT(&cb2);
                 if (NULL != kv) {  // should never be NULL
-                    PMIX_VALUE_GET_NUMBER(rc, kv->value, jsize, uint32_t);
+                    rc = PMIx_Value_get_number(kv->value, &jsize, PMIX_UINT32);
                     PMIX_RELEASE(kv);
                     if (PMIX_SUCCESS != rc) {
                         PMIX_RELEASE(cb);
@@ -1405,7 +1405,7 @@ static void info_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, v
                 grpid = info[n].value.data.string;
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, ctxid, size_t);
+                rc = PMIx_Value_get_number(&info[n].value, &ctxid, PMIX_SIZE);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                 }

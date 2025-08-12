@@ -1195,7 +1195,7 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                 if (NULL != kv) { // should never be NULL
-                    PMIX_VALUE_GET_NUMBER(rc, kv->value, pid, pid_t);
+                    rc = PMIx_Value_get_number(kv->value, &pid, PMIX_PID);
                     PMIX_RELEASE(kv);
                     if (PMIX_SUCCESS != rc) {
                         pidstring = strdup("unknown");
@@ -1284,7 +1284,7 @@ pmix_byte_object_t* pmix_iof_prep_output(const pmix_proc_t *name,
             PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb2);
             if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                 kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
-                PMIX_VALUE_GET_NUMBER(rc, kv->value, pid, pid_t);
+                rc = PMIx_Value_get_number(kv->value, &pid, PMIX_PID);
                 PMIX_RELEASE(kv);
                 if (PMIX_SUCCESS != rc) {
                     pidstring = strdup("unknown");

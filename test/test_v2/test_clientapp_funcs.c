@@ -6,7 +6,7 @@
  *                         All rights reserved.
  * Copyright (c) 2020-2021 Triad National Security, LLC
  *                         All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -301,7 +301,7 @@ void pmixt_validate_predefined(pmix_proc_t *myproc, const char *key, pmix_value_
     switch (value->type) {
     case PMIX_UINT16: {
         uint16_t uint16data = UINT16_MAX;
-        PMIX_VALUE_GET_NUMBER(rc, value, uint16data, uint16_t);
+        rc = PMIx_Value_get_number(value, &uint16data, PMIX_UINT16);
         if (PMIX_SUCCESS != rc) {
             TEST_ERROR_EXIT(
                 ("Failed to retrieve value correctly. Key: %s Type: %u", key, value->type));
@@ -312,7 +312,7 @@ void pmixt_validate_predefined(pmix_proc_t *myproc, const char *key, pmix_value_
     }
     case PMIX_UINT32: {
         uint32_t uint32data = UINT32_MAX;
-        PMIX_VALUE_GET_NUMBER(rc, value, uint32data, uint32_t);
+        rc = PMIx_Value_get_number(value, &uint32data, PMIX_UINT32);
         if (PMIX_SUCCESS != rc) {
             TEST_ERROR_EXIT(
                 ("Failed to retrieve value correctly. Key: %s Type: %u", key, value->type));
@@ -325,7 +325,7 @@ void pmixt_validate_predefined(pmix_proc_t *myproc, const char *key, pmix_value_
     }
     case PMIX_PROC_RANK: {
         pmix_rank_t rankdata = UINT32_MAX;
-        PMIX_VALUE_GET_NUMBER(rc, value, rankdata, pmix_rank_t);
+        rc = PMIx_Value_get_number(value, &rankdata, PMIX_PROC_RANK);
         if (PMIX_SUCCESS != rc) {
             TEST_ERROR(("Failed to retrieve value correctly. Key: %s Type: %u", key, value->type));
             pmixt_exit(1);

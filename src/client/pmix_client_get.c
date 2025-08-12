@@ -174,19 +174,19 @@ static pmix_status_t process_request(const pmix_proc_t *proc, const char key[],
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_HOSTNAME)) {
             lg->hostname = info[n].value.data.string;
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, lg->nodeid, uint32_t);
+            rc = PMIx_Value_get_number(&info[n].value, &lg->nodeid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_APPNUM)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, lg->appnum, uint32_t);
+            rc = PMIx_Value_get_number(&info[n].value, &lg->appnum, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, lg->sessionid, uint32_t);
+            rc = PMIx_Value_get_number(&info[n].value, &lg->sessionid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;
@@ -837,7 +837,7 @@ static void get_data(int sd, short args, void *cbdata)
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
                         if (NULL != kv) {  // will never be NULL
-                            PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->nodeid, uint32_t);
+                            rc = PMIx_Value_get_number(kv->value, &lg->nodeid, PMIX_UINT32);
                             PMIX_RELEASE(kv);
                         } else {
                             rc = PMIX_ERROR;
@@ -940,7 +940,7 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->appnum, uint32_t);
+                        rc = PMIx_Value_get_number(kv->value, &lg->appnum, PMIX_UINT32);
                         PMIX_RELEASE(kv);
                         if (PMIX_SUCCESS != rc) {
                             cb->status = rc;
@@ -1015,7 +1015,7 @@ static void get_data(int sd, short args, void *cbdata)
                     if (PMIX_SUCCESS == rc || PMIX_OPERATION_SUCCEEDED == rc) {
                         kv = (pmix_kval_t*)pmix_list_remove_first(&cb2.kvs);
                         PMIX_DESTRUCT(&cb2);
-                        PMIX_VALUE_GET_NUMBER(rc, kv->value, lg->sessionid, uint32_t);
+                        rc = PMIx_Value_get_number(kv->value, &lg->sessionid, PMIX_UINT32);
                         PMIX_RELEASE(kv);
                         if (PMIX_SUCCESS != rc) {
                             cb->status = rc;

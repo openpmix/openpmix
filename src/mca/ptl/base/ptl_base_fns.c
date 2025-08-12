@@ -67,13 +67,17 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar)
 
     vrs = getenv("PMIX_VERSION");
 
-    if (NULL != evar && NULL != *evar) {
+    if (NULL == evar) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (NULL == *evar) {
+        eval = NULL;
+        evalgiven = false;
+    } else {
         // they are passing in the bfrops module to use
         eval = *evar;
         evalgiven = true;
-    } else {
-        eval = NULL;
-        evalgiven = false;
     }
 
     PMIX_LIST_FOREACH(mod, &pmix_bfrops_globals.actives, pmix_bfrops_base_active_module_t) {
@@ -169,12 +173,12 @@ pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo)
             }
             pmix_ptl_base.system_tmpdir = strdup(info[n].value.data.string);
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_MAX_RETRIES)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, pmix_ptl_base.max_retries, int);
+            rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.max_retries, PMIX_INT);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_RETRY_DELAY)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, pmix_ptl_base.wait_to_connect, int);
+            rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.wait_to_connect, PMIX_INT);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }

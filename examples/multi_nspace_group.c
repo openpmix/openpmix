@@ -316,7 +316,7 @@ int main(int argc, char **argv)
         pptr = NULL;
         for (n=0; n < nresults; n++) {
             if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &results[n].value, cid, size_t);
+                rc = PMIx_Value_get_number(&results[n].value, &cid, PMIX_SIZE);
                 fprintf(stderr, "%s:%d Group construct complete with status %s KEY %s CID %lu\n",
                         myproc.nspace, myproc.rank, PMIx_Error_string(rc), results[n].key, (unsigned long) cid);
             } else if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_MEMBERSHIP)) {

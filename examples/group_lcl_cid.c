@@ -227,7 +227,7 @@ int main(int argc, char **argv)
         cid = 0;
         for (m=0; m < nresults; m++) {
             if (PMIX_CHECK_KEY(&results[m], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &results[m].value, cid, size_t);
+                rc = PMIx_Value_get_number(&results[m].value, &cid, PMIX_SIZE);
                 idassigned = true;
                 break;
             }

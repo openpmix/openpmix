@@ -93,7 +93,7 @@ pmix_status_t pmix_gds_hash_process_node_array(pmix_value_t *val, pmix_list_t *t
             if (NULL == nd) {
                 nd = PMIX_NEW(pmix_nodeinfo_t);
             }
-            PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, nd->nodeid, uint32_t);
+            rc = PMIx_Value_get_number(&iptr[j].value, &nd->nodeid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_RELEASE(nd);
@@ -261,7 +261,7 @@ pmix_status_t pmix_gds_hash_process_app_array(pmix_value_t *val, pmix_job_t *trk
                             PMIX_NAME_PRINT(&pmix_globals.myid),
                             PMIx_Get_attribute_name(iptr[j].key));
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_APPNUM)) {
-            PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, appnum, uint32_t);
+            rc = PMIx_Value_get_number(&iptr[j].value, &appnum, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
@@ -500,7 +500,7 @@ pmix_status_t pmix_gds_hash_process_session_array(pmix_value_t *val, pmix_job_t 
                             PMIX_NAME_PRINT(&pmix_globals.myid),
                             PMIx_Get_attribute_name(iptr[j].key));
         if (PMIX_CHECK_KEY(&iptr[j], PMIX_SESSION_ID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &iptr[j].value, sid, uint32_t);
+            rc = PMIx_Value_get_number(&iptr[j].value, &sid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 PMIX_LIST_DESTRUCT(&ncache);

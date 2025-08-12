@@ -819,7 +819,7 @@ void pmix_invoke_local_event_hdlr(pmix_event_chain_t *chain)
                 grpid = chain->info[n].value.data.string;
 
             } else if (PMIX_CHECK_KEY(&chain->info[n], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &chain->info[n].value, ctxid, size_t);
+                rc = PMIx_Value_get_number(&chain->info[n].value, &ctxid, PMIX_SIZE);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_ERROR_LOG(rc);
                 }

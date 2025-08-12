@@ -121,9 +121,7 @@ cache_node_info(
         );
         if (PMIX_CHECK_KEY(&info[j], PMIX_NODEID)) {
             have_node_id_info = true;
-            PMIX_VALUE_GET_NUMBER(
-                rc, &info[j].value, iinfo->nodeid, uint32_t
-            );
+            rc = PMIx_Value_get_number(&info[j].value, &iinfo->nodeid, PMIX_UINT32);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 goto out;
@@ -285,7 +283,7 @@ store_app_array(
         );
         if (PMIX_CHECK_KEY(&info[j], PMIX_APPNUM)) {
             uint32_t appnum;
-            PMIX_VALUE_GET_NUMBER(rc, &info[j].value, appnum, uint32_t);
+            rc = PMIx_Value_get_number(&info[j].value, &appnum, PMIX_UINT32);
             if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                 PMIX_ERROR_LOG(rc);
                 goto out;
@@ -448,7 +446,7 @@ store_session_array(
     }
 
     uint32_t sid;
-    PMIX_VALUE_GET_NUMBER(rc, &info[0].value, sid, uint32_t);
+    rc = PMIx_Value_get_number(&info[0].value, &sid, PMIX_UINT32);
     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
         PMIX_ERROR_LOG(rc);
         return rc;

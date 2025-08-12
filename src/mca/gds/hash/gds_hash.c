@@ -196,7 +196,7 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                             "%s gds:hash:cache_job_info for key %s",
                             PMIX_NAME_PRINT(&pmix_globals.myid), info[n].key);
         if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, sid, uint32_t);
+            rc = PMIx_Value_get_number(&info[n].value, &sid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 goto release;
@@ -856,9 +856,9 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
                 }
                 if (myproc) {
                     if (PMIX_CHECK_KEY(&kp2, PMIX_APPNUM)) {
-                        PMIX_VALUE_GET_NUMBER(rc, kp2.value, pmix_globals.appnum, uint32_t);
+                        rc = PMIx_Value_get_number(kp2.value, &pmix_globals.appnum, PMIX_UINT32);
                     } else if (PMIX_CHECK_KEY(&kp2, PMIX_NODEID)) {
-                        PMIX_VALUE_GET_NUMBER(rc, kp2.value, pmix_globals.nodeid, uint32_t);
+                        rc = PMIx_Value_get_number(kp2.value, &pmix_globals.nodeid, PMIX_UINT32);
                     } else if (PMIX_CHECK_KEY(&kp2, PMIX_HOSTNAME)) {
                         pmix_globals.hostname = strdup(kp2.value->data.string);
                     }
@@ -981,7 +981,7 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
             /* cleanup */
             PMIX_DESTRUCT(&buf2);
         } else if (PMIX_CHECK_KEY(&kptr, PMIX_SESSION_ID)) {
-            PMIX_VALUE_GET_NUMBER(rc, kptr.value, sid, uint32_t);
+            rc = PMIx_Value_get_number(kptr.value, &sid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
                 return rc;

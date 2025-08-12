@@ -256,7 +256,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                 }
                 pmix_globals.hostname = strdup(info[n].value.data.string);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
-                PMIX_VALUE_GET_NUMBER(ret, &info[n].value, pmix_globals.nodeid, uint32_t);
+                ret = PMIx_Value_get_number(&info[n].value, &pmix_globals.nodeid, PMIX_UINT32);
                 if (PMIX_SUCCESS != ret) {
                     goto return_error;
                 }
@@ -271,7 +271,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
                         }
                         pmix_globals.hostname = strdup(iptr[m].value.data.string);
                     } else if (PMIX_CHECK_KEY(&iptr[m], PMIX_NODEID)) {
-                        PMIX_VALUE_GET_NUMBER(ret, &iptr[m].value, pmix_globals.nodeid, uint32_t);
+                        ret = PMIx_Value_get_number(&iptr[m].value, &pmix_globals.nodeid, PMIX_UINT32);
                         if (PMIX_SUCCESS != ret) {
                             goto return_error;
                         }

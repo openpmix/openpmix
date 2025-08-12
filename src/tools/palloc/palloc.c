@@ -108,7 +108,7 @@ static void cbfunc(pmix_status_t status,
         for (n=0; n < ninfo; n++) {
             PMIX_INFO_XFER(&req->info[n], &info[n]);
             if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, req->sessionid, uint32_t);
+                rc = PMIx_Value_get_number(&info[n].value, &req->sessionid, PMIX_UINT32);
                 if (PMIX_SUCCESS != rc) {
                     req->status = rc;
                 }
