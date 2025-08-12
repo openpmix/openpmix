@@ -137,7 +137,7 @@ pmix_status_t pmix_gds_hash_fetch_sessioninfo(pmix_peer_t *peer,
      * which session they are asking about */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_SESSION_ID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, sid, uint32_t);
+            rc = PMIx_Value_get_number(&info[n].value, &sid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
@@ -178,7 +178,7 @@ pmix_status_t pmix_gds_hash_fetch_nodeinfo(pmix_peer_t *peer,
      * which node they are asking about */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_NODEID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, nid, uint32_t);
+            rc = PMIx_Value_get_number(&info[n].value, &nid, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
@@ -395,7 +395,7 @@ pmix_status_t pmix_gds_hash_fetch_appinfo(pmix_peer_t *peer,
      * which app they are asking about */
     for (n = 0; n < ninfo; n++) {
         if (PMIX_CHECK_KEY(&info[n], PMIX_APPNUM)) {
-            PMIX_VALUE_GET_NUMBER(rc, &info[n].value, appnum, uint32_t);
+            rc = PMIx_Value_get_number(&info[n].value, &appnum, PMIX_UINT32);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }

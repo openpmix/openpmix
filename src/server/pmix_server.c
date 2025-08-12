@@ -1759,7 +1759,7 @@ static void _register_resources(int sd, short args, void *cbdata)
             pmix_list_append(&endpts, &ept->super);
 
         } else if (PMIX_CHECK_KEY(&cd->info[n], PMIX_GROUP_CONTEXT_ID)) {
-            PMIX_VALUE_GET_NUMBER(rc, &cd->info[n].value, ctxid, size_t);
+            rc = PMIx_Value_get_number(&cd->info[n].value, &ctxid, PMIX_SIZE);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
             } else {

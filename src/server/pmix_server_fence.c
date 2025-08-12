@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -948,7 +948,7 @@ pmix_status_t pmix_server_fence(pmix_server_caddy_t *cd, pmix_buffer_t *buf,
             if (PMIX_CHECK_KEY(&info[n], PMIX_COLLECT_DATA)) {
                 collect_data = PMIX_INFO_TRUE(&info[n]);
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TIMEOUT)) {
-                PMIX_VALUE_GET_NUMBER(rc, &info[n].value, tv.tv_sec, uint32_t);
+                rc = PMIx_Value_get_number(&info[n].value, &tv.tv_sec, PMIX_UINT32);
                 if (PMIX_SUCCESS != rc) {
                     PMIX_PROC_FREE(procs, nprocs);
                     PMIX_INFO_FREE(info, ninfo);

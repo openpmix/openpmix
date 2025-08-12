@@ -2203,7 +2203,7 @@ get_local_job_data_info(
             // See if this is the job's session ID. If so, capture it.
             pmix_info_t *info = (pmix_info_t *)kvi->value->data.darray->array;
             if (PMIX_CHECK_KEY(&info[0], PMIX_SESSION_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &info[0].value, sid, uint32_t);
+                rc = PMIx_Value_get_number(&info[0].value, &sid, PMIX_UINT32);
                 if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                     PMIX_ERROR_LOG(rc);
                     goto out;

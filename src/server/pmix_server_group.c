@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -380,7 +380,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     /* see if this group was assigned a context ID or collected data */
     for (n = 0; n < scd->ninfo; n++) {
         if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_CONTEXT_ID)) {
-            PMIX_VALUE_GET_NUMBER(ret, &scd->info[n].value, ctxid, size_t);
+            ret = PMIx_Value_get_number(&scd->info[n].value, &ctxid, PMIX_SIZE);
             if (PMIX_SUCCESS != ret) {
                 PMIX_ERROR_LOG(ret);
             } else {
@@ -601,12 +601,12 @@ static pmix_status_t aggregate_info(grp_block_t *blk)
 
                     } else if (PMIX_CHECK_KEY(&blk->info[m], PMIX_GROUP_BOOTSTRAP)) {
                         // the numbers must match
-                        PMIX_VALUE_GET_NUMBER(rc, &blk->info[m].value, bt, size_t);
+                        rc = PMIx_Value_get_number(&blk->info[m].value, &bt, PMIX_SIZE);
                         if (PMIX_SUCCESS != rc) {
                             PMIX_LIST_DESTRUCT(&ilist);
                             return rc;
                         }
-                        PMIX_VALUE_GET_NUMBER(rc, &trk->info[n].value, bt2, size_t);
+                        rc = PMIx_Value_get_number(&trk->info[n].value, &bt2, PMIX_SIZE);
                         if (PMIX_SUCCESS != rc) {
                             PMIX_LIST_DESTRUCT(&ilist);
                             return rc;
