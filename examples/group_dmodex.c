@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC.
  *                         All rights reserved.
  *
@@ -158,7 +158,7 @@ int main(int argc, char **argv)
     if (NULL != results) {
         for (n=0; n < nresults; n++) {
             if (PMIX_CHECK_KEY(&results[n], PMIX_GROUP_CONTEXT_ID)) {
-                PMIX_VALUE_GET_NUMBER(rc, &results[n].value, cid, size_t);
+                rc = PMIx_Value_get_number(&results[n].value, &cid, PMIX_SIZE);
                 fprintf(stderr, "%d Group construct complete with status %s CID %lu\n",
                         myproc.rank, PMIx_Error_string(rc), cid);
                 break;

@@ -2,7 +2,7 @@
  * Copyright (c) 2021-2022 Triad National Security, LLC.
  *                         All rights reserved.
  *
- * Copyright (c) 2021      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -91,11 +91,11 @@ int main(int argc, char *argv[]) {
     job_proc.rank = PMIX_RANK_WILDCARD;
 
     PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_JOB_SIZE, NULL, 0, &val), params, v_params);
-    PMIX_VALUE_GET_NUMBER(rc, val, num_procs, uint32_t);
+    rc = PMIx_Value_get_number(val, &num_procs, PMIX_UINT32);
     free(val);
 
     PMIXT_CHECK(PMIx_Get(&job_proc, PMIX_NUM_NODES, NULL, 0, &val), params, v_params);
-    PMIX_VALUE_GET_NUMBER(rc, val, num_nodes, uint32_t);
+    rc = PMIx_Value_get_number(val, &num_nodes, PMIX_UINT32);
     free(val);
 
     if (params.time_fence) {

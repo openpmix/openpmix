@@ -137,7 +137,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
             procs = (pmix_proc_t*)cb->directives[n].value.data.darray->array;
             sz = cb->directives[n].value.data.darray->size;
             for (m=0; !local && !remote && m < sz; m++) {
-                for (k=0; !local && !remote && k < pmix_server_globals.clients.size; k++) {
+                for (k=0; (!local || !remote) && k < pmix_server_globals.clients.size; k++) {
                     ptr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
                     if (NULL == ptr) {
                         continue;
@@ -168,7 +168,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
             // is our node included?
             hostnames = (char**)cb->directives[n].value.data.darray->array;
             sz = cb->directives[n].value.data.darray->size;
-            for (m=0; !local && !remote && m < sz; m++) {
+            for (m=0; (!local || !remote) && m < sz; m++) {
                 // see if this node is us
                 if (0 == strcmp(hostnames[m], pmix_globals.hostname)) {
                     local = true;
@@ -194,7 +194,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
             // is our node included?
             nids = (uint32_t*)cb->directives[n].value.data.darray->array;
             sz = cb->directives[n].value.data.darray->size;
-            for (m=0; !local && !remote && m < sz; m++) {
+            for (m=0; (!local || !remote) && m < sz; m++) {
                 // see if this node is us
                 if (nids[m] == pmix_globals.nodeid) {
                     local = true;
@@ -220,7 +220,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
             // is our node included?
             ppid = (pmix_node_pid_t*)cb->directives[n].value.data.darray->array;
             sz = cb->directives[n].value.data.darray->size;
-            for (m=0; !local && !remote && m < sz; m++) {
+            for (m=0; (!local || !remote) && m < sz; m++) {
                 // see if this node is us
                 if (ppid[m].nodeid == pmix_globals.nodeid ||
                     0 == strcmp(ppid[m].hostname, pmix_globals.hostname)) {

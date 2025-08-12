@@ -91,7 +91,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 {
     if (PMIX_SIZE == value->type) {
         if (PMIX_SIZE == type) {
-            memcpy(dest, &value->data.size, sizeof(size_t));
+            size_t *sz;
+            sz = (size_t*)dest;
+            *sz = value->data.size;
             return PMIX_SUCCESS;
         } else {
             return check_size(value, dest, type);
@@ -100,7 +102,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_INT == value->type) {
         if (PMIX_INT == type) {
-            memcpy(dest, &value->data.integer, sizeof(int));
+            int *i;
+            i = (int*)dest;
+            *i = value->data.integer;
             return PMIX_SUCCESS;
         } else {
             return check_int(value, dest, type);
@@ -109,7 +113,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_INT8 == value->type) {
         if (PMIX_INT8 == type) {
-            memcpy(dest, &value->data.int8, sizeof(int8_t));
+            int8_t *i8;
+            i8 = (int8_t*)dest;
+            *i8 = value->data.int8;
             return PMIX_SUCCESS;
         } else {
             return check_int8(value, dest, type);
@@ -118,7 +124,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_INT16 == value->type) {
         if (PMIX_INT16 == type) {
-            memcpy(dest, &value->data.int16, sizeof(int16_t));
+            int16_t *i16;
+            i16 = (int16_t*)dest;
+            *i16 = value->data.int16;
             return PMIX_SUCCESS;
         } else {
             return check_int16(value, dest, type);
@@ -127,7 +135,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_INT32 == value->type) {
         if (PMIX_INT32 == type) {
-            memcpy(dest, &value->data.int32, sizeof(int32_t));
+            int32_t *i32;
+            i32 = (int32_t*)dest;
+            *i32 = value->data.int32;
             return PMIX_SUCCESS;
         } else {
             return check_int32(value, dest, type);
@@ -136,7 +146,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_INT64 == value->type) {
         if (PMIX_INT64 == type) {
-            memcpy(dest, &value->data.int8, sizeof(int64_t));
+            int64_t *i64;
+            i64 = (int64_t*)dest;
+            *i64 = value->data.int64;
             return PMIX_SUCCESS;
         } else {
             return check_int64(value, dest, type);
@@ -145,7 +157,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_UINT == value->type) {
         if (PMIX_UINT == type) {
-            memcpy(dest, &value->data.uint, sizeof(unsigned int));
+            unsigned int *ui;
+            ui = (unsigned int*)dest;
+            *ui = value->data.uint;
             return PMIX_SUCCESS;
         } else {
             return check_uint(value, dest, type);
@@ -154,7 +168,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_UINT8 == value->type) {
         if (PMIX_UINT8 == type) {
-            memcpy(dest, &value->data.uint8, sizeof(uint8_t));
+            uint8_t *u8;
+            u8 = (uint8_t*)dest;
+            *u8 = value->data.uint8;
             return PMIX_SUCCESS;
         } else {
             return check_uint8(value, dest, type);
@@ -163,7 +179,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_UINT16 == value->type) {
         if (PMIX_UINT16 == type) {
-            memcpy(dest, &value->data.uint16, sizeof(uint16_t));
+            uint16_t *u16;
+            u16 = (uint16_t*)dest;
+            *u16 = value->data.uint16;
             return PMIX_SUCCESS;
         } else {
             return check_uint16(value, dest, type);
@@ -172,7 +190,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_UINT32 == value->type) {
         if (PMIX_UINT32 == type) {
-            memcpy(dest, &value->data.uint32, sizeof(uint32_t));
+            uint32_t *u32;
+            u32 = (uint32_t*)dest;
+            *u32 = value->data.uint32;
             return PMIX_SUCCESS;
         } else {
             return check_uint32(value, dest, type);
@@ -181,7 +201,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_UINT64 == value->type) {
         if (PMIX_UINT64 == type) {
-            memcpy(dest, &value->data.uint64, sizeof(uint64_t));
+            uint64_t *u64;
+            u64 = (uint64_t*)dest;
+            *u64 = value->data.uint64;
             return PMIX_SUCCESS;
         } else {
             return check_uint64(value, dest, type);
@@ -190,7 +212,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_FLOAT == value->type) {
         if (PMIX_FLOAT == type) {
-            memcpy(dest, &value->data.fval, sizeof(float));
+            float *f;
+            f = (float*)dest;
+            *f = value->data.fval;
             return PMIX_SUCCESS;
         } else {
             return check_float(value, dest, type);
@@ -199,7 +223,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_DOUBLE == value->type) {
         if (PMIX_DOUBLE == type) {
-            memcpy(dest, &value->data.dval, sizeof(double));
+            double *d;
+            d = (double*)dest;
+            *d = value->data.dval;
             return PMIX_SUCCESS;
         } else {
             return check_double(value, dest, type);
@@ -208,14 +234,18 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_PID == value->type) {
         if (PMIX_PID == type) {
-            memcpy(dest, &value->data.pid, sizeof(pid_t));
+            pid_t *p;
+            p = (pid_t*)dest;
+            *p = value->data.pid;
             return PMIX_SUCCESS;
         }
     }
 
     if (PMIX_PROC_RANK == value->type) {
         if (PMIX_PROC_RANK == type) {
-            memcpy(dest, &value->data.rank, sizeof(pmix_rank_t));
+            pmix_rank_t *r;
+            r = (pmix_rank_t*)dest;
+            *r = value->data.rank;
             return PMIX_SUCCESS;
         } else {
             return check_rank(value, dest, type);
@@ -224,7 +254,9 @@ pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
 
     if (PMIX_STATUS == value->type) {
         if (PMIX_STATUS== type) {
-            memcpy(dest, &value->data.status, sizeof(pmix_status_t));
+            pmix_status_t *s;
+            s = (pmix_status_t*)dest;
+            *s = value->data.status;
             return PMIX_SUCCESS;
         } else {
             return check_status(value, dest, type);
@@ -495,15 +527,6 @@ static pmix_status_t check_int(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT32 == type) {
-        if (0 < value->data.integer) {
-            if (INT32_MAX < value->data.integer) {
-                return PMIX_ERR_LOST_PRECISION;
-            }
-        } else {
-            if (INT32_MIN > value->data.integer) {
-                return PMIX_ERR_LOST_PRECISION;
-            }
-        }
         i32 = (int32_t*)dest;
         *i32 = (int32_t)value->data.integer;
         return PMIX_SUCCESS;
