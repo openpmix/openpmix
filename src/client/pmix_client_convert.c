@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2018 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -112,7 +112,7 @@ pmix_status_t pmix_client_convert_group_procs(const pmix_proc_t *inprocs, size_t
                             PMIX_LIST_DESTRUCT(&cache);
                             return PMIX_ERR_NOT_FOUND;
                         }
-                        PMIX_VALUE_GET_NUMBER(rc, kv->value, jsize, uint32_t);
+                        rc = PMIx_Value_get_number(kv->value, &jsize, PMIX_UINT32);
                         PMIX_RELEASE(kv);
                         if (PMIX_SUCCESS != rc) {
                             PMIX_LIST_DESTRUCT(&cache);

@@ -3,7 +3,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -376,7 +376,7 @@ static pmix_status_t allocate(pmix_namespace_t *nptr, pmix_info_t info[], size_t
             }
             plane = requests[n].value.data.string;
         } else if (0 == strncasecmp(requests[n].key, PMIX_ALLOC_FABRIC_ENDPTS, PMIX_MAX_KEYLEN)) {
-            PMIX_VALUE_GET_NUMBER(rc, &requests[n].value, ports_per_node, int);
+            rc = PMIx_Value_get_number(&requests[n].value, &ports_per_node, PMIX_INT);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }

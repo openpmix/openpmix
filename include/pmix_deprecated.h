@@ -325,51 +325,44 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_VALUE_XFER_DIRECT(r, v, s)     \
     (r) = PMIx_Value_xfer((v), (s))
 
-#define PMIX_VALUE_GET_NUMBER(r, m, n, t)                                   \
-do {                                                                        \
-        char* _s = #t ;                                                     \
-        (r) = PMIX_SUCCESS;                                                 \
-        if (0 == strcmp(_s, "size_t")) {                                    \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_SIZE);       \
-        } else if (0 == strcmp(_s, "int")) {                                \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT);        \
-        } else if (0 == strcmp(_s, "int8_t")) {                             \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT8);       \
-        } else if (0 == strcmp(_s, "int16_t")) {                            \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT16);      \
-        } else if (0 == strcmp(_s, "int32_t")) {                            \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT32);      \
-        } else if (0 == strcmp(_s, "int64_t")) {                            \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_INT64);      \
-        } else if (0 == strcmp(_s, "uint")) {                               \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT);       \
-        } else if (0 == strcmp(_s, "unsigned int")) {                       \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT);       \
-        } else if (0 == strcmp(_s, "uint8_t")) {                            \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT8);      \
-        } else if (0 == strcmp(_s, "uint16_t")) {                           \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT16);     \
-        } else if (0 == strcmp(_s, "uint32_t")) {                           \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT32);     \
-        } else if (0 == strcmp(_s, "uint64_t")) {                           \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT64);     \
-        } else if (0 == strcmp(_s, "float")) {                              \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_FLOAT);      \
-        } else if (0 == strcmp(_s, "double")) {                             \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_DOUBLE);     \
-        } else if (0 == strcmp(_s, "pid_t")) {                              \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_PID);        \
-        } else if (0 == strcmp(_s, "pmix_rank_t")) {                        \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_PROC_RANK);  \
-        } else if (0 == strcmp(_s, "pmix_status_t")) {                      \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_STATUS);     \
-        } else if (0 == strcmp(_s, "uid_t")) {                              \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT32);     \
-        } else if (0 == strcmp(_s, "gid_t")) {                              \
-            (r) = PMIx_Value_get_number((m), (void*)&(n), PMIX_UINT32);     \
-        } else {                                                            \
-            (r) = PMIX_ERR_BAD_PARAM;                                       \
-        }                                                                   \
+#define PMIX_VALUE_GET_NUMBER(s, m, n, t)               \
+do {                                                    \
+        (s) = PMIX_SUCCESS;                             \
+        if (PMIX_SIZE == (m)->type) {                   \
+            (n) = (t)((m)->data.size);                  \
+        } else if (PMIX_INT == (m)->type) {             \
+            (n) = (t)((m)->data.integer);               \
+        } else if (PMIX_INT8 == (m)->type) {            \
+            (n) = (t)((m)->data.int8);                  \
+        } else if (PMIX_INT16 == (m)->type) {           \
+            (n) = (t)((m)->data.int16);                 \
+        } else if (PMIX_INT32 == (m)->type) {           \
+            (n) = (t)((m)->data.int32);                 \
+        } else if (PMIX_INT64 == (m)->type) {           \
+            (n) = (t)((m)->data.int64);                 \
+        } else if (PMIX_UINT == (m)->type) {            \
+            (n) = (t)((m)->data.uint);                  \
+        } else if (PMIX_UINT8 == (m)->type) {           \
+            (n) = (t)((m)->data.uint8);                 \
+        } else if (PMIX_UINT16 == (m)->type) {          \
+            (n) = (t)((m)->data.uint16);                \
+        } else if (PMIX_UINT32 == (m)->type) {          \
+            (n) = (t)((m)->data.uint32);                \
+        } else if (PMIX_UINT64 == (m)->type) {          \
+            (n) = (t)((m)->data.uint64);                \
+        } else if (PMIX_FLOAT == (m)->type) {           \
+            (n) = (t)((m)->data.fval);                  \
+        } else if (PMIX_DOUBLE == (m)->type) {          \
+            (n) = (t)((m)->data.dval);                  \
+        } else if (PMIX_PID == (m)->type) {             \
+            (n) = (t)((m)->data.pid);                   \
+        } else if (PMIX_PROC_RANK == (m)->type) {       \
+            (n) = (t)((m)->data.rank);                  \
+        } else if (PMIX_STATUS == (m)->type) {          \
+            (n) = (t)((m)->data.status);                \
+        } else {                                        \
+            (s) = PMIX_ERR_BAD_PARAM;                   \
+        }                                               \
 } while(0)
 
 
