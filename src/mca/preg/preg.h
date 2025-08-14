@@ -4,7 +4,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -37,7 +37,7 @@ BEGIN_C_DECLS
 
 /******    MODULE DEFINITION    ******/
 
-#define PMIX_MAX_NODE_PREFIX 50
+#define PMIX_MAX_NODE_PREFIX 8192
 
 /* given a semicolon-separated list of input values, generate
  * a regex that can be passed down to a client for parsing.

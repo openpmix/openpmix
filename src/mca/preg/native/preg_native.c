@@ -4,7 +4,7 @@
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -104,7 +104,7 @@ static pmix_status_t generate_node_regex(const char *input, char **regexp)
         len = strlen(vptr);
         startnum = -1;
         memset(prefix, 0, PMIX_MAX_NODE_PREFIX);
-        for (i = 0, j = 0; i < len; i++) {
+        for (i = 0, j = 0; i < len && j < (PMIX_MAX_NODE_PREFIX-1); i++) {
             if (!isalpha(vptr[i])) {
                 /* found a non-alpha char */
                 if (!isdigit(vptr[i])) {
