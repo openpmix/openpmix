@@ -28,7 +28,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   tool debugger debuggerd alloc jctrl group group_dmodex asyncgroup \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
                   group_bootstrap client3 client4 launcher spawn_group resolve multi_nspace_group \
-                  pub2 toolqry simple_resolve pubstress monitor
+                  pub2 toolqry simple_resolve pubstress monitor monitor_remote monitor_multi
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -178,6 +178,14 @@ monitor_SOURCES = monitor.c examples.h
 monitor_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 monitor_LDADD = $(top_builddir)/src/libpmix.la
 
+monitor_remote_SOURCES = monitor_remote.c examples.h
+monitor_remote_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+monitor_remote_LDADD = $(top_builddir)/src/libpmix.la
+
+monitor_multi_SOURCES = monitor_multi.c examples.h
+monitor_multi_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+monitor_multi_LDADD = $(top_builddir)/src/libpmix.la
+
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
         debugger debuggerd dmodex dynamic fault group \
@@ -185,4 +193,4 @@ distclean-local:
         abi_no_init abi_with_init group_lcl_cid pset \
         async_group group_dmodex group_bootstrap client3 \
         spawn_group resolve multi_nspace_group pub2 toolqry \
-        simple_resolve pubstress monitor
+        simple_resolve pubstress monitor monitor_remote

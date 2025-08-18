@@ -1915,12 +1915,16 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_cb_t *cb;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "recvd monitor request from client");
+                        "recvd monitor request from client %s",
+                        PMIX_PEER_PRINT(peer));
 
     cb = PMIX_NEW(pmix_cb_t);
     if (NULL == cb) {
         return PMIX_ERR_NOMEM;
     }
+    PMIX_PROC_CREATE(cb->proc, 1);
+    PMIX_LOAD_PROCID(&cb->proc[0], peer->info->pname.nspace, peer->info->pname.rank);
+    cb->nprocs = 1;
     cb->cbdata = cbdata;
     cb->cbfunc.infofn = cbfunc;
 

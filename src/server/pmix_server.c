@@ -4634,8 +4634,7 @@ static void jctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
 static void _mon_cbfunc(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
-    pmix_cb_t *cb = (pmix_cb_t*)scd->cbdata;
-    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cb->cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) scd->cbdata;
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);

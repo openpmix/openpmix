@@ -138,6 +138,7 @@ typedef struct {
 
 typedef struct {
 	pmix_list_item_t super;
+    pmix_proc_t requestor;
 	char *id;
 	pmix_event_t ev;
 	struct timeval tv;
