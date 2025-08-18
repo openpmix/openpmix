@@ -41,7 +41,8 @@
 
 /* unsupported functions */
 static pmix_status_t pmix_pstat_base_unsupported_init(void);
-static pmix_status_t pmix_pstat_base_unsupported_query(const pmix_info_t *monitor, pmix_status_t error,
+static pmix_status_t pmix_pstat_base_unsupported_query(pmix_proc_t *requestor,
+                                                       const pmix_info_t *monitor, pmix_status_t error,
                                                        const pmix_info_t directives[], size_t ndirs,
                                                        pmix_info_t **results, size_t *nresults);
 static pmix_status_t pmix_pstat_base_unsupported_finalize(void);
@@ -116,11 +117,12 @@ static pmix_status_t pmix_pstat_base_unsupported_init(void)
     return PMIX_ERR_NOT_SUPPORTED;
 }
 
-static pmix_status_t pmix_pstat_base_unsupported_query(const pmix_info_t *monitor, pmix_status_t error,
+static pmix_status_t pmix_pstat_base_unsupported_query(pmix_proc_t *requestor,
+                                                       const pmix_info_t *monitor, pmix_status_t error,
                                                        const pmix_info_t directives[], size_t ndirs,
                                                        pmix_info_t **results, size_t *nresults)
 {
-    PMIX_HIDE_UNUSED_PARAMS(monitor, error, directives, ndirs, results, nresults);
+    PMIX_HIDE_UNUSED_PARAMS(requestor, monitor, error, directives, ndirs, results, nresults);
 
     return PMIX_ERR_NOT_SUPPORTED;
 }

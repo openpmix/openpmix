@@ -112,6 +112,8 @@ examples/toolqry
 examples/simple_resolve
 examples/pubstress
 examples/monitor
+examples/monitor_remote
+examples/monitor_multi
 
 include/pmix_version.h
 include/pmix_rename.h

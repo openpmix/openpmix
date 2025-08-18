@@ -54,7 +54,8 @@
  * API functions
  */
 static pmix_status_t plinux_module_init(void);
-static pmix_status_t query(const pmix_info_t *monitor, pmix_status_t error,
+static pmix_status_t query(pmix_proc_t *requestor,
+                           const pmix_info_t *monitor, pmix_status_t error,
                            const pmix_info_t directives[], size_t ndirs,
                            pmix_info_t **results, size_t *nresults);
 static pmix_status_t plinux_module_fini(void);
@@ -1006,6 +1007,17 @@ static void update(int sd, short args, void *cbdata)
     nettaken = false;
     dktaken = false;
 
+    // start with general directives
+
+    if (op->active) {
+        // avoid the default event
+        PMIX_INFO_LIST_ADD(rc, answer, PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+
+        /* target this notification solely to the requestor */
+        PMIX_INFO_LIST_ADD(rc, answer, PMIX_EVENT_CUSTOM_RANGE, &op->requestor, PMIX_PROC);
+    }
+
+    // check for pstat request
     if (0 != memcmp(&op->pstats, &zproc, sizeof(pmix_procstats_t))) {
         PMIX_LIST_FOREACH(plist, &op->peers, pmix_peerlist_t) {
             rc = proc_stat(answer, plist->peer, &op->pstats);
@@ -1017,6 +1029,7 @@ static void update(int sd, short args, void *cbdata)
         }
     }
 
+    // check for node stats
     if (0 != memcmp(&op->ndstats, &znd, sizeof(pmix_ndstats_t))) {
         ilist = PMIx_Info_list_start();
         // start with hostname
@@ -1074,6 +1087,7 @@ static void update(int sd, short args, void *cbdata)
         }
     }
 
+    // check for net stats
     if (!nettaken && 0 != memcmp(&op->netstats, &znet, sizeof(pmix_netstats_t))) {
         rc = net_stat(answer, op->nets, &op->netstats);
         if (PMIX_SUCCESS != rc) {
@@ -1082,6 +1096,7 @@ static void update(int sd, short args, void *cbdata)
         }
     }
 
+    // check for disk stats
     if (!dktaken && 0 != memcmp(&op->dkstats, &zdk, sizeof(pmix_dkstats_t))) {
         rc = disk_stat(answer, op->disks, &op->dkstats);
         if (PMIX_SUCCESS != rc) {
@@ -1104,7 +1119,7 @@ static void update(int sd, short args, void *cbdata)
         cb->ninfo = darray.size;
         cb->infocopy = true;
         rc = PMIx_Notify_event(op->eventcode, &pmix_globals.myid,
-                               PMIX_RANGE_LOCAL, cb->info, cb->ninfo,
+                               PMIX_RANGE_CUSTOM, cb->info, cb->ninfo,
                                evrelease, (void*)cb);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
@@ -1118,7 +1133,8 @@ reset:
     }
 }
 
-static pmix_status_t query(const pmix_info_t *monitor, pmix_status_t eventcode,
+static pmix_status_t query(pmix_proc_t *requestor,
+                           const pmix_info_t *monitor, pmix_status_t eventcode,
                            const pmix_info_t directives[], size_t ndirs,
                            pmix_info_t **results, size_t *nresults)
 {
@@ -1166,6 +1182,7 @@ static pmix_status_t query(const pmix_info_t *monitor, pmix_status_t eventcode,
     }
 
     op = PMIX_NEW(pmix_pstat_op_t);
+    memcpy(&op->requestor, requestor, sizeof(pmix_proc_t));
     op->eventcode = eventcode;
 
     for (n=0; n < ndirs; n++) {
@@ -1292,7 +1309,12 @@ processprocs:
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
         if (PMIX_SUCCESS != rc) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
+            if (PMIX_ERR_EMPTY == rc) {
+                // this is not an error
+                rc = PMIX_SUCCESS;
+            }
             return rc;
         }
         *results = (pmix_info_t*)darray.array;
@@ -1352,9 +1374,20 @@ processprocs:
             PMIX_RELEASE(op);
             return rc;
         }
+        // if the array has only two items in it, then those are the hostname
+        // and nodeID we provided and not any data - this is equivalent to
+        // "empty" as no data was found
         PMIx_Info_list_release(cb.cbdata);
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
+        // if the array has only two items in it, then those are the hostname
+        // and nodeID we provided and not any data - this is equivalent to
+        // "empty" as no data was found
+        if (3 > darray.size) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
+            PMIX_RELEASE(op);
+            return PMIX_SUCCESS;
+        }
         PMIX_INFO_CREATE(xfer, 1);
         PMIX_INFO_LOAD(xfer, PMIX_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
         PMIX_DATA_ARRAY_DESTRUCT(&darray);
@@ -1391,6 +1424,7 @@ processprocs:
         PMIX_DESTRUCT(&cb);
         op->cb = NULL;
         if (PMIX_SUCCESS != rc) {
+            PMIX_DATA_ARRAY_DESTRUCT(&darray);
             PMIX_RELEASE(op);
             if (PMIX_ERR_EMPTY == rc) {
                 // empty = nothing found, not an error
@@ -1398,9 +1432,6 @@ processprocs:
             }
             return rc;
         }
-        PMIx_Info_list_release(cb.cbdata);
-        PMIX_DESTRUCT(&cb);
-        op->cb = NULL;
         *results = (pmix_info_t*)darray.array;
         *nresults = darray.size;
 

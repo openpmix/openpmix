@@ -99,14 +99,17 @@ int main(int argc, char **argv)
 {
     pmix_status_t rc, code;
     pmix_value_t *val = NULL;
-    pmix_proc_t proc;
+    pmix_proc_t proc, *procs;
     uint32_t nprocs, n;
-    pmix_info_t monitor, *results=NULL, directives[2];
+    pmix_info_t monitor, *results=NULL, directives[3];
     size_t nresults;
     bool flag;
     mylock_t mylock;
     pmix_data_array_t darray;
+    char hostname[2048];
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
+
+    gethostname(hostname, 2048);
 
     /* init us - note that the call to "init" includes the return of
      * any job-related info provided by the RM. */
@@ -161,7 +164,23 @@ int main(int argc, char **argv)
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
-    fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
+    if (2 < nprocs) {
+        if (0 == myproc.rank) {
+            fprintf(stderr, "This example requires at least two processes\n");
+        }
+        exit(1);
+    }
+    fprintf(stderr, "Client %s:%d node %s\n", myproc.nspace, myproc.rank, hostname);
+
+    /* call fence to synchronize with our peers - no need to
+     * collect any info as we didn't "put" anything */
+    flag = false;
+    PMIX_INFO_LOAD(&monitor, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &monitor, 1))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
+        return rc;
+    }
 
     if (0 == myproc.rank) {
         /* ask to monitor process resource usage */
@@ -172,8 +191,13 @@ int main(int argc, char **argv)
         PMIX_INFO_LOAD(&directives[0], PMIX_MONITOR_ID, "mymonitor", PMIX_STRING);
         n = 3;
         PMIX_INFO_LOAD(&directives[1], PMIX_MONITOR_RESOURCE_RATE, &n, PMIX_UINT32);
+        PMIX_DATA_ARRAY_CONSTRUCT(&darray, 2, PMIX_PROC);
+        procs = (pmix_proc_t*)darray.array;
+        PMIX_LOAD_PROCID(&procs[0], myproc.nspace, 0);
+        PMIX_LOAD_PROCID(&procs[1], myproc.nspace, 1);
+        PMIX_INFO_LOAD(&directives[2], PMIX_MONITOR_TARGET_PROCS, &darray, PMIX_DATA_ARRAY);
         rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
-                                  directives, 2, &results, &nresults);
+                                  directives, 3, &results, &nresults);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor failed: %s\n", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
@@ -206,130 +230,6 @@ int main(int argc, char **argv)
                     myproc.rank, PMIx_Error_string(rc));
             goto done;
         }
-
-        /* ask to monitor node resource usage */
-        nupdates = 0;
-        darray.array = NULL;
-        darray.type = PMIX_STRING;
-        darray.size = 0;
-        PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_NODE_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
-        PMIX_INFO_LOAD(&directives[0], PMIX_MONITOR_ID, "nodemon", PMIX_STRING);
-        rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
-                                  directives, 2, &results, &nresults);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
-        }
-
-        if (0 == nresults) {
-            fprintf(stderr, "No nodes found\n");
-        } else {
-            fprintf(stderr, "INITIAL NODE RESULTS:\n");
-            for (n=0; n < nresults; n++) {
-                fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
-            }
-            fprintf(stderr, "\n\n");
-            n = 0;
-            while (2 > nupdates) {
-                ++n;
-                if (n > 1000000000) {
-                    n = 0;
-                }
-            }
-        }
-
-        PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_CANCEL, "nodemon", PMIX_STRING);
-        rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
-                                  NULL, 0, &results, &nresults);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
-        }
-
-        /* ask to monitor disk resource usage */
-        nupdates = 0;
-        darray.array = NULL;
-        darray.type = PMIX_STRING;
-        darray.size = 0;
-        PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_DISK_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
-        PMIX_INFO_LOAD(&directives[0], PMIX_MONITOR_ID, "dkmon", PMIX_STRING);
-        rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
-                                  directives, 2, &results, &nresults);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
-        }
-
-        if (0 == nresults) {
-            fprintf(stderr, "No disks found\n");
-        } else {
-            fprintf(stderr, "INITIAL DISK RESULTS:\n");
-            for (n=0; n < nresults; n++) {
-                fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
-            }
-            fprintf(stderr, "\n\n");
-            n = 0;
-            while (2 > nupdates) {
-                ++n;
-                if (n > 1000000000) {
-                    n = 0;
-                }
-            }
-        }
-
-        PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_CANCEL, "dkmon", PMIX_STRING);
-        rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
-                                  NULL, 0, &results, &nresults);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
-        }
-
-        /* ask to monitor network resource usage */
-        nupdates = 0;
-        darray.array = NULL;
-        darray.type = PMIX_STRING;
-        darray.size = 0;
-        PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_NET_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
-        PMIX_INFO_LOAD(&directives[0], PMIX_MONITOR_ID, "netmon", PMIX_STRING);
-        rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
-                                  directives, 2, &results, &nresults);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
-        }
-
-        if (0 == nresults) {
-            fprintf(stderr, "No networks found\n");
-        } else {
-            fprintf(stderr, "INITIAL NETWORK RESULTS:\n");
-            for (n=0; n < nresults; n++) {
-                fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
-            }
-            fprintf(stderr, "\n\n");
-            n = 0;
-            while (2 > nupdates) {
-                ++n;
-                if (n > 1000000000) {
-                    n = 0;
-                }
-            }
-        }
-
-        PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_CANCEL, "netmon", PMIX_STRING);
-        rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
-                                  NULL, 0, &results, &nresults);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
-        }
-
     }
 
     /* call fence to synchronize with our peers - no need to

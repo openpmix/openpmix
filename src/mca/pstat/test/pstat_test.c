@@ -44,7 +44,8 @@
  * API functions
  */
 static pmix_status_t module_init(void);
-static pmix_status_t query(const pmix_info_t *monitor, pmix_status_t error,
+static pmix_status_t query(pmix_proc_t *requestor,
+                           const pmix_info_t *monitor, pmix_status_t error,
                            const pmix_info_t directives[], size_t ndirs,
                            pmix_info_t **results, size_t *nresults);
 static pmix_status_t module_fini(void);
@@ -709,7 +710,8 @@ reset:
 /* if we are being called, then we already know that the request involves
  * this node - otherwise, we wouldn't have been called, except where noted
  */
-static pmix_status_t query(const pmix_info_t *monitor, pmix_status_t eventcode,
+static pmix_status_t query(pmix_proc_t *requestor,
+                           const pmix_info_t *monitor, pmix_status_t eventcode,
                            const pmix_info_t directives[], size_t ndirs,
                            pmix_info_t **results, size_t *nresults)
 {
@@ -728,7 +730,8 @@ static pmix_status_t query(const pmix_info_t *monitor, pmix_status_t eventcode,
     pmix_dkstats_t zdk;
     pmix_info_t *xfer;
     pmix_cb_t cb;
-
+    PMIX_HIDE_UNUSED_PARAMS(requestor);
+    
     *results = NULL;
     *nresults = 0;
     PMIX_NETSTATS_INIT(&znet);
