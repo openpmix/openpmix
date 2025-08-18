@@ -495,10 +495,11 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* let the host server know that this client has connected */
     if (NULL != pmix_host_server.client_connected2) {
         PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        ch->ninfo = 2;
+        ch->ninfo = 3;
         PMIX_INFO_CREATE(ch->info, ch->ninfo);
         PMIX_INFO_LOAD(&ch->info[0], PMIX_USERID, &peer->info->uid, PMIX_UINT32);
         PMIX_INFO_LOAD(&ch->info[1], PMIX_GRPID, &peer->info->gid, PMIX_UINT32);
+        PMIX_INFO_LOAD(&ch->info[2], PMIX_PROC_PID, &peer->info->pid, PMIX_PID);
         rc = pmix_host_server.client_connected2(&proc, peer->info->server_object,
                                                 ch->info, ch->ninfo,
                                                 _connect_complete, ch);
