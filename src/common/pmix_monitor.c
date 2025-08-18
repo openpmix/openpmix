@@ -47,7 +47,6 @@ static void relcbfunc(void *cbdata)
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:monitor release callback");
-
     PMIX_RELEASE(cd);
 }
 
@@ -63,7 +62,7 @@ pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t err
     }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "%s pmix:monitor",
+                        "%s pmix:monitor called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     // init return values
@@ -97,10 +96,78 @@ pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t err
     return rc;
 }
 
+static void hostprocess(int sd, short args, void *cbdata)
+{
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
+    pmix_cb_t *cb2 = (pmix_cb_t*)scd->cbdata;
+    pmix_cb_t *cb;
+    pmix_info_t *info;
+    size_t n, k, ninfo;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (cb2->copy) {
+        // the local results are stored in cb2's info array
+        cb = (pmix_cb_t*)cb2->cbdata;
+        // combine the cached data with the new returned data
+        ninfo = cb2->ninfo + scd->ninfo;
+        PMIX_INFO_CREATE(info, ninfo);
+        k = 0;
+        for (n=0; n < cb2->ninfo; n++) {
+            PMIX_INFO_XFER(&info[k], &cb2->info[n]);
+            ++k;
+        }
+        for (n=0; n < scd->ninfo; n++) {
+            PMIX_INFO_XFER(&info[k], &scd->info[n]);
+            ++k;
+        }
+        cb->infocopy = true;
+        // cb simply carries the original info array, so ignore it here
+        // however, cb carries all the user provided cbdata etc, so let
+        // that continue along
+        cb->info = info;
+        cb->ninfo = ninfo;
+
+        PMIX_RELEASE(cb2);
+        if (NULL != scd->cbfunc.relfn) {
+            scd->cbfunc.relfn(scd->relcbdata);
+        }
+        if (NULL == cb->cbfunc.infofn) {
+            PMIX_WAKEUP_THREAD(&cb->lock);
+        } else {
+            cb->cbfunc.infofn(cb->status, cb->info, cb->ninfo, cb->cbdata,
+                              relcbfunc, (void*)cb);
+        }
+        return;
+    }
+
+    // if this isn't a local/remote op, then just locally process the data
+    acb(scd->status, scd->info, scd->ninfo, scd->cbdata,
+        scd->cbfunc.relfn, scd->relcbdata);
+
+    PMIX_RELEASE(scd);
+}
+
+static void hostcb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
+                   pmix_release_cbfunc_t release_fn, void *release_cbdata)
+{
+    pmix_shift_caddy_t *scd;
+
+    // this is in the host's thread, so we need to shift it
+    scd = PMIX_NEW(pmix_shift_caddy_t);
+    scd->status = status;
+    scd->cbdata = cbdata;
+    scd->info = info;
+    scd->ninfo = ninfo;
+    scd->cbfunc.relfn = release_fn;
+    scd->relcbdata = release_cbdata;
+
+    PMIX_THREADSHIFT(scd, hostprocess);
+}
+
 void pmix_monitor_processing(int sd, short args, void *cbdata)
 {
-    pmix_cb_t *cb = (pmix_cb_t*)cbdata;
-    pmix_status_t rc;
+    pmix_cb_t *cb = (pmix_cb_t*)cbdata, *cb2;
+    pmix_status_t rc, error;
     pmix_proc_t *procs, proc;
     pmix_info_t *results;
     size_t sz, m, n;
@@ -117,22 +184,29 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
 
     local = false;
     remote = false;
+    error = cb->status;
 
     // see if the requested targets involve our node, or processes on
     // our local node
     for (n=0; n < cb->ndirs; n++) {
+        if (PMIx_Check_key(cb->directives[n].key, PMIX_MONITOR_LOCAL_ONLY)) {
+            local = true;
+            remote = false;
+            continue;
+        }
+
         if (PMIx_Check_key(cb->directives[n].key, PMIX_MONITOR_TARGET_PROCS)) {
             // if there are no procs specified, then it is all procs everywhere
             if (NULL == cb->directives[n].value.data.darray ||
                 NULL == cb->directives[n].value.data.darray->array) {
                 local = true;
                 remote = true;
-                break;
+                continue;
             }
             // are any of the procs local?
             procs = (pmix_proc_t*)cb->directives[n].value.data.darray->array;
             sz = cb->directives[n].value.data.darray->size;
-            for (m=0; !local && !remote && m < sz; m++) {
+            for (m=0; (!local || !remote) && m < sz; m++) {
                 for (k=0; (!local || !remote) && k < pmix_server_globals.clients.size; k++) {
                     ptr = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, k);
                     if (NULL == ptr) {
@@ -147,8 +221,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
                 }
             }
             if (local && remote) {
-                // no need to process further
-                break;
+                continue;
             }
             continue;
         }
@@ -159,7 +232,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
                 NULL == cb->directives[n].value.data.darray->array) {
                 local = true;
                 remote = true;
-                break;
+                continue;
             }
             // is our node included?
             hostnames = (char**)cb->directives[n].value.data.darray->array;
@@ -173,8 +246,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
                 }
             }
             if (local && remote) {
-                // no need to process further
-                break;
+                continue;
             }
             continue;
         }
@@ -185,7 +257,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
                 NULL == cb->directives[n].value.data.darray->array) {
                 local = true;
                 remote = true;
-                break;
+                continue;
             }
             // is our node included?
             nids = (uint32_t*)cb->directives[n].value.data.darray->array;
@@ -199,8 +271,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
                 }
             }
             if (local && remote) {
-                // no need to process further
-                break;
+                continue;
             }
             continue;
         }
@@ -211,7 +282,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
                 NULL == cb->directives[n].value.data.darray->array) {
                 local = true;
                 remote = true;
-                break;
+                continue;
             }
             // is our node included?
             ppid = (pmix_node_pid_t*)cb->directives[n].value.data.darray->array;
@@ -226,8 +297,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
                 }
             }
             if (local && remote) {
-                // no need to process further
-                break;
+                continue;
             }
         }
 
@@ -238,15 +308,20 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
     if (remote && NULL == pmix_host_server.monitor) {
         /* nothing we can do */
         rc = PMIX_ERR_NOT_SUPPORTED;
+        cb->status = rc;
         goto complete;
     }
 
     if (!remote) {
         // we have strictly local participation, so pass it down for processing
         // and return the results directly to the caller
-        rc = pmix_pstat.query(cb->info, cb->status, cb->directives, cb->ndirs,
-                              &results, &sz);
-        if (PMIX_SUCCESS != rc) {
+        cb->status = pmix_pstat.query(cb->proc, cb->info, error,
+                                      cb->directives, cb->ndirs,
+                                      &results, &sz);
+        if (PMIX_SUCCESS != cb->status) {
+            if (NULL != cb->proc) {
+                PMIX_PROC_FREE(cb->proc, 1);
+            }
             if (cb->infocopy) {
                 PMIX_INFO_FREE(cb->info, cb->ninfo);
                 cb->info = NULL;
@@ -263,7 +338,8 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
         cb->info = results;
         cb->ninfo = sz;
         if (NULL != cb->cbfunc.infofn) {
-            cb->cbfunc.infofn(PMIX_SUCCESS, cb->info, cb->ninfo, cb,
+            PMIX_RETAIN(cb);
+            cb->cbfunc.infofn(cb->status, cb->info, cb->ninfo, cb->cbdata,
                               relcbfunc, (void*)cb);
         } else {
             PMIX_WAKEUP_THREAD(&cb->lock);
@@ -274,22 +350,63 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
         // for host-level support
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:monitor handed to RM");
-        rc = pmix_host_server.monitor(&pmix_globals.myid, cb->info, cb->status,
-                                      cb->directives, cb->ndirs, cb->cbfunc.infofn,
-                                      cb->cbdata);
-        if (PMIX_SUCCESS != rc) {
+        cb->status = pmix_host_server.monitor(cb->proc, cb->info, error,
+                                              cb->directives, cb->ndirs, hostcb,
+                                              cb);
+        if (PMIX_SUCCESS != cb->status) {
+            if (NULL != cb->proc) {
+                PMIX_PROC_FREE(cb->proc, 1);
+            }
+            if (cb->infocopy) {
+                PMIX_INFO_FREE(cb->info, cb->ninfo);
+                cb->info = NULL;
+                cb->ninfo = 0;
+                cb->infocopy = false;
+            }
             goto complete;
         }
 
     } else {
         // we have both local and remote participation, so handle the local
         // contribution first
-        rc = pmix_pstat.query(cb->info, cb->status, cb->directives, cb->ndirs,
-                              &results, &sz);
-        if (PMIX_SUCCESS != rc) {
+        cb->status = pmix_pstat.query(cb->proc, cb->info, error,
+                                      cb->directives, cb->ndirs,
+                                      &results, &sz);
+        if (PMIX_SUCCESS != cb->status) {
+            if (NULL != cb->proc) {
+                PMIX_PROC_FREE(cb->proc, 1);
+            }
+            if (cb->infocopy) {
+                PMIX_INFO_FREE(cb->info, cb->ninfo);
+                cb->info = NULL;
+                cb->ninfo = 0;
+                cb->infocopy = false;
+            }
             goto complete;
         }
 
+        // create a tracking object to hold the local results
+        cb2 = PMIX_NEW(pmix_cb_t);
+        // cache the local results
+        cb2->copy = true;
+        cb2->infocopy = true;
+        cb2->info = results;
+        cb2->ninfo = sz;
+        // cache the original object
+        cb2->cbdata = cb;
+
+        // now pass it up for distribution
+        cb2->status = pmix_host_server.monitor(cb->proc, cb->info, error,
+                                               cb->directives, cb->ndirs, hostcb,
+                                               cb2);
+        if (PMIX_SUCCESS != cb2->status) {
+            PMIX_RELEASE(cb2);
+            PMIX_INFO_FREE(cb->info, cb->ninfo);
+            cb->info = NULL;
+            cb->ninfo = 0;
+            cb->infocopy = false;
+            goto complete;
+        }
     }
 
     // wait for callback
@@ -297,7 +414,7 @@ void pmix_monitor_processing(int sd, short args, void *cbdata)
 
 complete:
     if (NULL != cb->cbfunc.infofn) {
-        cb->cbfunc.infofn(rc, cb->info, cb->ninfo, cb, relcbfunc, (void*)cb);
+        cb->cbfunc.infofn(cb->status, cb->info, cb->ninfo, cb->cbdata, relcbfunc, (void*)cb);
     } else {
         PMIX_WAKEUP_THREAD(&cb->lock);
     }
@@ -312,9 +429,12 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
     pmix_status_t rc;
     pmix_query_caddy_t *qcd;
     pmix_cb_t *cb;
+    bool proxy;
+    size_t n;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix: monitor called");
+                        "pmix: monitor_nb called with status %s",
+                        PMIx_Error_string(error));
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -336,6 +456,19 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
         }
         // threadshift for internal access
         cb = PMIX_NEW(pmix_cb_t);
+        PMIX_PROC_CREATE(cb->proc, 1);
+        proxy = false;
+        for (n=0; n < ndirs; n++) {
+            if (PMIx_Check_key(directives[n].key, PMIX_MONITOR_PROXY)) {
+                memcpy(&cb->proc[0], directives[n].value.data.proc, sizeof(pmix_proc_t));
+                proxy = true;
+                break;
+            }
+        }
+        if (!proxy) {
+            memcpy(&cb->proc[0], &pmix_globals.myid, sizeof(pmix_proc_t));
+        }
+        cb->nprocs = 1;
         cb->infocopy = false;
         cb->info = (pmix_info_t*)monitor;
         cb->ninfo = 1;
@@ -518,7 +651,7 @@ static void acb(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbd
     size_t n;
 
     pmix_output_verbose(2, pmix_globals.debug_output,
-                        "pmix:monitor intermediate cback");
+                        "pmix:monitor acb cback");
 
     cb->status = status;
     if (0 < ninfo) {

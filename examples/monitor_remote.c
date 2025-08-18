@@ -98,15 +98,17 @@ static void evhandler_reg_callbk(pmix_status_t status, size_t evhandler_ref, voi
 int main(int argc, char **argv)
 {
     pmix_status_t rc, code;
-    pmix_value_t *val = NULL;
-    pmix_proc_t proc;
-    uint32_t nprocs, n;
-    pmix_info_t monitor, *results=NULL, directives[2];
+    pmix_proc_t proc, *procs;
+    uint32_t n;
+    pmix_info_t monitor, *results=NULL, directives[3];
     size_t nresults;
     bool flag;
     mylock_t mylock;
     pmix_data_array_t darray;
+    char hostname[2048];
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
+
+    gethostname(hostname, 2048);
 
     /* init us - note that the call to "init" includes the return of
      * any job-related info provided by the RM. */
@@ -153,15 +155,17 @@ int main(int argc, char **argv)
     PMIX_PROC_CONSTRUCT(&proc);
     PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
 
-    /* get our universe size */
-    if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
-        goto done;
+    fprintf(stderr, "Client %s:%d node %sn", myproc.nspace, myproc.rank, hostname);
+
+    /* call fence to synchronize with our peers - no need to
+     * collect any info as we didn't "put" anything */
+    flag = false;
+    PMIX_INFO_LOAD(&monitor, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
+    if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &monitor, 1))) {
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
+                rc);
+        return rc;
     }
-    nprocs = val->data.uint32;
-    PMIX_VALUE_RELEASE(val);
-    fprintf(stderr, "Client %s:%d job size %d\n", myproc.nspace, myproc.rank, nprocs);
 
     if (0 == myproc.rank) {
         /* ask to monitor process resource usage */
@@ -169,11 +173,18 @@ int main(int argc, char **argv)
         darray.type = PMIX_PROC;
         darray.size = 0;
         PMIX_INFO_LOAD(&monitor, PMIX_MONITOR_PROC_RESOURCE_USAGE, &darray, PMIX_DATA_ARRAY);
+
+        // setup directives
         PMIX_INFO_LOAD(&directives[0], PMIX_MONITOR_ID, "mymonitor", PMIX_STRING);
         n = 3;
         PMIX_INFO_LOAD(&directives[1], PMIX_MONITOR_RESOURCE_RATE, &n, PMIX_UINT32);
+        PMIX_DATA_ARRAY_CONSTRUCT(&darray, 1, PMIX_PROC);
+        procs = (pmix_proc_t*)darray.array;
+        PMIX_LOAD_PROCID(&procs[0], myproc.nspace, 1);
+        PMIX_INFO_LOAD(&directives[2], PMIX_MONITOR_TARGET_PROCS, &darray, PMIX_DATA_ARRAY);
+        // request monitoring
         rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
-                                  directives, 2, &results, &nresults);
+                                  directives, 3, &results, &nresults);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor failed: %s\n", myproc.nspace,
                     myproc.rank, PMIx_Error_string(rc));
@@ -188,6 +199,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "%s", PMIx_Info_string(&results[n]));
             }
             fprintf(stderr, "\n\n");
+            fprintf(stderr, "WAITING FOR UPDATES\n\n");
             n = 0;
             while (2 > nupdates) {
                 ++n;
@@ -206,6 +218,7 @@ int main(int argc, char **argv)
                     myproc.rank, PMIx_Error_string(rc));
             goto done;
         }
+goto done;
 
         /* ask to monitor node resource usage */
         nupdates = 0;
@@ -332,6 +345,7 @@ int main(int argc, char **argv)
 
     }
 
+done:
     /* call fence to synchronize with our peers - no need to
      * collect any info as we didn't "put" anything */
     flag = false;
@@ -339,10 +353,9 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &monitor, 1))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
                 rc);
-        goto done;
+        return rc;
     }
 
-done:
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {

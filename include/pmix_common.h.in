@@ -1074,6 +1074,8 @@ typedef uint32_t pmix_rank_t;
 
 /* monitoring attributes */
 #define PMIX_MONITOR_ID                     "pmix.monitor.id"       // (char*) provide a string identifier for this request
+#define PMIX_MONITOR_PROXY                  "pmix.monitor.proxy"    // (pmix_proc_t*) Process requesting monitoring information, if different
+                                                                    //         from the process calling the API
 #define PMIX_MONITOR_CANCEL                 "pmix.monitor.cancel"   // (char*) identifier to be canceled (NULL = cancel all
                                                                     //         monitoring for this process)
 #define PMIX_MONITOR_APP_CONTROL            "pmix.monitor.appctrl"  // (bool) the application desires to control the response to
@@ -1135,7 +1137,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //            attribute keys are relevant) except where noted, and that the
                                                                     //            PMIX_NET_SAMPLE_TIME will always be included in the returned data
                                                                     //            (there is no need to include it in the request)
-
+#define PMIX_MONITOR_LOCAL_ONLY             "pmix.monitor.local"    // (bool) Restrict data collection to the local host, regardless of any provided targets
 /* resource usage attributes */
 #define PMIX_PROC_RESOURCE_USAGE            "pmix.proc.res"         // (pmix_data_array_t*) An array of pmix_info_t describing the resource usage
                                                                     //          of the specified process, with the first element containing the ID

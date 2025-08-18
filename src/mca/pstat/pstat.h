@@ -44,7 +44,8 @@ BEGIN_C_DECLS
  */
 typedef pmix_status_t (*pmix_pstat_base_module_init_fn_t)(void);
 
-typedef pmix_status_t (*pmix_pstat_base_module_query_fn_t)(const pmix_info_t *monitor, pmix_status_t error,
+typedef pmix_status_t (*pmix_pstat_base_module_query_fn_t)(pmix_proc_t *requestor,
+                                                           const pmix_info_t *monitor, pmix_status_t error,
                                                            const pmix_info_t directives[], size_t ndirs,
                                                            pmix_info_t **results, size_t *nresults);
 
