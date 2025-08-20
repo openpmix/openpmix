@@ -445,10 +445,11 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     char *p = NULL, *server_nspace = NULL, *rendfile = NULL;
     int rc;
     size_t n, m;
-    pid_t pid = 0, mypid;
+    pid_t pid = 0;
     pmix_list_t ilist;
     pmix_info_caddy_t *kv;
     pmix_info_t *iptr = NULL, mypidinfo, mycmdlineinfo, launcher;
+    pmix_info_t realuid, effectiveuid, realgid, effectivegid;
     size_t niptr = 0;
     pmix_peer_t *peer = (pmix_peer_t *) pr;
     bool optional = false;
@@ -555,11 +556,38 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
         }
     }
 
+    /* add some info to the array - some of this is duplicative, but we
+     * need to add it in the array because some peer cases failed to
+     * include it, and we now need it for all cases */
+
     /* add our pid to the array */
     kv = PMIX_NEW(pmix_info_caddy_t);
-    mypid = getpid();
-    PMIX_INFO_LOAD(&mypidinfo, PMIX_PROC_PID, &mypid, PMIX_PID);
+    PMIX_INFO_LOAD(&mypidinfo, PMIX_PROC_PID, &pmix_globals.pid, PMIX_PID);
     kv->info = &mypidinfo;
+    pmix_list_append(&ilist, &kv->super);
+
+    /* add our real uid */
+    kv = PMIX_NEW(pmix_info_caddy_t);
+    PMIX_INFO_LOAD(&realuid, PMIX_REALUID, &pmix_globals.realuid, PMIX_UINT32);
+    kv->info = &realuid;
+    pmix_list_append(&ilist, &kv->super);
+
+    /* add our effective uid */
+    kv = PMIX_NEW(pmix_info_caddy_t);
+    PMIX_INFO_LOAD(&effectiveuid, PMIX_USERID, &pmix_globals.uid, PMIX_UINT32);
+    kv->info = &effectiveuid;
+    pmix_list_append(&ilist, &kv->super);
+
+    /* add our real gid */
+    kv = PMIX_NEW(pmix_info_caddy_t);
+    PMIX_INFO_LOAD(&realgid, PMIX_REALGID, &pmix_globals.realgid, PMIX_UINT32);
+    kv->info = &realgid;
+    pmix_list_append(&ilist, &kv->super);
+
+    /* add our effective gid */
+    kv = PMIX_NEW(pmix_info_caddy_t);
+    PMIX_INFO_LOAD(&effectivegid, PMIX_GRPID, &pmix_globals.gid, PMIX_UINT32);
+    kv->info = &effectivegid;
     pmix_list_append(&ilist, &kv->super);
 
     /* if I am a launcher, tell them so */

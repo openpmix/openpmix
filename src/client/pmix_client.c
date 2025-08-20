@@ -710,6 +710,11 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
     PMIX_LOAD_PROCID(pmix_globals.myidval.data.proc, pmix_globals.myid.nspace, pmix_globals.myid.rank);
     pmix_globals.myrankval.data.rank = pmix_globals.myid.rank;
+    pmix_globals.mypeer->info->realuid = pmix_globals.realuid;
+    pmix_globals.mypeer->info->uid = pmix_globals.uid;
+    pmix_globals.mypeer->info->realgid = pmix_globals.realgid;
+    pmix_globals.mypeer->info->gid = pmix_globals.gid;
+    pmix_globals.mypeer->info->pid = pmix_globals.pid;
 
     /* select our psec compat module - the selection will be based
      * on the corresponding envars that should have been passed

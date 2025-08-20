@@ -158,7 +158,7 @@ static pmix_status_t get_endpts(pmix_info_t *xfer,
             if (PMIx_Check_reserved_key(kv->key)) {
                 continue;
             }
-            PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value);
+            PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value, true);
             found = true;
         }
         if (found) {
