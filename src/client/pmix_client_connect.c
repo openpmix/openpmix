@@ -203,7 +203,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
             if (PMIx_Check_reserved_key(kv->key)) {
                 continue;
             }
-            PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value);
+            PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value, true);
             found = true;
         }
         if (found) {
@@ -294,7 +294,7 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
                 PMIx_Info_list_add(ilist, PMIX_NSPACE, pmix_globals.myid.nspace, PMIX_PROC_NSPACE);
                 // now add the kvals
                 PMIX_LIST_FOREACH (kv, &cb2.kvs, pmix_kval_t) {
-                    PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value);
+                    PMIx_Info_list_add_value_unique(ilist, kv->key, kv->value, true);
                     found = true;
                 }
                 // convert to array

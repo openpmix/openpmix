@@ -402,7 +402,9 @@ static pmix_status_t register_singleton(char *name)
     }
     rinfo->pname.nspace = strdup(tmp);
     rinfo->pname.rank = rank;
+    rinfo->realuid = getuid();
     rinfo->uid = geteuid();
+    rinfo->realgid = getgid();
     rinfo->gid = getegid();
     pmix_list_append(&nptr->ranks, &rinfo->super);
     nptr->all_registered = true;
@@ -774,7 +776,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     pmix_globals.mypeer->nptr->nspace = strdup(pmix_globals.myid.nspace);
     rinfo->pname.nspace = strdup(pmix_globals.mypeer->nptr->nspace);
     rinfo->pname.rank = pmix_globals.myid.rank;
+    rinfo->realuid = pmix_globals.realuid;
     rinfo->uid = pmix_globals.uid;
+    rinfo->realgid = pmix_globals.realgid;
     rinfo->gid = pmix_globals.gid;
     pmix_client_globals.myserver->info = pmix_globals.mypeer->info;
 

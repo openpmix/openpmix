@@ -760,6 +760,36 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
     return PMIX_SUCCESS;
 }
 
+pmix_status_t PMIx_Info_list_add_unique(void *ptr,
+                                        const char *key,
+                                        const void *value,
+                                        pmix_data_type_t type,
+                                        bool overwrite)
+{
+    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_infolist_t *iptr;
+
+    // see if this key is already on the list
+    PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
+        if (PMIX_CHECK_KEY(&iptr->info, key)) {
+            if (overwrite) {
+                // replace with new value
+                PMIx_Value_destruct(&iptr->info.value);
+                PMIx_Value_load(&iptr->info.value, value, type);
+            }
+            return PMIX_SUCCESS;
+        }
+    }
+
+    iptr = PMIX_NEW(pmix_infolist_t);
+    if (NULL == iptr) {
+        return PMIX_ERR_NOMEM;
+    }
+    PMIX_INFO_LOAD(&iptr->info, key, value, type);
+    pmix_list_append(p, &iptr->super);
+    return PMIX_SUCCESS;
+}
+
 PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value(void *ptr,
                                                    const char *key,
                                                    const pmix_value_t *value)
@@ -784,7 +814,8 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value(void *ptr,
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value_unique(void *ptr,
                                                           const char *key,
-                                                          const pmix_value_t *value)
+                                                          const pmix_value_t *value,
+                                                          bool overwrite)
 {
     pmix_list_t *p = (pmix_list_t *) ptr;
     pmix_infolist_t *iptr;
@@ -793,6 +824,11 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value_unique(void *ptr,
     // see if this key is already on the list
     PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
         if (PMIX_CHECK_KEY(&iptr->info, key)) {
+            if (overwrite) {
+                // replace with new value
+                PMIx_Value_destruct(&iptr->info.value);
+                PMIx_Value_xfer(&iptr->info.value, value);
+            }
             return PMIX_SUCCESS;
         }
     }
@@ -858,6 +894,38 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr, const pmix_info_t *info
         return PMIX_ERR_NOMEM;
     }
     PMIx_Info_xfer(&iptr->info, info);
+    pmix_list_append(p, &iptr->super);
+    return PMIX_SUCCESS;
+}
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer_unique(void *ptr, const pmix_info_t *info,
+                                                     bool overwrite)
+{
+    pmix_list_t *p = (pmix_list_t *) ptr;
+    pmix_infolist_t *iptr;
+    pmix_status_t rc;
+
+    // see if this key is already on the list
+    PMIX_LIST_FOREACH(iptr, p, pmix_infolist_t) {
+        if (PMIX_CHECK_KEY(&iptr->info, info->key)) {
+            if (overwrite) {
+                // replace with new value
+                PMIx_Value_destruct(&iptr->info.value);
+                PMIx_Value_xfer(&iptr->info.value, &info->value);
+            }
+            return PMIX_SUCCESS;
+        }
+    }
+
+    iptr = PMIX_NEW(pmix_infolist_t);
+    if (NULL == iptr) {
+        return PMIX_ERR_NOMEM;
+    }
+    rc = PMIx_Info_xfer(&iptr->info, info);
+    if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(iptr);
+        return rc;
+    }
     pmix_list_append(p, &iptr->super);
     return PMIX_SUCCESS;
 }

@@ -237,8 +237,10 @@ static void info_con(pmix_rank_info_t *info)
 {
     info->peerid = -1;
     info->pid = -1;
-    info->gid = 0;
+    info->realuid = 0;
     info->uid = 0;
+    info->realgid = 0;
+    info->gid = 0;
     info->pname.nspace = NULL;
     info->pname.rank = PMIX_RANK_UNDEF;
     info->modex_recvd = false;
