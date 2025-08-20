@@ -450,6 +450,21 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
                                              const void *value,
                                              pmix_data_type_t type);
 
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add_unique(void *ptr,
+                                                    const char *key,
+                                                    const void *value,
+                                                    pmix_data_type_t type,
+                                                    bool overwrite);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value(void *ptr,
+                                                   const char *key,
+                                                   const pmix_value_t *value);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value_unique(void *ptr,
+                                                          const char *key,
+                                                          const pmix_value_t *value,
+                                                          bool overwrite);
+
 PMIX_EXPORT pmix_status_t PMIx_Info_list_prepend(void *ptr,
                                                  const char *key,
                                                  const void *value,
@@ -459,6 +474,10 @@ PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
                                               const pmix_info_t *info);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer_unique(void *ptr,
+                                                     const pmix_info_t *info,
+                                                     bool overwrite);
 
 PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
 

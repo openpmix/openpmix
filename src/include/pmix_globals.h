@@ -393,7 +393,10 @@ typedef struct pmix_rank_info_t {
     pmix_list_item_t super;
     int peerid; // peer object index into the local clients array on the server
     pmix_name_t pname;
+    pid_t pid;
+    uid_t realuid;
     uid_t uid;
+    gid_t realgid;
     gid_t gid;
     bool modex_recvd;
     int proc_cnt;        // #clones of this rank we know about
@@ -758,7 +761,9 @@ typedef struct {
     pmix_value_t myidval;
     pmix_value_t myrankval;
     pmix_peer_t *mypeer; // my own peer object
+    uid_t realuid;       // real uid
     uid_t uid;           // my effective uid
+    gid_t realgid;       // real gid
     gid_t gid;           // my effective gid
     char *hostname;      // my hostname
     uint32_t appnum;     // my appnum

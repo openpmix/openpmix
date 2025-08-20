@@ -38,7 +38,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1638,7 +1638,7 @@ PMIX_EXPORT bool PMIx_Check_nspace(const char *key1, const char *key2);
 PMIX_EXPORT bool PMIx_Nspace_invalid(const char *nspace);
 
 /* load a process ID struct */
-PMIX_EXPORT void PMIx_Load_procid(pmix_proc_t *p, 
+PMIX_EXPORT void PMIx_Load_procid(pmix_proc_t *p,
                                   const char *ns,
                                   pmix_rank_t rk);
 
@@ -1799,7 +1799,6 @@ PMIX_EXPORT void PMIx_Info_persistent(pmix_info_t *p);
 
 /* check if the info struct is persistent */
 PMIX_EXPORT bool PMIx_Info_is_persistent(const pmix_info_t *p);
-
 
 /* initialize a coord struct */
 PMIX_EXPORT void PMIx_Coord_construct(pmix_coord_t *m);

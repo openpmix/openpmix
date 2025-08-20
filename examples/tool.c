@@ -17,7 +17,7 @@
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      Triad National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -319,9 +319,12 @@ int main(int argc, char **argv)
                             }
                             iptr = (pmix_info_t *) dptr->array;
                             for (m = 0; m < dptr->size; m++) {
-                                fprintf(stderr, "\t%s", iptr[m].value.data.string);
+                                if (PMIX_CHECK_KEY(&iptr[m], PMIX_PROC_INFO_ARRAY)) {
+                                    fprintf(stderr, "\n");
+                                }
+                                fprintf(stderr, "\t%s", PMIx_Info_string(&iptr[m]));
                             }
-                            fprintf(stderr, "\n");
+                            fprintf(stderr, "\n\n");
                         }
                     }
                 }
