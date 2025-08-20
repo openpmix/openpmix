@@ -41,6 +41,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_getid.h"
+#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_strnlen.h"
 
 #include "src/mca/ptl/base/base.h"
@@ -169,15 +170,19 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
     char *msg = NULL, *mg, *p, *blob = NULL;
-    size_t cnt;
+    size_t cnt, ncnt;
     size_t len = 0;
     pmix_namespace_t *nptr, *tmp;
     pmix_rank_info_t *info = NULL, *iptr;
     pmix_proc_t proc;
-    pmix_info_t ginfo;
+    pmix_info_t ginfo, *iblob;
     pmix_byte_object_t cred;
     uint8_t major, minor, release;
     cnct_hdlr_t *ch;
+    void *ilist;
+    pmix_data_array_t darray;
+    pmix_buffer_t buf;
+    int32_t i32;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(pnd);
@@ -468,6 +473,60 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         nptr->version_stored = true;
     }
 
+    ilist = PMIx_Info_list_start();
+    // if a blob was provided, then unpack it
+    if (NULL != blob) {
+        PMIX_CONSTRUCT(&buf, pmix_buffer_t);
+        PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, blob, len); // allocates no memory
+        i32 = 1;
+        PMIX_BFROPS_UNPACK(rc, peer, &buf, &cnt, &i32, PMIX_SIZE);
+        if (0 < cnt) {
+            PMIX_INFO_CREATE(iblob, cnt);
+            i32 = cnt;
+            PMIX_BFROPS_UNPACK(rc, peer, &buf, iblob, &i32, PMIX_INFO);
+            // process the data
+            for (ncnt=0; ncnt < cnt; ncnt++) {
+                if (PMIx_Check_key(iblob[ncnt].key, PMIX_PROC_PID)) {
+                    info->pid = iblob[ncnt].value.data.pid;
+                    PMIx_Info_list_add(ilist, PMIX_PROC_PID, &info->pid, PMIX_PID);
+
+                } else if (PMIx_Check_key(iblob[ncnt].key, PMIX_REALUID)) {
+                    info->realuid = iblob[ncnt].value.data.uint32;
+                    PMIx_Info_list_add(ilist, PMIX_REALUID, &info->realuid, PMIX_UINT32);
+
+                } else if (PMIx_Check_key(iblob[ncnt].key, PMIX_USERID)) {
+                    // check if the client is claiming to be someone other
+                    // than what they were registered as
+                    if (info->uid != iblob[ncnt].value.data.uint32) {
+                        // mismatch
+                        PMIx_Info_list_release(ilist);
+                        pmix_show_help("help-ptl-base.txt", "mismatch-id", true,
+                                       "user", iblob[ncnt].value.data.uint32, info->uid);
+                        goto error;
+                    }
+
+                } else if (PMIx_Check_key(iblob[ncnt].key, PMIX_REALGID)) {
+                    info->realgid = iblob[ncnt].value.data.uint32;
+                    PMIx_Info_list_add(ilist, PMIX_REALGID, &info->realgid, PMIX_UINT32);
+
+                } else if (PMIx_Check_key(iblob[ncnt].key, PMIX_GRPID)) {
+                    // check if the client is claiming to be someone other
+                    // than what they were registered as
+                    if (info->gid != iblob[ncnt].value.data.uint32) {
+                        // mismatch
+                        PMIx_Info_list_release(ilist);
+                        pmix_show_help("help-ptl-base.txt", "mismatch-id", true,
+                                       "group", iblob[ncnt].value.data.uint32, info->uid);
+                        goto error;
+                    }
+                }
+            }
+            PMIX_INFO_FREE(iblob, cnt);
+        }
+        free(blob);
+
+    }
+
     free(msg); // can now release the data buffer
     msg = NULL;
 
@@ -478,6 +537,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (PMIX_SUCCESS != reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                             "validation of client connection failed");
+        PMIx_Info_list_release(ilist);
         goto error;
     }
 
@@ -492,14 +552,16 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     ch->reply = reply;
     ch->blob = blob;
 
+    PMIx_Info_list_add(ilist, PMIX_USERID, &info->uid, PMIX_UINT32);
+    PMIx_Info_list_add(ilist, PMIX_GRPID, &info->gid, PMIX_UINT32);
+    PMIx_Info_list_convert(ilist, &darray);
+    ch->info = (pmix_info_t*)darray.array;
+    ch->ninfo = darray.size;
+    PMIx_Info_list_release(ilist);
+
     /* let the host server know that this client has connected */
     if (NULL != pmix_host_server.client_connected2) {
         PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
-        ch->ninfo = 3;
-        PMIX_INFO_CREATE(ch->info, ch->ninfo);
-        PMIX_INFO_LOAD(&ch->info[0], PMIX_USERID, &peer->info->uid, PMIX_UINT32);
-        PMIX_INFO_LOAD(&ch->info[1], PMIX_GRPID, &peer->info->gid, PMIX_UINT32);
-        PMIX_INFO_LOAD(&ch->info[2], PMIX_PROC_PID, &peer->info->pid, PMIX_PID);
         rc = pmix_host_server.client_connected2(&proc, peer->info->server_object,
                                                 ch->info, ch->ninfo,
                                                 _connect_complete, ch);
@@ -777,9 +839,12 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     pmix_namespace_t *nptr, *tmp;
     pmix_rank_info_t *info;
     bool found;
-    size_t n;
+    size_t n, sz;
     pmix_buffer_t buf;
     pmix_status_t rc;
+    void *ilist;
+    pmix_info_t *iptr;
+    pmix_data_array_t darray;
 
     peer = PMIX_NEW(pmix_peer_t);
     if (NULL == peer) {
@@ -870,43 +935,38 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     peer->nptr->compat.type = pnd->buffer_type;
     n = 0;
     /* if info structs need to be passed along, then unpack them */
+    ilist = PMIx_Info_list_start();
     if (0 < cnt) {
         int32_t foo;
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
         PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, mg, cnt); // allocates no memory
         foo = 1;
-        PMIX_BFROPS_UNPACK(rc, peer, &buf, &pnd->ninfo, &foo, PMIX_SIZE);
+        PMIX_BFROPS_UNPACK(rc, peer, &buf, &sz, &foo, PMIX_SIZE);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(peer);
+            PMIx_Info_list_release(ilist);
             return rc;
         }
-        foo = (int32_t) pnd->ninfo;
-        /* if we have an identifier, then we leave room to pass it */
-        if (!pnd->need_id) {
-            pnd->ninfo += 5;
-        } else {
-            pnd->ninfo += 3;
-        }
-        PMIX_INFO_CREATE(pnd->info, pnd->ninfo);
-        PMIX_BFROPS_UNPACK(rc, peer, &buf, pnd->info, &foo, PMIX_INFO);
+        foo = (int32_t) sz;
+        PMIX_INFO_CREATE(iptr, sz);
+        PMIX_BFROPS_UNPACK(rc, peer, &buf, iptr, &foo, PMIX_INFO);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_RELEASE(peer);
+            PMIX_INFO_FREE(iptr, sz);
+            PMIx_Info_list_release(ilist);
             return rc;
         }
-        n = foo;
-    } else {
-        if (!pnd->need_id) {
-            pnd->ninfo = 5;
-        } else {
-            pnd->ninfo = 3;
+        for (n=0; n < sz; n++) {
+            PMIx_Info_list_xfer(ilist, &iptr[n]);
         }
-        PMIX_INFO_CREATE(pnd->info, pnd->ninfo);
+        PMIX_INFO_FREE(iptr, sz);
     }
 
     /* does the server support tool connections? */
     if (NULL == pmix_host_server.tool_connected) {
+        PMIx_Info_list_release(ilist);
         if (pnd->need_id) {
             /* we need someone to provide the tool with an
              * identifier and they aren't available */
@@ -924,21 +984,28 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     /* setup the info array to pass the relevant info
      * to the server */
     /* provide the version */
-    PMIX_INFO_LOAD(&pnd->info[n], PMIX_VERSION_INFO, pnd->version, PMIX_STRING);
-    ++n;
+    PMIx_Info_list_add_unique(ilist, PMIX_VERSION_INFO,
+                              pnd->version, PMIX_STRING, true);
+
     /* provide the user id */
-    PMIX_INFO_LOAD(&pnd->info[n], PMIX_USERID, &pnd->uid, PMIX_UINT32);
-    ++n;
+    PMIx_Info_list_add_unique(ilist, PMIX_USERID,
+                              &pnd->uid, PMIX_UINT32, false);
+
     /* and the group id */
-    PMIX_INFO_LOAD(&pnd->info[n], PMIX_GRPID, &pnd->gid, PMIX_UINT32);
-    ++n;
+    PMIx_Info_list_add_unique(ilist, PMIX_GRPID,
+                              &pnd->gid, PMIX_UINT32, false);
+
     /* if we have it, pass along their ID */
     if (!pnd->need_id) {
-        PMIX_INFO_LOAD(&pnd->info[n], PMIX_NSPACE, pnd->proc.nspace, PMIX_STRING);
-        ++n;
-        PMIX_INFO_LOAD(&pnd->info[n], PMIX_RANK, &pnd->proc.rank, PMIX_PROC_RANK);
-        ++n;
+        PMIx_Info_list_add_unique(ilist, PMIX_NSPACE,
+                                  pnd->proc.nspace, PMIX_STRING, true);
+        PMIx_Info_list_add_unique(ilist, PMIX_RANK,
+                                  &pnd->proc.rank, PMIX_PROC_RANK, true);
     }
+    PMIx_Info_list_convert(ilist, &darray);
+    pnd->info = (pmix_info_t*)darray.array;
+    pnd->ninfo = darray.size;
+    PMIx_Info_list_release(ilist);
 
     /* pass it up for processing */
     pmix_host_server.tool_connected(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);

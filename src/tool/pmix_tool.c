@@ -679,19 +679,24 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix: init called");
 
+    /* setup a rank_info object for us */
+    pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
+    if (NULL == pmix_globals.mypeer->info) {
+        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        return PMIX_ERR_NOMEM;
+    }
     if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer)) {
         /* if we are a client, then we need to pickup the
          * rest of the envar-based server assignments */
         pmix_globals.pindex = -1;
-        /* setup a rank_info object for us */
-        pmix_globals.mypeer->info = PMIX_NEW(pmix_rank_info_t);
-        if (NULL == pmix_globals.mypeer->info) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
-            return PMIX_ERR_NOMEM;
-        }
         pmix_globals.mypeer->info->pname.nspace = strdup(pmix_globals.myid.nspace);
         pmix_globals.mypeer->info->pname.rank = pmix_globals.myid.rank;
     }
+    pmix_globals.mypeer->info->realuid = pmix_globals.realuid;
+    pmix_globals.mypeer->info->uid = pmix_globals.uid;
+    pmix_globals.mypeer->info->realgid = pmix_globals.realgid;
+    pmix_globals.mypeer->info->gid = pmix_globals.gid;
+    pmix_globals.mypeer->info->pid = pmix_globals.pid;
 
     /* select our bfrops compat module */
     pmix_globals.mypeer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(NULL);

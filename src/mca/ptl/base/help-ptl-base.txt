@@ -132,3 +132,13 @@ rendezvous file:
   Error:     %s
 
 Please correct the error and try again.
+#
+[mismatch-id]
+The %s ID of the client process does not match the ID registered
+by the host runtime:
+
+  Process:     %u
+  Registered:  %u
+
+This could be a security issue. Please check the situation and
+try again.
