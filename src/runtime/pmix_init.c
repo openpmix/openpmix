@@ -83,7 +83,9 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .myidval = PMIX_VALUE_STATIC_INIT,
     .myrankval = PMIX_VALUE_STATIC_INIT,
     .mypeer = NULL,
+    .realuid = 0,
     .uid = 0,
+    .realgid = 0,
     .gid = 0,
     .hostname = NULL,
     .aliases = NULL,
@@ -393,9 +395,14 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
         pmix_output_set_verbosity(pmix_client_globals.group_output, pmix_client_globals.group_verbose);
     }
 
+    /* get our real id's */
+    pmix_globals.realuid = getuid();
+    pmix_globals.realgid = getgid();
+
     /* get our effective id's */
     pmix_globals.uid = geteuid();
     pmix_globals.gid = getegid();
+
     /* see if debug is requested */
     if (NULL != (evar = getenv("PMIX_DEBUG"))) {
         debug_level = strtol(evar, NULL, 10);
