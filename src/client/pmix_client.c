@@ -546,8 +546,8 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
 
     PMIX_ACQUIRE_THREAD(&pmix_global_lock);
 
-    if (0 < pmix_globals.init_cntr
-        || (NULL != pmix_globals.mypeer && PMIX_PEER_IS_SERVER(pmix_globals.mypeer))) {
+    if (0 < pmix_globals.init_cntr ||
+        (NULL != pmix_globals.mypeer && PMIX_PEER_IS_SERVER(pmix_globals.mypeer))) {
         /* since we have been called before, the nspace and
          * rank should be known. So return them here if
          * requested */

@@ -196,10 +196,11 @@ static void connection_event_handler(int incoming_sd, short flags, void *cbdata)
 static pmix_status_t write_rndz_file(char *filename, char *uri,
                                      bool *dir_created, bool *file_created)
 {
-    FILE *fp;
-    char *dirname;
+    int fd;
+    char *dirname, *tmp;
     time_t mytime;
     int rc;
+    mode_t mode = 0;
 
     dirname = pmix_dirname(filename);
     if (NULL != dirname) {
@@ -224,32 +225,42 @@ static pmix_status_t write_rndz_file(char *filename, char *uri,
         free(dirname);
     }
 
-    fp = fopen(filename, "w");
-    if (NULL == fp) {
+    /* set the file mode */
+    mode = S_IRUSR | S_IWUSR | S_IRGRP;
+    if (pmix_ptl_base.allow_foreign_tools) {
+        mode |= S_IROTH;
+    }
+    fd = open(filename, O_RDWR | O_CREAT | O_EXCL, mode);
+    if (0 > fd) {
+        if (EEXIST == errno) {
+            // the file already exists
+            *file_created = false;
+            return PMIX_ERR_EXISTS;
+        }
         pmix_output(0, "Impossible to open the file %s in write mode\n", filename);
         PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
         *file_created = false;
         return PMIX_ERR_FILE_OPEN_FAILURE;
     }
 
-    /* output the URI */
-    fprintf(fp, "%s\n", uri);
-    /* add the version */
-    fprintf(fp, "%s\n", PMIX_VERSION);
-    /* output our pid */
-    fprintf(fp, "%lu\n", (unsigned long) getpid());
-    /* output our effective uid and gid */
-    fprintf(fp, "%lu:%lu\n", (unsigned long) geteuid(), (unsigned long) getegid());
-    /* output the time */
+    /* output the information */
     mytime = time(NULL);
-    fprintf(fp, "%s\n", ctime(&mytime));
-    fclose(fp);
-    *file_created = true;
-    /* set the file mode */
-    if (0 != chmod(filename, S_IRUSR | S_IWUSR | S_IRGRP)) {
-        PMIX_ERROR_LOG(PMIX_ERR_FILE_OPEN_FAILURE);
-        return PMIX_ERR_FILE_OPEN_FAILURE;
+    pmix_asprintf(&tmp, "%s\n%s\n%lu\n%lu:%lu\n%s\n",
+                  uri, PMIX_VERSION, (unsigned long)pmix_globals.pid,
+                  (unsigned long)pmix_globals.uid,
+                  (unsigned long)pmix_globals.gid,
+                  ctime(&mytime));
+    rc = write(fd, tmp, strlen(tmp));
+    if (0 > rc) {
+        PMIX_ERROR_LOG(PMIX_ERR_FILE_WRITE_FAILURE);
+        *file_created = false;
+        pmix_free(tmp);
+        close(fd);
+        return PMIX_ERR_FILE_WRITE_FAILURE;
     }
+    pmix_free(tmp);
+    close(fd);
+    *file_created = true;
     return PMIX_SUCCESS;
 }
 
@@ -295,40 +306,55 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     for (n = 0; n < ninfo; n++) {
         if (0 == strcmp(info[n].key, PMIX_SERVER_SESSION_SUPPORT)) {
             pmix_ptl_base.session_tool = PMIX_INFO_TRUE(&info[n]);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SYSTEM_SUPPORT)) {
             pmix_ptl_base.system_tool = PMIX_INFO_TRUE(&info[n]);
+
+        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_ALLOW_FOREIGN_TOOLS)) {
+            pmix_ptl_base.allow_foreign_tools = PMIX_INFO_TRUE(&info[n]);
+
         } else if (0 == strcmp(info[n].key, PMIX_SERVER_TOOL_SUPPORT)) {
             pmix_ptl_base.tool_support = PMIX_INFO_TRUE(&info[n]);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_REMOTE_CONNECTIONS)) {
             pmix_ptl_base.remote_connections = PMIX_INFO_TRUE(&info[n]);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_INCLUDE)) {
             if (NULL != pmix_ptl_base.if_include) {
                 free(pmix_ptl_base.if_include);
             }
             pmix_ptl_base.if_include = strdup(info[n].value.data.string);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_EXCLUDE)) {
             if (NULL != pmix_ptl_base.if_exclude) {
                 free(pmix_ptl_base.if_exclude);
             }
             pmix_ptl_base.if_exclude = strdup(info[n].value.data.string);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV4_PORT)) {
             pmix_ptl_base.ipv4_port = info[n].value.data.integer;
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV6_PORT)) {
             pmix_ptl_base.ipv6_port = info[n].value.data.integer;
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV4)) {
             pmix_ptl_base.disable_ipv4_family = PMIX_INFO_TRUE(&info[n]);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV6)) {
             pmix_ptl_base.disable_ipv6_family = PMIX_INFO_TRUE(&info[n]);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
             if (NULL != pmix_ptl_base.report_uri) {
                 free(pmix_ptl_base.report_uri);
             }
             pmix_ptl_base.report_uri = strdup(info[n].value.data.string);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
             if (NULL != pmix_ptl_base.session_tmpdir) {
                 free(pmix_ptl_base.session_tmpdir);
             }
             pmix_ptl_base.session_tmpdir = strdup(info[n].value.data.string);
+
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
             if (NULL != pmix_ptl_base.system_tmpdir) {
                 free(pmix_ptl_base.system_tmpdir);

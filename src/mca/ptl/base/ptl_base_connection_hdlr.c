@@ -102,6 +102,7 @@ static void _cnct_complete(int sd, short args, void *cbdata)
         PMIX_ERROR_LOG(rc);
         goto error;
     }
+
     /* If needed, perform the handshake. The macro will update reply */
     PMIX_PSEC_SERVER_HANDSHAKE_IFNEED(ch->reply, ch->peer);
 
@@ -351,7 +352,8 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     }
 
     /* see if this is a tool connection request */
-    if (PMIX_SIMPLE_CLIENT != pnd->flag) {
+    if (PMIX_SIMPLE_CLIENT != pnd->flag &&
+        PMIX_SINGLETON_CLIENT != pnd->flag) {
         /* nope, it's for a tool, so process it
          * separately - it is a 2-step procedure */
         rc = process_tool_request(pnd, blob, len);
@@ -411,6 +413,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     if (NULL == peer) {
         goto error;
     }
+
     /* Assign the upper half of the tag space for sendrecvs */
     peer->dyn_tags_start    = PMIX_PTL_TAG_DYNAMIC + (UINT32_MAX - PMIX_PTL_TAG_DYNAMIC)/2 + 1;
     peer->dyn_tags_end      = UINT32_MAX;
@@ -471,7 +474,6 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         PMIX_INFO_DESTRUCT(&ginfo);
         nptr->version_stored = true;
     }
-
 
     ilist = PMIx_Info_list_start();
     // if a blob was provided, then unpack it
@@ -574,6 +576,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
             PMIX_RELEASE(ch);
             goto error;
         }
+
     } else if (NULL != pmix_host_server.client_connected) {
         PMIX_LOAD_PROCID(&proc, peer->info->pname.nspace, peer->info->pname.rank);
         rc = pmix_host_server.client_connected(&proc, peer->info->server_object, _connect_complete, ch);
@@ -633,8 +636,8 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 
     /* send this status so they don't hang */
     u32 = ntohl(cd->status);
-    if (PMIX_SUCCESS
-        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
+    rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -647,33 +650,33 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* if we got an identifier, send it back to the tool */
     if (pnd->need_id) {
         /* start with the nspace */
-        if (PMIX_SUCCESS
-            != (rc = pmix_ptl_base_send_blocking(pnd->sd, cd->proc.nspace, PMIX_MAX_NSLEN + 1))) {
+        rc = pmix_ptl_base_send_blocking(pnd->sd, cd->proc.nspace, PMIX_MAX_NSLEN + 1);
+        if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto error;
         }
 
         /* now the rank, suitably converted */
         u32 = ntohl(cd->proc.rank);
-        if (PMIX_SUCCESS
-            != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
+        rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+        if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             goto error;
         }
     }
 
     /* send my nspace back to the tool */
-    if (PMIX_SUCCESS
-        != (rc = pmix_ptl_base_send_blocking(pnd->sd, pmix_globals.myid.nspace,
-                                             PMIX_MAX_NSLEN + 1))) {
+    rc = pmix_ptl_base_send_blocking(pnd->sd, pmix_globals.myid.nspace,
+                                             PMIX_MAX_NSLEN + 1);
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
 
     /* send my rank back to the tool */
     u32 = ntohl(pmix_globals.myid.rank);
-    if (PMIX_SUCCESS
-        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
+    rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+    if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         goto error;
     }
@@ -840,7 +843,7 @@ static void cnct_cbfunc(pmix_status_t status, pmix_proc_t *proc, void *cbdata)
 static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
                                           char *mg, size_t cnt)
 {
-    pmix_peer_t *peer;
+    pmix_peer_t *peer, *p2;
     pmix_namespace_t *nptr, *tmp;
     pmix_rank_info_t *info;
     bool found;
@@ -850,6 +853,13 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     void *ilist;
     pmix_info_t *iptr;
     pmix_data_array_t darray;
+
+    if (!pmix_ptl_base.allow_foreign_tools) {
+        if (pnd->uid != pmix_globals.uid) {
+            // reject this connection
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+    }
 
     peer = PMIX_NEW(pmix_peer_t);
     if (NULL == peer) {
@@ -861,21 +871,21 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     peer->dyn_tags_end      = UINT32_MAX;
     peer->dyn_tags_current  = peer->dyn_tags_start;
     pnd->peer = peer;
+
+    /* see if we know this nspace - i.e., was it registered or did
+     * another tool within it already connect */
+    nptr = NULL;
+    PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
+        if (0 == strcmp(tmp->nspace, pnd->proc.nspace)) {
+            nptr = tmp;
+            break;
+        }
+    }
+
     /* if this is a tool we launched, then the host may
      * have already registered it as a client - so check
      * to see if we already have a peer for it */
     if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
-        /* registration only adds the nspace and a rank in that
-         * nspace - it doesn't add the peer object to our array
-         * of local clients. So let's start by searching for
-         * the nspace object */
-        nptr = NULL;
-        PMIX_LIST_FOREACH (tmp, &pmix_globals.nspaces, pmix_namespace_t) {
-            if (0 == strcmp(tmp->nspace, pnd->proc.nspace)) {
-                nptr = tmp;
-                break;
-            }
-        }
         if (NULL == nptr) {
             /* it is possible that this is a tool inside of
              * a job-script as part of a multi-spawn operation.
@@ -889,6 +899,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             nptr = PMIX_NEW(pmix_namespace_t);
             if (NULL == nptr) {
                 PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
+                PMIX_RELEASE(peer);
                 return PMIX_ERR_NOMEM;
             }
             nptr->nspace = strdup(pnd->proc.nspace);
@@ -918,18 +929,62 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         PMIX_RETAIN(info);
         peer->info = info;
         PMIX_RETAIN(nptr);
+
+    } else if (NULL != nptr) {
+        /* this is an non-client tool/launcher that already
+         * has a known nspace that wasn't defined by register_client.
+         * We must therefore already have a rank for it that connected
+         * (so we would know the nspace), and the uid/gid's of this proc
+         * must match those already registered */
+        info = (pmix_rank_info_t*)pmix_list_get_first(&nptr->ranks);
+        if (NULL == info) {
+            /* this cannot happen - the nspace can only exist because
+             * a prior instance of the tool already connected */
+            PMIX_RELEASE(peer);
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        if (-1 == info->peerid) {
+            /* this proc has not connected - this cannot happen
+             * for a tool as we otherwise would not know of it */
+            PMIX_RELEASE(peer);
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        p2 = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
+        if (NULL == p2) {
+            // that's an error
+            PMIX_RELEASE(peer);
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            return PMIX_ERR_NOT_FOUND;
+        }
+        if (!PMIX_PEER_IS_TOOL(p2)) {
+            /* cannot happen - the entire nspace must be a tool if this proc claims
+             * to be a member of that nspace and is a tool */
+            PMIX_RELEASE(peer);
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+        /* all members of an nspace must be from the same uid and gid */
+        if (info->uid != pnd->uid ||
+            info->gid != pnd->gid) {
+            PMIX_RELEASE(peer);
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+            return PMIX_ERR_NOT_SUPPORTED;
+        }
+
     } else {
         nptr = PMIX_NEW(pmix_namespace_t);
         if (NULL == nptr) {
             PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             PMIX_RELEASE(peer);
-            PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
             return PMIX_ERR_NOMEM;
         }
         /* save the version */
         nptr->version.major = pnd->proc_type.major;
         nptr->version.minor = pnd->proc_type.minor;
         nptr->version.release = pnd->proc_type.release;
+        /* we will add the info record later */
     }
     peer->nptr = nptr;
     /* select their bfrops compat module so we can unpack
@@ -1011,10 +1066,16 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         PMIx_Info_list_add_unique(ilist, PMIX_RANK,
                                   &pnd->proc.rank, PMIX_PROC_RANK, true);
     }
-    PMIx_Info_list_convert(ilist, &darray);
+    rc = PMIx_Info_list_convert(ilist, &darray);
+    PMIx_Info_list_release(ilist);
+    if (PMIX_SUCCESS  != rc) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_RELEASE(peer);
+        return rc;
+    }
+
     pnd->info = (pmix_info_t*)darray.array;
     pnd->ninfo = darray.size;
-    PMIx_Info_list_release(ilist);
 
     /* pass it up for processing */
     pmix_host_server.tool_connected(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
