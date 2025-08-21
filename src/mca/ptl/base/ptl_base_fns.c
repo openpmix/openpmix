@@ -287,8 +287,13 @@ pmix_status_t pmix_ptl_base_parse_uri_file(char *filename,
             /* otherwise, mark it as unreachable */
         }
         if (!optional) {
-            pmix_show_help("help-ptl-base.txt", "file-not-found", true,
-                           filename, "could not be found");
+            if (EACCES == errno) {
+                pmix_show_help("help-ptl-base.txt", "file-not-found", true,
+                               filename, "access denied");
+            } else {
+                pmix_show_help("help-ptl-base.txt", "file-not-found", true,
+                               filename, "could not be found");
+            }
         }
         return PMIX_ERR_UNREACH;
     }
@@ -297,8 +302,13 @@ process:
     fp = fopen(filename, "r");
     if (NULL == fp) {
         if (!optional) {
-            pmix_show_help("help-ptl-base.txt", "file-not-found", true,
-                           filename, "could not be opened");
+            if (EACCES == errno) {
+                pmix_show_help("help-ptl-base.txt", "file-not-found", true,
+                               filename, "access denied");
+            } else {
+                pmix_show_help("help-ptl-base.txt", "file-not-found", true,
+                               filename, "could not be found");
+            }
         }
         return PMIX_ERR_UNREACH;
     }
@@ -561,9 +571,9 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
     }
     reply = ntohl(u32);
 
-    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) {
+    if ((PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
+         PMIX_PEER_IS_SINGLETON(pmix_globals.mypeer)) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         rc = pmix_ptl_base_client_handshake(peer, reply);
     } else { // we are a tool
         rc = pmix_ptl_base_tool_handshake(peer, reply);

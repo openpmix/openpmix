@@ -259,6 +259,7 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_rank_info_t,
 
 static void pcon(pmix_peer_t *p)
 {
+    p->nptr = NULL;
     p->proc_type.type = PMIX_PROC_UNDEF;
     p->proc_type.major = PMIX_MAJOR_WILDCARD;
     p->proc_type.minor = PMIX_MINOR_WILDCARD;
@@ -286,6 +287,9 @@ static void pcon(pmix_peer_t *p)
 
 static void pdes(pmix_peer_t *p)
 {
+    if (NULL != p->nptr) {
+        PMIX_RELEASE(p->nptr);
+    }
     if (0 <= p->sd) {
         CLOSE_THE_SOCKET(p->sd);
     }
@@ -313,9 +317,6 @@ static void pdes(pmix_peer_t *p)
     PMIX_LIST_DESTRUCT(&p->epilog.cleanup_dirs);
     PMIX_LIST_DESTRUCT(&p->epilog.cleanup_files);
     PMIX_LIST_DESTRUCT(&p->epilog.ignores);
-    if (NULL != p->nptr) {
-        PMIX_RELEASE(p->nptr);
-    }
 }
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_peer_t,
                                 pmix_object_t,
