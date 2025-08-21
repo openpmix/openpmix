@@ -589,27 +589,36 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                     free(pmix_server_globals.tmpdir);
                 }
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
                 if (NULL != pmix_server_globals.system_tmpdir) {
                     free(pmix_server_globals.system_tmpdir);
                 }
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
                 nspace = info[n].value.data.string;
                 nspace_given = true;
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_RANK)) {
                 rank = info[n].value.data.rank;
                 rank_given = true;
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SHARE_TOPOLOGY)) {
                 share_topo = true;
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_LOCAL_OUTPUT)) {
                 outputio = PMIX_INFO_TRUE(&info[n]);
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SINGLETON)) {
                 singleton = info[n].value.data.string;
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_ALLOC_MAU)) {
                 mau = info[n].value.data.darray;
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 connect_optional = PMIX_INFO_TRUE(&info[n]);
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM)) {
                 if (PMIX_INFO_TRUE(&info[n])) {
                     connect_directed = true;

@@ -159,12 +159,20 @@ typedef uint32_t pmix_rank_t;
                                                                     //        functions (e.g., capturing signals) that would
                                                                     //        otherwise interfere with the host
 #define PMIX_SERVER_TOOL_SUPPORT            "pmix.srvr.tool"        // (bool) The host RM wants to declare itself as willing
-                                                                    //        to accept tool connection requests
+                                                                    //        to accept tool connection requests - rendezvous
+                                                                    //        files will be readable only by the host's user ID
+#define PMIX_SERVER_ALLOW_FOREIGN_TOOLS     "pmix.srvr.ftools"      // (bool) Mark the tool rendezvous files as readable
+                                                                    //        by all users and allow tools from user IDs other
+                                                                    //        than that of the server to connect. Note that the
+                                                                    //        host has ultimate authority over such connections,
+                                                                    //        and can restrict execution of tool requests as per
+                                                                    //        host policy (e.g., limit foreign tools to "queries")
 #define PMIX_SERVER_REMOTE_CONNECTIONS      "pmix.srvr.remote"      // (bool) Allow connections from remote tools (do not use
                                                                     //        loopback device)
 #define PMIX_SERVER_SYSTEM_SUPPORT          "pmix.srvr.sys"         // (bool) The host RM wants to declare itself as being
                                                                     //        the local system server for PMIx connection
-                                                                    //        requests
+                                                                    //        requests - rendezvous files will be readable
+                                                                    //        only by the host's user ID
 #define PMIX_SERVER_SESSION_SUPPORT         "pmix.srvr.sess"        // (bool) The host RM wants to declare itself as being
                                                                     //        the local session server for PMIx connection
                                                                     //        requests

@@ -97,6 +97,7 @@ pmix_ptl_base_t pmix_ptl_base = {
     .created_urifile = false,
     .remote_connections = false,
     .system_tool = false,
+    .allow_foreign_tools = false,
     .session_tool = false,
     .tool_support = false,
     .if_include = NULL,
