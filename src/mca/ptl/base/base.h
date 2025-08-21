@@ -93,6 +93,7 @@ struct pmix_ptl_base_t {
     bool created_urifile;
     bool remote_connections;
     bool system_tool;
+    bool allow_foreign_tools;
     bool session_tool;
     bool tool_support;
     char *if_include;

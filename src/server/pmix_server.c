@@ -574,20 +574,27 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
                 }
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
                 pmix_server_globals.tmpdir = strdup(info[n].value.data.string);
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
                 pmix_server_globals.system_tmpdir = strdup(info[n].value.data.string);
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_NSPACE)) {
                 nspace = info[n].value.data.string;
                 nspace_given = true;
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_RANK)) {
                 rank = info[n].value.data.rank;
                 rank_given = true;
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_SHARE_TOPOLOGY)) {
                 share_topo = true;
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_IOF_LOCAL_OUTPUT)) {
                 outputio = PMIX_INFO_TRUE(&info[n]);
+
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_SINGLETON)) {
                 singleton = info[n].value.data.string;
+
             }
         }
     }
