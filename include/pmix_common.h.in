@@ -1637,7 +1637,7 @@ typedef int pmix_status_t;
 #define PMIX_MONITOR_HEARTBEAT_ALERT                -109
 #define PMIX_MONITOR_FILE_ALERT                     -110
 #define PMIX_PROC_TERMINATED                        -111
-#define PMIX_MONITOR_RESUSAGE_UPDATE                -112
+#define PMIX_MONITOR_RESUSAGE_UPDATE                -114
 
 /* operational */
 #define PMIX_ERR_EVENT_REGISTRATION                 -144

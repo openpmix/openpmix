@@ -204,7 +204,11 @@ static pmix_status_t write_rndz_file(char *filename, char *uri,
 
     dirname = pmix_dirname(filename);
     if (NULL != dirname) {
-        rc = pmix_os_dirpath_create(dirname, 0755);
+        mode = S_IRWXU;
+        if (pmix_ptl_base.allow_foreign_tools) {
+            mode |= S_IXGRP | S_IRGRP | S_IXOTH | S_IROTH;
+        }
+        rc = pmix_os_dirpath_create(dirname, mode);
         if (PMIX_ERR_SILENT == rc) {
             // error has already been reported
             return rc;
@@ -226,9 +230,9 @@ static pmix_status_t write_rndz_file(char *filename, char *uri,
     }
 
     /* set the file mode */
-    mode = S_IRUSR | S_IWUSR | S_IRGRP;
+    mode = S_IRUSR | S_IWUSR ;
     if (pmix_ptl_base.allow_foreign_tools) {
-        mode |= S_IROTH;
+        mode |= S_IRGRP | S_IROTH;
     }
     fd = open(filename, O_RDWR | O_CREAT | O_EXCL, mode);
     if (0 > fd) {
