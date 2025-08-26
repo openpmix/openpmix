@@ -361,6 +361,7 @@ int pmix_bitmap_num_set_bits(pmix_bitmap_t *bm, int len)
 {
     int i, cnt = 0;
     uint64_t val;
+    int i_len = len / SIZE_OF_BASE_TYPE + (len % SIZE_OF_BASE_TYPE == 0 ? 0 : 1);
 
 #if PMIX_ENABLE_DEBUG
     if ((len < 0) || NULL == bm || (len >= (bm->array_size * SIZE_OF_BASE_TYPE))) {
@@ -368,9 +369,15 @@ int pmix_bitmap_num_set_bits(pmix_bitmap_t *bm, int len)
     }
 #endif
 
-    for (i = 0; i < len; ++i) {
+    for (i = 0; i < i_len; ++i) {
         if (0 == (val = bm->bitmap[i]))
             continue;
+        if (i == i_len - 1 && len % SIZE_OF_BASE_TYPE != 0) {
+            /* mask out the bits above len */
+            val = val & ((1 << (len - i * SIZE_OF_BASE_TYPE)) - 1);
+            if (0 == val)
+                continue;
+        }
         /*  Peter Wegner in CACM 3 (1960), 322. This method goes through as many
          *  iterations as there are set bits. */
         for (; val; cnt++) {
