@@ -129,55 +129,65 @@ pmix_server_module_t pmix_host_server = {
     .session_control = NULL
 };
 
+static void abcbfn(pmix_status_t status, void *cbdata)
+{
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t*)cbdata;
+
+    if (NULL != cd->opcbfunc) {
+        cd->opcbfunc(status, cd->cbdata);
+    }
+    PMIX_RELEASE(cd);
+}
+
 pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
                                 pmix_op_cbfunc_t cbfunc, void *cbdata)
 {
+    pmix_setup_caddy_t *cd;
     int32_t cnt;
     pmix_status_t rc;
-    int status;
-    char *msg;
-    size_t nprocs;
-    pmix_proc_t *procs = NULL;
     pmix_proc_t proc;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd ABORT");
 
+    cd = PMIX_NEW(pmix_setup_caddy_t);
+    cd->opcbfunc = cbfunc;
+    cd->cbdata = cbdata;
+
     /* unpack the status */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &status, &cnt, PMIX_STATUS);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->status, &cnt, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
         return rc;
     }
     /* unpack the message */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &msg, &cnt, PMIX_STRING);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nspace, &cnt, PMIX_STRING);
     if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
         return rc;
     }
     /* unpack the number of procs */
     cnt = 1;
-    PMIX_BFROPS_UNPACK(rc, peer, buf, &nprocs, &cnt, PMIX_SIZE);
+    PMIX_BFROPS_UNPACK(rc, peer, buf, &cd->nprocs, &cnt, PMIX_SIZE);
     if (PMIX_SUCCESS != rc) {
+        PMIX_RELEASE(cd);
         return rc;
     }
 
     /* unpack any provided procs - these are the procs the caller
      * wants aborted */
-    if (0 < nprocs) {
-        PMIX_PROC_CREATE(procs, nprocs);
-        if (NULL == procs) {
-            if (NULL != msg) {
-                free(msg);
-            }
+    if (0 < cd->nprocs) {
+        PMIX_PROC_CREATE(cd->procs, cd->nprocs);
+        if (NULL == cd->procs) {
+            PMIX_RELEASE(cd);
             return PMIX_ERR_NOMEM;
         }
-        cnt = nprocs;
-        PMIX_BFROPS_UNPACK(rc, peer, buf, procs, &cnt, PMIX_PROC);
+        cnt = cd->nprocs;
+        PMIX_BFROPS_UNPACK(rc, peer, buf, cd->procs, &cnt, PMIX_PROC);
         if (PMIX_SUCCESS != rc) {
-            if (NULL != msg) {
-                free(msg);
-            }
+            PMIX_RELEASE(cd);
             return rc;
         }
     }
@@ -186,18 +196,15 @@ pmix_status_t pmix_server_abort(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (NULL != pmix_host_server.abort) {
         pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
         proc.rank = peer->info->pname.rank;
-        rc = pmix_host_server.abort(&proc, peer->info->server_object, status,
-                                    msg, procs, nprocs,
-                                    cbfunc, cbdata);
+        rc = pmix_host_server.abort(&proc, peer->info->server_object, cd->status,
+                                    cd->nspace, cd->procs, cd->nprocs,
+                                    abcbfn, cd);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_RELEASE(cd);
+        }
     } else {
+        PMIX_RELEASE(cd);
         rc = PMIX_ERR_NOT_SUPPORTED;
-    }
-    PMIX_PROC_FREE(procs, nprocs);
-
-    /* the client passed this msg to us so we could give
-     * it to the host server - we are done with it now */
-    if (NULL != msg) {
-        free(msg);
     }
 
     return rc;
