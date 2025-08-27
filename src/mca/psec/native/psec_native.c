@@ -3,7 +3,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -250,14 +250,16 @@ static pmix_status_t validate_cred(struct pmix_peer_t *peer, const pmix_info_t d
     /* check uid */
     if (euid != pr->info->uid) {
         pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                            "psec: socket cred contains invalid uid %u", euid);
+                            "psec: socket cred contains invalid uid %u - required uid %u",
+                            euid, pr->info->uid);
         return PMIX_ERR_INVALID_CRED;
     }
 
     /* check gid */
     if (egid != pr->info->gid) {
         pmix_output_verbose(2, pmix_psec_base_framework.framework_output,
-                            "psec: socket cred contains invalid gid %u", egid);
+                            "psec: socket cred contains invalid gid %u - required gid %u",
+                            egid, pr->info->gid);
         return PMIX_ERR_INVALID_CRED;
     }
 

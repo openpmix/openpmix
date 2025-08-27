@@ -618,9 +618,10 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cd->cbdata;
     pmix_namespace_t *nptr;
     pmix_rank_info_t *info;
-    pmix_peer_t *peer;
+    pmix_peer_t *peer = NULL, *pr2;
     pmix_status_t rc, reply;
     uint32_t u32;
+    int n;
     pmix_info_t ginfo;
     pmix_byte_object_t cred;
     pmix_iof_req_t *req = NULL;
@@ -681,12 +682,41 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         goto error;
     }
 
+    /* shortcuts */
+    peer = (pmix_peer_t *) pnd->peer;
+    nptr = peer->nptr;
+
+    /* if this tool is a client, then check against our list of
+     * local clients to verify they are the same */
+    if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
+        for (n=0; n < pmix_server_globals.clients.size; n++) {
+            pr2 = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, n);
+            if (NULL == pr2) {
+                continue;
+            }
+            if (PMIx_Check_nspace(pr2->info->pname.nspace, cd->proc.nspace) &&
+                pr2->info->pname.rank == cd->proc.rank) {
+                // this matches the existing client record - check uid/gid
+                if (pr2->info->uid != pnd->uid) {
+                    reply = PMIX_ERR_INVALID_CRED;
+                    u32 = htonl(reply);
+                    rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                    }
+                    goto error;
+                }
+            }
+        }
+    }
+
     /* if this tool wasn't initially registered as a client,
      * then add some required structures */
     if (PMIX_TOOL_CLIENT != pnd->flag && PMIX_LAUNCHER_CLIENT != pnd->flag) {
-        PMIX_RETAIN(nptr);
+        if (NULL != nptr->nspace) {
+            free(nptr->nspace);
+        }
         nptr->nspace = strdup(cd->proc.nspace);
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
         info = PMIX_NEW(pmix_rank_info_t);
         info->pname.nspace = strdup(nptr->nspace);
         info->pname.rank = cd->proc.rank;
@@ -695,6 +725,10 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         pmix_list_append(&nptr->ranks, &info->super);
         PMIX_RETAIN(info);
         peer->info = info;
+        pnd->rinfo_created = true;
+    } else if (pnd->nspace_created) {
+        // must add it to the global list
+        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
     }
 
     /* mark the peer proc type */
@@ -752,11 +786,16 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     cred.bytes = pnd->cred;
     cred.size = pnd->len;
     PMIX_PSEC_VALIDATE_CONNECTION(reply, peer, NULL, 0, NULL, NULL, &cred);
+    if (PMIX_SUCCESS != reply) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "validation of tool credentials failed: %s",
+                            PMIx_Error_string(reply));
+    }
+
     /* communicate the result to the other side */
     u32 = htonl(reply);
-    if (PMIX_SUCCESS
-        != (rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t)))) {
-        PMIX_ERROR_LOG(rc);
+    rc = pmix_ptl_base_send_blocking(pnd->sd, (char *) &u32, sizeof(uint32_t));
+    if (PMIX_SUCCESS != rc || PMIX_SUCCESS != reply) {
         goto error;
     }
 
@@ -766,7 +805,8 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     /* If verification wasn't successful - stop here */
     if (PMIX_SUCCESS != reply) {
         pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "validation of tool credentials failed: %s", PMIx_Error_string(rc));
+                            "security handshake for tool failed: %s",
+                            PMIx_Error_string(reply));
         goto error;
     }
 
@@ -797,15 +837,23 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 
 error:
     CLOSE_THE_SOCKET(pnd->sd);
-    PMIX_RELEASE(pnd);
-    PMIX_RELEASE(peer);
-    pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
-    PMIX_RELEASE(nptr); // will release the info object
+    if (NULL != peer->info && pnd->rinfo_created) {
+        pmix_list_remove_item(&peer->nptr->ranks, &peer->info->super);
+        // the info object will be released along with the peer
+    }
+    if (NULL != peer->nptr && pnd->nspace_created) {
+        pmix_list_remove_item(&pmix_globals.nspaces, &peer->nptr->super);
+        // the nptr will be released along with the peer
+    }
+    if (NULL != peer) {
+        PMIX_RELEASE(peer);
+    }
     PMIX_RELEASE(cd);
     if (NULL != req) {
         pmix_pointer_array_set_item(&pmix_globals.iof_requests, req->local_id, NULL);
         PMIX_RELEASE(req);
     }
+    PMIX_RELEASE(pnd);
 }
 
 /* receive a callback from the host RM with an nspace
@@ -872,8 +920,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
      * have already registered it as a client - so check
      * to see if we already have a peer for it */
     if (PMIX_TOOL_CLIENT == pnd->flag || PMIX_LAUNCHER_CLIENT == pnd->flag) {
-        if (NULL == nptr) {
-            /* it is possible that this is a tool inside of
+       if (NULL == nptr) {
+           /* it is possible that this is a tool inside of
              * a job-script as part of a multi-spawn operation.
              * Since each tool invocation may have finalized and
              * terminated, the tool will appear to "terminate", thus
@@ -893,6 +941,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             nptr->version.major = pnd->proc_type.major;
             nptr->version.minor = pnd->proc_type.minor;
             nptr->version.release = pnd->proc_type.release;
+            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+            pnd->nspace_created = true;
         }
         /* now look for the rank */
         info = NULL;
@@ -903,14 +953,25 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
                 break;
             }
         }
-        if (!found) {
-            /* see above note about not finding nspace */
+        if (found) {
+            /* check that the uid/gid of the connecting tool
+             * matches the expected values */
+            if (info->uid != pnd->uid ||
+                info->gid != pnd->gid) {
+                PMIX_RELEASE(peer);
+                PMIX_ERROR_LOG(PMIX_ERR_INVALID_CRED);
+                return PMIX_ERR_INVALID_CRED;
+            }
+
+        } else {
+           /* see above note about not finding nspace */
             info = PMIX_NEW(pmix_rank_info_t);
             info->pname.nspace = strdup(pnd->proc.nspace);
             info->pname.rank = pnd->proc.rank;
             info->uid = pnd->uid;
             info->gid = pnd->gid;
             pmix_list_append(&nptr->ranks, &info->super);
+            pnd->rinfo_created = true;
         }
         PMIX_RETAIN(info);
         peer->info = info;
@@ -970,19 +1031,25 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
         nptr->version.major = pnd->proc_type.major;
         nptr->version.minor = pnd->proc_type.minor;
         nptr->version.release = pnd->proc_type.release;
-        /* we will add the info record later */
+        pnd->nspace_created = true;
+        /* must add the nspace to the global list after we return
+         * from the host's upcall since they can/will assign the
+         * tool with a namespace */
+        PMIX_RETAIN(nptr);
     }
+
     peer->nptr = nptr;
     /* select their bfrops compat module so we can unpack
      * any provided pmix_info_t structs */
     peer->nptr->compat.bfrops = pmix_bfrops_base_assign_module(pnd->bfrops);
     if (NULL == peer->nptr->compat.bfrops) {
-        PMIX_RELEASE(peer);
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_AVAILABLE);
-        return PMIX_ERR_NOT_AVAILABLE;
+        rc = PMIX_ERR_NOT_AVAILABLE;
+        PMIX_ERROR_LOG(rc);
+        goto cleanup;
     }
     /* set the buffer type */
     peer->nptr->compat.type = pnd->buffer_type;
+
     n = 0;
     /* if info structs need to be passed along, then unpack them */
     ilist = PMIx_Info_list_start();
@@ -1021,8 +1088,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             /* we need someone to provide the tool with an
              * identifier and they aren't available */
             /* send an error reply to the client */
-            PMIX_RELEASE(peer);
-            return PMIX_ERR_NOT_SUPPORTED;
+            rc = PMIX_ERR_NOT_SUPPORTED;
+            goto cleanup;
         } else {
             /* just process it locally */
             cnct_cbfunc(PMIX_SUCCESS, &pnd->proc, (void *) pnd);
@@ -1056,8 +1123,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     PMIx_Info_list_release(ilist);
     if (PMIX_SUCCESS  != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(peer);
-        return rc;
+        goto cleanup;
     }
 
     pnd->info = (pmix_info_t*)darray.array;
@@ -1066,6 +1132,25 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     /* pass it up for processing */
     pmix_host_server.tool_connected(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
     return PMIX_SUCCESS;
+
+cleanup:
+    if (pnd->rinfo_created) {
+        pmix_list_remove_item(&nptr->ranks, &peer->info->super);
+        PMIX_RELEASE(pnd->info);
+    } else {
+        peer->info = NULL;
+    }
+
+    if (pnd->nspace_created) {
+        pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
+        PMIX_RELEASE(nptr);
+    } else {
+        peer->nptr = NULL;  // protect it
+    }
+
+    PMIX_RELEASE(peer);
+    return rc;
+
 }
 
 static void _check_cached_events(pmix_peer_t *peer)
