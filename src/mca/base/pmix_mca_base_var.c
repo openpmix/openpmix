@@ -52,6 +52,10 @@
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
+#ifndef MAXPATHLEN /* Hurd */
+#define MAXPATHLEN 1024
+#endif
+
 /*
  * global variables
  */
