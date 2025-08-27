@@ -88,6 +88,10 @@
 #include "src/common/pmix_pfexec.h"
 #include "src/server/pmix_server_ops.h"
 
+#ifndef MAXPATHLEN /* Hurd */
+#define MAXPATHLEN 1024
+#endif
+
 static pmix_status_t setup_prefork(pmix_pfexec_child_t *child);
 static pmix_status_t register_nspace(char *nspace, pmix_setup_caddy_t *fcd);
 static void wait_signal_callback(int fd, short event, void *arg);
