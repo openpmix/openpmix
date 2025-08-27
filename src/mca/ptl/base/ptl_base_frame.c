@@ -523,6 +523,8 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_ptl_sr_t,
 static void pccon(pmix_pending_connection_t *p)
 {
     p->need_id = false;
+    p->nspace_created = false;
+    p->rinfo_created = false;
     PMIX_LOAD_PROCID(&p->proc, NULL, PMIX_RANK_UNDEF);
     p->info = NULL;
     p->ninfo = 0;

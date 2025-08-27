@@ -587,7 +587,7 @@ static pmix_status_t recv_connect_ack(pmix_peer_t *peer)
         }
     }
 
-    return PMIX_SUCCESS;
+    return rc;
 }
 
 pmix_status_t pmix_ptl_base_make_connection(pmix_peer_t *peer, char *suri,
