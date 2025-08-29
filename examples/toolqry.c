@@ -54,10 +54,10 @@ int main(int argc, char **argv)
 	char *toolname;
     pmix_query_t *query;
     myquery_data_t mydata;
-    size_t nq, ninfo;
+    size_t nq, ninfo, sz, m;
     pmix_data_array_t *darray, *dptr;
     int i;
-    bool system_server;
+    bool system_server = false;
 
     // check for directives
     for (i=1; i < argc; i++) {
@@ -115,22 +115,38 @@ int main(int argc, char **argv)
                 goto done;
             } else {
                 ip = (pmix_info_t *) darray->array;
-                if (NULL == ip) {
+                sz = darray->size;
+                if (NULL == ip || 0 == sz) {
                     fprintf(stderr, "Error\n");
                     rc = PMIX_ERROR;
                     goto done;
                 } else {
-                    dptr = ip[0].value.data.darray;
-                    if (NULL == dptr || 0 == dptr->size || NULL == dptr->array) {
-                        fprintf(stderr, "Error in array %s\n",
-                                (NULL == dptr) ? "NULL" : "NON-NULL");
-                        rc = PMIX_ERROR;
-                        goto done;
+                    // find our namespace
+                    for (m=0; m < sz; m++) {
+                        dptr = ip[m].value.data.darray;
+                        if (NULL == dptr || NULL == dptr->array || 0 == dptr->size) {
+                            fprintf(stderr, "Error\n");
+                            rc = PMIX_ERROR;
+                            goto done;
+                        }
+                        iptr = (pmix_info_t *) dptr->array;
+                        sz = dptr->size;
+                        // looking for nspaces with an "@N" at the end
+                        kptr = strrchr(iptr[0].value.data.string, '@');
+                        if (NULL == kptr) {
+                            continue;
+                        }
+                        ++kptr;
+                        // ignore the "0" namespace as that is the DVM
+                        i = strtol(kptr, NULL, 10);
+                        if (0 == i) {
+                            continue;
+                        }
+                        // take this one
+                        PMIX_LOAD_PROCID(&proc, iptr[0].value.data.string, 0);
+                        fprintf(stderr, "Received nspace %s\n", proc.nspace);
+                        break;
                     }
-                    iptr = (pmix_info_t *) dptr->array;
-                    // we just need the first result
-                    PMIX_LOAD_PROCID(&proc, iptr[0].value.data.string, 0);
-                    fprintf(stderr, "Received nspace %s\n", proc.nspace);
                 }
             }
         } else {
@@ -146,7 +162,7 @@ int main(int argc, char **argv)
     DEBUG_DESTRUCT_MYQUERY(&mydata);
 
     rc = PMIx_Get(&proc, PMIX_APPNUM, NULL, 0, &val);
-    fprintf(stderr, "APPNUM RETURN: %s\n\n\n", PMIx_Error_string(rc));
+    fprintf(stderr, "APPNUM RETURN: %s\n", PMIx_Error_string(rc));
     if (PMIX_SUCCESS == rc) {
     	fprintf(stderr, "\t%s\n", PMIx_Value_string(val));
     }
