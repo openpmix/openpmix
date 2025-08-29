@@ -809,6 +809,11 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         goto error;
     }
 
+pmix_namespace_t *foo;
+PMIX_LIST_FOREACH(foo, &pmix_globals.nspaces, pmix_namespace_t) {
+    pmix_output(0, "NSPACE %s", foo->nspace);
+}
+pmix_output(0, "\n\n");
     /* set the socket non-blocking for all further operations */
     pmix_ptl_base_set_nonblocking(pnd->sd);
 
