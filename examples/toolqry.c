@@ -130,7 +130,6 @@ int main(int argc, char **argv)
                             goto done;
                         }
                         iptr = (pmix_info_t *) dptr->array;
-                        sz = dptr->size;
                         // looking for nspaces with an "@N" at the end
                         kptr = strrchr(iptr[0].value.data.string, '@');
                         if (NULL == kptr) {
