@@ -1043,8 +1043,11 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
         }
 
         /* start listening for connections */
-        if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
-            pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
+        rc = pmix_ptl_base_start_listening(info, ninfo);
+        if (PMIX_SUCCESS != rc) {
+            if (PMIX_ERR_SILENT != rc) {
+                pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
+            }
             return PMIX_ERR_INIT;
         }
     }

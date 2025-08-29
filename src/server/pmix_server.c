@@ -900,8 +900,11 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
     }
 
     /* start listening for connections */
-    if (PMIX_SUCCESS != pmix_ptl_base_start_listening(info, ninfo)) {
-        pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
+    rc = pmix_ptl_base_start_listening(info, ninfo);
+    if (PMIX_SUCCESS != rc) {
+        if (PMIX_ERR_SILENT != rc) {
+            pmix_show_help("help-pmix-server.txt", "listener-thread-start", true);
+        }
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         PMIx_server_finalize();
         return PMIX_ERR_INIT;
