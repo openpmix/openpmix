@@ -92,6 +92,7 @@ struct pmix_ptl_base_t {
     bool created_pid_filename;
     bool created_urifile;
     bool remote_connections;
+    bool connections_specified;
     bool system_tool;
     bool allow_foreign_tools;
     bool session_tool;

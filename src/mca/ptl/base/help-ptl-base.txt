@@ -142,3 +142,36 @@ by the host runtime:
 
 This could be a security issue. Please check the situation and
 try again.
+#
+[no-remote-interfaces]
+You requested support for remote tool connections, but no non-loopback
+interfaces were found after applying any include or exclude directives:
+
+  Include:    %s
+  Exclude:    %s
+  Available:  %s
+
+Please adjust your include or exclude to allow selection of a
+non-loopback interface.
+#
+[no-loopback-interfaces]
+You requested support for only local tool connections, but no loopback
+interfaces were found after applying any include or exclude directives:
+
+  Include:    %s
+  Exclude:    %s
+  Available:  %s
+
+Please adjust your include or exclude to allow selection of a
+loopback interface.
+#
+[no-available-interfaces]
+You requested support for tool connections, but no available
+interfaces were found after applying any include or exclude directives:
+
+  Include:    %s
+  Exclude:    %s
+  Available:  %s
+
+Please adjust your include or exclude to allow selection of an
+available interface.
