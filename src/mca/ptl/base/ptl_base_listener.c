@@ -288,7 +288,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     int flags = 0;
     pmix_listener_t *lt;
     int i, rc = 0, saveindex = -1, savelpbk = -1;
-    char **interfaces = NULL;
+    char **interfaces = NULL, **candidates = NULL;
     bool including = false;
     char name[32];
     struct sockaddr_storage my_ss;
@@ -322,6 +322,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_REMOTE_CONNECTIONS)) {
             pmix_ptl_base.remote_connections = PMIX_INFO_TRUE(&info[n]);
+            pmix_ptl_base.connections_specified = true;
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_INCLUDE)) {
             if (NULL != pmix_ptl_base.if_include) {
@@ -427,6 +428,10 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         if (kindex <= 0) {
             continue;
         }
+
+        // cache the candidates
+        PMIx_Argv_append_nosize(&candidates, name);
+
         pmix_output_verbose(10, pmix_ptl_base_framework.framework_output,
                             "WORKING INTERFACE %d KERNEL INDEX %d FAMILY: %s", i, kindex,
                             (AF_INET == my_ss.ss_family) ? "V4" : "V6");
@@ -440,6 +445,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
             if (PMIX_ERR_FABRIC_NOT_PARSEABLE == rc) {
                 pmix_show_help("help-ptl-base.txt", "not-parseable", true);
                 PMIx_Argv_free(interfaces);
+                PMIx_Argv_free(candidates);
                 return PMIX_ERR_BAD_PARAM;
             }
             /* if we are including, then ignore this if not present */
@@ -466,17 +472,15 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         if (pmix_ifisloopback(i)) {
             pmix_output_verbose(5, pmix_ptl_base_framework.framework_output,
                                 "ptl:tool:init loopback interface %s found", name);
-            savelpbk = i;
-            if (!pmix_ptl_base.remote_connections) {
-                saveindex = savelpbk;
-                break;
+            if (savelpbk < 0) {
+                savelpbk = i;
             }
-        } else {
-            /* if this is the first one we found, then hang on to it - we
-             * will use it if a loopback device is not found */
-            if (saveindex < 0) {
-                saveindex = i;
-            }
+
+        } else if (saveindex < 0) {
+            saveindex = i;
+        }
+        if (0 <= savelpbk && 0 <= saveindex) {
+            break;
         }
     }
     /* cleanup */
@@ -484,18 +488,67 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
         PMIx_Argv_free(interfaces);
     }
 
-    /* if we didn't find anything, that could be a problem */
-    if (saveindex < 0) {
-        /* if ONLY a loopback is available, then even if they
-         * enabled remote connections, it's the best we can do */
+    // if they enabled remote connections, then we must have a public
+    // interface available to us
+    if (pmix_ptl_base.remote_connections) {
+        if (saveindex < 0) {
+            prefix = PMIx_Argv_join(candidates, ',');
+            pmix_show_help("help-ptl-base.txt", "no-remote-interfaces", true,
+                            (NULL == pmix_ptl_base.if_include) ? "NULL" : pmix_ptl_base.if_include,
+                            (NULL == pmix_ptl_base.if_exclude) ? "NULL" : pmix_ptl_base.if_exclude,
+                            prefix);
+            PMIx_Argv_free(candidates);
+            free(prefix);
+            return PMIX_ERR_SILENT;
+        }
+        // if we found a public interface, then just fall through and use it
+        PMIx_Argv_free(candidates);
+
+    } else {
+        // if there are no loopback interfaces, and if they didn't specify
+        // we shouldn't support remote connections, then take a public
+        // interface if available
         if (savelpbk < 0) {
-            /* if NOTHING is available, then neither are we */
-            return PMIX_ERR_NOT_AVAILABLE;
+            if (!pmix_ptl_base.connections_specified) {
+                // fallback to a public interface, if available
+                if (saveindex < 0) {
+                    // didn't find anything!
+                    prefix = PMIx_Argv_join(candidates, ',');
+                    pmix_show_help("help-ptl-base.txt", "no-available-interfaces", true,
+                                    (NULL == pmix_ptl_base.if_include) ? "NULL" : pmix_ptl_base.if_include,
+                                    (NULL == pmix_ptl_base.if_exclude) ? "NULL" : pmix_ptl_base.if_exclude,
+                                    prefix);
+                    PMIx_Argv_free(candidates);
+                    free(prefix);
+                    return PMIX_ERR_SILENT;
+                } else {
+                    // go ahead and use the public interface
+                    PMIx_Argv_free(candidates);
+                    goto complete;
+                }
+            } else {
+                // they said not to allow remote connections, so we cannot
+                // take a public interface
+                prefix = PMIx_Argv_join(candidates, ',');
+                pmix_show_help("help-ptl-base.txt", "no-loopback-interfaces", true,
+                                (NULL == pmix_ptl_base.if_include) ? "NULL" : pmix_ptl_base.if_include,
+                                (NULL == pmix_ptl_base.if_exclude) ? "NULL" : pmix_ptl_base.if_exclude,
+                                prefix);
+                PMIx_Argv_free(candidates);
+                free(prefix);
+                return PMIX_ERR_SILENT;
+            }
+
         } else {
+            // they didn't ask for remote support, and we found a loopback
+            // interface, so use it
             saveindex = savelpbk;
+            PMIx_Argv_free(candidates);
         }
     }
 
+
+complete:
     /* save the connection */
     if (PMIX_SUCCESS
         != pmix_ifindextoaddr(saveindex, (struct sockaddr *) pmix_ptl_base.connection,
@@ -695,12 +748,11 @@ nextstep:
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
-    }
 
-    /* if we are the system controller, then drop an appropriately named
-     * contact file so others can find us */
-    if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
-        if (0 > asprintf(&pmix_ptl_base.sysctrlr_filename, "%s/pmix.sysctrlr.%s",
+    } else if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
+        /* if we are the system controller, then drop an appropriately named
+         * contact file so others can find us */
+            if (0 > asprintf(&pmix_ptl_base.sysctrlr_filename, "%s/pmix.sysctrlr.%s",
                          pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
             goto sockerror;
         }
@@ -710,39 +762,37 @@ nextstep:
         if (PMIX_SUCCESS != rc) {
             goto sockerror;
         }
-    }
+    } else if (pmix_ptl_base.tool_support) {
+        /* if we are going to support tools, then drop contact file(s) */
+        if (pmix_ptl_base.system_tool) {
+            if (0 > asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",
+                             pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
+                goto sockerror;
+            }
+            rc = write_rndz_file(pmix_ptl_base.system_filename, lt->uri,
+                                 &pmix_ptl_base.created_system_tmpdir,
+                                 &pmix_ptl_base.created_system_filename);
+            if (PMIX_SUCCESS != rc) {
+                goto sockerror;
+            }
+        }
 
-    /* if we are going to support tools, then drop contact file(s) */
-    if (pmix_ptl_base.system_tool) {
-        if (0 > asprintf(&pmix_ptl_base.system_filename, "%s/pmix.sys.%s",
-                         pmix_ptl_base.system_tmpdir, pmix_globals.hostname)) {
-            goto sockerror;
+        if (pmix_ptl_base.session_tool) {
+            /* first output to a std file */
+            if (0 > asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.tool",
+                             pmix_ptl_base.session_tmpdir, pmix_globals.hostname)) {
+                goto sockerror;
+            }
+            pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                                "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
+            rc = write_rndz_file(pmix_ptl_base.session_filename, lt->uri,
+                                 &pmix_ptl_base.created_session_tmpdir,
+                                 &pmix_ptl_base.created_session_filename);
+            if (PMIX_SUCCESS != rc) {
+                goto sockerror;
+            }
         }
-        rc = write_rndz_file(pmix_ptl_base.system_filename, lt->uri,
-                             &pmix_ptl_base.created_system_tmpdir,
-                             &pmix_ptl_base.created_system_filename);
-        if (PMIX_SUCCESS != rc) {
-            goto sockerror;
-        }
-    }
 
-    if (pmix_ptl_base.session_tool) {
-        /* first output to a std file */
-        if (0 > asprintf(&pmix_ptl_base.session_filename, "%s/pmix.%s.tool",
-                         pmix_ptl_base.session_tmpdir, pmix_globals.hostname)) {
-            goto sockerror;
-        }
-        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
-                            "WRITING SESSION TOOL FILE %s", pmix_ptl_base.session_filename);
-        rc = write_rndz_file(pmix_ptl_base.session_filename, lt->uri,
-                             &pmix_ptl_base.created_session_tmpdir,
-                             &pmix_ptl_base.created_session_filename);
-        if (PMIX_SUCCESS != rc) {
-            goto sockerror;
-        }
-    }
-
-    if (pmix_ptl_base.tool_support) {
         /* now output to a file based on pid */
         mypid = getpid();
         if (0 > asprintf(&pmix_ptl_base.pid_filename, "%s/pmix.%s.tool.%d",
