@@ -620,7 +620,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cd->cbdata;
-    pmix_namespace_t *nptr = NULL;
+    pmix_namespace_t *nptr = NULL, *nptr2;
     pmix_rank_info_t *info;
     pmix_peer_t *peer = NULL, *pr2;
     pmix_status_t rc, reply;
@@ -629,6 +629,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_info_t ginfo;
     pmix_byte_object_t cred;
     pmix_iof_req_t *req = NULL;
+    bool found;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -726,8 +727,23 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         peer->info = info;
         pnd->rinfo_created = true;
     } else if (pnd->nspace_created) {
-        // must add it to the global list
-        pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+        // must add it to the global list - but check to ensure
+        // it is unique as the host may have "registered" this
+        // namespace, and so we would already have that record
+        found = false;
+        PMIX_LIST_FOREACH(nptr2, &pmix_globals.nspaces, pmix_namespace_t) {
+            if (PMIx_Check_nspace(nptr->nspace, nptr2->nspace)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
+        } else {
+            // need to release this to avoid memory leak
+            PMIX_RELEASE(nptr);
+            nptr = nptr2;
+        }
     }
 
     /* mark the peer proc type */
@@ -809,11 +825,6 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         goto error;
     }
 
-pmix_namespace_t *foo;
-PMIX_LIST_FOREACH(foo, &pmix_globals.nspaces, pmix_namespace_t) {
-    pmix_output(0, "NSPACE %s", foo->nspace);
-}
-pmix_output(0, "\n\n");
     /* set the socket non-blocking for all further operations */
     pmix_ptl_base_set_nonblocking(pnd->sd);
 
