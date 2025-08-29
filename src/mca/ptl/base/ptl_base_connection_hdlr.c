@@ -809,6 +809,11 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         goto error;
     }
 
+pmix_namespace_t *foo;
+PMIX_LIST_FOREACH(foo, &pmix_globals.nspaces, pmix_namespace_t) {
+    pmix_output(0, "NSPACE %s", foo->nspace);
+}
+pmix_output(0, "\n\n");
     /* set the socket non-blocking for all further operations */
     pmix_ptl_base_set_nonblocking(pnd->sd);
 
@@ -946,7 +951,6 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             nptr->version.major = pnd->proc_type.major;
             nptr->version.minor = pnd->proc_type.minor;
             nptr->version.release = pnd->proc_type.release;
-            pmix_list_append(&pmix_globals.nspaces, &nptr->super);
             pnd->nspace_created = true;
         }
         /* now look for the rank */
@@ -1032,6 +1036,10 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             PMIX_RELEASE(peer);
             return PMIX_ERR_NOMEM;
         }
+        if (!pnd->need_id) {
+            // must have been given one
+            nptr->nspace = strdup(pnd->proc.nspace);
+        }
         /* save the version */
         nptr->version.major = pnd->proc_type.major;
         nptr->version.minor = pnd->proc_type.minor;
@@ -1041,6 +1049,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
          * from the host's upcall since they can/will assign the
          * tool with a namespace */
         PMIX_RETAIN(nptr);
+
     }
 
     peer->nptr = nptr;
