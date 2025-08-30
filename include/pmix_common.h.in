@@ -526,6 +526,7 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_NO_PROCS_ON_HEAD               "pmix.nolocal"          // (bool) do not place procs on the head node
 #define PMIX_NO_OVERSUBSCRIBE               "pmix.noover"           // (bool) do not oversubscribe the cpus
 #define PMIX_REPORT_BINDINGS                "pmix.repbind"          // (bool) report bindings of the individual procs
+#define PMIX_REPORT_PHYSICAL_CPUS           "pmix.repphys.cpus"     // (bool) report bindings using physical cpu IDs
 #define PMIX_CPU_LIST                       "pmix.cpulist"          // (char*) list of cpus to use for this job
 #define PMIX_JOB_RECOVERABLE                "pmix.recover"          // (bool) application supports recoverable operations
 #define PMIX_JOB_CONTINUOUS                 "pmix.continuous"       // (bool) application is continuous, all failed procs should
