@@ -166,12 +166,12 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     pmix_peer_t *peer = NULL;
     pmix_status_t rc, reply;
     char *msg = NULL, *mg, *p, *blob = NULL;
-    size_t cnt, ncnt;
+    size_t cnt, n, nblob = 0;
     size_t len = 0;
     pmix_namespace_t *nptr, *tmp;
     pmix_rank_info_t *info = NULL, *iptr;
     pmix_proc_t proc;
-    pmix_info_t ginfo, *iblob;
+    pmix_info_t ginfo, *iblob = NULL;
     pmix_byte_object_t cred;
     uint8_t major, minor, release;
     cnct_hdlr_t *ch;
@@ -477,52 +477,54 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         PMIX_CONSTRUCT(&buf, pmix_buffer_t);
         PMIX_LOAD_BUFFER_NON_DESTRUCT(peer, &buf, blob, len); // allocates no memory
         i32 = 1;
-        PMIX_BFROPS_UNPACK(rc, peer, &buf, &cnt, &i32, PMIX_SIZE);
-        if (0 < cnt) {
-            PMIX_INFO_CREATE(iblob, cnt);
+        PMIX_BFROPS_UNPACK(rc, peer, &buf, &nblob, &i32, PMIX_SIZE);
+        if (0 < nblob) {
+            PMIX_INFO_CREATE(iblob, nblob);
             i32 = cnt;
             PMIX_BFROPS_UNPACK(rc, peer, &buf, iblob, &i32, PMIX_INFO);
             // process the data
-            for (ncnt=0; ncnt < cnt; ncnt++) {
-                if (PMIx_Check_key(iblob[ncnt].key, PMIX_PROC_PID)) {
-                    info->pid = iblob[ncnt].value.data.pid;
+            for (n=0; n < nblob; n++) {
+                if (PMIx_Check_key(iblob[n].key, PMIX_PROC_PID)) {
+                    info->pid = iblob[n].value.data.pid;
                     PMIx_Info_list_add(ilist, PMIX_PROC_PID, &info->pid, PMIX_PID);
 
-                } else if (PMIx_Check_key(iblob[ncnt].key, PMIX_REALUID)) {
-                    info->realuid = iblob[ncnt].value.data.uint32;
+                } else if (PMIx_Check_key(iblob[n].key, PMIX_REALUID)) {
+                    info->realuid = iblob[n].value.data.uint32;
                     PMIx_Info_list_add(ilist, PMIX_REALUID, &info->realuid, PMIX_UINT32);
 
-                } else if (PMIx_Check_key(iblob[ncnt].key, PMIX_USERID)) {
+                } else if (PMIx_Check_key(iblob[n].key, PMIX_USERID)) {
                     // check if the client is claiming to be someone other
                     // than what they were registered as
-                    if (info->uid != iblob[ncnt].value.data.uint32) {
+                    if (info->uid != iblob[n].value.data.uint32) {
                         // mismatch
                         PMIx_Info_list_release(ilist);
                         pmix_show_help("help-ptl-base.txt", "mismatch-id", true,
-                                       "user", iblob[ncnt].value.data.uint32, info->uid);
+                                       "user", iblob[n].value.data.uint32, info->uid);
                         goto error;
                     }
 
-                } else if (PMIx_Check_key(iblob[ncnt].key, PMIX_REALGID)) {
-                    info->realgid = iblob[ncnt].value.data.uint32;
+                } else if (PMIx_Check_key(iblob[n].key, PMIX_REALGID)) {
+                    info->realgid = iblob[n].value.data.uint32;
                     PMIx_Info_list_add(ilist, PMIX_REALGID, &info->realgid, PMIX_UINT32);
 
-                } else if (PMIx_Check_key(iblob[ncnt].key, PMIX_GRPID)) {
+                } else if (PMIx_Check_key(iblob[n].key, PMIX_GRPID)) {
                     // check if the client is claiming to be someone other
                     // than what they were registered as
-                    if (info->gid != iblob[ncnt].value.data.uint32) {
+                    if (info->gid != iblob[n].value.data.uint32) {
                         // mismatch
                         PMIx_Info_list_release(ilist);
                         pmix_show_help("help-ptl-base.txt", "mismatch-id", true,
-                                       "group", iblob[ncnt].value.data.uint32, info->uid);
+                                       "group", iblob[n].value.data.uint32, info->uid);
                         goto error;
                     }
                 }
             }
-            PMIX_INFO_FREE(iblob, cnt);
+            PMIX_INFO_FREE(iblob, nblob);
+            iblob = NULL;
+            nblob = 0;
         }
         free(blob);
-
+        blob = NULL;
     }
 
     free(msg); // can now release the data buffer
@@ -602,6 +604,12 @@ error:
     if (NULL != msg) {
         free(msg);
     }
+    if (NULL != blob) {
+        free(blob);
+    }
+    if (NULL != iblob) {
+        PMIX_INFO_FREE(iblob, nblob);
+    }
     if (NULL != peer) {
         pmix_pointer_array_set_item(&pmix_server_globals.clients, peer->index, NULL);
         PMIX_RELEASE(peer);
@@ -616,7 +624,7 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
     pmix_pending_connection_t *pnd = (pmix_pending_connection_t *) cd->cbdata;
-    pmix_namespace_t *nptr = NULL, *nptr2;
+    pmix_namespace_t *nptr = NULL, *nptr2, *nptr3;
     pmix_rank_info_t *info;
     pmix_peer_t *peer = NULL, *pr2;
     pmix_status_t rc, reply;
@@ -625,7 +633,6 @@ static void process_cbfunc(int sd, short args, void *cbdata)
     pmix_info_t ginfo;
     pmix_byte_object_t cred;
     pmix_iof_req_t *req = NULL;
-    bool found;
 
     /* acquire the object */
     PMIX_ACQUIRE_OBJECT(cd);
@@ -731,19 +738,19 @@ static void process_cbfunc(int sd, short args, void *cbdata)
         // must add it to the global list - but check to ensure
         // it is unique as the host may have "registered" this
         // namespace, and so we would already have that record
-        found = false;
+        nptr3 = NULL;
         PMIX_LIST_FOREACH(nptr2, &pmix_globals.nspaces, pmix_namespace_t) {
             if (PMIx_Check_nspace(nptr->nspace, nptr2->nspace)) {
-                found = true;
+                nptr3 = nptr2;
                 break;
             }
         }
-        if (!found) {
+        if (NULL == nptr3) {
             pmix_list_append(&pmix_globals.nspaces, &nptr->super);
         } else {
             // need to release this to avoid memory leak
             PMIX_RELEASE(nptr);
-            nptr = nptr2;
+            nptr = nptr3;
         }
     }
 
@@ -853,15 +860,15 @@ static void process_cbfunc(int sd, short args, void *cbdata)
 
 error:
     CLOSE_THE_SOCKET(pnd->sd);
-    if (NULL != peer->info && pnd->rinfo_created) {
-        pmix_list_remove_item(&peer->nptr->ranks, &peer->info->super);
-        // the info object will be released along with the peer
-    }
-    if (NULL != peer->nptr && pnd->nspace_created) {
-        pmix_list_remove_item(&pmix_globals.nspaces, &peer->nptr->super);
-        // the nptr will be released along with the peer
-    }
     if (NULL != peer) {
+        if (NULL != peer->info && pnd->rinfo_created) {
+            pmix_list_remove_item(&peer->nptr->ranks, &peer->info->super);
+            // the info object will be released along with the peer
+        }
+        if (NULL != peer->nptr && pnd->nspace_created) {
+            pmix_list_remove_item(&pmix_globals.nspaces, &peer->nptr->super);
+            // the nptr will be released along with the peer
+        }
         PMIX_RELEASE(peer);
     }
     PMIX_RELEASE(cd);
