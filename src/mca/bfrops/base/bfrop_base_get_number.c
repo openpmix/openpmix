@@ -362,9 +362,6 @@ static pmix_status_t check_size(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT64 == type) {
-        if (UINT64_MAX < value->data.size) {
-            return PMIX_ERR_LOST_PRECISION;
-        }
         u64 = (uint64_t*)dest;
         *u64 = (uint64_t)value->data.size;
         return PMIX_SUCCESS;
@@ -2245,6 +2242,11 @@ static pmix_status_t check_status(const pmix_value_t *value,
         *i = (int)value->data.status;
         return PMIX_SUCCESS;
     }
+    if (PMIX_INT32 == type) {
+        i32 = (int32_t*)dest;
+        *i32 = (int32_t)value->data.status;
+        return PMIX_SUCCESS;
+    }
     if (PMIX_INT64 == type) {
         i64 = (int64_t*)dest;
         *i64 = (int64_t)value->data.status;
@@ -2299,20 +2301,6 @@ static pmix_status_t check_status(const pmix_value_t *value,
         }
         i16 = (int16_t*)dest;
         *i16 = (int16_t)value->data.status;
-        return PMIX_SUCCESS;
-    }
-    if (PMIX_INT32 == type) {
-        if (0 < value->data.status) {
-            if (INT32_MAX < value->data.status) {
-                return PMIX_ERR_LOST_PRECISION;
-            }
-        } else {
-            if (INT32_MIN > value->data.status) {
-                return PMIX_ERR_LOST_PRECISION;
-            }
-        }
-        i32 = (int32_t*)dest;
-        *i32 = (int32_t)value->data.status;
         return PMIX_SUCCESS;
     }
 

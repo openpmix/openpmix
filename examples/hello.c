@@ -76,7 +76,7 @@ static void cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *
 
 int main(int argc, char **argv)
 {
-    pmix_status_t rc;
+    pmix_status_t rc, ret;
     pid_t pid;
     char hostname[1024];
     pmix_value_t *val;
@@ -151,9 +151,12 @@ int main(int argc, char **argv)
 
 done:
     /* finalize us */
-    rc = PMIx_Finalize(NULL, 0);
-    if (PMIX_SUCCESS != rc) {
+    ret = PMIx_Finalize(NULL, 0);
+    if (PMIX_SUCCESS != ret) {
         fprintf(stderr, "Finalize failed: %s\n", PMIx_Error_string(rc));
+        if (PMIX_SUCCESS == rc) {
+            rc = ret;
+        }
     }
     fflush(stderr);
     return (rc);

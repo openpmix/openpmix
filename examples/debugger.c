@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -414,6 +414,7 @@ static int attach_to_running_job(char *nspace)
     if (PMIX_SUCCESS != (rc = PMIx_Query_info_nb(query, nq, querycbfunc, (void *) q))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Query_info failed: %d\n", myproc.nspace,
                 myproc.rank, rc);
+        PMIX_QUERY_FREE(query, nq);
         return -1;
     }
     DEBUG_WAIT_THREAD(&q->lock);
@@ -421,19 +422,23 @@ static int attach_to_running_job(char *nspace)
 
     if (NULL == q->info) {
         fprintf(stderr, "Query returned no info\n");
+        PMIX_QUERY_FREE(query, nq);
         return -1;
     }
     /* the query should have returned a comma-delimited list of nspaces */
     if (PMIX_STRING != q->info[0].value.type) {
         fprintf(stderr, "Query returned incorrect data type: %d\n", q->info[0].value.type);
+        PMIX_QUERY_FREE(query, nq);
         return -1;
     }
     if (NULL == q->info[0].value.data.string) {
         fprintf(stderr, "Query returned no active nspaces\n");
+        PMIX_QUERY_FREE(query, nq);
         return -1;
     }
 
     fprintf(stderr, "Query returned %s\n", q->info[0].value.data.string);
+    PMIX_QUERY_FREE(query, nq);
     return 0;
 
 #if 0

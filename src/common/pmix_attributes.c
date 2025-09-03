@@ -820,9 +820,6 @@ PMIX_EXPORT void pmix_attrs_query_support(pmix_query_caddy_t *cd,
 request:
     // if we don't need help then we are done
     if (NULL == cache) {
-        if (NULL != cache) {
-            PMIx_Argv_free(cache);
-        }
         return;
     }
 
