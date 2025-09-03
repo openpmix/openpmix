@@ -53,7 +53,7 @@ static void query_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                          pmix_buffer_t *buf, void *cbdata)
 {
     pmix_query_caddy_t *cd = (pmix_query_caddy_t *) cbdata;
-    pmix_status_t rc, status;
+    pmix_status_t rc, status = PMIX_ERR_UNPACK_FAILURE;
     int cnt;
     pmix_info_t *info;
     size_t n, ninfo;
@@ -167,7 +167,6 @@ static pmix_status_t send_for_help(pmix_query_caddy_t *cd)
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(msg);
-        PMIX_RELEASE(cd);
         return rc;
     }
     PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cd->nqueries, 1, PMIX_SIZE);
