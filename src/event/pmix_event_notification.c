@@ -41,6 +41,7 @@ static void _ntfy_done(pmix_status_t status, void *cbdata)
         scd->cbfunc.opcbfn(status, scd->cbdata);
         PMIX_RELEASE(scd);
     } else {
+        scd->status = status;
         PMIX_WAKEUP_THREAD(&scd->lock);
     }
 }
