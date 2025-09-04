@@ -4,10 +4,41 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.9 -- TBD
-------------
+5.0.9 -- ? Sept 2025
+--------------------
 Detailed changes include:
  - PR #: Multiple commits
+    - Update NEWS for release
+    - Silence a few Coverity complaints
+    - define default MAXPATHLEN if not defined by system
+    - Improve selection of interfaces
+    - Avoid duplicate namespace entries
+    - Cleanup a bit on connection handling
+    - Allow foreign tools by default
+    - Do not remove nspace from global list on rejected connection
+    - Correctly check length in pmix_bitmap_num_set_bits
+    - Fix the abort server upcall
+ - PR #3668: Multiple commits
+    - Provide better FQDN support
+    - Pass the uid/gid for client connections
+    - Prevent memory overrun in regx calculation
+    - Pass the client's pid as well
+    - Provide more info on connections
+    - Extend authentication support
+    - Update listener thread setting of permissions on connection files.
+ - PR #3653: Multiple commits
+    - github: add python-version checks for bindings
+    - bindings: fix Python 3.x error for 'long' integer
+    - Properly trigger the "keepalive failed" event
+    - Ensure cleanup of allocated pmix_info_t
+    - Change default show-load-errors to "none"
+    - Only report bad prefix if verbose requested
+    - Correct client notify of ready for debugger
+    - Check return code for notify ready-for-debug
+    - Parameterize client finalize timeout
+    - IOF output file bugfix
+ - PR #3623: Update OAC submodule
+ - PR #3621: Multiple commits
     - Check for pthread_np.h header
     - Update VERSION and NEWS
  - PR #3604: Update xversion CI
