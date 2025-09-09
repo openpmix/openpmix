@@ -4,10 +4,11 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.9 -- ? Sept 2025
+5.0.9 -- 9 Sept 2025
 --------------------
 Detailed changes include:
- - PR #: Multiple commits
+ - PR #3679: Final update of NEWS for release
+ - PR #3677: Multiple commits
     - Update NEWS for release
     - Silence a few Coverity complaints
     - define default MAXPATHLEN if not defined by system
