@@ -14,7 +14,7 @@
  * Copyright (c) 2015-2017 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,12 +80,14 @@ typedef struct {
         .active = false                     \
     }
 
-#define PMIX_CONSTRUCT_LOCK(l)                     \
-    do {                                           \
-        PMIX_CONSTRUCT(&(l)->mutex, pmix_mutex_t); \
-        pthread_cond_init(&(l)->cond, NULL);       \
-        /* coverity[missing_lock : FALSE] */       \
-        (l)->active = true;                        \
+#define PMIX_CONSTRUCT_LOCK(l)                      \
+    do {                                            \
+        PMIX_CONSTRUCT(&(l)->mutex, pmix_mutex_t);  \
+        /* take the lock */                         \
+        pmix_mutex_lock(&(l)->mutex);               \
+        pthread_cond_init(&(l)->cond, NULL);        \
+        (l)->active = true;                         \
+        pmix_mutex_unlock(&(l)->mutex);             \
     } while (0)
 
 #define PMIX_DESTRUCT_LOCK(l)             \
@@ -158,7 +160,7 @@ typedef struct {
             }                                                                 \
             (lck)->active = false;                                            \
             PMIX_POST_OBJECT(lck);                                            \
-            pmix_condition_broadcast(&(lck)->cond);                           \
+            pmix_condition_signal(&(lck)->cond);                              \
             pmix_mutex_unlock(&(lck)->mutex);                                 \
         } while (0)
 #else
@@ -166,7 +168,7 @@ typedef struct {
         do {                                        \
             (lck)->active = false;                  \
             PMIX_POST_OBJECT(lck);                  \
-            pmix_condition_broadcast(&(lck)->cond); \
+            pmix_condition_signal(&(lck)->cond);    \
             pmix_mutex_unlock(&(lck)->mutex);       \
         } while (0)
 #endif
@@ -176,7 +178,7 @@ typedef struct {
         pmix_mutex_lock(&(lck)->mutex);         \
         (lck)->active = false;                  \
         PMIX_POST_OBJECT(lck);                  \
-        pmix_condition_broadcast(&(lck)->cond); \
+        pmix_condition_signal(&(lck)->cond);    \
         pmix_mutex_unlock(&(lck)->mutex);       \
     } while (0)
 
