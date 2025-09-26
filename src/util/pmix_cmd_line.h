@@ -158,6 +158,7 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_TERMINATE              "terminate"                 // none
 #define PMIX_CLI_PSET_NAME              "pset"                      // required
 #define PMIX_CLI_FWD_ENVAR              "x"                         // required
+#define PMIX_CLI_SET_ENVAR              "set-env"                   // required
 #define PMIX_CLI_PREPEND_ENVAR          "prepend-env"               // required
 #define PMIX_CLI_APPEND_ENVAR           "append-env"                // required
 #define PMIX_CLI_UNSET_ENVAR            "unset-env"                 // required
