@@ -8,7 +8,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2019-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,13 +80,6 @@ static bool zlibng_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outb
 
     /* get an upper bound on the required output storage */
     len = zng_deflateBound(&strm, inlen);
-    /* if this isn't going to result in a smaller footprint,
-     * then don't do it */
-    if (len >= inlen) {
-        (void) zng_deflateEnd(&strm);
-        return false;
-    }
-
     if (NULL == (tmp = (uint8_t *) malloc(len))) {
         (void) zng_deflateEnd(&strm);
         return false;
@@ -110,6 +103,13 @@ static bool zlibng_compress(const uint8_t *inbytes, size_t inlen, uint8_t **outb
      * can pass the size of the uncompressed block to the
      * decompress side */
     len2 = len - strm.avail_out + sizeof(uint32_t);
+    /* if this isn't going to result in a smaller footprint,
+     * then don't do it */
+    if (len2 >= inlen) {
+        free(tmp);
+        return false;
+    }
+
     ptr = (uint8_t *) malloc(len2);
     if (NULL == ptr) {
         free(tmp);
