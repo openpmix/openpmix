@@ -98,9 +98,9 @@ struct pmix_ptl_base_t {
     bool tool_support;
     char *if_include;
     char *if_exclude;
-    int ipv4_port;
+    char **ipv4_ports;
     bool disable_ipv4_family;
-    int ipv6_port;
+    char **ipv6_ports;
     bool disable_ipv6_family;
     int max_retries;
     int wait_to_connect;
@@ -141,7 +141,6 @@ PMIX_EXPORT pmix_status_t pmix_ptl_base_start_listening(pmix_info_t info[], size
 PMIX_EXPORT void pmix_ptl_base_stop_listening(void);
 
 /* base support functions */
-PMIX_EXPORT pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo);
 PMIX_EXPORT pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env);
 PMIX_EXPORT void pmix_ptl_base_send_handler(int sd, short flags, void *cbdata);
 PMIX_EXPORT void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata);

@@ -1358,13 +1358,16 @@ AC_ARG_ENABLE([ipv6],
 if test "$enable_ipv6" = "yes"; then
     AC_MSG_RESULT([yes])
     pmix_want_ipv6=1
+    pmix_ipv6_enabled="enabled"
 else
     AC_MSG_RESULT([no])
     pmix_want_ipv6=0
+    pmix_ipv6_enabled="disabled"
 fi
 AC_DEFINE_UNQUOTED([PMIX_ENABLE_IPV6], [$pmix_want_ipv6],
                    [Enable IPv6 support, but only if the underlying system supports it])
 
+PMIX_SUMMARY_ADD([Miscellaneous], [IPv6 Support], [], [$pmix_ipv6_enabled])
 
 ])dnl
 
