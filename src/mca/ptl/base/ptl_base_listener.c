@@ -60,6 +60,7 @@
 #include "src/util/pmix_output.h"
 #include "src/util/pmix_if.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_parse_options.h"
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
@@ -288,7 +289,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     int flags = 0;
     pmix_listener_t *lt;
     int i, rc = 0, saveindex = -1, savelpbk = -1;
-    char **interfaces = NULL, **candidates = NULL;
+    char **interfaces = NULL, **candidates = NULL, **ports;
     bool including = false;
     char name[32];
     struct sockaddr_storage my_ss;
@@ -303,6 +304,7 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
     char *leftover;
     size_t n;
     FILE *fptst;
+    uint16_t port = 0;
 
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:tool setup_listener");
@@ -337,16 +339,77 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
             pmix_ptl_base.if_exclude = strdup(info[n].value.data.string);
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV4_PORT)) {
-            pmix_ptl_base.ipv4_port = info[n].value.data.integer;
+            if (PMIX_INT == info[n].value.type) {
+                if (NULL != pmix_ptl_base.ipv4_ports) {
+                    PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
+                }
+                pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
+                pmix_ptl_base.ipv4_ports[1] = NULL;
+                if (0 < info[n].value.data.integer) {
+                    pmix_asprintf(&pmix_ptl_base.ipv4_ports[0], "%d", info[n].value.data.integer);
+                } else {
+                    pmix_ptl_base.ipv4_ports[0] = strdup("0");
+                }
+            } else if (PMIX_STRING == info[n].value.type) {
+                if (NULL != pmix_ptl_base.ipv4_ports) {
+                    PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
+                }
+                if (NULL == info[n].value.data.string) {
+                    pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
+                    pmix_ptl_base.ipv4_ports[0] = strdup("0");
+                    pmix_ptl_base.ipv4_ports[1] = NULL;
+                } else {
+                    pmix_util_parse_range_options(info[n].value.data.string, &pmix_ptl_base.ipv4_ports);
+                    if (0 == strcmp(pmix_ptl_base.ipv4_ports[0], "-1")) {
+                        PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
+                        pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
+                        pmix_ptl_base.ipv4_ports[0] = strdup("0");
+                        pmix_ptl_base.ipv4_ports[1] = NULL;
+                    }
+                }
+            }
 
+#if PMIX_ENABLE_IPV6
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV6_PORT)) {
-            pmix_ptl_base.ipv6_port = info[n].value.data.integer;
+            if (PMIX_INT == info[n].value.type) {
+                if (NULL != pmix_ptl_base.ipv6_ports) {
+                    PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
+                    pmix_ptl_base.ipv6_ports = NULL;
+                }
+                pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
+                pmix_ptl_base.ipv6_ports[1] = NULL;
+                if (0 < info[n].value.data.integer) {
+                    pmix_asprintf(&pmix_ptl_base.ipv6_ports[0], "%d", info[n].value.data.integer);
+                } else {
+                    pmix_ptl_base.ipv6_ports[0] = strdup("0");
+                }
+            } else if (PMIX_STRING == info[n].value.type) {
+                if (NULL != pmix_ptl_base.ipv6_ports) {
+                    PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
+                }
+                if (NULL == info[n].value.data.string) {
+                    pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
+                    pmix_ptl_base.ipv6_ports[0] = strdup("0");
+                    pmix_ptl_base.ipv6_ports[1] = NULL;
+                } else {
+                    pmix_util_parse_range_options(info[n].value.data.string, &pmix_ptl_base.ipv6_ports);
+                     if (0 == strcmp(pmix_ptl_base.ipv6_ports[0], "-1")) {
+                        PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
+                        pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
+                        pmix_ptl_base.ipv6_ports[0] = strdup("0");
+                        pmix_ptl_base.ipv6_ports[1] = NULL;
+                    }
+                }
+           }
+#endif
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV4)) {
             pmix_ptl_base.disable_ipv4_family = PMIX_INFO_TRUE(&info[n]);
 
+#if PMIX_ENABLE_IPV6
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV6)) {
             pmix_ptl_base.disable_ipv6_family = PMIX_INFO_TRUE(&info[n]);
+#endif
 
         } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_REPORT_URI)) {
             if (NULL != pmix_ptl_base.report_uri) {
@@ -414,10 +477,12 @@ pmix_status_t pmix_ptl_base_setup_listener(pmix_info_t info[], size_t ninfo)
             if (pmix_ptl_base.disable_ipv4_family) {
                 continue;
             }
+#if PMIX_ENABLE_IPV6
         } else if (AF_INET6 == my_ss.ss_family) {
             if (pmix_ptl_base.disable_ipv6_family) {
                 continue;
             }
+#endif
         } else {
             /* ignore any other type */
             continue;
@@ -558,19 +623,13 @@ complete:
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    /* set the port */
+    // set the ports to scan based on the connection we selected
     if (AF_INET == pmix_ptl_base.connection->ss_family) {
-        ((struct sockaddr_in *) pmix_ptl_base.connection)->sin_port = htons(pmix_ptl_base.ipv4_port);
-        addrlen = sizeof(struct sockaddr_in);
-        if (0 != pmix_ptl_base.ipv4_port) {
-            flags = 1;
-        }
+        ports = pmix_ptl_base.ipv4_ports;
+#if PMIX_ENABLE_IPV6
     } else if (AF_INET6 == pmix_ptl_base.connection->ss_family) {
-        ((struct sockaddr_in6 *) pmix_ptl_base.connection)->sin6_port = htons(pmix_ptl_base.ipv6_port);
-        addrlen = sizeof(struct sockaddr_in6);
-        if (0 != pmix_ptl_base.ipv6_port) {
-            flags = 1;
-        }
+        ports = pmix_ptl_base.ipv6_ports;
+#endif
     } else {
         /* unrecognized family type - shouldn't be possible as we only
          * included IPv4 and IPv6 interfaces, but this is needed to
@@ -578,37 +637,68 @@ complete:
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    lt->varname = pmix_bfrops_base_get_components();
-    lt->protocol = PMIX_PROTOCOL_V2;
-    lt->cbfunc = pmix_ptl_base_connection_handler;
+    for (n=0; NULL != ports[n]; n++) {
+        pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
+                            "ptl:setup_listener - trying port %s", ports[n]);
 
-    /* create a listen socket for incoming connection attempts */
-    lt->socket = socket(pmix_ptl_base.connection->ss_family, SOCK_STREAM, 0);
-    if (lt->socket < 0) {
-        printf("%s:%d socket() failed\n", __FILE__, __LINE__);
-        goto sockerror;
-    }
+        /* get the port number */
+        port = strtol(ports[n], NULL, 10);
+        /* convert it to network-byte-order */
+        port = htons(port);
 
-    /* set reusing ports flag */
-    if (setsockopt(lt->socket, SOL_SOCKET, SO_REUSEADDR, (const char *) &flags, sizeof(flags))
-        < 0) {
-        pmix_output(0,
-                    "ptl:base:create_listen: unable to set the "
-                    "SO_REUSEADDR option (%s:%d)\n",
-                    strerror(pmix_socket_errno), pmix_socket_errno);
-        goto sockerror;
-    }
+        /* set the port */
+        if (AF_INET == pmix_ptl_base.connection->ss_family) {
+            ((struct sockaddr_in *) pmix_ptl_base.connection)->sin_port = port;
+            addrlen = sizeof(struct sockaddr_in);
+            if (0 != port) {
+                flags = 1;
+            }
+#if PMIX_ENABLE_IPV6
+        } else if (AF_INET6 == pmix_ptl_base.connection->ss_family) {
+            ((struct sockaddr_in6 *) pmix_ptl_base.connection)->sin6_port = port;
+            addrlen = sizeof(struct sockaddr_in6);
+            if (0 != port) {
+                flags = 1;
+            }
+#endif
+        }
 
-    /* Set the socket to close-on-exec so that no children inherit
-     * this FD */
-    if (pmix_fd_set_cloexec(lt->socket) != PMIX_SUCCESS) {
-        goto sockerror;
-    }
+        lt->varname = pmix_bfrops_base_get_components();
+        lt->protocol = PMIX_PROTOCOL_V2;
+        lt->cbfunc = pmix_ptl_base_connection_handler;
 
-    if (bind(lt->socket, (struct sockaddr *) pmix_ptl_base.connection, addrlen) < 0) {
-        printf("[%u] %s:%d bind() failed for socket %d storage size %u: %s\n", (unsigned) getpid(),
-               __FILE__, __LINE__, lt->socket, (unsigned) addrlen, strerror(errno));
-        goto sockerror;
+        /* create a listen socket for incoming connection attempts */
+        lt->socket = socket(pmix_ptl_base.connection->ss_family, SOCK_STREAM, 0);
+        if (lt->socket < 0) {
+            printf("%s:%d socket() failed\n", __FILE__, __LINE__);
+            goto sockerror;
+        }
+
+        /* set reusing ports flag */
+        if (setsockopt(lt->socket, SOL_SOCKET, SO_REUSEADDR, (const char *) &flags, sizeof(flags)) < 0) {
+            pmix_output(0,
+                        "ptl:base:create_listen: unable to set the "
+                        "SO_REUSEADDR option (%s:%d)\n",
+                        strerror(pmix_socket_errno), pmix_socket_errno);
+            goto sockerror;
+        }
+
+        /* Set the socket to close-on-exec so that no children inherit
+         * this FD */
+        if (pmix_fd_set_cloexec(lt->socket) != PMIX_SUCCESS) {
+            goto sockerror;
+        }
+
+        if (bind(lt->socket, (struct sockaddr *) pmix_ptl_base.connection, addrlen) < 0) {
+            if ((EADDRINUSE == pmix_socket_errno) || (EADDRNOTAVAIL == pmix_socket_errno)) {
+                continue;
+            }
+            printf("[%u] %s:%d bind() failed for socket %d storage size %u: %s\n", (unsigned) getpid(),
+                   __FILE__, __LINE__, lt->socket, (unsigned) addrlen, strerror(errno));
+            goto sockerror;
+        } else {
+            break;  // got one that works
+        }
     }
 
     /* resolve assigned port */

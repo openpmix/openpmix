@@ -50,6 +50,7 @@
 #include "src/util/pmix_os_dirpath.h"
 #include "src/util/pmix_os_path.h"
 #include "src/util/pmix_environ.h"
+#include "src/util/pmix_parse_options.h"
 #include "src/util/pmix_show_help.h"
 
 #include "src/mca/ptl/base/base.h"
@@ -103,9 +104,9 @@ pmix_ptl_base_t pmix_ptl_base = {
     .tool_support = false,
     .if_include = NULL,
     .if_exclude = NULL,
-    .ipv4_port = 0,
+    .ipv4_ports = NULL,
     .disable_ipv4_family = false,
-    .ipv6_port = 0,
+    .ipv6_ports = NULL,
     .disable_ipv6_family = true,
     .max_retries = 0,
     .wait_to_connect = 0,
@@ -126,6 +127,10 @@ pmix_ptl_module_t pmix_ptl = {
 };
 
 static size_t max_msg_size = 0;
+static char *dyn_port_string;
+#if PMIX_ENABLE_IPV6
+static char *dyn_port_string6;
+#endif
 
 static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
 {
@@ -163,17 +168,53 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv4_port", "IPv4 port to be used",
-                                     PMIX_MCA_BASE_VAR_TYPE_INT,
-                                     &pmix_ptl_base.ipv4_port);
+    dyn_port_string = NULL;
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv4_ports",
+                                     "IPv4 port(s) to be used",
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                     &dyn_port_string);
+    (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "base", "ipv4_port",
+                                              PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv4_port",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    if (NULL != dyn_port_string) {
+        pmix_util_parse_range_options(dyn_port_string, &pmix_ptl_base.ipv4_ports);
+        if (0 == strcmp(pmix_ptl_base.ipv4_ports[0], "-1")) {
+            PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
+            pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
+            pmix_ptl_base.ipv4_ports[0] = strdup("0");
+            pmix_ptl_base.ipv4_ports[1] = NULL;
+        }
+    } else {
+        pmix_ptl_base.ipv4_ports = pmix_malloc(2*sizeof(char*));
+        pmix_ptl_base.ipv4_ports[0] = strdup("0");
+        pmix_ptl_base.ipv4_ports[1] = NULL;
+    }
 
-    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv6_port", "IPv6 port to be used",
-                                     PMIX_MCA_BASE_VAR_TYPE_INT,
-                                     &pmix_ptl_base.ipv6_port);
+#if PMIX_ENABLE_IPV6
+    dyn_port_string6 = NULL;
+    idx = pmix_mca_base_var_register("pmix", "ptl", "base", "ipv6_ports",
+                                     "IPv6 port(s) to be used",
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                     &pmix_ptl_base.ipv6_ports);
+    (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "base", "ipv6_port",
+                                              PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
     (void) pmix_mca_base_var_register_synonym(idx, "pmix", "ptl", "tcp", "ipv6_port",
                                               PMIX_MCA_BASE_VAR_SYN_FLAG_DEPRECATED);
+    if (NULL != dyn_port_string6) {
+        pmix_util_parse_range_options(dyn_port_string6, &pmix_ptl_base.ipv6_ports);
+        if (0 == strcmp(pmix_ptl_base.ipv6_ports[0], "-1")) {
+            PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
+            pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
+            pmix_ptl_base.ipv6_ports[0] = strdup("0");
+            pmix_ptl_base.ipv6_ports[1] = NULL;
+        }
+    } else {
+        pmix_ptl_base.ipv6_ports = pmix_malloc(2*sizeof(char*));
+        pmix_ptl_base.ipv6_ports[0] = strdup("0");
+        pmix_ptl_base.ipv6_ports[1] = NULL;
+    }
+#endif
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "disable_ipv4_family",
                                      "Disable the IPv4 interfaces", PMIX_MCA_BASE_VAR_TYPE_BOOL,
@@ -389,6 +430,17 @@ static pmix_status_t pmix_ptl_close(void)
         }
         free(pmix_ptl_base.system_tmpdir);
     }
+
+    if (NULL != pmix_ptl_base.ipv4_ports) {
+        PMIx_Argv_free(pmix_ptl_base.ipv4_ports);
+    }
+
+#if PMIX_ENABLE_IPV6
+    if (NULL != pmix_ptl_base.ipv6_ports) {
+        PMIx_Argv_free(pmix_ptl_base.ipv6_ports);
+    }
+#endif
+
 
     return pmix_mca_base_framework_components_close(&pmix_ptl_base_framework, NULL);
 }
