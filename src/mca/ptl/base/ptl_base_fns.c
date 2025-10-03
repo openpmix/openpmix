@@ -132,61 +132,6 @@ pmix_status_t pmix_ptl_base_set_peer(pmix_peer_t *peer, char **evar)
     return PMIX_ERR_UNREACH;
 }
 
-pmix_status_t pmix_ptl_base_check_directives(pmix_info_t *info, size_t ninfo)
-{
-    size_t n;
-    pmix_status_t rc;
-
-    for (n = 0; n < ninfo; n++) {
-        if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_INCLUDE)) {
-            if (NULL != pmix_ptl_base.if_include) {
-                free(pmix_ptl_base.if_include);
-            }
-            pmix_ptl_base.if_include = strdup(info[n].value.data.string);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IF_EXCLUDE)) {
-            if (NULL != pmix_ptl_base.if_exclude) {
-                free(pmix_ptl_base.if_exclude);
-            }
-            pmix_ptl_base.if_exclude = strdup(info[n].value.data.string);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV4_PORT)) {
-            pmix_ptl_base.ipv4_port = info[n].value.data.integer;
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_IPV6_PORT)) {
-            pmix_ptl_base.ipv6_port = info[n].value.data.integer;
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV4)) {
-            pmix_ptl_base.disable_ipv4_family = PMIX_INFO_TRUE(&info[n]);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_DISABLE_IPV6)) {
-            pmix_ptl_base.disable_ipv6_family = PMIX_INFO_TRUE(&info[n]);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_URI)
-                   || PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
-            if (NULL != pmix_ptl_base.uri) {
-                free(pmix_ptl_base.uri);
-            }
-            pmix_ptl_base.uri = strdup(info[n].value.data.string);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
-            if (NULL != pmix_ptl_base.session_tmpdir) {
-                free(pmix_ptl_base.session_tmpdir);
-            }
-            pmix_ptl_base.session_tmpdir = strdup(info[n].value.data.string);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
-            if (NULL != pmix_ptl_base.system_tmpdir) {
-                free(pmix_ptl_base.system_tmpdir);
-            }
-            pmix_ptl_base.system_tmpdir = strdup(info[n].value.data.string);
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_MAX_RETRIES)) {
-            rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.max_retries, PMIX_INT);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-        } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_RETRY_DELAY)) {
-            rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.wait_to_connect, PMIX_INT);
-            if (PMIX_SUCCESS != rc) {
-                return rc;
-            }
-        }
-    }
-    return PMIX_SUCCESS;
-}
-
 pmix_status_t pmix_ptl_base_setup_fork(const pmix_proc_t *proc, char ***env)
 {
     PMIX_HIDE_UNUSED_PARAMS(proc);

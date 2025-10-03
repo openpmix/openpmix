@@ -457,12 +457,6 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     pmix_output_verbose(2, pmix_ptl_base_framework.framework_output,
                         "ptl:base: connecting to server");
 
-    /* check for common directives */
-    rc = pmix_ptl_base_check_directives(info, ninfo);
-    if (PMIX_SUCCESS != rc) {
-        return rc;
-    }
-
     /* check any provided directives
      * to see where they want us to connect to */
     PMIX_CONSTRUCT(&ilist, pmix_list_t);
@@ -546,6 +540,37 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_TOOL_CONNECT_OPTIONAL)) {
                 optional = PMIX_INFO_TRUE(&info[n]);
+
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_TCP_URI)
+                       || PMIX_CHECK_KEY(&info[n], PMIX_SERVER_URI)) {
+                if (NULL != pmix_ptl_base.uri) {
+                    free(pmix_ptl_base.uri);
+                }
+                pmix_ptl_base.uri = strdup(info[n].value.data.string);
+
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SERVER_TMPDIR)) {
+                if (NULL != pmix_ptl_base.session_tmpdir) {
+                    free(pmix_ptl_base.session_tmpdir);
+                }
+                pmix_ptl_base.session_tmpdir = strdup(info[n].value.data.string);
+
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_SYSTEM_TMPDIR)) {
+                if (NULL != pmix_ptl_base.system_tmpdir) {
+                    free(pmix_ptl_base.system_tmpdir);
+                }
+                pmix_ptl_base.system_tmpdir = strdup(info[n].value.data.string);
+
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_MAX_RETRIES)) {
+                rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.max_retries, PMIX_INT);
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
+                }
+
+            } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_RETRY_DELAY)) {
+                rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.wait_to_connect, PMIX_INT);
+                if (PMIX_SUCCESS != rc) {
+                    return rc;
+                }
 
             } else {
                 /* need to pass this to server */
