@@ -220,8 +220,8 @@ int do_spawn(void)
 
         /* spawn new procs */
         rc = PMIx_Spawn(NULL, 0, apps, 1, child_nspace);
-        CHECK_PMIX_ERR(rc, "PMIx_Spawn", own_proc);
         PMIX_APP_FREE(apps, 1);
+        CHECK_PMIX_ERR(rc, "PMIx_Spawn", own_proc);
 
         /* parent puts new child nspace into KVS */
         pmix_value_t val;

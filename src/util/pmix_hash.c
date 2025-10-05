@@ -297,6 +297,10 @@ static pmix_status_t make_copy(pmix_regattr_input_t *p,
         /* this is a qualified value - need to return it as such */
         PMIX_KVAL_NEW(kv, PMIX_QUALIFIED_VALUE);
         darray = (pmix_data_array_t*)pmix_pointer_array_get_item(proc_data->quals, hv->qualindex);
+        if (NULL == darray) {
+            PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
+            return PMIX_ERR_NOT_FOUND;
+        }
         quals = (pmix_qual_t*)darray->array;
         nq = darray->size;
         PMIX_DATA_ARRAY_CREATE(darray, nq+1, PMIX_INFO);
@@ -416,12 +420,14 @@ pmix_status_t pmix_hash_fetch(pmix_hash_table_t *table,
                         PMIX_CHECK_RESERVED_KEY(p->string)) {
                         continue;
                     }
-                    pmix_output_verbose(10, pmix_gds_base_framework.framework_output,
-                                        "%s INCLUDE %s VALUE %s FROM TABLE %s FOR RANK %s",
+                    if (9 < pmix_output_get_verbosity(pmix_gds_base_framework.framework_output)) {
+                        char *_tmp = PMIx_Value_string(hv->value);
+                        pmix_output(0, "%s INCLUDE %s VALUE %s FROM TABLE %s FOR RANK %s",
                                         PMIX_NAME_PRINT(&pmix_globals.myid), p->name,
-                                        PMIx_Value_string(hv->value),
-                                        (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label,
+                                        _tmp, (NULL == table->ht_label) ? "UNKNOWN" : table->ht_label,
                                         PMIX_RANK_PRINT(rank));
+                        free(_tmp);
+                    }
                     rc = make_copy(p, hv, kvals, proc_data, keyindex);
                     if (PMIX_UNLIKELY(PMIX_SUCCESS != rc)) {
                         return rc;

@@ -272,6 +272,7 @@ static bool _check_file(const char *root, const char *path)
 {
     struct stat st;
     char *fullpath;
+    int rc;
 
     /*
      * Keep:
@@ -280,7 +281,11 @@ static bool _check_file(const char *root, const char *path)
     if (0 == strncmp(path, "output-", strlen("output-"))) {
         memset(&st, 0, sizeof(struct stat));
         fullpath = pmix_os_path(false, root, path, NULL);
-        stat(fullpath, &st);
+        rc = stat(fullpath, &st);
+        if (0 != rc) {
+            free(fullpath);
+            return true;
+        }
         free(fullpath);
         if (0 == st.st_size) {
             return true;

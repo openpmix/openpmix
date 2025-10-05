@@ -460,6 +460,7 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
     /* check any provided directives
      * to see where they want us to connect to */
     PMIX_CONSTRUCT(&ilist, pmix_list_t);
+    *suriout = NULL;
     if (NULL != info) {
         for (n = 0; n < ninfo; n++) {
             if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_TO_SYSTEM)) {
@@ -520,8 +521,15 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
                         continue;
                     }
                     /* otherwise, we don't know which one to use */
-                    rc = PMIX_ERR_BAD_PARAM;
-                    goto cleanup;
+                    if (NULL != server_nspace) {
+                        free(server_nspace);
+                    }
+                    if (NULL != rendfile) {
+                        free(rendfile);
+                    }
+                    PMIx_Argv_free(order);
+                    PMIX_LIST_DESTRUCT(&ilist);
+                    return PMIX_ERR_BAD_PARAM;
                 }
                 server_nspace = strdup(info[n].value.data.string);
 
@@ -563,12 +571,28 @@ pmix_status_t pmix_ptl_base_connect_to_peer(struct pmix_peer_t *pr,
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_MAX_RETRIES)) {
                 rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.max_retries, PMIX_INT);
                 if (PMIX_SUCCESS != rc) {
+                    if (NULL != server_nspace) {
+                        free(server_nspace);
+                    }
+                    if (NULL != rendfile) {
+                        free(rendfile);
+                    }
+                    PMIx_Argv_free(order);
+                    PMIX_LIST_DESTRUCT(&ilist);
                     return rc;
                 }
 
             } else if (PMIX_CHECK_KEY(&info[n], PMIX_CONNECT_RETRY_DELAY)) {
                 rc = PMIx_Value_get_number(&info[n].value, &pmix_ptl_base.wait_to_connect, PMIX_INT);
                 if (PMIX_SUCCESS != rc) {
+                    if (NULL != server_nspace) {
+                        free(server_nspace);
+                    }
+                    if (NULL != rendfile) {
+                        free(rendfile);
+                    }
+                    PMIx_Argv_free(order);
+                    PMIX_LIST_DESTRUCT(&ilist);
                     return rc;
                 }
 
