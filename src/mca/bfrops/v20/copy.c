@@ -1385,6 +1385,7 @@ pmix_status_t pmix20_bfrop_copy_darray(pmix_data_array_t **dest, pmix_data_array
                     for (m=0; m < n; m++) {
                         PMIX_DESTRUCT(&pk[m]);
                     }
+                    free(pk);
                     free(p);
                     return PMIX_ERR_NOMEM;
                 }
@@ -1392,6 +1393,7 @@ pmix_status_t pmix20_bfrop_copy_darray(pmix_data_array_t **dest, pmix_data_array
                     for (m=0; m < n; m++) {
                         PMIX_DESTRUCT(&pk[m]);
                     }
+                    free(pk);
                     free(p);
                     return rc;
                 }
