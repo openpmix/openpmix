@@ -136,6 +136,10 @@ void pmix_expose_param(char *param)
     char *value, *pm;
 
     value = strchr(param, '=');
+    if (NULL == value) {
+        // should never happen
+        return;
+    }
     *value = '\0';
     ++value;
     pmix_asprintf(&pm, "PMIX_MCA_%s", param);

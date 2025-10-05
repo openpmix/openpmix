@@ -750,6 +750,8 @@ static void process_cbfunc(int sd, short args, void *cbdata)
             // need to release this to avoid memory leak
             PMIX_RELEASE(nptr);
             nptr = nptr3;
+            // reconnect the peer
+            peer->nptr = nptr;
         }
     }
 

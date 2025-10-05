@@ -899,64 +899,58 @@ static pmix_status_t _satisfy_request(pmix_namespace_t *nptr, pmix_rank_t rank, 
     PMIX_GDS_FETCH_KV(rc, pmix_globals.mypeer, &cb);
     /* if we didn't find it on my peer, then it isn't found */
     if (PMIX_SUCCESS != rc) {
-        PMIX_DESTRUCT(&pbkt);
         PMIX_DESTRUCT(&cb);
-        return PMIX_ERR_NOT_FOUND;
+        goto complete;
     }
     cb.info = NULL;
     cb.ninfo = 0;
-    if (PMIX_SUCCESS == rc) {
-        found = true;
-        PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
-        /* assemble the provided data into a byte object */
-        if (PMIX_RANK_UNDEF == rank || diffnspace) {
-            PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pkt, cd);
-        } else {
-            PMIX_GDS_ASSEMB_KVS_REQ(rc, cd->peer, &proc, &cb.kvs, &pkt, cd);
-        }
-        if (rc != PMIX_SUCCESS) {
+    found = true;
+    PMIX_CONSTRUCT(&pkt, pmix_buffer_t);
+    /* assemble the provided data into a byte object */
+    if (PMIX_RANK_UNDEF == rank || diffnspace) {
+        PMIX_GDS_ASSEMB_KVS_REQ(rc, pmix_globals.mypeer, &proc, &cb.kvs, &pkt, cd);
+    } else {
+        PMIX_GDS_ASSEMB_KVS_REQ(rc, cd->peer, &proc, &cb.kvs, &pkt, cd);
+    }
+    if (rc != PMIX_SUCCESS) {
+        PMIX_ERROR_LOG(rc);
+        PMIX_DESTRUCT(&pkt);
+        PMIX_DESTRUCT(&cb);
+        goto complete;
+    }
+    if (PMIX_PEER_IS_V1(cd->peer)) {
+        /* if the client is using v1, then it expects the
+         * data returned to it in a different order than v2
+         * - so we have to do a little gyration */
+        /* pack the rank */
+        PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &rank, 1, PMIX_PROC_RANK);
+        if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&pkt);
+            PMIX_DESTRUCT(&cb);
+            goto complete;
+        }
+        /* now pack the data itself as a buffer */
+        PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &pkt, 1, PMIX_BUFFER);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_DESTRUCT(&pkt);
+            PMIX_DESTRUCT(&cb);
+            goto complete;
+        }
+        PMIX_DESTRUCT(&pkt);
+    } else {
+        PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
+        PMIX_DESTRUCT(&pkt);
+
+        /* pack it for transmission */
+        PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
+        PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
             PMIX_DESTRUCT(&pbkt);
             PMIX_DESTRUCT(&cb);
-            return rc;
-        }
-        if (PMIX_PEER_IS_V1(cd->peer)) {
-            /* if the client is using v1, then it expects the
-             * data returned to it in a different order than v2
-             * - so we have to do a little gyration */
-            /* pack the rank */
-            PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &rank, 1, PMIX_PROC_RANK);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&pkt);
-                PMIX_DESTRUCT(&pbkt);
-                PMIX_DESTRUCT(&cb);
-                return rc;
-            }
-            /* now pack the data itself as a buffer */
-            PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &pkt, 1, PMIX_BUFFER);
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&pkt);
-                PMIX_DESTRUCT(&pbkt);
-                PMIX_DESTRUCT(&cb);
-                return rc;
-            }
-            PMIX_DESTRUCT(&pkt);
-        } else {
-            PMIX_UNLOAD_BUFFER(&pkt, bo.bytes, bo.size);
-            PMIX_DESTRUCT(&pkt);
-
-            /* pack it for transmission */
-            PMIX_BFROPS_PACK(rc, cd->peer, &pbkt, &bo, 1, PMIX_BYTE_OBJECT);
-            PMIX_BYTE_OBJECT_DESTRUCT(&bo); // data has been copied
-            if (PMIX_SUCCESS != rc) {
-                PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&pbkt);
-                PMIX_DESTRUCT(&cb);
-                return rc;
-            }
+            goto complete;
         }
     }
     PMIX_DESTRUCT(&cb);

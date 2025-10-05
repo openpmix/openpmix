@@ -2119,6 +2119,11 @@ unpack_srv_kindx_info(
         rc = PMIX_ERR_UNPACK_FAILURE;
         PMIX_ERROR_LOG(rc);
     }
+    else if (NULL == nspace_name) {
+        // no namespace was given
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        rc = PMIX_ERR_BAD_PARAM;
+    }
     else {
         // Last step is to update our view of the
         // PMIx attributes, if we haven't already.
@@ -2131,7 +2136,9 @@ unpack_srv_kindx_info(
     }
     // No longer needed.
     regattr_list_free(tmpsrvdict, tabsize);
-    free(nspace_name);
+    if (NULL != nspace_name) {
+        free(nspace_name);
+    }
     return rc;
 }
 

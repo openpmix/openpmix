@@ -419,6 +419,7 @@ bool pmix_path_nfs(char *fname, char **fstype)
         }
     }
     if (fstat(fd, &s) != 0) {
+        close(fd);
         return false;
     }
     close(fd);
