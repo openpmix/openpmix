@@ -115,7 +115,6 @@ int main(int argc, char **argv)
     size_t n, ntargets;
     pmix_rank_t rank = 0;
     char hostname[PMIX_PATH_MAX], *kptr;
-    bool donotwait = false;
     int sigval;
     char *key = NULL;
     PMIX_HIDE_UNUSED_PARAMS(argc);
@@ -457,11 +456,6 @@ int main(int argc, char **argv)
             goto done;
         }
         fprintf(stderr, "Job control request failed: %s\n", PMIx_Error_string(rc));
-        goto done;
-    }
-
-    if (donotwait) {
-        fprintf(stderr, "Job control request being processed\n");
         goto done;
     }
 
