@@ -470,6 +470,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     }
 
     /* we are done */
+    free(id);
     if (NULL != scd->relfn) {
         scd->relfn(scd->cbdata);
     }

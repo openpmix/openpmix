@@ -72,8 +72,13 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         // already exists - try to set the mode.
         // Silently fail the chmod if it hits an error - we'll
         // let us fail later when we try to actually create a
-        // file if we aren't allowed to do so
-        chmod(path, mode);
+        // file if we aren't allowed to do so. However, we have
+        // to capture the return to silence static code
+        // analyzer complaints
+        ret = chmod(path, mode);
+        if (0 != ret) {
+            return PMIX_ERR_EXISTS;
+        }
         return PMIX_ERR_EXISTS;
     }
     if (ENOENT != ret) {
@@ -153,7 +158,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
     int rc, exit_status = PMIX_SUCCESS;
     DIR *dp;
     struct dirent *ep;
-    char *filenm;
+    char *filenm = NULL;
 
     if (NULL == path) { /* protect against error */
         return PMIX_ERROR;
@@ -207,6 +212,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                 if (ENOTEMPTY == errno && recursive) {
                     rc = pmix_os_dirpath_destroy(filenm, recursive, cbfunc);
                     free(filenm);
+                    filenm = NULL;
                     if (PMIX_SUCCESS != rc) {
                         exit_status = rc;
                         closedir(dp);
@@ -223,6 +229,7 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                 pmix_show_help("help-pmix-util.txt", "unlink-error", true,
                                filenm,  strerror(rc));
                 free(filenm);
+                filenm = NULL;
                 exit_status = PMIX_ERROR;
                 break;
             }
@@ -248,7 +255,9 @@ cleanup:
         free(pmix_ptl_base.system_tmpdir);
         pmix_ptl_base.system_tmpdir = NULL;
     }
-
+    if (NULL != filenm) {
+        free(filenm);
+    }
     return exit_status;
 }
 
