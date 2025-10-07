@@ -77,7 +77,9 @@ int pmix_os_dirpath_create(const char *path, const mode_t mode)
         // analyzer complaints
         ret = chmod(path, mode);
         if (0 != ret) {
-            return PMIX_ERR_EXISTS;
+            pmix_output_verbose(2, pmix_globals.debug_output,
+                                "PATH %s ALREADY EXISTS AND CHMOD FAILED: %s",
+                                path, strerror(errno));
         }
         return PMIX_ERR_EXISTS;
     }
