@@ -480,7 +480,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
         PMIX_BFROPS_UNPACK(rc, peer, &buf, &nblob, &i32, PMIX_SIZE);
         if (0 < nblob) {
             PMIX_INFO_CREATE(iblob, nblob);
-            i32 = cnt;
+            i32 = nblob;
             PMIX_BFROPS_UNPACK(rc, peer, &buf, iblob, &i32, PMIX_INFO);
             // process the data
             for (n=0; n < nblob; n++) {
