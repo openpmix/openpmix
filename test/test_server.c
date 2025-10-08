@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -600,8 +600,8 @@ static void server_read_cb(int fd, short event, void *arg)
             msg_buf = NULL;
         }
 
-        TEST_VERBOSE(("CMD_FENCE_CONTRIB req from %d cnt %lu size %d", msg_hdr.src_id,
-                      (unsigned long) contrib_cnt, msg_hdr.size));
+        TEST_VERBOSE(("CMD_FENCE_CONTRIB req from %d cnt %lu size %lu", msg_hdr.src_id,
+                      (unsigned long) contrib_cnt, (unsigned long)msg_hdr.size));
         if (pmix_list_get_size(server_list) == contrib_cnt) {
             server_info_t *tmp_server;
             PMIX_LIST_FOREACH (tmp_server, server_list, server_info_t) {
@@ -1009,7 +1009,6 @@ int server_launch_clients(int local_size, int univ_size, int base_rank, test_par
     int n;
     uid_t myuid;
     gid_t mygid;
-    char *ranks = NULL;
     char digit[MAX_DIGIT_LEN];
     int rc;
     static int cli_counter = 0;
@@ -1024,9 +1023,6 @@ int server_launch_clients(int local_size, int univ_size, int base_rank, test_par
     TEST_VERBOSE(("Setting job info"));
     (void) snprintf(proc.nspace, PMIX_MAX_NSLEN, "%s-%d", TEST_NAMESPACE, num_ns);
     set_namespace(local_size, univ_size, base_rank, proc.nspace, params);
-    if (NULL != ranks) {
-        free(ranks);
-    }
     /* add namespace entry */
     nspace_item->ntasks = univ_size;
     nspace_item->ltasks = local_size;
