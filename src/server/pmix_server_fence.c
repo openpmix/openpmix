@@ -288,20 +288,22 @@ pmix_server_trkr_t *pmix_server_get_tracker(char *id, pmix_proc_t *procs,
                 PMIX_CONSTRUCT(&cache, pmix_list_t);
                 /* update tracked procs to include the given ones,
                  * filtered to only keep unique entries */
-                for (i=0; i < nprocs; i++) {
-                    found = false;
-                    for (j=0; j < trk->npcs; j++) {
-                        if (PMIX_CHECK_PROCID(&procs[i], &trk->pcs[j])) {
-                            // match - can ignore it
-                            found = true;
-                            break;
+                if (NULL != procs) {
+                    for (i=0; i < nprocs; i++) {
+                        found = false;
+                        for (j=0; j < trk->npcs; j++) {
+                            if (PMIX_CHECK_PROCID(&procs[i], &trk->pcs[j])) {
+                                // match - can ignore it
+                                found = true;
+                                break;
+                            }
                         }
-                    }
-                    if (!found) {
-                        // new proc, so we need to add it
-                        p = PMIX_NEW(pmix_proclist_t);
-                        memcpy(&p->proc, &procs[i], sizeof(pmix_proc_t));
-                        pmix_list_append(&cache, &p->super);
+                        if (!found) {
+                            // new proc, so we need to add it
+                            p = PMIX_NEW(pmix_proclist_t);
+                            memcpy(&p->proc, &procs[i], sizeof(pmix_proc_t));
+                            pmix_list_append(&cache, &p->super);
+                        }
                     }
                 }
                 i = pmix_list_get_size(&cache);
@@ -330,14 +332,16 @@ pmix_server_trkr_t *pmix_server_get_tracker(char *id, pmix_proc_t *procs,
                 continue;
             }
             matches = 0;
-            for (i = 0; i < nprocs; i++) {
-                /* the procs may be in different order, so we have
-                 * to do an exhaustive search */
-                for (j = 0; j < trk->npcs; j++) {
-                    if (0 == strcmp(procs[i].nspace, trk->pcs[j].nspace)
-                        && procs[i].rank == trk->pcs[j].rank) {
-                        ++matches;
-                        break;
+            if (NULL != procs) {
+                for (i = 0; i < nprocs; i++) {
+                    /* the procs may be in different order, so we have
+                     * to do an exhaustive search */
+                    for (j = 0; j < trk->npcs; j++) {
+                        if (0 == strcmp(procs[i].nspace, trk->pcs[j].nspace)
+                            && procs[i].rank == trk->pcs[j].rank) {
+                            ++matches;
+                            break;
+                        }
                     }
                 }
             }
