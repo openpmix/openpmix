@@ -14,7 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -261,6 +261,9 @@ pmix_status_t pmix20_bfrop_print_int(char **output, char *prefix, int *src, pmix
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
         if (0 > asprintf(output, "%sData type: PMIX_INT\tValue: NULL pointer", prefx)) {
+            if (prefx != prefix) {
+                free(prefx);
+            }
             return PMIX_ERR_NOMEM;
         }
         if (prefx != prefix) {
@@ -270,6 +273,9 @@ pmix_status_t pmix20_bfrop_print_int(char **output, char *prefix, int *src, pmix
     }
 
     if (0 > asprintf(output, "%sData type: PMIX_INT\tValue: %ld", prefx, (long) *src)) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (prefx != prefix) {
@@ -297,6 +303,9 @@ pmix_status_t pmix20_bfrop_print_uint(char **output, char *prefix, uint *src, pm
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
         if (0 > asprintf(output, "%sData type: PMIX_UINT\tValue: NULL pointer", prefx)) {
+            if (prefx != prefix) {
+                free(prefx);
+            }
             return PMIX_ERR_NOMEM;
         }
         if (prefx != prefix) {
@@ -306,6 +315,9 @@ pmix_status_t pmix20_bfrop_print_uint(char **output, char *prefix, uint *src, pm
     }
 
     if (0 > asprintf(output, "%sData type: PMIX_UINT\tValue: %lu", prefx, (unsigned long) *src)) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (prefx != prefix) {
@@ -1431,7 +1443,7 @@ pmix_status_t pmix20_bfrop_print_pinfo(char **output, char *prefix, pmix_proc_in
 {
     char *prefx;
     pmix_status_t rc = PMIX_SUCCESS;
-    char *p2, *tmp;
+    char *p2=NULL, *tmp;
 
     PMIX_HIDE_UNUSED_PARAMS(type);
 
@@ -1450,7 +1462,6 @@ pmix_status_t pmix20_bfrop_print_pinfo(char **output, char *prefix, pmix_proc_in
     }
 
     if (PMIX_SUCCESS != (rc = pmix20_bfrop_print_proc(&tmp, p2, &src->proc, PMIX_PROC))) {
-        free(p2);
         goto done;
     }
 
@@ -1460,7 +1471,6 @@ pmix_status_t pmix20_bfrop_print_pinfo(char **output, char *prefix, pmix_proc_in
                      prefx, tmp, p2, src->hostname, src->executable_name, p2,
                      (unsigned long) src->pid, src->exit_code,
                      PMIx_Proc_state_string(src->state))) {
-        free(p2);
         rc = PMIX_ERR_NOMEM;
     }
 
@@ -1468,7 +1478,9 @@ done:
     if (prefx != prefix) {
         free(prefx);
     }
-
+    if (NULL != p2) {
+        free(p2);
+    }
     return rc;
 }
 

@@ -207,6 +207,8 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                 rc = rmdir(filenm);
                 if (0 == rc) {
                     // success
+                    free(filenm);
+                    filenm = NULL;
                     continue;
                 }
                 /* if it wasn't empty and we are recursively removing
@@ -220,11 +222,16 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                         closedir(dp);
                         goto cleanup;
                     }
+                } else {
+                    free(filenm);
+                    filenm = NULL;
                 }
             } else if (EBUSY == rc) {
                 /* file system mount point or another process
                  * is using it */
                 exit_status = PMIX_ERROR;
+                free(filenm);
+                filenm = NULL;
                 continue;
             } else {
                 // uncorrectable error
@@ -235,6 +242,9 @@ int pmix_os_dirpath_destroy(const char *path, bool recursive,
                 exit_status = PMIX_ERROR;
                 break;
             }
+        } else {
+            free(filenm);
+            filenm = NULL;
         }
     }
 
