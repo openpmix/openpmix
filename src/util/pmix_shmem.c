@@ -241,7 +241,7 @@ static size_t
 get_page_size(void)
 {
     const long i = sysconf(_SC_PAGE_SIZE);
-    if (-1 == i) {
+    if (0 > i) {
         PMIX_ERROR_LOG(PMIX_ERROR);
         return 0;
     }
