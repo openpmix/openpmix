@@ -17,7 +17,7 @@
  * Copyright (c) 2017      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c)           Amazon.com, Inc. or its affiliates.  All Rights
  *                         reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
@@ -59,8 +59,6 @@
 #include "src/include/pmix_config.h"
 #include "src/include/pmix_stdatomic.h"
 
-#if PMIX_USE_C11_ATOMICS
-
 #include <stdatomic.h>
 
 static inline void pmix_atomic_wmb(void)
@@ -94,44 +92,6 @@ static inline void pmix_atomic_rmb(void)
         return atomic_fetch_##name##_explicit(                              \
             addr, value, memory_order_relaxed) operator value;              \
     }
-
-/* end of PMIX_USE_C11_ATOMICS */
-#elif PMIX_USE_GCC_BUILTIN_ATOMICS
-
-static inline void pmix_atomic_wmb(void)
-{
-    __atomic_thread_fence(__ATOMIC_RELEASE);
-}
-
-static inline void pmix_atomic_rmb(void)
-{
-#if defined(PMIX_ATOMIC_X86_64)
-    /* work around a bug in older gcc versions where ACQUIRE seems to get
-     * treated as a no-op instead of being equivalent to
-     * __asm__ __volatile__("": : :"memory") */
-    __asm__ __volatile__("" : : : "memory");
-#else
-    __atomic_thread_fence(__ATOMIC_ACQUIRE);
-#endif
-}
-
-#define PMIX_ATOMIC_DEFINE_OP(type, bits, operator, name)                      \
-    static inline type                                                         \
-    pmix_atomic_fetch_##name##_##bits(pmix_atomic_##type *addr, type value)    \
-    {                                                                          \
-        return __atomic_fetch_##name(addr, value, __ATOMIC_RELAXED);           \
-    }                                                                          \
-                                                                               \
-    static inline type                                                         \
-    pmix_atomic_##name##_fetch_##bits(pmix_atomic_##type *addr, type value)    \
-    {                                                                          \
-        return __atomic_##name##_fetch(addr, value, __ATOMIC_RELAXED);         \
-    }
-
-/* end of PMIX_USE_GCC_BUILTIN_ATOMICS */
-#else
-#error OpenPMIx requires either C11 atomics support or GCC built-in atomics.
-#endif
 
 PMIX_ATOMIC_DEFINE_OP(int32_t, 32, +, add)
 PMIX_ATOMIC_DEFINE_OP(int32_t, 32, &, and)
