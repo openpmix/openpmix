@@ -1012,7 +1012,7 @@ PMIX_EXPORT int PMIx_tool_init(pmix_proc_t *proc, pmix_info_t info[], size_t nin
     }
 
     // enable show_help subsystem
-    pmix_show_help_enabled = true;
+    pmix_atomic_store_int(&pmix_show_help_enabled, 1);
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are acting as a server, then start listening

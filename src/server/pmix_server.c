@@ -922,7 +922,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module, pmix_in
 
     ++pmix_globals.init_cntr;
     // enable show_help subsystem
-    pmix_show_help_enabled = true;
+    pmix_atomic_store_int(&pmix_show_help_enabled, 1);
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* register a handler to catch/aggregate PMIX_EVENT_WAITING_FOR_NOTIFY
