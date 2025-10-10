@@ -267,9 +267,6 @@ cleanup:
         free(pmix_ptl_base.system_tmpdir);
         pmix_ptl_base.system_tmpdir = NULL;
     }
-    if (NULL != filenm) {
-        free(filenm);
-    }
     return exit_status;
 }
 
