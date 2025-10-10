@@ -363,14 +363,44 @@ AC_DEFUN([PMIX_SETUP_CORE],[
            AC_MSG_ERROR([Cannot continue])
           ])
 
+
     ##################################
-    # Assembler Configuration
+    # Check required atomics
     ##################################
 
-    pmix_show_subtitle "Atomics"
+    AC_MSG_CHECKING([for __atomic_store_n])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_SOURCE([
+            #include <stdatomic.h>
+            void test_atomic_store() {
+                int value = 0;
+                __atomic_store_n(&value, 1, __ATOMIC_RELAXED);
+            }
+        ])],
+        [AC_MSG_RESULT([found])],
+        [AC_MSG_RESULT([not found])
+         AC_MSG_ERROR([PMIx requires some minimal C11 atomic support. This was])
+         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
+         AC_MSG_WARN([with the required support])
+         AC_MSG_ERROR([Cannot continue])]
+    )
 
-    PMIX_CONFIG_ASM
-
+    AC_MSG_CHECKING([for __atomic_load_n])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_SOURCE([
+            #include <stdatomic.h>
+            void test_atomic_load() {
+                int value = 0;
+                __atomic_load_n(&value, __ATOMIC_RELAXED);
+            }
+        ])],
+        [AC_MSG_RESULT([found])],
+        [AC_MSG_RESULT([not found])
+         AC_MSG_ERROR([PMIx requires some minimal C11 atomic support. This was])
+         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
+         AC_MSG_WARN([with the required support])
+         AC_MSG_ERROR([Cannot continue])]
+    )
 
     ##################################
     # Header files

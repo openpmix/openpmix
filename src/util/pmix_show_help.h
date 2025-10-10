@@ -95,7 +95,9 @@
 #include "pmix_common.h"
 
 #include <stdarg.h>
+#include <stdatomic.h>
 
+#include "src/include/pmix_stdatomic.h"
 #include "src/include/pmix_globals.h"
 
 BEGIN_C_DECLS
@@ -174,7 +176,7 @@ PMIX_EXPORT pmix_status_t pmix_show_help_norender(const char *filename,
                                                   const char *topic,
                                                   const char *output);
 
-PMIX_EXPORT extern bool pmix_show_help_enabled;
+PMIX_EXPORT extern int pmix_show_help_enabled;
 
 END_C_DECLS
 

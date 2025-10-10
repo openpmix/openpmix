@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
@@ -20,8 +20,6 @@
 
 #include "pmix_stdint.h"
 #include <stdbool.h>
-
-#if PMIX_USE_C11_ATOMICS
 
 #ifdef HAVE_STDATOMIC_H
 #include <stdatomic.h>
@@ -41,22 +39,9 @@ typedef _Atomic ssize_t pmix_atomic_ssize_t;
 typedef _Atomic intptr_t pmix_atomic_intptr_t;
 typedef _Atomic uintptr_t pmix_atomic_uintptr_t;
 
-#else
+#define pmix_atomic_store_int(addr , val) __atomic_store_n(addr, val, __ATOMIC_RELAXED)
 
-typedef volatile int pmix_atomic_int_t;
-typedef volatile long pmix_atomic_long_t;
+#define pmix_atomic_load_int(addr) __atomic_load_n(addr, __ATOMIC_RELAXED)
 
-typedef volatile bool pmix_atomic_bool_t;
-typedef volatile int32_t pmix_atomic_int32_t;
-typedef volatile uint32_t pmix_atomic_uint32_t;
-typedef volatile int64_t pmix_atomic_int64_t;
-typedef volatile uint64_t pmix_atomic_uint64_t;
-
-typedef volatile size_t pmix_atomic_size_t;
-typedef volatile ssize_t pmix_atomic_ssize_t;
-typedef volatile intptr_t pmix_atomic_intptr_t;
-typedef volatile uintptr_t pmix_atomic_uintptr_t;
-
-#endif
 
 #endif

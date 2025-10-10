@@ -38,7 +38,7 @@
 #include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
-bool pmix_show_help_enabled = false;
+int pmix_show_help_enabled = 0;
 static time_t show_help_time_last_displayed = 0;
 static bool show_help_timer_set = false;
 static pmix_event_t show_help_timer_event;
@@ -69,7 +69,7 @@ static void local_delivery(const char *file,
     pmix_shift_caddy_t *cd;
 
     if (!pmix_show_help_initialized ||
-        !pmix_show_help_enabled ||
+        0 == pmix_atomic_load_int(&pmix_show_help_enabled) ||
         NULL == pmix_globals.evbase) {
         /* the show help subsystem has not yet been enabled,
          * likely because we haven't gotten far enough thru

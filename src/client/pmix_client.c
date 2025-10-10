@@ -893,7 +893,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     }
 
     // enable show_help subsystem
-    pmix_show_help_enabled = true;
+    pmix_atomic_store_int(&pmix_show_help_enabled, 1);
     PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* retrieve our topology as a number of APIs utilize it */
