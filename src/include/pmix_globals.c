@@ -65,10 +65,6 @@ static void dirpath_destroy(char *path, pmix_cleanup_dir_t *cd,
                             pmix_epilog_t *epi);
 static bool dirpath_is_empty(const char *path);
 
-PMIX_EXPORT pmix_lock_t pmix_global_lock = {.mutex = PMIX_MUTEX_STATIC_INIT,
-                                            .cond = PMIX_CONDITION_STATIC_INIT,
-                                            .active = false};
-
 static void nsenvcon(pmix_nspace_env_cache_t *p)
 {
     PMIX_CONSTRUCT(&p->envars, pmix_list_t);

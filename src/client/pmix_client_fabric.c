@@ -163,16 +163,12 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register(pmix_fabric_t *fabric,
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:fabric register");
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
 
     /* create a callback object so we can be notified when
      * the non-blocking operation is complete */
@@ -208,6 +204,10 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FABRIC_REGISTER_CMD;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     /* if I am a scheduler or a server (but not a tool),
      * then I should be able to support this myself */
     if ((PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
@@ -219,12 +219,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_register_nb(pmix_fabric_t *fabric,
 
     /* otherwise, I need to send it to
      * a daemon for processing */
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -280,13 +277,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update(pmix_fabric_t *fabric)
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:fabric update");
@@ -319,13 +312,10 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
     pmix_buffer_t *msg;
     pmix_cmd_t cmd = PMIX_FABRIC_UPDATE_CMD;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     /* if I am a scheduler server, then I should be able
      * to support this myself */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         rc = pmix_pnet.update_fabric(fabric);
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return rc;
     }
 
@@ -333,7 +323,6 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
      * it up to our host so they can send it to the scheduler */
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.fabric) {
             return PMIX_ERR_NOT_SUPPORTED;
         }
@@ -359,11 +348,9 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_update_nb(pmix_fabric_t *fabric, pmix_op_c
 
     /* finally, if I am a tool or client, then I need to send it to
      * a daemon for processing */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -423,19 +410,15 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric, pmix_
 
     PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     /* if I am a scheduler server, then I should be able
      * to support this myself */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         rc = pmix_pnet.deregister_fabric(fabric);
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (PMIX_SUCCESS == rc) {
             rc = PMIX_OPERATION_SUCCEEDED;
         }
         return rc;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* otherwise, just remove any storage in it */
     if (NULL != fabric->info) {

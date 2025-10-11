@@ -185,13 +185,9 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request(pmix_alloc_directive_t directi
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "%s pmix:allocate",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
@@ -280,16 +276,12 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: allocate called");
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we are hosted by the scheduler, then this makes no sense */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -301,7 +293,6 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
     /* if we are the system controller, then nothing we can do
      * since the scheduler is not attached */
     if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -313,7 +304,6 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
         NULL != pmix_host_server.allocate) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:allocate handed to host");
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         // need to be in our thread context to perform the upcall
         acd = PMIX_NEW(pmix_alloc_caddy_t);
         acd->directive = directive;
@@ -328,11 +318,9 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
 sendit:
     /* for all other cases, we need to send this to someone
      * if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* all other cases, relay this request to our server, which
      * might (for a tool) actually be the scheduler itself */
@@ -458,13 +446,9 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t di
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "%s pmix:resource block op",
@@ -524,16 +508,12 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: allocate called");
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we are hosted by the scheduler, then this makes no sense */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -545,7 +525,6 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
     /* if we are the system controller, then nothing we can do
      * since the scheduler is not attached */
     if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
@@ -557,7 +536,6 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
         NULL != pmix_host_server.resource_block) {
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:resource_block handed to host");
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         cd = PMIX_NEW(pmix_rb_caddy_t);
         cd->directive = directive;
         cd->block = block;
@@ -574,11 +552,9 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
 sendit:
     /* for all other cases, we need to send this to someone
      *  if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* all other cases, relay this request to our server */
     msg = PMIX_NEW(pmix_buffer_t);

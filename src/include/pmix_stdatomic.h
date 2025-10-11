@@ -39,9 +39,18 @@ typedef _Atomic ssize_t pmix_atomic_ssize_t;
 typedef _Atomic intptr_t pmix_atomic_intptr_t;
 typedef _Atomic uintptr_t pmix_atomic_uintptr_t;
 
-#define pmix_atomic_store_int(addr , val) __atomic_store_n(addr, val, __ATOMIC_RELAXED)
+#define pmix_atomic_store_int(addr, val) __atomic_store_n(addr, val, __ATOMIC_RELAXED)
 
 #define pmix_atomic_load_int(addr) __atomic_load_n(addr, __ATOMIC_RELAXED)
 
+#define pmix_atomic_set_bool(addr) atomic_store(addr, true)
+
+#define pmix_atomic_unset_bool(addr) atomic_store(addr, false)
+
+#define pmix_atomic_check_bool(addr) atomic_load(addr)
+
+#define pmix_atomic_fetch_add(addr, val) __atomic_fetch_add(addr, val, __ATOMIC_SEQ_CST)
+
+#define pmix_atomic_test_and_set(addr) __atomic_test_and_set(addr, __ATOMIC_SEQ_CST)
 
 #endif

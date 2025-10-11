@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -139,7 +139,6 @@ static void _session_control(int sd, short args, void *cbdata)
      * to the scheduler, then nothing we can do */
     if (PMIX_PEER_IS_SYS_CTRLR(pmix_globals.mypeer)) {
         if (!PMIX_PEER_IS_SCHEDULER(pmix_client_globals.myserver)) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
             rc = PMIX_ERR_NOT_SUPPORTED;
             goto errorrpt;
         }
@@ -150,12 +149,10 @@ static void _session_control(int sd, short args, void *cbdata)
 sendit:
     /* for all other cases, we need to send this to someone
      *  if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         rc = PMIX_ERR_UNREACH;
         goto errorrpt;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* all other cases, relay this request to our server */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -219,12 +216,9 @@ pmix_status_t PMIx_Session_control(uint32_t sessionID,
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server session control");
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     cd = PMIX_NEW(pmix_shift_caddy_t);
     cd->sessionid = sessionID;

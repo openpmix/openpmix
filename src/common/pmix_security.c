@@ -6,7 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -131,6 +131,10 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential(const pmix_info_t info[], size_t n
     pmix_query_caddy_t cb;
     pmix_status_t rc;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     PMIX_CONSTRUCT(&cb, pmix_query_caddy_t);
     rc = PMIx_Get_credential_nb(info, ninfo, mycdcb, &cb);
     if (PMIX_SUCCESS == rc) {
@@ -157,19 +161,17 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
     pmix_info_t *results = NULL;
     size_t nresults = 0;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: Get_credential called with %d info",
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: Get_credential called with %d info",
                         (int) ninfo);
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we are the server */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* if the host doesn't support this operation,
          * see if we can generate it ourselves */
         if (NULL == pmix_host_server.get_credential) {
@@ -195,8 +197,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
 
     /* if we are a client or tool and we aren't connected, see
      * if one of our internal plugins is capable of meeting the request */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         PMIX_BYTE_OBJECT_CONSTRUCT(&cred);
         PMIX_PSEC_CREATE_CRED(rc, pmix_globals.mypeer, info, ninfo, &results, &nresults, &cred);
         if (PMIX_SUCCESS == rc) {
@@ -211,7 +212,6 @@ PMIX_EXPORT pmix_status_t PMIx_Get_credential_nb(const pmix_info_t info[], size_
         }
         return rc;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);
@@ -344,6 +344,10 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential(const pmix_byte_object_t *cre
     pmix_query_caddy_t cb;
     pmix_status_t rc;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     PMIX_CONSTRUCT(&cb, pmix_query_caddy_t);
     rc = PMIx_Validate_credential_nb(cred, directives, ndirs, myvalcb, &cb);
     if (PMIX_SUCCESS == rc) {
@@ -371,18 +375,16 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
     pmix_info_t *results = NULL;
     size_t nresults = 0;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: monitor called");
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: monitor called");
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we are the server */
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* if the host doesn't support this operation,
          * see if we can validate it ourselves */
         if (NULL == pmix_host_server.validate_credential) {
@@ -408,8 +410,7 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
 
     /* if we are a client or tool and we aren't connected, see
      * if one of our internal plugins is capable of meeting the request */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         PMIX_PSEC_VALIDATE_CRED(rc, pmix_globals.mypeer, directives, ndirs, &results, &nresults,
                                 cred);
         if (PMIX_SUCCESS == rc) {
@@ -423,7 +424,6 @@ PMIX_EXPORT pmix_status_t PMIx_Validate_credential_nb(const pmix_byte_object_t *
         }
         return rc;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);

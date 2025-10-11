@@ -385,10 +385,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     *procs = NULL;
     *nprocs = 0;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -403,7 +400,6 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
     // if we are a server, see if our host can answer the
     // request since it should have more global knowledge
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL != pmix_host_server.query) {
             PMIX_QUERY_CONSTRUCT(&query);
             PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_RESOLVE_PEERS);
@@ -468,8 +464,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
      * provide our local understanding of the situation.
      * Threadshift to compute it as we will be accessing
      * global info */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         cd = PMIX_NEW(pmix_resolve_caddy_t);
         cd->nodename = nd;
         PMIX_LOAD_NSPACE(cd->nspace, nspace);
@@ -486,7 +481,6 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_peers(const char *nodename, const pmix_ns
         PMIX_RELEASE(cd);
         return rc;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     // send the request to our server as they have a more
     // global view of the situation than we might
@@ -711,16 +705,13 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
     /* set default response */
     *nodelist = NULL;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     // if we are a server, see if our host can answer the
     // request since it should have more global knowledge
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL != pmix_host_server.query) {
             PMIX_QUERY_CONSTRUCT(&query);
             PMIX_ARGV_APPEND(rc, query.keys, PMIX_QUERY_RESOLVE_NODE);
@@ -777,8 +768,7 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
      * provide our local understanding of the situation.
      * Threadshift to compute it as we will be accessing
      * global info */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         cd = PMIX_NEW(pmix_resolve_caddy_t);
         PMIX_LOAD_NSPACE(cd->nspace, nspace);
         PMIX_THREADSHIFT(cd, resolve_nodes);
@@ -792,7 +782,6 @@ PMIX_EXPORT pmix_status_t PMIx_Resolve_nodes(const pmix_nspace_t nspace, char **
         PMIX_RELEASE(cd);
         return rc;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     // send the request to our server as they have a more
     // global view of the situation than we might

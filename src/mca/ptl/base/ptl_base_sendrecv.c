@@ -196,7 +196,7 @@ static void lost_connection(pmix_peer_t *peer)
 
         if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
             /* only connection I can lose is to my server, so mark it */
-            pmix_globals.connected = false;
+            pmix_atomic_unset_bool(&pmix_globals.connected);
         } else {
             /* cleanup any sensors that are monitoring them */
             pmix_psensor.stop(peer, NULL);
@@ -221,7 +221,7 @@ static void lost_connection(pmix_peer_t *peer)
     } else if (peer == pmix_client_globals.myserver) {
         /* if this was the server to which I am connected,
          * then we need to exit */
-        pmix_globals.connected = false;
+        pmix_atomic_unset_bool(&pmix_globals.connected);
         /* it is possible that we have sendrecv's in progress where
          * we are waiting for a response to arrive. Since we have
          * lost connection to the server, that will never happen.
