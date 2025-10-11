@@ -231,13 +231,10 @@ static pmix_status_t request_help(pmix_query_caddy_t *cd)
 {
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     /* if our host has support, then we just issue the query and
      * return the response - but don't pass it back to the host
      * is the host is a server as that would be a loopback */
     if (!cd->host_called && NULL != pmix_host_server.query) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         pmix_output_verbose(2, pmix_globals.debug_output,
                             "pmix:query handed to RM");
         cd->host_called = true;
@@ -248,11 +245,9 @@ static pmix_status_t request_help(pmix_query_caddy_t *cd)
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     rc = send_for_help(cd);
 
@@ -473,6 +468,10 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
     *results = NULL;
     *nresults = 0;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     /* pass this to the non-blocking version for processing */
     cd = PMIX_NEW(pmix_query_caddy_t);
     rc = PMIx_Query_info_nb(queries, nqueries, qinfocb, (void*)cd);
@@ -505,16 +504,12 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
     pmix_query_caddy_t *cd;
     size_t n, p;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:query non-blocking");
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     if (0 == nqueries || NULL == queries) {
         return PMIX_ERR_BAD_PARAM;

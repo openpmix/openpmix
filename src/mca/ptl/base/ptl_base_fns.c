@@ -583,7 +583,7 @@ retry:
 
 void pmix_ptl_base_complete_connection(pmix_peer_t *peer, char *nspace, pmix_rank_t rank)
 {
-    pmix_globals.connected = true;
+    pmix_atomic_set_bool(&pmix_globals.connected);
 
     /* setup the server info */
     if (NULL == peer->info) {

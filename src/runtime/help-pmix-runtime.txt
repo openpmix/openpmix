@@ -79,3 +79,11 @@ attributes include:
       the given pid
 
 Please correct your program and try again.
+#
+[reentrant-init]
+An attempt was made to call an initialization routine, but the
+PMIx library has already been initialized:
+
+  Function: %s
+
+Multiple calls to init are not supported. Please correct your program.

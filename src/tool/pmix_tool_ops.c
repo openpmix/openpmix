@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -81,7 +81,7 @@ pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer,
         return PMIX_ERR_NOT_SUPPORTED;
     }
 
-    if (!pmix_globals.connected) {
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
 

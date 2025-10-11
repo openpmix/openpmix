@@ -6,7 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -69,7 +69,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log(const pmix_info_t data[], size_t ndata,
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    if (pmix_globals.init_cntr <= 0) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -170,7 +170,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:log non-blocking");
 
-    if (pmix_globals.init_cntr <= 0) {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -197,7 +197,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
      * always pass this request to our server for execution */
     if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
         /* if we aren't connected, don't attempt to send */
-        if (!pmix_globals.connected) {
+        if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
             return PMIX_ERR_UNREACH;
         }
 

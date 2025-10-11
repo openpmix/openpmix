@@ -165,6 +165,10 @@ PMIX_EXPORT pmix_status_t PMIx_Data_pack(const pmix_proc_t *target, pmix_data_bu
     pmix_peer_t *peer;
     pmix_shift_caddy_t scd;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     // if the target is a member of my own nspace, then use our own peer
     if (NULL == target ||
         PMIx_Check_nspace(target->nspace, pmix_globals.myid.nspace)) {
@@ -234,6 +238,10 @@ PMIX_EXPORT pmix_status_t PMIx_Data_unpack(const pmix_proc_t *target, pmix_data_
     pmix_peer_t *peer;
     pmix_shift_caddy_t scd;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     // if the target is a member of my own nspace, then use our own peer
     if (NULL == target ||
         PMIx_Check_nspace(target->nspace, pmix_globals.myid.nspace)) {
@@ -290,6 +298,10 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy(void **dest, void *src, pmix_data_type_
 {
     pmix_status_t rc;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     /* copy the value */
     PMIX_BFROPS_COPY(rc, pmix_globals.mypeer, dest, src, type);
 
@@ -301,7 +313,11 @@ PMIX_EXPORT pmix_status_t PMIx_Data_print(char **output, char *prefix, void *src
 {
     pmix_status_t rc;
 
-    /* print the value */
+     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
+   /* print the value */
     PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer, output, prefix, src, type);
 
     return rc;
@@ -311,6 +327,10 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest, pmix_
 {
     pmix_status_t rc;
     pmix_buffer_t buf1, buf2;
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
 
     if (NULL == src) {
         return PMIX_SUCCESS;
@@ -337,6 +357,10 @@ PMIX_EXPORT pmix_status_t PMIx_Data_copy_payload(pmix_data_buffer_t *dest, pmix_
 
 pmix_status_t PMIx_Data_unload(pmix_data_buffer_t *buffer, pmix_byte_object_t *payload)
 {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     /* check that buffer is not null */
     if (!buffer) {
         return PMIX_ERR_BAD_PARAM;
@@ -384,6 +408,10 @@ cleanup:
 
 pmix_status_t PMIx_Data_load(pmix_data_buffer_t *buffer, pmix_byte_object_t *payload)
 {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     /* check to see if the buffer has been initialized */
     if (NULL == buffer) {
         return PMIX_ERR_BAD_PARAM;
@@ -422,6 +450,10 @@ pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer, const pmix_byte_object
     pmix_data_buffer_t src;
     pmix_status_t rc;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     /* check to see if the buffer has been initialized */
     if (NULL == buffer) {
         return PMIX_ERR_BAD_PARAM;
@@ -452,6 +484,10 @@ pmix_status_t PMIx_Data_embed(pmix_data_buffer_t *buffer, const pmix_byte_object
 
 bool PMIx_Data_compress(const uint8_t *inbytes, size_t size, uint8_t **outbytes, size_t *nbytes)
 {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     if (NULL == inbytes) {
         return PMIX_ERR_BAD_PARAM;
     }
@@ -462,6 +498,10 @@ bool PMIx_Data_compress(const uint8_t *inbytes, size_t size, uint8_t **outbytes,
 bool PMIx_Data_decompress(const uint8_t *inbytes, size_t size,
                           uint8_t **outbytes, size_t *nbytes)
 {
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     if (NULL == inbytes) {
         return PMIX_ERR_BAD_PARAM;
     }

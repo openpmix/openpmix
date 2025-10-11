@@ -148,13 +148,9 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control(const pmix_proc_t targets[], size_t n
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "%s pmix:job_ctrl",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
@@ -214,14 +210,11 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
     pmix_query_caddy_t *qcd;
     pmix_cb_t *cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: job control called with %d directives",
                         (int) ndirs);
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
@@ -230,7 +223,6 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         if (NULL == pmix_host_server.job_control) {
             /* nothing we can do */
             return PMIX_ERR_NOT_SUPPORTED;
@@ -249,11 +241,9 @@ PMIX_EXPORT pmix_status_t PMIx_Job_control_nb(const pmix_proc_t targets[], size_
     }
 
     /* we need to send, so check for connection */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if we are a client, then relay this request to the server */
     msg = PMIX_NEW(pmix_buffer_t);

@@ -75,17 +75,13 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.spawn_output,
                         "%s pmix: spawn called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* ensure the nspace (if provided) is initialized */
     if (NULL != nspace) {
@@ -174,29 +170,24 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
     pmix_proc_t parent;
     pmix_data_array_t darray;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.spawn_output,
                         "%s pmix: spawn_nb called",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         /* if I am a launcher, we default to local fork/exec */
         if (PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
             forkexec = true;
         } else if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
                    PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-            PMIX_RELEASE_THREAD(&pmix_global_lock);
             return PMIX_ERR_UNREACH;
         }
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     // setup the caddy
     fcd = PMIX_NEW(pmix_setup_caddy_t);

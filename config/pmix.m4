@@ -379,7 +379,24 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         ])],
         [AC_MSG_RESULT([found])],
         [AC_MSG_RESULT([not found])
-         AC_MSG_ERROR([PMIx requires some minimal C11 atomic support. This was])
+         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
+         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
+         AC_MSG_WARN([with the required support])
+         AC_MSG_ERROR([Cannot continue])]
+    )
+
+    AC_MSG_CHECKING([for atomic_store])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_SOURCE([
+            #include <stdatomic.h>
+            void test_atomic_store() {
+                atomic_bool value = 0;
+                atomic_store(&value, 1);
+            }
+        ])],
+        [AC_MSG_RESULT([found])],
+        [AC_MSG_RESULT([not found])
+         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
          AC_MSG_WARN([not found in the current compiler. Please select a compiler])
          AC_MSG_WARN([with the required support])
          AC_MSG_ERROR([Cannot continue])]
@@ -396,7 +413,41 @@ AC_DEFUN([PMIX_SETUP_CORE],[
         ])],
         [AC_MSG_RESULT([found])],
         [AC_MSG_RESULT([not found])
-         AC_MSG_ERROR([PMIx requires some minimal C11 atomic support. This was])
+         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
+         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
+         AC_MSG_WARN([with the required support])
+         AC_MSG_ERROR([Cannot continue])]
+    )
+
+    AC_MSG_CHECKING([for __atomic_fetch_add])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_SOURCE([
+            #include <stdatomic.h>
+            void test_atomic_fetch_add() {
+                int value = 0;
+                __atomic_fetch_add(&value, 1, __ATOMIC_SEQ_CST);
+            }
+        ])],
+        [AC_MSG_RESULT([found])],
+        [AC_MSG_RESULT([not found])
+         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
+         AC_MSG_WARN([not found in the current compiler. Please select a compiler])
+         AC_MSG_WARN([with the required support])
+         AC_MSG_ERROR([Cannot continue])]
+    )
+
+    AC_MSG_CHECKING([for __atomic_test_and_set])
+    AC_COMPILE_IFELSE(
+        [AC_LANG_SOURCE([
+            #include <stdatomic.h>
+            void test_atomic_test_and_set() {
+                _Bool flag = 0;
+                __atomic_test_and_set(&flag, __ATOMIC_SEQ_CST);
+            }
+        ])],
+        [AC_MSG_RESULT([found])],
+        [AC_MSG_RESULT([not found])
+         AC_MSG_WARN([PMIx requires some minimal C11 atomic support. This was])
          AC_MSG_WARN([not found in the current compiler. Please select a compiler])
          AC_MSG_WARN([with the required support])
          AC_MSG_ERROR([Cannot continue])]
