@@ -143,12 +143,9 @@ PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[]
 
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     scd = PMIX_NEW(pmix_setup_caddy_t);
     scd->nspace = function;

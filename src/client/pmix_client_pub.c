@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -67,21 +67,17 @@ PMIX_EXPORT pmix_status_t PMIx_Publish(const pmix_info_t info[], size_t ninfo)
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: publish called");
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: publish called");
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* create a callback object to let us know when it is done */
     cb = PMIX_NEW(pmix_cb_t);
@@ -108,21 +104,17 @@ PMIX_EXPORT pmix_status_t PMIx_Publish_nb(const pmix_info_t info[], size_t ninfo
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: publish called");
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: publish called");
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* check for bozo cases */
     if (NULL == info) {
@@ -190,21 +182,17 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup(pmix_pdata_t pdata[], size_t ndata, const 
     char **keys = NULL;
     size_t i;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: lookup called");
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: lookup called");
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* bozo protection */
     if (NULL == pdata) {
@@ -250,21 +238,17 @@ PMIX_EXPORT pmix_status_t PMIx_Lookup_nb(char **keys, const pmix_info_t info[], 
     pmix_cb_t *cb;
     size_t nkeys, n;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: lookup_nb called");
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: lookup_nb called");
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* check for bozo cases */
     if (NULL == keys) {
@@ -345,21 +329,17 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish(char **keys, const pmix_info_t info[], 
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: unpublish called");
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: unpublish called");
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
@@ -389,21 +369,17 @@ PMIX_EXPORT pmix_status_t PMIx_Unpublish_nb(char **keys, const pmix_info_t info[
     pmix_cb_t *cb;
     size_t i, j;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix: unpublish called");
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix: unpublish called");
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* create the unpublish cmd */
     msg = PMIX_NEW(pmix_buffer_t);

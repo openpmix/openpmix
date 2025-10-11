@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,13 +38,9 @@ PMIX_EXPORT pmix_status_t PMIx_Load_topology(pmix_topology_t *topo)
     pmix_status_t rc;
     pmix_cb_t cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     PMIX_CONSTRUCT(&cb, pmix_cb_t);
     cb.topo = topo;
@@ -62,13 +58,9 @@ PMIX_EXPORT pmix_status_t PMIx_Parse_cpuset_string(const char *cpuset_string, pm
 {
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     rc = pmix_hwloc_parse_cpuset_string(cpuset_string, cpuset);
     return rc;
@@ -78,13 +70,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get_cpuset(pmix_cpuset_t *cpuset, pmix_bind_envel
 {
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     rc = pmix_hwloc_get_cpuset(cpuset, ref);
     return rc;
@@ -95,13 +83,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1, cons
 {
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     rc = pmix_hwloc_get_relative_locality(locality1, locality2, locality);
     return rc;
@@ -150,13 +134,9 @@ pmix_status_t PMIx_Compute_distances(pmix_topology_t *topo, pmix_cpuset_t *cpuse
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output, "pmix:compute_distances");
 
@@ -266,7 +246,9 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     pmix_topology_t *topo = NULL;
     pmix_cpuset_t *cpuset = NULL;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
 
     cb = PMIX_NEW(pmix_cb_t);
     cb->cbfunc.distfn = cbfunc;
@@ -305,7 +287,6 @@ pmix_status_t PMIx_Compute_distances_nb(pmix_topology_t *tp, pmix_cpuset_t *cp,
     /* see if I can support this myself */
     cb->status = pmix_hwloc_compute_distances(topo, cpuset, info, ninfo, &cb->dist, &cb->nvals);
     if (PMIX_SUCCESS == cb->status) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         /* threadshift to return the result */
         PMIX_THREADSHIFT(cb, dcbfunc);
         return PMIX_SUCCESS;
@@ -315,12 +296,10 @@ request:
     /* if I am a server (but not a tool) or I am not connected, there is nothing more I can do */
     if ((PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
          !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) ||
-        !pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+        !pmix_atomic_check_bool(&pmix_globals.connected)) {
         PMIX_RELEASE(cb);
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* don't send our topology if it's local */
     if (topo == &pmix_globals.topology) {

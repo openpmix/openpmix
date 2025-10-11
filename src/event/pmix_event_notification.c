@@ -46,7 +46,7 @@ static void _ntfy_done(pmix_status_t status, void *cbdata)
     }
 }
 
-static void _notify_event(int sd, short args, void *cbdata)
+void pmix_internal_notify_event(int sd, short args, void *cbdata)
 {
     pmix_shift_caddy_t *scd = (pmix_shift_caddy_t*)cbdata;
     int rc;
@@ -79,11 +79,11 @@ static void _notify_event(int sd, short args, void *cbdata)
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected && PMIX_RANGE_PROC_LOCAL != scd->range) {
+    if (!pmix_atomic_check_bool(&pmix_globals.connected) &&
+        PMIX_RANGE_PROC_LOCAL != scd->range) {
         _ntfy_done(PMIX_ERR_UNREACH, scd);
         return;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
     pmix_output_verbose(2, pmix_client_globals.event_output,
                         "pmix_client_notify_event source = %s:%d event_status =%d",
                         (NULL == source) ? pmix_globals.myid.nspace : source->nspace,
@@ -107,6 +107,10 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
     pmix_shift_caddy_t *scd;
     pmix_status_t rc;
 
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
+
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
@@ -119,7 +123,7 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
     scd->ninfo = ninfo;
     scd->cbfunc.opcbfn = cbfunc;
     scd->cbdata = cbdata;
-    PMIX_THREADSHIFT(scd, _notify_event);
+    PMIX_THREADSHIFT(scd, pmix_internal_notify_event);
     if (NULL == cbfunc) {
         PMIX_WAIT_THREAD(&scd->lock);
         rc = scd->status;

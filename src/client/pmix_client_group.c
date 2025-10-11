@@ -295,22 +295,17 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group_construct called");
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
@@ -348,22 +343,17 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
     pmix_status_t rc;
     pmix_group_tracker_t *cb = NULL;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_construct_nb called");
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     // send any data to our server
     msg = PMIX_NEW(pmix_buffer_t);
@@ -399,22 +389,17 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
     pmix_status_t rc;
     pmix_group_tracker_t cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix: group_destruct called");
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
@@ -449,22 +434,17 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     pmix_group_tracker_t *cb = NULL;
     pmix_group_t *grp, *pgrp;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_destruct_nb called");
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* check for bozo input */
     if (NULL == grpid) {
@@ -676,18 +656,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t 
     size_t n;
     pmix_data_array_t darray;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, then we cannot notify */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* check for bozo input */
     if (NULL == grp || NULL == procs) {
@@ -775,18 +751,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
     pmix_kval_t *kv;
     uint32_t jsize;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, then we cannot notify */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* check for bozo input */
     if (NULL == grp || NULL == procs) {
@@ -921,18 +893,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     PMIX_HIDE_UNUSED_PARAMS(results, nresults);
 
@@ -973,18 +941,14 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
                         "[%s:%d] pmix: join nb called",
                         pmix_globals.myid.nspace, pmix_globals.myid.rank);
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, then we cannot notify */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which lock to release when
@@ -1044,21 +1008,16 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
     pmix_status_t rc;
     pmix_group_tracker_t cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.group_output, "pmix: group_leave called");
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
@@ -1092,22 +1051,17 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
     pmix_status_t rc;
     pmix_group_tracker_t *cb = NULL;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.group_output,
                         "pmix:group_leave_nb called");
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* if we aren't connected, don't attempt to send */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* check for bozo input */
     if (NULL == grp) {

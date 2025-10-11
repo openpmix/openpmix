@@ -27,28 +27,6 @@
 #include "src/mca/bfrops/bfrops.h"
 #include "src/server/pmix_server_ops.h"
 
-typedef struct {
-    pmix_object_t super;
-    volatile bool active;
-    pmix_event_t ev;
-    pmix_lock_t lock;
-    pmix_status_t status;
-    size_t index;
-    bool firstoverall;
-    bool enviro;
-    pmix_list_t *list;
-    pmix_event_hdlr_t *hdlr;
-    void *cd;
-    pmix_status_t *codes;
-    size_t ncodes;
-    pmix_info_t *info;
-    size_t ninfo;
-    pmix_proc_t *affected;
-    size_t naffected;
-    pmix_notification_fn_t evhdlr;
-    pmix_hdlr_reg_cbfunc_t evregcbfn;
-    void *cbdata;
-} pmix_rshift_caddy_t;
 static void rscon(pmix_rshift_caddy_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
@@ -333,7 +311,8 @@ static pmix_status_t _add_hdlr(pmix_rshift_caddy_t *cd, pmix_list_t *xfer)
     if ((!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
           PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) ||
           PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) &&
-        pmix_globals.connected && !PMIX_PEER_IS_V1(pmix_client_globals.myserver)
+        pmix_atomic_check_bool(&pmix_globals.connected) &&
+        !PMIX_PEER_IS_V1(pmix_client_globals.myserver)
         && (need_register || 0 < pmix_list_get_size(xfer))) {
         pmix_output_verbose(2, pmix_client_globals.event_output,
                             "pmix: _add_hdlr sending to server");
@@ -476,7 +455,7 @@ static void check_cached_events(pmix_rshift_caddy_t *cd)
     }
 }
 
-static void reg_event_hdlr(int sd, short args, void *cbdata)
+void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata)
 {
     pmix_rshift_caddy_t *cd = (pmix_rshift_caddy_t *) cbdata;
     size_t index = 0, n;
@@ -926,13 +905,9 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
     pmix_rshift_caddy_t *cd;
     pmix_status_t rc = PMIX_SUCCESS;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* need to thread shift this request so we can access
      * our global data to register this *local* event handler */
@@ -960,12 +935,12 @@ PMIX_EXPORT pmix_status_t PMIx_Register_event_handler(pmix_status_t codes[], siz
 
         cd->evregcbfn = cbfunc;
         cd->cbdata = cbdata;
-        PMIX_THREADSHIFT(cd, reg_event_hdlr);
+        PMIX_THREADSHIFT(cd, pmix_internal_reg_event_hdlr);
     } else {
         cd->evregcbfn = mycbfn;
         cd->cbdata = cd;
         PMIX_RETAIN(cd); // so reg_event_hdlr doesn't wind up releasing it
-        PMIX_THREADSHIFT(cd, reg_event_hdlr);
+        PMIX_THREADSHIFT(cd, pmix_internal_reg_event_hdlr);
         PMIX_WAIT_THREAD(&cd->lock);
         rc = cd->status;
         PMIX_RELEASE(cd);
@@ -1134,7 +1109,7 @@ static void dereg_event_hdlr(int sd, short args, void *cbdata)
     /* if I am not the server, and I am connected, then I need
      * to notify the server to remove my registration */
     if ((!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) || PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer))
-        && pmix_globals.connected) {
+        && pmix_atomic_check_bool(&pmix_globals.connected)) {
         msg = PMIX_NEW(pmix_buffer_t);
         PMIX_BFROPS_PACK(rc, pmix_client_globals.myserver, msg, &cmd, 1, PMIX_COMMAND);
         if (PMIX_SUCCESS != rc) {
@@ -1176,12 +1151,9 @@ PMIX_EXPORT pmix_status_t PMIx_Deregister_event_handler(size_t event_hdlr_ref,
     pmix_shift_caddy_t *cd;
     pmix_status_t rc = PMIX_SUCCESS;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* need to thread shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);

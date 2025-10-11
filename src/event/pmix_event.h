@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,6 +30,7 @@
 #include "pmix_common.h"
 #include "src/class/pmix_list.h"
 #include "src/mca/bfrops/bfrops_types.h"
+#include "src/threads/pmix_threads.h"
 #include "src/util/pmix_output.h"
 
 BEGIN_C_DECLS
@@ -193,6 +194,30 @@ typedef struct pmix_event_chain_t {
 } pmix_event_chain_t;
 PMIX_CLASS_DECLARATION(pmix_event_chain_t);
 
+typedef struct {
+    pmix_object_t super;
+    volatile bool active;
+    pmix_event_t ev;
+    pmix_lock_t lock;
+    pmix_status_t status;
+    size_t index;
+    bool firstoverall;
+    bool enviro;
+    pmix_list_t *list;
+    pmix_event_hdlr_t *hdlr;
+    void *cd;
+    pmix_status_t *codes;
+    size_t ncodes;
+    pmix_info_t *info;
+    size_t ninfo;
+    pmix_proc_t *affected;
+    size_t naffected;
+    pmix_notification_fn_t evhdlr;
+    pmix_hdlr_reg_cbfunc_t evregcbfn;
+    void *cbdata;
+} pmix_rshift_caddy_t;
+PMIX_CLASS_DECLARATION(pmix_rshift_caddy_t);
+
 /* prepare a chain for processing by cycling across provided
  * info structs and translating those supported by the event
  * system into the chain object*/
@@ -223,7 +248,11 @@ PMIX_EXPORT pmix_status_t pmix_notify_server_of_event(pmix_status_t status, cons
                                                       size_t ninfo, pmix_op_cbfunc_t cbfunc, void *cbdata,
                                                       bool dolocal);
 
-PMIX_EXPORT void pmix_event_timeout_cb(int fd, short flags, void *arg);
+PMIX_EXPORT void pmix_event_timeout_cb(int sd, short args, void *cbdata);
+
+PMIX_EXPORT void pmix_internal_notify_event(int sd, short args, void *cbdata);
+
+PMIX_EXPORT void pmix_internal_reg_event_hdlr(int sd, short args, void *cbdata);
 
 #define PMIX_REPORT_EVENT(e, p, r, f)                                                          \
     do {                                                                                       \

@@ -804,7 +804,8 @@ PMIX_CLASS_DECLARATION(pmix_keyindex_t);
  * between various parts of the code library. The client, tool,
  * and server libraries must instance this structure */
 typedef struct {
-    int init_cntr; // #times someone called Init - #times called Finalize
+    bool init_called;
+    atomic_bool initialized;
     pmix_proc_t myid;
     pmix_value_t myidval;
     pmix_value_t myrankval;
@@ -824,7 +825,7 @@ typedef struct {
     pmix_event_base_t *evauxbase;
     int debug_output;
     pmix_events_t events; // my event handler registrations.
-    bool connected;
+    atomic_bool connected;
     bool commits_pending;
     struct timeval event_window;
     pmix_list_t cached_events;         // events waiting in the window prior to processing
@@ -854,7 +855,6 @@ PMIX_EXPORT void pmix_execute_epilog(pmix_epilog_t *ep);
 PMIX_EXPORT pmix_status_t pmix_notify_event_cache(pmix_notify_caddy_t *cd);
 
 PMIX_EXPORT extern pmix_globals_t pmix_globals;
-PMIX_EXPORT extern pmix_lock_t pmix_global_lock;
 PMIX_EXPORT extern const char* PMIX_PROXY_VERSION;
 PMIX_EXPORT extern const char* PMIX_PROXY_BUGREPORT;
 

@@ -306,18 +306,14 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
     pmix_get_logic_t *lg;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
-        return PMIX_ERR_INIT;
-    }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_client_globals.get_output,
                         "pmix:client get for %s key %s",
                         (NULL == proc) ? "NULL" : PMIX_NAME_PRINT(proc),
                         (NULL == key) ? "NULL" : key);
+
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+        return PMIX_ERR_INIT;
+    }
 
     if (NULL != key && PMIX_MAX_KEYLEN < pmix_keylen(key)) {
         return PMIX_ERR_BAD_PARAM;
@@ -398,13 +394,9 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
     pmix_get_logic_t *lg;
     pmix_value_t *val;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     if (NULL == cbfunc) {
         /* no way to return the result! */
@@ -1131,7 +1123,7 @@ doget:
      * nothing more we can do */
     if ((PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
          !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) ||
-         !pmix_globals.connected) {
+         !pmix_atomic_check_bool(&pmix_globals.connected)) {
         cb->status = PMIX_ERR_NOT_FOUND;
         goto done;
     }

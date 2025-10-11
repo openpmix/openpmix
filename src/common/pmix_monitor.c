@@ -58,13 +58,9 @@ pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t err
     pmix_cb_t cb;
     pmix_status_t rc;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "%s pmix:monitor",
@@ -317,19 +313,15 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
     pmix_query_caddy_t *qcd;
     pmix_cb_t *cb;
 
-    PMIX_ACQUIRE_THREAD(&pmix_global_lock);
-
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix: monitor called");
 
-    if (pmix_globals.init_cntr <= 0) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
 
     /* sanity check */
     if (NULL == monitor) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_BAD_PARAM;
     }
 
@@ -337,7 +329,6 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
     if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer) &&
         !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
 
         // makes mo sense for server to send heartbeat
         if (PMIx_Check_key(monitor->key, PMIX_SEND_HEARTBEAT)) {
@@ -364,11 +355,9 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
 
     /* non-servers cannot perform the monitoring - we need to send
      * the request to our server, so check for connection */
-    if (!pmix_globals.connected) {
-        PMIX_RELEASE_THREAD(&pmix_global_lock);
+    if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
     }
-    PMIX_RELEASE_THREAD(&pmix_global_lock);
 
     /* if the monitor is PMIX_SEND_HEARTBEAT, then send it */
     if (PMIX_CHECK_KEY(monitor, PMIX_SEND_HEARTBEAT)) {

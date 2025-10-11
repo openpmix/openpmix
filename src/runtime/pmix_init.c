@@ -78,7 +78,8 @@ PMIX_EXPORT bool pmix_init_called = false;
 /* we have to export the pmix_globals object so
  * all plugins can access it. */
 PMIX_EXPORT pmix_globals_t pmix_globals = {
-    .init_cntr = 0,
+    .init_called = false,
+    .initialized = false,
     .myid = PMIX_PROC_STATIC_INIT,
     .myidval = PMIX_VALUE_STATIC_INIT,
     .myrankval = PMIX_VALUE_STATIC_INIT,

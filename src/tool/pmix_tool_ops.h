@@ -2,7 +2,7 @@
 /*
  * Copyright (c) 2020      Intel, Inc.  All rights reserved.
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  */
 
@@ -15,5 +15,10 @@
 
 PMIX_EXPORT pmix_status_t pmix_tool_relay_op(pmix_cmd_t cmd, pmix_peer_t *peer, pmix_buffer_t *bfr,
                                              uint32_t tag);
+
+PMIX_EXPORT void pmix_tool_retry_set(int sd, short args, void *cbdata);
+
+PMIX_EXPORT void pmix_tool_retry_attach(int sd, short args, void *cbdata);
+
 
 #endif // PMIX_TOOL_OPS_H
