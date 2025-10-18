@@ -211,6 +211,7 @@ int do_spawn(void)
         pmix_app_t *apps = NULL;
         PMIX_APP_CREATE(apps, 1);
         if (asprintf(&apps[0].cmd, "%s", "./resolve") < 0) {
+            PMIX_APP_FREE(apps, 1);
             return 1;
         }
         apps[0].maxprocs = SPAWN_PROCS;

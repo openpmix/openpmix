@@ -83,10 +83,10 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn(const pmix_info_t job_info[], size_t ninfo,
         return PMIX_ERR_INIT;
     }
 
-    /* ensure the nspace (if provided) is initialized */
-    if (NULL != nspace) {
-        memset(nspace, 0, PMIX_MAX_NSLEN + 1);
-    }
+    /* ensure the nspace is initialized - note that nspace
+     * is a pmix_nspace_t object, and therefore it cannot
+     * be NULL */
+    memset(nspace, 0, PMIX_MAX_NSLEN + 1);
 
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
@@ -300,26 +300,28 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
 
         /* do a quick check of the apps directive array to ensure
          * the ninfo field has been set */
-        if (NULL != aptr->info && 0 == aptr->ninfo) {
-            /* look for the info marked as "end" */
-            m = 0;
-            while (!(PMIX_INFO_IS_END(&aptr->info[m])) && m < SIZE_MAX) {
-                ++m;
+        if (NULL != aptr->info) {
+            if (0 == aptr->ninfo) {
+                /* look for the info marked as "end" */
+                m = 0;
+                while (!(PMIX_INFO_IS_END(&aptr->info[m])) && m < SIZE_MAX) {
+                    ++m;
+                }
+                if (SIZE_MAX == m) {
+                    /* nothing we can do */
+                    PMIX_RELEASE(fcd);
+                    return PMIX_ERR_BAD_PARAM;
+                }
+                aptr->ninfo = m;
             }
-            if (SIZE_MAX == m) {
-                /* nothing we can do */
-                PMIX_RELEASE(fcd);
-                return PMIX_ERR_BAD_PARAM;
-            }
-            aptr->ninfo = m;
-        }
 
-        // copy the info array
-        if (0 < aptr->ninfo) {
-            fcd->apps[n].ninfo = aptr->ninfo;
-            PMIX_INFO_CREATE(fcd->apps[n].info, fcd->apps[n].ninfo);
-            for (m=0; m < aptr->ninfo; m++) {
-                PMIX_INFO_XFER(&fcd->apps[n].info[m], &aptr->info[m]);
+            // copy the info array
+            if (0 < aptr->ninfo) {
+                fcd->apps[n].ninfo = aptr->ninfo;
+                PMIX_INFO_CREATE(fcd->apps[n].info, fcd->apps[n].ninfo);
+                for (m=0; m < aptr->ninfo; m++) {
+                    PMIX_INFO_XFER(&fcd->apps[n].info[m], &aptr->info[m]);
+                }
             }
         }
 

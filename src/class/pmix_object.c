@@ -12,7 +12,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2016      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -83,12 +83,6 @@ void pmix_class_initialize(pmix_class_t *cls)
 
     assert(cls);
 
-    /* Check to see if anyone initialized
-       this class before we got a chance to */
-
-    if (pmix_class_init_epoch == cls->cls_initialized) {
-        return;
-    }
     pthread_mutex_lock(&class_mutex);
 
     /* If another thread initializing this same class came in at

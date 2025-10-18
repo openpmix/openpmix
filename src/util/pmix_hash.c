@@ -12,7 +12,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -601,6 +601,9 @@ static pmix_dstor_t *lookup_keyval(pmix_proc_data_t *proc_data, uint32_t kid,
                     continue;
                 }
                 darray = (pmix_data_array_t*)pmix_pointer_array_get_item(proc_data->quals, d->qualindex);
+                if (NULL == darray) {
+                    continue;
+                }
                 qarray = (pmix_qual_t*)darray->array;
                 nfound = 0;
                 /* check the qualifiers */
