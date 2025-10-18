@@ -220,7 +220,7 @@ static pmix_status_t pmix_get_tli(const char *filename,
                                   const char *topic,
                                   tuple_list_item_t **tli_)
 {
-    tuple_list_item_t *tli = *tli_;
+    tuple_list_item_t *tli;
 
     /* Search the list for a duplicate. */
     PMIX_LIST_FOREACH(tli, &abd_tuples, tuple_list_item_t)

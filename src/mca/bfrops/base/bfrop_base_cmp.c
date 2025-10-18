@@ -879,7 +879,7 @@ static pmix_value_cmp_t cmp_darray(pmix_data_array_t *d1,
             return cmp_darray(d1->array, d2->array);
             break;
         case PMIX_POINTER:
-            ret = memcmp(d1->array, d2->array, d1->size * sizeof(void*));
+            ret = memcmp(d1->array, d2->array, d1->size * sizeof(char*));
             PMIX_CHECK_SIMPLE(ret);
             break;
         case PMIX_ALLOC_DIRECTIVE:
@@ -1172,8 +1172,13 @@ pmix_value_cmp_t pmix_bfrops_base_value_cmp(pmix_value_t *p1,
         return cmp_darray(p1->data.darray, p2->data.darray);
         break;
     case PMIX_POINTER:
-        ret = memcmp(p1->data.ptr, p2->data.ptr, sizeof(void*));
-        PMIX_CHECK_SIMPLE(ret);
+        if (p1->data.ptr == p2->data.ptr) {
+            return PMIX_EQUAL;
+        } else if (p1->data.ptr > p2->data.ptr) {
+            return PMIX_VALUE1_GREATER;
+        } else {
+            return PMIX_VALUE2_GREATER;
+        }
         break;
     case PMIX_ALLOC_DIRECTIVE:
         ret = memcmp(&p1->data.adir, &p2->data.adir, sizeof(pmix_alloc_directive_t));
