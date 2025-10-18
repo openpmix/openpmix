@@ -998,7 +998,9 @@ static pmix_status_t hash_store_job_info(const char *nspace, pmix_buffer_t *buf)
             }
         } else if (pmix_check_session_info(kptr.key)) {
             /* a lone key must belong to this job's session */
-            s = pmix_gds_hash_check_session(trk, sid, true);
+            if (NULL == s) {
+                s = pmix_gds_hash_check_session(trk, sid, true);
+            }
             /* ensure the value isn't already on the session info */
             found = false;
             PMIX_LIST_FOREACH (kp3, &s->sessioninfo, pmix_kval_t) {

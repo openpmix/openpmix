@@ -258,6 +258,11 @@ static void pmix_tool_notify_recv(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
                             pmix_globals.myid.nspace, pmix_globals.myid.rank);
         rc = pmix_notify_server_of_event(chain->status, &chain->source, range,
                                          chain->info, chain->ninfo, NULL, NULL, false);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(chain);
+            goto error;
+        }
     }
 
     pmix_output_verbose(2, pmix_client_globals.event_output,

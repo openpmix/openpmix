@@ -333,7 +333,7 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                                     }
                                     ptr = NULL;
                                 } else if (0 == strcmp(myoptions[m].name, "np") &&
-                                           0 == strcmp(optarg, "p")) {
+                                           (NULL != optarg && 0 == strcmp(optarg, "p"))) {
                                     /* we special-case the very common "-np" option */
                                     ptr = argv[optind];
                                     ++optind;
