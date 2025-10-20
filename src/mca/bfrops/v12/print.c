@@ -14,7 +14,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1070,7 +1070,14 @@ pmix_status_t pmix12_bfrop_print_proc(char **output, char *prefix, pmix_proc_t *
     }
 
     if (0 > asprintf(output, "%sPROC: %s:%d", prefx, src->nspace, src->rank)) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
+    }
+    
+    if (prefx != prefix) {
+        free(prefx);
     }
     return PMIX_SUCCESS;
 }
@@ -1106,6 +1113,7 @@ pmix_status_t pmix12_bfrop_print_array(char **output, char *prefix, pmix_info_ar
         if (0 > asprintf(&tmp3, "%s%s", tmp, tmp2)) {
             free(tmp);
             free(tmp2);
+            free(pfx);
             return PMIX_ERR_NOMEM;
         }
         free(tmp);
@@ -1113,6 +1121,7 @@ pmix_status_t pmix12_bfrop_print_array(char **output, char *prefix, pmix_info_ar
         tmp = tmp3;
     }
     *output = tmp;
+    free(pfx);
     return PMIX_SUCCESS;
 }
 

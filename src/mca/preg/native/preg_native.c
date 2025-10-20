@@ -269,11 +269,13 @@ static pmix_status_t generate_node_regex(const char *input, char **regexp)
         while (NULL != (range = (pmix_regex_range_t *) pmix_list_remove_first(&vreg->ranges))) {
             if (1 == range->cnt) {
                 if (0 > asprintf(&tmp2, "%s%d,", tmp, range->start)) {
+                    free(tmp);
                     return PMIX_ERR_NOMEM;
                 }
             } else {
                 if (0 > asprintf(&tmp2, "%s%d-%d,", tmp, range->start,
                                  range->start + range->cnt - 1)) {
+                    free(tmp);
                     return PMIX_ERR_NOMEM;
                 }
             }

@@ -1892,6 +1892,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
                 ret = asprintf(out[0] + line++, "%senumerator:value:%d:%s", tmp, enum_value,
                                enum_string);
                 if (0 > ret) {
+                    free(tmp);
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
             }
