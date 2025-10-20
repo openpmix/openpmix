@@ -728,6 +728,7 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
                 if (NULL != v_to_free) {
                     free(v_to_free);
                 }
+                free(spaces);
                 return;
             }
         } else {
@@ -735,6 +736,7 @@ void pmix_info_out(const char *pretty_message, const char *plain_message, const 
                 if (NULL != v_to_free) {
                     free(v_to_free);
                 }
+                free(spaces);
                 return;
             }
         }
@@ -1001,6 +1003,7 @@ void pmix_info_show_mca_version(const pmix_mca_base_component_t *component, cons
             if (0 > asprintf(&tmp, "%sMCA v%s", content, mca_version)) {
                 goto exit;
             }
+            free(content);
             content = tmp;
             printed = true;
         }
