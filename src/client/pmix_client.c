@@ -354,28 +354,11 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     }
 }
 
-typedef struct {
-    pmix_info_t *info;
-    size_t ninfo;
-} mydata_t;
-
-static void release_info(pmix_status_t status, void *cbdata)
-{
-    mydata_t *cd = (mydata_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(status);
-
-    PMIX_ACQUIRE_OBJECT(cd);
-
-    PMIX_INFO_FREE(cd->info, cd->ninfo);
-    free(cd);
-}
-
 static void _check_for_notify(pmix_info_t info[], size_t ninfo)
 {
-    mydata_t *cd;
     size_t n, m = 0;
     pmix_info_t *model = NULL, *library = NULL, *vers = NULL, *tmod = NULL;
-    pmix_status_t rc;
+    pmix_shift_caddy_t *scd;
 
     for (n = 0; n < ninfo; n++) {
         if (0 == strncmp(info[n].key, PMIX_PROGRAMMING_MODEL, PMIX_MAX_KEYLEN)) {
@@ -396,43 +379,45 @@ static void _check_for_notify(pmix_info_t info[], size_t ninfo)
     }
     if (0 < m) {
         /* notify anyone listening that a model has been declared */
-        cd = (mydata_t *) malloc(sizeof(mydata_t));
-        if (NULL == cd) {
-            /* nothing we can do */
+        scd = PMIX_NEW(pmix_shift_caddy_t);
+        if (NULL == scd) {
+             /* nothing we can do */
             return;
         }
-        PMIX_INFO_CREATE(cd->info, m + 1);
-        if (NULL == cd->info) {
-            free(cd);
+        PMIX_INFO_CREATE(scd->info, m + 1);
+        if (NULL == scd->info) {
+            PMIX_RELEASE(scd);
             return;
         }
-        cd->ninfo = m + 1;
+        scd->ninfo = m + 1;
         n = 0;
         if (NULL != model) {
-            PMIX_INFO_XFER(&cd->info[n], model);
+            PMIX_INFO_XFER(&scd->info[n], model);
             ++n;
         }
         if (NULL != library) {
-            PMIX_INFO_XFER(&cd->info[n], library);
+            PMIX_INFO_XFER(&scd->info[n], library);
             ++n;
         }
         if (NULL != vers) {
-            PMIX_INFO_XFER(&cd->info[n], vers);
+            PMIX_INFO_XFER(&scd->info[n], vers);
             ++n;
         }
         if (NULL != tmod) {
-            PMIX_INFO_XFER(&cd->info[n], tmod);
+            PMIX_INFO_XFER(&scd->info[n], tmod);
             ++n;
         }
         /* mark that it is not to go to any default handlers */
-        PMIX_INFO_LOAD(&cd->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
-        rc = PMIx_Notify_event(PMIX_MODEL_DECLARED, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL, cd->info,
-                               cd->ninfo, release_info, (void *) cd);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            PMIX_INFO_FREE(cd->info, cd->ninfo);
-        }
-    }
+        PMIX_INFO_LOAD(&scd->info[n], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        scd->status = PMIX_MODEL_DECLARED;
+        scd->proc = &pmix_globals.myid;
+        scd->range = PMIX_RANGE_PROC_LOCAL;
+        scd->cbfunc.opcbfn = NULL;
+        scd->cbdata = NULL;
+        PMIX_THREADSHIFT(scd, pmix_internal_notify_event);
+        PMIX_WAIT_THREAD(&scd->lock);
+        PMIX_RELEASE(scd);
+     }
 }
 
 static void client_iof_handler(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer_t *buf,
