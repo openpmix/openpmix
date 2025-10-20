@@ -1528,6 +1528,7 @@ pmix_status_t pmix_bfrops_base_print_query(char **output, char *prefix, pmix_que
         }
     }
     *output = tmp;
+    free(p2);
 
 done:
 

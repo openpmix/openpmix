@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -811,7 +811,7 @@ static pmix_status_t pmix21_bfrop_print_array(char **output, char *prefix, pmix_
         pmix_bfrops_base_print_info(&tmp2, pfx, &s1[j], PMIX_INFO);
         if (0 > asprintf(&tmp3, "%s%s", tmp, tmp2)) {
             free(tmp);
-            free(tmp2);
+            free(pfx);
             return PMIX_ERR_NOMEM;
         }
         free(tmp);
@@ -819,6 +819,7 @@ static pmix_status_t pmix21_bfrop_print_array(char **output, char *prefix, pmix_
         tmp = tmp3;
     }
     *output = tmp;
+    free(pfx);
     return PMIX_SUCCESS;
 }
 
