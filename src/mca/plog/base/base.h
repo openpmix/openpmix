@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2020 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -72,7 +72,6 @@ PMIX_CLASS_DECLARATION(pmix_plog_base_active_module_t);
 
 /* framework globals */
 struct pmix_plog_globals_t {
-    pmix_lock_t lock;
     pmix_pointer_array_t actives;
     bool initialized;
     bool selected;
@@ -82,9 +81,9 @@ typedef struct pmix_plog_globals_t pmix_plog_globals_t;
 
 PMIX_EXPORT extern pmix_plog_globals_t pmix_plog_globals;
 
-PMIX_EXPORT pmix_status_t pmix_plog_base_log(const pmix_proc_t *source, const pmix_info_t data[],
-                                             size_t ndata, const pmix_info_t directives[],
-                                             size_t ndirs, pmix_op_cbfunc_t cbfunc, void *cbdata);
+PMIX_EXPORT pmix_status_t pmix_plog_base_log(const pmix_proc_t *source,
+                                             const pmix_info_t data[], size_t ndata,
+                                             const pmix_info_t directives[], size_t ndirs);
 
 END_C_DECLS
 

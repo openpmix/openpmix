@@ -22,9 +22,6 @@
 
 AM_CPPFLAGS = $(plog_smtp_CPPFLAGS)
 
-EXTRA_DIST = \
-        help-pmix-plog-smtp.txt
-
 sources = \
         plog_smtp.h \
         plog_smtp.c \
@@ -46,9 +43,9 @@ mcacomponentdir = $(pmnixlibdir)
 mcacomponent_LTLIBRARIES = $(component_install)
 pmix_mca_plog_smtp_la_SOURCES = $(sources)
 pmix_mca_plog_smtp_la_LDFLAGS = -module -avoid-version $(plog_smtp_LDFLAGS)
-pmix_mca_plog_smtp_la_LIBADD = $(plog_smtp_LIBS) $(top_builddir)/src/libpmix.la
+pmix_mca_plog_smtp_la_LIBADD = $(plog_smtp_LIBS)
 if NEED_LIBPMIX
-pmix_mca_plog_smtp_la_LIBADD = $(top_builddir)/src/libpmix.la
+pmix_mca_plog_smtp_la_LIBADD += $(top_builddir)/src/libpmix.la
 endif
 
 noinst_LTLIBRARIES = $(component_noinst)

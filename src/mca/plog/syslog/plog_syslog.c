@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,8 +48,7 @@
 static pmix_status_t init(void);
 static void finalize(void);
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
-                           void *cbdata);
+                           const pmix_info_t directives[], size_t ndirs);
 
 /* Module def */
 pmix_plog_module_t pmix_plog_syslog_module = {
@@ -78,25 +77,29 @@ static void finalize(void)
     PMIx_Argv_free(pmix_plog_syslog_module.channels);
 }
 
-static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp, int severity,
-                                 char *msg, const pmix_info_t *data, size_t ndata);
+static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp,
+                                 int severity, char *msg);
 
-/* we only get called if we are a SERVER */
+
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
-                           void *cbdata)
+                           const pmix_info_t directives[], size_t ndirs)
 {
     size_t n;
     int pri = pmix_mca_plog_syslog_component.level;
     pmix_status_t rc;
     time_t timestamp = 0;
+    const pmix_proc_t *src;
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
+    if (NULL == source) {
+        src = &pmix_globals.myid;
+    } else {
+        src = source;
+    }
 
     /* check directives */
     if (NULL != directives) {
@@ -113,22 +116,22 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     for (n = 0; n < ndata; n++) {
         if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_SYSLOG)) {
             /* we default to using the local syslog */
-            rc = write_local(source, timestamp, pri,
-                             data[n].value.data.string, data, ndata);
+            rc = write_local(src, timestamp, pri,
+                             data[n].value.data.string);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_LOCAL_SYSLOG)) {
-            rc = write_local(source, timestamp, pri,
-                             data[n].value.data.string, data, ndata);
+            rc = write_local(src, timestamp, pri,
+                             data[n].value.data.string);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_GLOBAL_SYSLOG)) {
             /* only do this if we are a gateway server */
             if (PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
-                rc = write_local(source, timestamp, pri,
-                                 data[n].value.data.string, data, ndata);
+                rc = write_local(src, timestamp, pri,
+                                 data[n].value.data.string);
                 if (PMIX_SUCCESS != rc) {
                     return rc;
                 }
@@ -163,12 +166,10 @@ static char *sev2str(int severity)
     }
 }
 
-static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp, int severity,
-                                 char *msg, const pmix_info_t *data, size_t ndata)
+static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp,
+                                 int severity, char *msg)
 {
-    char tod[48], *datastr, *tmp, *tmp2;
-    pmix_status_t rc;
-    size_t n;
+    char tod[48];
 
     pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
                         "plog:syslog:mylog function called with severity %d", severity);
@@ -177,45 +178,14 @@ static pmix_status_t write_local(const pmix_proc_t *source, time_t timestamp, in
         /* If there was a message, output it */
         (void) ctime_r(&timestamp, tod);
         /* trim the newline */
-        tod[strlen(tod)] = '\0';
+        tod[strlen(tod)-1] = '\0';
     } else {
         strcpy(tod, "N/A");
     }
 
-    if (NULL == data) {
-        syslog(severity, "%s [%s:%d]%s PROC %s:%d REPORTS: %s", tod, pmix_globals.myid.nspace,
-               pmix_globals.myid.rank, sev2str(severity), source->nspace, source->rank,
-               (NULL == msg) ? "<N/A>" : msg);
-    } else {
-        /* need to print the info from the data, starting
-         * with any provided msg */
-        if (NULL == msg) {
-            datastr = strdup("\n");
-        } else {
-            if (0 > asprintf(&datastr, "%s", msg)) {
-                return PMIX_ERR_NOMEM;
-            }
-        }
-        for (n = 0; n < ndata; n++) {
-            PMIX_BFROPS_PRINT(rc, pmix_globals.mypeer, &tmp, "\t", (pmix_info_t *) &data[n],
-                              PMIX_INFO);
-            if (PMIX_SUCCESS != rc) {
-                free(datastr);
-                return rc;
-            }
-            if (0 > asprintf(&tmp2, "%s\n%s", datastr, tmp)) {
-                free(datastr);
-                return PMIX_ERR_NOMEM;
-            }
-            free(datastr);
-            free(tmp);
-            datastr = tmp2;
-        }
-        /* print out the consolidated msg */
-        syslog(severity, "%s [%s:%d]%s PROC %s:%d REPORTS: %s", tod, pmix_globals.myid.nspace,
-               pmix_globals.myid.rank, sev2str(severity), source->nspace, source->rank, datastr);
-        free(datastr);
-    }
+    syslog(severity, "%s %s:%s PROC %s REPORTS: %s", tod, PMIX_NAME_PRINT(&pmix_globals.myid),
+           sev2str(severity), PMIX_NAME_PRINT(source),
+           (NULL == msg) ? "<N/A>" : msg);
 
     return PMIX_SUCCESS;
 }

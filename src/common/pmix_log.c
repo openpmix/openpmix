@@ -73,7 +73,8 @@ PMIX_EXPORT pmix_status_t PMIx_Log(const pmix_info_t data[], size_t ndata,
         return PMIX_ERR_INIT;
     }
 
-    pmix_output_verbose(2, pmix_plog_base_framework.framework_output, "%s pmix:log",
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "%s pmix:log",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* create a callback object as we need to pass it to the
@@ -95,7 +96,8 @@ PMIX_EXPORT pmix_status_t PMIx_Log(const pmix_info_t data[], size_t ndata,
     rc = cb.status;
     PMIX_DESTRUCT(&cb);
 
-    pmix_output_verbose(2, pmix_plog_base_framework.framework_output, "pmix:log completed");
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "pmix:log completed");
 
     return rc;
 }
@@ -138,22 +140,37 @@ void pmix_log_local_op(int sd, short args, void *cbdata_)
             PMIX_INFO_XFER(&cd->directives[n], (pmix_info_t *) &directives[n]);
         }
         PMIX_INFO_LOAD(&cd->directives[ndirs], PMIX_LOG_SOURCE, source, PMIX_PROC);
-        rc = pmix_plog.log(source, data, ndata, cd->directives, cd->ndirs, localcbfunc, cd);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_INFO_FREE(cd->directives, cd->ndirs);
-            PMIX_RELEASE(cd);
-        }
+        rc = pmix_plog.log(source, data, ndata, cd->directives, cd->ndirs);
+        // need to execute the local cbfunc to release the caller
+        localcbfunc(rc, cd);  // releases cd
+        return;
+
     } else if (PMIX_CHECK_PROCID(source, &pmix_globals.myid)) {
         /* if I am the recorded source, then this is a re-submission of
          * something that got "upcalled" by a prior call. In this case,
          * we return a "not supported" error as clearly we couldn't
          * handle it, and neither could our host */
-        rc = PMIX_ERR_NOT_SUPPORTED;
+        // need to release the caller
+        cbfunc(PMIX_ERR_NOT_SUPPORTED, cbdata);
+        return;
+
     } else {
         /* call down to process the request - the various components
          * will thread shift as required */
-        rc = pmix_plog.log(source, data, ndata, directives, ndirs, cbfunc, cbdata);
+        rc = pmix_plog.log(source, data, ndata, directives, ndirs);
+        // need to release the caller
+        cbfunc(rc, cbdata);
     }
+}
+
+static void localcbfn(pmix_status_t status, void *cbdata)
+{
+    pmix_cb_t *cb = (pmix_cb_t *) cbdata;
+    
+    if (NULL != cb->cbfunc.opfn) {
+        cb->cbfunc.opfn(status, cb->cbdata);
+    }
+    PMIX_RELEASE(cb);
 }
 
 PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
@@ -167,8 +184,10 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
     time_t timestamp = 0;
     pmix_proc_t *source = NULL;
     pmix_shift_caddy_t *cd;
+    pmix_cb_t *cb;
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "pmix:log non-blocking");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "pmix:log non-blocking");
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -193,15 +212,17 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         }
     }
 
-    /* if we are a client or tool, we never do this ourselves - we
-     * always pass this request to our server for execution */
-    if (!PMIX_PEER_IS_SERVER(pmix_globals.mypeer) && !PMIX_PEER_IS_LAUNCHER(pmix_globals.mypeer)) {
-        /* if we aren't connected, don't attempt to send */
+    /* if we are a client or tool, pass this request to our
+     * server for execution unless we are not connected */
+    if (PMIX_PEER_IS_CLIENT(pmix_globals.mypeer) ||
+        PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+
+        // if we are not connected, then locally process
         if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
-            return PMIX_ERR_UNREACH;
+            goto local;
         }
 
-        /* if we are not a server, then relay this request to the server */
+        // otherwise, we send to our server
         cd = PMIX_NEW(pmix_shift_caddy_t);
         cd->cbfunc.opcbfn = cbfunc;
         cd->cbdata = cbdata;
@@ -269,6 +290,32 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         return rc;
     }
 
+    /* get here if we are a server - if we are not a gateway, then
+     * we don't handle this ourselves if the host support is available */
+    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
+        cb = PMIX_NEW(pmix_cb_t);
+        cb->cbfunc.opfn = cbfunc;
+        cb->cbdata = cbdata;
+        if (NULL != pmix_host_server.log2) {
+            rc = pmix_host_server.log2(source, data, ndata,
+                                       directives, ndirs, localcbfn, (void *) cb);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(cb);
+                return rc;
+            }
+
+        } else if (NULL != pmix_host_server.log) {
+            pmix_host_server.log(source, data, ndata, directives, ndirs,
+                                 localcbfn, (void *) cb);
+        } else {
+            // no choice but to process locally
+            goto local;
+        }
+        return PMIX_SUCCESS;
+    }
+
+local:
+    // threadshift this into our own progress thread
     cd = PMIX_NEW(pmix_shift_caddy_t);
     cd->info = (pmix_info_t *) data;
     cd->ninfo = ndata;
@@ -279,5 +326,5 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
     cd->proc = source;
     PMIX_THREADSHIFT(cd, pmix_log_local_op);
 
-    return rc;
+    return PMIX_SUCCESS;
 }
