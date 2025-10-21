@@ -811,6 +811,7 @@ static pmix_status_t pmix21_bfrop_print_array(char **output, char *prefix, pmix_
         pmix_bfrops_base_print_info(&tmp2, pfx, &s1[j], PMIX_INFO);
         if (0 > asprintf(&tmp3, "%s%s", tmp, tmp2)) {
             free(tmp);
+            free(tmp2);
             free(pfx);
             return PMIX_ERR_NOMEM;
         }

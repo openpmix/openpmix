@@ -91,6 +91,9 @@ pmix_status_t pmix20_bfrop_print_bool(char **output, char *prefix, bool *src, pm
 
     if (0 > asprintf(output, "%sData type: PMIX_BOOL\tValue: %s", prefix,
                      (*src) ? "TRUE" : "FALSE")) {
+        if (prefx != prefix) {
+            free(prefx);
+        }
         return PMIX_ERR_NOMEM;
     }
     if (prefx != prefix) {
@@ -162,6 +165,9 @@ pmix_status_t pmix20_bfrop_print_string(char **output, char *prefix, char *src,
     /* if src is NULL, just print data type and return */
     if (NULL == src) {
         if (0 > asprintf(output, "%sData type: PMIX_STRING\tValue: NULL pointer", prefx)) {
+            if (prefx != prefix) {
+                free(prefx);
+            }
             return PMIX_ERR_NOMEM;
         }
         if (prefx != prefix) {
