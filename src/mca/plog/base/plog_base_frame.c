@@ -3,7 +3,7 @@
  * Copyright (c) 2018-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,13 +34,14 @@
 
 /* Instantiate the global vars */
 pmix_plog_globals_t pmix_plog_globals = {
-    .lock = PMIX_LOCK_STATIC_INIT,
     .actives = PMIX_POINTER_ARRAY_STATIC_INIT,
     .initialized = false,
     .selected = false,
     .channels = NULL
 };
-pmix_plog_API_module_t pmix_plog = {.log = pmix_plog_base_log};
+pmix_plog_API_module_t pmix_plog = {
+    .log = pmix_plog_base_log
+};
 
 static char *order = NULL;
 static int pmix_plog_register(pmix_mca_base_register_flag_t flags)
@@ -81,8 +82,6 @@ static pmix_status_t pmix_plog_close(void)
     }
     PMIX_DESTRUCT(&pmix_plog_globals.actives);
 
-    PMIX_DESTRUCT_LOCK(&pmix_plog_globals.lock);
-
     return pmix_mca_base_framework_components_close(&pmix_plog_base_framework, NULL);
 }
 
@@ -93,8 +92,6 @@ static pmix_status_t pmix_plog_open(pmix_mca_base_open_flag_t flags)
     pmix_plog_globals.channels = NULL;
     PMIX_CONSTRUCT(&pmix_plog_globals.actives, pmix_pointer_array_t);
     pmix_pointer_array_init(&pmix_plog_globals.actives, 1, INT_MAX, 1);
-    PMIX_CONSTRUCT_LOCK(&pmix_plog_globals.lock);
-    pmix_plog_globals.lock.active = false;
 
     /* Open up all available components */
     return pmix_mca_base_framework_components_open(&pmix_plog_base_framework, flags);
@@ -109,4 +106,6 @@ static void acon(pmix_plog_base_active_module_t *p)
     p->reqd = false;
     p->added = false;
 }
-PMIX_CLASS_INSTANCE(pmix_plog_base_active_module_t, pmix_list_item_t, acon, NULL);
+PMIX_CLASS_INSTANCE(pmix_plog_base_active_module_t,
+                    pmix_list_item_t,
+                    acon, NULL);

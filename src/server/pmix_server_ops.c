@@ -1407,15 +1407,16 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
     return PMIX_SUCCESS;
 }
 
-static void logcbfn(pmix_status_t status, void *cbdata)
+static void localcbfn(pmix_status_t status, void *cbdata)
 {
-    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
-
-    if (NULL != cd->cbfunc.opcbfn) {
-        cd->cbfunc.opcbfn(status, cd->cbdata);
+    pmix_shift_caddy_t *cb = (pmix_shift_caddy_t *) cbdata;
+    
+    if (NULL != cb->cbfunc.opcbfn) {
+        cb->cbfunc.opcbfn(status, cb->cbdata);
     }
-    PMIX_RELEASE(cd);
+    PMIX_RELEASE(cb);
 }
+
 pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
                               pmix_op_cbfunc_t cbfunc,
                               void *cbdata)
@@ -1425,12 +1426,10 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_shift_caddy_t *cd;
     pmix_proc_t proc;
     time_t timestamp;
+    PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "recvd log from client");
-
-    /* we need to deliver this to our internal log capability,
-     * which may upcall it to our host if it cannot process
-     * the request itself */
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "recvd log from client");
 
     /* setup the requesting peer name */
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -1440,8 +1439,6 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
     if (NULL == cd) {
         return PMIX_ERR_NOMEM;
     }
-    cd->cbfunc.opcbfn = cbfunc;
-    cd->cbdata = cbdata;
     if (PMIX_PEER_IS_EARLIER(peer, 3, 0, 0)) {
         timestamp = -1;
     } else {
@@ -1503,9 +1500,38 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
         }
     }
 
+    /* if we are not the gateway, then pass this up to the host
+     * for transfer to the gateway, if available */
+    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
+        cd->cbfunc.opcbfn = cbfunc;
+        cd->cbdata = cbdata;
+        if (NULL != pmix_host_server.log2) {
+            rc = pmix_host_server.log2(&proc, cd->info, cd->ninfo,
+                                       cd->directives, cd->ndirs,
+                                       localcbfn, (void *) cd);
+            if (PMIX_SUCCESS != rc) {
+                PMIX_RELEASE(cd);
+                return rc;
+            }
+
+        } else if (NULL != pmix_host_server.log) {
+            pmix_host_server.log(&proc, cd->info, cd->ninfo,
+                                 cd->directives, cd->ndirs,
+                                 localcbfn, (void *) cd);
+        } else {
+            // no choice but to process locally
+            goto local;
+        }
+        return PMIX_SUCCESS;
+    }
+
+local:
     /* pass it down */
-    rc = pmix_plog.log(&proc, cd->info, cd->ninfo, cd->directives, cd->ndirs, logcbfn, cd);
-    return rc;
+    rc = pmix_plog.log(&proc, cd->info, cd->ninfo, cd->directives, cd->ndirs);
+    if (PMIX_SUCCESS == rc) {
+        // mark that it was done atomically
+        rc = PMIX_OPERATION_SUCCEEDED;
+    }
 
 exit:
     PMIX_RELEASE(cd);
@@ -3138,7 +3164,6 @@ PMIX_CLASS_INSTANCE(pmix_regevents_info_t,
 static void ilcon(pmix_inventory_rollup_t *p)
 {
     PMIX_CONSTRUCT_LOCK(&p->lock);
-    p->lock.active = false;
     p->status = PMIX_SUCCESS;
     p->requests = 0;
     p->replies = 0;

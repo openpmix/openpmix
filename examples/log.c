@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -44,61 +44,117 @@ int main(int argc, char **argv)
     bool flag;
     pmix_proc_t proc;
     bool syslog = false, global = false;
+    char *email = NULL;
+    int n;
+    pmix_data_array_t darray;
+    char host[2048];
+
+    gethostname(host, 2048);
 
     /* check for CLI directives */
-    if (1 < argc) {
-        if (0 == strcmp(argv[argc - 1], "--syslog")) {
+    for (n=1; n < argc; n++) {
+        if (0 == strcmp(argv[n], "--syslog")) {
             syslog = true;
-        } else if (0 == strcmp(argv[argc - 1], "--global-syslog")) {
+            break;
+        } else if (0 == strcmp(argv[n], "--global-syslog")) {
             global = true;
+            break;
+        } else if (0 == strcmp(argv[n], "--email")) {
+            if (NULL == argv[n+1]) {
+                fprintf(stderr, "Must provide email target\n");
+                exit(1);
+            }
+            email = argv[n+1];
+            break;
         }
     }
+
     /* init us - note that the call to "init" includes the return of
      * any job-related info provided by the RM. */
-    if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
+    rc = PMIx_Init(&myproc, NULL, 0);
+    if (PMIX_SUCCESS != rc && PMIX_ERR_UNREACH != rc) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
                 rc);
         exit(0);
     }
-    fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
+    if (PMIX_ERR_UNREACH == rc) {
+        fprintf(stderr, "Client ns %s rank %d: Running as singleton on host %s\n", myproc.nspace, myproc.rank, host);
+    } else {
+        fprintf(stderr, "Client ns %s rank %d: Running on host %s\n", myproc.nspace, myproc.rank, host);
+    }
 
     /* have rank 0 do the logs - doesn't really matter who does it */
     if (0 == myproc.rank) {
-        /* always output a log message to stderr */
-        PMIX_INFO_CREATE(info, 1);
-        PMIX_INFO_LOAD(&info[0], PMIX_LOG_STDERR, "stderr log message\n", PMIX_STRING);
-        PMIX_INFO_CREATE(directives, 1);
-        PMIX_INFO_LOAD(&directives[0], PMIX_LOG_GENERATE_TIMESTAMP, NULL, PMIX_BOOL);
-        rc = PMIx_Log(info, 1, directives, 1);
-        if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Log stderr failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto fence;
-        }
         /* if requested, output one to syslog */
         if (syslog) {
             fprintf(stderr, "LOG TO LOCAL SYSLOG\n");
             PMIX_INFO_CREATE(info, 1);
             PMIX_INFO_LOAD(&info[0], PMIX_LOG_LOCAL_SYSLOG, "SYSLOG message\n", PMIX_STRING);
-            rc = PMIx_Log(info, 1, NULL, 0);
+            PMIX_INFO_CREATE(directives, 1);
+            PMIX_INFO_LOAD(&directives[0], PMIX_LOG_GENERATE_TIMESTAMP, NULL, PMIX_BOOL);
+            rc = PMIx_Log(info, 1, directives, 1);
+            PMIX_INFO_FREE(info, 1);
+            PMIX_INFO_FREE(directives, 1);
             if (PMIX_SUCCESS != rc) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Log syslog failed: %s\n", myproc.nspace,
                         myproc.rank, PMIx_Error_string(rc));
-                goto fence;
             }
-        }
+            goto fence;
+       }
+
         if (global) {
             fprintf(stderr, "LOG TO GLOBAL SYSLOG\n");
             PMIX_INFO_CREATE(info, 1);
             PMIX_INFO_LOAD(&info[0], PMIX_LOG_GLOBAL_SYSLOG, "GLOBAL SYSLOG message\n",
                            PMIX_STRING);
             rc = PMIx_Log(info, 1, NULL, 0);
+            PMIX_INFO_FREE(info, 1);
             if (PMIX_SUCCESS != rc) {
                 fprintf(stderr, "Client ns %s rank %d: PMIx_Log GLOBAL syslog failed: %s\n",
                         myproc.nspace, myproc.rank, PMIx_Error_string(rc));
-                goto fence;
             }
+            goto fence;
         }
+
+        if (NULL != email) {
+            fprintf(stderr, "LOG TO EMAIL %s\n", email);
+            PMIX_INFO_CREATE(directives, 4);
+            PMIX_INFO_LOAD(&directives[0], PMIX_LOG_EMAIL_ADDR, email, PMIX_STRING);
+            PMIX_INFO_LOAD(&directives[1], PMIX_LOG_EMAIL_SUBJECT, "TEST EMAIL", PMIX_STRING);
+            PMIX_INFO_LOAD(&directives[2], PMIX_LOG_MSG, "SEE IF THIS WORKS", PMIX_STRING);
+            PMIX_INFO_LOAD(&directives[3], PMIX_LOG_EMAIL_SENDER_ADDR, email, PMIX_STRING);
+            darray.type = PMIX_INFO;
+            darray.array = directives;
+            darray.size = 4;
+            PMIX_INFO_CREATE(info, 1);
+            PMIX_INFO_LOAD(&info[0], PMIX_LOG_EMAIL, &darray, PMIX_DATA_ARRAY);
+            PMIX_INFO_CREATE(directives, 1);
+            PMIX_INFO_LOAD(&directives[0], PMIX_LOG_GENERATE_TIMESTAMP, NULL, PMIX_BOOL);
+            rc = PMIx_Log(info, 1,  directives, 1);
+            PMIX_INFO_FREE(info, 1);
+            PMIX_INFO_FREE(directives, 1);
+            if (PMIX_SUCCESS != rc) {
+                fprintf(stderr, "Client ns %s rank %d: PMIx_Log EMAIL failed: %s\n",
+                        myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            }
+            goto fence;
+        }
+
+        /* output a log message to stderr */
+        fprintf(stderr, "LOG TO STDERR\n");
+        PMIX_INFO_CREATE(info, 1);
+        PMIX_INFO_LOAD(&info[0], PMIX_LOG_STDERR, "stderr log message\n", PMIX_STRING);
+        PMIX_INFO_CREATE(directives, 1);
+        PMIX_INFO_LOAD(&directives[0], PMIX_LOG_GENERATE_TIMESTAMP, NULL, PMIX_BOOL);
+        rc = PMIx_Log(info, 1, directives, 1);
+        PMIX_INFO_FREE(info, 1);
+        PMIX_INFO_FREE(directives, 1);
+        if (PMIX_SUCCESS != rc) {
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Log stderr failed: %s\n", myproc.nspace,
+                    myproc.rank, PMIx_Error_string(rc));
+            goto fence;
+        }
+
     }
 
 fence:
