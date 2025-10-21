@@ -1914,6 +1914,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
         if (PMIX_VAR_IS_SYNONYM(var[0])) {
             ret = asprintf(out[0] + line++, "%ssynonym_of:name:%s", tmp, original->mbv_full_name);
             if (0 > ret) {
+                free(tmp);
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
         } else if (pmix_value_array_get_size(&var->mbv_synonyms)) {
@@ -1927,6 +1928,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
 
                 ret = asprintf(out[0] + line++, "%ssynonym:name:%s", tmp, synonym->mbv_full_name);
                 if (0 > ret) {
+                    free(tmp);
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
             }
@@ -1946,6 +1948,8 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
                        "\"%s\" (current value: \"%s\", data source: %s, type: %s",
                        full_name, value_string, source_string, pmix_var_type_names[var->mbv_type]);
         if (0 > ret) {
+            free(value_string);
+            free(source_string);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
@@ -1954,6 +1958,8 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
             ret = asprintf(out[0], "%s, deprecated", tmp);
             free(tmp);
             if (0 > ret) {
+                free(value_string);
+                free(source_string);
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
             tmp = out[0][0];
@@ -1964,12 +1970,16 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
             ret = asprintf(out[0], "%s, synonym of: %s)", tmp, original->mbv_full_name);
             free(tmp);
             if (0 > ret) {
+                free(value_string);
+                free(source_string);
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
         } else if (synonym_count) {
             ret = asprintf(out[0], "%s, synonyms: ", tmp);
             free(tmp);
             if (0 > ret) {
+                free(value_string);
+                free(source_string);
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
 
@@ -1989,6 +1999,8 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
                 }
                 free(tmp);
                 if (0 > ret) {
+                    free(value_string);
+                    free(source_string);
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
             }
@@ -1996,6 +2008,8 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
             ret = asprintf(out[0], "%s)", tmp);
             free(tmp);
             if (0 > ret) {
+                free(value_string);
+                free(source_string);
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
         }
@@ -2005,6 +2019,8 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
         if (var->mbv_description) {
             ret = asprintf(out[0] + line++, "%s", var->mbv_description);
             if (0 > ret) {
+                free(value_string);
+                free(source_string);
                 return PMIX_ERR_OUT_OF_RESOURCE;
             }
         }
@@ -2017,6 +2033,8 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
                 ret = asprintf(out[0] + line++, "Valid values: %s", values);
                 free(values);
                 if (0 > ret) {
+                    free(value_string);
+                    free(source_string);
                     return PMIX_ERR_OUT_OF_RESOURCE;
                 }
             }
@@ -2031,6 +2049,8 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
 
         ret = asprintf(out[0], "%s=%s (%s)", var->mbv_full_name, value_string, source_string);
         if (0 > ret) {
+            free(value_string);
+            free(source_string);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
     }

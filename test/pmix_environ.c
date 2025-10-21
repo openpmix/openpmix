@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2022      Amazon.com, Inc. or its affiliates.
  *                         All Rights reserved.
- * Copyright (c) 2022      Nanook Consulting  All rights reserved.
+ * Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,9 +43,14 @@ int main(int argc, char *argv[])
         printf("PMIx_Setenv returned %d\n", ret);
         return 1;
     }
-    if (strcmp(getenv("pmix_environ_test_string_3"), "three") != 0) {
+    tmp = getenv("pmix_environ_test_string_3");
+    if (NULL == tmp) {
+        printf("could not getenv(\"pmix_environ_test_string_3\")\n");
+        return 1;
+    }
+    if (strcmp(tmp, "three") != 0) {
         printf("PMIx_Setenv overwrote.  Found %s expected %s\n",
-               getenv("pmix_environ_test_string_3"), "three");
+               tmp, "three");
         return 1;
     }
     ret = PMIx_Setenv("pmix_environ_test_string_3", "four", true, &environ);

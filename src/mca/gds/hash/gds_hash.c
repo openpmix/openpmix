@@ -351,7 +351,9 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
             pmix_pmdl.setup_nspace(trk->nptr, &info[n]);
         } else if (pmix_check_session_info(info[n].key)) {
             /* a lone key must belong to this job's session */
-            s = pmix_gds_hash_check_session(trk, sid, true);
+            if (NULL == s) {
+                s = pmix_gds_hash_check_session(trk, sid, true);
+            }
             /* ensure the value isn't already on the session info */
             found = false;
             PMIX_LIST_FOREACH (kp2, &s->sessioninfo, pmix_kval_t) {

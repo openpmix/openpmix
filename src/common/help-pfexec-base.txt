@@ -36,7 +36,7 @@ Your job may behave unpredictably after this, or abort.
   Function:          %s
   Location:          %s:%d
 #
-execve error]
+[execve error]
 PMIx tried to fork a new process via the "execve" system call but
 failed.  PMIx checks many things before attempting to launch a
 child process, but nothing is perfect. This error may be indicative
@@ -47,3 +47,12 @@ having specified a directory for your application.
   Working dir:       %s
   Application name:  %s
   Error:             %s
+#
+[msg-too-large]
+The error message being sent back to parent by new child is too
+large:
+
+  Msg size:   %lu
+  Limit:      %lu
+
+This is an unrecoverable error.
