@@ -5,7 +5,7 @@
  *
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -57,8 +57,7 @@ typedef void (*pmix_plog_base_module_fini_fn_t)(void);
 typedef pmix_status_t (*pmix_plog_base_module_log_fn_t)(const pmix_proc_t *source,
                                                         const pmix_info_t data[], size_t ndata,
                                                         const pmix_info_t directives[],
-                                                        size_t ndirs, pmix_op_cbfunc_t cbfunc,
-                                                        void *cbdata);
+                                                        size_t ndirs);
 
 /**
  * Base structure for a PLOG module

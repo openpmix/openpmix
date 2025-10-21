@@ -44,12 +44,19 @@
 #include "src/mca/plog/base/base.h"
 
 /* Static API's */
+static pmix_status_t init(void);
+static void finalize(void);
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
-                           void *cbdata);
+                           const pmix_info_t directives[], size_t ndirs);
 
 /* Module */
-pmix_plog_module_t pmix_plog_smtp_module = {.name = "smtp", .channels = "email", .log = mylog};
+pmix_plog_module_t pmix_plog_smtp_module = {
+    .name = "smtp",
+    .channels = NULL,
+    .init = init,
+    .finalize = finalize,
+    .log = mylog
+};
 
 typedef enum {
     SENT_NONE,
@@ -65,6 +72,19 @@ typedef struct {
     char *msg;
     char *prev_string;
 } message_status_t;
+
+static pmix_status_t init(void)
+{
+    char *mychannels = "email";
+
+    pmix_plog_smtp_module.channels = PMIx_Argv_split(mychannels, ',');
+    return PMIX_SUCCESS;
+}
+
+static void finalize(void)
+{
+    PMIx_Argv_free(pmix_plog_smtp_module.channels);
+}
 
 /*
  * Convert lone \n's to \r\n
@@ -130,6 +150,9 @@ static const char *message_cb(void **buf, int *len, void *arg)
             ms->prev_string = crnl(pmix_mca_plog_smtp_component.body_prefix);
             *len = strlen(ms->prev_string);
             return ms->prev_string;
+        } else {
+            *len = 0;
+            return NULL;
         }
 
     case SENT_BODY_PREFIX:
@@ -144,6 +167,9 @@ static const char *message_cb(void **buf, int *len, void *arg)
             ms->prev_string = crnl(pmix_mca_plog_smtp_component.body_suffix);
             *len = strlen(ms->prev_string);
             return ms->prev_string;
+        } else {
+            *len = 0;
+            return NULL;
         }
 
     case SENT_BODY_SUFFIX:
@@ -158,10 +184,13 @@ static const char *message_cb(void **buf, int *len, void *arg)
 /*
  * Back-end function to actually send the email
  */
-static int send_email(char *msg)
+static pmix_status_t send_email(char *msg, char *from, char *addrs,
+                                char *subject, time_t timestamp)
 {
     int i, err = PMIX_SUCCESS;
     char *str = NULL;
+    char **myaddrs = NULL;
+    char *myfrom;
     char *errmsg = NULL;
     struct sigaction sig, oldsig;
     bool set_oldsig = false;
@@ -170,16 +199,28 @@ static int send_email(char *msg)
     message_status_t ms;
     pmix_plog_smtp_component_t *c = &pmix_mca_plog_smtp_component;
 
-    if (NULL == c->to_argv) {
-        c->to_argv = PMIx_Argv_split(c->to, ',');
-        if (NULL == c->to_argv || NULL == c->to_argv[0]) {
-            return PMIX_ERR_OUT_OF_RESOURCE;
+    // check that we have recipients
+    if (NULL == addrs) {
+        if (NULL == c->to) {
+            // nope - nobody to send to
+            return PMIX_ERR_BAD_PARAM;
+        } else {
+            myaddrs = PMIx_Argv_split(c->to, ',');
         }
+    } else {
+            myaddrs = PMIx_Argv_split(addrs, ',');
     }
 
-    ms.sent_flag = SENT_NONE;
-    ms.prev_string = NULL;
-    ms.msg = msg;
+    if (NULL == from) {
+        if (NULL == c->from_addr) {
+            // nope - nobody to send from
+            return PMIX_ERR_BAD_PARAM;
+        } else {
+            myfrom = c->from_addr;
+        }
+    } else {
+        myfrom = from;
+    }
 
     /* Temporarily disable SIGPIPE so that if remote servers timeout
        or hang up on us, it doesn't kill this application.  We'll
@@ -224,31 +265,67 @@ static int send_email(char *msg)
         goto error;
     }
 
-    /* Set the subject and some headers */
-    asprintf(&str, "PMIx SMTP Plog v%d.%d.%d", c->super.base.pmix_mca_component_major_version,
-             c->super.base.pmix_mca_component_minor_version,
-             c->super.base.pmix_mca_component_release_version);
-    if (0 == smtp_set_header(message, "Subject", c->subject)
-        || 0 == smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1)
-        || 0 == smtp_set_header(message, "To", NULL, NULL)
-        || 0
-               == smtp_set_header(message, "From",
-                                  (NULL != c->from_name ? c->from_name : c->from_addr),
-                                  c->from_addr)
-        || 0 == smtp_set_header(message, "X-Mailer", str)
-        || 0 == smtp_set_header_option(message, "Subject", Hdr_OVERRIDE, 1)) {
+    // set the "To" header
+    if (0 == smtp_set_header(message, "To", NULL, NULL)) {
         err = PMIX_ERROR;
-        errmsg = "smtp_set_header";
+        errmsg = "stmp_set_header TO";
+        goto error;
+    }
+
+    /* Add the recipients */
+    for (i = 0; NULL != myaddrs[i]; ++i) {
+        if (NULL == smtp_add_recipient(message, myaddrs[i])) {
+            err = PMIX_ERR_OUT_OF_RESOURCE;
+            errmsg = "stmp_add_recipient";
+            goto error;
+        }
+    }
+
+    // set the subject header
+    if (NULL == subject) {
+        str = c->subject;
+    } else {
+        str = subject;
+    }
+    if (0 == smtp_set_header(message, "Subject", str)) {
+        err = PMIX_ERROR;
+        errmsg = "smtp_set_header SUBJECT";
+        str = NULL;
+        goto error;
+    }
+
+
+    /* set the X-Mailer */
+    asprintf(&str, "PMIx SMTP Plog v%d.%d.%d", c->super.pmix_mca_component_major_version,
+             c->super.pmix_mca_component_minor_version,
+             c->super.pmix_mca_component_release_version);
+    if (0 == smtp_set_header(message, "X-Mailer", str)) {
+        err = PMIX_ERROR;
+        errmsg = "smtp_set_header XMAILER";
+        goto error;
+    }
+
+    if (0 == smtp_set_header(message, "From",
+                             (NULL != c->from_name ? c->from_name : myfrom),
+                              myfrom)) {
+        err = PMIX_ERROR;
+        errmsg = "smtp_set_header FROM";
         goto error;
     }
     free(str);
     str = NULL;
 
-    /* Add the recipients */
-    for (i = 0; NULL != c->to_argv[i]; ++i) {
-        if (NULL == smtp_add_recipient(message, c->to_argv[i])) {
-            err = PMIX_ERR_OUT_OF_RESOURCE;
-            errmsg = "stmp_add_recipient";
+    // provide the timestamp
+    if (0 < timestamp) {
+        struct tm *local;
+        char *t;
+
+        local = localtime(&timestamp);
+        t = asctime(local);
+        t[strlen(t) - 1] = '\0'; // remove trailing newline
+        if (0 == smtp_set_header(message, "Timestamp", t)) {
+            err = PMIX_ERROR;
+            errmsg = "smtp_set_header TIMESTAMP";
             goto error;
         }
     }
@@ -284,6 +361,7 @@ error:
         int e;
         char em[256];
 
+        memset(em, 0, 256);
         e = smtp_errno();
         smtp_strerror(e, em, sizeof(em));
         pmix_show_help("help-pmix-plog.txt", "smtp:send_email failed", true,
@@ -293,42 +371,87 @@ error:
 }
 
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
-                           void *cbdata)
+                           const pmix_info_t directives[], size_t ndirs)
 {
-    char *output, *msg;
+    char *addrs = NULL, *msg = NULL;
+    char *subject = NULL, *from = NULL;
     size_t n;
-    bool generic = false, local = false, global = fals;
-    time_t timestamp;
+    time_t timestamp = 0;
+    pmix_info_t *input = NULL;
+    size_t ninput;
+    pmix_status_t rc;
+    PMIX_HIDE_UNUSED_PARAMS(source);
 
-    /* if there are no directives, then we don't handle it */
-    if (NULL == directives || 0 == ndirs) {
+    /* if there is no data, then we don't handle it */
+    if (NULL == data || 0 == ndata) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    /* check to see if there are any email directives */
+    /* check to see if there is an email request */
+    for (n = 0; n < ndata; n++) {
+        if (PMIx_Check_key(data[n].key, PMIX_LOG_EMAIL)) {
+            if (NULL != input) {
+                // cannot have more than one email per call
+                PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+                return PMIX_ERR_BAD_PARAM;
+            }
+            input = (pmix_info_t*)data[n].value.data.darray->array;
+            ninput = data[n].value.data.darray->size;
+        }
+    }
+
+    // check for directives
     for (n = 0; n < ndirs; n++) {
-        if (0 == strncmp(directives[n].key, PMIX_LOG_EMAIL, PMIX_MAX_KEYLEN)) {
-            /* we default to using the local syslog */
-            generic = true;
-            msg = strdup(directives[n].value.data.string);
-        } else if (0 == strncmp(directives[n].key, PMIX_LOG_LOCAL_SYSLOG, PMIX_MAX_KEYLEN)) {
-            local = true;
-            msg = strdup(directives[n].value.data.string);
-        } else if (0 == strncmp(directives[n].key, PMIX_LOG_GLOBAL_SYSLOG, PMIX_MAX_KEYLEN)) {
-            global = true;
-            msg = strdup(directives[n].value.data.string);
-        } else if (0 == strncmp(directives[n].key, PMIX_LOG_SYSLOG_PRI, PMIX_MAX_KEYLEN)) {
-            pri = directives[n].value.data.integer;
-        } else if (0 == strncmp(directives[n].key, PMIX_LOG_TIMESTAMP, PMIX_MAX_KEYLEN)) {
+        if (PMIx_Check_key(directives[n].key, PMIX_LOG_TIMESTAMP)) {
             timestamp = directives[n].value.data.time;
         }
     }
-    /* If there was a message, output it */
-    vasprintf(&output, msg, ap);
 
-    if (NULL != output) {
-        send_email(output);
-        free(output);
+    // if no email was requested, then move on
+    if (NULL == input) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
     }
+
+    // check the array for input
+    for (n=0; n < ninput; n++) {
+        if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_ADDR)) {
+            addrs = input[n].value.data.string;
+            continue;
+        }
+
+        if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_SENDER_ADDR)) {
+            from = input[n].value.data.string;
+            continue;
+        }
+
+        if (PMIx_Check_key(input[n].key, PMIX_LOG_EMAIL_SUBJECT)) {
+            subject = input[n].value.data.string;
+            continue;
+        }
+
+        if (PMIx_Check_key(input[n].key, PMIX_LOG_MSG)) {
+            if (NULL != msg) {
+                // multiple messages are not supported
+                PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
+            if (PMIX_STRING == input[n].value.type) {
+                msg = input[n].value.data.string;
+            } else if (PMIX_BYTE_OBJECT == input[n].value.type) {
+                msg = input[n].value.data.bo.bytes;
+            } else {
+                return PMIX_ERR_BAD_PARAM;
+            }
+            continue;
+        }
+
+    }
+
+    /* If there wasn't a message, then we are done */
+    if (NULL == msg) {
+        return PMIX_ERR_TAKE_NEXT_OPTION;
+    }
+
+    rc = send_email(msg, from, addrs, subject, timestamp);
+    return rc;
 }

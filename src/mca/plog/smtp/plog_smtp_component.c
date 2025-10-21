@@ -32,7 +32,7 @@
 
 #include "pmix_common.h"
 #include "src/util/pmix_show_help.h"
-
+#include "src/mca/plog/base/base.h"
 #include "plog_smtp.h"
 
 static pmix_status_t smtp_component_query(pmix_mca_base_module_t **module, int *priority);
@@ -43,15 +43,17 @@ static pmix_status_t smtp_register(void);
  * Struct of function pointers that need to be initialized
  */
 pmix_plog_smtp_component_t pmix_mca_plog_smtp_component = {
-    PMIX_PLOG_BASE_VERSION_1_0_0,
+    .super = {
+        PMIX_PLOG_BASE_VERSION_1_0_0,
 
-    .pmix_mca_component_name = "smtp",
+        .pmix_mca_component_name = "smtp",
 
-    PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                               PMIX_RELEASE_VERSION),
-    .pmix_mca_close_component = smtp_close,
-    .pmix_mca_query_component = smtp_component_query,
-    .pmix_mca_register_component_params = smtp_register,
+        PMIX_MCA_BASE_MAKE_VERSION(component, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                                   PMIX_RELEASE_VERSION),
+        .pmix_mca_close_component = smtp_close,
+        .pmix_mca_query_component = smtp_component_query,
+        .pmix_mca_register_component_params = smtp_register,
+    }
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, plog, smtp)
 
@@ -61,77 +63,65 @@ static pmix_status_t smtp_register(void)
 
     /* Server stuff */
     pmix_mca_plog_smtp_component.server = strdup("localhost");
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "server",
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "server",
                                                 "SMTP server name or IP address",
-                                                PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                                PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.server);
 
     pmix_mca_plog_smtp_component.port = 25;
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "port",
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "port",
                                                 "SMTP server port", PMIX_MCA_BASE_VAR_TYPE_INT,
-                                                NULL, 0, 0, PMIX_INFO_LVL_9,
-                                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
                                                 &pmix_mca_plog_smtp_component.port);
 
     /* Email stuff */
     pmix_mca_plog_smtp_component.to = NULL;
     (void)
-        pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "to",
-                                             "Comma-delimited list of email addresses to send to",
-                                             PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                             PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+        pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "to",
+                                             "Comma-delimited list of default email addresses to send to",
+                                             PMIX_MCA_BASE_VAR_TYPE_STRING,
                                              &pmix_mca_plog_smtp_component.to);
+
     pmix_mca_plog_smtp_component.from_addr = NULL;
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "from_addr",
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "from_addr",
                                                 "Email address that messages will be from",
-                                                PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                                PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.from_addr);
+
     pmix_mca_plog_smtp_component.from_name = strdup("PMIx Plog");
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "from_name",
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "from_name",
                                                 "Email name that messages will be from",
-                                                PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                                PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.from_name);
+
     pmix_mca_plog_smtp_component.subject = strdup("PMIx Plog");
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "subject",
-                                                "Email subject", PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                                NULL, 0, 0, PMIX_INFO_LVL_9,
-                                                PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "subject",
+                                                "Default email subject", PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.subject);
 
     /* Mail body prefix and suffix */
     pmix_mca_plog_smtp_component.body_prefix = strdup(
         "The PMIx SMTP plog wishes to inform you of the following message:\n\n");
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "body_prefix",
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "body_prefix",
                                                 "Text to put at the beginning of the mail message",
-                                                PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                                PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.body_prefix);
+
     pmix_mca_plog_smtp_component.body_suffix = strdup("\n\nSincerely,\nOscar the PMIx Owl");
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "body_prefix",
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "body_prefix",
                                                 "Text to put at the end of the mail message",
-                                                PMIX_MCA_BASE_VAR_TYPE_STRING, NULL, 0, 0,
-                                                PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.body_suffix);
 
     /* Priority */
     pmix_mca_plog_smtp_component.priority = 10;
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super.base, "priority",
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "priority",
                                                 "Priority of this component",
-                                                PMIX_MCA_BASE_VAR_TYPE_INT, NULL, 0, 0,
-                                                PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
+                                                PMIX_MCA_BASE_VAR_TYPE_INT,
                                                 &pmix_mca_plog_smtp_component.priority);
     /* Libesmtp version */
     smtp_version(version, sizeof(version), 0);
     version[sizeof(version) - 1] = '\0';
     pmix_mca_plog_smtp_component.version = strdup(version);
-    (void) pmix_mca_base_component_var_register(
-        &pmix_mca_plog_smtp_component.super.base, "libesmtp_version",
-        "Version of libesmtp that this component is linked against", PMIX_MCA_BASE_VAR_TYPE_STRING,
-        NULL, 0, 0, PMIX_INFO_LVL_9, PMIX_MCA_BASE_VAR_SCOPE_READONLY,
-        &pmix_mca_plog_smtp_component.version);
 
     return PMIX_SUCCESS;
 }
@@ -146,17 +136,9 @@ static pmix_status_t smtp_component_query(pmix_mca_base_module_t **module, int *
     *priority = 0;
     *module = NULL;
 
-    /* If there's no to or from, there's no love */
-    if (NULL == pmix_mca_plog_smtp_component.to || '\0' == pmix_mca_plog_smtp_component.to[0]
-        || NULL == pmix_mca_plog_smtp_component.from_addr
-        || '\0' == pmix_mca_plog_smtp_component.from_addr[0]) {
-        pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
-                            "SMTP - no to/from specified; disabled");
-        return PMIX_ERR_NOT_FOUND;
-    }
-
     /* Sanity checks */
-    if (NULL == pmix_mca_plog_smtp_component.server || '\0' == pmix_mca_plog_smtp_component.server[0]) {
+    if (NULL == pmix_mca_plog_smtp_component.server ||
+        '\0' == pmix_mca_plog_smtp_component.server[0]) {
         pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
                             "SMTP: mail server not specified; disabled");
         return PMIX_ERR_NOT_FOUND;

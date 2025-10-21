@@ -42,8 +42,7 @@
 static int init(void);
 static void finalize(void);
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
-                           void *cbdata);
+                           const pmix_info_t directives[], size_t ndirs);
 
 /* Module def */
 pmix_plog_module_t pmix_plog_stdfd_module = {
@@ -99,26 +98,17 @@ static void lkcbfunc(pmix_status_t status, void *cbdata)
 }
 
 static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], size_t ndata,
-                           const pmix_info_t directives[], size_t ndirs, pmix_op_cbfunc_t cbfunc,
-                           void *cbdata)
+                           const pmix_info_t directives[], size_t ndirs)
 {
     size_t n;
     pmix_status_t rc;
     pmix_iof_deliver_t *p;
+    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs);
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
-
-    /* if we are not a gateway or tool, then we don't handle this */
-    if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer) &&
-        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
-        return PMIX_ERR_TAKE_NEXT_OPTION;
-    }
-
-
-    PMIX_HIDE_UNUSED_PARAMS(directives, ndirs, cbfunc, cbdata);
 
 #if 0
     /* check to see if there are any relevant directives */
