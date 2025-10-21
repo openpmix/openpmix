@@ -624,7 +624,7 @@ static void server_read_cb(int fd, short event, void *arg)
         }
         break;
     case CMD_FENCE_COMPLETE:
-        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %d", my_server_id, msg_hdr.size));
+        TEST_VERBOSE(("%d: CMD_FENCE_COMPLETE size %lu", my_server_id, msg_hdr.size));
         server->modex_cbfunc(PMIX_SUCCESS, msg_buf, (int)msg_hdr.size, server->cbdata, _libpmix_cb,
                              msg_buf);
         msg_buf = NULL;

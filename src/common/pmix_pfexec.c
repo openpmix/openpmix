@@ -1149,6 +1149,11 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
             topic[msg.topic_str_len] = '\0';
         }
         if (msg.msg_str_len > 0) {
+            if (8192 < msg.msg_str_len) {
+                pmix_show_help("help-pfexec-base.txt", "msg-too-large", true,
+                               msg.msg_str_len, 8192);
+                return PMIX_ERR_SYS_OTHER;
+            }
             str = calloc(1, msg.msg_str_len + 1);
             if (NULL == str) {
                 pmix_show_help("help-pfexec-base.txt", "syscall fail", true, pmix_globals.hostname,
