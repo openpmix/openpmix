@@ -3,7 +3,7 @@
  *
  * NOTE: THE MUNGE CLIENT LIBRARY (libmunge) IS LICENSED AS LGPL
  *
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,7 +24,40 @@
 #ifdef HAVE_SYS_TYPES_H
 #    include <sys/types.h>
 #endif
+
+// define abstractions to test compile this component
+#if 0
+typedef int32_t munge_err_t;
+
+typedef struct {
+    int32_t idx;
+} munge_ctx_t;
+
+#define EMUNGE_SUCCESS 0
+
+static inline munge_err_t munge_encode (char **cred, munge_ctx_t *ctx,
+                                        const void *buf, int len)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cred, ctx, buf, len);
+    return EMUNGE_SUCCESS;
+}
+
+static inline  munge_err_t munge_decode (const char *cred, munge_ctx_t *ctx,
+                                         void **buf, int *len, uid_t *uid, gid_t *gid)
+{
+    PMIX_HIDE_UNUSED_PARAMS(cred, ctx, buf, len, uid, gid);
+    return EMUNGE_SUCCESS;
+}
+
+static inline  const char * munge_strerror (munge_err_t e)
+{
+    PMIX_HIDE_UNUSED_PARAMS(e);
+    return "FOO";
+}
+
+#else
 #include <munge.h>
+#endif
 
 #include "psec_munge.h"
 #include "src/mca/psec/psec.h"
@@ -45,7 +78,6 @@ pmix_psec_module_t pmix_munge_module = {.name = "munge",
                                         .create_cred = create_cred,
                                         .validate_cred = validate_cred};
 
-static pmix_lock_t lock;
 static char *mycred = NULL;
 static bool initialized = false;
 static bool refresh = false;
@@ -54,10 +86,8 @@ static pmix_status_t munge_init(void)
 {
     int rc;
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge init");
-
-    PMIX_CONSTRUCT_LOCK(&lock);
-    lock.active = false;
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "psec: munge init");
 
     /* attempt to get a credential as a way of checking that
      * the munge server is available - cache the credential
@@ -76,17 +106,15 @@ static pmix_status_t munge_init(void)
 
 static void munge_finalize(void)
 {
-    PMIX_ACQUIRE_THREAD(&lock);
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "psec: munge finalize");
 
-    pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge finalize");
     if (initialized) {
         if (NULL != mycred) {
             free(mycred);
             mycred = NULL;
         }
     }
-    PMIX_RELEASE_THREAD(&lock);
-    PMIX_DESTRUCT_LOCK(&lock);
 }
 
 static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t directives[],
@@ -99,9 +127,8 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
     size_t n, m;
     PMIX_HIDE_UNUSED_PARAMS(peer);
 
-    PMIX_ACQUIRE_THREAD(&lock);
-
-    pmix_output_verbose(2, pmix_globals.debug_output, "psec: munge create_cred");
+    pmix_output_verbose(2, pmix_globals.debug_output,
+                        "psec: munge create_cred");
 
     /* ensure initialization */
     PMIX_BYTE_OBJECT_CONSTRUCT(cred);
@@ -123,7 +150,6 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
                 }
                 PMIx_Argv_free(types);
                 if (!takeus) {
-                    PMIX_RELEASE_THREAD(&lock);
                     return PMIX_ERR_NOT_SUPPORTED;
                 }
             }
@@ -145,7 +171,6 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
                 pmix_output_verbose(2, pmix_globals.debug_output,
                                     "psec: munge failed to create credential: %s",
                                     munge_strerror(rc));
-                PMIX_RELEASE_THREAD(&lock);
                 return PMIX_ERR_NOT_SUPPORTED;
             }
             cred->bytes = strdup(mycred);
@@ -156,13 +181,11 @@ static pmix_status_t create_cred(struct pmix_peer_t *peer, const pmix_info_t dir
         /* mark that this came from us */
         PMIX_INFO_CREATE(*info, 1);
         if (NULL == *info) {
-            PMIX_RELEASE_THREAD(&lock);
             return PMIX_ERR_NOMEM;
         }
         *ninfo = 1;
         PMIX_INFO_LOAD(info[0], PMIX_CRED_TYPE, "munge", PMIX_STRING);
     }
-    PMIX_RELEASE_THREAD(&lock);
     return PMIX_SUCCESS;
 }
 
