@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Redistribution and use in source and binary forms, with or without
@@ -323,6 +323,10 @@ typedef void (*pmix_server_tool_connection_fn_t)(pmix_info_t *info, size_t ninfo
                                                  pmix_tool_connection_cbfunc_t cbfunc,
                                                  void *cbdata);
 
+typedef pmix_status_t (*pmix_server_tool_connection2_fn_t)(pmix_info_t *info, size_t ninfo,
+                                                           pmix_tool_connection_cbfunc_t cbfunc,
+                                                           void *cbdata);
+
 /* Log data on behalf of a client. Calls to the host thru this
  * function must _NOT_ call the PMIx_Log API as this will
  * trigger an infinite loop. Instead, the implementation must
@@ -345,6 +349,11 @@ typedef void (*pmix_server_log_fn_t)(const pmix_proc_t *client,
                                      const pmix_info_t data[], size_t ndata,
                                      const pmix_info_t directives[], size_t ndirs,
                                      pmix_op_cbfunc_t cbfunc, void *cbdata);
+
+typedef pmix_status_t (*pmix_server_log2_fn_t)(const pmix_proc_t *client,
+                                               const pmix_info_t data[], size_t ndata,
+                                               const pmix_info_t directives[], size_t ndirs,
+                                               pmix_op_cbfunc_t cbfunc, void *cbdata);
 
 /* Request allocation modifications on behalf of a client */
 typedef pmix_status_t (*pmix_server_alloc_fn_t)(const pmix_proc_t *client,
@@ -553,7 +562,7 @@ typedef pmix_status_t (*pmix_server_resource_block_fn_t)(const pmix_proc_t *requ
 
 typedef struct pmix_server_module_4_0_0_t {
     /* v1x interfaces */
-    pmix_server_client_connected_fn_t   client_connected;
+    pmix_server_client_connected_fn_t   client_connected; // DEPRECATED
     pmix_server_client_finalized_fn_t   client_finalized;
     pmix_server_abort_fn_t              abort;
     pmix_server_fencenb_fn_t            fence_nb;
@@ -570,8 +579,8 @@ typedef struct pmix_server_module_4_0_0_t {
     /* v2x interfaces */
     pmix_server_notify_event_fn_t       notify_event;
     pmix_server_query_fn_t              query;
-    pmix_server_tool_connection_fn_t    tool_connected;
-    pmix_server_log_fn_t                log;
+    pmix_server_tool_connection_fn_t    tool_connected; // DEPRECATED
+    pmix_server_log_fn_t                log;            // DEPRECATED
     pmix_server_alloc_fn_t              allocate;
     pmix_server_job_control_fn_t        job_control;
     pmix_server_monitor_fn_t            monitor;
@@ -583,10 +592,14 @@ typedef struct pmix_server_module_4_0_0_t {
     /* v4x interfaces */
     pmix_server_grp_fn_t                group;
     pmix_server_fabric_fn_t             fabric;
+    /* v6x interfaces */
     pmix_server_client_connected2_fn_t  client_connected2;
-    /* v5x interfaces */
+    pmix_server_tool_connection2_fn_t   tool_connected2;
+    pmix_server_log2_fn_t               log2;
+    /* pending interfaces */
     pmix_server_session_control_fn_t    session_control;
     pmix_server_resource_block_fn_t     resource_block;
+
 } pmix_server_module_t;
 
 /****    HOST RM FUNCTIONS FOR INTERFACE TO PMIX SERVER    ****/
