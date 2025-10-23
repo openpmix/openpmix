@@ -1116,7 +1116,8 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     }
 
     /* does the server support tool connections? */
-    if (NULL == pmix_host_server.tool_connected) {
+    if (NULL == pmix_host_server.tool_connected &&
+        NULL == pmix_host_server.tool_connected2) {
         PMIx_Info_list_release(ilist);
         if (pnd->need_id) {
             /* we need someone to provide the tool with an
@@ -1164,7 +1165,15 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     pnd->ninfo = darray.size;
 
     /* pass it up for processing */
-    pmix_host_server.tool_connected(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
+    if (NULL != pmix_host_server.tool_connected2) {
+        rc = pmix_host_server.tool_connected2(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
+        if (PMIX_SUCCESS != rc) {
+            goto cleanup;
+        }
+        return PMIX_SUCCESS;
+    } else {
+        pmix_host_server.tool_connected(pnd->info, pnd->ninfo, cnct_cbfunc, pnd);
+    }
     return PMIX_SUCCESS;
 
 cleanup:
