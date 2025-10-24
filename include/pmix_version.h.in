@@ -36,21 +36,41 @@
  * a PMIx release series
  */
 
-/* Individual capability flags */
-#define PMIX_CAP_BASE            0x00000000000000000000000000000001
-#define PMIX_CAP_LTO             0x00000000000000000000000000000002
-#define PMIX_CAP_INMEMHELP       0x00000000000000000000000000000004
-#define PMIX_CAP_UPCALLS2        0x00000000000000000000000000000008
-
-
-/* These are the capabilities that this version of OpenPMIx has.
- * For now, we just define/use a "base" marker as a starting
- * point
+/* Note that the values of the individual flags is irrelevant and
+ * not used. All that matters is that the definition exists. Only
+ * capabilities supported by this specific PMIx version shall be
+ * defined - i.e., the existence of the definition indicates that
+ * this capability is supported by this version
  */
+
+/* Individual capability flags */
+#define PMIX_CAP_BASE            0
+#define PMIX_CAP_LTO             1
+#define PMIX_CAP_INMEMHELP       2
+#define PMIX_CAP_UPCALLS2        3
+
+
+/*****    DEPRECATED    *****/
+
+/* there was an initial thought that we would generate some
+ * uber-list of defined flags for capabilities across all PMIx
+ * versions, and then indicate which ones were supported by
+ * this particular version by OR'ing them together into
+ * some more general value. This has proven unworkable as you
+ * get into a giant game of bit-counting to create the definitions.
+ * Instead, we only define flags that this specific version
+ * supports - thus, the value of the individual flag is irrelevant
+ * and no general value is required.
+ *
+ * Since we cannot go back and change already-released versions,
+ * we leave this one legacy definition here so those earlier
+ * versions can find it. They are restricted to supporting only
+ * the earlier capabilities anyway, so it really doesn't matter
+ */
+
 #define PMIX_CAPABILITIES \
     (PMIX_CAP_BASE | \
      PMIX_CAP_LTO | \
-     PMIX_CAP_INMEMHELP | \
-     PMIX_CAP_UPCALLS2)
+     PMIX_CAP_INMEMHELP)
 
 #endif
