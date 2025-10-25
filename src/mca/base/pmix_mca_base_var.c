@@ -1907,6 +1907,7 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
 
         ret = asprintf(out[0] + line++, "%stype:%s", tmp, pmix_var_type_names[var->mbv_type]);
         if (0 > ret) {
+            free(tmp);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
 
