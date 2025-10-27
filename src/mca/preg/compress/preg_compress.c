@@ -153,14 +153,9 @@ static pmix_status_t parse_nodes(const char *regexp, char ***names)
     }
     idx += strlen("component=zlib:") + 1; // step over the NULL terminator
 
+    idx += strlen("size=");
     len = strtoul(&regexp[idx], &ptr, 10);
     ptr += 2; // step over colon and NULL
-
-    /* malloc the space */
-    tmp = malloc(len);
-    if (NULL == tmp) {
-        return PMIX_ERR_NOMEM;
-    }
 
     if (!pmix_compress.decompress_string(&tmp, (uint8_t *) ptr, len)) {
         free(tmp);
@@ -189,14 +184,9 @@ static pmix_status_t parse_procs(const char *regexp, char ***procs)
     }
     idx += strlen("component=zlib:") + 1; // step over the NULL terminator
 
+    idx += strlen("size=");
     len = strtoul(&regexp[idx], &ptr, 10);
     ptr += 2; // step over colon and NULL
-
-    /* malloc the space */
-    tmp = malloc(len);
-    if (NULL == tmp) {
-        return PMIX_ERR_NOMEM;
-    }
 
     if (!pmix_compress.decompress_string(&tmp, (uint8_t *) ptr, len)) {
         free(tmp);
@@ -228,6 +218,7 @@ static pmix_status_t copy(char **dest, size_t *len, const char *input)
     idx += strlen("component=zlib:") + 1; // step over the NULL terminator
 
     /* extract the size */
+    idx += strlen("size=");
     slen = strtoul(&input[idx], NULL, 10) + strlen(PREG_COMPRESS_PREFIX) + strlen(&input[idx]) + 1;
 
     /* malloc the space */
@@ -261,6 +252,7 @@ static pmix_status_t pack(pmix_buffer_t *buffer, const char *input)
     idx += strlen("component=zlib:") + 1; // step over the NULL terminator
 
     /* extract the size */
+    idx += strlen("size=");
     slen = strtoul(&input[idx], NULL, 10) + strlen(PREG_COMPRESS_PREFIX) + strlen(&input[idx]) + 1;
 
     /* ensure the buffer has enough space */
@@ -298,6 +290,7 @@ static pmix_status_t unpack(pmix_buffer_t *buffer, char **regex)
     idx += strlen("component=zlib:") + 1; // step over the NULL terminator
 
     /* extract the size */
+    idx += strlen("size=");
     slen = strtoul(&ptr[idx], NULL, 10) + strlen(PREG_COMPRESS_PREFIX) + strlen(&ptr[idx]) + 1;
 
     /* get the space */
