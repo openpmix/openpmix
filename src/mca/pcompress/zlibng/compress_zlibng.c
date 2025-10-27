@@ -178,7 +178,7 @@ static bool doit(uint8_t **outbytes, size_t len2, const uint8_t *inbytes, size_t
 }
 static bool zlibng_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t *inbytes, size_t inlen)
 {
-    uint32_t len2;
+    uint32_t len2, input_len;
     bool rc;
     uint8_t *input;
 
@@ -192,7 +192,8 @@ static bool zlibng_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t 
                         "DECOMPRESSING INPUT OF LEN %" PRIsize_t " OUTPUT %u", inlen, len2);
 
     input = (uint8_t *) (inbytes + sizeof(uint32_t)); // step over the size
-    rc = doit(outbytes, len2, input, inlen);
+    input_len = inlen - sizeof(uint32_t);
+    rc = doit(outbytes, len2, input, input_len);
     if (rc) {
         *outlen = len2;
         return true;
@@ -202,7 +203,7 @@ static bool zlibng_decompress(uint8_t **outbytes, size_t *outlen, const uint8_t 
 
 static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
 {
-    uint32_t len2;
+    uint32_t len2, input_len;
     bool rc;
     uint8_t *input;
 
@@ -218,11 +219,12 @@ static bool decompress_string(char **outstring, uint8_t *inbytes, size_t len)
 
     /* decompress the bytes */
     input = (uint8_t *) (inbytes + sizeof(uint32_t)); // step over the size
-    rc = doit((uint8_t **) outstring, len2, input, len);
+    input_len = len - sizeof(uint32_t);
+    rc = doit((uint8_t **) outstring, len2, input, input_len);
 
     if (rc) {
         /* ensure this is NUL terminated! */
-        *outstring[len2 - 1] = '\0';
+        (*outstring)[len2 - 1] = '\0';
         return true;
     }
 
