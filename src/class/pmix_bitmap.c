@@ -364,12 +364,12 @@ int pmix_bitmap_num_set_bits(pmix_bitmap_t *bm, int len)
     int i_len = len / SIZE_OF_BASE_TYPE + (len % SIZE_OF_BASE_TYPE == 0 ? 0 : 1);
 
 #if PMIX_ENABLE_DEBUG
-    if ((len < 0) || NULL == bm || (len >= (bm->array_size * SIZE_OF_BASE_TYPE))) {
+    if ((len < 0) || NULL == bm) {
         return 0;
     }
 #endif
 
-    for (i = 0; i < i_len; ++i) {
+    for (i = 0; i < i_len && i < bm->array_size; ++i) {
         if (0 == (val = bm->bitmap[i]))
             continue;
         if (i == i_len - 1 && len % SIZE_OF_BASE_TYPE != 0) {
