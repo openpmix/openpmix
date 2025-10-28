@@ -16,7 +16,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1135,9 +1135,12 @@ pmix_status_t pmix20_bfrop_unpack_app(pmix_pointer_array_t *regtypes, pmix_buffe
         }
         /* unpack env */
         m = 1;
-        if (PMIX_SUCCESS
-            != (ret = pmix20_bfrop_unpack_int32(regtypes, buffer, &nval, &m, PMIX_INT32))) {
+        ret = pmix20_bfrop_unpack_int32(regtypes, buffer, &nval, &m, PMIX_INT32);
+        if (PMIX_SUCCESS != ret) {
             return ret;
+        }
+        if (8192 < nval) {  // arbitrary value to guard against tainted input
+            return PMIX_ERR_BAD_PARAM;
         }
         for (k = 0; k < nval; k++) {
             m = 1;
@@ -1569,6 +1572,9 @@ pmix_status_t pmix20_bfrop_unpack_query(pmix_pointer_array_t *regtypes, pmix_buf
         if (PMIX_SUCCESS
             != (ret = pmix20_bfrop_unpack_int32(regtypes, buffer, &nkeys, &m, PMIX_INT32))) {
             return ret;
+        }
+        if (8192 < nkeys) {  // arbitrary value to guard against tainted input
+            return PMIX_ERR_BAD_PARAM;
         }
         if (0 < nkeys) {
             /* unpack the keys */
