@@ -1111,8 +1111,8 @@ static int register_variable(const char *project_name, const char *framework_nam
     int n;
 
     /* Developer error. Storage can not be NULL and type must exist */
-    assert(((flags & PMIX_MCA_BASE_VAR_FLAG_SYNONYM) || NULL != storage) && type >= 0
-           && type < PMIX_MCA_BASE_VAR_TYPE_MAX);
+    assert(((flags & PMIX_MCA_BASE_VAR_FLAG_SYNONYM) || NULL != storage) &&
+           type < PMIX_MCA_BASE_VAR_TYPE_MAX);
 
 #if PMIX_ENABLE_DEBUG
     /* Developer error: check for alignments */

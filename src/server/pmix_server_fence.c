@@ -756,7 +756,6 @@ pmix_status_t pmix_server_collect_data(pmix_server_trkr_t *trk,
             PMIX_BFROPS_PACK(rc, pmix_globals.mypeer, pbkt, &pcs, 1, PMIX_PROC);
             if (PMIX_SUCCESS != rc) {
                 PMIX_ERROR_LOG(rc);
-                PMIX_DESTRUCT(&cb);
                 PMIX_LIST_DESTRUCT(&rank_blobs);
                 PMIX_RELEASE(pbkt);
                 goto cleanup;

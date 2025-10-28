@@ -526,8 +526,7 @@ void pmix_ptl_base_recv_handler(int sd, short flags, void *cbdata)
                                     "ptl:base:recv:handler allocate data region of size %lu",
                                     (unsigned long) peer->recv_msg->hdr.nbytes);
                 /* allocate the data region */
-                if (0 < pmix_ptl_base.max_msg_size &&
-                    pmix_ptl_base.max_msg_size < peer->recv_msg->hdr.nbytes) {
+                if (pmix_ptl_base.max_msg_size < peer->recv_msg->hdr.nbytes) {
                     pmix_show_help("help-pmix-runtime.txt", "ptl:msg_size", true,
                                    (unsigned long) peer->recv_msg->hdr.nbytes,
                                    (unsigned long) pmix_ptl_base.max_msg_size);
