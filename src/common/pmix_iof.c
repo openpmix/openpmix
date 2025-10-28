@@ -1728,6 +1728,29 @@ void pmix_iof_flush_residuals(void)
     }
 }
 
+void pmix_iof_flush_sink(pmix_iof_sink_t *sink)
+{
+    pmix_status_t rc = PMIX_SUCCESS;
+    pmix_iof_residual_t *res, *next;
+    pmix_list_t *residuals = &pmix_server_globals.iof_residuals;
+
+    PMIX_LIST_FOREACH_SAFE(res, next, residuals, pmix_iof_residual_t) {
+        if(res->channel != &sink->wev){
+            continue;
+        }
+        if(PMIX_SUCCESS == rc){
+            rc = write_output_line(&res->name, res->channel, &res->flags,
+                                   res->stream, res->copystdout,
+                                   res->copystderr, &res->bo);
+            if(PMIX_SUCCESS != rc) {
+                PMIX_ERROR_LOG(rc);
+            }
+        }
+        pmix_list_remove_item(residuals, &res->super);
+        PMIX_RELEASE(res);
+    }
+}
+
 void pmix_iof_static_dump_output(pmix_iof_sink_t *sink)
 {
     bool dump;

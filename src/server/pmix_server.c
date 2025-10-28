@@ -1673,6 +1673,13 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
     /* perform any epilog */
     pmix_execute_epilog(&nptr->epilog);
 
+    // flush any residuals on this namespace's sinks, and dump their output
+    pmix_iof_sink_t *sink;
+    PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t){
+        pmix_iof_flush_sink(sink);
+        pmix_iof_static_dump_output(sink);
+    }
+
     /* remove and release it */
     pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
     PMIX_RELEASE(nptr);
