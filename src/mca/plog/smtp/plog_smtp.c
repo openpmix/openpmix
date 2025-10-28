@@ -38,6 +38,7 @@
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
 #include "src/util/pmix_name_fns.h"
+#include "src/util/pmix_printf.h"
 #include "src/util/pmix_show_help.h"
 
 #include "plog_smtp.h"
@@ -93,7 +94,6 @@ static char *crnl(char *orig)
 {
     int i, j, max, count;
     char *str;
-    return strdup(orig);
 
     /* Count how much space we need */
     count = max = strlen(orig);
@@ -249,7 +249,7 @@ static pmix_status_t send_email(char *msg, char *from, char *addrs,
     }
 
     /* Set the SMTP server (yes, it's a weird return status!) */
-    asprintf(&str, "%s:%d", c->server, c->port);
+    pmix_asprintf(&str, "%s:%d", c->server, c->port);
     if (0 == smtp_set_server(session, str)) {
         err = PMIX_ERROR;
         errmsg = "stmp_set_server";

@@ -126,7 +126,7 @@ pmix_ptl_module_t pmix_ptl = {
     .setup_fork = NULL
 };
 
-static size_t max_msg_size = 0;
+static size_t max_msg_size = 32;
 static char *dyn_port_string;
 #if PMIX_ENABLE_IPV6
 static char *dyn_port_string6;
@@ -141,6 +141,9 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                "Max size (in Mbytes) of a client/server msg",
                                PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                &max_msg_size);
+    if (0 == max_msg_size) {
+        max_msg_size = 128;
+    }
     pmix_ptl_base.max_msg_size = max_msg_size * 1024 * 1024;
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_include",
