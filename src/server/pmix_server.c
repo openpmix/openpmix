@@ -995,6 +995,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_server_globals.local_reqs);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.gdata);
     PMIX_LIST_DESTRUCT(&pmix_server_globals.events);
+    // the list will be destructed in rte_finalize, but do the
+    // epilog here
     PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
         /* ensure that we do the specified cleanup - if this is an
          * abnormal termination, then the nspace object may not be
@@ -1510,13 +1512,6 @@ static void _deregister_nspace(int sd, short args, void *cbdata)
 
     /* perform any epilog */
     pmix_execute_epilog(&nptr->epilog);
-
-    // flush any residuals on this namespace's sinks, and dump their output
-    pmix_iof_sink_t *sink;
-    PMIX_LIST_FOREACH(sink, &nptr->sinks, pmix_iof_sink_t){
-        pmix_iof_flush_sink(sink);
-        pmix_iof_static_dump_output(sink);
-    }
 
     /* remove and release it */
     pmix_list_remove_item(&pmix_globals.nspaces, &nptr->super);
