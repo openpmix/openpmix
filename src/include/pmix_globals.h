@@ -57,8 +57,12 @@
 BEGIN_C_DECLS
 
 /* some limits */
-#define PMIX_MAX_CRED_SIZE    131072 // set max at 128kbytes
-#define PMIX_MAX_ERR_CONSTANT INT_MIN
+#define PMIX_MAX_CRED_SIZE     131072 // set max at 128kbytes
+#define PMIX_MAX_ERR_CONSTANT  INT_MIN
+#define PMIX_TAINT_INT_LIMIT   INT_MAX-2   // arbitrary limit to silence Coverity taint complaints
+#define PMIX_TAINT_UINT_LIMIT  UINT_MAX-2  // arbitrary limit to silence Coverity taint complaints
+#define PMIX_TAINT_SIZE_LIMIT  SIZE_MAX-2  // arbitrary limit to silence Coverity taint complaints
+
 
 /* internal-only attributes */
 #define PMIX_BFROPS_MODULE \

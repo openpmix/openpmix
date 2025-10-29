@@ -142,9 +142,10 @@ static int pmix_ptl_register(pmix_mca_base_register_flag_t flags)
                                PMIX_MCA_BASE_VAR_TYPE_SIZE_T,
                                &max_msg_size);
     if (0 == max_msg_size) {
-        max_msg_size = 128;
+        max_msg_size = PMIX_TAINT_SIZE_LIMIT;
+    } else {
+        pmix_ptl_base.max_msg_size = max_msg_size * 1024 * 1024;
     }
-    pmix_ptl_base.max_msg_size = max_msg_size * 1024 * 1024;
 
     idx = pmix_mca_base_var_register("pmix", "ptl", "base", "if_include",
                                      "Comma-delimited list of devices and/or CIDR notation of TCP networks "
