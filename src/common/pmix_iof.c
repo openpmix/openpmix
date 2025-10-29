@@ -1728,7 +1728,7 @@ void pmix_iof_flush_residuals(void)
     }
 }
 
-void pmix_iof_flush_sink(pmix_iof_sink_t *sink)
+static void flush_sink_residuals(pmix_iof_sink_t *sink)
 {
     pmix_status_t rc = PMIX_SUCCESS;
     pmix_iof_residual_t *res, *next;
@@ -2144,14 +2144,25 @@ static void iof_sink_construct(pmix_iof_sink_t *ptr)
 }
 static void iof_sink_destruct(pmix_iof_sink_t *ptr)
 {
+    // flush any residuals on this namespace's sinks, and dump their output
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer)) {
+        flush_sink_residuals(ptr);
+    }
+    pmix_iof_static_dump_output(ptr);
+
+    // close the sink
     if (0 <= ptr->wev.fd) {
-        pmix_output_verbose
-            (20, pmix_client_globals.iof_output, "%s iof: closing sink for process %s on fd %d",
-             PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(&ptr->name), ptr->wev.fd);
+        pmix_output_verbose(20, pmix_client_globals.iof_output,
+                            "%s iof: closing sink for process %s on fd %d",
+                            PMIX_NAME_PRINT(&pmix_globals.myid),
+                            PMIX_NAME_PRINT(&ptr->name), ptr->wev.fd);
         PMIX_DESTRUCT(&ptr->wev);
     }
 }
-PMIX_CLASS_INSTANCE(pmix_iof_sink_t, pmix_list_item_t, iof_sink_construct, iof_sink_destruct);
+PMIX_CLASS_INSTANCE(pmix_iof_sink_t,
+                    pmix_list_item_t,
+                    iof_sink_construct,
+                    iof_sink_destruct);
 
 static void iof_read_event_construct(pmix_iof_read_event_t *rev)
 {
