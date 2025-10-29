@@ -431,7 +431,7 @@ pmix_status_t pmix12_bfrop_unpack_string(pmix_pointer_array_t *regtypes, pmix_bu
         }
         if (0 == len) { /* zero-length string - unpack the NULL */
             sdest[i] = NULL;
-        } else if (2097152 < len) {  // arbitrary value to guard against tainted input
+        } else if (PMIX_TAINT_INT_LIMIT < len) {  // arbitrary value to guard against tainted input
             return PMIX_ERR_BAD_PARAM;
         } else {
             sdest[i] = (char *) malloc(len);
@@ -1055,7 +1055,7 @@ pmix_status_t pmix12_bfrop_unpack_app(pmix_pointer_array_t *regtypes, pmix_buffe
             != (ret = pmix12_bfrop_unpack_int32(regtypes, buffer, &nval, &m, PMIX_INT32))) {
             return ret;
         }
-        if (8192 < nval) {  // arbitrary value to guard against tainted input
+        if (PMIX_TAINT_INT_LIMIT < nval) {  // arbitrary value to guard against tainted input
             return PMIX_ERR_BAD_PARAM;
         }
         for (k = 0; k < nval; k++) {

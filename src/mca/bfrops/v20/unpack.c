@@ -1139,7 +1139,7 @@ pmix_status_t pmix20_bfrop_unpack_app(pmix_pointer_array_t *regtypes, pmix_buffe
         if (PMIX_SUCCESS != ret) {
             return ret;
         }
-        if (8192 < nval) {  // arbitrary value to guard against tainted input
+        if (PMIX_TAINT_INT_LIMIT < nval) {  // arbitrary value to guard against tainted input
             return PMIX_ERR_BAD_PARAM;
         }
         for (k = 0; k < nval; k++) {
@@ -1573,7 +1573,7 @@ pmix_status_t pmix20_bfrop_unpack_query(pmix_pointer_array_t *regtypes, pmix_buf
             != (ret = pmix20_bfrop_unpack_int32(regtypes, buffer, &nkeys, &m, PMIX_INT32))) {
             return ret;
         }
-        if (8192 < nkeys) {  // arbitrary value to guard against tainted input
+        if (PMIX_TAINT_INT_LIMIT < nkeys) {  // arbitrary value to guard against tainted input
             return PMIX_ERR_BAD_PARAM;
         }
         if (0 < nkeys) {

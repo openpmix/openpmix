@@ -228,7 +228,7 @@ void pmix_ptl_base_connection_handler(int sd, short args, void *cbdata)
     /* extract any credential so we can validate this connection
      * before doing anything else */
     PMIX_PTL_GET_U32(pnd->len);
-    if (16384 < pnd->len) {    // arbitrary value to guard against tainted input
+    if (PMIX_TAINT_UINT_LIMIT < pnd->len) {    // arbitrary value to guard against tainted input
         PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
         goto error;
     }
