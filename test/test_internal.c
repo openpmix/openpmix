@@ -2,7 +2,7 @@
  * Copyright (c) 2017      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2017-2019 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -47,7 +47,7 @@ int test_internal(char *my_nspace, pmix_rank_t my_rank, test_params params)
 
     for (idx = 0; idx < params.test_internal; idx++) {
         memset(sval, 0, PMIX_MAX_NSLEN);
-        sprintf(sval, "test_internal:%s:%d:%d", my_nspace, my_rank, idx);
+        snprintf(sval, PMIX_MAX_NSLEN, "test_internal:%s:%d:%d", my_nspace, my_rank, idx);
 
         SET_KEY(key, 0, idx, 1);
         value.type = PMIX_STRING;
@@ -76,7 +76,7 @@ int test_internal(char *my_nspace, pmix_rank_t my_rank, test_params params)
 
     for (idx = 0; idx < params.test_internal; idx++) {
         memset(sval, 0, PMIX_MAX_NSLEN);
-        sprintf(sval, "test_internal:%s:%d:%d", my_nspace, my_rank, idx);
+        snprintf(sval, PMIX_MAX_NSLEN, "test_internal:%s:%d:%d", my_nspace, my_rank, idx);
 
         GET(string, sval, my_nspace, my_rank, 0, idx, 1, 1, 0);
         if (PMIX_SUCCESS != rc) {
