@@ -407,11 +407,11 @@ int create_node_map(void)
     char out_nodeused[2048];
     int c = 0;
     for (size_t i = 0; i < nprocs; i++) {
-        c += sprintf(&out_nodemap[c], "%d ", map[i]);
+        c += snprintf(&out_nodemap[c], 2048, "%d ", map[i]);
     }
     c = 0;
     for (int i = 0; NULL != nodelist[i]; i++) {
-        c += sprintf(&out_nodeused[c], "%d ", used[i]);
+        c += snprintf(&out_nodeused[c], 2048, "%d ", used[i]);
     }
 
     printf("[%s:%d] map: %s ### used %s\n", own_proc.nspace, own_proc.rank, out_nodemap, out_nodeused);

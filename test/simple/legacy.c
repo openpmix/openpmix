@@ -27,7 +27,7 @@ PMIX_VALUE_RELEASE(val);
 char key_p[32];
 pmix_value_t value_p;
 
-sprintf(key_p, "%s-%d", "foo", local_rank);
+snprintf(key_p, 32, "%s-%d", "foo", local_rank);
 value_p.type = PMIX_UINT32;
 value_p.data.uint32 = local_rank + 10;
 
@@ -48,7 +48,7 @@ for (int i = 0; i < 2; i++) {
     char key_g[32];
     pmix_value_t *value_g;
 
-    sprintf(key_g, "%s-%d", "foo", i);
+    snprintf(key_g, 32, "%s-%d", "foo", i);
     rc = PMIx_Get(&proc, key_g, NULL, 0, &value_g);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "Rank %u: PMIx_Get got %d\n", global_proc.rank, rc);

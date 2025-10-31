@@ -230,7 +230,7 @@ int main(int argc, char *argv[])
 
 
     /* Each rank puts a unique key-value pair in the KVS */
-    sprintf(data, "ORIG rank %d", myproc.rank);
+    snprintf(data, 256, "ORIG rank %d", myproc.rank);
     if (0 == myproc.rank) {
         pmi_set_string("test-key-0", data, 256);
     } else {
@@ -271,7 +271,7 @@ int main(int argc, char *argv[])
     }
 
     /* Each rank attempts to overwrite the value that was previously put */
-    sprintf(data, "OVERWRITE rank %d", myproc.rank);
+    snprintf(data, 256, "OVERWRITE rank %d", myproc.rank);
     if (0 == myproc.rank) {
         pmi_set_string("test-key-0", data, 256);
     } else {

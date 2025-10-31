@@ -41,6 +41,4 @@ EXTRA_DIST = \
     platform/intel/bend/linux.conf \
     check_compat.py
 
-include perf_tools/Makefile.include
-
 dist_pmixdata_DATA = pmix-valgrind.supp

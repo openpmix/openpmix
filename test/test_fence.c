@@ -59,7 +59,6 @@ static void release_cb(pmix_status_t status, void *cbdata)
 
 int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
 {
-    int len;
     int rc;
     size_t i, npcs;
     fence_desc_t *desc;
@@ -82,9 +81,15 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
     /* cycle thru all the test fence descriptors to find
      * those that include my nspace/rank */
     PMIX_LIST_FOREACH (desc, &test_fences, fence_desc_t) {
-        char tmp[256] = {0};
-        len = sprintf(tmp, "fence %d: block = %d de = %d ", fence_num, desc->blocking,
-                      desc->data_exchange);
+        char *tmp, *tmp2;
+        int dumb;
+        dumb = asprintf(&tmp, "fence %d: block = %d de = %d ",
+                        fence_num, desc->blocking, desc->data_exchange);
+        if (-1 == dumb) {
+            TEST_ERROR(("%s:%d: asprintf failed: %d", my_nspace, my_rank, dumb));
+            PMIX_LIST_DESTRUCT(&test_fences);
+            exit(1);
+        }
         participate = false;
         /* search the participants */
         PMIX_LIST_FOREACH (p, desc->participants, participant_t) {
@@ -93,10 +98,17 @@ int test_fence(test_params params, char *my_nspace, pmix_rank_t my_rank)
                 participate = true;
             }
             if (PMIX_RANK_WILDCARD == p->proc.rank) {
-                len += sprintf(tmp + len, "all; ");
+                dumb = asprintf(&tmp2, "%sall; ", tmp);
             } else {
-                len += sprintf(tmp + len, "%d,", p->proc.rank);
+                dumb = asprintf(&tmp2, "%s%d,", tmp, p->proc.rank);
             }
+            if (-1 ==  dumb) {
+                TEST_ERROR(("%s:%d: asprintf failed: %d", my_nspace, my_rank, dumb));
+                PMIX_LIST_DESTRUCT(&test_fences);
+                exit(1);
+            }
+            free(tmp);
+            tmp = tmp2;
         }
         TEST_VERBOSE(("%s\n", tmp));
         if (participate) {
