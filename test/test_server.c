@@ -1075,22 +1075,22 @@ int server_launch_clients(int local_size, int univ_size, int base_rank, test_par
         char **client_argv = PMIx_Argv_copy(*base_argv);
 
         /* add two last arguments: -r <rank> */
-        sprintf(digit, "%d", proc.rank);
+        snprintf(digit, MAX_DIGIT_LEN, "%d", proc.rank);
         PMIx_Argv_append_nosize(&client_argv, "-r");
         PMIx_Argv_append_nosize(&client_argv, digit);
 
         PMIx_Argv_append_nosize(&client_argv, "-s");
         PMIx_Argv_append_nosize(&client_argv, proc.nspace);
 
-        sprintf(digit, "%d", univ_size);
+        snprintf(digit, MAX_DIGIT_LEN, "%d", univ_size);
         PMIx_Argv_append_nosize(&client_argv, "--ns-size");
         PMIx_Argv_append_nosize(&client_argv, digit);
 
-        sprintf(digit, "%d", num_ns);
+        snprintf(digit, MAX_DIGIT_LEN, "%d", num_ns);
         PMIx_Argv_append_nosize(&client_argv, "--ns-id");
         PMIx_Argv_append_nosize(&client_argv, digit);
 
-        sprintf(digit, "%d", 0);
+        snprintf(digit, MAX_DIGIT_LEN, "%d", 0);
         PMIx_Argv_append_nosize(&client_argv, "--base-rank");
         PMIx_Argv_append_nosize(&client_argv, digit);
 

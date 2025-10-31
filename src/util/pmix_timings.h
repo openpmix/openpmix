@@ -3,7 +3,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,6 +23,7 @@
 #    define PMIX_TIMING_DESCR_MAX   1024
 #    define PMIX_TIMING_BUFSIZE     32
 #    define PMIX_TIMING_OUTBUF_SIZE (10 * 1024)
+#    define PMIX_TIMING_STR_LEN 1024
 
 typedef enum {
     PMIX_TIMING_TRACE,

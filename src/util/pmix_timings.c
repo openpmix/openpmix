@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2014      Artem Polyakov <artpol84@gmail.com>
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -400,7 +400,7 @@ int pmix_timing_report(pmix_timing_t *t, char *fname)
             buf[0] = '\0';
             buf_size = 0;
         }
-        sprintf(buf, "%s%s", buf, line);
+        snprintf(buf, PMIX_TIMING_STR_LEN, "%s%s", buf, line);
         buf_size += strlen(line);
         free(line);
     }
@@ -579,7 +579,7 @@ int pmix_timing_deltas(pmix_timing_t *t, char *fname)
                 goto err_exit;
             }
         }
-        sprintf(buf, "%s%s", buf, line);
+        snprintf(buf, PMIX_TIMING_STR_LEN, "%s%s", buf, line);
         buf_used += line_size;
         free(line);
     }

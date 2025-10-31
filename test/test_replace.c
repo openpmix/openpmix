@@ -2,7 +2,7 @@
  * Copyright (c) 2017      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2019      Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -57,7 +57,7 @@ int test_replace(char *my_nspace, pmix_rank_t my_rank, test_params params)
 
     for (key_idx = 0; key_idx < key_cnt; key_idx++) {
         memset(sval, 0, PMIX_MAX_NSLEN);
-        sprintf(sval, "test_replace:%s:%d:%d", my_nspace, my_rank, key_idx);
+        snprintf(sval, PMIX_MAX_NSLEN, "test_replace:%s:%d:%d", my_nspace, my_rank, key_idx);
 
         PUT(string, sval, PMIX_GLOBAL, 0, key_idx, 1);
         if (PMIX_SUCCESS != rc) {
@@ -89,7 +89,7 @@ int test_replace(char *my_nspace, pmix_rank_t my_rank, test_params params)
 
     PMIX_LIST_FOREACH (item, &key_replace, key_replace_t) {
         memset(sval, 0, PMIX_MAX_NSLEN);
-        sprintf(sval, "test_replace:%s:%d:%d: replaced key", my_nspace, my_rank, item->key_idx);
+        snprintf(sval, PMIX_MAX_NSLEN, "test_replace:%s:%d:%d: replaced key", my_nspace, my_rank, item->key_idx);
 
         PUT(string, sval, PMIX_GLOBAL, 0, item->key_idx, 1);
         if (PMIX_SUCCESS != rc) {
@@ -120,9 +120,9 @@ int test_replace(char *my_nspace, pmix_rank_t my_rank, test_params params)
         memset(sval, 0, PMIX_MAX_NSLEN);
 
         if (key_is_replace(key_idx)) {
-            sprintf(sval, "test_replace:%s:%d:%d: replaced key", my_nspace, my_rank, key_idx);
+            snprintf(sval, PMIX_MAX_NSLEN, "test_replace:%s:%d:%d: replaced key", my_nspace, my_rank, key_idx);
         } else {
-            sprintf(sval, "test_replace:%s:%d:%d", my_nspace, my_rank, key_idx);
+            snprintf(sval, PMIX_MAX_NSLEN, "test_replace:%s:%d:%d", my_nspace, my_rank, key_idx);
         }
 
         GET(string, sval, my_nspace, my_rank, 0, key_idx, 1, 1, 0);
