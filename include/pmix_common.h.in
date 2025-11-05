@@ -1328,6 +1328,11 @@ typedef uint32_t pmix_rank_t;
                                                                     //        wishes to be included via a group invite, and so the library will
                                                                     //        handle the necessary event registrations on behalf of the caller.
 #define PMIX_GROUP_JOB_INFO                 "pmix.grp.jinfo"        // (pmix_byte_object_t) Job-level info for group construction
+#define PMIX_GROUP_FINAL_MEMBERSHIP_ORDER   "pmix.grp.finord"       // (pmix_data_array_t*) Array of pmix_proc_t specifying the order of processes
+                                                                    //        in the group membership. This can be specified by individual processes
+                                                                    //        or by namespace (with a wildcard rank). If multiple participants
+                                                                    //        provide this attribute, then the values must match - i.e., the
+                                                                    //        desired final membership order must be identical.
 
 
 /* Storage-Related Attributes */
