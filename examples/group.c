@@ -83,6 +83,7 @@ int main(int argc, char **argv)
     pmix_query_t query;
     int i;
     bool testquery = false;
+    pmix_data_array_t darray;
     EXAMPLES_HIDE_UNUSED_PARAMS(argc, argv);
 
     for (i=1; i < argc; i++) {
@@ -176,13 +177,27 @@ int main(int argc, char **argv)
     if (0 == myproc.rank || 2 == myproc.rank || 3 == myproc.rank) {
         fprintf(stderr, "%d executing Group_construct\n", myproc.rank);
         nprocs = 3;
+        psize = 1;
         PMIX_PROC_CREATE(procs, nprocs);
         PMIX_PROC_LOAD(&procs[0], myproc.nspace, 0);
         PMIX_PROC_LOAD(&procs[1], myproc.nspace, 2);
         PMIX_PROC_LOAD(&procs[2], myproc.nspace, 3);
         PMIX_INFO_LOAD(&info[0], PMIX_GROUP_ASSIGN_CONTEXT_ID, NULL, PMIX_BOOL);
 
-        rc = PMIx_Group_construct("ourgroup", procs, nprocs, info, 1, &results, &nresults);
+        if (0 == myproc.rank) {
+            psize = 2;
+            PMIX_PROC_CREATE(parray, 3);
+            PMIX_PROC_LOAD(&parray[0], myproc.nspace, 2);
+            PMIX_PROC_LOAD(&parray[1], myproc.nspace, 0);
+            PMIX_PROC_LOAD(&parray[2], myproc.nspace, 3);
+            darray.array = parray;
+            darray.size = 3;
+            darray.type = PMIX_PROC;
+            PMIX_INFO_LOAD(&info[1], PMIX_GROUP_FINAL_MEMBERSHIP_ORDER, &darray, PMIX_DATA_ARRAY);
+            PMIX_PROC_FREE(parray, 3);
+        }
+
+        rc = PMIx_Group_construct("ourgroup", procs, nprocs, info, psize, &results, &nresults);
         if (PMIX_SUCCESS != rc) {
             fprintf(stderr, "Client ns %s rank %d: PMIx_Group_construct failed: %s\n",
                     myproc.nspace, myproc.rank, PMIx_Error_string(rc));
