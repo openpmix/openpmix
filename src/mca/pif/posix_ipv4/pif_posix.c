@@ -226,11 +226,6 @@ static int if_posix_open(void)
             continue;
         }
 #endif
-#if 0
-        if (!pmix_if_retain_loopback && (ifr->ifr_flags & IFF_LOOPBACK) != 0) {
-            continue;
-        }
-#endif
 
         intf = PMIX_NEW(pmix_pif_t);
         if (NULL == intf) {
