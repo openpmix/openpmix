@@ -3,7 +3,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015-2016 Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,7 +24,6 @@
 /* instantiate the global list of interfaces */
 pmix_list_t pmix_if_list = PMIX_LIST_STATIC_INIT;
 bool pmix_if_do_not_resolve = false;
-bool pmix_if_retain_loopback = false;
 
 static int pmix_pif_base_register(pmix_mca_base_register_flag_t flags);
 static int pmix_pif_base_open(pmix_mca_base_open_flag_t flags);
@@ -48,12 +47,6 @@ static int pmix_pif_base_register(pmix_mca_base_register_flag_t flags)
                                                 "If nonzero, do not attempt to resolve interfaces",
                                                 PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                                 &pmix_if_do_not_resolve);
-
-    pmix_if_retain_loopback = false;
-    (void) pmix_mca_base_framework_var_register(&pmix_pif_base_framework, "retain_loopback",
-                                                "If nonzero, retain loopback interfaces",
-                                                PMIX_MCA_BASE_VAR_TYPE_BOOL,
-                                                &pmix_if_retain_loopback);
 
     return PMIX_SUCCESS;
 }
