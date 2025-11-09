@@ -120,14 +120,7 @@ static int if_bsdx_ipv6_open(void)
             continue;
         }
 
-        /* skip interface if it is a loopback device (IFF_LOOPBACK set) */
-        if (!pmix_if_retain_loopback && 0 != (cur_ifaddrs->ifa_flags & IFF_LOOPBACK)) {
-            pmix_output_verbose(1, pmix_pif_base_framework.framework_output,
-                                "skipping loopback interface %s.\n", cur_ifaddrs->ifa_name);
-            continue;
-        }
-
-        /* or if it is a point-to-point interface */
+        /* skip if it is a point-to-point interface */
         /* TODO: do we really skip p2p? */
         if (0 != (cur_ifaddrs->ifa_flags & IFF_POINTOPOINT)) {
             pmix_output_verbose(1, pmix_pif_base_framework.framework_output,

@@ -14,7 +14,7 @@
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2013      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -77,7 +77,6 @@ PMIX_EXPORT extern pmix_list_t pmix_if_list;
 
 /* global flags */
 PMIX_EXPORT extern bool pmix_if_do_not_resolve;
-PMIX_EXPORT extern bool pmix_if_retain_loopback;
 
 /**
  *  Lookup an interface by address and return its name.
