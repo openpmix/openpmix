@@ -4,6 +4,35 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
+5.0.10 -- xx Nov 2025
+---------------------
+.. important:: This release includes two critical changes:
+
+               * a fix for a bug that apparently went undetected
+                 for a long time. The bug prevented selection of
+                 the loopback interface on a node for use by the PMIx
+                 messaging system, even when no remote connections
+                 were allowed. This prevented PMIx from working
+                 in an environment where only loopback devices
+                 were available.
+               * re-enabling of the compression support. An undetected
+                 typo caused PMIx to disable compression even when
+                 the supporting libz (or libzng) libraries were present
+
+Detailed changes include:
+ - PR #3720: Multiple commits
+    - Fix compression components
+    - Use the correct value for the number of info to unpack
+    - Remove stale/unused tests
+    - bitmap num_set boundary condition bugfix
+    - preg/compress parsing bugfix
+    - Port bug fixes to zlibng component
+    - Flush namespace sinks' residuals before destroying them
+    - Put the sink cleanup in the sink destructor
+    - Replace sprintf with snprintf
+ - PR #3719: Enable use of loopback interface
+
+
 5.0.9 -- 9 Sept 2025
 --------------------
 Detailed changes include:
