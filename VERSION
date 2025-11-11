@@ -16,7 +16,7 @@
 
 major=5
 minor=0
-release=9
+release=10
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
 # it will be appended to the version number.  It does not have to be
@@ -118,5 +118,5 @@ date="Unreleased developer copy"
 # Version numbers are described in the Libtool current:revision:age
 # format.
 
-libpmix_so_version=15:9:13
+libpmix_so_version=15:10:13
 
