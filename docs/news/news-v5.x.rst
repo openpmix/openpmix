@@ -20,6 +20,7 @@ series, in reverse chronological order.
                  the supporting libz (or libzng) libraries were present
 
 Detailed changes include:
+ - PR #3723: Roll rc1
  - PR #3720: Multiple commits
     - Fix compression components
     - Use the correct value for the number of info to unpack
