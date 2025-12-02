@@ -1075,6 +1075,7 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
 
     // mark we are no longer initialized
     pmix_atomic_unset_bool(&pmix_globals.initialized);
+    pmix_globals.init_called = false;
 
     pmix_output_verbose(2, pmix_client_globals.base_output,
                         "%s:%d pmix:client finalize called",
