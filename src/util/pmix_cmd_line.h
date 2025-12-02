@@ -226,11 +226,29 @@ static inline char* pmix_cmd_line_get_nth_instance(pmix_cli_result_t *results,
  *  param "a" is the input command line string
  *  param "b" is the defined CLI option
  */
-static inline bool pmix_check_cli_option(char *a, char *b)
+static inline bool pmix_check_cli_option(char *ain, char *bin)
 {
     size_t len1, len2, len, n;
+    char *a, *b, *p;
     char **asplit, **bsplit;
     int match;
+
+    // protect the input
+    a = strdup(ain);
+    b = strdup(bin);
+
+    /* if there is an '=' in the option, then we only
+     * check up to that position in the option as
+     * everything past it is the value the option
+     * is being assigned */
+    p = strchr(a, '=');
+    if (NULL != p) {
+        *p = '\0';
+    }
+    p = strchr(b, '=');
+    if (NULL != p) {
+        *p = '\0';
+    }
 
     /* if there exists a '-' in either argument,
      * then we are dealing with a multi-word
@@ -247,6 +265,8 @@ static inline bool pmix_check_cli_option(char *a, char *b)
         if (PMIx_Argv_count(asplit) > PMIx_Argv_count(bsplit)) {
             PMIx_Argv_free(asplit);
             PMIx_Argv_free(bsplit);
+            free(a);
+            free(b);
             return false;
         }
         match = 0;
@@ -259,6 +279,8 @@ static inline bool pmix_check_cli_option(char *a, char *b)
             } else {
                 PMIx_Argv_free(asplit);
                 PMIx_Argv_free(bsplit);
+                free(a);
+                free(b);
                 return false;
             }
         }
@@ -266,8 +288,12 @@ static inline bool pmix_check_cli_option(char *a, char *b)
         PMIx_Argv_free(bsplit);
         if (match == PMIx_Argv_count(asplit)) {
             /* all provided segments match */
+            free(a);
+            free(b);
             return true;
         }
+        free(a);
+        free(b);
         return false;
     }
 
@@ -277,9 +303,13 @@ static inline bool pmix_check_cli_option(char *a, char *b)
     len2 = strlen(b);
     len = (len1 < len2) ? len1 : len2;
     if (0 == strncasecmp(a, b, len)) {
+        free(a);
+        free(b);
         return true;
     }
 
+    free(a);
+    free(b);
     return false;
 }
 
