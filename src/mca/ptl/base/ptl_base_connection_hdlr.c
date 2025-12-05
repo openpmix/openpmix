@@ -34,6 +34,7 @@
 
 #include "include/pmix_socket_errno.h"
 #include "src/client/pmix_client_ops.h"
+#include "src/common/pmix_pfexec.h"
 #include "src/include/pmix_globals.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
@@ -914,6 +915,7 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
     void *ilist;
     pmix_info_t *iptr;
     pmix_data_array_t darray;
+    pmix_pfexec_child_t *child;
 
     if (!pmix_ptl_base.allow_foreign_tools) {
         if (pnd->uid != pmix_globals.uid) {
@@ -1014,25 +1016,37 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
             return PMIX_ERR_NOT_SUPPORTED;
         }
         if (-1 == info->peerid) {
-            /* this proc has not connected - this cannot happen
-             * for a tool as we otherwise would not know of it */
-            PMIX_RELEASE(peer);
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            return PMIX_ERR_NOT_SUPPORTED;
-        }
-        p2 = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
-        if (NULL == p2) {
-            // that's an error
-            PMIX_RELEASE(peer);
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            return PMIX_ERR_NOT_FOUND;
-        }
-        if (!PMIX_PEER_IS_TOOL(p2)) {
-            /* cannot happen - the entire nspace must be a tool if this proc claims
-             * to be a member of that nspace and is a tool */
-            PMIX_RELEASE(peer);
-            PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-            return PMIX_ERR_NOT_SUPPORTED;
+            /* the tool may be one we fork/exec'd ourselves - check
+             * the local children to see */
+            found = false;
+            PMIX_LIST_FOREACH(child, &pmix_pfexec_globals.children, pmix_pfexec_child_t) {
+                if (PMIx_Check_nspace(child->proc.nspace, nptr->nspace)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                /* this proc is not a child of ours and has not connected - this
+                 * cannot happen for a tool as we otherwise would not know of it */
+                PMIX_RELEASE(peer);
+                PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
+        } else {
+            p2 = (pmix_peer_t*)pmix_pointer_array_get_item(&pmix_server_globals.clients, info->peerid);
+            if (NULL == p2) {
+                // that's an error
+                PMIX_RELEASE(peer);
+                PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+                return PMIX_ERR_NOT_FOUND;
+            }
+            if (!PMIX_PEER_IS_TOOL(p2)) {
+                /* cannot happen - the entire nspace must be a tool if this proc claims
+                 * to be a member of that nspace and is a tool */
+                PMIX_RELEASE(peer);
+                PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
+                return PMIX_ERR_NOT_SUPPORTED;
+            }
         }
         /* all members of an nspace must be from the same uid and gid */
         if (info->uid != pnd->uid ||
