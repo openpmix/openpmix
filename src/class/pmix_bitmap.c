@@ -374,7 +374,7 @@ int pmix_bitmap_num_set_bits(pmix_bitmap_t *bm, int len)
             continue;
         if (i == i_len - 1 && len % SIZE_OF_BASE_TYPE != 0) {
             /* mask out the bits above len */
-            val = val & ((1 << (len - i * SIZE_OF_BASE_TYPE)) - 1);
+            val = val & ((1LL << (len - i * SIZE_OF_BASE_TYPE)) - 1);
             if (0 == val)
                 continue;
         }
