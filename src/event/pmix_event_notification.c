@@ -1362,9 +1362,10 @@ bool pmix_notify_check_range(pmix_range_trkr_t *rng, const pmix_proc_t *proc)
 {
     size_t n;
 
-    if (PMIX_RANGE_UNDEF == rng->range || PMIX_RANGE_GLOBAL == rng->range
-        || PMIX_RANGE_SESSION == rng->range
-        || PMIX_RANGE_LOCAL == rng->range) { // assume RM took care of session & local for now
+    if (PMIX_RANGE_UNDEF == rng->range ||
+        PMIX_RANGE_GLOBAL == rng->range ||
+        PMIX_RANGE_SESSION == rng->range ||
+        PMIX_RANGE_LOCAL == rng->range) { // assume RM took care of session & local for now
         return true;
     }
     if (PMIX_RANGE_NAMESPACE == rng->range) {
@@ -1377,12 +1378,13 @@ bool pmix_notify_check_range(pmix_range_trkr_t *rng, const pmix_proc_t *proc)
     }
     if (PMIX_RANGE_PROC_LOCAL == rng->range) {
         for (n = 0; n < rng->nprocs; n++) {
-            if (PMIX_CHECK_PROCID(&rng->procs[n], proc)) {
+            if (PMIX_CHECK_PROCID(&rng->procs[n], &pmix_globals.myid)) {
                 return true;
             }
         }
         return false;
     }
+
     if (PMIX_RANGE_CUSTOM == rng->range) {
         /* see if this proc was included */
         for (n = 0; n < rng->nprocs; n++) {

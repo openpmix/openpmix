@@ -330,57 +330,6 @@ static void notification_fn(size_t evhdlr_registration_id, pmix_status_t status,
     }
 }
 
-static void debugger_aggregator(size_t evhdlr_registration_id, pmix_status_t status,
-                                const pmix_proc_t *source, pmix_info_t info[], size_t ninfo,
-                                pmix_info_t results[], size_t nresults,
-                                pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
-{
-    pmix_proc_t proc;
-    pmix_status_t rc;
-    pmix_namespace_t *ns, *nptr;
-
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "%s DEBUGGER AGGREGATOR CALLED FOR SOURCE %s",
-                        PMIX_NAME_PRINT(&pmix_globals.myid), PMIX_NAME_PRINT(source));
-
-    PMIX_HIDE_UNUSED_PARAMS(evhdlr_registration_id, results, nresults);
-
-    /* find the nspace tracker for this namespace */
-    nptr = NULL;
-    PMIX_LIST_FOREACH (ns, &pmix_globals.nspaces, pmix_namespace_t) {
-        if (0 == strcmp(ns->nspace, source->nspace)) {
-            nptr = ns;
-            break;
-        }
-    }
-    if (NULL == nptr) {
-        /* only can happen if there is an error - nothing we can do*/
-        goto done;
-    }
-
-    /* track the number of waiting-for-notify alerts we get */
-    nptr->num_waiting--;
-
-    /* if the server has provided the notify_event function
-     * entry, then pass it up */
-    if (nptr->num_waiting <= 0 && NULL != pmix_host_server.notify_event) {
-        PMIX_LOAD_PROCID(&proc, source->nspace, PMIX_RANK_LOCAL_PEERS);
-        /* pass an event to our host */
-        rc = pmix_host_server.notify_event(status, &proc, PMIX_RANGE_RM,
-                                           (pmix_info_t *) info, ninfo,
-                                           NULL, NULL);
-        if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc &&
-            PMIX_ERR_NOT_SUPPORTED != rc) {
-            PMIX_ERROR_LOG(rc);
-        }
-    }
-
-done:
-    if (NULL != cbfunc) {
-        cbfunc(PMIX_EVENT_ACTION_COMPLETE, NULL, 0, NULL, NULL, cbdata);
-    }
-}
-
 static pmix_status_t register_singleton(char *name)
 {
     char *tmp, *ptr;
@@ -918,30 +867,6 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     // enable show_help subsystem
     pmix_atomic_store_int(&pmix_show_help_enabled, 1);
-
-    /* register a handler to catch/aggregate PMIX_EVENT_WAITING_FOR_NOTIFY
-     * events prior to passing them to our host */
-    PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_HDLR_NAME, "DEBUGGER-AGGREGATOR", PMIX_STRING);
-    cd = PMIX_NEW(pmix_rshift_caddy_t);
-    cd->codes = malloc(sizeof(int));
-    cd->codes[0] = PMIX_DEBUG_WAITING_FOR_NOTIFY;
-    cd->ncodes = 1;
-    cd->info = evinfo;
-    cd->ninfo = 1;
-    cd->evhdlr = debugger_aggregator;
-    cd->evregcbfn = evhandler_reg_callbk;
-    cd->cbdata = cd;
-    PMIX_RETAIN(cd); // so pmix_internal_reg_event_hdlr doesn't wind up releasing it
-    PMIX_THREADSHIFT(cd, pmix_internal_reg_event_hdlr);
-    PMIX_WAIT_THREAD(&cd->lock);
-    rc = cd->status;
-    PMIX_RELEASE(cd);
-    PMIX_INFO_DESTRUCT(&evinfo[0]);
-
-    if (0 >rc) {
-        PMIX_ERROR_LOG(rc);
-        return rc;
-    }
 
     /* see if they gave us a rendezvous URI to which we are to call back */
     evar = getenv("PMIX_LAUNCHER_RNDZ_URI");
