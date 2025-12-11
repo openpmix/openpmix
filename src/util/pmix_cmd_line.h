@@ -231,7 +231,7 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
     size_t len1, len2, len, n;
     char *a, *b, *p;
     char **asplit, **bsplit;
-    int match;
+    int match, acnt, bcnt;
 
     // protect the input
     a = strdup(ain);
@@ -262,7 +262,9 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
         NULL != strchr(a, '-')) {
         asplit = PMIx_Argv_split(a, '-');
         bsplit = PMIx_Argv_split(b, '-');
-        if (PMIx_Argv_count(asplit) > PMIx_Argv_count(bsplit)) {
+        acnt = PMIx_Argv_count(asplit);
+        bcnt = PMIx_Argv_count(bsplit);
+        if (acnt > bcnt) {
             PMIx_Argv_free(asplit);
             PMIx_Argv_free(bsplit);
             free(a);
@@ -286,7 +288,7 @@ static inline bool pmix_check_cli_option(char *ain, char *bin)
         }
         PMIx_Argv_free(asplit);
         PMIx_Argv_free(bsplit);
-        if (match == PMIx_Argv_count(asplit)) {
+        if (match == acnt) {
             /* all provided segments match */
             free(a);
             free(b);
