@@ -367,7 +367,6 @@ typedef struct {
     } version;
     pmix_rank_t nprocs; // num procs in this nspace
     size_t nlocalprocs;
-    size_t num_waiting;    // number of local procs waiting for debugger attach/release
     bool all_registered;   // all local ranks have been defined
     bool version_stored;   // the version string used by this nspace has been stored
     bool job_info_recvd;   // job-level info has been received
