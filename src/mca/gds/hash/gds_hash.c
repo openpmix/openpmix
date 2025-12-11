@@ -461,14 +461,6 @@ static pmix_status_t hash_cache_job_info(struct pmix_namespace_t *ns,
                     flags |= PMIX_HASH_NUM_NODES;
                 } else if (PMIX_CHECK_KEY(&info[n], PMIX_MAX_PROCS)) {
                     flags |= PMIX_HASH_MAX_PROCS;
-                } else if (PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_ON_EXEC) ||
-                           PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_IN_INIT) ||
-                           PMIX_CHECK_KEY(&info[n], PMIX_DEBUG_STOP_IN_APP)) {
-                    if (PMIX_RANK_WILDCARD == info[n].value.data.rank) {
-                        nptr->num_waiting = nptr->nlocalprocs;
-                    } else {
-                        nptr->num_waiting = 1;
-                    }
                 } else {
                     pmix_iof_check_flags(&info[n], &nptr->iof_flags);
                 }

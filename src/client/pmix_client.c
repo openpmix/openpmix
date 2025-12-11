@@ -534,7 +534,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_cmd_t cmd = PMIX_REQ_CMD;
     pmix_status_t code;
     pmix_proc_t wildcard;
-    pmix_info_t ginfo, evinfo[3];
+    pmix_info_t ginfo, evinfo[4];
     pmix_value_t *val = NULL;
     pmix_lock_t reglock, releaselock, nevlock;
     size_t n;
@@ -939,8 +939,9 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
         PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
         PMIX_INFO_LOAD(&evinfo[1], PMIX_BREAKPOINT, "pmix-init", PMIX_STRING);
         PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_DO_NOT_CACHE, NULL, PMIX_BOOL);
-        rc = PMIx_Notify_event(PMIX_READY_FOR_DEBUG, &pmix_globals.myid, PMIX_RANGE_RM,
-                               evinfo, 3, nevcb, &nevlock);
+        PMIX_INFO_LOAD(&evinfo[3], PMIX_EVENT_CUSTOM_RANGE, pmix_client_globals.myserver, PMIX_PROC);
+        rc = PMIx_Notify_event(PMIX_READY_FOR_DEBUG, &pmix_globals.myid, PMIX_RANGE_CUSTOM,
+                               evinfo, 4, nevcb, &nevlock);
         if (PMIX_SUCCESS != rc) {
             if (PMIX_OPERATION_SUCCEEDED != rc) {
                 PMIX_DESTRUCT_LOCK(&nevlock);
@@ -948,6 +949,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
                 PMIX_INFO_DESTRUCT(&evinfo[0]);
                 PMIX_INFO_DESTRUCT(&evinfo[1]);
                 PMIX_INFO_DESTRUCT(&evinfo[2]);
+                PMIX_INFO_DESTRUCT(&evinfo[3]);
                 PMIX_VALUE_FREE(val, 1); // cleanup memory
                 PMIX_INFO_DESTRUCT(&ginfo);
                 return rc;

@@ -456,14 +456,6 @@ pmix_status_t pmix_gds_hash_process_job_array(pmix_info_t *info, pmix_job_t *trk
                     trk->nptr->nprocs = iptr[j].value.data.uint32;
                     *flags |= PMIX_HASH_JOB_SIZE;
                 }
-            } else if (PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_ON_EXEC) ||
-                       PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_IN_INIT) ||
-                       PMIX_CHECK_KEY(&iptr[j], PMIX_DEBUG_STOP_IN_APP)) {
-                if (PMIX_RANK_WILDCARD == iptr[j].value.data.rank) {
-                    trk->nptr->num_waiting = trk->nptr->nlocalprocs;
-                } else {
-                    trk->nptr->num_waiting = 1;
-                }
             } else {
                 pmix_iof_check_flags(&iptr[j], &trk->nptr->iof_flags);
             }
