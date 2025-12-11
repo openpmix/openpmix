@@ -1410,7 +1410,7 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
 static void localcbfn(pmix_status_t status, void *cbdata)
 {
     pmix_shift_caddy_t *cb = (pmix_shift_caddy_t *) cbdata;
-    
+
     if (NULL != cb->cbfunc.opcbfn) {
         cb->cbfunc.opcbfn(status, cb->cbdata);
     }

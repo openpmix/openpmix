@@ -134,7 +134,6 @@ static void nscon(pmix_namespace_t *p)
     memset(&p->version, 0, sizeof(p->version));
     p->nprocs = 0;
     p->nlocalprocs = SIZE_MAX;
-    p->num_waiting = 0;
     p->all_registered = false;
     p->version_stored = false;
     p->job_info_recvd = false;

@@ -516,7 +516,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
     pmix_buffer_t *req;
     pmix_cmd_t cmd = PMIX_REQ_CMD;
     pmix_proc_t wildcard;
-    pmix_info_t ginfo, evinfo[3];
+    pmix_info_t ginfo, evinfo[4];
     pmix_lock_t releaselock;
     size_t n;
     bool found;
@@ -956,12 +956,13 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_INFO_LOAD(&evinfo[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
             PMIX_INFO_LOAD(&evinfo[1], PMIX_BREAKPOINT, "pmix-init", PMIX_STRING);
             PMIX_INFO_LOAD(&evinfo[2], PMIX_EVENT_DO_NOT_CACHE, NULL, PMIX_BOOL);
+            PMIX_INFO_LOAD(&evinfo[3], PMIX_EVENT_CUSTOM_RANGE, pmix_client_globals.myserver, PMIX_PROC);
             scd = PMIX_NEW(pmix_shift_caddy_t);
             scd->status = PMIX_READY_FOR_DEBUG;
             scd->proc = &pmix_globals.myid;
-            scd->range = PMIX_RANGE_RM;
+            scd->range = PMIX_RANGE_CUSTOM;
             scd->info = evinfo;
-            scd->ninfo = 3;
+            scd->ninfo = 4;
             scd->cbfunc.opcbfn = NULL;
             scd->cbdata = NULL;
             PMIX_THREADSHIFT(scd, pmix_internal_notify_event);
@@ -971,6 +972,7 @@ pmix_status_t PMIx_Init(pmix_proc_t *proc,
             PMIX_INFO_DESTRUCT(&evinfo[0]);
             PMIX_INFO_DESTRUCT(&evinfo[1]);
             PMIX_INFO_DESTRUCT(&evinfo[2]);
+            PMIX_INFO_DESTRUCT(&evinfo[3]);
             if (PMIX_SUCCESS != rc) {
                 // failed to notify ready-for-debug
                 PMIX_ERROR_LOG(rc);
