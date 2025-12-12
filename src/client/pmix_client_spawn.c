@@ -363,6 +363,7 @@ PMIX_EXPORT pmix_status_t PMIx_Spawn_nb(const pmix_info_t job_info[], size_t nin
             /* find the parent's peer object */
             fcd->peer = pmix_get_peer_object(&parent);
             if (NULL == fcd->peer) {
+                PMIX_ERROR_LOG(PMIX_ERR_NOT_FOUND);
                 PMIX_RELEASE(fcd);
                 return PMIX_ERR_NOT_FOUND;
             }

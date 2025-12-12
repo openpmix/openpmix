@@ -897,7 +897,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
         /* save our parent ID */
         PMIX_KVAL_NEW(kptr, PMIX_PARENT_ID);
         kptr->value->type = PMIX_PROC;
-        kptr->value->data.proc = &myparent;
+        PMIX_PROC_CREATE(kptr->value->data.proc, 1);
+        PMIx_Proc_load(kptr->value->data.proc, myparent.nspace, myparent.rank);
         PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &pmix_globals.myid, PMIX_INTERNAL, kptr);
         PMIX_RELEASE(kptr); // maintain accounting
         if (PMIX_SUCCESS != rc) {
