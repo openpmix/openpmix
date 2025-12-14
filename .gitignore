@@ -213,6 +213,7 @@ test/simple/asyncio
 test/simple/simpqual
 test/simple/simpdist
 test/simple/legacy
+test/simple/refresh
 
 test/sshot/daemon
 test/sshot/generate
