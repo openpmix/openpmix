@@ -12,7 +12,7 @@
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012-2013 Los Alamos National Security, Inc.  All rights reserved.
 # Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -29,7 +29,7 @@ noinst_PROGRAMS = simptest simpclient simppub simpdyn simpft simpdmodex \
                   test_pmix simptool simpdie simptimeout \
                   gwtest gwclient stability quietclient simpjctrl simpio simpsched \
                   simpcoord simpcycle doubleget simpfabric get_put_example simpvni \
-                  hybrid simpqual legacy
+                  hybrid simpqual legacy refresh
 
 simptest_SOURCES = $(headers) \
         simptest.c
@@ -185,4 +185,10 @@ legacy_SOURCES = $(headers) \
         legacy.c
 legacy_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 legacy_LDADD = \
+    $(top_builddir)/src/libpmix.la
+
+refresh_SOURCES = $(headers) \
+        refresh.c
+refresh_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+refresh_LDADD = \
     $(top_builddir)/src/libpmix.la
