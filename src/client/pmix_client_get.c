@@ -1271,13 +1271,6 @@ static pmix_status_t refresh_cache(const pmix_proc_t *p)
                         PMIX_NAME_PRINT(&pmix_globals.myid),
                         PMIX_NAME_PRINT(p));
 
-    /* if we are using something other than "hash", then there
-     * is nothing for us to do - the modex data would have
-     * been refreshed upon receipt */
-    if (0 != strcmp(pmix_client_globals.myserver->nptr->compat.gds->name, "hash")) {
-        return PMIX_SUCCESS;
-    }
-
     /* pack a quick message to the server asking it
      * to refresh our cache */
     msg = PMIX_NEW(pmix_buffer_t);
