@@ -119,16 +119,23 @@ int pmix_pfexec_base_close(void)
     return PMIX_SUCCESS;
 }
 
+static void _ntfy_done(pmix_status_t status, void *cbdata)
+{
+    pmix_pfexec_cmpl_caddy_t *cd = (pmix_pfexec_cmpl_caddy_t*)cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(status);
+
+    PMIX_RELEASE(cd->child);
+    PMIX_RELEASE(cd);
+}
+
 void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
 {
-    (void) sd;
-    (void) args;
     pmix_pfexec_cmpl_caddy_t *cd = (pmix_pfexec_cmpl_caddy_t *) cbdata;
-    pmix_info_t info[2];
     pmix_status_t rc;
     pmix_pfexec_child_t *child;
     bool stillalive = false;
     pmix_proc_t wildcard;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     pmix_list_remove_item(&pmix_pfexec_globals.children, &cd->child->super);
     /* see if any more children from this nspace are alive */
@@ -139,17 +146,17 @@ void pmix_pfexec_check_complete(int sd, short args, void *cbdata)
     }
     if (!stillalive) {
         /* generate a local event indicating job terminated */
-        PMIX_INFO_LOAD(&info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
+        PMIX_INFO_LOAD(&cd->info[0], PMIX_EVENT_NON_DEFAULT, NULL, PMIX_BOOL);
         PMIX_LOAD_NSPACE(wildcard.nspace, cd->child->proc.nspace);
-        PMIX_INFO_LOAD(&info[1], PMIX_EVENT_AFFECTED_PROC, &wildcard, PMIX_PROC);
+        PMIX_INFO_LOAD(&cd->info[1], PMIX_EVENT_AFFECTED_PROC, &wildcard, PMIX_PROC);
         rc = PMIx_Notify_event(PMIX_ERR_JOB_TERMINATED, &pmix_globals.myid, PMIX_RANGE_PROC_LOCAL,
-                               info, 2, NULL, NULL);
+                               cd->info, 2, _ntfy_done, cd);
         if (PMIX_SUCCESS != rc) {
             PMIX_ERROR_LOG(rc);
+            PMIX_RELEASE(cd->child);
+            PMIX_RELEASE(cd);
         }
     }
-    PMIX_RELEASE(cd->child);
-    PMIX_RELEASE(cd);
 }
 
 int pmix_pfexec_register(void)
@@ -1340,7 +1347,9 @@ PMIX_CLASS_INSTANCE(pmix_pfexec_child_t,
                     chcon, chdes);
 
 PMIX_CLASS_INSTANCE(pmix_pfexec_signal_caddy_t,
-                    pmix_object_t, NULL, NULL);
+                    pmix_object_t,
+                    NULL, NULL);
 
 PMIX_CLASS_INSTANCE(pmix_pfexec_cmpl_caddy_t,
-                    pmix_object_t, NULL, NULL);
+                    pmix_object_t,
+                    NULL, NULL);

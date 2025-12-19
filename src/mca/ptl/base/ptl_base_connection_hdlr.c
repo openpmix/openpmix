@@ -1079,6 +1079,10 @@ static pmix_status_t process_tool_request(pmix_pending_connection_t *pnd,
 
     }
 
+    if (!pnd->nspace_created) {
+        // this was already on the nspace list, so protect it
+        PMIX_RETAIN(nptr);
+    }
     peer->nptr = nptr;
     /* select their bfrops compat module so we can unpack
      * any provided pmix_info_t structs */
