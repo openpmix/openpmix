@@ -49,8 +49,8 @@ PMIX_EXPORT pmix_status_t PMIx_Notify_event(pmix_status_t status, const pmix_pro
         return PMIX_ERR_INIT;
     }
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
-        PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
 
         pmix_output_verbose(2, pmix_server_globals.event_output,
