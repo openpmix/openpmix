@@ -53,3 +53,11 @@ jobs:
          pterm
       if:   ${{ true }}
       timeout-minutes: 3
+    - name: Run indirect test
+      run: |
+         export PATH=$RUNNER_TEMP/prteinstall/bin:$RUNNER_TEMP/pmixinstall/bin:${PATH}
+         export LD_LIBRARY_PATH=$RUNNER_TEMP/prteinstall/lib:$RUNNER_TEMP/pmixinstall/lib:${LD_LIBRARY_PATH}
+         cd prrte/master/examples/debugger
+         ./indirect prterun -n 2 ./hello
+      if:   ${{ true }}
+      timeout-minutes: 3
