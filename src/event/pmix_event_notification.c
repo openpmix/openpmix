@@ -53,8 +53,8 @@ void pmix_internal_notify_event(int sd, short args, void *cbdata)
     pmix_proc_t *source = scd->proc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) ||
-        PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
+    if (PMIX_PEER_IS_SERVER(pmix_globals.mypeer) &&
+        !PMIX_PEER_IS_TOOL(pmix_globals.mypeer)) {
 
         pmix_output_verbose(2, pmix_server_globals.event_output,
                             "pmix_server_notify_event source = %s:%d event_status = %s",
@@ -76,6 +76,7 @@ void pmix_internal_notify_event(int sd, short args, void *cbdata)
             // let the completion function cleanup
             return;
         }
+        return;
     }
 
     /* if we aren't connected, don't attempt to send */
