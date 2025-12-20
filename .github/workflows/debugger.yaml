@@ -26,7 +26,7 @@ jobs:
             submodules: recursive
             repository: openpmix/prrte
             path: prrte/master
-            ref: master
+            ref: v3.0
     - name: Build PRRTE
       run: |
         cd prrte/master
