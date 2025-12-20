@@ -20,6 +20,20 @@ series, in reverse chronological order.
                  the supporting libz (or libzng) libraries were present
 
 Detailed changes include:
+ - PR #3744: Multiple commits
+    - Extend debugger CI tests
+    - Update VERSION and NEWS
+ - PR #3742: Fix indirect debugger launch
+ - PR #3740: Multiple commits
+    - Add refresh test
+    - Fix refresh cache request
+ - PR #3737: Multiple commits
+    - Fix cmd line option checker
+    - Fix bitmap mask literal size
+    - Cleanup ready-for-debug announcement
+ - PR #3730: Multiple commits
+    - Protect against equal signs in option check
+    - Check if we fork'd the tool ourselves
  - PR #3723: Roll rc1
  - PR #3720: Multiple commits
     - Fix compression components
