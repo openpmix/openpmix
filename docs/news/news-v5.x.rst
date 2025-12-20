@@ -18,6 +18,10 @@ series, in reverse chronological order.
                * re-enabling of the compression support. An undetected
                  typo caused PMIx to disable compression even when
                  the supporting libz (or libzng) libraries were present
+               * repair of the indirect debugger connection procedure.
+                 Hardening of the authentication procedure inadvertently
+                 prevented tools fork'd by PMIx itself from connecting
+                 back to the server.
 
 Detailed changes include:
  - PR #3744: Multiple commits
