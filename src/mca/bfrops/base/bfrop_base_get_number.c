@@ -1790,7 +1790,9 @@ static pmix_status_t check_float(const pmix_value_t *value,
     }
 
     if (PMIX_INT == type) {
-        if (INT_MAX < value->data.fval) {
+        if (2147483647.0 < value->data.fval) {
+            return PMIX_ERR_LOST_PRECISION;
+        } else if (-2147483648.0 > value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i = (int*)dest;
@@ -1798,7 +1800,9 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT8 == type) {
-        if (INT8_MAX < value->data.fval) {
+        if (127.0 < value->data.fval) {
+            return PMIX_ERR_LOST_PRECISION;
+        } else if (-128.0 > value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i8 = (int8_t*)dest;
@@ -1806,7 +1810,9 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT16 == type) {
-        if (INT16_MAX < value->data.fval) {
+        if (32767.0 < value->data.fval) {
+            return PMIX_ERR_LOST_PRECISION;
+        } else if (-32768.0 > value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i16 = (int16_t*)dest;
@@ -1814,7 +1820,9 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT32 == type) {
-        if (INT32_MAX < value->data.fval) {
+        if (2147483647.0 < value->data.fval) {
+            return PMIX_ERR_LOST_PRECISION;
+        } else if (-2147483648.0 > value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i32 = (int32_t*)dest;
@@ -1822,7 +1830,9 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT64 == type) {
-        if (INT64_MAX < value->data.fval) {
+        if (18446744073709551000.0 < value->data.fval) {
+            return PMIX_ERR_LOST_PRECISION;
+        } else if (-9223372036854775808.0 > value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i64 = (int64_t*)dest;
@@ -1831,7 +1841,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
     }
 
     if (PMIX_UINT == type) {
-        if (UINT_MAX < value->data.fval) {
+        if (42949670295.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u = (unsigned int *)dest;
@@ -1839,7 +1849,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT8 == type) {
-        if (UINT8_MAX < value->data.fval) {
+        if (256.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u8 = (uint8_t*)dest;
@@ -1847,7 +1857,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT16 == type) {
-        if (UINT16_MAX < value->data.fval) {
+        if (65535.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u16 = (uint16_t*)dest;
@@ -1855,7 +1865,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT32 == type) {
-        if (UINT32_MAX < value->data.fval) {
+        if (4294967040.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u32 = (uint32_t*)dest;
@@ -1863,7 +1873,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT64 == type) {
-        if (UINT64_MAX < value->data.fval) {
+        if (18446744073709551000.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u64 = (uint64_t*)dest;
@@ -1872,7 +1882,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
     }
 
     if (PMIX_SIZE == type) {
-        if (SIZE_MAX < value->data.fval) {
+        if (18446744073709551000.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         sz = (size_t*)dest;
@@ -1886,7 +1896,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
     }
     if (PMIX_PROC_RANK == type) {
         // rank is an unsigned int
-        if (UINT32_MAX < value->data.fval) {
+        if (4294967040.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         pr = (pmix_rank_t*)dest;
@@ -1895,7 +1905,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
 
     if (PMIX_PID == type) {
         // pid_t is a signed int
-        if (INT_MAX < value->data.fval) {
+        if (2147483647.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         pid = (pid_t*)dest;
@@ -1904,7 +1914,7 @@ static pmix_status_t check_float(const pmix_value_t *value,
     }
     if (PMIX_STATUS == type) {
         // status is a signed int
-        if (INT_MAX < value->data.fval) {
+        if (2147483647.0 < value->data.fval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         ps = (pmix_status_t*)dest;
@@ -1948,9 +1958,9 @@ static pmix_status_t check_double(const pmix_value_t *value,
     }
 
     if (PMIX_INT == type) {
-        if (INT_MAX < value->data.dval) {
+        if (2147483647.0f < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
-        } else if (INT_MIN > value->data.dval) {
+        } else if (-2147483648.0f > value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i = (int*)dest;
@@ -1958,9 +1968,9 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT8 == type) {
-        if (INT8_MAX < value->data.dval) {
+        if (127.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
-        } else if (INT8_MIN > value->data.dval) {
+        } else if (-128.0 > value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i8 = (int8_t*)dest;
@@ -1968,9 +1978,9 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT16 == type) {
-        if (INT16_MAX < value->data.dval) {
+        if (32767.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
-        } else if (INT16_MIN > value->data.dval) {
+        } else if (-32768.0 > value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i16 = (int16_t*)dest;
@@ -1978,9 +1988,9 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT32 == type) {
-        if (INT32_MAX < value->data.dval) {
+        if (2147483647.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
-        } else if (INT32_MIN > value->data.dval) {
+        } else if (-2147483648.0 > value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i32 = (int32_t*)dest;
@@ -1988,9 +1998,9 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_INT64 == type) {
-        if (INT64_MAX < value->data.dval) {
+        if (18446744073709551000.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
-        } else if (INT64_MIN > value->data.dval) {
+        } else if (-9223372036854775808.0 > value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         i64 = (int64_t*)dest;
@@ -1999,7 +2009,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
     }
 
     if (PMIX_UINT == type) {
-        if (UINT_MAX < value->data.dval) {
+        if (42949670295.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u = (unsigned int *)dest;
@@ -2007,7 +2017,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT8 == type) {
-        if (UINT8_MAX < value->data.dval) {
+        if (256.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u8 = (uint8_t*)dest;
@@ -2015,7 +2025,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT16 == type) {
-        if (UINT16_MAX < value->data.dval) {
+        if (65535.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u16 = (uint16_t*)dest;
@@ -2023,7 +2033,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT32 == type) {
-        if (UINT32_MAX < value->data.dval) {
+        if (4294967040.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u32 = (uint32_t*)dest;
@@ -2031,7 +2041,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
         return PMIX_SUCCESS;
     }
     if (PMIX_UINT64 == type) {
-        if (UINT64_MAX < value->data.dval) {
+        if (18446744073709551000.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         u64 = (uint64_t*)dest;
@@ -2040,7 +2050,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
     }
 
     if (PMIX_SIZE == type) {
-        if (SIZE_MAX < value->data.dval) {
+        if (18446744073709551000.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         sz = (size_t*)dest;
@@ -2052,7 +2062,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
     }
     if (PMIX_PROC_RANK == type) {
         // rank is an unsigned int
-        if (UINT32_MAX < value->data.dval) {
+        if (4294967040.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         }
         pr = (pmix_rank_t*)dest;
@@ -2061,7 +2071,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
 
     if (PMIX_PID == type) {
         // pid_t is a signed int
-        if (INT_MAX < value->data.dval) {
+        if (2147483647.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         } else if (INT_MIN > value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
@@ -2072,7 +2082,7 @@ static pmix_status_t check_double(const pmix_value_t *value,
     }
     if (PMIX_STATUS == type) {
         // status is a signed int
-        if (INT_MAX < value->data.dval) {
+        if (2147483647.0 < value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
         } else if (INT_MIN > value->data.dval) {
             return PMIX_ERR_LOST_PRECISION;
