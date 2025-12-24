@@ -12,7 +12,7 @@
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2018      Amazon.com, Inc. or its affiliates.  All Rights reserved.
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -287,12 +287,12 @@ int pmix_vsnprintf(char *str, size_t size, const char *fmt, va_list ap)
     }
 
     /* return the length when given a null buffer (C99) */
-    if (str) {
+    if (str && size > 0) {
         if ((size_t) length < size) {
             strcpy(str, buf);
         } else {
             memcpy(str, buf, size - 1);
-            str[size] = '\0';
+            str[size - 1] = '\0';
         }
     }
 
