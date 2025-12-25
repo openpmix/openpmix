@@ -894,24 +894,28 @@ int pmix_mca_base_var_build_env(char ***env, int *num_env)
 
         pmix_argv_append(num_env, env, str);
         free(str);
+        str = NULL;
 
         ret = PMIX_SUCCESS;
         switch (var->mbv_source) {
-        case PMIX_MCA_BASE_VAR_SOURCE_FILE:
-        case PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE:
-            ret = asprintf(&str, "%sSOURCE_%s=FILE:%s", var->mbv_prefix, var->mbv_full_name,
-                           pmix_mca_base_var_source_file(var));
-            break;
-        case PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE:
-            ret = asprintf(&str, "%sSOURCE_%s=COMMAND_LINE", var->mbv_prefix, var->mbv_full_name);
-            break;
-        case PMIX_MCA_BASE_VAR_SOURCE_ENV:
-        case PMIX_MCA_BASE_VAR_SOURCE_SET:
-        case PMIX_MCA_BASE_VAR_SOURCE_DEFAULT:
-            str = NULL;
-            break;
-        case PMIX_MCA_BASE_VAR_SOURCE_MAX:
-            goto cleanup;
+            case PMIX_MCA_BASE_VAR_SOURCE_FILE:
+            case PMIX_MCA_BASE_VAR_SOURCE_OVERRIDE:
+                ret = asprintf(&str, "%sSOURCE_%s=FILE:%s", var->mbv_prefix, var->mbv_full_name,
+                               pmix_mca_base_var_source_file(var));
+                break;
+
+            case PMIX_MCA_BASE_VAR_SOURCE_COMMAND_LINE:
+                ret = asprintf(&str, "%sSOURCE_%s=COMMAND_LINE", var->mbv_prefix, var->mbv_full_name);
+                break;
+
+            case PMIX_MCA_BASE_VAR_SOURCE_ENV:
+            case PMIX_MCA_BASE_VAR_SOURCE_SET:
+            case PMIX_MCA_BASE_VAR_SOURCE_DEFAULT:
+                str = NULL;
+                break;
+
+            case PMIX_MCA_BASE_VAR_SOURCE_MAX:
+                goto cleanup;
         }
 
         if (NULL != str) {
