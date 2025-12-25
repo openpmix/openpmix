@@ -2,6 +2,9 @@ name: PRRTE
 
 on: [pull_request]
 
+permissions:
+  contents: read
+
 jobs:
   dvm:
     runs-on: ubuntu-latest
