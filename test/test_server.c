@@ -106,15 +106,37 @@ static void fill_seq_ranks_array(size_t nprocs, int base_rank, char **ranks)
 {
     uint32_t i;
     int len = 0, max_ranks_len;
+    int remaining;
     if (0 >= nprocs) {
         return;
     }
     max_ranks_len = nprocs * (MAX_DIGIT_LEN + 1);
     *ranks = (char *) malloc(max_ranks_len);
+    if (NULL == *ranks) {
+        TEST_ERROR(("Failed to allocate memory for global ranks array."));
+        return;
+    }
+    remaining = max_ranks_len;
     for (i = 0; i < nprocs; i++) {
-        len += snprintf(*ranks + len, max_ranks_len - len - 1, "%d", i + base_rank);
+        int n = snprintf(*ranks + len, remaining, "%d", i + base_rank);
+        if (n < 0 || n >= remaining) {
+            free(*ranks);
+            *ranks = NULL;
+            TEST_ERROR(("Not enough allocated space for global ranks array."));
+            return;
+        }
+        len += n;
+        remaining -= n;
         if (i != nprocs - 1) {
-            len += snprintf(*ranks + len, max_ranks_len - len - 1, "%c", ',');
+            n = snprintf(*ranks + len, remaining, "%c", ',');
+            if (n < 0 || n >= remaining) {
+                free(*ranks);
+                *ranks = NULL;
+                TEST_ERROR(("Not enough allocated space for global ranks array."));
+                return;
+            }
+            len += n;
+            remaining -= n;
         }
     }
     if (len >= max_ranks_len - 1) {
