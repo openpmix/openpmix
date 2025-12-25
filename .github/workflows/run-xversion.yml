@@ -2,6 +2,9 @@ name: OpenPMIx Cross Version Testing
 
 on: [pull_request]
 
+permissions:
+  contents: read
+
 jobs:
   xversion:
     runs-on: ubuntu-latest
