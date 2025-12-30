@@ -4,7 +4,7 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.10 -- xx Nov 2025
+5.0.10 -- xx Jan 2026
 ---------------------
 .. important:: This release includes two critical changes:
 
@@ -24,6 +24,13 @@ series, in reverse chronological order.
                  back to the server.
 
 Detailed changes include:
+ - PR #3757: Update NEWS and VERSION for rc3
+ - PR #3756: Multiple commits
+    - printf.c: fix off-by-one + underflow errors
+    - Workflow does not contain permissions
+    - Potentially overflowing call to snprintf (alert 11)
+    - Potential double free and use after free (alerts 13,14)
+ - PR #3745: Update NEWS important note
  - PR #3744: Multiple commits
     - Extend debugger CI tests
     - Update VERSION and NEWS
