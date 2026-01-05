@@ -205,24 +205,45 @@ static void keyindex_construct(pmix_keyindex_t *ki)
 
 static void keyindex_destruct(pmix_keyindex_t *ki)
 {
+    static pthread_mutex_t keyindex_mutex = PTHREAD_MUTEX_INITIALIZER;
     pmix_tma_t *const tma = pmix_obj_get_tma(&ki->super);
+
+    pthread_mutex_lock(&keyindex_mutex);
+
+    // Add safety check
+    if (!ki || !ki->table) {
+        pthread_mutex_unlock(&keyindex_mutex);
+        return;
+    }
 
     for (int i = 0; i < ki->table->size; i++) {
         pmix_regattr_input_t *p = (pmix_regattr_input_t *)pmix_pointer_array_get_item(ki->table, i);
         if (NULL != p) {
             if (NULL != p->name) {
                 pmix_tma_free(tma, p->name);
+                p->name = NULL;  // Prevent double-free
             }
             if (NULL != p->string) {
                 pmix_tma_free(tma, p->string);
+                p->string = NULL;  // Prevent double-free
             }
-            if (NULL != p->description) {
-                pmix_bfrops_base_tma_argv_free(p->description, tma);
-            }
+	    if (NULL != p->description) {
+ 		char **temp_desc = p->description;  // ← Save pointer
+                p->description = NULL;              // ← Set to NULL FIRST
+                
+                // ENHANCED RACE CONDITION FIX: Simple NULL check only
+                if (NULL != temp_desc) {
+                    pmix_bfrops_base_tma_argv_free(temp_desc, tma);  // ← Then free
+                }
+	    }
             pmix_tma_free(tma, p);
+            pmix_pointer_array_set_item(ki->table, i, NULL);  // Clear the pointer
         }
     }
     PMIX_RELEASE(ki->table);
+    ki->table = NULL;  // Prevent double-release
+
+    pthread_mutex_unlock(&keyindex_mutex);
 }
 
 PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_keyindex_t,

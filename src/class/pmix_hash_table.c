@@ -134,9 +134,28 @@ pmix_hash_table_init(pmix_hash_table_t *ht, size_t table_size)
 int /* PMIX_ return code */
 pmix_hash_table_remove_all(pmix_hash_table_t *ht)
 {
-    size_t ii;
-    for (ii = 0; ii < ht->ht_capacity; ii += 1) {
-        pmix_hash_element_t *elt = &ht->ht_table[ii];
+    size_t ii, capacity;
+    pmix_hash_element_t *table;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_SUCCESS; // Already empty
+    }
+
+    capacity = ht->ht_capacity;
+    table = ht->ht_table;
+
+    for (ii = 0; ii < capacity; ii += 1) {
+        pmix_hash_element_t *elt = &table[ii];
         if (elt->valid && ht->ht_type_methods && ht->ht_type_methods->elt_destructor) {
             ht->ht_type_methods->elt_destructor(elt);
         }
@@ -147,6 +166,8 @@ pmix_hash_table_remove_all(pmix_hash_table_t *ht)
     /* the tests reuse the hash table for different types after removing all */
     /* so we should allow that by forgetting what type it used to be */
     ht->ht_type_methods = NULL;
+    
+    pthread_mutex_unlock(&hash_mutex);
     return PMIX_SUCCESS;
 }
 
@@ -280,23 +301,37 @@ static const struct pmix_hash_type_methods_t pmix_hash_type_methods_uint32
 int /* PMIX_ return code */
 pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **value)
 {
-    size_t ii, capacity = ht->ht_capacity;
+    size_t ii, capacity;
     pmix_hash_element_t *elt;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht || NULL == value) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -308,9 +343,11 @@ pmix_hash_table_get_value_uint32(pmix_hash_table_t *ht, uint32_t key, void **val
         }
         elt = &ht->ht_table[ii];
         if (!elt->valid) {
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.u32 == key) {
             *value = elt->value;
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else {
             /* keep looking */
@@ -322,24 +359,39 @@ int /* PMIX_ return code */
 pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *value)
 {
     int rc;
-    size_t ii, capacity = ht->ht_capacity;
+    size_t ii, capacity;
     pmix_hash_element_t *elt;
-    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
+    pmix_tma_t *tma;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
+    tma = pmix_obj_get_tma(&ht->super);
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_uint32:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERR_BAD_PARAM;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_uint32:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -359,13 +411,16 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *valu
             ht->ht_size += 1;
             if (ht->ht_size >= ht->ht_growth_trigger) {
                 if (PMIX_SUCCESS != (rc = pmix_hash_grow(ht))) {
+                    pthread_mutex_unlock(&hash_mutex);
                     return rc;
                 }
             }
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else if (elt->key.u32 == key) {
             /* replace existing element */
             elt->value = value;
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else {
             /* keep looking */
@@ -375,22 +430,36 @@ pmix_hash_table_set_value_uint32(pmix_hash_table_t *ht, uint32_t key, void *valu
 
 int pmix_hash_table_remove_value_uint32(pmix_hash_table_t *ht, uint32_t key)
 {
-    size_t ii, capacity = ht->ht_capacity;
+    size_t ii, capacity;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint32:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint32 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_uint32:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -402,9 +471,12 @@ int pmix_hash_table_remove_value_uint32(pmix_hash_table_t *ht, uint32_t key)
             ii = 0;
         elt = &ht->ht_table[ii];
         if (!elt->valid) {
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.u32 == key) {
-            return pmix_hash_table_remove_elt_at(ht, ii);
+            int result = pmix_hash_table_remove_elt_at(ht, ii);
+            pthread_mutex_unlock(&hash_mutex);
+            return result;
         } else {
             /* keep looking */
         }
@@ -424,24 +496,37 @@ static const struct pmix_hash_type_methods_t pmix_hash_type_methods_uint64
 int /* PMIX_ return code */
 pmix_hash_table_get_value_uint64(pmix_hash_table_t *ht, uint64_t key, void **value)
 {
-    size_t ii;
-    size_t capacity = ht->ht_capacity;
+    size_t ii, capacity;
     pmix_hash_element_t *elt;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht || NULL == value) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -453,9 +538,11 @@ pmix_hash_table_get_value_uint64(pmix_hash_table_t *ht, uint64_t key, void **val
         }
         elt = &ht->ht_table[ii];
         if (!elt->valid) {
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.u64 == key) {
             *value = elt->value;
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else {
             /* keep looking */
@@ -467,24 +554,39 @@ int /* PMIX_ return code */
 pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *value)
 {
     int rc;
-    size_t ii, capacity = ht->ht_capacity;
+    size_t ii, capacity;
     pmix_hash_element_t *elt;
-    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
+    pmix_tma_t *tma;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
+    tma = pmix_obj_get_tma(&ht->super);
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_uint64:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERR_BAD_PARAM;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_uint64:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -504,12 +606,15 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *valu
             ht->ht_size += 1;
             if (ht->ht_size >= ht->ht_growth_trigger) {
                 if (PMIX_SUCCESS != (rc = pmix_hash_grow(ht))) {
+                    pthread_mutex_unlock(&hash_mutex);
                     return rc;
                 }
             }
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else if (elt->key.u64 == key) {
             elt->value = value;
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else {
             /* keep looking */
@@ -520,22 +625,36 @@ pmix_hash_table_set_value_uint64(pmix_hash_table_t *ht, uint64_t key, void *valu
 int /* PMIX_ return code */
 pmix_hash_table_remove_value_uint64(pmix_hash_table_t *ht, uint64_t key)
 {
-    size_t ii, capacity = ht->ht_capacity;
+    size_t ii, capacity;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_uint64:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_uint64 != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_uint64:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -548,9 +667,12 @@ pmix_hash_table_remove_value_uint64(pmix_hash_table_t *ht, uint64_t key)
         }
         elt = &ht->ht_table[ii];
         if (!elt->valid) {
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.u64 == key) {
-            return pmix_hash_table_remove_elt_at(ht, ii);
+            int result = pmix_hash_table_remove_elt_at(ht, ii);
+            pthread_mutex_unlock(&hash_mutex);
+            return result;
         } else {
             /* keep looking */
         }
@@ -597,23 +719,37 @@ static const struct pmix_hash_type_methods_t pmix_hash_type_methods_ptr
 int /* PMIX_ return code */
 pmix_hash_table_get_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key_size, void **value)
 {
-    size_t ii, capacity = ht->ht_capacity;
+    size_t ii, capacity;
     pmix_hash_element_t *elt;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht || NULL == key || NULL == value || key_size == 0) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -625,10 +761,12 @@ pmix_hash_table_get_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
         }
         elt = &ht->ht_table[ii];
         if (!elt->valid) {
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.ptr.key_size == key_size
                    && 0 == memcmp(elt->key.ptr.key, key, key_size)) {
             *value = elt->value;
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else {
             /* keep going */
@@ -640,24 +778,39 @@ int /* PMIX_ return code */
 pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key_size, void *value)
 {
     int rc;
-    size_t ii, capacity = ht->ht_capacity;
+    size_t ii, capacity;
     pmix_hash_element_t *elt;
-    pmix_tma_t *const tma = pmix_obj_get_tma(&ht->super);
+    pmix_tma_t *tma;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht || NULL == key || key_size == 0) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
+    tma = pmix_obj_get_tma(&ht->super);
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_set_value_ptr:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERR_BAD_PARAM;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_set_value_ptr:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -680,14 +833,17 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
             ht->ht_size += 1;
             if (ht->ht_size >= ht->ht_growth_trigger) {
                 if (PMIX_SUCCESS != (rc = pmix_hash_grow(ht))) {
+                    pthread_mutex_unlock(&hash_mutex);
                     return rc;
                 }
             }
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else if (elt->key.ptr.key_size == key_size
                    && 0 == memcmp(elt->key.ptr.key, key, key_size)) {
             /* replace existing value */
             elt->value = value;
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         } else {
             /* keep looking */
@@ -698,22 +854,36 @@ pmix_hash_table_set_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key
 int /* PMIX_ return code */
 pmix_hash_table_remove_value_ptr(pmix_hash_table_t *ht, const void *key, size_t key_size)
 {
-    size_t ii, capacity = ht->ht_capacity;
+    size_t ii, capacity;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht || NULL == key || key_size == 0) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERR_NOT_FOUND;
+    }
+
+    capacity = ht->ht_capacity;
 
 #if PMIX_ENABLE_DEBUG
     if (capacity == 0) {
         pmix_output(0, "pmix_hash_table_get_value_ptr:"
                        "pmix_hash_table_init() has not been called");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
-    // First check if the hash table is using a non-standard heap manager. Skip
-    // this debug check because use of a shared-memory TMA may trigger an error
-    // since some processes may have not yet updated their function pointers
-    // (done below).
     if (NULL == pmix_obj_get_tma(&ht->super) &&
         NULL != ht->ht_type_methods && &pmix_hash_type_methods_ptr != ht->ht_type_methods) {
         pmix_output(0, "pmix_hash_table_remove_value_ptr:"
                        "hash table is for a different key type");
+        pthread_mutex_unlock(&hash_mutex);
         return PMIX_ERROR;
     }
 #endif
@@ -726,10 +896,13 @@ pmix_hash_table_remove_value_ptr(pmix_hash_table_t *ht, const void *key, size_t 
         }
         elt = &ht->ht_table[ii];
         if (!elt->valid) {
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_ERR_NOT_FOUND;
         } else if (elt->key.ptr.key_size == key_size
                    && 0 == memcmp(elt->key.ptr.key, key, key_size)) {
-            return pmix_hash_table_remove_elt_at(ht, ii);
+            int result = pmix_hash_table_remove_elt_at(ht, ii);
+            pthread_mutex_unlock(&hash_mutex);
+            return result;
         } else {
             /* keep looking */
         }
@@ -744,16 +917,36 @@ pmix_hash_table_get_next_elt(pmix_hash_table_t *ht,
                              pmix_hash_element_t *prev_elt, /* NULL means find first */
                              pmix_hash_element_t **next_elt)
 {
-    pmix_hash_element_t *elts = ht->ht_table;
-    size_t ii, capacity = ht->ht_capacity;
+    pmix_hash_element_t *elts;
+    size_t ii, capacity;
+    static pthread_mutex_t hash_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    // RACE CONDITION FIX: Validate inputs first
+    if (NULL == ht || NULL == next_elt) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+
+    pthread_mutex_lock(&hash_mutex);
+
+    // Additional validation after acquiring lock
+    if (NULL == ht->ht_table || ht->ht_capacity == 0) {
+        pthread_mutex_unlock(&hash_mutex);
+        return PMIX_ERROR;
+    }
+
+    elts = ht->ht_table;
+    capacity = ht->ht_capacity;
 
     for (ii = (NULL == prev_elt ? 0 : (prev_elt - elts) + 1); ii < capacity; ii += 1) {
         pmix_hash_element_t *elt = &elts[ii];
         if (elt->valid) {
             *next_elt = elt;
+            pthread_mutex_unlock(&hash_mutex);
             return PMIX_SUCCESS;
         }
     }
+    
+    pthread_mutex_unlock(&hash_mutex);
     return PMIX_ERROR;
 }
 
