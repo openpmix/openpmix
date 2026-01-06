@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -61,11 +61,16 @@ static void update(size_t evhdlr_registration_id, pmix_status_t status,
                    pmix_event_notification_cbfunc_fn_t cbfunc, void *cbdata)
 {
     size_t n;
+    char *tmp;
     EXAMPLES_HIDE_UNUSED_PARAMS(evhdlr_registration_id, status, source, results, nresults);
 
-    fprintf(stderr, "[%s]UPDATE:\n", PMIx_Proc_string(&myproc));
+    tmp = PMIx_Proc_string(&myproc);
+    fprintf(stderr, "[%s]UPDATE:\n", tmp);
+    free(tmp);
     for (n=0; n < ninfo; n++) {
-        fprintf(stderr, "%s", PMIx_Info_string(&info[n]));
+        tmp = PMIx_Info_string(&info[n]);
+        fprintf(stderr, "%s", tmp);
+        free(tmp);
     }
     fprintf(stderr, "\n\n");
 
@@ -113,8 +118,8 @@ int main(int argc, char **argv)
     /* init us - note that the call to "init" includes the return of
      * any job-related info provided by the RM. */
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
-                rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n",
+                myproc.nspace, myproc.rank, rc);
         exit(0);
     }
     fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
@@ -129,8 +134,8 @@ int main(int argc, char **argv)
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "[%s:%d] Default handler registration failed\n", myproc.nspace,
-                myproc.rank);
+        fprintf(stderr, "[%s:%d] Default handler registration failed\n",
+                myproc.nspace, myproc.rank);
         goto done;
     }
 
@@ -144,8 +149,8 @@ int main(int argc, char **argv)
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "[%s:%d] Update handler registration failed\n", myproc.nspace,
-                myproc.rank);
+        fprintf(stderr, "[%s:%d] Update handler registration failed\n",
+                myproc.nspace, myproc.rank);
         goto done;
     }
 
@@ -162,8 +167,8 @@ int main(int argc, char **argv)
     flag = false;
     PMIX_INFO_LOAD(&monitor, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &monitor, 1))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
-                rc);
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n",
+                myproc.nspace, myproc.rank, rc);
         return rc;
     }
 
@@ -186,8 +191,8 @@ int main(int argc, char **argv)
         rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
                                   directives, 3, &results, &nresults);
         if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
+            fprintf(stderr, "Client ns %s rank %d: PMIx_Process_monitor failed: %s\n",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
             goto done;
         }
 
@@ -218,7 +223,6 @@ int main(int argc, char **argv)
                     myproc.rank, PMIx_Error_string(rc));
             goto done;
         }
-goto done;
 
         /* ask to monitor node resource usage */
         nupdates = 0;
