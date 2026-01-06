@@ -13,7 +13,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -342,32 +342,51 @@ void pmix_output_hexdump(int verbose_level, int output_id, void *ptr, int buflen
         for (i = 0; i < buflen; i += 16) {
             out_pos = 0;
             ret = snprintf(out_buf + out_pos, 1024, "%06x: ", i);
-            if (ret < 0)
+            if (ret < 0) {
                 return;
+            }
             out_pos += ret;
             for (j = 0; j < 16; j++) {
-                if (i + j < buflen)
-                    ret = snprintf(out_buf + out_pos, 1024, "%02x ", buf[i + j]);
-                else
-                    ret = snprintf(out_buf + out_pos, 1024, "   ");
-                if (ret < 0)
+                if (1023 < (out_pos+2)) {
                     return;
+                }
+                if (i + j < buflen) {
+                    ret = snprintf(out_buf + out_pos, 1024, "%02x ", buf[i + j]);
+                } else {
+                    ret = snprintf(out_buf + out_pos, 1024, "   ");
+                }
+                if (ret < 0) {
+                    return;
+                }
                 out_pos += ret;
             }
-            ret = snprintf(out_buf + out_pos, 1024, " ");
-            if (ret < 0)
+            if (1023 < (out_pos+1)) {
                 return;
+            }
+            ret = snprintf(out_buf + out_pos, 1024, " ");
+            if (ret < 0) {
+                return;
+            }
             out_pos += ret;
-            for (j = 0; j < 16; j++)
+            for (j = 0; j < 16; j++) {
+                if (1023 < (out_pos+1)) {
+                    return;
+                }
                 if (i + j < buflen) {
                     ret = snprintf(out_buf + out_pos, 1024, "%c", isprint(buf[i + j]) ? buf[i + j] : '.');
-                    if (ret < 0)
+                    if (ret < 0) {
                         return;
+                    }
                     out_pos += ret;
                 }
-            ret = snprintf(out_buf + out_pos, 1024, "\n");
-            if (ret < 0)
+            }
+            if (1023 < (out_pos+1)) {
                 return;
+            }
+            ret = snprintf(out_buf + out_pos, 1024, "\n");
+            if (ret < 0) {
+                return;
+            }
             pmix_output_verbose(verbose_level, output_id, "%s", out_buf);
         }
     }
