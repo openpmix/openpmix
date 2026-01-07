@@ -4,8 +4,8 @@ PMIx v6.x series
 This file contains all the NEWS updates for the PMIx v6.x
 series, in reverse chronological order.
 
-6.0.0 -- TBD
-------------
+6.0.0 -- May 19 2025
+--------------------
 .. important:: This is the first release in the v6 family. The intent
                for this series is to provide regular "reference tags",
                effectively serving as milestones for any development
@@ -43,3 +43,22 @@ series, in reverse chronological order.
 
 A full list of individual changes will not be provided here,
 but will commence with the v6.0.1 release.
+
+
+6.0.1 -- Jan xx, 2026
+---------------------
+.. important:: This release contains significant rewrite of
+               the PMIx_Query_info and PMIx_Resolve_xxx
+               functions to provide better, more complete
+               answers.
+
+Detailed changes include:
+ - PR #3760: Multiple commits
+    - Ensure to threadshift callback functions
+    - Ensure more upcall cbfuncs threadshift
+    - Continue work on threadshifting all upcall callbacks
+    - Continue work on threadshifting all upcall callbacks
+    - Threadshift the PMIx_Notify_event API
+    - Complete sweep of server upcall callback functions
+    -
+
