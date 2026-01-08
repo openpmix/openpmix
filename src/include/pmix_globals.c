@@ -8,7 +8,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -319,6 +319,8 @@ PMIX_EXPORT PMIX_CLASS_INSTANCE(pmix_peer_t,
 
 static void iofreqcon(pmix_iof_req_t *p)
 {
+    PMIX_CONSTRUCT_LOCK(&p->lock);
+    p->status = PMIX_SUCCESS;
     p->requestor = NULL;
     p->local_id = 0;
     p->remote_id = 0;
@@ -326,12 +328,15 @@ static void iofreqcon(pmix_iof_req_t *p)
     p->nprocs = 0;
     memset(&p->flags, 0, sizeof(pmix_iof_flags_t));
     p->channels = PMIX_FWD_NO_CHANNELS;
+    p->directives = NULL;
+    p->ndirs = 0;
     p->cbfunc = NULL;
     p->regcbfunc = NULL;
     p->cbdata = NULL;
 }
 static void iofreqdes(pmix_iof_req_t *p)
 {
+    PMIX_DESTRUCT_LOCK(&p->lock);
     if (NULL != p->requestor) {
         PMIX_RELEASE(p->requestor);
     }
@@ -439,6 +444,7 @@ static void cbcon(pmix_cb_t *p)
     p->directives = NULL;
     p->ndirs = 0;
     p->dist = NULL;
+    p->bo = NULL;
     p->infocopy = false;
     p->nvals = 0;
     PMIX_CONSTRUCT(&p->kvs, pmix_list_t);
