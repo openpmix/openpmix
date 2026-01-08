@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -97,15 +97,19 @@ PMIX_EXPORT pmix_status_t PMIx_Fence(const pmix_proc_t procs[], size_t nprocs,
     cb = PMIX_NEW(pmix_cb_t);
 
     /* push the message into our event base to send to the server */
-    if (PMIX_SUCCESS != (rc = PMIx_Fence_nb(procs, nprocs, info, ninfo, op_cbfunc, cb))) {
+    rc = PMIx_Fence_nb(procs, nprocs, info, ninfo, op_cbfunc, cb);
+    if (PMIX_SUCCESS != rc && PMIX_OPERATION_SUCCEEDED != rc) {
         PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(cb);
         return rc;
     }
-
-    /* wait for the fence to complete */
-    PMIX_WAIT_THREAD(&cb->lock);
-    rc = cb->status;
+    if (PMIX_OPERATION_SUCCEEDED == rc) {
+        rc = PMIX_SUCCESS;
+    } else {
+        /* wait for the fence to complete */
+        PMIX_WAIT_THREAD(&cb->lock);
+        rc = cb->status;
+    }
     PMIX_RELEASE(cb);
 
     pmix_output_verbose(2, pmix_client_globals.fence_output,
@@ -133,6 +137,11 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
     if (pmix_globals.init_cntr <= 0) {
         PMIX_RELEASE_THREAD(&pmix_global_lock);
         return PMIX_ERR_INIT;
+    }
+
+    /* if we are a singleton, there is nothing to do */
+    if (pmix_client_globals.singleton) {
+        return PMIX_OPERATION_SUCCEEDED;
     }
 
     /* if we aren't connected, don't attempt to send */
@@ -177,6 +186,12 @@ PMIX_EXPORT pmix_status_t PMIx_Fence_nb(const pmix_proc_t procs[], size_t nprocs
         PMIX_RELEASE(msg);
         PMIX_RELEASE(cb);
     }
+
+    if (NULL == cbfunc) {
+        PMIX_WAIT_THREAD(&cb->lock);
+        rc = cb->status;
+        PMIX_RELEASE(cb);
+    }
     return rc;
 }
 
@@ -196,9 +211,17 @@ static pmix_status_t unpack_return(pmix_buffer_t *data)
         PMIX_ERROR_LOG(rc);
         return rc;
     }
+
     pmix_output_verbose(2, pmix_client_globals.fence_output,
-                        "client:unpack fence received status %d", ret);
-    
+                        "client:unpack fence received status %s",
+                        PMIx_Error_string(ret));
+
+    if (PMIX_OPERATION_SUCCEEDED == ret) {
+        ret = PMIX_SUCCESS;
+    } else if (PMIX_SUCCESS != ret) {
+        return ret;
+    }
+
     /* provide an opportunity to store any data (or at least how to access
      * any data) that was included in the fence */
     PMIX_GDS_RECV_MODEX_COMPLETE(rc, pmix_client_globals.myserver, data);
@@ -277,8 +300,11 @@ static void wait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr, pmix_buffer
     /* if a callback was provided, execute it */
     if (NULL != cb->cbfunc.opfn) {
         cb->cbfunc.opfn(rc, cb->cbdata);
+        PMIX_RELEASE(cb);
+    } else {
+        cb->status = rc;
+        PMIX_WAKEUP_THREAD(&cb->lock);
     }
-    PMIX_RELEASE(cb);
 }
 
 static void op_cbfunc(pmix_status_t status, void *cbdata)
