@@ -13,7 +13,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,20 +48,6 @@ static bool pmix_show_help_initialized = false;
 /* How long to wait between displaying duplicate show_help notices */
 static struct timeval show_help_interval = {5, 0};
 
-static void show_help_cbfunc(pmix_status_t status, void *cbdata)
-{
-    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(status);
-
-    if (NULL != cd->directives) {
-        PMIX_INFO_FREE(cd->directives, cd->ndirs);
-    }
-    if (NULL != cd->info) {
-        PMIX_INFO_FREE(cd->info, cd->ninfo);
-    }
-    PMIX_RELEASE(cd);
-}
-
 static void local_delivery(const char *file,
                            const char *topic,
                            const char *msg)
@@ -84,14 +70,14 @@ static void local_delivery(const char *file,
     cd->ninfo = 1;
     PMIX_INFO_CREATE(cd->info, cd->ninfo);
     PMIX_INFO_LOAD(&cd->info[0], PMIX_LOG_STDERR, msg, PMIX_STRING);
+    cd->infocopy = true;
     cd->ndirs = 2;
     PMIX_INFO_CREATE(cd->directives, cd->ndirs);
     PMIX_INFO_LOAD(&cd->directives[0], PMIX_LOG_KEY, file, PMIX_STRING);
     PMIX_INFO_LOAD(&cd->directives[1], PMIX_LOG_VAL, topic, PMIX_STRING);
-    cd->cbfunc.opcbfn = show_help_cbfunc;
-    cd->cbdata = cd;
-    cd->proc = NULL;
-    PMIX_THREADSHIFT(cd, pmix_log_local_op);
+    cd->dircopy = true;
+    cd->proc = &pmix_globals.myid;
+    PMIX_THREADSHIFT(cd, pmix_log_local_op); // function will release the caddy
 }
 
 /* List items for arrays to search */

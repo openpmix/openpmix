@@ -359,8 +359,10 @@ static void scon(pmix_shift_caddy_t *p)
     p->data = NULL;
     p->ndata = 0;
     p->key = NULL;
+    p->infocopy = false;
     p->info = NULL;
     p->ninfo = 0;
+    p->dircopy = false;
     p->directives = NULL;
     p->ndirs = 0;
     p->pdata = NULL;
@@ -389,6 +391,12 @@ static void scdes(pmix_shift_caddy_t *p)
     }
     if (NULL != p->pname.nspace) {
         free(p->pname.nspace);
+    }
+    if (p->infocopy) {
+        PMIX_INFO_FREE(p->info, p->ninfo);
+    }
+    if (p->dircopy) {
+        PMIX_INFO_FREE(p->directives, p->ndirs);
     }
     if (NULL != p->kv) {
         PMIX_RELEASE(p->kv);
