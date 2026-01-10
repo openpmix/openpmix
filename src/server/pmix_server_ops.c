@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -65,7 +65,7 @@
 #include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/bfrops/base/base.h"
 #include "src/mca/gds/base/base.h"
-#include "src/mca/plog/plog.h"
+#include "src/mca/plog/base/base.h"
 #include "src/mca/pnet/pnet.h"
 #include "src/mca/psensor/psensor.h"
 #include "src/mca/ptl/base/base.h"
@@ -1428,8 +1428,8 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
     time_t timestamp;
     PMIX_HIDE_UNUSED_PARAMS(cbfunc, cbdata);
 
-    pmix_output_verbose(2, pmix_server_globals.base_output,
-                        "recvd log from client");
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "pmix:server recvd log from client");
 
     /* setup the requesting peer name */
     pmix_strncpy(proc.nspace, peer->info->pname.nspace, PMIX_MAX_NSLEN);
@@ -1503,9 +1503,13 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
     /* if we are not the gateway, then pass this up to the host
      * for transfer to the gateway, if available */
     if (!PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
+        pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                            "pmix:server not gateway");
         cd->cbfunc.opcbfn = cbfunc;
         cd->cbdata = cbdata;
         if (NULL != pmix_host_server.log2) {
+            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                "pmix:server using log2 upcall");
             rc = pmix_host_server.log2(&proc, cd->info, cd->ninfo,
                                        cd->directives, cd->ndirs,
                                        localcbfn, (void *) cd);
@@ -1515,6 +1519,8 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
             }
 
         } else if (NULL != pmix_host_server.log) {
+            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                "pmix:server using log upcall");
             pmix_host_server.log(&proc, cd->info, cd->ninfo,
                                  cd->directives, cd->ndirs,
                                  localcbfn, (void *) cd);
@@ -1527,6 +1533,8 @@ pmix_status_t pmix_server_log(pmix_peer_t *peer, pmix_buffer_t *buf,
 
 local:
     /* pass it down */
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "pmix:server processing locally");
     rc = pmix_plog.log(&proc, cd->info, cd->ninfo, cd->directives, cd->ndirs);
     if (PMIX_SUCCESS == rc) {
         // mark that it was done atomically

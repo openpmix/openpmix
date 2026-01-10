@@ -6,7 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -39,6 +39,8 @@ static void opcbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
     cb->status = status;
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "pmix:log opcbfunc called");
     PMIX_WAKEUP_THREAD(&cb->lock);
 }
 
@@ -50,6 +52,8 @@ static void log_cbfunc(struct pmix_peer_t *peer, pmix_ptl_hdr_t *hdr,
     pmix_status_t rc, status;
     PMIX_HIDE_UNUSED_PARAMS(hdr);
 
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "pmix:log log_cbfunc called");
     /* unpack the return status */
     m = 1;
     PMIX_BFROPS_UNPACK(rc, peer, buf, &status, &m, PMIX_STATUS);
@@ -102,71 +106,28 @@ PMIX_EXPORT pmix_status_t PMIx_Log(const pmix_info_t data[], size_t ndata,
     return rc;
 }
 
-static void localcbfunc(pmix_status_t status, void *cbdata)
-{
-    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata;
-
-    PMIX_INFO_FREE(cd->directives, cd->ndirs);
-    if (NULL != cd->cbfunc.opcbfn) {
-        cd->cbfunc.opcbfn(status, cd->cbdata);
-    }
-    PMIX_RELEASE(cd);
-}
-
 void pmix_log_local_op(int sd, short args, void *cbdata_)
 {
-    pmix_shift_caddy_t *qd = (pmix_shift_caddy_t *) cbdata_;
-    pmix_info_t *data = qd->info;
-    size_t ndata = qd->ninfo;
-    pmix_info_t *directives = qd->directives;
-    size_t ndirs = qd->ndirs;
-    pmix_op_cbfunc_t cbfunc = qd->cbfunc.opcbfn;
-    void *cbdata = qd->cbdata;
-    pmix_proc_t *source = qd->proc;
+    pmix_shift_caddy_t *cd = (pmix_shift_caddy_t *) cbdata_;
     pmix_status_t rc;
-    pmix_shift_caddy_t *cd;
-    size_t n;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
-    /* if no recorded source was found, then we must be it */
-    if (NULL == source) {
-        source = &pmix_globals.myid;
-        cd = PMIX_NEW(pmix_shift_caddy_t);
-        cd->cbfunc.opcbfn = cbfunc;
-        cd->cbdata = cbdata;
-        cd->ndirs = ndirs + 1;
-        PMIX_INFO_CREATE(cd->directives, cd->ndirs);
-        for (n = 0; n < ndirs; n++) {
-            PMIX_INFO_XFER(&cd->directives[n], (pmix_info_t *) &directives[n]);
-        }
-        PMIX_INFO_LOAD(&cd->directives[ndirs], PMIX_LOG_SOURCE, source, PMIX_PROC);
-        rc = pmix_plog.log(source, data, ndata, cd->directives, cd->ndirs);
-        // need to execute the local cbfunc to release the caller
-        localcbfunc(rc, cd);  // releases cd
-        return;
-
-    } else if (PMIX_CHECK_PROCID(source, &pmix_globals.myid)) {
-        /* if I am the recorded source, then this is a re-submission of
-         * something that got "upcalled" by a prior call. In this case,
-         * we return a "not supported" error as clearly we couldn't
-         * handle it, and neither could our host */
-        // need to release the caller
-        cbfunc(PMIX_ERR_NOT_SUPPORTED, cbdata);
-        return;
-
-    } else {
-        /* call down to process the request - the various components
-         * will thread shift as required */
-        rc = pmix_plog.log(source, data, ndata, directives, ndirs);
-        // need to release the caller
-        cbfunc(rc, cbdata);
+    /* call down to process the request - the various components
+     * will thread shift as required */
+    rc = pmix_plog.log(cd->proc, cd->info, cd->ninfo, cd->directives, cd->ndirs);
+    // need to execute the caller's cbfunc to release them
+    if (NULL != cd->cbfunc.opcbfn) {
+        cd->cbfunc.opcbfn(rc, cd->cbdata);
     }
+    PMIX_RELEASE(cd);
 }
 
 static void localcbfn(pmix_status_t status, void *cbdata)
 {
     pmix_cb_t *cb = (pmix_cb_t *) cbdata;
-    
+
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "pmix:log local callback");
     if (NULL != cb->cbfunc.opfn) {
         cb->cbfunc.opfn(status, cb->cbdata);
     }
@@ -182,11 +143,12 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
     pmix_buffer_t *msg;
     pmix_status_t rc = PMIX_SUCCESS;
     time_t timestamp = 0;
-    pmix_proc_t *source = NULL;
+    pmix_proc_t *source;
     pmix_shift_caddy_t *cd;
     pmix_cb_t *cb;
+    size_t n;
 
-    pmix_output_verbose(2, pmix_globals.debug_output,
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                         "pmix:log non-blocking");
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
@@ -197,10 +159,12 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         return PMIX_ERR_BAD_PARAM;
     }
 
+    PMIX_PROC_CREATE(source, 1);
+
     /* check the directives - if they requested a timestamp, then
      * get the time, also look for a source */
     if (NULL != directives) {
-        for (size_t n = 0; n < ndirs; n++) {
+        for (n = 0; n < ndirs; n++) {
             if (0 == strncmp(directives[n].key, PMIX_LOG_GENERATE_TIMESTAMP, PMIX_MAX_KEYLEN)) {
                 if (PMIX_INFO_TRUE(&directives[n])) {
                     /* pickup the timestamp */
@@ -210,6 +174,9 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
                 source = directives[n].value.data.proc;
             }
         }
+    }
+    if (NULL == source) {
+        source = &pmix_globals.myid;
     }
 
     /* if we are a client or tool, pass this request to our
@@ -315,11 +282,13 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
     }
 
 local:
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "pmix:log processing locally");
     // threadshift this into our own progress thread
     cd = PMIX_NEW(pmix_shift_caddy_t);
-    cd->info = (pmix_info_t *) data;
+    cd->info = (pmix_info_t*)data;
     cd->ninfo = ndata;
-    cd->directives = (pmix_info_t *) directives;
+    cd->directives = (pmix_info_t*)directives;
     cd->ndirs = ndirs;
     cd->cbfunc.opcbfn = cbfunc;
     cd->cbdata = cbdata;
