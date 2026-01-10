@@ -630,8 +630,10 @@ typedef struct {
     const char *data;
     size_t ndata;
     const char *key;
+    bool infocopy;
     pmix_info_t *info;
     size_t ninfo;
+    bool dircopy;
     pmix_info_t *directives;
     size_t ndirs;
     pmix_pdata_t *pdata;

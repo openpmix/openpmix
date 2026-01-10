@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -110,6 +110,10 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "%s: plog:stdfd called",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
+
 #if 0
     /* check to see if there are any relevant directives */
     for (n = 0; n < ndirs; n++) {
@@ -129,6 +133,10 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
             continue;
         }
         if (0 == strncmp(data[n].key, PMIX_LOG_STDERR, PMIX_MAX_KEYLEN)) {
+            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                "%s: plog:stdfd delivering to stderr for source %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                (NULL == source) ? "NULL" : PMIX_NAME_PRINT(source));
             p = PMIX_NEW(pmix_iof_deliver_t);
             PMIX_XFER_PROCID(&p->source, source);
             p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator
@@ -140,6 +148,10 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
                 PMIX_RELEASE(p);
             }
         } else if (0 == strncmp(data[n].key, PMIX_LOG_STDOUT, PMIX_MAX_KEYLEN)) {
+            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                "%s: plog:stdfd delivering to stdout for source %s",
+                                PMIX_NAME_PRINT(&pmix_globals.myid),
+                                (NULL == source) ? "NULL" : PMIX_NAME_PRINT(source));
             p = PMIX_NEW(pmix_iof_deliver_t);
             PMIX_XFER_PROCID(&p->source, source);
             p->bo.size = strlen(data[n].value.data.string) + 1; // include NULL terminator

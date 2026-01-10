@@ -11,7 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -88,18 +88,15 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     int pri = pmix_mca_plog_syslog_component.level;
     pmix_status_t rc;
     time_t timestamp = 0;
-    const pmix_proc_t *src;
 
     /* if there is no data, then we don't handle it */
     if (NULL == data || 0 == ndata) {
         return PMIX_ERR_NOT_AVAILABLE;
     }
 
-    if (NULL == source) {
-        src = &pmix_globals.myid;
-    } else {
-        src = source;
-    }
+    pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                        "%s: plog:syslog called",
+                        PMIX_NAME_PRINT(&pmix_globals.myid));
 
     /* check directives */
     if (NULL != directives) {
@@ -115,14 +112,20 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
     /* check to see if there are any syslog entries */
     for (n = 0; n < ndata; n++) {
         if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_SYSLOG)) {
+            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                "%s: plog:syslog delivering to local syslog",
+                                PMIX_NAME_PRINT(&pmix_globals.myid));
             /* we default to using the local syslog */
-            rc = write_local(src, timestamp, pri,
+            rc = write_local(source, timestamp, pri,
                              data[n].value.data.string);
             if (PMIX_SUCCESS != rc) {
                 return rc;
             }
         } else if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_LOCAL_SYSLOG)) {
-            rc = write_local(src, timestamp, pri,
+            pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                "%s: plog:syslog delivering to local syslog",
+                                PMIX_NAME_PRINT(&pmix_globals.myid));
+            rc = write_local(source, timestamp, pri,
                              data[n].value.data.string);
             if (PMIX_SUCCESS != rc) {
                 return rc;
@@ -130,12 +133,19 @@ static pmix_status_t mylog(const pmix_proc_t *source, const pmix_info_t data[], 
         } else if (PMIX_CHECK_KEY(&data[n], PMIX_LOG_GLOBAL_SYSLOG)) {
             /* only do this if we are a gateway server */
             if (PMIX_PEER_IS_GATEWAY(pmix_globals.mypeer)) {
-                rc = write_local(src, timestamp, pri,
+                pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                    "%s: plog:syslog delivering to global syslog",
+                                    PMIX_NAME_PRINT(&pmix_globals.myid));
+                rc = write_local(source, timestamp, pri,
                                  data[n].value.data.string);
                 if (PMIX_SUCCESS != rc) {
                     return rc;
                 }
-           }
+            } else {
+                pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
+                                    "%s: plog:syslog global syslog, but not gateway",
+                                    PMIX_NAME_PRINT(&pmix_globals.myid));
+            }
         }
     }
 
