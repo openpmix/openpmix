@@ -1,14 +1,16 @@
 #!/usr/bin/env perl
 #
 # Copyright (c) 2010-2014 Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2016      Intel, Inc. All rights reserved.
+# Copyright (c) 2016-2017 Intel, Inc. All rights reserved.
+# Copyright (c) 2017      IBM Corporation. All rights reserved.
+# Copyright (c) 2026      Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 
 # Short version:
 #
 # This script automates the tedious task of updating copyright notices
-# in the tops of PMIX source files before committing back to
+# in the tops of PMIx source files before committing back to
 # the repository.  Set the environment variable
 # PMIX_COPYRIGHT_SEARCH_NAME to a short (case-insensitive) name that
 # indicates your copyright line (e.g., "cisco"), and set the env
@@ -64,8 +66,8 @@ my $QUIET = 0;
 my $HELP = 0;
 
 # Defaults
-my $my_search_name = "Intel";
-my $my_formal_name = "Intel, Inc.  All rights reserved.";
+my $my_search_name = "Nanook";
+my $my_formal_name = "Nanook Consulting.  All rights reserved.";
 
 # Override the defaults if some values are set in the environment
 $my_search_name = $ENV{PMIX_COPYRIGHT_SEARCH_NAME}
@@ -79,6 +81,7 @@ GetOptions(
     "check-only" => \$CHECK_ONLY,
     "search-name=s" => \$my_search_name,
     "formal-name=s" => \$my_formal_name,
+    "manual-list=s" => \$my_manual_list,
 ) or die "unable to parse options, stopped";
 
 if ($HELP) {
@@ -90,6 +93,7 @@ $0 [options]
 --check-only         exit(111) if there are files with copyrights to edit
 --search-name=NAME   Set search name to NAME
 --formal-same=NAME   Set formal name to NAME
+--manual-list=FNAME  Use specified file as list of files to mod copyright
 EOT
     exit(0);
 }
@@ -112,31 +116,15 @@ my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime;
 $year += 1900;
 quiet_print "==> This year: $year\n";
 
-# Find the top-level PMIx source tree dir
+# Find the top-level source tree dir in a git repo
 my $start = cwd();
-my $top = $start;
-while (! -f "$top/VERSION") {
-    chdir("..");
-    $top = cwd();
-    die "Can't find top-level PMIx directory"
-        if ($top eq "/");
-}
-chdir($start);
+my $top = `git rev-parse --show-toplevel`;
+chomp($top);
 
-quiet_print "==> Top-level PMIx dir: $top\n";
+quiet_print "==> Top-level repository dir: $top\n";
 quiet_print "==> Current directory: $start\n";
 
-# Select VCS used to obtain modification info.  Choose in increasing priority
-# order (last hit wins).
-my $vcs;
-$vcs = "git"
-    if (-d "$top/.git");
-$vcs = "hg"
-    if (-d "$top/.hg");
-$vcs = "svn"
-    if (-d "$top/.svn");
-
-my @files = find_modified_files($vcs);
+my @files = find_modified_files();
 
 if ($#files < 0) {
     quiet_print "No added / changed files -- nothing to do\n";
@@ -145,6 +133,22 @@ if ($#files < 0) {
 
 # Examine each of the files and see if they need an updated copyright
 foreach my $f (@files) {
+
+    # ignore embedded copies of external codes as we shouldn't
+    # be overwriting their copyrights - if someone actually
+    # modified any of those files, they can manually update
+    # the copyright
+    my $ignore = 0;
+    foreach my $p (@protected) {
+        if (eval("\$f =~ /$p/")) {
+            quiet_print "Ignoring protected file $f\n";
+            $ignore = 1;
+            last;
+        }
+    }
+    if (1 == $ignore) {
+        next;
+    }
     quiet_print "Processing added/changed file: $f\n";
     open(FILE, $f) || die "Can't open file: $f";
 
@@ -252,95 +256,65 @@ if ($CHECK_ONLY and $would_replace) {
 
 #-------------------------------------------------------------------------------
 
-# Takes two arguments, the top level directory and the VCS method.  Returns a
-# list of file names (relative to pwd) which the VCS considers to be modified.
+# Returns a list of file names (relative to pwd) which git considers
+# to be modified.
 sub find_modified_files {
-    my $vcs = shift;
     my @files = ();
 
-    if ($vcs eq "git") {
-        # Number of path entries to remove from ${top}-relative paths.
-        # (--show-cdup either returns the empty string or sequence of "../"
-        # entries, always ending in a "/")
-        my $n_strip = scalar(split(m!/!, scalar(`git rev-parse --show-cdup`))) - 1;
+    # Number of path entries to remove from ${top}-relative paths.
+    # (--show-cdup either returns the empty string or sequence of "../"
+    # entries, always ending in a "/")
+    my $n_strip = scalar(split(m!/!, scalar(`git rev-parse --show-cdup`))) - 1;
 
-        # "." restricts scope, but does not get us relative path names
-        my $cmd = "git status -z --porcelain --untracked-files=no .";
-        quiet_print "==> Running: \"$cmd\"\n";
-        my $lines = `$cmd`;
+    # "." restricts scope, but does not get us relative path names
+    my $cmd = "git status -z --porcelain --untracked-files=no .";
+    quiet_print "==> Running: \"$cmd\"\n";
+    my $lines = `$cmd`;
 
-        # From git-status(1):
-        # X          Y     Meaning
-        # -------------------------------------------------
-        #           [MD]   not updated
-        # M        [ MD]   updated in index
-        # A        [ MD]   added to index
-        # D         [ M]   deleted from index
-        # R        [ MD]   renamed in index
-        # C        [ MD]   copied in index
-        # [MARC]           index and work tree matches
-        # [ MARC]     M    work tree changed since index
-        # [ MARC]     D    deleted in work tree
-        # -------------------------------------------------
-        # D           D    unmerged, both deleted
-        # A           U    unmerged, added by us
-        # U           D    unmerged, deleted by them
-        # U           A    unmerged, added by them
-        # D           U    unmerged, deleted by us
-        # A           A    unmerged, both added
-        # U           U    unmerged, both modified
-        # -------------------------------------------------
-        # ?           ?    untracked
-        # -------------------------------------------------
-        foreach my $line (split /\x{00}/, $lines) {
-            my $keep = 0;
-            my ($s1, $s2, $fullname) = $line =~ m/^(.)(.) (.*)$/;
+    # From git-status(1):
+    # X          Y     Meaning
+    # -------------------------------------------------
+    #           [MD]   not updated
+    # M        [ MD]   updated in index
+    # A        [ MD]   added to index
+    # D         [ M]   deleted from index
+    # R        [ MD]   renamed in index
+    # C        [ MD]   copied in index
+    # [MARC]           index and work tree matches
+    # [ MARC]     M    work tree changed since index
+    # [ MARC]     D    deleted in work tree
+    # -------------------------------------------------
+    # D           D    unmerged, both deleted
+    # A           U    unmerged, added by us
+    # U           D    unmerged, deleted by them
+    # U           A    unmerged, added by them
+    # D           U    unmerged, deleted by us
+    # A           A    unmerged, both added
+    # U           U    unmerged, both modified
+    # -------------------------------------------------
+    # ?           ?    untracked
+    # -------------------------------------------------
+    foreach my $line (split /\x{00}/, $lines) {
+        my $keep = 0;
+        my ($s1, $s2, $fullname) = $line =~ m/^(.)(.) (.*)$/;
 
-            # ignore all merge cases
-            next if ($s1 eq "D" and $s2 eq "D");
-            next if ($s1 eq "A" and $s2 eq "A");
-            next if ($s1 eq "U" or $s2 eq "U");
+        # ignore all merge cases
+        next if ($s1 eq "D" and $s2 eq "D");
+        next if ($s1 eq "A" and $s2 eq "A");
+        next if ($s1 eq "U" or $s2 eq "U");
 
-            # only update for actually added/modified cases, no copies,
-            # renames, etc.
-            $keep = 1 if ($s1 eq "M" or $s2 eq "M");
-            $keep = 1 if ($s1 eq "A");
+        # only update for actually added/modified cases, no copies,
+        # renames, etc.
+        $keep = 1 if ($s1 eq "M" or $s2 eq "M");
+        $keep = 1 if ($s1 eq "A");
 
-            if ($keep) {
-                my $relname = $fullname;
-                $relname =~ s!^([^/]*/){$n_strip}!!g;
+        if ($keep) {
+            my $relname = $fullname;
+            $relname =~ s!^([^/]*/){$n_strip}!!g;
 
-                push @files, $relname
-                    if (-f $relname);
-            }
+            push @files, $relname
+                if (-f $relname);
         }
-    }
-    elsif ($vcs eq "hg" or $vcs eq "svn") {
-        my $cmd = "$vcs st .";
-
-        # Run the command, parsing the output.  Make a list of files that are
-        # added or modified.
-        quiet_print "==> Running: \"$cmd\"\n";
-        open(CMD, "$cmd|") || die "Can't run command";
-        while (<CMD>) {
-            chomp;
-            if ($_ =~ /^M/ || $_ =~ /^A/) {
-                my @tokens = split(/\s+/, $_);
-                # Handle output of both forms:
-                # M       filenameA
-                # A  +    filenameB
-                my $filename = $tokens[1];
-                $filename = $tokens[2]
-                if ($tokens[1] =~ /\+/);
-                # Don't bother saving directory names
-                push(@files, $filename)
-                    if (-f $filename);
-            }
-        }
-        close(CMD);
-    }
-    else {
-        die "unknown VCS '$vcs', stopped";
     }
 
     return @files;
