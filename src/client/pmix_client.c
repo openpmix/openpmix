@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2017 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -389,6 +389,7 @@ static void _check_for_notify(pmix_info_t info[], size_t ninfo)
             PMIX_RELEASE(scd);
             return;
         }
+        scd->infocopy = true;
         scd->ninfo = m + 1;
         n = 0;
         if (NULL != model) {
