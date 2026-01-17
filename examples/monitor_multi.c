@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -116,7 +116,7 @@ int main(int argc, char **argv)
     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
         fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %d\n", myproc.nspace, myproc.rank,
                 rc);
-        exit(0);
+        exit(1);
     }
     fprintf(stderr, "Client ns %s rank %d: Running\n", myproc.nspace, myproc.rank);
 
@@ -130,9 +130,10 @@ int main(int argc, char **argv)
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "[%s:%d] Default handler registration failed\n", myproc.nspace,
-                myproc.rank);
-        goto done;
+        fprintf(stderr, "[%s:%d] Default handler registration failed\n",
+                myproc.nspace, myproc.rank);
+        fflush(stderr);
+        exit(2);
     }
 
     /* register the monitor update event handler */
@@ -145,9 +146,10 @@ int main(int argc, char **argv)
     rc = mylock.status;
     DEBUG_DESTRUCT_LOCK(&mylock);
     if (PMIX_SUCCESS != rc) {
-        fprintf(stderr, "[%s:%d] Update handler registration failed\n", myproc.nspace,
-                myproc.rank);
-        goto done;
+        fprintf(stderr, "[%s:%d] Update handler registration failed\n",
+                myproc.nspace, myproc.rank);
+        fflush(stderr);
+        exit(3);
     }
 
     /* job-related info is found in our nspace, assigned to the
@@ -158,17 +160,19 @@ int main(int argc, char **argv)
 
     /* get our universe size */
     if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_JOB_SIZE, NULL, 0, &val))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
-        goto done;
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Get job size failed: %d\n",
+                myproc.nspace, myproc.rank, rc);
+        fflush(stderr);
+        exit(4);
     }
     nprocs = val->data.uint32;
     PMIX_VALUE_RELEASE(val);
-    if (2 < nprocs) {
+    if (2 > nprocs) {
         if (0 == myproc.rank) {
-            fprintf(stderr, "This example requires at least two processes\n");
+            fprintf(stderr, "This example requires at least two processes - got %d\n", nprocs);
+            fflush(stderr);
         }
-        exit(1);
+        exit(5);
     }
     fprintf(stderr, "Client %s:%d node %s\n", myproc.nspace, myproc.rank, hostname);
 
@@ -177,9 +181,10 @@ int main(int argc, char **argv)
     flag = false;
     PMIX_INFO_LOAD(&monitor, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &monitor, 1))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
-                rc);
-        return rc;
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n",
+                myproc.nspace, myproc.rank, rc);
+        fflush(stderr);
+        exit(6);
     }
 
     if (0 == myproc.rank) {
@@ -226,9 +231,10 @@ int main(int argc, char **argv)
         rc = PMIx_Process_monitor(&monitor, PMIX_MONITOR_RESUSAGE_UPDATE,
                                   NULL, 0, &results, &nresults);
         if (PMIX_SUCCESS != rc) {
-            fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n", myproc.nspace,
-                    myproc.rank, PMIx_Error_string(rc));
-            goto done;
+            fprintf(stderr, "Client ns %s rank %d: cancel monitor failed: %s\n",
+                    myproc.nspace, myproc.rank, PMIx_Error_string(rc));
+            fflush(stderr);
+            exit(7);
         }
     }
 
@@ -237,17 +243,20 @@ int main(int argc, char **argv)
     flag = false;
     PMIX_INFO_LOAD(&monitor, PMIX_COLLECT_DATA, &flag, PMIX_BOOL);
     if (PMIX_SUCCESS != (rc = PMIx_Fence(&proc, 1, &monitor, 1))) {
-        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n", myproc.nspace, myproc.rank,
-                rc);
-        goto done;
+        fprintf(stderr, "Client ns %s rank %d: PMIx_Fence failed: %d\n",
+                myproc.nspace, myproc.rank, rc);
+        fflush(stderr);
+        exit(8);
     }
 
 done:
     /* finalize us */
     fprintf(stderr, "Client ns %s rank %d: Finalizing\n", myproc.nspace, myproc.rank);
     if (PMIX_SUCCESS != (rc = PMIx_Finalize(NULL, 0))) {
-        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n", myproc.nspace,
-                myproc.rank, rc);
+        fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize failed: %d\n",
+                myproc.nspace, myproc.rank, rc);
+        fflush(stderr);
+        exit(9);
     } else {
         fprintf(stderr, "Client ns %s rank %d:PMIx_Finalize successfully completed\n",
                 myproc.nspace, myproc.rank);
