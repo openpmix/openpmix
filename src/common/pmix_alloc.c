@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -189,6 +189,10 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request(pmix_alloc_directive_t directi
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     pmix_output_verbose(2, pmix_globals.debug_output, "%s pmix:allocate",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
 
@@ -278,6 +282,10 @@ PMIX_EXPORT pmix_status_t PMIx_Allocation_request_nb(pmix_alloc_directive_t dire
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* if we are hosted by the scheduler, then this makes no sense */
@@ -450,6 +458,10 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block(pmix_resource_block_directive_t di
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "%s pmix:resource block op",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
@@ -515,6 +527,10 @@ PMIX_EXPORT pmix_status_t PMIx_Resource_block_nb(pmix_resource_block_directive_t
     /* if we are hosted by the scheduler, then this makes no sense */
     if (PMIX_PEER_IS_SCHEDULER(pmix_globals.mypeer)) {
         return PMIX_ERR_NOT_SUPPORTED;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* if our server is the scheduler, then send it */

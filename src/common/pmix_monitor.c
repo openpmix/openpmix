@@ -6,7 +6,7 @@
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -59,6 +59,10 @@ pmix_status_t PMIx_Process_monitor(const pmix_info_t *monitor, pmix_status_t err
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
@@ -440,6 +444,10 @@ pmix_status_t PMIx_Process_monitor_nb(const pmix_info_t *monitor, pmix_status_t 
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* sanity check */
     if (NULL == monitor) {
         return PMIX_ERR_BAD_PARAM;
@@ -561,6 +569,10 @@ void PMIx_Heartbeat(void)
 {
     pmix_buffer_t *msg;
     pmix_status_t rc;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return;
+    }
 
     msg = PMIX_NEW(pmix_buffer_t);
     if (NULL == msg) {

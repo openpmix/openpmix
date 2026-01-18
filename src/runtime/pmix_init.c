@@ -18,7 +18,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -80,6 +80,9 @@ PMIX_EXPORT bool pmix_init_called = false;
 PMIX_EXPORT pmix_globals_t pmix_globals = {
     .init_called = false,
     .initialized = false,
+    .util_initialized = false,
+    .connected = false,
+    .progress_thread_stopped = false,
     .myid = PMIX_PROC_STATIC_INIT,
     .myidval = PMIX_VALUE_STATIC_INIT,
     .myrankval = PMIX_VALUE_STATIC_INIT,
@@ -99,7 +102,6 @@ PMIX_EXPORT pmix_globals_t pmix_globals = {
     .evauxbase = NULL,
     .debug_output = -1,
     .events = PMIX_EVENTS_STATIC_INIT,
-    .connected = false,
     .commits_pending = false,
     .event_window = {0, 0},
     .cached_events = PMIX_LIST_STATIC_INIT,
@@ -130,8 +132,6 @@ static void _notification_eviction_cbfunc(struct pmix_hotel_t *hotel, int room_n
     PMIX_RELEASE(cache);
 }
 
-static bool util_initialized = false;
-
 void pmix_expose_param(char *param)
 {
     char *value, *pm;
@@ -154,10 +154,9 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *libdir)
 {
     pmix_status_t ret;
 
-    if (util_initialized) {
+    if (pmix_atomic_check_bool(&pmix_globals.util_initialized)) {
         return PMIX_SUCCESS;
     }
-    util_initialized = true;
 
     /* initialize the output system */
     if (!pmix_output_init()) {
@@ -215,6 +214,7 @@ int pmix_init_util(pmix_info_t info[], size_t ninfo, char *libdir)
         fprintf(stderr, "pmix_pif_base_open failed\n");
         return ret;
     }
+    pmix_atomic_set_bool(&pmix_globals.util_initialized);
 
     return PMIX_SUCCESS;
 }
@@ -570,7 +570,7 @@ return_error:
 
 int pmix_finalize_util(void)
 {
-    util_initialized = false;
+    pmix_atomic_unset_bool(&pmix_globals.util_initialized);
     return PMIX_SUCCESS;
 }
 

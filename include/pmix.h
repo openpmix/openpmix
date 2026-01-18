@@ -38,7 +38,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1132,7 +1132,19 @@ PMIX_EXPORT pmix_status_t PMIx_Get_relative_locality(const char *locality1,
 	                                                 const char *locality2,
 	                                                 pmix_locality_t *locality);
 
+/* Step the PMIx progress engine - can be used when the PMIx progress
+ * thread has been disabled
+ */
 PMIX_EXPORT void PMIx_Progress(void);
+
+
+/* Stop the PMIx progress thread - attributes can be used to tailor
+ * this operation. For example, PMIX_PROGRESS_THREAD_FLUSH directs
+ * that the progress thread complete all pending events prior to
+ * stopping
+ */
+PMIX_EXPORT void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo);
+
 
 /******    PRETTY-PRINT DEFINED VALUE TYPES     ******/
 /* Provide a string representation for several types of value. Note

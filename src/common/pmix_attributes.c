@@ -4,7 +4,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2024 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -145,6 +145,10 @@ PMIX_EXPORT pmix_status_t PMIx_Register_attributes(char *function, char *attrs[]
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     scd = PMIX_NEW(pmix_setup_caddy_t);

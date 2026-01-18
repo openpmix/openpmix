@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -307,6 +307,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct(const char grp[], const pmix_proc
         return PMIX_ERR_UNREACH;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -355,6 +359,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_construct_nb(const char grp[], const pmix_p
         return PMIX_ERR_UNREACH;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     // send any data to our server
     msg = PMIX_NEW(pmix_buffer_t);
     rc = construct_msg(msg, grp, procs, nprocs, info, ninfo);
@@ -401,6 +409,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct(const char grp[],
         return PMIX_ERR_UNREACH;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -444,6 +456,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_destruct_nb(const char grpid[], const pmix_
     /* if we aren't connected, don't attempt to send */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* check for bozo input */
@@ -665,6 +681,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite(const char grp[], const pmix_proc_t 
         return PMIX_ERR_UNREACH;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* check for bozo input */
     if (NULL == grp || NULL == procs) {
         return PMIX_ERR_BAD_PARAM;
@@ -758,6 +778,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_invite_nb(const char grp[], const pmix_proc
     /* if we aren't connected, then we cannot notify */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* check for bozo input */
@@ -892,6 +916,7 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
 {
     pmix_status_t rc;
     pmix_group_tracker_t *cb;
+    PMIX_HIDE_UNUSED_PARAMS(results, nresults);
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -902,7 +927,9 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join(const char grp[], const pmix_proc_t *l
         return PMIX_ERR_UNREACH;
     }
 
-    PMIX_HIDE_UNUSED_PARAMS(results, nresults);
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
 
     /* create a callback object as we need to pass it to the
      * recv routine so we know which lock to release when
@@ -948,6 +975,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_join_nb(const char grp[], const pmix_proc_t
     /* if we aren't connected, then we cannot notify */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* create a callback object as we need to pass it to the
@@ -1019,6 +1050,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave(const char grp[],
         return PMIX_ERR_UNREACH;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -1061,6 +1096,10 @@ PMIX_EXPORT pmix_status_t PMIx_Group_leave_nb(const char grp[],
     /* if we aren't connected, don't attempt to send */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* check for bozo input */
