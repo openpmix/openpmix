@@ -14,7 +14,7 @@
  * Copyright (c) 2014-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Los Alamos National Security, LLC. All rights
  *                         reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,20 +53,38 @@ pmix_plog_smtp_component_t pmix_mca_plog_smtp_component = {
         .pmix_mca_close_component = smtp_close,
         .pmix_mca_query_component = smtp_component_query,
         .pmix_mca_register_component_params = smtp_register,
-    }
+    },
+    .version = NULL,
+    .server = NULL,
+    .to = NULL,
+    .from_name = NULL,
+    .subject = NULL,
+    .body_prefix = NULL,
+    .body_suffix = NULL
 };
 PMIX_MCA_BASE_COMPONENT_INIT(pmix, plog, smtp)
+
+static char *server = NULL;
+static char *myfrom = NULL;
+static char *subject = NULL;
+static char *suffix = NULL;
+static char *prefix = NULL;
 
 static pmix_status_t smtp_register(void)
 {
     char version[256];
 
     /* Server stuff */
-    pmix_mca_plog_smtp_component.server = strdup("localhost");
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "server",
                                                 "SMTP server name or IP address",
                                                 PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                                &pmix_mca_plog_smtp_component.server);
+                                                &server);
+
+    if (NULL != server) {
+        pmix_mca_plog_smtp_component.server = strdup(server);
+    } else {
+        pmix_mca_plog_smtp_component.server = strdup("localhost");
+   }
 
     pmix_mca_plog_smtp_component.port = 25;
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "port",
@@ -74,43 +92,59 @@ static pmix_status_t smtp_register(void)
                                                 &pmix_mca_plog_smtp_component.port);
 
     /* Email stuff */
-    pmix_mca_plog_smtp_component.to = NULL;
-    (void)
-        pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "to",
-                                             "Comma-delimited list of default email addresses to send to",
-                                             PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                             &pmix_mca_plog_smtp_component.to);
+    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "to",
+                                                "Comma-delimited list of default email addresses to send to",
+                                                PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                                &pmix_mca_plog_smtp_component.to);
 
-    pmix_mca_plog_smtp_component.from_addr = NULL;
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "from_addr",
                                                 "Email address that messages will be from",
                                                 PMIX_MCA_BASE_VAR_TYPE_STRING,
                                                 &pmix_mca_plog_smtp_component.from_addr);
 
-    pmix_mca_plog_smtp_component.from_name = strdup("PMIx Plog");
+    
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "from_name",
                                                 "Email name that messages will be from",
                                                 PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                                &pmix_mca_plog_smtp_component.from_name);
+                                                &myfrom);
+    if (NULL != myfrom) {
+        pmix_mca_plog_smtp_component.from_name = strdup(myfrom);
+    } else {
+        pmix_mca_plog_smtp_component.from_name = strdup("PMIx Plog");
+    }
 
-    pmix_mca_plog_smtp_component.subject = strdup("PMIx Plog");
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "subject",
                                                 "Default email subject", PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                                &pmix_mca_plog_smtp_component.subject);
+                                                &subject);
+    if (NULL != subject) {
+        pmix_mca_plog_smtp_component.subject = strdup(subject);
+    } else {
+        pmix_mca_plog_smtp_component.subject = strdup("PMIx Plog");
+    }
 
     /* Mail body prefix and suffix */
-    pmix_mca_plog_smtp_component.body_prefix = strdup(
-        "The PMIx SMTP plog wishes to inform you of the following message:\n\n");
-    (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "body_prefix",
+     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "body_prefix",
                                                 "Text to put at the beginning of the mail message",
                                                 PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                                &pmix_mca_plog_smtp_component.body_prefix);
+                                                &prefix);
 
-    pmix_mca_plog_smtp_component.body_suffix = strdup("\n\nSincerely,\nOscar the PMIx Owl");
+     if (NULL != prefix) {
+        pmix_mca_plog_smtp_component.body_prefix = strdup(prefix);
+     } else {
+        pmix_mca_plog_smtp_component.body_prefix = strdup(
+        "The PMIx SMTP plog wishes to inform you of the following message:\n\n");
+     }
+
     (void) pmix_mca_base_component_var_register(&pmix_mca_plog_smtp_component.super, "body_prefix",
                                                 "Text to put at the end of the mail message",
                                                 PMIX_MCA_BASE_VAR_TYPE_STRING,
-                                                &pmix_mca_plog_smtp_component.body_suffix);
+                                                &suffix);
+
+    if (NULL != suffix) {
+        pmix_mca_plog_smtp_component.body_suffix = strdup(suffix);
+    } else {
+        pmix_mca_plog_smtp_component.body_suffix = strdup("\n\nSincerely,\nOscar the PMIx Owl");
+    }
 
     /* Priority */
     pmix_mca_plog_smtp_component.priority = 10;
@@ -128,6 +162,24 @@ static pmix_status_t smtp_register(void)
 
 static pmix_status_t smtp_close(void)
 {
+    if (NULL != pmix_mca_plog_smtp_component.version) {
+        free(pmix_mca_plog_smtp_component.version);
+    }
+    if (NULL != pmix_mca_plog_smtp_component.server) {
+        free(pmix_mca_plog_smtp_component.server);
+    }
+    if (NULL != pmix_mca_plog_smtp_component.body_prefix) {
+        free(pmix_mca_plog_smtp_component.body_prefix);
+    }
+    if (NULL != pmix_mca_plog_smtp_component.body_suffix) {
+        free(pmix_mca_plog_smtp_component.body_suffix);
+    }
+    if (NULL != pmix_mca_plog_smtp_component.from_name) {
+        free(pmix_mca_plog_smtp_component.from_name);
+    }
+    if (NULL != pmix_mca_plog_smtp_component.subject) {
+        free(pmix_mca_plog_smtp_component.subject);
+    }
     return PMIX_SUCCESS;
 }
 
@@ -136,13 +188,6 @@ static pmix_status_t smtp_component_query(pmix_mca_base_module_t **module, int *
     *priority = 0;
     *module = NULL;
 
-    /* Sanity checks */
-    if (NULL == pmix_mca_plog_smtp_component.server ||
-        '\0' == pmix_mca_plog_smtp_component.server[0]) {
-        pmix_output_verbose(5, pmix_plog_base_framework.framework_output,
-                            "SMTP: mail server not specified; disabled");
-        return PMIX_ERR_NOT_FOUND;
-    }
 
     /* Since we have to open a socket later, try to resolve the IP
        address of the server now.  Save the result, or abort if we
