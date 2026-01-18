@@ -15,7 +15,7 @@
  *                         reserved.
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2018      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -131,6 +131,7 @@ static pmix_status_t connect_to_peer(struct pmix_peer_t *pr,
     mycmd = pmix_ptl_base_get_cmd_line();
     if (NULL != mycmd) {
         PMIX_INFO_LIST_ADD(rc, ilist, PMIX_CMD_LINE, mycmd, PMIX_STRING);
+        free(mycmd);
     }
     PMIX_INFO_LIST_CONVERT(rc, ilist, &darray);
     if (PMIX_ERR_EMPTY == rc) {
