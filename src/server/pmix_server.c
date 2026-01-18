@@ -1006,6 +1006,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     return PMIX_SUCCESS;
 }
 
+#if 0
 static void checkev(int fd, short args, void *cbdata)
 {
     pmix_lock_t *lock = (pmix_lock_t*)cbdata;
@@ -1013,14 +1014,17 @@ static void checkev(int fd, short args, void *cbdata)
 
     PMIX_WAKEUP_THREAD(lock);
 }
+#endif
 
 PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
     int i;
     pmix_peer_t *peer;
     pmix_namespace_t *ns;
+#if 0
     pmix_lock_t lock;
     pmix_event_t ev;
+#endif
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -1030,6 +1034,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize called");
 
+#if 0
     /* wait here until all active events have been processed */
     PMIX_CONSTRUCT_LOCK(&lock);
     pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
@@ -1037,7 +1042,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_event_active(&ev, EV_WRITE, 1);
     PMIX_WAIT_THREAD(&lock);
     PMIX_DESTRUCT_LOCK(&lock);
-
+#endif
     /* stop the progress thread, but leave the event base
      * still constructed. This will allow us to safely
      * tear down the infrastructure, including removal
