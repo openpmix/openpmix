@@ -811,11 +811,16 @@ PMIX_CLASS_DECLARATION(pmix_keyindex_t);
 
 /****    GLOBAL STORAGE    ****/
 /* define a global construct that includes values that must be shared
- * between various parts of the code library. The client, tool,
- * and server libraries must instance this structure */
+ * between various parts of the code library. This structure is
+ * instanced and initialized in runtime/pmix_init.c */
 typedef struct {
+    // control atomics
     bool init_called;
     atomic_bool initialized;
+    atomic_bool util_initialized;
+    atomic_bool connected;
+    atomic_bool progress_thread_stopped;
+    // proc info
     pmix_proc_t myid;
     pmix_value_t myidval;
     pmix_value_t myrankval;
@@ -835,7 +840,6 @@ typedef struct {
     pmix_event_base_t *evauxbase;
     int debug_output;
     pmix_events_t events; // my event handler registrations.
-    atomic_bool connected;
     bool commits_pending;
     struct timeval event_window;
     pmix_list_t cached_events;         // events waiting in the window prior to processing

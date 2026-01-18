@@ -9,7 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2018 IBM Corporation.  All rights reserved.
  * Copyright (c) 2018      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1006,26 +1006,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
     return PMIX_SUCCESS;
 }
 
-#if 0
-static void checkev(int fd, short args, void *cbdata)
-{
-    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(fd, args, cbdata);
-
-    PMIX_WAKEUP_THREAD(lock);
-}
-#endif
-
 PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
 {
     int i;
     pmix_peer_t *peer;
     pmix_namespace_t *ns;
-#if 0
-    pmix_lock_t lock;
-    pmix_event_t ev;
-#endif
-
+ 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
@@ -1034,20 +1020,8 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize called");
 
-#if 0
     /* wait here until all active events have been processed */
-    PMIX_CONSTRUCT_LOCK(&lock);
-    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
-    PMIX_POST_OBJECT(&lock);
-    pmix_event_active(&ev, EV_WRITE, 1);
-    PMIX_WAIT_THREAD(&lock);
-    PMIX_DESTRUCT_LOCK(&lock);
-#endif
-    /* stop the progress thread, but leave the event base
-     * still constructed. This will allow us to safely
-     * tear down the infrastructure, including removal
-     * of any events objects may be holding */
-    (void) pmix_progress_thread_pause(NULL);
+    PMIx_Progress_thread_stop(NULL, 0);
 
     /* flush any residual IOF into their respective channels */
     pmix_iof_flush_residuals();
@@ -1344,6 +1318,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_nspace(const pmix_nspace_t nspace
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     cd = PMIX_NEW(pmix_setup_caddy_t);
     pmix_strncpy(cd->proc.nspace, nspace, PMIX_MAX_NSLEN);
     cd->nlocalprocs = nlocalprocs;
@@ -1633,6 +1611,10 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
         return;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return;
+    }
+
     cd = PMIX_NEW(pmix_setup_caddy_t);
     PMIX_LOAD_PROCID(&cd->proc, nspace, PMIX_RANK_WILDCARD);
     cd->opcbfunc = cbfunc;
@@ -1876,6 +1858,10 @@ pmix_status_t PMIx_server_register_resources(pmix_info_t info[], size_t ninfo,
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     cd = PMIX_NEW(pmix_setup_caddy_t);
     cd->info = info;
     cd->ninfo = ninfo;
@@ -1939,6 +1925,10 @@ pmix_status_t PMIx_server_deregister_resources(pmix_info_t info[], size_t ninfo,
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
@@ -2268,7 +2258,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_register_client(const pmix_proc_t *proc, u
         return PMIX_ERR_INIT;
     }
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server register client %s:%d",
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server register client %s:%d",
                         proc->nspace, proc->rank);
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
@@ -2351,7 +2346,12 @@ PMIX_EXPORT void PMIx_server_deregister_client(const pmix_proc_t *proc, pmix_op_
         return;
     }
 
-    pmix_output_verbose(2, pmix_server_globals.base_output, "pmix:server deregister client %s:%d",
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return;
+    }
+
+    pmix_output_verbose(2, pmix_server_globals.base_output,
+                        "pmix:server deregister client %s:%d",
                         proc->nspace, proc->rank);
 
     cd = PMIX_NEW(pmix_setup_caddy_t);
@@ -2394,6 +2394,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_setup_fork(const pmix_proc_t *proc, char *
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -2612,6 +2616,10 @@ PMIX_EXPORT pmix_status_t PMIx_server_dmodex_request(const pmix_proc_t *proc,
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* protect against bozo */
     if (NULL == cbfunc || NULL == proc) {
         return PMIX_ERR_BAD_PARAM;
@@ -2655,6 +2663,10 @@ PMIX_EXPORT pmix_status_t PMIx_Store_internal(const pmix_proc_t *proc, const cha
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     if (NULL == key || PMIX_MAX_KEYLEN < pmix_keylen(key)) {
@@ -2801,6 +2813,10 @@ pmix_status_t PMIx_server_setup_application(const pmix_nspace_t nspace, pmix_inf
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* need to threadshift this request */
     cd = PMIX_NEW(pmix_setup_caddy_t);
     if (NULL == cd) {
@@ -2849,6 +2865,10 @@ pmix_status_t PMIx_server_setup_local_support(const pmix_nspace_t nspace, pmix_i
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* need to threadshift this request */
@@ -2987,6 +3007,10 @@ pmix_status_t PMIx_server_IOF_deliver(const pmix_proc_t *source, pmix_iof_channe
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* need to threadshift this request */
     cd = PMIX_NEW(pmix_setup_caddy_t);
     if (NULL == cd) {
@@ -3083,6 +3107,10 @@ pmix_status_t PMIx_server_collect_inventory(pmix_info_t directives[], size_t ndi
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* need to threadshift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == cd) {
@@ -3130,6 +3158,10 @@ pmix_status_t PMIx_server_deliver_inventory(pmix_info_t info[], size_t ninfo,
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* need to threadshift this request */
@@ -3270,6 +3302,10 @@ pmix_status_t PMIx_server_define_process_set(const pmix_proc_t *members, size_t 
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* need to threadshift this request */
     PMIX_CONSTRUCT(&cd, pmix_setup_caddy_t);
     cd.nspace = (char*)pset_name;
@@ -3322,6 +3358,10 @@ pmix_status_t PMIx_server_delete_process_set(char *pset_name)
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* need to threadshift this request */

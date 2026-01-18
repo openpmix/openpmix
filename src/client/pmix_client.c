@@ -1146,11 +1146,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
                             pmix_globals.myid.rank);
     }
 
-    /* stop the progress thread, but leave the event base
-     * still constructed. This will allow us to safely
-     * tear down the infrastructure, including removal
-     * of any events objects may be holding */
-    (void) pmix_progress_thread_pause(NULL);
+    /* wait here until all active events have been processed */
+    PMIx_Progress_thread_stop(NULL, 0);
 
     /* flush anything that is still trying to be written out */
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
@@ -1161,9 +1158,8 @@ PMIX_EXPORT pmix_status_t PMIx_Finalize(const pmix_info_t info[], size_t ninfo)
 
     PMIX_LIST_DESTRUCT(&pmix_client_globals.pending_requests);
     for (i = 0; i < pmix_client_globals.peers.size; i++) {
-        if (NULL
-            != (peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_client_globals.peers,
-                                                                   i))) {
+        peer = (pmix_peer_t *) pmix_pointer_array_get_item(&pmix_client_globals.peers, i);
+        if (NULL != peer) {
             PMIX_RELEASE(peer);
         }
     }
@@ -1204,6 +1200,10 @@ PMIX_EXPORT pmix_status_t PMIx_Abort(int flag, const char msg[],
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* if we are a server (and not a tool), then try to
@@ -1368,6 +1368,10 @@ PMIX_EXPORT pmix_status_t PMIx_Put(pmix_scope_t scope,
         return PMIX_ERR_BAD_PARAM;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* create a callback object */
     cb = PMIX_NEW(pmix_cb_t);
     cb->scope = scope;
@@ -1517,6 +1521,10 @@ PMIX_EXPORT pmix_status_t PMIx_Commit(void)
     /* if we are a singleton, there is nothing to do */
     if (pmix_client_globals.singleton) {
         return PMIX_SUCCESS;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* if we are a server (but not a tool), or we aren't connected, don't attempt to send */
