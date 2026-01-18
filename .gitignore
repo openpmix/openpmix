@@ -114,6 +114,7 @@ examples/pubstress
 examples/monitor
 examples/monitor_remote
 examples/monitor_multi
+examples/simple
 
 include/pmix_version.h
 include/pmix_rename.h
