@@ -77,6 +77,10 @@ PMIX_EXPORT pmix_status_t PMIx_Log(const pmix_info_t data[], size_t ndata,
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     pmix_output_verbose(2, pmix_plog_base_framework.framework_output,
                         "%s pmix:log",
                         PMIX_NAME_PRINT(&pmix_globals.myid));
@@ -157,6 +161,10 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
 
     if (0 == ndata || NULL == data) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     PMIX_PROC_CREATE(source, 1);

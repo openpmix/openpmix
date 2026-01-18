@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,6 +80,10 @@ PMIX_EXPORT pmix_status_t PMIx_Connect(const pmix_proc_t procs[], size_t nprocs,
         return PMIX_ERR_UNREACH;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -131,6 +135,10 @@ PMIX_EXPORT pmix_status_t PMIx_Connect_nb(const pmix_proc_t procs[], size_t npro
     /* if we aren't connected, don't attempt to send */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* check for bozo input */
@@ -341,6 +349,10 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect(const pmix_proc_t procs[], size_t npro
         return PMIX_ERR_UNREACH;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* create a callback object as we need to pass it to the
      * recv routine so we know which callback to use when
      * the return message is recvd */
@@ -351,7 +363,7 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect(const pmix_proc_t procs[], size_t npro
         return rc;
     }
 
-    /* wait for the connect to complete */
+    /* wait for the disconnect to complete */
     PMIX_WAIT_THREAD(&cb->lock);
     rc = cb->status;
     PMIX_RELEASE(cb);
@@ -387,6 +399,10 @@ PMIX_EXPORT pmix_status_t PMIx_Disconnect_nb(const pmix_proc_t procs[], size_t n
     /* if we aren't connected, don't attempt to send */
     if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
         return PMIX_ERR_UNREACH;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* check for bozo input */

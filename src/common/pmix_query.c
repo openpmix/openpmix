@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -472,6 +472,10 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info(pmix_query_t queries[], size_t nquerie
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* pass this to the non-blocking version for processing */
     cd = PMIX_NEW(pmix_query_caddy_t);
     rc = PMIx_Query_info_nb(queries, nqueries, qinfocb, (void*)cd);
@@ -513,6 +517,10 @@ PMIX_EXPORT pmix_status_t PMIx_Query_info_nb(pmix_query_t queries[], size_t nque
 
     if (0 == nqueries || NULL == queries) {
         return PMIX_ERR_BAD_PARAM;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* do a quick check of the qualifiers arrays to ensure

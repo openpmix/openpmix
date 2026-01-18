@@ -6,7 +6,7 @@
  * Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -218,6 +218,10 @@ pmix_status_t PMIx_Session_control(uint32_t sessionID,
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     cd = PMIX_NEW(pmix_shift_caddy_t);

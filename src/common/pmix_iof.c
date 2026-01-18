@@ -298,6 +298,10 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_pull(const pmix_proc_t procs[], size_t nprocs
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* we don't allow stdin to flow thru this path */
     if (PMIX_FWD_STDIN_CHANNEL & channel) {
         return PMIX_ERR_NOT_SUPPORTED;
@@ -467,6 +471,10 @@ PMIX_EXPORT pmix_status_t PMIx_IOF_deregister(size_t iofhdlr, const pmix_info_t 
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* if we are a server, we cannot do this */
@@ -775,6 +783,10 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_b
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     // need to threadshift this request to process it since it accesses

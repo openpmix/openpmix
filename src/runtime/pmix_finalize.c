@@ -68,6 +68,10 @@ void pmix_rte_finalize(void)
         return;
     }
 
+    /* stop the main progress thread - does not release
+     * the event base so we don't break the components */
+    (void) pmix_progress_thread_pause(NULL);
+
     /* release the attribute support trackers */
     pmix_release_registered_attrs();
 
@@ -153,7 +157,7 @@ void pmix_rte_finalize(void)
     pmix_hwloc_finalize();
 
     /* now safe to release the event base */
-    (void) pmix_progress_thread_stop(NULL);
+    (void) pmix_progress_thread_finalize(NULL);
     pmix_tsd_keys_destruct();
 
     pmix_finalize_util();

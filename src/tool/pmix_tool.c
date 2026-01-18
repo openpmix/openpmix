@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2021 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -1490,13 +1490,6 @@ static void finwait_cbfunc(struct pmix_peer_t *pr, pmix_ptl_hdr_t *hdr,
     PMIX_WAKEUP_THREAD(&tev->lock);
 }
 
-static void checkev(int sd, short args, void *cbdata)
-{
-    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
-    PMIX_WAKEUP_THREAD(lock);
-}
-
 PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
 {
     pmix_buffer_t *msg;
@@ -1508,7 +1501,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     pmix_peer_t *peer;
     pmix_pfexec_child_t *child, *nxt;
     pmix_lock_t lock;
-    pmix_event_t ev;
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
@@ -1578,18 +1570,7 @@ PMIX_EXPORT pmix_status_t PMIx_tool_finalize(void)
     }
 
     /* wait here until all active events have been processed */
-    PMIX_CONSTRUCT_LOCK(&lock);
-    pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
-    PMIX_POST_OBJECT(&lock);
-    pmix_event_active(&ev, EV_WRITE, 1);
-    PMIX_WAIT_THREAD(&lock);
-    PMIX_DESTRUCT_LOCK(&lock);
-
-    /* stop the progress thread, but leave the event base
-     * still constructed. This will allow us to safely
-     * tear down the infrastructure, including removal
-     * of any events objects may be holding */
-    (void) pmix_progress_thread_pause(NULL);
+    PMIx_Progress_thread_stop(NULL, 0);
 
     /* flush anything that is still trying to be written out */
     pmix_iof_static_dump_output(&pmix_client_globals.iof_stdout);
@@ -1753,6 +1734,10 @@ pmix_status_t PMIx_tool_attach_to_server(pmix_proc_t *myproc, pmix_proc_t *serve
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     /* check for bozo error */
     if (NULL == info || 0 == ninfo) {
         pmix_show_help("help-pmix-runtime.txt", "tool:no-server", true);
@@ -1853,6 +1838,10 @@ pmix_status_t PMIx_tool_disconnect(const pmix_proc_t *server)
         return PMIX_ERR_INIT;
     }
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     cb = PMIX_NEW(pmix_cb_t);
     cb->proc = (pmix_proc_t *) server;
     PMIX_THREADSHIFT(cb, disc);
@@ -1939,6 +1928,10 @@ pmix_status_t PMIx_tool_get_servers(pmix_proc_t *servers[], size_t *nservers)
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     cb = PMIX_NEW(pmix_cb_t);
@@ -2037,6 +2030,10 @@ pmix_status_t PMIx_tool_set_server(const pmix_proc_t *server,
 
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
+    }
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
     }
 
     /* threadshift this so we can access global structures */
