@@ -5,7 +5,7 @@
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -79,7 +79,9 @@ static void tracker_destructor(pmix_progress_tracker_t *p)
     }
 }
 
-static PMIX_CLASS_INSTANCE(pmix_progress_tracker_t, pmix_list_item_t, tracker_constructor,
+static PMIX_CLASS_INSTANCE(pmix_progress_tracker_t,
+                           pmix_list_item_t,
+                           tracker_constructor,
                            tracker_destructor);
 
 /* LOCAL VARIABLES */
@@ -126,12 +128,60 @@ void PMIx_Progress(void)
 
 static void stop_progress_engine(pmix_progress_tracker_t *trk)
 {
-    assert(trk->ev_active);
+    if (!trk->ev_active) {
+        return;
+    }
     trk->ev_active = false;
     /* break the event loop - this will cause the loop to exit upon
        completion of any current event */
     pmix_event_base_loopexit(trk->ev_base);
     pmix_thread_join(&trk->engine, NULL);
+}
+
+static void checkev(int fd, short args, void *cbdata)
+{
+    pmix_lock_t *lock = (pmix_lock_t*)cbdata;
+    PMIX_HIDE_UNUSED_PARAMS(fd, args, cbdata);
+
+    PMIX_WAKEUP_THREAD(lock);
+}
+
+void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
+{
+    size_t n;
+    bool flush = true;
+    pmix_lock_t lock;
+    pmix_event_t ev;
+    char *key;
+
+    if (!shared_thread_tracker->ev_active) {
+        return;
+    }
+
+    for (n=0; n < ninfo; n++) {
+        key = (char*)info[n].key;
+        if (PMIx_Check_key(key, PMIX_PROGRESS_THREAD_FLUSH)) {
+            flush = PMIX_INFO_TRUE(&info[n]);
+        }
+    }
+
+    // mark progress thread as stopped to prevent new entries from being
+    // added via PMIx API
+    pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
+
+    if (flush) {
+        // put a marker event at the end of the event list
+        PMIX_CONSTRUCT_LOCK(&lock);
+        pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
+        PMIX_POST_OBJECT(&lock);
+        pmix_event_active(&ev, EV_WRITE, 1);
+        PMIX_WAIT_THREAD(&lock);
+        PMIX_DESTRUCT_LOCK(&lock);
+    }
+
+    if (shared_thread_tracker->ev_active) {
+        stop_progress_engine(shared_thread_tracker);
+    }
 }
 
 static int start_progress_engine(pmix_progress_tracker_t *trk)

@@ -46,7 +46,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  * Copyright (c) 2020      Cisco Systems, Inc.  All rights reserved
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -155,6 +155,7 @@ typedef uint32_t pmix_rank_t;
 /* initialization attributes */
 #define PMIX_EXTERNAL_PROGRESS              "pmix.evext"            // (bool) The host shall progress the PMIx library via
                                                                     //        calls to PMIx_Progress
+#define PMIX_PROGRESS_THREAD_FLUSH          "pmix.evflush"          // (bool) Flush the internal progress thread before stopping
 #define PMIX_EXTERNAL_AUX_EVENT_BASE        "pmix.evaux"            // (void*) event base to be used for auxiliary
                                                                     //        functions (e.g., capturing signals) that would
                                                                     //        otherwise interfere with the host
@@ -1623,6 +1624,7 @@ typedef int pmix_status_t;
 #define PMIX_ERR_EMPTY                              -60
 #define PMIX_ERR_LOST_CONNECTION                    -61
 #define PMIX_ERR_EXISTS_OUTSIDE_SCOPE               -62
+#define PMIX_ERR_NOT_AVAILABLE                      -64
 
 /* Process set */
 #define PMIX_PROCESS_SET_DEFINE                     -55

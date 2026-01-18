@@ -5,7 +5,7 @@
  * Copyright (c) 2018      Intel, Inc. All rights reserved.
  * Copyright (c) 2019      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2023-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2023-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -48,6 +48,7 @@
 #define PMIX_CAP_LTO             1
 #define PMIX_CAP_INMEMHELP       2
 #define PMIX_CAP_UPCALLS2        3
+#define PMIX_CAP_STOP_PRGTHRD    4
 
 
 /*****    DEPRECATED    *****/

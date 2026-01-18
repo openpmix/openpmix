@@ -4,7 +4,7 @@
  *                         All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2023      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -102,7 +102,6 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
 #define PMIX_ERR_NOT_IMPLEMENTED                    -48
 #define PMIX_DEBUG_WAITING_FOR_NOTIFY               -58
 #define PMIX_ERR_FATAL                              -63
-#define PMIX_ERR_NOT_AVAILABLE                      -64
 #define PMIX_ERR_VALUE_OUT_OF_BOUNDS                -65
 #define PMIX_ERR_FILE_OPEN_FAILURE                  -67
 #define PMIX_ERR_FILE_READ_FAILURE                  -68
