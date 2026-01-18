@@ -18,7 +18,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -306,7 +306,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_event_use_threads();
 
     /* create an event base and progress thread for us */
-    if (NULL == (pmix_globals.evbase = pmix_progress_thread_init(NULL))) {
+    if (NULL == (pmix_globals.evbase = pmix_progress_thread_init("PMIX Main Progress Thread"))) {
         error = "progress thread";
         ret = PMIX_ERROR;
         goto return_error;
@@ -547,7 +547,7 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     pmix_init_registered_attrs();
 
     /* start progressing the event library */
-    if (PMIX_SUCCESS != (ret = pmix_progress_thread_start(NULL))) {
+    if (PMIX_SUCCESS != (ret = pmix_progress_thread_start("PMIX Main Progress Thread"))) {
         error = "pmix_progress_thread_start";
         goto return_error;
     }
