@@ -153,34 +153,41 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
     pmix_lock_t lock;
     pmix_event_t ev;
     char *key;
-
-    if (!shared_thread_tracker->ev_active) {
-        return;
-    }
+    char *name = NULL;
+    pmix_progress_tracker_t *trk;
 
     for (n=0; n < ninfo; n++) {
         key = (char*)info[n].key;
         if (PMIx_Check_key(key, PMIX_PROGRESS_THREAD_FLUSH)) {
             flush = PMIX_INFO_TRUE(&info[n]);
+        } else if (PMIx_Check_key(key, PMIX_PROGRESS_THREAD_NAME)) {
+            name = info[n].value.data.string;
         }
     }
 
-    // mark progress thread as stopped to prevent new entries from being
-    // added via PMIx API
-    pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
+    PMIX_LIST_FOREACH (trk, &tracking, pmix_progress_tracker_t) {
+        if (NULL == name || 0 == strcmp(name, trk->name)) {
 
-    if (flush) {
-        // put a marker event at the end of the event list
-        PMIX_CONSTRUCT_LOCK(&lock);
-        pmix_event_assign(&ev, pmix_globals.evbase, -1, EV_WRITE, checkev, &lock);
-        PMIX_POST_OBJECT(&lock);
-        pmix_event_active(&ev, EV_WRITE, 1);
-        PMIX_WAIT_THREAD(&lock);
-        PMIX_DESTRUCT_LOCK(&lock);
+            /* If the progress thread is active, stop it */
+            if (trk->ev_active) {
+                if (flush) {
+                    // put a marker event at the end of the event list
+                    PMIX_CONSTRUCT_LOCK(&lock);
+                    pmix_event_assign(&ev, trk->ev_base, -1, EV_WRITE, checkev, &lock);
+                    PMIX_POST_OBJECT(&lock);
+                    pmix_event_active(&ev, EV_WRITE, 1);
+                    PMIX_WAIT_THREAD(&lock);
+                    PMIX_DESTRUCT_LOCK(&lock);
+                }
+                stop_progress_engine(trk);
+            }
+        }
     }
 
-    if (shared_thread_tracker->ev_active) {
-        stop_progress_engine(shared_thread_tracker);
+    if (NULL == name || 0 == strcmp(name, shared_thread_tracker->name)) {
+        // mark progress thread as stopped to prevent new entries from being
+        // added via PMIx API
+        pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
     }
 }
 
