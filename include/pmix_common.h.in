@@ -156,6 +156,8 @@ typedef uint32_t pmix_rank_t;
 #define PMIX_EXTERNAL_PROGRESS              "pmix.evext"            // (bool) The host shall progress the PMIx library via
                                                                     //        calls to PMIx_Progress
 #define PMIX_PROGRESS_THREAD_FLUSH          "pmix.evflush"          // (bool) Flush the internal progress thread before stopping
+#define PMIX_PROGRESS_THREAD_NAME           "pmix.evname"           // (char*) Name of specific progress thread to stop. NULL is
+                                                                    //         interpreted to mean all threads
 #define PMIX_EXTERNAL_AUX_EVENT_BASE        "pmix.evaux"            // (void*) event base to be used for auxiliary
                                                                     //        functions (e.g., capturing signals) that would
                                                                     //        otherwise interfere with the host
