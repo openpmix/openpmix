@@ -8,7 +8,7 @@
  * Copyright (c) 2016      Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2024      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -1255,6 +1255,15 @@ static void dmdx_cbfunc(pmix_status_t status, const char *data, size_t ndata, vo
                         pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_dmdx_reply_caddy_t *caddy;
+    pmix_dmdx_local_t *lcd = (pmix_dmdx_local_t *) cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        if (NULL != release_fn) {
+            release_fn(release_cbdata);
+        }
+        PMIX_RELEASE(lcd);
+        return;
+    }
 
     /* because the host RM is calling us from their own thread, we
      * need to thread-shift into our local progress thread before

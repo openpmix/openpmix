@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -52,7 +52,7 @@ static void infocbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, vo
     myquery_data_t *mq = (myquery_data_t *) cbdata;
     size_t n;
 
-    fprintf(stderr, "Allocation request returned %s", PMIx_Error_string(status));
+    fprintf(stderr, "Allocation request returned %s\n", PMIx_Error_string(status));
 
     /* save the returned info - the PMIx library "owns" it
      * and will release it and perform other cleanup actions
@@ -196,11 +196,16 @@ int main(int argc, char **argv)
             goto done;
         }
         DEBUG_WAIT_THREAD(&mydata.lock);
+        rc = mydata.lock.status;
         PMIX_INFO_FREE(info, 2);
         fprintf(stderr, "Client ns %s rank %d: Allocation returned status: %s\n", myproc.nspace,
-                myproc.rank, PMIx_Error_string(mydata.lock.status));
+                myproc.rank, PMIx_Error_string(rc));
         DEBUG_DESTRUCT_MYQUERY(&mydata);
 
+        if (PMIX_SUCCESS != rc) {
+            // need to notify rank=1 so it gets released
+            PMIx_Notify_event(PMIX_NOTIFY_ALLOC_COMPLETE, &myproc, PMIX_RANGE_GLOBAL, NULL, 0, NULL, NULL);
+        }
     } else if (1 == myproc.rank) {
         /* demonstrate a notification based approach - register a handler
          * specifically for when the allocation operation completes */
