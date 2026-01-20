@@ -165,9 +165,14 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
         }
     }
 
+    if (NULL == name || 0 == strcmp(name, shared_thread_tracker->name)) {
+        // mark progress thread as stopped to prevent new entries from being
+        // added via PMIx API
+        pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
+    }
+
     PMIX_LIST_FOREACH (trk, &tracking, pmix_progress_tracker_t) {
         if (NULL == name || 0 == strcmp(name, trk->name)) {
-
             /* If the progress thread is active, stop it */
             if (trk->ev_active) {
                 if (flush) {
@@ -184,11 +189,6 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
         }
     }
 
-    if (NULL == name || 0 == strcmp(name, shared_thread_tracker->name)) {
-        // mark progress thread as stopped to prevent new entries from being
-        // added via PMIx API
-        pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
-    }
 }
 
 static int start_progress_engine(pmix_progress_tracker_t *trk)

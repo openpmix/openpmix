@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      ParTec AG.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -289,7 +289,8 @@ int main(int argc, char **argv)
         goto done;
     }
     if (0 == myproc.rank) {
-        sleep(2);
+        fprintf(stderr, "Rank 0 sleeping\n");
+        sleep(5);
     }
 
     /* call fence to synchronize with our peers - instruct

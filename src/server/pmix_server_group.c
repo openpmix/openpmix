@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -483,6 +483,11 @@ static void grpcbfunc(pmix_status_t status,
 {
     grp_block_t *blk = (grp_block_t *) cbdata;
     grp_shifter_t *scd;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(blk);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.group_output,
                         "server:grpcbfunc called with %d info", (int) ninfo);
