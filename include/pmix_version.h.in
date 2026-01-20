@@ -49,6 +49,7 @@
 #define PMIX_CAP_INMEMHELP       2
 #define PMIX_CAP_UPCALLS2        3
 #define PMIX_CAP_STOP_PRGTHRD    4
+#define PMIX_CAP_GET_NUMBER_FN   5
 
 
 /*****    DEPRECATED    *****/
