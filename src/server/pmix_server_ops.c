@@ -560,6 +560,11 @@ void pmix_server_spcbfunc(pmix_status_t status, char nspace[], void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
+
     cd->status = status;
     if (NULL != nspace) {
         cd->nspace = strdup(nspace);
@@ -872,6 +877,11 @@ static void regevopcbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
+
     /* if the registration succeeded, then check local cache */
     if (PMIX_SUCCESS == status) {
         cd->status = status;
@@ -1118,6 +1128,11 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
              * occur after we send the registration response back to the client,
              * thus guaranteeing that the client will get their registration
              * callback prior to delivery of an event notification */
+            if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+                PMIX_RELEASE(scd);
+                return PMIX_ERR_NOT_AVAILABLE;
+            }
+
             PMIX_RETAIN(peer);
             scd->peer = peer;
             scd->procs = affected;
@@ -1143,6 +1158,10 @@ pmix_status_t pmix_server_register_events(pmix_peer_t *peer, pmix_buffer_t *buf,
          * occur after we send the registration response back to the client,
          * thus guaranteeing that the client will get their registration
          * callback prior to delivery of an event notification */
+        if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+            return PMIX_ERR_NOT_AVAILABLE;
+        }
+
         scd = PMIX_NEW(pmix_setup_caddy_t);
         PMIX_RETAIN(peer);
         scd->peer = peer;
@@ -1370,7 +1389,11 @@ pmix_status_t pmix_server_query(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_status_t rc;
     pmix_query_caddy_t *cd;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output,
+     if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+   pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd query from client");
 
     cd = PMIX_NEW(pmix_query_caddy_t);
@@ -1922,7 +1945,11 @@ pmix_status_t pmix_server_monitor(pmix_peer_t *peer, pmix_buffer_t *buf,
     pmix_status_t rc;
     pmix_cb_t *cb;
 
-    pmix_output_verbose(2, pmix_server_globals.base_output,
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
+   pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd monitor request from client %s",
                         PMIX_PEER_PRINT(peer));
 
@@ -2444,6 +2471,10 @@ pmix_status_t pmix_server_fabric_register(pmix_server_caddy_t *cd, pmix_buffer_t
     pmix_proc_t proc;
     pmix_fabric_t fabric;
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
+
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd register_fabric request from client");
 
@@ -2535,6 +2566,10 @@ pmix_status_t pmix_server_fabric_update(pmix_server_caddy_t *cd, pmix_buffer_t *
     pmix_query_caddy_t *qcd;
     pmix_proc_t proc;
     pmix_fabric_t fabric;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "recvd update_fabric request from client");

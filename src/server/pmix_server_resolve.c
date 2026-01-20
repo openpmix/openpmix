@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2019 Mellanox Technologies, Inc.
  *                         All rights reserved.
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -85,6 +85,10 @@ pmix_status_t pmix_server_resolve_peers(pmix_server_caddy_t *cd,
     char *nodename = NULL;
     char *nd, *str;
     pmix_info_t *iptr;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
 
     /* unpack the nodename */
     cnt = 1;
@@ -424,6 +428,10 @@ pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
     pmix_status_t rc;
     pmix_info_t *iptr;
     char *str;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return PMIX_ERR_NOT_AVAILABLE;
+    }
 
     /* unpack the nspace */
     cnt = 1;
