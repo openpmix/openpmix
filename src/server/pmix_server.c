@@ -3391,6 +3391,12 @@ static void _opcbfunc(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(scd);
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scd);
+        return;
+    }
+
     /* setup the reply with the returned status */
     if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
@@ -3429,10 +3435,16 @@ cleanup:
 static void op_cbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:op_cbfunc called with %s status",
                         PMIx_Error_string(status));
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     /* need to thread-shift this callback */
     scd = PMIX_NEW(pmix_shift_caddy_t);
@@ -3450,10 +3462,16 @@ static void op_cbfunc(pmix_status_t status, void *cbdata)
 static void op_cbfunc2(pmix_status_t status, void *cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:op_cbfunc2 called with %s status",
                         PMIx_Error_string(status));
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     /* need to thread-shift this callback */
     scd = PMIX_NEW(pmix_shift_caddy_t);
@@ -3473,24 +3491,25 @@ static void _resopcbfunc(int sd, short args, void *cbdata)
     pmix_shift_caddy_t *scdwrapper = (pmix_shift_caddy_t *) cbdata;
     pmix_setup_caddy_t *scd = (pmix_setup_caddy_t*)scdwrapper->cbdata;
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) scd->cbdata;
-    pmix_buffer_t *reply;
+    pmix_buffer_t *reply = NULL;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(scdwrapper);
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        goto cleanup;
+    }
+
     /* setup the reply with the returned status */
     if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
         PMIX_ERROR_LOG(PMIX_ERR_OUT_OF_RESOURCE);
-        PMIX_RELEASE(cd);
-        return;
+        goto cleanup;
     }
     PMIX_BFROPS_PACK(rc, cd->peer, reply, &scdwrapper->status, 1, PMIX_STATUS);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(reply);
-        PMIX_RELEASE(cd);
-        return;
+        goto cleanup;
     }
 
     /* the function that created the server_caddy did a
@@ -3499,23 +3518,36 @@ static void _resopcbfunc(int sd, short args, void *cbdata)
     PMIX_PTL_SEND_ONEWAY(rc, cd->peer, reply, cd->hdr.tag);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIX_RELEASE(reply);
+        goto cleanup;
     }
+    return;
 
     /* cleanup */
+cleanup:
     PMIX_RELEASE(cd);
     if (NULL != scd->nspace) {
         free(scd->nspace);
     }
     PMIX_RELEASE(scd);
+    PMIX_RELEASE(scdwrapper);
+    if (NULL != reply) {
+        PMIX_RELEASE(reply);
+    }
 }
+
 static void resop_cbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:resop_cbfunc called with %s status",
                         PMIx_Error_string(status));
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     /* need to thread-shift this callback */
     scd = PMIX_NEW(pmix_shift_caddy_t);
@@ -3540,6 +3572,10 @@ static void _spcb(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cd);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        goto cleanup;
+    }
 
     /* setup the reply with the returned status */
     if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
@@ -3601,6 +3637,12 @@ cleanup:
 static void spawn_cbfunc(pmix_status_t status, char *nspace, void *cbdata)
 {
     pmix_shift_caddy_t *cd;
+    pmix_server_caddy_t *scd = (pmix_server_caddy_t *) cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     /* need to thread-shift this request */
     cd = PMIX_NEW(pmix_shift_caddy_t);
@@ -3623,6 +3665,9 @@ static void _lkupcbfunc(int sd, short args, void *cbdata)
 
     PMIX_ACQUIRE_OBJECT(scd);
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        goto cleanup;
+    }
     /* no need to thread-shift as no global data is accessed */
     /* setup the reply with the returned status */
     if (NULL == (reply = PMIX_NEW(pmix_buffer_t))) {
@@ -3673,6 +3718,11 @@ static void lookup_cbfunc(pmix_status_t status, pmix_pdata_t pdata[], size_t nda
     size_t n;
     pmix_status_t rc;
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
+
     /* need to thread-shift this request */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     scd->status = status;
@@ -3708,9 +3758,14 @@ static void _mdxcbfunc(int sd, short args, void *cbdata)
     pmix_nspace_caddy_t *nptr;
     pmix_list_t nslist;
     bool found;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(scd);
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     if (NULL == tracker) {
         /* give them a release if they want it - this should
@@ -3841,6 +3896,10 @@ static void modex_cbfunc(pmix_status_t status, const char *data, size_t ndata, v
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:modex_cbfunc called with %d bytes", (int) ndata);
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return;
+    }
+
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
@@ -3867,6 +3926,12 @@ static void _getcbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply, buf;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     if (NULL == cd) {
         /* nothing to do - but be sure to give them
@@ -3929,6 +3994,12 @@ static void get_cbfunc(pmix_status_t status, const char *data, size_t ndata, voi
                        pmix_release_cbfunc_t relfn, void *relcbd)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
@@ -3962,9 +4033,14 @@ static void _cnct(int sd, short args, void *cbdata)
     pmix_proc_t proc;
     pmix_cb_t cb;
     pmix_kval_t *kptr;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(scd);
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     if (NULL == tracker) {
         /* nothing to do */
@@ -4142,6 +4218,10 @@ static void cnct_cbfunc(pmix_status_t status, void *cbdata)
     pmix_output_verbose(2, pmix_server_globals.connect_output,
                         "server:cnct_cbfunc called");
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return;
+    }
+
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
@@ -4160,9 +4240,14 @@ static void _discnct(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     pmix_server_caddy_t *cd;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(scd);
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     if (NULL == tracker) {
         /* nothing to do */
@@ -4221,6 +4306,10 @@ static void discnct_cbfunc(pmix_status_t status, void *cbdata)
                         "server:discnct_cbfunc called on nspace %s",
                         (NULL == tracker) ? "NULL" : tracker->pname.nspace);
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        return;
+    }
+
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
     if (NULL == scd) {
@@ -4239,6 +4328,12 @@ static void _evcbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:events_cbfunc called status = %s",
@@ -4267,9 +4362,15 @@ cleanup:
 static void events_cbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:events_cbfunc called");
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     /* need to thread-shift this callback as it accesses global data */
     scd = PMIX_NEW(pmix_shift_caddy_t);
@@ -4290,6 +4391,19 @@ static void _alloccbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        if (NULL != qcd->queries) {
+            PMIX_QUERY_FREE(qcd->queries, qcd->nqueries);
+        }
+        if (NULL != qcd->info) {
+            PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+        }
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        PMIX_RELEASE(scd);
+        return;
+     }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:alloc callback with status %s",
@@ -4347,6 +4461,20 @@ static void alloc_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
                          pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        if (NULL != qcd->queries) {
+            PMIX_QUERY_FREE(qcd->queries, qcd->nqueries);
+        }
+        if (NULL != qcd->info) {
+            PMIX_INFO_FREE(qcd->info, qcd->ninfo);
+        }
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:alloc_cbfunc called");
@@ -4373,6 +4501,12 @@ static void _qrycbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(scdwrapper);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:query callback with status %s",
@@ -4423,6 +4557,12 @@ static void query_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
                          pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t*)cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:query_cbfunc called");
@@ -4450,6 +4590,13 @@ static void _sctrl_cbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(scdwrapper);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:session_ctrl callback with status %s",
@@ -4500,24 +4647,32 @@ cleanup:
 static void sessctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, void *cbdata,
                             pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
-    pmix_shift_caddy_t *scd;
+    pmix_shift_caddy_t *scdwrapper;
+    pmix_shift_caddy_t *scd = (pmix_shift_caddy_t *)cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)scd->cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:sessctrl_cbfunc called");
 
     /* need to thread-shift this callback as it accesses global data */
-    scd = PMIX_NEW(pmix_shift_caddy_t);
-    if (NULL == scd) {
+    scdwrapper = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scdwrapper) {
         /* nothing we can do */
         return;
     }
-    scd->status = status;
-    scd->info = info;
-    scd->ninfo = ninfo;
-    scd->cbdata = cbdata;
-    scd->cbfunc.relfn = release_fn;
-    scd->relcbdata = release_cbdata;
-    PMIX_THREADSHIFT(scd, _sctrl_cbfunc);
+    scdwrapper->status = status;
+    scdwrapper->info = info;
+    scdwrapper->ninfo = ninfo;
+    scdwrapper->cbdata = cbdata;
+    scdwrapper->cbfunc.relfn = release_fn;
+    scdwrapper->relcbdata = release_cbdata;
+    PMIX_THREADSHIFT(scdwrapper, _sctrl_cbfunc);
 }
 
 static void _jctrl_cbfunc(int sd, short args, void *cbdata)
@@ -4528,6 +4683,13 @@ static void _jctrl_cbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:_jctrl_cbfunc callback with status %s",
@@ -4583,6 +4745,14 @@ static void jctrl_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo, 
                          pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:jctrl_cbfunc called");
@@ -4609,6 +4779,12 @@ static void _mon_cbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:_mon_cbfunc callback with status %s",
@@ -4656,6 +4832,12 @@ static void monitor_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo
                            pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:monitor_cbfunc called");
@@ -4683,6 +4865,13 @@ static void _cred_cbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:get credential callback with status %s",
@@ -4750,6 +4939,12 @@ static void cred_cbfunc(pmix_status_t status, pmix_byte_object_t *credential,
     pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
     pmix_status_t rc;
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        return;
+    }
+
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:cred_cbfunc called");
 
@@ -4783,6 +4978,13 @@ static void _valcbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_globals.debug_output,
                         "pmix:validate credential callback with status %s",
@@ -4833,8 +5035,16 @@ cleanup:
 static void validate_cbfunc(pmix_status_t status, pmix_info_t info[], size_t ninfo, void *cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
     pmix_status_t rc;
     size_t n;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:validate_cbfunc called");
@@ -4872,9 +5082,15 @@ static void _iofreg(int sd, short args, void *cbdata)
     pmix_status_t rc;
     pmix_iof_req_t *req;
     pmix_iof_cache_t *iof, *inxt;
+    PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cd);
-    PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     /* setup the reply to the requestor */
     reply = PMIX_NEW(pmix_buffer_t);
@@ -4951,6 +5167,10 @@ static void iof_cbfunc(pmix_status_t status, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
 
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
     pmix_output_verbose(2, pmix_server_globals.iof_output,
                         "server:iof_cbfunc called with status %d", status);
 
@@ -4974,6 +5194,13 @@ static void _iofdreg(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cd);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scdwrapper);
+        return;
+    }
 
     /* setup the reply to the requestor */
     reply = PMIX_NEW(pmix_buffer_t);
@@ -5007,22 +5234,30 @@ cleanup:
 
 static void iofdereg(pmix_status_t status, void *cbdata)
 {
-    pmix_shift_caddy_t *scd;
+    pmix_shift_caddy_t *scdwrapper;
+    pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
+    pmix_server_caddy_t *scd = (pmix_server_caddy_t *) cd->cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:_iofdereg called with %s status",
                         PMIx_Error_string(status));
 
     /* need to thread-shift this callback */
-    scd = PMIX_NEW(pmix_shift_caddy_t);
-    if (NULL == scd) {
+    scdwrapper = PMIX_NEW(pmix_shift_caddy_t);
+    if (NULL == scdwrapper) {
         /* nothing we can do */
         PMIX_ERROR_LOG(PMIX_ERR_NOMEM);
         return;
     }
-    scd->status = status;
-    scd->cbdata = cbdata;
-    PMIX_THREADSHIFT(scd, _iofdreg);
+    scdwrapper->status = status;
+    scdwrapper->cbdata = cbdata;
+    PMIX_THREADSHIFT(scdwrapper, _iofdreg);
 }
 
 static void _fabcbfunc(int sd, short args, void *cbdata)
@@ -5033,6 +5268,13 @@ static void _fabcbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(qcd);
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:fabric callback with status %s",
@@ -5087,6 +5329,14 @@ static void fabric_cbfunc(pmix_status_t status, pmix_info_t *info, size_t ninfo,
                           pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_query_caddy_t *qcd = (pmix_query_caddy_t *) cbdata;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *) qcd->cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(qcd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:fabric_cbfunc called");
@@ -5117,6 +5367,12 @@ static void _distcbfunc(int sd, short args, void *cbdata)
     pmix_buffer_t *reply;
     pmix_status_t rc;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:fabric callback with status %s",
@@ -5164,6 +5420,12 @@ static void dist_cbfunc(pmix_status_t status, pmix_device_distance_t *dist, size
                         pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:dist_cbfunc called");
@@ -5199,6 +5461,12 @@ static void _respeerscbfunc(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cd);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        PMIX_RELEASE(scd);
+        return;
+    }
 
     ret = scd->status;
     if (PMIX_SUCCESS == ret) {
@@ -5274,6 +5542,12 @@ static void respeers_cbfunc(pmix_status_t status, pmix_info_t info[], size_t nin
                             pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:respeers_cbfunc called");
@@ -5308,6 +5582,12 @@ static void _resnodescbfunc(int sd, short args, void *cbdata)
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(cd);
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(scd);
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     ret = scd->status;
     if (PMIX_SUCCESS == ret) {
@@ -5376,6 +5656,12 @@ static void resnodes_cbfunc(pmix_status_t status, pmix_info_t info[], size_t nin
                             pmix_release_cbfunc_t release_fn, void *release_cbdata)
 {
     pmix_shift_caddy_t *scd;
+    pmix_server_caddy_t *cd = (pmix_server_caddy_t *)cbdata;
+
+    if (pmix_atomic_check_bool(&pmix_globals.progress_thread_stopped)) {
+        PMIX_RELEASE(cd);
+        return;
+    }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "server:resnodes_cbfunc called");
