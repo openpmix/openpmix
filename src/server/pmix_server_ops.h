@@ -8,7 +8,7 @@
  * Copyright (c) 2016-2020 IBM Corporation.  All rights reserved.
  * Copyright (c) 2016-2018 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  */
 
@@ -387,6 +387,10 @@ PMIX_EXPORT pmix_status_t pmix_server_resolve_node(pmix_server_caddy_t *cd,
                                                    pmix_info_cbfunc_t cbfunc);
 
 PMIX_EXPORT void pmix_server_locally_resolve_node(int sd, short args, void *cbdata);
+
+PMIX_EXPORT pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
+                                                      pmix_info_t *pinfo,
+                                                      size_t npinfo);
 
 PMIX_EXPORT extern pmix_server_module_t pmix_host_server;
 PMIX_EXPORT extern pmix_server_globals_t pmix_server_globals;

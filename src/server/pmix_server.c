@@ -1637,52 +1637,6 @@ PMIX_EXPORT void PMIx_server_deregister_nspace(const pmix_nspace_t nspace, pmix_
     PMIX_THREADSHIFT(cd, _deregister_nspace);
 }
 
-static pmix_status_t process_grpinfo(size_t ctxid,
-                                     pmix_info_t *pinfo,
-                                     size_t npinfo)
-{
-    size_t m;
-    pmix_kval_t kp;
-    pmix_value_t val;
-    pmix_data_array_t darray;
-    pmix_info_t *piptr;
-    pmix_status_t rc;
-    pmix_proc_t procid;
-
-    // the first element in the array must be the procID
-    // of the process that contributed this info
-    if (!PMIX_CHECK_KEY(&pinfo[0], PMIX_PROCID)) {
-        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
-        return PMIX_ERR_BAD_PARAM;
-    }
-    memcpy(&procid, pinfo[0].value.data.proc, sizeof(pmix_proc_t));
-    /* reconstruct each value as a qualified one based
-     * on the ctxid */
-    PMIX_CONSTRUCT(&kp, pmix_kval_t);
-    kp.value = &val;
-    kp.key = PMIX_QUALIFIED_VALUE;
-    val.type = PMIX_DATA_ARRAY;
-    for (m=1; m < npinfo; m++) {
-        PMIX_DATA_ARRAY_CONSTRUCT(&darray, 2, PMIX_INFO);
-        piptr = (pmix_info_t*)darray.array;
-        /* the primary value is in the first position */
-        PMIX_INFO_XFER(&piptr[0], &pinfo[m]);
-        /* add the context ID qualifier */
-        PMIX_INFO_LOAD(&piptr[1], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
-        PMIX_INFO_SET_QUALIFIER(&piptr[1]);
-        /* add it to the kval */
-        val.data.darray = &darray;
-        /* store it */
-        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &procid, PMIX_GLOBAL, &kp);
-        PMIX_DATA_ARRAY_DESTRUCT(&darray);
-        if (PMIX_SUCCESS != rc) {
-            PMIX_ERROR_LOG(rc);
-            return rc;
-        }
-    }
-    return PMIX_SUCCESS;
-}
-
 static void _register_resources(int sd, short args, void *cbdata)
 {
     pmix_setup_caddy_t *cd = (pmix_setup_caddy_t *) cbdata;
@@ -1784,7 +1738,7 @@ static void _register_resources(int sd, short args, void *cbdata)
 
             if (PMIX_CHECK_KEY(g->info, PMIX_GROUP_INFO)) {
                 // this is just a single array of group info
-                rc = process_grpinfo(ctxid, iptr, ninfo);
+                rc = pmix_server_process_grpinfo(ctxid, iptr, ninfo);
                 if (PMIX_SUCCESS != rc) {
                     goto release;
                 }
@@ -1793,7 +1747,7 @@ static void _register_resources(int sd, short args, void *cbdata)
                 for (n=0; n < ninfo; n++) {
                     pinfo = (pmix_info_t*)iptr[n].value.data.darray->array;
                     npinfo = iptr[n].value.data.darray->size;
-                    rc = process_grpinfo(ctxid, pinfo, npinfo);
+                    rc = pmix_server_process_grpinfo(ctxid, pinfo, npinfo);
                     if (PMIX_SUCCESS != rc) {
                         goto release;
                     }

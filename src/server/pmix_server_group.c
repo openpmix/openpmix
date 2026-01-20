@@ -350,6 +350,52 @@ newblock:
     return PMIX_SUCCESS;
 }
 
+pmix_status_t pmix_server_process_grpinfo(size_t ctxid,
+                                          pmix_info_t *pinfo,
+                                          size_t npinfo)
+{
+    size_t m;
+    pmix_kval_t kp;
+    pmix_value_t val;
+    pmix_data_array_t darray;
+    pmix_info_t *piptr;
+    pmix_status_t rc;
+    pmix_proc_t procid;
+
+    // the first element in the array must be the procID
+    // of the process that contributed this info
+    if (!PMIX_CHECK_KEY(&pinfo[0], PMIX_PROCID)) {
+        PMIX_ERROR_LOG(PMIX_ERR_BAD_PARAM);
+        return PMIX_ERR_BAD_PARAM;
+    }
+    memcpy(&procid, pinfo[0].value.data.proc, sizeof(pmix_proc_t));
+    /* reconstruct each value as a qualified one based
+     * on the ctxid */
+    PMIX_CONSTRUCT(&kp, pmix_kval_t);
+    kp.value = &val;
+    kp.key = PMIX_QUALIFIED_VALUE;
+    val.type = PMIX_DATA_ARRAY;
+    for (m=1; m < npinfo; m++) {
+        PMIX_DATA_ARRAY_CONSTRUCT(&darray, 2, PMIX_INFO);
+        piptr = (pmix_info_t*)darray.array;
+        /* the primary value is in the first position */
+        PMIX_INFO_XFER(&piptr[0], &pinfo[m]);
+        /* add the context ID qualifier */
+        PMIX_INFO_LOAD(&piptr[1], PMIX_GROUP_CONTEXT_ID, &ctxid, PMIX_SIZE);
+        PMIX_INFO_SET_QUALIFIER(&piptr[1]);
+        /* add it to the kval */
+        val.data.darray = &darray;
+        /* store it */
+        PMIX_GDS_STORE_KV(rc, pmix_globals.mypeer, &procid, PMIX_GLOBAL, &kp);
+        PMIX_DATA_ARRAY_DESTRUCT(&darray);
+        if (PMIX_SUCCESS != rc) {
+            PMIX_ERROR_LOG(rc);
+            return rc;
+        }
+    }
+    return PMIX_SUCCESS;
+}
+
 static void _grpcbfunc(int sd, short args, void *cbdata)
 {
     grp_shifter_t *scd = (grp_shifter_t *) cbdata;
@@ -359,10 +405,14 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
     grp_trk_t *trk;
     pmix_server_caddy_t *cd;
     pmix_buffer_t *reply;
-    pmix_status_t ret;
+    pmix_status_t ret, rc;
     size_t n, ctxid = SIZE_MAX, nmembers = 0;
     pmix_proc_t *members = NULL;
     bool ctxid_given = false;
+    pmix_info_t *iptr, *pinfo;
+    size_t ninfo, npinfo;
+    pmix_list_t grpinfo;
+    pmix_info_caddy_t *g=NULL;
     PMIX_HIDE_UNUSED_PARAMS(sd, args);
 
     PMIX_ACQUIRE_OBJECT(scd);
@@ -377,6 +427,7 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
         return;
     }
 
+    PMIX_CONSTRUCT(&grpinfo, pmix_list_t);
     /* see if this group was assigned a context ID or collected data */
     for (n = 0; n < scd->ninfo; n++) {
         if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_CONTEXT_ID)) {
@@ -390,12 +441,69 @@ static void _grpcbfunc(int sd, short args, void *cbdata)
         } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_MEMBERSHIP)) {
             members = (pmix_proc_t*)scd->info[n].value.data.darray->array;
             nmembers = scd->info[n].value.data.darray->size;
+
+        } else if (PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_INFO_ARRAY) ||
+                   PMIX_CHECK_KEY(&scd->info[n], PMIX_GROUP_INFO)) {
+            g = PMIX_NEW(pmix_info_caddy_t);
+            g->info = &scd->info[n];
+            pmix_list_append(&grpinfo, &g->super);
+
         }
     }
 
     // preserve the group id
     id = strdup(blk->id);
     op = blk->grpop;
+
+    // if group info was provided, then we need to store it
+    // in our hash table too
+    if (0 < pmix_list_get_size(&grpinfo)) {
+        // must have been given a context ID
+        if (!ctxid_given) {
+            if (NULL != scd->relfn) {
+                scd->relfn(scd->cbdata);
+            }
+            PMIX_RELEASE(scd);
+            PMIX_LIST_DESTRUCT(&grpinfo);
+            return;
+        }
+        /* Each list member points to a pmix_info_t that contains
+         * a data array of info from a given proc */
+        PMIX_LIST_FOREACH(g, &grpinfo, pmix_info_caddy_t) {
+            iptr = (pmix_info_t*)g->info->value.data.darray->array;
+            ninfo = g->info->value.data.darray->size;
+
+            if (PMIX_CHECK_KEY(g->info, PMIX_GROUP_INFO)) {
+                // this is just a single array of group info
+                rc = pmix_server_process_grpinfo(ctxid, iptr, ninfo);
+                if (PMIX_SUCCESS != rc) {
+                    PMIX_ERROR_LOG(rc);
+                    if (NULL != scd->relfn) {
+                        scd->relfn(scd->cbdata);
+                    }
+                    PMIX_RELEASE(scd);
+                    PMIX_LIST_DESTRUCT(&grpinfo);
+                    return;
+                }
+            } else {
+                // contains an array of group info arrays
+                for (n=0; n < ninfo; n++) {
+                    pinfo = (pmix_info_t*)iptr[n].value.data.darray->array;
+                    npinfo = iptr[n].value.data.darray->size;
+                    rc = pmix_server_process_grpinfo(ctxid, pinfo, npinfo);
+                    if (PMIX_SUCCESS != rc) {
+                        PMIX_ERROR_LOG(rc);
+                        if (NULL != scd->relfn) {
+                            scd->relfn(scd->cbdata);
+                        }
+                        PMIX_RELEASE(scd);
+                        PMIX_LIST_DESTRUCT(&grpinfo);
+                        return;
+                    }
+                }
+            }
+        }
+    }
 
     // because bootstrap will have added multiple blocks to the collectives
     // for each bootstrap operation, cycle across the list to find them all
