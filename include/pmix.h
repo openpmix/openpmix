@@ -1049,6 +1049,16 @@ PMIX_EXPORT pmix_status_t PMIx_Fabric_deregister_nb(pmix_fabric_t *fabric,
  * Returns an array of distances from the current process
  * location to each of the local devices of the specified type(s)
  *
+ * topo - the topology to use for the computation. If NULL,
+ *        then the local topology stored in PMIx itself will
+ *        be used
+ *
+ * cpuset - the cpus to which the process is bound
+ *
+ * info - an array of attributes directing the computation.
+ *
+ * ninfo - number of info in the array
+ *
  * distances - pointer to location where the array of
  *             distances is to be returned
  *
