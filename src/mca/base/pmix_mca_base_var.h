@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -124,9 +124,34 @@ typedef enum {
 } pmix_mca_base_var_syn_flag_t;
 
 typedef enum {
-    PMIX_MCA_BASE_VAR_FLAG_NONE = 0x0000,
+    /** Variable is internal (hidden from *_info) */
+    PMIX_MCA_BASE_VAR_FLAG_INTERNAL = 0x0001,
+    /** Variable will always be the default value. Implies
+        !PMIX_MCA_BASE_VAR_FLAG_SETTABLE */
+    PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY = 0x0002,
+    /** Variable can be set with mca_base_var_set() */
+    PMIX_MCA_BASE_VAR_FLAG_SETTABLE = 0x0004,
     /** Variable is deprecated */
     PMIX_MCA_BASE_VAR_FLAG_DEPRECATED = 0x0008,
+    /** Variable has been overridden */
+    PMIX_MCA_BASE_VAR_FLAG_OVERRIDE = 0x0010,
+    /** Variable may not be set from a file */
+    PMIX_MCA_BASE_VAR_FLAG_ENVIRONMENT_ONLY = 0x0020,
+    /** Variable should be deregistered when the group is deregistered
+        (DWG = "deregister with group").  This flag is set
+        automatically when you register a variable with
+        mca_base_component_var_register(), but can also be set
+        manually when you register a variable with
+        mca_base_var_register().  Analogous to the
+        MCA_BASE_PVAR_FLAG_IWG. */
+    PMIX_MCA_BASE_VAR_FLAG_DWG = 0x0040,
+    /** Variable has a default value of "unset". Meaning to only
+     * be set when the user explicitly asks for it */
+    PMIX_MCA_BASE_VAR_FLAG_DEF_UNSET = 0x0080,
+} pmix_mca_base_var_flag_t;
+
+typedef enum {
+    PMIX_MCA_BASE_VAR_FLAG_NONE = 0x0000,
     /** Variable is valid */
     PMIX_MCA_BASE_VAR_FLAG_VALID = 0x00010000,
     /** Variable is a synonym */
@@ -568,8 +593,22 @@ typedef enum {
     /* Dump easily parsable strings */
     PMIX_MCA_BASE_VAR_DUMP_PARSABLE = 1,
     /* Dump simple name=value string */
-    PMIX_MCA_BASE_VAR_DUMP_SIMPLE = 2
+    PMIX_MCA_BASE_VAR_DUMP_SIMPLE = 2,
+    /* Dump in color */
+    PMIX_MCA_BASE_VAR_DUMP_READABLE_COLOR = 3
 } pmix_mca_base_var_dump_type_t;
+
+/* Supported color configuration keys
+ * for dumping MCA variables with colors */
+typedef enum {
+    PMIX_VAR_DUMP_COLOR_VAR_NAME = 0,
+    PMIX_VAR_DUMP_COLOR_VAR_VALUE = 1,
+    PMIX_VAR_DUMP_COLOR_VALID_VALUES = 2,
+    PMIX_VAR_DUMP_COLOR_KEY_COUNT
+} pmix_var_dump_color_key_t;
+
+extern char *pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_KEY_COUNT];
+
 
 /**
  * Dump strings describing the MCA variable at an index.

@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
+# Copyright (c) 2022-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -20,6 +20,12 @@
 # $HEADER$
 #
 # This is the US/English help file for pctrl
+#
+[version]
+
+%s (%s) %s
+
+%s
 #
 [usage]
 %s (%s) %s

@@ -12,13 +12,20 @@
 # Copyright (c) 2008-2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2017-2020 Intel, Inc.  All rights reserved.
-# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
 #
 # $HEADER$
 #
+if PMIX_INSTALL_BINARIES
+
+bin_PROGRAMS = pmix_info
+
+EXTRA_DIST = help-pmix_info.txt
+
+endif # PMIX_INSTALL_BINARIES
 
 AM_CFLAGS = \
             -DPMIX_CONFIGURE_USER="\"@PMIX_CONFIGURE_USER@\"" \
@@ -36,19 +43,8 @@ AM_CFLAGS = \
             -DPMIX_REPO_REV="\"@PMIX_REPO_REV@\"" \
             -DPMIX_RELEASE_DATE="\"@PMIX_RELEASE_DATE@\""
 
-if PMIX_INSTALL_BINARIES
-
-bin_PROGRAMS = pmix_info
-
-EXTRA_DIST = help-pmix_info.txt
-
-endif # PMIX_INSTALL_BINARIES
-
 pmix_info_SOURCES =  \
-    pmix_info.h  \
-    support.h  \
-    pmix_info.c  \
-    support.c
+    pmix_info.c
 
 pmix_info_LDADD = \
     $(top_builddir)/src/libpmix.la

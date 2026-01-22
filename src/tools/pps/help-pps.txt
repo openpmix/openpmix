@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017      Intel, Inc. All rights reserved.
-# Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+# Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -20,6 +20,12 @@
 # $HEADER$
 #
 # This is the US/English help file for PMIx PS tool
+#
+[version]
+
+%s (%s) %s
+
+%s
 #
 [usage]
 %s (%s) %s

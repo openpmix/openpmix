@@ -12,7 +12,7 @@
 #                         All rights reserved.
 # Copyright (c) 2010-2012 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
-# Copyright (c) 2022-2025 Nanook Consulting  All rights reserved.
+# Copyright (c) 2022-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -21,6 +21,13 @@
 #
 # This is the US/English help file for PMIx pmix-info help
 # messages.
+#
+#
+[version]
+
+%s (%s) %s
+
+%s
 #
 [usage]
 %s (%s) %s
@@ -45,11 +52,12 @@ PMIx Library Information
                                      keyword "all"); the second parameter is a comma-delimited list of
                                      specific component names (if only <arg0> is given, then all
                                      components will be reported).
-   --path <arg0>                     Show paths that PMIx was configured with.  Accepts the following
-                                     parameters: prefix, bindir, libdir, incdir, mandir, pkglibdir,
-                                     sysconfdir
+   --params <arg0>:<arg1>,<arg2>     Synonym for "param"
+   --path <type>                     Show paths with which PRRTE was configured. Accepts the following
+                                     parameters: "prefix", "bindir", "libdir", "incdir", "mandir",
+                                     "pkglibdir", "sysconfdir".
    --show-version <arg0>:<arg1>      Show version of PMIx or a component.  The first parameter can be the
-                                     keywords "prte" or "all", a framework name (indicating all components in
+                                     keywords "pmix" or "all", a framework name (indicating all components in
                                      a framework), or a framework:component string (indicating a specific
                                      component).  The second parameter can be one of: full, major, minor,
                                      release, greek, svn.
@@ -58,8 +66,13 @@ PMIx Library Information
    --parsable                        When used in conjunction with other parameters, the output is
                                      displayed in a machine-parsable format
    --parseable                       Synonym for --parsable
+   --color <hue>                     Control color coding: auto (default), never, always
+
    --show-failed                     Show the components that failed to load along with the reason why they failed
    --selected-only                   Show only variables from selected components
+-t| --type                           Show MCA parameters of the type specified in parameter. Accepts the following
+                                     parameters: "unsigned_int", "unsigned_long", "unsigned_long_long", "size_t",
+                                     "string", "version_string", "bool", and "double"
 
 Report bugs to %s
 #
@@ -68,6 +81,9 @@ Syntax: param <arg0> <arg1>
 Show MCA parameters.  The first parameter is the framework (or the
 keyword "all"); the second parameter is the specific component name (or
 the keyword "all").
+#
+[params]
+Synonym for "param"
 #
 [internal]
 Syntax: internal
@@ -114,11 +130,19 @@ displayed in a machine-parsable format
 When used in conjunction with other parameters, the output is
 displayed in a machine-parsable format
 #
+[color]
+Control color coding: auto (default), never, always
+#
 [show-failed]
 Show the components that failed to load along with the reason why they failed
 #
 [selected-only]
 Show only variables from selected (active) components
+#
+[type]
+Show MCA parameters of the type specified in parameter. Accepts the following
+parameters: "unsigned_int", "unsigned_long", "unsigned_long_long", "size_t",
+"string", "version_string", "bool", and "double"
 #
 [lib-call-fail]
 A library call unexpectedly failed.  This is a terminal error; please
