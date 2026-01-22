@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2013 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -55,6 +55,9 @@ BEGIN_C_DECLS
 #define PMIX_VAR_FLAG_ISSET(var, flag) (!!((var).mbp_flags & (flag)))
 #define PMIX_VAR_IS_VALID(var)        (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_VALID))
 #define PMIX_VAR_IS_SYNONYM(var)      (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SYNONYM))
+#define PMIX_VAR_IS_INTERNAL(var)     (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_INTERNAL))
+#define PMIX_VAR_IS_DEFAULT_ONLY(var) (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DEFAULT_ONLY))
+#define PMIX_VAR_IS_SETTABLE(var)     (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_SETTABLE))
 #define PMIX_VAR_IS_DEPRECATED(var)   (!!((var).mbv_flags & PMIX_MCA_BASE_VAR_FLAG_DEPRECATED))
 
 PMIX_EXPORT extern const char *pmix_var_type_names[];

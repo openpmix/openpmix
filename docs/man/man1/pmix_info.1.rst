@@ -73,6 +73,8 @@ OPTIONS
 
 * ``--parseable``: Synonym for ``--parsable``
 
+* ``--color <hue>``: Control color coding: auto (default), never, always
+
 * ``--show-failed``: Show the components that failed to load along with the reason why they failed
 
 * ``--selected-only``: Show only variables from selected components.

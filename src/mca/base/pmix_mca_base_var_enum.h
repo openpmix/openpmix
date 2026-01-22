@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2016 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2022 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,6 +29,21 @@
 
 #    include "pmix_common.h"
 #    include "src/class/pmix_object.h"
+
+/* Output mode for dumping var enumerators.
+ * Caution: Not 1:1 with pmix_mca_base_var_dump_type_t, appropriate
+ * conversion is required, see PMIX_MCA_BASE_VAR_DUMP_TYPE_TO_ENUM_DUMP_TYPE() */
+typedef enum {
+    /* Dump human-readable strings */
+    PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE = 0,
+    /* Dump human-readable strings, with color where supported */
+    PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR = 1
+} pmix_mca_base_var_enum_dump_type_t;
+
+#define PMIX_MCA_BASE_VAR_DUMP_TYPE_TO_ENUM_DUMP_TYPE(var_dump_type) \
+    (PMIX_MCA_BASE_VAR_DUMP_READABLE_COLOR == (var_dump_type) ? \
+     PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR : PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE)
+
 
 typedef struct pmix_mca_base_var_enum_t pmix_mca_base_var_enum_t;
 
@@ -73,7 +88,8 @@ typedef int (*pmix_mca_base_var_enum_vfs_fn_t)(pmix_mca_base_var_enum_t *self,
  * @retval PMIX_SUCCESS on success
  * @retval pmix error on error
  */
-typedef int (*pmix_mca_base_var_enum_dump_fn_t)(pmix_mca_base_var_enum_t *self, char **out);
+typedef int (*pmix_mca_base_var_enum_dump_fn_t)(pmix_mca_base_var_enum_t *self, char **out,
+                                                pmix_mca_base_var_enum_dump_type_t output_type);
 
 /**
  * Get the string representation for an enumerator value

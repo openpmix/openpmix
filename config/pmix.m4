@@ -23,7 +23,7 @@ dnl                         and Technology (RIST).  All rights reserved.
 dnl Copyright (c) 2016      Mellanox Technologies, Inc.
 dnl                         All rights reserved.
 dnl
-dnl Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+dnl Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
 dnl Copyright (c) 2018-2022 Amazon.com, Inc. or its affiliates.
 dnl                         All Rights reserved.
 dnl Copyright (c) 2021      FUJITSU LIMITED.  All rights reserved.
@@ -726,7 +726,7 @@ AC_DEFUN([PMIX_SETUP_CORE],[
     # -lrt might be needed for clock_gettime
     PMIX_SEARCH_LIBS_CORE([clock_gettime], [rt])
 
-    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred strnlen posix_fallocate tcgetpgrp setpgid ptsname openpty setenv fork execve waitpid atexit forkpty posix_openpt fileno_unlocked])
+    AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf strsignal socketpair strncpy_s usleep statfs statvfs getpeereid getpeerucred strnlen posix_fallocate tcgetpgrp setpgid ptsname openpty setenv fork execve waitpid atexit forkpty posix_openpt fileno_unlocked isatty])
 
     # On some hosts, htonl is a define, so the AC_CHECK_FUNC will get
     # confused.  On others, it's in the standard library, but stubbed with
