@@ -23,7 +23,7 @@
  *                         All rights reserved.
  * Copyright (c) 2016-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2020      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,6 +38,9 @@
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/runtime/pmix_rte.h"
 #include "src/server/pmix_server_ops.h"
+#include "src/util/pmix_argv.h"
+#include "src/util/pmix_printf.h"
+#include "src/util/pmix_show_help.h"
 #include "src/util/pmix_timings.h"
 
 #if PMIX_ENABLE_TIMING
@@ -54,9 +57,23 @@ int pmix_maxfd = 1024;
 int pmix_server_client_fintime;
 bool pmix_keep_fqdn_hostnames = false;
 
+char *pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_KEY_COUNT] = {NULL};
+static char *pmix_var_dump_color_string = NULL;
+
+static char *pmix_var_dump_color_keys[PMIX_VAR_DUMP_COLOR_KEY_COUNT+1] = {
+    [PMIX_VAR_DUMP_COLOR_VAR_NAME] = "name",
+    [PMIX_VAR_DUMP_COLOR_VAR_VALUE] = "value",
+    [PMIX_VAR_DUMP_COLOR_VALID_VALUES] = "valid_values",
+    [PMIX_VAR_DUMP_COLOR_KEY_COUNT] = NULL
+};
+
+static int parse_color_string(char *color_string, char **key_names,
+                              int key_count, char **values_out);
+
 pmix_status_t pmix_register_params(void)
 {
     int ret;
+    char *string, *tmp;
 
     if (pmix_register_done) {
         return PMIX_SUCCESS;
@@ -291,6 +308,42 @@ pmix_status_t pmix_register_params(void)
                                       PMIX_MCA_BASE_VAR_TYPE_BOOL,
                                       &pmix_keep_fqdn_hostnames);
 
+    /* Var-dump color */
+
+    string = pmix_argv_join_range(pmix_var_dump_color_keys, 0, PMIX_VAR_DUMP_COLOR_KEY_COUNT, ',');
+    if (NULL == string) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
+    ret = pmix_asprintf(&tmp, "The colors to use when dumping MCA vars with color "
+        "(e.g. pmix_info). The format is a comma-delimited key=value list, where the "
+        "key is the attribute whose color to adjust, and the value is the ANSI color "
+        "code (see the ANSI X3.64 CSI SGR sequence). Available keys: %s.", string);
+    free(string);
+    string = tmp;
+    if (0 > ret) {
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
+    /* Basic color options: 30=black, 31=red, 32=green,
+     * 33=yellow, 34=blue, 35=magenta, 36=cyan, 37=white
+     * https://en.wikipedia.org/wiki/ANSI_escape_code#Colors */
+    pmix_var_dump_color_string = "name=34,value=32,valid_values=36";
+    ret = pmix_mca_base_var_register("pmix", "pmix", NULL, "var_dump_color", string,
+                                     PMIX_MCA_BASE_VAR_TYPE_STRING,
+                                     &pmix_var_dump_color_string);
+    free(string);
+    if (0 > ret) {
+        return ret;
+    }
+
+    ret = parse_color_string(pmix_var_dump_color_string, pmix_var_dump_color_keys,
+                             PMIX_VAR_DUMP_COLOR_KEY_COUNT, pmix_var_dump_color);
+    if (PMIX_SUCCESS != ret) {
+        return ret;
+    }
+
+
     pmix_hwloc_register();
     return PMIX_SUCCESS;
 }
@@ -301,3 +354,107 @@ pmix_status_t pmix_deregister_params(void)
 
     return PMIX_SUCCESS;
 }
+
+/* Parses a color 'string' and extracts the 'code' for each 'key'
+ * The string is in the format of 'key1=code1:key2=code2:...'
+ * Example: pmix_var_dump_color MCA parameter
+ *
+ * color_string: The string containing the key=code sequences to parse
+ * key_names: The keys to extract (e.g. key1, key2)
+ * key_count: The length of key_names
+ * values_out: The extracted values for the keys, 1-1 with key_names
+ *   ATTENTION: Make sure it's at least as large as key_names...
+ */
+static int parse_color_string(char *color_string, char **key_names,
+                              int key_count, char **values_out) {
+
+    char **tokens = NULL, **kv = NULL;
+    int return_code = PMIX_SUCCESS;
+
+    for (int k = 0; k < key_count; k++) {
+        values_out[k] = NULL;
+    }
+
+    if (NULL != color_string) {
+        tokens = PMIx_Argv_split(color_string, ',');
+        if (NULL == tokens) {
+            return_code = PMIX_ERR_OUT_OF_RESOURCE;
+            goto end;
+        }
+    }
+
+    for (int i = 0; tokens && tokens[i] != NULL; i++) {
+        kv = PMIx_Argv_split(tokens[i], '=');
+        if (NULL == kv) {
+            return_code = PMIX_ERR_OUT_OF_RESOURCE;
+            goto end;
+        }
+
+        // Expected format of token: key=code
+        if (PMIx_Argv_count(kv) != 2) {
+            pmix_show_help("help-pmix-runtime.txt", "var_dump_color:format-error",
+                true, tokens[i]);
+            goto skip_token;
+        }
+
+        bool key_found = false;
+
+        // Look for key name and store value in respective position
+        for (int k = 0; k < key_count; ++k) {
+            if (strcasecmp(key_names[k], kv[0]) == 0) {
+                int ret = pmix_asprintf(&values_out[k], "\033[%sm", kv[1]);
+                if (ret < 0) {
+                    return_code = PMIX_ERR_OUT_OF_RESOURCE;
+                    goto end;
+                }
+
+                key_found = true;
+                break;
+            }
+        }
+
+        if (!key_found) {
+            char *valid_keys = pmix_argv_join_range(key_names, 0, key_count, ',');
+            if (NULL == valid_keys) {
+                return_code = PMIX_ERR_OUT_OF_RESOURCE;
+                goto end;
+            }
+
+            pmix_show_help("help-pmix-runtime.txt", "var_dump_color:unknown-key",
+                true, kv[0], tokens[i], valid_keys);
+            free(valid_keys);
+        }
+
+        skip_token:
+
+        PMIx_Argv_free(kv);
+        kv = NULL;
+    }
+
+    // Set values for keys not in the MCA parameter to ""
+    for (int k = 0; k < key_count; k++) {
+        if (NULL == values_out[k]) {
+            values_out[k] = strdup(""); // needs to be free-able
+
+            if (NULL == values_out[k]) {
+                return_code = PMIX_ERR_OUT_OF_RESOURCE;
+                goto end;
+            }
+        }
+    }
+
+    end:
+
+    PMIx_Argv_free(tokens);
+    PMIx_Argv_free(kv);
+
+    if (return_code != PMIX_SUCCESS) {
+        for (int k = 0; k < key_count; k++) {
+            free(values_out[k]);
+            values_out[k] = NULL;
+        }
+    }
+
+    return return_code;
+}
+

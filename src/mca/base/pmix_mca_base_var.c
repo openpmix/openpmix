@@ -621,7 +621,8 @@ static int var_set_from_string(pmix_mca_base_var_t *var, char *src)
                 && ((unsigned int) int_value != int_value))) {
             if (var->mbv_enumerator) {
                 char *valid_values;
-                (void) var->mbv_enumerator->dump(var->mbv_enumerator, &valid_values);
+                (void) var->mbv_enumerator->dump(var->mbv_enumerator, &valid_values,
+                                                 PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE);
                 pmix_show_help("help-pmix-mca-var.txt", "invalid-value-enum", true,
                                var->mbv_full_name, src, valid_values);
                 free(valid_values);
@@ -1789,14 +1790,11 @@ int pmix_mca_base_var_get_count(void)
 int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t output_type)
 {
     const char *framework, *component, *full_name;
-    int i, enum_count = 0;
-    char *value_string, *source_string, *tmp, *tmp2;
+    int i, line_count, line = 0, enum_count = 0;
+    char *value_string, *source_string, *tmp;
     int synonym_count, ret, *synonyms = NULL;
     pmix_mca_base_var_t *var, *original = NULL;
     pmix_mca_base_var_group_t *group;
-
-    // ensure initialization
-    *out = NULL;
 
     ret = var_get(vari, &var, false);
     if (PMIX_SUCCESS != ret) {
@@ -1844,53 +1842,38 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
             (void) var->mbv_enumerator->get_count(var->mbv_enumerator, &enum_count);
         }
 
-        /* build the message*/
-        ret = asprintf(&tmp, "mca:%s:%s:param:%s:", framework, component, full_name);
-        if (0 > ret) {
+        line_count = 8 + (var->mbv_description ? 1 : 0)
+                     + (PMIX_VAR_IS_SYNONYM(var[0]) ? 1 : synonym_count) + enum_count;
+
+        *out = (char **) calloc(line_count + 1, sizeof(char *));
+        if (NULL == *out) {
             free(value_string);
             free(source_string);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
+
+        /* build the message*/
+        pmix_asprintf(&tmp, "mca:%s:%s:param:%s:", framework, component, full_name);
 
         /* Output the value */
         char *colon = strchr(value_string, ':');
         if (NULL != colon) {
-            ret = asprintf(&tmp2, "%svalue:\"%s\"", tmp, value_string);
+            pmix_asprintf(out[0] + line++, "%svalue:\"%s\"", tmp, value_string);
         } else {
-            ret = asprintf(&tmp2, "%svalue:%s", tmp, value_string);
+            pmix_asprintf(out[0] + line++, "%svalue:%s", tmp, value_string);
         }
-        if (0 > ret) {
-            free(tmp);
-            free(value_string);
-            free(source_string);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        PMIx_Argv_append_nosize(out, tmp2);
-        free(tmp2);
 
         /* Output the source */
-        ret = asprintf(&tmp2, "%ssource:%s", tmp, source_string);
-        if (0 > ret) {
-            free(tmp);
-            free(value_string);
-            free(source_string);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        PMIx_Argv_append_nosize(out, tmp2);
-        free(tmp2);
+        pmix_asprintf(out[0] + line++, "%ssource:%s", tmp, source_string);
+
+        /* Output whether it's read only or writable */
+        pmix_asprintf(out[0] + line++, "%sstatus:%s", tmp,
+                      PMIX_VAR_IS_SETTABLE(var[0]) ? "writeable" : "read-only");
 
         /* If it has a help message, output the help message */
         if (var->mbv_description) {
-            ret = asprintf(&tmp2, "%shelp:%s", tmp, var->mbv_description);
+            pmix_asprintf(out[0] + line++, "%shelp:%s", tmp, var->mbv_description);
         }
-        if (0 > ret) {
-            free(tmp);
-            free(value_string);
-            free(source_string);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        PMIx_Argv_append_nosize(out, tmp2);
-        free(tmp2);
 
         if (NULL != var->mbv_enumerator) {
             for (i = 0; i < enum_count; ++i) {
@@ -1903,53 +1886,20 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
                     continue;
                 }
 
-                ret = asprintf(&tmp2, "%senumerator:value:%d:%s", tmp, enum_value,
-                               enum_string);
-                if (0 > ret) {
-                    free(tmp);
-                    free(value_string);
-                    free(source_string);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
-                }
-                PMIx_Argv_append_nosize(out, tmp2);
-                free(tmp2);
+                pmix_asprintf(out[0] + line++, "%senumerator:value:%d:%s", tmp, enum_value,
+                              enum_string);
             }
         }
 
         /* Is this variable deprecated? */
-        ret = asprintf(&tmp2, "%sdeprecated:%s", tmp,
-                       PMIX_VAR_IS_DEPRECATED(var[0]) ? "yes" : "no");
-        if (0 > ret) {
-            free(tmp);
-            free(value_string);
-            free(source_string);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        PMIx_Argv_append_nosize(out, tmp2);
-        free(tmp2);
+        pmix_asprintf(out[0] + line++, "%sdeprecated:%s", tmp,
+                      PMIX_VAR_IS_DEPRECATED(var[0]) ? "yes" : "no");
 
-        ret = asprintf(&tmp2, "%stype:%s", tmp, pmix_var_type_names[var->mbv_type]);
-        if (0 > ret) {
-            free(tmp);
-            free(value_string);
-            free(source_string);
-            return PMIX_ERR_OUT_OF_RESOURCE;
-        }
-        PMIx_Argv_append_nosize(out, tmp2);
-        free(tmp2);
+        pmix_asprintf(out[0] + line++, "%stype:%s", tmp, pmix_var_type_names[var->mbv_type]);
 
         /* Does this parameter have any synonyms or is it a synonym? */
         if (PMIX_VAR_IS_SYNONYM(var[0])) {
-            ret = asprintf(&tmp2, "%ssynonym_of:name:%s", tmp, original->mbv_full_name);
-            if (0 > ret) {
-                free(tmp);
-                free(value_string);
-                free(source_string);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            PMIx_Argv_append_nosize(out, tmp2);
-            free(tmp2);
-
+            pmix_asprintf(out[0] + line++, "%ssynonym_of:name:%s", tmp, original->mbv_full_name);
         } else if (pmix_value_array_get_size(&var->mbv_synonyms)) {
             for (i = 0; i < synonym_count; ++i) {
                 pmix_mca_base_var_t *synonym;
@@ -1959,65 +1909,51 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
                     continue;
                 }
 
-                ret = asprintf(&tmp2, "%ssynonym:name:%s", tmp, synonym->mbv_full_name);
-                if (0 > ret) {
-                    free(tmp);
-                    free(value_string);
-                    free(source_string);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
-                }
-                PMIx_Argv_append_nosize(out, tmp2);
-                free(tmp2);
+                pmix_asprintf(out[0] + line++, "%ssynonym:name:%s", tmp, synonym->mbv_full_name);
             }
         }
 
         free(tmp);
-        // value_string and source_string are cleaned up below
+    } else if (PMIX_MCA_BASE_VAR_DUMP_READABLE == output_type ||
+               PMIX_MCA_BASE_VAR_DUMP_READABLE_COLOR == output_type) {
 
-    } else if (PMIX_MCA_BASE_VAR_DUMP_READABLE == output_type) {
+        char *color_name = "", *color_value = "", *color_reset = "";
 
-        if (PMIX_VAR_IS_DEPRECATED(var[0])) {
-            ret = asprintf(&tmp2,
-                           "\"%s\" (current value: \"%s\", data source: %s, type: %s, deprecated",
-                           full_name, value_string, source_string, pmix_var_type_names[var->mbv_type]);
-        } else {
-            ret = asprintf(&tmp2,
-                           "\"%s\" (current value: \"%s\", data source: %s, type: %s",
-                           full_name, value_string, source_string, pmix_var_type_names[var->mbv_type]);
-        }
-        if (0 > ret) {
+        /* There will be at most three lines in the pretty print case */
+        *out = (char **) calloc(4, sizeof(char *));
+        if (NULL == *out) {
             free(value_string);
             free(source_string);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
-        PMIx_Argv_append_nosize(out, tmp2);
-        free(tmp2);
+
+        if (PMIX_MCA_BASE_VAR_DUMP_READABLE_COLOR == output_type) {
+            color_name = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VAR_NAME];
+            color_value = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VAR_VALUE];
+            color_reset = "\033[0m";
+        }
+
+        pmix_asprintf(out[0],
+                      "%s %s\"%s\"%s (current value: %s\"%s\"%s, data source: %s, type: %s",
+                      PMIX_VAR_IS_DEFAULT_ONLY(var[0]) ? "informational" : "parameter",
+                      color_name, full_name, color_reset,
+                      color_value, value_string, color_reset,
+                      source_string, pmix_var_type_names[var->mbv_type]);
+
+        tmp = out[0][0];
+        if (PMIX_VAR_IS_DEPRECATED(var[0])) {
+            pmix_asprintf(out[0], "%s, deprecated", tmp);
+            free(tmp);
+            tmp = out[0][0];
+        }
 
         /* Does this parameter have any synonyms or is it a synonym? */
-        tmp = out[0][0];
         if (PMIX_VAR_IS_SYNONYM(var[0])) {
-            ret = asprintf(&tmp2, "%s, synonym of: %s)", tmp, original->mbv_full_name);
-            if (0 > ret) {
-                free(value_string);
-                free(source_string);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            free(out[0][0]);
-            out[0][0] = tmp2;
-
-        } else if (0 < synonym_count) {
-            if (1 == synonym_count) {
-                ret = asprintf(&tmp2, "%s, synonym of: ", tmp);
-            } else {
-                ret = asprintf(&tmp2, "%s, synonyms: ", tmp);
-            }
-            if (0 > ret) {
-                free(value_string);
-                free(source_string);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            free(out[0][0]);
-            out[0][0] = tmp2;
+            pmix_asprintf(out[0], "%s, synonym of: %s)", tmp, original->mbv_full_name);
+            free(tmp);
+        } else if (synonym_count) {
+            pmix_asprintf(out[0], "%s, synonyms: ", tmp);
+            free(tmp);
 
             for (i = 0; i < synonym_count; ++i) {
                 pmix_mca_base_var_t *synonym;
@@ -2029,67 +1965,42 @@ int pmix_mca_base_var_dump(int vari, char ***out, pmix_mca_base_var_dump_type_t 
 
                 tmp = out[0][0];
                 if (synonym_count == i + 1) {
-                    ret = asprintf(&tmp2, "%s%s)", tmp, synonym->mbv_full_name);
+                    pmix_asprintf(out[0], "%s%s)", tmp, synonym->mbv_full_name);
                 } else {
-                    ret = asprintf(&tmp2, "%s%s, ", tmp, synonym->mbv_full_name);
+                    pmix_asprintf(out[0], "%s%s, ", tmp, synonym->mbv_full_name);
                 }
-                if (0 > ret) {
-                    free(value_string);
-                    free(source_string);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
-                }
-                free(out[0][0]);
-                out[0][0] = tmp2;
+                free(tmp);
             }
-
         } else {
-            ret = asprintf(&tmp2, "%s)", tmp);
-            if (0 > ret) {
-                free(value_string);
-                free(source_string);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            free(out[0][0]);
-            out[0][0] = tmp2;
+            pmix_asprintf(out[0], "%s)", tmp);
+            free(tmp);
         }
 
+        line++;
+
         if (var->mbv_description) {
-            ret = asprintf(&tmp2, "%s", var->mbv_description);
-            if (0 > ret) {
-                free(value_string);
-                free(source_string);
-                return PMIX_ERR_OUT_OF_RESOURCE;
-            }
-            PMIx_Argv_append_nosize(out, tmp2);
-            free(tmp2);
+            pmix_asprintf(out[0] + line++, "%s", var->mbv_description);
         }
 
         if (NULL != var->mbv_enumerator) {
             char *values;
 
-            ret = var->mbv_enumerator->dump(var->mbv_enumerator, &values);
+            ret = var->mbv_enumerator->dump(var->mbv_enumerator, &values,
+                  PMIX_MCA_BASE_VAR_DUMP_TYPE_TO_ENUM_DUMP_TYPE(output_type));
             if (PMIX_SUCCESS == ret) {
-                ret = asprintf(&tmp2, "Valid values: %s", values);
+                pmix_asprintf(out[0] + line++, "Valid values: %s", values);
                 free(values);
-                if (0 > ret) {
-                    free(value_string);
-                    free(source_string);
-                    return PMIX_ERR_OUT_OF_RESOURCE;
-                }
-                PMIx_Argv_append_nosize(out, tmp2);
-                free(tmp2);
             }
         }
-
     } else if (PMIX_MCA_BASE_VAR_DUMP_SIMPLE == output_type) {
-        ret = asprintf(&tmp2, "%s=%s (%s)", var->mbv_full_name, value_string, source_string);
-        if (0 > ret) {
+        *out = (char **) calloc(2, sizeof(char *));
+        if (NULL == *out) {
             free(value_string);
             free(source_string);
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
-        PMIx_Argv_append_nosize(out, tmp2);
-        free(tmp2);
+
+        pmix_asprintf(out[0], "%s=%s (%s)", var->mbv_full_name, value_string, source_string);
     }
 
     free(value_string);
