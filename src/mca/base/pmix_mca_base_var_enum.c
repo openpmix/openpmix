@@ -14,7 +14,7 @@
  * Copyright (c) 2012-2015 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
- * Copyright (c) 2021-2023 Nanook Consulting.  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,14 +24,16 @@
 
 #include "src/include/pmix_config.h"
 
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_var_enum.h"
 #include "src/util/pmix_argv.h"
 #include "src/util/pmix_error.h"
-
-#include <errno.h>
-#include <stdio.h>
-#include <string.h>
+#include "src/util/pmix_printf.h"
+#include "src/include/pmix_globals.h"
 
 static void pmix_mca_base_var_enum_constructor(pmix_mca_base_var_enum_t *enumerator);
 static void pmix_mca_base_var_enum_destructor(pmix_mca_base_var_enum_t *enumerator);
@@ -44,7 +46,8 @@ PMIX_CLASS_INSTANCE(pmix_mca_base_var_enum_flag_t, pmix_object_t,
                     pmix_mca_base_var_enum_flag_constructor,
                     pmix_mca_base_var_enum_flag_destructor);
 
-static int enum_dump(pmix_mca_base_var_enum_t *self, char **out);
+static int enum_dump(pmix_mca_base_var_enum_t *self, char **out,
+                     pmix_mca_base_var_enum_dump_type_t output_type);
 static int enum_get_count(pmix_mca_base_var_enum_t *self, int *count);
 static int enum_get_value(pmix_mca_base_var_enum_t *self, int index, int *value,
                           const char **string_value);
@@ -73,7 +76,7 @@ static int pmix_mca_base_var_enum_bool_get_value(pmix_mca_base_var_enum_t *self,
 static int pmix_mca_base_var_enum_bool_vfs(pmix_mca_base_var_enum_t *self, const char *string_value,
                                            int *value)
 {
-    (void) self;
+    PMIX_HIDE_UNUSED_PARAMS(self);
     char *tmp;
     int v;
 
@@ -101,7 +104,7 @@ static int pmix_mca_base_var_enum_bool_vfs(pmix_mca_base_var_enum_t *self, const
 static int pmix_mca_base_var_enum_bool_sfv(pmix_mca_base_var_enum_t *self, const int value,
                                            char **string_value)
 {
-    (void) self;
+    PMIX_HIDE_UNUSED_PARAMS(self);
     if (string_value) {
         *string_value = strdup(value ? "true" : "false");
     }
@@ -109,11 +112,39 @@ static int pmix_mca_base_var_enum_bool_sfv(pmix_mca_base_var_enum_t *self, const
     return PMIX_SUCCESS;
 }
 
-static int pmix_mca_base_var_enum_bool_dump(pmix_mca_base_var_enum_t *self, char **out)
+static int pmix_mca_base_var_enum_bool_dump(pmix_mca_base_var_enum_t *self, char **out,
+                                            pmix_mca_base_var_enum_dump_type_t output_type)
 {
-    (void) self;
-    *out = strdup("0: f|false|disabled|no, 1: t|true|enabled|yes");
-    return *out ? PMIX_SUCCESS : PMIX_ERR_OUT_OF_RESOURCE;
+    PMIX_HIDE_UNUSED_PARAMS(self);
+    int ret;
+
+    char *color_vv = "", *color_reset = "";
+
+    if (PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR == output_type) {
+        color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
+        color_reset = "\033[0m";
+    }
+
+    ret = pmix_asprintf(out, "%s0%s|%sf%s|%sfalse%s|%sdisabled%s|%sno%s|%sn%s, "
+                        "%s1%s|%st%s|%strue%s|%senabled%s|%syes%s|%sy%s",
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset,
+                        color_vv, color_reset);
+    if (ret < 0) {
+        *out = NULL;
+        return PMIX_ERR_OUT_OF_RESOURCE;
+    }
+
+    return PMIX_SUCCESS;
 }
 
 pmix_mca_base_var_enum_t pmix_mca_base_var_enum_bool
@@ -196,17 +227,27 @@ static int pmix_mca_base_var_enum_verbose_sfv(pmix_mca_base_var_enum_t *self, co
     return PMIX_SUCCESS;
 }
 
-static int pmix_mca_base_var_enum_verbose_dump(pmix_mca_base_var_enum_t *self, char **out)
+static int pmix_mca_base_var_enum_verbose_dump(pmix_mca_base_var_enum_t *self, char **out,
+                                               pmix_mca_base_var_enum_dump_type_t output_type)
 {
     char *tmp;
     int ret;
 
-    ret = enum_dump(self, out);
+    char *color_vv = "", *color_reset = "";
+
+    ret = enum_dump(self, out, output_type);
     if (PMIX_SUCCESS != ret) {
         return ret;
     }
 
-    ret = asprintf(&tmp, "%s, 0 - 100", *out);
+    if (PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR == output_type) {
+        color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
+        color_reset = "\033[0m";
+    }
+
+    ret = pmix_asprintf(&tmp, "%s, %s0%s-%s100%s", *out,
+                        color_vv, color_reset,
+                        color_vv, color_reset);
     free(*out);
     if (0 > ret) {
         *out = NULL;
@@ -326,11 +367,14 @@ int pmix_mca_base_var_enum_create_flag(const char *name,
     return PMIX_SUCCESS;
 }
 
-static int enum_dump(pmix_mca_base_var_enum_t *self, char **out)
+static int enum_dump(pmix_mca_base_var_enum_t *self, char **out,
+                     pmix_mca_base_var_enum_dump_type_t output_type)
 {
     int i;
     char *tmp;
     int ret;
+
+    char *color_vv = "", *color_reset = "";
 
     *out = NULL;
 
@@ -338,12 +382,20 @@ static int enum_dump(pmix_mca_base_var_enum_t *self, char **out)
         return PMIX_ERROR;
     }
 
+    if (PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR == output_type) {
+        color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
+        color_reset = "\033[0m";
+    }
+
     tmp = NULL;
     for (i = 0; i < self->enum_value_count && self->enum_values[i].string; ++i) {
-        ret = asprintf(out, "%s%s%d:\"%s\"", tmp ? tmp : "", tmp ? ", " : "",
-                       self->enum_values[i].value, self->enum_values[i].string);
-        if (tmp)
+        ret = pmix_asprintf(out, "%s%s%s%d%s|%s%s%s",
+                            tmp ? tmp : "", tmp ? ", " : "",
+                            color_vv, self->enum_values[i].value, color_reset,
+                            color_vv, self->enum_values[i].string, color_reset);
+        if (tmp) {
             free(tmp);
+        }
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;
         }
@@ -601,16 +653,23 @@ static int enum_string_from_value_flag(pmix_mca_base_var_enum_t *self, const int
     return PMIX_SUCCESS;
 }
 
-static int enum_dump_flag(pmix_mca_base_var_enum_t *self, char **out)
+static int enum_dump_flag(pmix_mca_base_var_enum_t *self, char **out,
+                          pmix_mca_base_var_enum_dump_type_t output_type)
 {
     pmix_mca_base_var_enum_flag_t *flag_enum = (pmix_mca_base_var_enum_flag_t *) self;
     char *tmp;
     int ret;
+    char *color_vv = "", *color_reset = "";
 
     *out = NULL;
 
     if (NULL == self) {
         return PMIX_ERROR;
+    }
+
+    if (PMIX_MCA_BASE_VAR_ENUM_DUMP_READABLE_COLOR == output_type) {
+        color_vv = pmix_var_dump_color[PMIX_VAR_DUMP_COLOR_VALID_VALUES];
+        color_reset = "\033[0m";
     }
 
     *out = strdup("Comma-delimited list of: ");
@@ -621,8 +680,10 @@ static int enum_dump_flag(pmix_mca_base_var_enum_t *self, char **out)
     for (int i = 0; i < self->enum_value_count; ++i) {
         tmp = *out;
 
-        ret = asprintf(out, "%s%s0x%x:\"%s\"", tmp, i ? ", " : " ", flag_enum->enum_flags[i].flag,
-                       flag_enum->enum_flags[i].string);
+        ret = pmix_asprintf(out, "%s%s%s0x%x%s|%s%s%s",
+                            tmp, i ? ", " : " ",
+                            color_vv, flag_enum->enum_flags[i].flag, color_reset,
+                            color_vv, flag_enum->enum_flags[i].string, color_reset);
         free(tmp);
         if (0 > ret) {
             return PMIX_ERR_OUT_OF_RESOURCE;

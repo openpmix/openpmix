@@ -15,7 +15,7 @@
  * Copyright (c) 2016-2017 Los Alamos National Security, LLC. All rights
  *                         reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -108,6 +108,9 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_VERSION                "version"                   // none
 #define PMIX_CLI_VERBOSE                "verbose"                   // number of instances => verbosity level
 #define PMIX_CLI_PMIXMCA                "pmixmca"                   // requires TWO
+#define PMIX_CLI_PRETTY_PRINT           "pretty-print"              // none
+#define PMIX_CLI_PARSABLE               "parsable"                  // none
+#define PMIX_CLI_PARSEABLE              "parseable"                 // none
 
 // Tool connection options
 #define PMIX_CLI_SYS_SERVER_FIRST       "system-server-first"       // none
@@ -170,8 +173,13 @@ PMIX_CLASS_DECLARATION(pmix_cli_result_t);
 #define PMIX_CLI_INFO_HOSTNAME          "hostname"                  // none
 #define PMIX_CLI_INFO_INTERNAL          "internal"                  // none
 #define PMIX_CLI_INFO_PARAM             "param"                     // required
+#define PMIX_CLI_INFO_PARAMS            "params"                    // required
 #define PMIX_CLI_INFO_PATH              "path"                      // required
 #define PMIX_CLI_INFO_VERSION           "show-version"              // required
+#define PMIX_CLI_INFO_TYPES             "type"                      // required
+#define PMIX_CLI_INFO_COLOR             "color"                     // required
+#define PMIX_CLI_INFO_SHOW_FAILED       "show-failed"               //none
+#define PMIX_CLI_INFO_SELECTED_ONLY     "selected-only"             // none
 
 
 typedef void (*pmix_cmd_line_store_fn_t)(const char *name, const char *option,
