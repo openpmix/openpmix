@@ -68,6 +68,7 @@ static struct option poptions[] = {
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_HELP, PMIX_ARG_OPTIONAL, 'h'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERSION, PMIX_ARG_NONE, 'V'),
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_VERBOSE, PMIX_ARG_NONE, 'v'),
+    PMIX_OPTION_DEFINE(PMIX_CLI_PMIXMCA, PMIX_ARG_REQD),
 
     PMIX_OPTION_SHORT_DEFINE(PMIX_CLI_INFO_ALL, PMIX_ARG_NONE, 'a'),
     PMIX_OPTION_DEFINE(PMIX_CLI_INFO_ARCH, PMIX_ARG_NONE),
@@ -78,7 +79,7 @@ static struct option poptions[] = {
     PMIX_OPTION_DEFINE(PMIX_CLI_INFO_PARAM, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_INFO_PARAMS, PMIX_ARG_REQD),
     PMIX_OPTION_DEFINE(PMIX_CLI_INFO_PATH, PMIX_ARG_REQD),
-    PMIX_OPTION_DEFINE(PMIX_CLI_INFO_VERSION, PMIX_ARG_REQD),
+    PMIX_OPTION_DEFINE(PMIX_CLI_INFO_VERSION, PMIX_ARG_OPTIONAL),
     PMIX_OPTION_DEFINE(PMIX_CLI_PRETTY_PRINT, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_PARSABLE, PMIX_ARG_NONE),
     PMIX_OPTION_DEFINE(PMIX_CLI_PARSEABLE, PMIX_ARG_NONE),
@@ -101,6 +102,7 @@ int main(int argc, char *argv[])
     pmix_pointer_array_t pmix_component_map;
     pmix_pointer_array_t mca_types;
     pmix_info_component_map_t *map;
+    pmix_cli_item_t *opt;
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
     pmix_info_cmd_line = &results;
@@ -153,11 +155,53 @@ int main(int argc, char *argv[])
 
     /* Execute the desired action(s) */
     want_all = pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_ALL);
-    if (want_all) {
-        pmix_info_out("Package", "package", PMIX_PACKAGE_STRING);
-        pmix_info_show_pmix_version("PMIx", pmix_info_ver_full, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                                      PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
-                                      PMIX_RELEASE_DATE);
+
+    opt = pmix_cmd_line_get_param(pmix_info_cmd_line, PMIX_CLI_INFO_VERSION);
+    if (want_all || NULL != opt) {
+        if (NULL == opt) {
+            pmix_info_out("Package", "package", PMIX_PACKAGE_STRING);
+            pmix_info_show_pmix_version("PMIx", pmix_info_ver_full, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                                          PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
+                                          PMIX_RELEASE_DATE);
+            pmix_info_show_component_version(&mca_types, &pmix_component_map, pmix_info_type_all,
+                                             pmix_info_component_all, pmix_info_ver_full,
+                                             pmix_info_ver_all);
+        } else if (NULL == opt->values) {
+            pmix_info_out("Package", "package", PMIX_PACKAGE_STRING);
+            pmix_info_show_pmix_version("PMIx", pmix_info_ver_full, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                                          PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
+                                          PMIX_RELEASE_DATE);
+            pmix_info_show_component_version(&mca_types, &pmix_component_map, pmix_info_type_all,
+                                             pmix_info_component_all, pmix_info_ver_full,
+                                             pmix_info_ver_all);
+        } else {
+            if (0 == strcasecmp(opt->values[0], "pmix") ||
+                0 == strcasecmp(opt->values[0], "all")) {
+                pmix_info_out("Package", "package", PMIX_PACKAGE_STRING);
+                pmix_info_show_pmix_version("PMIx", pmix_info_ver_full, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
+                                              PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
+                                              PMIX_RELEASE_DATE);
+                pmix_info_show_component_version(&mca_types, &pmix_component_map, pmix_info_type_all,
+                                                 pmix_info_component_all, pmix_info_ver_full,
+                                                 pmix_info_ver_all);
+            } else {
+                // the first arg is either the name of a framework, or a framework:component pair
+                char **tmp = PMIx_Argv_split(opt->values[0], ':');
+                const char *component = pmix_info_component_all;
+                const char *modifier = pmix_info_ver_full;
+                if (NULL != tmp[1]) {
+                    component = tmp[1];
+                }
+                if (NULL != opt->values[1]) {
+                    modifier = opt->values[1];
+                }
+                pmix_info_show_component_version(&mca_types, &pmix_component_map, tmp[0],
+                                                 component, modifier,
+                                                 pmix_info_ver_all);
+                PMIx_Argv_free(tmp);
+            }
+            acted = true;
+        }
     }
     if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_PATH)) {
         pmix_info_do_path(want_all, pmix_info_cmd_line);

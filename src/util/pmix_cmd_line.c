@@ -17,7 +17,7 @@
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2016-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2017      IBM Corporation. All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -137,6 +137,21 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     /* format mca params as param:value - the optind value
                      * will have been incremented since the MCA param options
                      * require an argument */
+                    if (NULL == argv[optind] || '-' == argv[optind][1]) {
+                        // missing the required second argument
+                        str = pmix_show_help_string("help-cli.txt", "not-enough-arguments", true,
+                                                    pmix_tool_basename, myoptions[option_index].name,
+                                                    argv[optind-1], (NULL == argv[optind]) ?
+                                                    "missing" : argv[optind],
+                                                    pmix_tool_basename, myoptions[option_index].name);
+                        if (NULL != str) {
+                            fprintf(stderr, "%s", str);
+                            fflush(stderr);
+                            free(str);
+                        }
+                        PMIx_Argv_free(argv);
+                        return PMIX_ERR_SILENT;
+                    }
                     pmix_asprintf(&str, "%s=%s", argv[optind-1], argv[optind]);
                     mystore(myoptions[option_index].name, str, results);
                     free(str);
@@ -157,6 +172,24 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     mystore(myoptions[option_index].name, optarg, results);
                     break;
                 }
+                if (0 == strcmp(myoptions[option_index].name, PMIX_CLI_INFO_VERSION)) {
+                    if (NULL == argv[optind] || '-' == argv[optind][1]) {
+                        // --show-version option with no args
+                        mystore(myoptions[option_index].name, optarg, results);
+                        break;
+                    } else if (NULL != argv[optind]) {
+                            if (NULL == argv[optind+1]) {
+                            // one arg
+                            mystore(myoptions[option_index].name, argv[optind], results);
+                        } else {
+                            // two args
+                            mystore(myoptions[option_index].name, argv[optind], results);
+                            mystore(myoptions[option_index].name, argv[optind+1], results);
+                            ++optind;
+                        }
+                    }
+                    break;
+                }
                 /* otherwise, store actual option */
                 mystore(myoptions[option_index].name, optarg, results);
                 break;
@@ -174,7 +207,6 @@ int pmix_cmd_line_parse(char **pargv, char *shorts,
                     // check for standard options
                     if (0 == strcmp(ptr, "version") || 0 == strcmp(ptr, "V")) {
                         str = pmix_show_help_string("help-cli.txt", "version", false);
-                        pmix_output(0, "HELP VERSION");
                         if (NULL != str) {
                             printf("%s\n", str);
                             fflush(stdout);
