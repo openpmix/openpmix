@@ -42,6 +42,8 @@ PMIx Library Information
 -h|--help <arg0>                     Help for the specified option
 -v|--verbose                         Enable typical debug options
 -V|--version                         Print version and exit
+   --pmixmca <key> <value>           Pass context-specific PMIx MCA parameters ("key" is the parameter
+                                     name; "value" is the parameter value)
 
 -a|--all                             Show all configuration options and MCA parameters
    --arch                            Show architecture PMIx was compiled on
@@ -75,6 +77,13 @@ PMIx Library Information
                                      "string", "version_string", "bool", and "double"
 
 Report bugs to %s
+#
+[pmixmca]
+
+Pass a PMIx MCA parameter
+
+Syntax: "--pmixmca <key> <value>", where "key" is the parameter name
+and "value" is the parameter value.
 #
 [param]
 Syntax: param <arg0> <arg1>
@@ -113,10 +122,10 @@ Show all configuration options and MCA parameters
 #
 [show-version]
 Show version of PMIx or a component.  The first parameter can be the
-keywords "prte" or "all", a framework name (indicating all components in
+keywords "pmix" or "all", a framework name (indicating all components in
 a framework), or a framework:component string (indicating a specific
 component).  The second parameter can be one of: full, major, minor,
-release, greek, svn.
+release, greek, repo.
 #
 [pretty-print]
 When used in conjunction with other parameters, the output is
@@ -171,3 +180,11 @@ The specified framework could not be found:
 This could be due to a misspelling of the framework name, or because support
 for that framework was not configured into this version of orte. Please see
 the "config" option for a full report of how PMIx was configured.
+#
+[missing-values]
+The %s option requires %d values, but fewer were provided:
+
+  Option:  %s
+  Value:   %s
+
+Please correct this and try again.
