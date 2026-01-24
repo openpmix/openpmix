@@ -4,7 +4,7 @@ PMIx v5.x series
 This file contains all the NEWS updates for the PMIx v5.x
 series, in reverse chronological order.
 
-5.0.10 -- xx Jan 2026
+5.0.10 -- 23 Jan 2026
 ---------------------
 .. important:: This release includes two critical changes:
 
@@ -24,6 +24,12 @@ series, in reverse chronological order.
                  back to the server.
 
 Detailed changes include:
+ - PR #3781: Multiple commits
+    - Update NEWS and VERSION for release
+    - Improve description of PMIx_Compute_distances API
+    - Silence valgrind issues
+    - update-my-copyright.py: properly support git workspaces
+ - PR #3762: Update PMIx_Fence to fully conform to Standard
  - PR #3757: Update NEWS and VERSION for rc3
  - PR #3756: Multiple commits
     - printf.c: fix off-by-one + underflow errors
