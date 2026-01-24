@@ -16,7 +16,7 @@
  * Copyright (c) 2016-2019 Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
  * Copyright (c) 2021-2023 Triad National Security, LLC. All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -31,6 +31,7 @@
 #include "src/class/pmix_object.h"
 #include "src/client/pmix_client_ops.h"
 #include "src/common/pmix_attributes.h"
+#include "src/hwloc/pmix_hwloc.h"
 #include "src/mca/base/pmix_base.h"
 #include "src/mca/base/pmix_mca_base_var.h"
 #include "src/mca/bfrops/base/base.h"
@@ -152,6 +153,9 @@ void pmix_rte_finalize(void)
     PMIX_LIST_DESTRUCT(&pmix_client_globals.groups);
     PMIX_DESTRUCT(&pmix_globals.keyindex);
     free(pmix_globals.myidval.data.proc);
+
+    // release the topology
+    pmix_hwloc_finalize();
 
     /* now safe to release the event base */
     (void) pmix_progress_thread_stop(NULL);

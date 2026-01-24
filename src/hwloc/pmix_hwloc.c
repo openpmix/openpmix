@@ -5,7 +5,7 @@
  *                         All rights reserved.
  * Copyright (c) 2018      Research Organization for Information Science
  *                         and Technology (RIST).  All rights reserved.
- * Copyright (c) 2021-2024 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
@@ -154,6 +154,10 @@ void pmix_hwloc_finalize(void)
         && !topo_in_shmem) {
         hwloc_topology_destroy(pmix_globals.topology.topology);
     }
+    if (NULL != pmix_globals.topology.source) {
+        free(pmix_globals.topology.source);
+    }
+
     return;
 }
 
