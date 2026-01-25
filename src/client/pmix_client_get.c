@@ -365,8 +365,12 @@ PMIX_EXPORT pmix_status_t PMIx_Get(const pmix_proc_t *proc, const char key[],
         rc = PMIX_SUCCESS;
     }
     if (PMIX_SUCCESS == rc && NULL != cb->value) {
-        *val = cb->value;
-        cb->value = NULL;
+        if (lg->stval) {
+            PMIx_Value_xfer(*val, cb->value);
+        } else {
+            *val = cb->value;
+            cb->value = NULL;
+        }
     } else {
         *val = NULL;
     }
@@ -425,6 +429,7 @@ PMIX_EXPORT pmix_status_t PMIx_Get_nb(const pmix_proc_t *proc, const char key[],
         cb->cbfunc.valuefn = cbfunc;
         cb->cbdata = cbdata;
         PMIX_THREADSHIFT(cb, gcbfn);
+        PMIX_RELEASE(lg);
         return PMIX_SUCCESS;
     } else if (PMIX_SUCCESS != rc) {
         /* it's a true error */
