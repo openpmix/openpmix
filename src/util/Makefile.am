@@ -15,7 +15,7 @@
 # Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
 # Copyright (c) 2016      Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
 # Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
 # $COPYRIGHT$
 #
@@ -107,7 +107,7 @@ if PMIX_PICKY_COMPILERS
 	$(PMIX_V_GEN) $(PYTHON) $(abs_srcdir)/convert-help.py \
 		--root $(abs_top_srcdir) \
 		--out pmix_show_help_content.c \
-		--purge
+		--purge --verbose
 else
 	$(PMIX_V_GEN) $(PYTHON) $(abs_srcdir)/convert-help.py \
 		--root $(abs_top_srcdir) \
