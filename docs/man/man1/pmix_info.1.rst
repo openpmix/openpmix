@@ -62,7 +62,7 @@ OPTIONS
   is given, then all components will be reported).
 
 * ``--path <type>``: Show paths that PMIx was configured
-  with. Accepts the following parameters: ``prefix``, ``bindir``,
+  with. Accepts the following parameters: ``all``, ``prefix``, ``bindir``,
   ``libdir``, ``incdir``, ``pkglibdir``, ``sysconfdir``.
 
 * ``--pretty-print``: When used in conjunction with other parameters, the output is
