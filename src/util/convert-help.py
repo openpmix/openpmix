@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 #
 # Copyright (c) 2025      Jeffrey M. Squyres.  All rights reserved.
-# Copyright (c) 2025      Nanook Consulting  All rights reserved.
+# Copyright (c) 2025-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -242,12 +242,16 @@ def parse_tool_files(help_files, source_files, cli_options, citations, verbose=F
         options = []
         cli = []
         local_cli = []
+        insection = False
         # scan the help file to find cmd line options that
         # are referenced in the help file itself
         with open(hlp) as file:
             for line in file:
                 line = line.strip()
-                if line.startswith('#') or not line:
+                if not line:
+                    continue
+                if line.startswith('#'):
+                    insection = False
                     continue
                 if line.startswith('[') and line.endswith(']'):
                     # topic - save it
@@ -255,17 +259,20 @@ def parse_tool_files(help_files, source_files, cli_options, citations, verbose=F
                     end = line.find(']')
                     topic = line[start:end]
                     topics.append(topic)
+                    if topic != "usage":
+                        insection = True
                     continue
-                # scan the line for the "--" that indicates a cmd line option
-                opt = line.find("--")
-                if -1 == opt:
-                    continue
-                # opt now points to the "--" in front of the option
-                opt += 2
-                optend = line.find(' ', opt+1)
-                option = line[opt:optend]
-                # track the option
-                options.append(option)
+                if not insection:
+                    # scan the line for the "--" that indicates a cmd line option
+                    opt = line.find("--")
+                    if -1 == opt:
+                        continue
+                    # opt now points to the "--" in front of the option
+                    opt += 2
+                    optend = line.find(' ', opt+1)
+                    option = line[opt:optend]
+                    # track the option
+                    options.append(option)
         # get the name of the tool this help file belongs to
         d = os.path.basename(hlp)
         # find the start of the tool name

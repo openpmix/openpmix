@@ -59,7 +59,6 @@
  * Public variables
  */
 
-pmix_cli_result_t *pmix_info_cmd_line = NULL;
 pmix_cli_result_t results = PMIX_CLI_RESULT_STATIC_INIT;
 
 const char *pmix_info_type_base = "base";
@@ -99,13 +98,13 @@ int main(int argc, char *argv[])
     bool acted = false;
     bool want_all = false;
     int i;
+    char *str, *ptr;
     pmix_pointer_array_t pmix_component_map;
     pmix_pointer_array_t mca_types;
     pmix_info_component_map_t *map;
     pmix_cli_item_t *opt;
     PMIX_HIDE_UNUSED_PARAMS(argc);
 
-    pmix_info_cmd_line = &results;
     PMIX_CONSTRUCT(&results, pmix_cli_result_t);
 
     /* protect against problems if someone passes us thru a pipe
@@ -120,12 +119,53 @@ int main(int argc, char *argv[])
         return PMIX_ERROR;
     }
 
+    /* initialize install dirs code */
+    if (PMIX_SUCCESS
+        != (ret = pmix_mca_base_framework_open(&pmix_pinstalldirs_base_framework,
+                                               PMIX_MCA_BASE_OPEN_DEFAULT))) {
+        fprintf(stderr,
+                "pmix_pinstalldirs_base_open() failed -- process will likely abort (%s:%d, "
+                "returned %d instead of PMIX_SUCCESS)\n",
+                __FILE__, __LINE__, ret);
+        return ret;
+    }
+    if (PMIX_SUCCESS != (ret = pmix_pinstall_dirs_base_init(NULL, 0))) {
+        fprintf(stderr,
+                "pmix_pinstalldirs_base_init() failed -- process will likely abort (%s:%d, "
+                "returned %d instead of PMIX_SUCCESS)\n",
+                __FILE__, __LINE__, ret);
+        return ret;
+    }
+
     /* initialize the command line, parse it, and return the directives
      * telling us what the user wants output
      */
-    if (PMIX_SUCCESS != (ret = pmix_info_init(argc, argv, pmix_info_cmd_line,
+    if (PMIX_SUCCESS != (ret = pmix_info_init(argc, argv, &results,
                                               poptions, pshorts, "help-pmix_info.txt"))) {
         exit(ret);
+    }
+
+    // we do NOT accept arguments other than our own
+    if (NULL != results.tail) {
+        str = PMIx_Argv_join(results.tail, ' ');
+        if (0 != strcmp(str, argv[0])) {
+            ptr = pmix_show_help_string("help-pmix_info.txt", "no-args", false,
+                                        pmix_tool_basename, str, pmix_tool_basename);
+            free(str);
+            if (NULL != ptr) {
+                printf("%s", ptr);
+                free(ptr);
+            }
+            return -1;
+        }
+        free(str);
+    }
+
+    /* Get MCA parameters, if any */
+    if (PMIX_SUCCESS != pmix_mca_base_open(NULL)) {
+        pmix_show_help("help-pmix_info.txt", "lib-call-fail", true,
+                       "pmix_mca_base_open", __FILE__, __LINE__);
+        return PMIX_ERROR;
     }
 
     /* register params for pmix */
@@ -137,7 +177,7 @@ int main(int argc, char *argv[])
     /* setup the mca_types array */
     PMIX_CONSTRUCT(&mca_types, pmix_pointer_array_t);
     pmix_pointer_array_init(&mca_types, 256, INT_MAX, 128);
-    pmix_info_register_types(&mca_types);
+    pmix_info_register_types(&mca_types, false);
 
     /* init the component map */
     PMIX_CONSTRUCT(&pmix_component_map, pmix_pointer_array_t);
@@ -147,41 +187,35 @@ int main(int argc, char *argv[])
     if (PMIX_SUCCESS != (ret = pmix_info_register_framework_params(&pmix_component_map))) {
         if (PMIX_ERR_BAD_PARAM == ret) {
             /* output what we got */
-            pmix_info_do_params(true, pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_INTERNAL),
+            pmix_info_do_params("PMIx", true, pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_INTERNAL),
                                 &mca_types, &pmix_component_map, NULL);
         }
         exit(1);
     }
 
     /* Execute the desired action(s) */
-    want_all = pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_ALL);
+    want_all = pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_ALL);
 
-    opt = pmix_cmd_line_get_param(pmix_info_cmd_line, PMIX_CLI_INFO_VERSION);
+    opt = pmix_cmd_line_get_param(&results, PMIX_CLI_INFO_VERSION);
     if (want_all || NULL != opt) {
         if (NULL == opt) {
-            pmix_info_out("Package", "package", PMIX_PACKAGE_STRING);
-            pmix_info_show_pmix_version("PMIx", pmix_info_ver_full, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                                          PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
-                                          PMIX_RELEASE_DATE);
-            pmix_info_show_component_version(&mca_types, &pmix_component_map, pmix_info_type_all,
+            pmix_info_show_pmix_package();
+            pmix_info_show_pmix_version();
+            pmix_info_show_component_version("pmix", &mca_types, &pmix_component_map, pmix_info_type_all,
                                              pmix_info_component_all, pmix_info_ver_full,
                                              pmix_info_ver_all);
         } else if (NULL == opt->values) {
-            pmix_info_out("Package", "package", PMIX_PACKAGE_STRING);
-            pmix_info_show_pmix_version("PMIx", pmix_info_ver_full, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                                          PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
-                                          PMIX_RELEASE_DATE);
-            pmix_info_show_component_version(&mca_types, &pmix_component_map, pmix_info_type_all,
+            pmix_info_show_pmix_package();
+            pmix_info_show_pmix_version();
+            pmix_info_show_component_version("pmix", &mca_types, &pmix_component_map, pmix_info_type_all,
                                              pmix_info_component_all, pmix_info_ver_full,
                                              pmix_info_ver_all);
         } else {
             if (0 == strcasecmp(opt->values[0], "pmix") ||
                 0 == strcasecmp(opt->values[0], "all")) {
-                pmix_info_out("Package", "package", PMIX_PACKAGE_STRING);
-                pmix_info_show_pmix_version("PMIx", pmix_info_ver_full, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                                              PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
-                                              PMIX_RELEASE_DATE);
-                pmix_info_show_component_version(&mca_types, &pmix_component_map, pmix_info_type_all,
+                pmix_info_show_pmix_package();
+                pmix_info_show_pmix_version();
+                pmix_info_show_component_version("pmix", &mca_types, &pmix_component_map, pmix_info_type_all,
                                                  pmix_info_component_all, pmix_info_ver_full,
                                                  pmix_info_ver_all);
             } else {
@@ -195,7 +229,7 @@ int main(int argc, char *argv[])
                 if (NULL != opt->values[1]) {
                     modifier = opt->values[1];
                 }
-                pmix_info_show_component_version(&mca_types, &pmix_component_map, tmp[0],
+                pmix_info_show_component_version("pmix", &mca_types, &pmix_component_map, tmp[0],
                                                  component, modifier,
                                                  pmix_info_ver_all);
                 PMIx_Argv_free(tmp);
@@ -203,62 +237,50 @@ int main(int argc, char *argv[])
             acted = true;
         }
     }
-    if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_PATH)) {
-        pmix_info_do_path(want_all, pmix_info_cmd_line);
+    if (want_all || pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_PATH)) {
+        pmix_info_do_pmix_path(want_all, &results);
         acted = true;
     }
-    if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_ARCH)) {
+    if (want_all || pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_ARCH)) {
         pmix_info_do_arch();
         acted = true;
     }
-    if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_HOSTNAME)) {
+    if (!want_all && pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_HOSTNAME)) {
+        // hostname is contain in pmix_config, so don't duplicate it here
         pmix_info_do_hostname();
         acted = true;
     }
-    if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_CONFIG)) {
-        pmix_info_do_config(true, PMIX_CONFIGURE_USER, PMIX_CONFIGURE_DATE, PMIX_CONFIGURE_HOST,
-                            PMIX_CONFIGURE_CLI, PMIX_BUILD_USER, PMIX_BUILD_DATE, PMIX_BUILD_HOST,
-                            PMIX_CC, PMIX_CC_ABSOLUTE, PLATFORM_STRINGIFY(PLATFORM_COMPILER_FAMILYNAME),
-                            PLATFORM_STRINGIFY(PLATFORM_COMPILER_VERSION_STR), PMIX_BUILD_CFLAGS, PMIX_BUILD_LDFLAGS,
-                            PMIX_BUILD_LIBS, PMIX_ENABLE_DEBUG, PMIX_HAVE_PDL_SUPPORT,
-                            PMIX_HAVE_VISIBILITY);
+    if (want_all || pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_CONFIG)) {
+        pmix_info_do_pmix_config(true);
         acted = true;
     }
-    if (want_all || pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_PARAM) ||
-        pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_PARAMS)) {
-        pmix_info_do_params(true, pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_INTERNAL),
-                            &mca_types, &pmix_component_map, pmix_info_cmd_line);
+    if (want_all || pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_PARAM) ||
+        pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_PARAMS)) {
+        pmix_info_do_params("PMIx", true, pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_INTERNAL),
+                            &mca_types, &pmix_component_map, &results);
         acted = true;
     }
-    if (pmix_cmd_line_is_taken(pmix_info_cmd_line, PMIX_CLI_INFO_TYPES)) {
-        pmix_info_do_type(pmix_info_cmd_line);
+    if (pmix_cmd_line_is_taken(&results, PMIX_CLI_INFO_TYPES)) {
+        pmix_info_do_type(&results);
         acted = true;
     }
 
     /* If no command line args are specified, show default set */
 
     if (!acted) {
-        pmix_info_out("Package", "package", PMIX_PACKAGE_STRING);
-        pmix_info_show_pmix_version("PMIx", pmix_info_ver_full, PMIX_MAJOR_VERSION, PMIX_MINOR_VERSION,
-                                      PMIX_RELEASE_VERSION, PMIX_GREEK_VERSION, PMIX_REPO_REV,
-                                      PMIX_RELEASE_DATE);
+        pmix_info_show_pmix_package();
+        pmix_info_show_pmix_version();
         pmix_info_show_path(pmix_info_path_prefix, pmix_pinstall_dirs.prefix);
         pmix_info_do_arch();
-        pmix_info_do_hostname();
-        pmix_info_do_config(false, PMIX_CONFIGURE_USER, PMIX_CONFIGURE_DATE, PMIX_CONFIGURE_HOST,
-                            PMIX_CONFIGURE_CLI, PMIX_BUILD_USER, PMIX_BUILD_DATE, PMIX_BUILD_HOST,
-                            PMIX_CC, PMIX_CC_ABSOLUTE, PLATFORM_STRINGIFY(PLATFORM_COMPILER_FAMILYNAME),
-                            PLATFORM_STRINGIFY(PLATFORM_COMPILER_VERSION_STR), PMIX_BUILD_CFLAGS, PMIX_BUILD_LDFLAGS,
-                            PMIX_BUILD_LIBS, PMIX_ENABLE_DEBUG, PMIX_HAVE_PDL_SUPPORT,
-                            PMIX_HAVE_VISIBILITY);
-        pmix_info_show_component_version(&mca_types, &pmix_component_map, pmix_info_type_all,
+        pmix_info_do_pmix_config(false);
+        pmix_info_show_component_version("pmix", &mca_types, &pmix_component_map, pmix_info_type_all,
                                          pmix_info_component_all, pmix_info_ver_full,
                                          pmix_info_ver_all);
     }
 
     /* All done */
     pmix_info_close_components();
-    PMIX_DESTRUCT(pmix_info_cmd_line);
+    PMIX_DESTRUCT(&results);
     PMIX_DESTRUCT(&mca_types);
     for (i = 0; i < pmix_component_map.size; i++) {
         map = (pmix_info_component_map_t *) pmix_pointer_array_get_item(&pmix_component_map, i);
