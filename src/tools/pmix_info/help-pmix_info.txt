@@ -165,7 +165,7 @@ Aborting...
 #
 [developer warning: field too long]
 **************************************************************************
-*** DEVELOPER WARNING: A field in pmix-info output is too long and
+*** DEVELOPER WARNING: A field in pmix_info output is too long and
 *** will appear poorly in the prettyprint output.
 ***
 ***   Value:      "%s"
@@ -188,3 +188,13 @@ The %s option requires %d values, but fewer were provided:
   Value:   %s
 
 Please correct this and try again.
+#
+[no-args]
+
+The %s command does not accept arguments other than those specifically
+defined by the command. The following were not recognized:
+
+   Args: %s
+
+Please see "%s --help" for a description of all accepted command
+options.

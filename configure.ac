@@ -23,7 +23,7 @@
 # Copyright (c) 2016-2022 IBM Corporation.  All rights reserved.
 # Copyright (c) 2016-2018 Research Organization for Information Science
 #                         and Technology (RIST). All rights reserved.
-# Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+# Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
 # Copyright (c) 2021      Amazon.com, Inc. or its affiliates.
 #                         All Rights reserved.
 # $COPYRIGHT$
@@ -54,6 +54,8 @@ AC_CONFIG_MACRO_DIRS([./config config/oac])
 
 AC_PROG_SED
 
+PMIX_CAPTURE_CONFIGURE_CLI([PMIX_CONFIGURE_CLI])
+
 AC_CHECK_PROG([PERL],[perl],[perl],[no])
 AS_IF([test "X$PERL" = "Xno"],
       [AC_MSG_ERROR([OpenPMIx requires perl to build. Aborting.])])
@@ -73,7 +75,6 @@ for val in $CFLAGS; do
 done
 CFLAGS=$PMIX_CFLAGS_pass
 
-PMIX_CAPTURE_CONFIGURE_CLI([PMIX_CONFIGURE_CLI])
 
 # Get our platform support file.  This has to be done very, very early
 # because it twiddles random bits of autoconf
