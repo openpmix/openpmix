@@ -795,8 +795,8 @@ pmix_status_t PMIx_IOF_push(const pmix_proc_t targets[], size_t ntargets, pmix_b
     cb->procs = (pmix_proc_t*)targets;
     cb->nprocs = ntargets;
     cb->bo = bo;
-    cb->info = (pmix_info_t*)directives;
-    cb->ninfo = ndirs;
+    cb->directives = (pmix_info_t*)directives;
+    cb->ndirs = ndirs;
     cb->cbfunc.opfn = cbfunc;
     cb->cbdata = cbdata;
     PMIX_THREADSHIFT(cb, exec_push);
