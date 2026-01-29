@@ -5,7 +5,7 @@ dnl Copyright (c) 2021 Cisco Systems, Inc.  All rights reserved.
 dnl Copyright (c) 2021      Amazon.com, Inc. or its affiliates.  All Rights
 dnl                         reserved.
 dnl
-dnl Copyright (c) 2021      Nanook Consulting.  All rights reserved.
+dnl Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
 dnl $COPYRIGHT$
 dnl
 dnl Additional copyrights may follow
@@ -34,7 +34,7 @@ AC_DEFUN([PMIX_CHECK_COMPILER], [
     AC_CACHE_CHECK([for compiler $lower], [pmix_cv_compiler_$1],
     [
             CPPFLAGS_orig=$CPPFLAGS
-            CPPFLAGS="-I${PMIX_TOP_SRCDIR}/pmix/include $CPPFLAGS"
+            CPPFLAGS="-I${PMIX_TOP_SRCDIR} $CPPFLAGS"
             AC_RUN_IFELSE([AC_LANG_PROGRAM([[
 #include <stdio.h>
 #include <stdlib.h>
