@@ -135,19 +135,29 @@ pmix_status_t pmix_hwloc_register(void)
 
 void pmix_hwloc_finalize(void)
 {
-    if (NULL != shmemfile) {
-        unlink(shmemfile);
-        free(shmemfile);
+    if (NULL == pmix_globals.topology.topology ||
+        pmix_globals.external_topology) {
+        return;
     }
-    if (0 <= shmemfd) {
-        close(shmemfd);
+
+    if (topo_in_shmem) {
+        if (NULL != shmemfile) {
+            unlink(shmemfile);
+            free(shmemfile);
+            shmemfile = NULL;
+            shmemsize = 0;
+        }
+        if (0 <= shmemfd) {
+            close(shmemfd);
+            shmemfd = -1;
+        }
     }
-    if (NULL != pmix_globals.topology.topology && !pmix_globals.external_topology
-        && !topo_in_shmem) {
-        hwloc_topology_destroy(pmix_globals.topology.topology);
-    }
+
+    hwloc_topology_destroy(pmix_globals.topology.topology);
+    pmix_globals.topology.topology = NULL;
     if (NULL != pmix_globals.topology.source) {
         free(pmix_globals.topology.source);
+        pmix_globals.topology.source = NULL;
     }
     return;
 }
