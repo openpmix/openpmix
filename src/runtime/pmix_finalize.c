@@ -158,7 +158,16 @@ void pmix_rte_finalize(void)
 
     /* now safe to release the event base */
     (void) pmix_progress_thread_finalize(NULL);
+    // and finalize the library
+    pmix_event_global_shutdown();
+
+    for (i = 0; i < PMIX_VAR_DUMP_COLOR_KEY_COUNT; i++) {
+        free(pmix_var_dump_color[i]);
+        pmix_var_dump_color[i] = NULL;
+    }
     pmix_tsd_keys_destruct();
 
     pmix_finalize_util();
+    // release the event base
+    pmix_progress_thread_stop(NULL);
 }
