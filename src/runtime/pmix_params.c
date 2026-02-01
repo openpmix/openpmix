@@ -120,6 +120,7 @@ pmix_status_t pmix_register_params(void)
         return ret;
     }
 
+    pmix_event_caching_window = 1;
     (void) pmix_mca_base_var_register(
         "pmix", "pmix", NULL, "event_caching_window",
         "Time (in seconds) to aggregate events before reporting them - this "
@@ -443,7 +444,7 @@ static int parse_color_string(char *color_string, char **key_names,
         }
     }
 
-    end:
+end:
 
     PMIx_Argv_free(tokens);
     PMIx_Argv_free(kv);
