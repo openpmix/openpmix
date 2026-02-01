@@ -51,7 +51,18 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    /* finalize us */
+    rc = PMIx_Finalize(NULL, 0);
+    if (PMIX_SUCCESS != rc) {
+        fprintf(stderr, "Finalize failed: %s\n", PMIx_Error_string(rc));
+    }
+
+     if (PMIX_SUCCESS != (rc = PMIx_Init(&myproc, NULL, 0))) {
+       fprintf(stderr, "Client ns %s rank %d: PMIx_Init failed: %s\n", myproc.nspace, myproc.rank,
+                PMIx_Error_string(rc));
+        exit(1);
+    }
+
+   /* finalize us */
     rc = PMIx_Finalize(NULL, 0);
     if (PMIX_SUCCESS != rc) {
         fprintf(stderr, "Finalize failed: %s\n", PMIx_Error_string(rc));
