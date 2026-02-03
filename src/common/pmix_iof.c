@@ -1036,8 +1036,6 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
     size_t m;
     pmix_buffer_t *msg;
     pmix_status_t rc;
-    pmix_byte_object_t *wbo;
-    pmix_proc_t proc;
 
     /* if the channel wasn't included, then ignore it */
     if (!(channels & req->channels)) {
@@ -1111,23 +1109,13 @@ pmix_status_t pmix_iof_process_iof(pmix_iof_channel_t channels, const pmix_proc_
         }
     }
 
-    // process the data based on the request flags
-    PMIX_LOAD_PROCID(&proc, req->requestor->info->pname.nspace, req->requestor->info->pname.rank);
-    wbo = pmix_iof_prep_output(&proc, &req->flags, req->channels, bo);
-    if (NULL == wbo) {
-        PMIX_ERROR_LOG(PMIX_ERR_NOT_SUPPORTED);
-        PMIX_RELEASE(msg);
-        return PMIX_ERR_NOT_SUPPORTED;
-    }
     /* pack the data */
-    PMIX_BFROPS_PACK(rc, req->requestor, msg, wbo, 1, PMIX_BYTE_OBJECT);
+    PMIX_BFROPS_PACK(rc, req->requestor, msg, bo, 1, PMIX_BYTE_OBJECT);
     if (PMIX_SUCCESS != rc) {
         PMIX_ERROR_LOG(rc);
-        PMIx_Byte_object_free(wbo, 1);
         PMIX_RELEASE(msg);
         return rc;
     }
-    PMIx_Byte_object_free(wbo, 1);
 
     /* send it to the requestor */
     PMIX_PTL_SEND_ONEWAY(rc, req->requestor, msg, PMIX_PTL_TAG_IOF);
