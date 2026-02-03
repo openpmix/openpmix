@@ -170,6 +170,7 @@ typedef uint32_t pmix_rank_t;
                                                                     //        host has ultimate authority over such connections,
                                                                     //        and can restrict execution of tool requests as per
                                                                     //        host policy (e.g., limit foreign tools to "queries")
+#define PMIX_ALLOW_CLIENT_CLONES            "pmix.allow.clones"     // (bool) Allow connections from forks of client processes
 #define PMIX_SERVER_REMOTE_CONNECTIONS      "pmix.srvr.remote"      // (bool) Allow connections from remote tools (do not use
                                                                     //        loopback device)
 #define PMIX_SERVER_SYSTEM_SUPPORT          "pmix.srvr.sys"         // (bool) The host RM wants to declare itself as being
