@@ -19,7 +19,7 @@
  * Copyright (c) 2015      Research Organization for Information Science
  *                         and Technology (RIST). All rights reserved.
  * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
- * Copyright (c) 2022-2023 Triad National Security, LLC. All rights reserved.
+ * Copyright (c) 2022-2026 Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -550,6 +550,8 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     if (PMIX_SUCCESS != (ret = pmix_progress_thread_start(NULL))) {
         error = "pmix_progress_thread_start";
         goto return_error;
+    } else {
+        pmix_atomic_unset_bool(&pmix_globals.progress_thread_stopped);
     }
 
     return PMIX_SUCCESS;
