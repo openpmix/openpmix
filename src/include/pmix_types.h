@@ -254,7 +254,6 @@ typedef struct event pmix_event_t;
 #define pmix_event_base_create() event_base_new()
 
 #define pmix_event_base_free(b) event_base_free(b)
-#define pmix_event_global_shutdown() libevent_global_shutdown()
 
 /* thread support APIs */
 #define pmix_event_use_threads() evthread_use_pthreads()
