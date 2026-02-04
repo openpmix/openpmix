@@ -14,8 +14,8 @@
 # major, minor, and release are generally combined in the form
 # <major>.<minor>.<release>.
 
-major=7
-minor=0
+major=6
+minor=1
 release=0
 
 # greek is used for alpha or beta release tags.  If it is non-empty,
@@ -24,7 +24,7 @@ release=0
 # The only requirement is that it must be entirely printable ASCII
 # characters and have no white space.
 
-greek=a1
+greek=rc1
 
 # PMIx required dependency versions.
 # List in x.y.z format.
