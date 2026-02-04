@@ -131,6 +131,13 @@ static void stop_progress_engine(pmix_progress_tracker_t *trk)
     if (!trk->ev_active) {
         return;
     }
+
+    if (0 == strcmp(trk->name, shared_thread_name)) {
+        // mark progress thread as stopped to prevent new entries from being
+        // added via PMIx API
+        pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
+    }
+
     trk->ev_active = false;
     /* break the event loop - this will cause the loop to exit upon
        completion of any current event */
@@ -153,7 +160,7 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
     pmix_lock_t lock;
     pmix_event_t ev;
     char *key;
-    char *name = NULL;
+    const char *name = NULL;
     pmix_progress_tracker_t *trk;
 
     for (n=0; n < ninfo; n++) {
@@ -165,10 +172,8 @@ void PMIx_Progress_thread_stop(const pmix_info_t *info, size_t ninfo)
         }
     }
 
-    if (NULL == name || 0 == strcmp(name, shared_thread_tracker->name)) {
-        // mark progress thread as stopped to prevent new entries from being
-        // added via PMIx API
-        pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
+    if (NULL == name) {
+        name = shared_thread_name;
     }
 
     PMIX_LIST_FOREACH (trk, &tracking, pmix_progress_tracker_t) {
@@ -205,6 +210,11 @@ static int start_progress_engine(pmix_progress_tracker_t *trk)
     /* fork off a thread to progress it */
     trk->engine.t_run = progress_engine;
     trk->engine.t_arg = trk;
+
+    if (0 == strcmp(trk->name, shared_thread_name)) {
+        // mark progress thread as running to enable PMIx APIs
+        pmix_atomic_unset_bool(&pmix_globals.progress_thread_stopped);
+    }
 
     int rc = pmix_thread_start(&trk->engine);
     if (PMIX_SUCCESS != rc) {
@@ -313,7 +323,7 @@ pmix_status_t pmix_progress_thread_start(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+    if (NULL == name) {
         if (pmix_globals.external_progress) {
             return PMIX_SUCCESS;
         }
@@ -347,7 +357,7 @@ pmix_status_t pmix_progress_thread_stop(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+    if (NULL == name) {
         if (pmix_globals.external_progress) {
             return PMIX_SUCCESS;
         }
@@ -387,11 +397,13 @@ pmix_status_t pmix_progress_thread_finalize(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+    if (NULL == name) {
         if (pmix_globals.external_progress) {
             return PMIX_SUCCESS;
         }
         name = shared_thread_name;
+        // mark progress thread as stopped
+        pmix_atomic_set_bool(&pmix_globals.progress_thread_stopped);
     }
 
     /* find the specified engine */
@@ -423,7 +435,7 @@ pmix_status_t pmix_progress_thread_pause(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+    if (NULL == name) {
         if (pmix_globals.external_progress) {
             return PMIX_SUCCESS;
         }
@@ -453,7 +465,7 @@ pmix_status_t pmix_progress_thread_resume(const char *name)
         return PMIX_ERR_NOT_FOUND;
     }
 
-    if (NULL == name || 0 == strcmp(name, shared_thread_name)) {
+    if (NULL == name) {
         if (pmix_globals.external_progress) {
             return PMIX_SUCCESS;
         }

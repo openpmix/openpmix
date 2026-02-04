@@ -550,8 +550,6 @@ int pmix_rte_init(uint32_t type, pmix_info_t info[], size_t ninfo, pmix_ptl_cbfu
     if (PMIX_SUCCESS != (ret = pmix_progress_thread_start(NULL))) {
         error = "pmix_progress_thread_start";
         goto return_error;
-    } else {
-        pmix_atomic_unset_bool(&pmix_globals.progress_thread_stopped);
     }
 
     return PMIX_SUCCESS;
