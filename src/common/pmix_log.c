@@ -123,6 +123,7 @@ void pmix_log_local_op(int sd, short args, void *cbdata_)
     if (NULL != cd->cbfunc.opcbfn) {
         cd->cbfunc.opcbfn(rc, cd->cbdata);
     }
+    PMIX_PROC_FREE(cd->proc, 1);
     PMIX_RELEASE(cd);
 }
 
@@ -135,6 +136,8 @@ static void localcbfn(pmix_status_t status, void *cbdata)
     if (NULL != cb->cbfunc.opfn) {
         cb->cbfunc.opfn(status, cb->cbdata);
     }
+    PMIX_PROC_FREE(cb->proc, 1);
+    cb->proc = NULL;
     PMIX_RELEASE(cb);
 }
 
@@ -184,7 +187,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         }
     }
     if (NULL == source) {
-        source = &pmix_globals.myid;
+        memcpy(source, &pmix_globals.myid, sizeof(pmix_proc_t));
     }
 
     /* if we are a client or tool, pass this request to our
@@ -196,6 +199,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         if (!pmix_atomic_check_bool(&pmix_globals.connected)) {
             goto local;
         }
+        PMIX_PROC_FREE(source, 1); // don't need this value
 
         // otherwise, we send to our server
         cd = PMIX_NEW(pmix_shift_caddy_t);
@@ -271,16 +275,19 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
         cb = PMIX_NEW(pmix_cb_t);
         cb->cbfunc.opfn = cbfunc;
         cb->cbdata = cbdata;
+        cb->proc = source;
         if (NULL != pmix_host_server.log2) {
-            rc = pmix_host_server.log2(source, data, ndata,
+            rc = pmix_host_server.log2(cb->proc, data, ndata,
                                        directives, ndirs, localcbfn, (void *) cb);
             if (PMIX_SUCCESS != rc) {
+                PMIX_PROC_FREE(source, 1);
+                cb->proc = NULL;
                 PMIX_RELEASE(cb);
                 return rc;
             }
 
         } else if (NULL != pmix_host_server.log) {
-            pmix_host_server.log(source, data, ndata, directives, ndirs,
+            pmix_host_server.log(cb->proc, data, ndata, directives, ndirs,
                                  localcbfn, (void *) cb);
         } else {
             // no choice but to process locally
