@@ -579,6 +579,10 @@ void pmix_info_do_params(const char *project, bool want_all_in, bool want_intern
                 }
             }
         }
+    } else {
+        // they didn't ask for params, so this shouldn't have come
+        // here as there is nothing to be done
+        return;
     }
 
     /* Show the params */
