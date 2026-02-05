@@ -37,6 +37,10 @@ series, in reverse chronological order.
 
 
 Detailed changes since refork include:
+ - PR #3800: Multiple commits
+    - Make thread start/stop marker consistent
+    - Final NEWS update
+ - PR #3798: Update NEWS and VERSION for rc1
  - PR #3797: Multiple commits
     - fix a problem after second pmix init
     - Add missing attribute
