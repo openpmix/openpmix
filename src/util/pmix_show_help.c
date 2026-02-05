@@ -76,7 +76,8 @@ static void local_delivery(const char *file,
     PMIX_INFO_LOAD(&cd->directives[0], PMIX_LOG_KEY, file, PMIX_STRING);
     PMIX_INFO_LOAD(&cd->directives[1], PMIX_LOG_VAL, topic, PMIX_STRING);
     cd->dircopy = true;
-    cd->proc = &pmix_globals.myid;
+    PMIX_PROC_CREATE(cd->proc, 1);
+    memcpy(cd->proc, &pmix_globals.myid, sizeof(pmix_proc_t));
     PMIX_THREADSHIFT(cd, pmix_log_local_op); // function will release the caddy
 }
 

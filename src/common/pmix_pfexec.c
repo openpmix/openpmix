@@ -1136,8 +1136,8 @@ static pmix_status_t do_parent(pmix_app_t *app, pmix_pfexec_child_t *child, int 
             return rc;
         }
         // silence Coverity warnings
-        if (msg.file_str_len > PMIX_TAINT_INT_LIMIT ||
-            msg.topic_str_len > PMIX_TAINT_INT_LIMIT ||
+        if (msg.file_str_len > PMIX_PFEXEC_MAX_FILE_LEN ||
+            msg.topic_str_len > PMIX_PFEXEC_MAX_TOPIC_LEN ||
             msg.msg_str_len > PMIX_TAINT_INT_LIMIT) {
             pmix_show_help("help-pfexec-base.txt", "msg-too-large", true,
                            msg.msg_str_len, 8192);
