@@ -105,16 +105,30 @@ def parse_help_files(file_paths, data, citations, verbose=False):
             for line in file:
                 stripped = line.strip()
                 if stripped.startswith("#include"):
+                    # if we aren't in a section, then this is an error
+                    if current_section is None:
+                        sys.stderr.write("ERROR: INCLUDE is specified in ", file_path, " outside of a section")
+                        continue
+                    # include the line in the section
+                    sections[current_section].append(stripped)
                     # this line includes a file/topic from another file
                     # find the '#' at the end of the "include" keyword
                     start = stripped.find('#', 2)
                     if start != -1:
                         # find the '#'' at the end of the filename
                         end = stripped.find('#', start+1)
-                        if end != -1:
+                        end2 = stripped.find('#', end+1)
+                        if end2 == -1:
+                            topic = stripped[end+1:]
                             fil = stripped[start+1:end]
-                            topic = stripped[end+1:-1]
                             citations.append((fil, topic))
+                        else:
+                            topic = stripped[end2+1:]
+                            fil = stripped[end+1:end2]
+                            citations.append((fil, topic))
+                    # if a section contains an include, we treat that
+                    # section as having been cited
+                    citations.append((os.path.basename(file_path), current_section))
                     continue
                 if stripped.startswith('#'):
                     current_section = None
@@ -129,8 +143,7 @@ def parse_help_files(file_paths, data, citations, verbose=False):
                     current_section = stripped[1:end]
                     sections[current_section] = list()
                 elif current_section is not None:
-                    line = line.rstrip()
-                    sections[current_section].append(line)
+                    sections[current_section].append(stripped)
 
         if file_path in data:
             sys.stderr.write("ERROR: path " + file_path + " already exists in data dictionary\n")
