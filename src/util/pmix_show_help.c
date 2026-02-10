@@ -383,7 +383,7 @@ pmix_status_t pmix_show_help_finalize(void)
  */
 static pmix_status_t array2string(char **outstring,
                                   int want_error_header,
-                                  const char **lines)
+                                  char **lines)
 {
     int i, count;
     size_t len;
@@ -426,15 +426,19 @@ static pmix_status_t array2string(char **outstring,
     return PMIX_SUCCESS;
 }
 
-static const char **get_content(const char *filename,
-                                const char* topic)
+static void get_content(char ***output,
+                        char *project,
+                        const char *filename,
+                        const char* topic)
 {
     tuple_array_item_t *da;
     pmix_show_help_file_t *fe;
     pmix_show_help_entry_t *ie;
-    int i, j;
+    int i, j, m;
+    char *p, *tp, *file, *pj, *line;
 
-    if (!pmix_show_help_initialized) {
+    if (!pmix_show_help_initialized || NULL == project ||
+        0 == strcmp(project, "pmix")) {
         // restrict to local array
         for (i = 0; NULL != pmix_show_help_data[i].filename; ++i) {
             fe = &(pmix_show_help_data[i]);
@@ -442,28 +446,76 @@ static const char **get_content(const char *filename,
                 for (j = 0; NULL != fe->entries[j].topic; ++j) {
                     ie = &(fe->entries[j]);
                     if (0 == strcmp(ie->topic, topic)) {
-                        return ie->content;
+                        // found a matching entry
+                        for (m=0; NULL != ie->content[m]; m++) {
+                            if (0 == strncmp(ie->content[m], "#include", strlen("#include"))) {
+                                // parse the project (if provided), file and topic being included
+                                p = strrchr(ie->content[m], '#');
+                                tp = p + 1;
+                                --p;
+                                p = strrchr(p, '#');
+                                file = p + 1;
+                                --p;
+                                // project can only be "pmix"
+                                get_content(output, "pmix", file, tp);
+                            } else {
+                                PMIx_Argv_append_nosize(output, ie->content[m]);
+                            }
+                        }
+                        return;
                     }
                 }
             }
         }
-        return NULL;
+        // if we didn't find an entry and the project is NULL and
+        // we are initialized, then check the other projects
+        if (pmix_show_help_initialized && NULL == project) {
+            goto next;
+        }
+        return;
     }
 
+next:
     PMIX_LIST_FOREACH(da, &data_arrays, tuple_array_item_t) {
+        if (NULL != project && 0 != strcmp(project, da->project)) {
+            continue;
+        }
         for (i = 0; NULL != da->array[i].filename; ++i) {
             fe = &(da->array[i]);
             if (0 == strcmp(fe->filename, filename)) {
                 for (j = 0; NULL != fe->entries[j].topic; ++j) {
                     ie = &(fe->entries[j]);
                     if (0 == strcmp(ie->topic, topic)) {
-                        return ie->content;
+                        for (m=0; NULL != ie->content[m]; m++) {
+                            if (0 == strncmp(ie->content[m], "#include", strlen("#include"))) {
+                                line = strdup(ie->content[m]);
+                                // parse the project (if provided), file and topic being included
+                                p = strrchr(line, '#');
+                                *p = '\0';
+                                tp = p + 1;
+                                p = strrchr(line, '#');
+                                *p = '\0';
+                                file = p + 1;
+                                p = strrchr(line, '#');
+                                ++p;
+                                // if this isn't pointing at "include", then it must be a project
+                                if (0 != strncmp(p, "include", strlen("include"))) {
+                                    pj = p;
+                                } else {
+                                    pj = da->project;
+                                }
+                                get_content(output, pj, file, tp);
+                                free(line);
+                            } else {
+                                PMIx_Argv_append_nosize(output, ie->content[m]);
+                            }
+                        }
+                        return;
                     }
                 }
             }
         }
     }
-    return NULL;
 }
 
 char *pmix_show_help_vstring(const char *filename,
@@ -473,11 +525,11 @@ char *pmix_show_help_vstring(const char *filename,
 {
     int rc;
     char *single_string, *output;
-    const char **content;
+    char **content = NULL;
     char *msg;
 
     /* Load the message */
-    content = get_content(filename, topic);
+    get_content(&content, NULL, filename, topic);
     if (NULL == content) {
         pmix_asprintf(&msg, "%sSorry!  You were supposed to get help about:\n\n    Filename: %s\n    Topic: %s\n\nBut I couldn't find "
                     "that help reference.\n\nSorry!\n%s", dash_line, filename, topic, dash_line);
@@ -488,6 +540,7 @@ char *pmix_show_help_vstring(const char *filename,
 
     /* Convert it to a single raw string */
     rc = array2string(&single_string, want_error_header, content);
+    PMIx_Argv_free(content);
 
     if (PMIX_SUCCESS == rc) {
         /* Apply the formatting to make the final output string */
