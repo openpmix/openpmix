@@ -37,6 +37,10 @@ series, in reverse chronological order.
 
 
 Detailed changes since refork include:
+ - PR #: Multiple commits
+    - Silence a few Coverity warnings
+    - Enable including help topics in topics
+    - Silence gcc15 warnings
  - PR #3800: Multiple commits
     - Make thread start/stop marker consistent
     - Final NEWS update
