@@ -11,7 +11,8 @@
 static void hide_unused_params(int x, ...)
 {
     va_list ap;
-
+    int __y = x;
+    __y = 2 * __y;
     va_start(ap, x);
     va_end(ap);
 }
