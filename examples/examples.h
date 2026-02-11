@@ -15,7 +15,7 @@
  * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * Copyright (c) 2013-2019 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -143,7 +143,8 @@ typedef struct {
 static inline void examples_hide_unused_params(int x, ...)
 {
     va_list ap;
-
+    int __y = x;
+    __y = 2 * __y;
     va_start(ap, x);
     va_end(ap);
 }
