@@ -143,8 +143,7 @@ typedef struct {
 static inline void examples_hide_unused_params(int x, ...)
 {
     va_list ap;
-    int __y = x;
-    __y = 2 * __y;
+    (void)x;
     va_start(ap, x);
     va_end(ap);
 }

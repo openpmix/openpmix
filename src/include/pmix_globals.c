@@ -817,8 +817,7 @@ PMIX_CLASS_INSTANCE(pmix_timer_t,
 void pmix_hide_unused_params(int x, ...)
 {
     va_list ap;
-    int __y = x;
-    __y = 2 * __y;
+    (void)x;
     va_start(ap, x);
     va_end(ap);
 }
