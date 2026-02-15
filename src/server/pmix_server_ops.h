@@ -174,6 +174,7 @@ typedef struct {
 PMIX_CLASS_DECLARATION(pmix_pset_t);
 
 typedef struct {
+    bool module_set;    // pmix_host_server has been set
     pmix_list_t nspaces;          // list of pmix_nspace_t for the nspaces we know about
     pmix_pointer_array_t clients; // array of pmix_peer_t local clients
     pmix_list_t collectives;      // list of active pmix_server_trkr_t

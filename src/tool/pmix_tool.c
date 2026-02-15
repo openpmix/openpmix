@@ -1449,7 +1449,14 @@ PMIX_EXPORT pmix_status_t pmix_tool_init_info(void)
 
 pmix_status_t PMIx_tool_set_server_module(pmix_server_module_t *module)
 {
+    if (pmix_server_globals.module_set) {
+        pmix_show_help("help-pmix-runtime.txt", "module-set", true,
+                       __func__);
+        return PMIX_ERR_INIT;
+    }
     pmix_host_server = *module;
+    pmix_server_globals.module_set = true;
+
     /* mark that we are now a server */
     PMIX_SET_PEER_TYPE(pmix_globals.mypeer, PMIX_PROC_SERVER);
     return PMIX_SUCCESS;
