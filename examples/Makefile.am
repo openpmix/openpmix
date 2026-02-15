@@ -29,7 +29,7 @@ noinst_PROGRAMS = client client2 dmodex dynamic fault pub pubi \
                   hello nodeinfo  abi_no_init abi_with_init group_lcl_cid pset log \
                   group_bootstrap client3 client4 launcher spawn_group resolve multi_nspace_group \
                   pub2 toolqry simple_resolve pubstress monitor monitor_remote monitor_multi \
-                  simple
+                  simple simple_server
 
 if !WANT_HIDDEN
 # these examples use internal symbols
@@ -191,6 +191,10 @@ simple_SOURCES = simple.c examples.h
 simple_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
 simple_LDADD = $(top_builddir)/src/libpmix.la
 
+simple_server_SOURCES = simple_server.c examples.h
+simple_server_LDFLAGS = $(PMIX_PKG_CONFIG_LDFLAGS)
+simple_server_LDADD = $(top_builddir)/src/libpmix.la
+
 distclean-local:
 	rm -f *.o alloc asyncgroup bad_exit client client2 \
         debugger debuggerd dmodex dynamic fault group \
@@ -199,4 +203,4 @@ distclean-local:
         async_group group_dmodex group_bootstrap client3 \
         spawn_group resolve multi_nspace_group pub2 toolqry \
         simple_resolve pubstress monitor monitor_remote \
-        simple
+        simple simple_server

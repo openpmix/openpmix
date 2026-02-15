@@ -83,6 +83,7 @@
 
 // global variables
 pmix_server_globals_t pmix_server_globals = {
+    .module_set = false,
     .nspaces = PMIX_LIST_STATIC_INIT,
     .clients = PMIX_POINTER_ARRAY_STATIC_INIT,
     .collectives = PMIX_LIST_STATIC_INIT,
@@ -458,6 +459,8 @@ pmix_status_t pmix_server_initialize(void)
     return PMIX_SUCCESS;
 }
 
+static int server_init_cntr = 0;
+
 PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
                                            pmix_info_t info[], size_t ninfo)
 {
@@ -486,10 +489,23 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     // check if an init has been called
     if (pmix_atomic_test_and_set(&pmix_globals.init_called)) {
-        // some init function was already called
-        pmix_show_help("help-pmix-runtime.txt", "reentrant-init", true,
-                       "PMIx_server_init");
-        return PMIX_ERR_INIT;
+        // track the ref count
+        pmix_atomic_fetch_add(&server_init_cntr, 1);
+        // did the prior call get far enough? We might be in a tight
+        // race between multiple calls to PMIx_server_init - bad programming
+        // technique, but all we can do is try to protect against it
+        if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
+            return PMIX_ERR_INIT;
+        }
+        /* setup the function pointers if they weren't previously defined */
+        if (NULL != module && !pmix_server_globals.module_set) {
+            pmix_host_server = *module;
+            pmix_server_globals.module_set = true;
+        }
+        return PMIX_SUCCESS;
+    } else {
+        // track the ref count
+        pmix_atomic_fetch_add(&server_init_cntr, 1);
     }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
@@ -528,8 +544,9 @@ PMIX_EXPORT pmix_status_t PMIx_server_init(pmix_server_module_t *module,
 
     PMIX_SET_PROC_TYPE(&ptype, PMIX_PROC_SERVER);
     /* setup the function pointers */
-    if (NULL != module) {
+    if (NULL != module && !pmix_server_globals.module_set) {
         pmix_host_server = *module;
+        pmix_server_globals.module_set = true;
     }
 
     if (NULL != info) {
@@ -1015,7 +1032,14 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
+    i = pmix_atomic_fetch_add(&server_init_cntr, -1);
+    if (1 < i) {
+        return PMIX_SUCCESS;
+    }
+
+    // mark we are no longer initialized
     pmix_atomic_unset_bool(&pmix_globals.initialized);
+    pmix_globals.init_called = false;
 
     pmix_output_verbose(2, pmix_server_globals.base_output,
                         "pmix:server finalize called");
@@ -1082,10 +1106,12 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     pmix_rte_finalize();
     if (NULL != pmix_globals.mypeer) {
         PMIX_RELEASE(pmix_globals.mypeer);
+        pmix_globals.mypeer = NULL;
     }
 
     if (NULL != pmix_server_globals.tmpdir) {
         free(pmix_server_globals.tmpdir);
+        pmix_server_globals.tmpdir = NULL;
     }
 
     pmix_output_verbose(2, pmix_server_globals.base_output,

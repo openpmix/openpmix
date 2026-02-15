@@ -13,7 +13,7 @@
 # Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
 # Copyright (c) 2014 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2017-2018 Intel, Inc. All rights reserved.
-# Copyright (c) 2025      Nanook Consulting  All rights reserved.
+# Copyright (c) 2025-2026 Nanook Consulting  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -80,10 +80,10 @@ attributes include:
 
 Please correct your program and try again.
 #
-[reentrant-init]
-An attempt was made to call an initialization routine, but the
-PMIx library has already been initialized:
+[module-set]
+A function call to %s was made that would have resulted in
+overwriting the function pointers in the PMIx server library's
+upcall module. This is not allowed - the server module can
+only be provided once and cannot be overwritten.
 
-  Function: %s
-
-Multiple calls to init are not supported. Please correct your program.
+Please correct your program and try again.

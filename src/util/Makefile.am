@@ -107,7 +107,7 @@ if PMIX_PICKY_COMPILERS
 	$(PMIX_V_GEN) $(PYTHON) $(abs_srcdir)/convert-help.py \
 		--root $(abs_top_srcdir) \
 		--out pmix_show_help_content.c \
-		--purge --verbose
+		--purge
 else
 	$(PMIX_V_GEN) $(PYTHON) $(abs_srcdir)/convert-help.py \
 		--root $(abs_top_srcdir) \
