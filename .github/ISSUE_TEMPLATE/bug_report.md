@@ -3,7 +3,7 @@ name: Bug report
 about: Thank you for taking the time to submit an issue!
 title: ''
 labels: ''
-assignees: ''
+assignees: rhc54
 
 ---
 
