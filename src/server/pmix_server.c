@@ -1028,7 +1028,7 @@ PMIX_EXPORT pmix_status_t PMIx_server_finalize(void)
     int i;
     pmix_peer_t *peer;
     pmix_namespace_t *ns;
- 
+
     if (!pmix_atomic_check_bool(&pmix_globals.initialized)) {
         return PMIX_ERR_INIT;
     }
@@ -3394,7 +3394,6 @@ static void _opcbfunc(int sd, short args, void *cbdata)
      * it still being present - send a copy to the originator */
     PMIX_PTL_SEND_ONEWAY(rc, cd->peer, reply, cd->hdr.tag);
     if (PMIX_SUCCESS != rc) {
-        PMIX_ERROR_LOG(rc);
         PMIX_RELEASE(reply);
     }
 
