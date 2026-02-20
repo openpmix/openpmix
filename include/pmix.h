@@ -1648,6 +1648,15 @@ PMIX_EXPORT bool PMIx_Data_decompress(const uint8_t *inbytes,
 
 /************     UTILITY  FUNCTIONS      *************************************/
 
+/* We had to put some function definitions into pmix_deprecated.h for
+ * now-deprecated macros that utilize them as there are people who only
+ * included pmix_common.h if they were using macros but not APIs.
+ * However, we really want those APIs here so people will
+ * see them and know they exist. So include them here as well. */
+
+#ifndef PMIx_DEPRECATED_H
+
+
 /* load a key */
 PMIX_EXPORT void PMIx_Load_key(pmix_key_t key, const char *src);
 
@@ -2262,6 +2271,7 @@ PMIX_EXPORT void PMIx_Regattr_xfer(pmix_regattr_t *dest,
 /* initialize a fabric struct */
 PMIX_EXPORT void PMIx_Fabric_construct(pmix_fabric_t *p);
 
+#endif
 
 
 #if defined(c_plusplus) || defined(__cplusplus)
