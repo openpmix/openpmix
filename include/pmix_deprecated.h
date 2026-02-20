@@ -203,6 +203,627 @@ PMIX_EXPORT pmix_status_t PMIx_tool_connect_to_server(pmix_proc_t *proc,
                                                                     //        its namespace in the event
 
 
+/* DUPLICATES */
+
+/* Bring some function definitions across from pmix.h for now-deprecated
+ * macros that utilize them. We have to do this as there are people who
+ * only included pmix_common.h if they were using macros but not APIs */
+
+/* load a key */
+PMIX_EXPORT void PMIx_Load_key(pmix_key_t key, const char *src);
+
+/* check a key */
+PMIX_EXPORT bool PMIx_Check_key(const char *key, const char *str);
+
+/* check to see if a key is a "reserved" key */
+PMIX_EXPORT bool PMIx_Check_reserved_key(const char *key);
+
+/* load a string into a pmix_nspace_t struct */
+PMIX_EXPORT void PMIx_Load_nspace(pmix_nspace_t nspace, const char *str);
+
+/* check two nspace structs for equality */
+PMIX_EXPORT bool PMIx_Check_nspace(const char *key1, const char *key2);
+
+/* check if a namespace is invalid */
+PMIX_EXPORT bool PMIx_Nspace_invalid(const char *nspace);
+
+/* load a process ID struct */
+PMIX_EXPORT void PMIx_Load_procid(pmix_proc_t *p,
+                                  const char *ns,
+                                  pmix_rank_t rk);
+
+/* transfer a process ID struct (non-destructive) */
+PMIX_EXPORT void PMIx_Xfer_procid(pmix_proc_t *dst,
+                                  const pmix_proc_t *src);
+
+/* check two procIDs for equality */
+PMIX_EXPORT bool PMIx_Check_procid(const pmix_proc_t *a,
+                                   const pmix_proc_t *b);
+
+/* check two ranks for equality */
+PMIX_EXPORT bool PMIx_Check_rank(pmix_rank_t a,
+                                 pmix_rank_t b);
+
+PMIX_EXPORT bool PMIx_Rank_valid(pmix_rank_t a);
+
+/* check if procID is invalid */
+PMIX_EXPORT bool PMIx_Procid_invalid(const pmix_proc_t *p);
+
+/* count number of entries in an argv-style array */
+PMIX_EXPORT int PMIx_Argv_count(char **a);
+
+/* append a string to an argv-style array, without returning the count */
+PMIX_EXPORT pmix_status_t PMIx_Argv_append_nosize(char ***argv, const char *arg);
+
+/* prepend a string to an argv-style array, without returning the count */
+PMIX_EXPORT pmix_status_t PMIx_Argv_prepend_nosize(char ***argv, const char *arg);
+
+/* append a string to an argv-style array, avoiding duplication,
+ * and without returning the count */
+PMIX_EXPORT pmix_status_t PMIx_Argv_append_unique_nosize(char ***argv, const char *arg);
+
+/* free an argv-style array */
+PMIX_EXPORT void PMIx_Argv_free(char **argv);
+
+
+/* split a string on given delimiter, returning the individual
+ * strings in an argv-style array while ignoring any resulting
+ * zero-length strings */
+PMIX_EXPORT char **PMIx_Argv_split(const char *src_string, int delimiter);
+
+/* split a string on the given delimiter, returning the individual
+ * strings in an argv-style array and retaining any zero-length
+ * strings in the array */
+PMIX_EXPORT char **PMIx_Argv_split_with_empty(const char *src_string, int delimiter);
+
+/* backing function for the above functions */
+PMIX_EXPORT char **PMIx_Argv_split_inter(const char *src_string,
+                                         int delimiter,
+                                         bool include_empty);
+
+/* join elements of the provided argv-style array into a single
+ * string, joined by the given delimiter */
+PMIX_EXPORT char *PMIx_Argv_join(char **argv, int delimiter);
+
+/* copy an argv-style array */
+PMIX_EXPORT char **PMIx_Argv_copy(char **argv);
+
+/* set an environmental paramter */
+PMIX_EXPORT pmix_status_t PMIx_Setenv(const char *name,
+                                      const char *value,
+                                      bool overwrite,
+                                      char ***env);
+
+/* initialize a value struct */
+PMIX_EXPORT void PMIx_Value_construct(pmix_value_t *val);
+
+/* free memory stored inside a value struct */
+PMIX_EXPORT void PMIx_Value_destruct(pmix_value_t *val);
+
+/* create and initialize an array of value structs */
+PMIX_EXPORT pmix_value_t* PMIx_Value_create(size_t n);
+
+/* free memory stored inside an array of coord structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Value_free(pmix_value_t *v, size_t n);
+
+/* Check the given value struct to determine if it includes
+ * a boolean value (includes strings for "true" and "false",
+ * including abbreviations such as "t" or "f"), and if so,
+ * then its value. A value type of PMIX_UNDEF is taken to imply
+ * a boolean "true". */
+PMIX_EXPORT pmix_boolean_t PMIx_Value_true(const pmix_value_t *v);
+
+/* Load data into a pmix_value_t structure. The data can be of any
+ * PMIx data type - which means the load can be somewhat complex
+ * to implement (e.g., in the case of a pmix_data_array_t). The
+ * data is COPIED into the value struct
+ */
+PMIX_EXPORT pmix_status_t PMIx_Value_load(pmix_value_t *val,
+                                          const void *data,
+                                          pmix_data_type_t type);
+
+/* Unload data from a pmix_value_t structure. */
+PMIX_EXPORT pmix_status_t PMIx_Value_unload(pmix_value_t *val,
+                                            void **data,
+                                            size_t *sz);
+
+/* Transfer data from one pmix_value_t to another - this is actually
+ * executed as a COPY operation, so the original data is not altered.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Value_xfer(pmix_value_t *dest,
+                                          const pmix_value_t *src);
+
+/* Compare the contents of two pmix_value_t structures */
+PMIX_EXPORT pmix_value_cmp_t PMIx_Value_compare(pmix_value_t *v1,
+                                                pmix_value_t *v2);
+
+/* extract a numerical value from a pmix_value_t */
+PMIX_EXPORT pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
+                                                void *dest,
+                                                pmix_data_type_t type);
+
+/* retrieve a number stored in a pmix_value_t, checking to ensure
+ * that the value will fit within the given destination (as specified
+ * by the type parameter) without loss of precision and/or change of sign */
+PMIX_EXPORT pmix_status_t PMIx_Value_get_number(const pmix_value_t *value,
+                                                void *dest,
+                                                pmix_data_type_t type);
+
+/* initialize a pmix_data_array_t - i.e.., set all fields to zero */
+PMIX_EXPORT void PMIx_Data_array_init(pmix_data_array_t *p,
+                                      pmix_data_type_t type);
+
+/* construct a data array containing the specified number of
+ * elements of the given type */
+PMIX_EXPORT void PMIx_Data_array_construct(pmix_data_array_t *p,
+                                           size_t num, pmix_data_type_t type);
+
+/* destruct a data array */
+PMIX_EXPORT void PMIx_Data_array_destruct(pmix_data_array_t *d);
+
+/* create an array of data arrays, each containing the specified number
+ * of elements of the given type */
+PMIX_EXPORT pmix_data_array_t* PMIx_Data_array_create(size_t n, pmix_data_type_t type);
+
+/* free a data array, releasing the pmix_data_array_t object */
+PMIX_EXPORT void PMIx_Data_array_free(pmix_data_array_t *p);
+
+
+/* initialize an info struct */
+PMIX_EXPORT void PMIx_Info_construct(pmix_info_t *p);
+
+/* free memory stored inside an info struct */
+PMIX_EXPORT void PMIx_Info_destruct(pmix_info_t *p);
+
+/* create and initialize an array of info structs */
+PMIX_EXPORT pmix_info_t* PMIx_Info_create(size_t n);
+
+/* free memory stored inside an array of coord structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Info_free(pmix_info_t *p, size_t n);
+
+/* Check the given info struct to determine if it includes
+ * a boolean value (includes strings for "true" and "false",
+ * including abbreviations such as "t" or "f"), and if so,
+ * then its value. A value type of PMIX_UNDEF is taken to imply
+ * a boolean "true" as the presence of the key defaults to
+ * indicating "true". */
+PMIX_EXPORT pmix_boolean_t PMIx_Info_true(const pmix_info_t *p);
+
+/* Load key/value data into a pmix_info_t struct. Note that this
+ * effectively is a PMIX_LOAD_KEY operation to copy the key,
+ * followed by a PMIx_Value_load to COPY the data into the
+ * pmix_value_t in the provided info struct */
+PMIX_EXPORT pmix_status_t PMIx_Info_load(pmix_info_t *info,
+                                         const char *key,
+                                         const void *data,
+                                         pmix_data_type_t type);
+
+/* Transfer data from one pmix_info_t to another - this is actually
+ * executed as a COPY operation, so the original data is not altered */
+PMIX_EXPORT pmix_status_t PMIx_Info_xfer(pmix_info_t *dest,
+                                         const pmix_info_t *src);
+
+/* mark the info struct as required */
+PMIX_EXPORT void PMIx_Info_required(pmix_info_t *p);
+
+/* mark the info struct as optional */
+PMIX_EXPORT void PMIx_Info_optional(pmix_info_t *p);
+
+/* check if the info struct is required */
+PMIX_EXPORT bool PMIx_Info_is_required(const pmix_info_t *p);
+
+/* check if the info struct is optional */
+PMIX_EXPORT bool PMIx_Info_is_optional(const pmix_info_t *p);
+
+/* mark the info struct as processed */
+PMIX_EXPORT void PMIx_Info_processed(pmix_info_t *p);
+
+/* check if the info struct has been processed */
+PMIX_EXPORT bool PMIx_Info_was_processed(const pmix_info_t *p);
+
+/* mark the info struct as the end of an array */
+PMIX_EXPORT void PMIx_Info_set_end(pmix_info_t *p);
+
+/* check if the info struct is the end of an array */
+PMIX_EXPORT bool PMIx_Info_is_end(const pmix_info_t *p);
+
+/* mark the info as a qualifier */
+PMIX_EXPORT void PMIx_Info_qualifier(pmix_info_t *p);
+
+/* check if the info struct is a qualifier */
+PMIX_EXPORT bool PMIx_Info_is_qualifier(const pmix_info_t *p);
+
+/* mark the info struct as persistent - do NOT release its contents */
+PMIX_EXPORT void PMIx_Info_persistent(pmix_info_t *p);
+
+/* check if the info struct is persistent */
+PMIX_EXPORT bool PMIx_Info_is_persistent(const pmix_info_t *p);
+
+/* Constructing arrays of pmix_info_t for passing to an API can
+ * be tedious since the pmix_info_t itself is not a "list object".
+ * Since this is a very frequent operation, a set of APIs has been
+ * provided that opaquely manipulates internal PMIx list structures
+ * for this purpose. The user only need provide a void* pointer to
+ * act as the caddy for the internal list object.
+ */
+
+/* Initialize a list of pmix_info_t structures */
+PMIX_EXPORT void* PMIx_Info_list_start(void);
+
+/* Add data to a list of pmix_info_t structs. The "ptr" passed
+ * here is the pointer returned by PMIx_Info_list_start.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add(void *ptr,
+                                             const char *key,
+                                             const void *value,
+                                             pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add_unique(void *ptr,
+                                                    const char *key,
+                                                    const void *value,
+                                                    pmix_data_type_t type,
+                                                    bool overwrite);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value(void *ptr,
+                                                   const char *key,
+                                                   const pmix_value_t *value);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_add_value_unique(void *ptr,
+                                                          const char *key,
+                                                          const pmix_value_t *value,
+                                                          bool overwrite);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_prepend(void *ptr,
+                                                 const char *key,
+                                                 const void *value,
+                                                 pmix_data_type_t type);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_insert(void *ptr, pmix_info_t *info);
+
+/* Transfer the data in an existing pmix_info_t struct to a list. This
+ * is executed as a COPY operation, so the original data is not altered.
+ * The "ptr" passed here is the pointer returned by PMIx_Info_list_start
+ */
+PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer(void *ptr,
+                                              const pmix_info_t *info);
+
+PMIX_EXPORT pmix_status_t PMIx_Info_list_xfer_unique(void *ptr,
+                                                     const pmix_info_t *info,
+                                                     bool overwrite);
+
+/* Convert the constructed list of pmix_info_t structs to a pmix_data_array_t
+ * of pmix_info_t. Data on the list is COPIED to the array elements.
+ */
+PMIX_EXPORT pmix_status_t PMIx_Info_list_convert(void *ptr, pmix_data_array_t *par);
+
+/* Release all data on the list and destruct all internal tracking */
+PMIX_EXPORT void PMIx_Info_list_release(void *ptr);
+
+/* retrieve the next info on the list - passing a NULL
+ * to the "prev" parameter will return the first pmix_info_t
+ * on the list. A return of NULL indicates the end of the list
+ */
+PMIX_EXPORT pmix_info_t* PMIx_Info_list_get_info(void *ptr, void *prev, void **next);
+
+/* get the size of the info list - i.e., the number of current entries on it */
+PMIX_EXPORT size_t PMIx_Info_list_get_size(void *ptr);
+
+
+/* initialize a coord struct */
+PMIX_EXPORT void PMIx_Coord_construct(pmix_coord_t *m);
+
+/* free memory stored inside a coord struct */
+PMIX_EXPORT void PMIx_Coord_destruct(pmix_coord_t *m);
+
+/* create and initialize an array of coord structs */
+PMIX_EXPORT pmix_coord_t* PMIx_Coord_create(size_t dims,
+                                            size_t number);
+
+/* free memory stored inside an array of coord structs
+* (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Coord_free(pmix_coord_t *m, size_t number);
+
+
+/* initialize a topology struct */
+PMIX_EXPORT void PMIx_Topology_construct(pmix_topology_t *t);
+
+/* free memory stored inside a topology struct */
+PMIX_EXPORT void PMIx_Topology_destruct(pmix_topology_t *topo);
+
+/* create and initialize an array of topology structs */
+PMIX_EXPORT pmix_topology_t* PMIx_Topology_create(size_t n);
+
+/* free memory stored inside an array of topology structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Topology_free(pmix_topology_t *t, size_t n);
+
+/* initialize a cpuset struct */
+PMIX_EXPORT void PMIx_Cpuset_construct(pmix_cpuset_t *cpuset);
+
+/* free memory stored inside a cpuset struct */
+PMIX_EXPORT void PMIx_Cpuset_destruct(pmix_cpuset_t *cpuset);
+
+/* create and initialize an array of cpuset structs */
+PMIX_EXPORT pmix_cpuset_t* PMIx_Cpuset_create(size_t n);
+
+/* free memory stored inside an array of cpuset structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Cpuset_free(pmix_cpuset_t *c, size_t n);
+
+/* initialize a geometry struct */
+PMIX_EXPORT void PMIx_Geometry_construct(pmix_geometry_t *g);
+
+/* free memory stored inside a cpuset struct */
+PMIX_EXPORT void PMIx_Geometry_destruct(pmix_geometry_t *g);
+
+/* create and initialize an array of cpuset structs */
+PMIX_EXPORT pmix_geometry_t* PMIx_Geometry_create(size_t n);
+
+/* free memory stored inside an array of cpuset structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Geometry_free(pmix_geometry_t *g, size_t n);
+
+/* initialize a device struct */
+PMIX_EXPORT void PMIx_Device_construct(pmix_device_t *d);
+
+/* free memory stored inside a device struct */
+PMIX_EXPORT void PMIx_Device_destruct(pmix_device_t *d);
+
+/* create and initialize an array of device structs */
+PMIX_EXPORT pmix_device_t* PMIx_Device_create(size_t n);
+
+/* free memory stored inside an array of device structs
+ * (frees the struct memory itself) */
+PMIX_EXPORT void PMIx_Device_free(pmix_device_t *d, size_t n);
+
+/* initialize a node_pid struct */
+PMIX_EXPORT void PMIx_Node_pid_construct(pmix_node_pid_t *d);
+
+/* free memory stored inside a node_pid struct */
+PMIX_EXPORT void PMIx_Node_pid_destruct(pmix_node_pid_t *d);
+
+/* create and initialize an array of node_pid structs */
+PMIX_EXPORT pmix_node_pid_t* PMIx_Node_pid_create(size_t n);
+
+/* free memory stored inside an array of node_pid structs
+ * (frees the struct memory itself) */
+PMIX_EXPORT void PMIx_Node_pid_free(pmix_node_pid_t *d, size_t n);
+
+/* initialize a resource unit struct */
+PMIX_EXPORT void PMIx_Resource_unit_construct(pmix_resource_unit_t *d);
+
+/* free memory stored inside a resource unit struct */
+PMIX_EXPORT void PMIx_Resource_unit_destruct(pmix_resource_unit_t *d);
+
+/* create and initialize an array of resource unit structs */
+PMIX_EXPORT pmix_resource_unit_t* PMIx_Resource_unit_create(size_t n);
+
+/* free memory stored inside an array of resource unit structs (does
+ * not free the struct memory itself) */
+PMIX_EXPORT void PMIx_Resource_unit_free(pmix_resource_unit_t *d, size_t n);
+
+/* initialize a device distance struct */
+PMIX_EXPORT void PMIx_Device_distance_construct(pmix_device_distance_t *d);
+
+/* free memory stored inside a device distance struct */
+PMIX_EXPORT void PMIx_Device_distance_destruct(pmix_device_distance_t *d);
+
+/* create and initialize an array of device distance structs */
+PMIX_EXPORT pmix_device_distance_t* PMIx_Device_distance_create(size_t n);
+
+/* free memory stored inside an array of device distance structs
+ * (frees the struct memory itself) */
+PMIX_EXPORT void PMIx_Device_distance_free(pmix_device_distance_t *d, size_t n);
+
+
+/* initialize a byte object struct */
+PMIX_EXPORT void PMIx_Byte_object_construct(pmix_byte_object_t *b);
+
+/* free memory stored inside a byte object struct */
+PMIX_EXPORT void PMIx_Byte_object_destruct(pmix_byte_object_t *g);
+
+/* create and initialize an array of byte object structs */
+PMIX_EXPORT pmix_byte_object_t* PMIx_Byte_object_create(size_t n);
+
+/* free memory stored inside an array of byte object structs
+* (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Byte_object_free(pmix_byte_object_t *g, size_t n);
+
+/* load a byte object */
+PMIX_EXPORT void PMIx_Byte_object_load(pmix_byte_object_t *b,
+                                       char *d, size_t sz);
+
+/* initialize an endpoint struct */
+PMIX_EXPORT void PMIx_Endpoint_construct(pmix_endpoint_t *e);
+
+/* free memory stored inside an endpoint struct */
+PMIX_EXPORT void PMIx_Endpoint_destruct(pmix_endpoint_t *e);
+
+/* create and initialize an array of endpoint structs */
+PMIX_EXPORT pmix_endpoint_t* PMIx_Endpoint_create(size_t n);
+
+/* free memory stored inside an array of endpoint structs (does
+ * not free the struct memory itself */
+PMIX_EXPORT void PMIx_Endpoint_free(pmix_endpoint_t *e, size_t n);
+
+
+/* initialize an envar struct */
+PMIX_EXPORT void PMIx_Envar_construct(pmix_envar_t *e);
+
+/* free memory stored inside an envar struct */
+PMIX_EXPORT void PMIx_Envar_destruct(pmix_envar_t *e);
+
+/* create and initialize an array of envar structs */
+PMIX_EXPORT pmix_envar_t* PMIx_Envar_create(size_t n);
+
+/* free memory stored inside an array of envar structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Envar_free(pmix_envar_t *e, size_t n);
+
+/* load an envar struct */
+PMIX_EXPORT void PMIx_Envar_load(pmix_envar_t *e,
+                                 char *var,
+                                 char *value,
+                                 char separator);
+
+/* initialize a data buffer struct */
+PMIX_EXPORT void PMIx_Data_buffer_construct(pmix_data_buffer_t *b);
+
+/* free memory stored inside a data buffer struct */
+PMIX_EXPORT void PMIx_Data_buffer_destruct(pmix_data_buffer_t *b);
+
+/* create a data buffer struct */
+PMIX_EXPORT pmix_data_buffer_t* PMIx_Data_buffer_create(void);
+
+/* free memory stored inside a data buffer struct */
+PMIX_EXPORT void PMIx_Data_buffer_release(pmix_data_buffer_t *b);
+
+/* load a data buffer struct */
+PMIX_EXPORT void PMIx_Data_buffer_load(pmix_data_buffer_t *b,
+                                       char *bytes, size_t sz);
+
+/* unload a data buffer struct */
+PMIX_EXPORT void PMIx_Data_buffer_unload(pmix_data_buffer_t *b,
+                                         char **bytes, size_t *sz);
+
+
+/* initialize a proc struct */
+PMIX_EXPORT void PMIx_Proc_construct(pmix_proc_t *p);
+
+/* clear memory inside a proc struct */
+PMIX_EXPORT void PMIx_Proc_destruct(pmix_proc_t *p);
+
+/* create and initialize an array of proc structs */
+PMIX_EXPORT pmix_proc_t* PMIx_Proc_create(size_t n);
+
+/* free memory stored inside an array of proc structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Proc_free(pmix_proc_t *p, size_t n);
+
+/* load a proc struct */
+PMIX_EXPORT void PMIx_Proc_load(pmix_proc_t *p,
+                                const char *nspace, pmix_rank_t rank);
+
+/* construct a multicluster nspace struct from cluster and nspace values */
+PMIX_EXPORT void PMIx_Multicluster_nspace_construct(pmix_nspace_t target,
+                                                    pmix_nspace_t cluster,
+                                                    pmix_nspace_t nspace);
+
+/* parse a multicluster nspace struct to separate out the cluster
+ * and nspace portions */
+PMIX_EXPORT void PMIx_Multicluster_nspace_parse(pmix_nspace_t target,
+                                                pmix_nspace_t cluster,
+                                                pmix_nspace_t nspace);
+
+
+/* initialize a proc info struct */
+PMIX_EXPORT void PMIx_Proc_info_construct(pmix_proc_info_t *p);
+
+/* clear memory inside a proc info struct */
+PMIX_EXPORT void PMIx_Proc_info_destruct(pmix_proc_info_t *p);
+
+/* create and initialize an array of proc info structs */
+PMIX_EXPORT pmix_proc_info_t* PMIx_Proc_info_create(size_t n);
+
+/* free memory stored inside an array of proc info structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Proc_info_free(pmix_proc_info_t *p, size_t n);
+
+
+/* initialize a pdata struct */
+PMIX_EXPORT void PMIx_Pdata_construct(pmix_pdata_t *p);
+
+/* clear memory inside a pdata struct */
+PMIX_EXPORT void PMIx_Pdata_destruct(pmix_pdata_t *p);
+
+/* create and initialize an array of pdata structs */
+PMIX_EXPORT pmix_pdata_t* PMIx_Pdata_create(size_t n);
+
+/* free memory stored inside an array of pdata structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_Pdata_free(pmix_pdata_t *p, size_t n);
+
+/* load data into a pdata struct - values are copied */
+PMIX_EXPORT void PMIx_Pdata_load(pmix_pdata_t *dest,
+                                 const pmix_proc_t *p,
+                                 const char *key,
+                                 const void *data,
+                                 pmix_data_type_t type);
+
+/* transfer data from one pdata to another - data is copied */
+PMIX_EXPORT void PMIx_Pdata_xfer(pmix_pdata_t *dest,
+                                 pmix_pdata_t *src);
+
+/* initialize an app struct */
+PMIX_EXPORT void PMIx_App_construct(pmix_app_t *p);
+
+/* clear memory inside an app struct */
+PMIX_EXPORT void PMIx_App_destruct(pmix_app_t *p);
+
+/* create and initialize an array of app structs */
+PMIX_EXPORT pmix_app_t* PMIx_App_create(size_t n);
+
+/* create and initialize an array of pmix_info_t structs
+ * for the app->info field */
+PMIX_EXPORT void PMIx_App_info_create(pmix_app_t *p, size_t n);
+
+/* free memory stored inside an array of app structs
+ * (frees the struct memory itself */
+PMIX_EXPORT void PMIx_App_free(pmix_app_t *p, size_t n);
+
+/* release memory inside a single app struct (frees struct memory) */
+PMIX_EXPORT void PMIx_App_release(pmix_app_t *p);
+
+/* initialize a query struct */
+PMIX_EXPORT void PMIx_Query_construct(pmix_query_t *p);
+
+/* clear memory inside a query struct */
+PMIX_EXPORT void PMIx_Query_destruct(pmix_query_t *p);
+
+/* create and initialize an array of query structs */
+PMIX_EXPORT pmix_query_t* PMIx_Query_create(size_t n);
+
+/* create an array of pmix_info_t qualifiers in a query struct */
+PMIX_EXPORT void PMIx_Query_qualifiers_create(pmix_query_t *p, size_t n);
+
+/* free memory store inside an array of query structs
+ * (frees the struct memory itself) */
+PMIX_EXPORT void PMIx_Query_free(pmix_query_t *p, size_t n);
+
+/* release memory inside a single query struct (frees struct memory) */
+PMIX_EXPORT void PMIx_Query_release(pmix_query_t *p);
+
+/* initialize a regattr struct */
+PMIX_EXPORT void PMIx_Regattr_construct(pmix_regattr_t *p);
+
+/* clear memory inside a regattr struct */
+PMIX_EXPORT void PMIx_Regattr_destruct(pmix_regattr_t *p);
+
+/* create and initialize an array of regattr structs */
+PMIX_EXPORT pmix_regattr_t* PMIx_Regattr_create(size_t n);
+
+/* free memory store inside an array of regattr structs
+ * (frees the struct memory itself) */
+PMIX_EXPORT void PMIx_Regattr_free(pmix_regattr_t *p, size_t n);
+
+/* load the fields of a regattr struct with the provided data
+ * (data is copied) */
+PMIX_EXPORT void PMIx_Regattr_load(pmix_regattr_t *info,
+                                   const char *name,
+                                   const char *key,
+                                   pmix_data_type_t type,
+                                   const char *description);
+
+/* copy the fields of one regattr struct to another */
+PMIX_EXPORT void PMIx_Regattr_xfer(pmix_regattr_t *dest,
+                                   const pmix_regattr_t *src);
+
+/* initialize a fabric struct */
+PMIX_EXPORT void PMIx_Fabric_construct(pmix_fabric_t *p);
+
+
 /* Macros that have been converted to functions */
 
 #define PMIX_LOAD_KEY(a, b) \
