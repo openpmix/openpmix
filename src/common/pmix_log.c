@@ -182,7 +182,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
                     timestamp = time(NULL);
                 }
             } else if (0 == strncmp(directives[n].key, PMIX_LOG_SOURCE, PMIX_MAX_KEYLEN)) {
-                source = directives[n].value.data.proc;
+                memcpy(source, directives[n].value.data.proc, sizeof(pmix_proc_t));
             }
         }
     }
