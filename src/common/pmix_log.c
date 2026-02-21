@@ -151,6 +151,7 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
     pmix_status_t rc = PMIX_SUCCESS;
     time_t timestamp = 0;
     pmix_proc_t *source;
+    bool found = false;
     pmix_shift_caddy_t *cd;
     pmix_cb_t *cb;
     size_t n;
@@ -183,10 +184,11 @@ PMIX_EXPORT pmix_status_t PMIx_Log_nb(const pmix_info_t data[], size_t ndata,
                 }
             } else if (0 == strncmp(directives[n].key, PMIX_LOG_SOURCE, PMIX_MAX_KEYLEN)) {
                 memcpy(source, directives[n].value.data.proc, sizeof(pmix_proc_t));
+                found = true;
             }
         }
     }
-    if (NULL == source) {
+    if (!found) {
         memcpy(source, &pmix_globals.myid, sizeof(pmix_proc_t));
     }
 
