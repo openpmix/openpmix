@@ -716,12 +716,18 @@ static pmix_status_t process_values(pmix_cb_t *cb)
     pmix_list_t *kvs = &cb->kvs;
     pmix_kval_t *kv;
     pmix_value_t *val;
-    pmix_info_t *info;
+    pmix_info_t *info, *iptr;
     size_t ninfo, n;
 
     if (NULL != cb->key && 1 == pmix_list_get_size(kvs)) {
         kv = (pmix_kval_t *) pmix_list_get_first(kvs);
-        cb->value = kv->value;
+        if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+            // extract the actual value
+            iptr = (pmix_info_t*)kv->value->data.darray->array;
+            cb->value = &iptr[0].value;
+        } else {
+            cb->value = kv->value;
+        }
         kv->value = NULL; // protect the value
         return PMIX_SUCCESS;
     }
@@ -749,8 +755,15 @@ static pmix_status_t process_values(pmix_cb_t *cb)
     /* copy the list elements */
     n = 0;
     PMIX_LIST_FOREACH (kv, kvs, pmix_kval_t) {
-        pmix_strncpy(info[n].key, kv->key, PMIX_MAX_KEYLEN);
-        PMIx_Value_xfer(&info[n].value, kv->value);
+        if (PMIX_CHECK_KEY(kv, PMIX_QUALIFIED_VALUE)) {
+            // extract the actual value
+            iptr = (pmix_info_t*)kv->value->data.darray->array;
+            pmix_strncpy(info[n].key, iptr[0].key, PMIX_MAX_KEYLEN);
+            PMIx_Value_xfer(&info[n].value, &iptr[0].value);
+        } else {
+            pmix_strncpy(info[n].key, kv->key, PMIX_MAX_KEYLEN);
+            PMIx_Value_xfer(&info[n].value, kv->value);
+        }
         ++n;
     }
     val->data.darray->size = ninfo;
