@@ -12,7 +12,7 @@
  * Copyright (c) 2015-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2019      Mellanox Technologies, Inc.
  *                         All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      IBM Corporation.  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC. All rights reserved.
  * $COPYRIGHT$
@@ -357,13 +357,59 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
     pmix_data_array_t **darray;
     pmix_regattr_t *regattr, *r;
     pmix_node_pid_t *ndpidptr, *ndpd;
+    int n;
+    pmix_data_type_t simple[] = {
+        PMIX_BOOL,
+        PMIX_BYTE,
+        PMIX_SIZE,
+        PMIX_PID,
+        PMIX_INT,
+        PMIX_INT8,
+        PMIX_INT16,
+        PMIX_INT32,
+        PMIX_INT64,
+        PMIX_UINT,
+        PMIX_UINT8,
+        PMIX_UINT16,
+        PMIX_UINT32,
+        PMIX_UINT64,
+        PMIX_FLOAT,
+        PMIX_DOUBLE,
+        PMIX_STATUS,
+        PMIX_PROC_NSPACE,
+        PMIX_PROC_RANK,
+        PMIX_STOR_ACCESS_TYPE,
+        PMIX_STOR_MEDIUM,
+        PMIX_STOR_ACCESS,
+        PMIX_STOR_PERSIST,
+        PMIX_TIMEVAL,
+        PMIX_TIME,
+        PMIX_PROC,
+        PMIX_PERSIST,
+        PMIX_SCOPE,
+        PMIX_DATA_RANGE,
+        PMIX_PROC_STATE,
+        PMIX_POINTER,
+        PMIX_ALLOC_DIRECTIVE,
+        PMIX_LINK_STATE,
+        PMIX_LOCTYPE,
+        PMIX_DEVTYPE
+    };
 
     rc = PMIX_SUCCESS;
-    if (NULL == data ||
-        (NULL == *data && PMIX_STRING != kv->type && PMIX_BYTE_OBJECT != kv->type)) {
-        rc = PMIX_ERR_BAD_PARAM;
-    } else {
-        switch (kv->type) {
+    if (NULL == data) {
+        return PMIX_ERR_BAD_PARAM;
+    }
+    if (NULL == *data) {
+        // if the value contains a simple data type, then this is an error
+        for (n=0; PMIX_UNDEF != simple[n]; n++) {
+            if (kv->type == simple[n]) {
+                return PMIX_ERR_BAD_PARAM;
+            }
+        }
+    }
+
+    switch (kv->type) {
         case PMIX_UNDEF:
             rc = PMIX_ERR_UNKNOWN_DATA_TYPE;
             break;
@@ -453,10 +499,15 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
         case PMIX_BYTE_OBJECT:
         case PMIX_COMPRESSED_STRING:
         case PMIX_COMPRESSED_BYTE_OBJECT:
+        case PMIX_REGEX:
             if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {
-                *data = kv->data.bo.bytes;
-                *sz = kv->data.bo.size;
-
+                rc = pmix_bfrops_base_copy_bo((pmix_byte_object_t**)data, &kv->data.bo, PMIX_BYTE_OBJECT);
+                if (PMIX_SUCCESS == rc) {
+                    *sz = kv->data.bo.size;
+                } else {
+                    *data = NULL;
+                    *sz = 0;
+                }
             } else {
                 *data = NULL;
                 *sz = 0;
@@ -615,15 +666,6 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
             *data = regattr;
             *sz = sizeof(pmix_regattr_t);
             break;
-        case PMIX_REGEX:
-            if (NULL != kv->data.bo.bytes && 0 < kv->data.bo.size) {
-                *data = kv->data.bo.bytes;
-                *sz = kv->data.bo.size;
-            } else {
-                *data = NULL;
-                *sz = 0;
-            }
-            break;
         case PMIX_DATA_BUFFER:
             rc = pmix_bfrops_base_copy_dbuf((pmix_data_buffer_t **) data, kv->data.dbuf,
                                             PMIX_DATA_BUFFER);
@@ -650,7 +692,6 @@ pmix_status_t pmix_bfrops_base_value_unload(pmix_value_t *kv, void **data, size_
             /* silence warnings */
             rc = PMIX_ERROR;
             break;
-        }
     }
     return rc;
 }
