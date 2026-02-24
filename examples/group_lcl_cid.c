@@ -16,7 +16,7 @@
  * Copyright (c) 2013-2020 Intel, Inc.  All rights reserved.
  * Copyright (c) 2015      Mellanox Technologies, Inc.  All rights reserved.
  * Copyright (c) 2019      IBM Corporation.  All rights reserved.
- * Copyright (c) 2021-2025 Nanook Consulting  All rights reserved.
+ * Copyright (c) 2021-2026 Nanook Consulting  All rights reserved.
  * Copyright (c) 2022      Triad National Security, LLC.
  *                         All rights reserved.
  *
@@ -42,6 +42,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include <pmix.h>
 #include "examples.h"
@@ -140,14 +141,6 @@ int main(int argc, char **argv)
         goto done;
     }
     value.type = PMIX_STRING;
-    rc = PMIx_Put(PMIX_GLOBAL, "modex-btl", &value);
-    free(value.data.string);
-    if (PMIX_SUCCESS != rc) {
-        goto done;
-    }
-    if (0 > asprintf(&value.data.string, "btl-smcuda-%u", myproc.rank)) {
-        goto done;
-    }
     rc = PMIx_Put(PMIX_GLOBAL, "modex-btl", &value);
     free(value.data.string);
     if (PMIX_SUCCESS != rc) {
@@ -255,28 +248,40 @@ int main(int argc, char **argv)
     PMIX_INFO_CONSTRUCT(&tinfo[1]);
     PMIX_INFO_LOAD(&tinfo[1], PMIX_TIMEOUT, &get_timeout, PMIX_UINT32);
 
-    for (n = 0; n < nprocs; n++) {
-        proc.rank = n;
-        if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_GROUP_LOCAL_CID, tinfo, 2, &val))) {
-                fprintf(stderr, "Client ns %s rank %d: PMIx_Get of LOCAL CID for rank %d failed: %s\n",
-                        myproc.nspace, myproc.rank, n, PMIx_Error_string(rc));
-            continue;
+    for (m=0; m < 2; m++) {
+        if (0 == myproc.rank) {
+            fprintf(stderr, "ITERATION %zu\n", m);
         }
-        if (PMIX_SIZE != val->type) {
-           fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong type: %s\n", myproc.nspace,
-                    myproc.rank, n, PMIx_Data_type_string(val->type));
-            PMIX_VALUE_RELEASE(val);
-            continue;
-        }
-        if ((1234UL + (unsigned long)n) != val->data.size) {
-            fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong value: %s\n",
+        PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
+        PMIx_Fence(&proc, 1, NULL, 0);
+        for (n = 0; n < nprocs; n++) {
+            proc.rank = n;
+            if (PMIX_SUCCESS != (rc = PMIx_Get(&proc, PMIX_GROUP_LOCAL_CID, tinfo, 2, &val))) {
+                    fprintf(stderr, "Client ns %s rank %d: PMIx_Get of LOCAL CID for rank %d failed: %s\n",
+                            myproc.nspace, myproc.rank, n, PMIx_Error_string(rc));
+                continue;
+            }
+            if (PMIX_SIZE != val->type) {
+               fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong type: %s\n", myproc.nspace,
+                        myproc.rank, n, PMIx_Data_type_string(val->type));
+                PMIX_VALUE_RELEASE(val);
+                abort();
+                continue;
+            }
+            if ((1234UL + (unsigned long)n) != val->data.size) {
+                fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %d returned wrong value: %s\n",
+                        myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
+                PMIX_VALUE_RELEASE(val);
+                abort();
+                continue;
+            }
+            fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %u SUCCESS value: %s\n",
                     myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
             PMIX_VALUE_RELEASE(val);
-            continue;
         }
-        fprintf(stderr, "%s:%d: PMIx_Get LOCAL CID for rank %u SUCCESS value: %s\n",
-                myproc.nspace, myproc.rank, n, PMIx_Value_string(val));
-        PMIX_VALUE_RELEASE(val);
+        fflush(stderr);
+        PMIX_LOAD_PROCID(&proc, myproc.nspace, PMIX_RANK_WILDCARD);
+        PMIx_Fence(&proc, 1, NULL, 0);
     }
 
 done:
